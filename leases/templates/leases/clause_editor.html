@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lease Agreement Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+        .agreement-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        #agreementPreview {
+            background-color: #fffdf5;
+            border-right: 1px solid #eaeaea;
+            padding: 20px;
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1.5;
+            font-size: 0.92rem;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+        .clause {
+            margin-bottom: 8px;
+            text-align: justify;
+        }
+        .signature-box {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+        .clause-editor {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            padding: 8px;
+        }
+        .form-label {
+            font-weight: 500;
+            color: #2c3e50;
+            font-size: 0.9rem;
+            margin-bottom: 4px;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 0.82rem;
+            color: #7f8c8d;
+        }
+        .agreement-title {
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+            color: #1e3c72;
+            text-align: center;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 8px;
+        }
+        .signature-section {
+            margin-top: 25px;
+            padding-top: 12px;
+            border-top: 1px dashed #ccc;
+        }
+        .highlight {
+            background-color: #fffacd;
+            padding: 0 3px;
+            border-radius: 2px;
+        }
+        .clause-counter {
+            display: inline-block;
+            width: 22px;
+            height: 22px;
+            background: #1e3c72;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 22px;
+            font-size: 0.75rem;
+            margin-right: 6px;
+        }
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 0.85rem;
+        }
+        .compact-p {
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+        .clause-container {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        .action-buttons {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .toolbar {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 15px;
+            border-radius: 6px 6px 0 0;
+        }
+        .clause-editor:focus {
+            border-color: #4dabf7;
+            box-shadow: 0 0 0 0.2rem rgba(77, 171, 247, 0.25);
+        }
+        .tenant-info {
+            font-size: 0.95rem;
+            margin-bottom: 15px;
+            text-align: center;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .clause-preview {
+            transition: background-color 0.3s ease;
+        }
+        .clause-preview.active {
+            background-color: #e7f5ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header d-flex justify-content-between align-items-center">
+            <h1 class="fs-5 mb-0"><i class="fas fa-file-contract me-2"></i>Lease Agreement Editor</h1>
+            <div>
+                <button class="btn btn-sm btn-light me-1">
+                    <i class="fas fa-arrow-left me-1"></i> Back
+                </button>
+                <button class="btn btn-sm btn-light me-1">
+                    <i class="fas fa-file-pdf me-1"></i> PDF
+                </button>
+                <button class="btn btn-sm btn-light me-1">
+                    <i class="fas fa-file-word me-1"></i> Word
+                </button>
+                <button class="btn btn-sm btn-light">
+                    <i class="fas fa-envelope me-1"></i> Email
+                </button>
+            </div>
+        </div>
+        
+        <div class="tenant-info">
+            Lease Agreement for <span class="highlight">Fatima Ali</span> - <span class="highlight">Silver Plaza, Unit 8B</span>
+        </div>
+        
+        <div class="row">
+            <!-- Preview Column -->
+            <div class="col-md-6">
+                <div class="agreement-container">
+                    <div id="agreementPreview">
+                        <div class="agreement-title">RENT AGREEMENT</div>
+                        <p class="text-center compact-p">This RENT AGREEMENT is made at Islamabad on this <span class="highlight">15th July, 2025</span></p>
+                        
+                        <div class="compact-section">
+                            <p class="compact-p"><strong>BETWEEN</strong></p>
+                            <p class="compact-p"><span class="highlight">Mr. Ahmed Khan</span> holding CNIC NO. <span class="highlight">12345-6789012-3</span></p>
+                            <p class="compact-p"><span class="highlight">House #123, Street 45, G-10/4, Islamabad</span> (Hereinafter called "Owner")</p>
+                            
+                            <p class="compact-p"><strong>AND</strong></p>
+                            <p class="compact-p"><span class="highlight">Ms. Fatima Ali</span> holding CNIC NO. <span class="highlight">98765-4321098-7</span></p>
+                            <p class="compact-p"><span class="highlight">Apartment #8B, Silver Plaza, Blue Area, Islamabad</span> (Hereinafter called "Tenant")</p>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <p class="clause clause-preview" id="clause-1"><span class="clause-counter">1</span> The Landlord rents to Tenant and Tenant rents from Landlord the premises located at <span class="highlight">Silver Plaza</span>, Unit <span class="highlight">8B</span>.</p>
+                            <p class="clause clause-preview" id="clause-2"><span class="clause-counter">2</span> The term of this Lease begins on <span class="highlight">August 1, 2025</span> and ends on <span class="highlight">July 31, 2026</span>.</p>
+                            <p class="clause clause-preview" id="clause-3"><span class="clause-counter">3</span> Tenant agrees to pay Rs.<span class="highlight">55,000</span> per month, due on the 1st day of each calendar month.</p>
+                            <p class="clause clause-preview" id="clause-4"><span class="clause-counter">4</span> Tenant shall pay a security deposit of Rs.<span class="highlight">110,000</span> before taking possession of the premises.</p>
+                            <p class="clause clause-preview" id="clause-5"><span class="clause-counter">5</span> The premises shall be used exclusively as a private residence.</p>
+                            <p class="clause clause-preview" id="clause-6"><span class="clause-counter">6</span> Tenant shall not make any alterations to the premises without Landlord's written consent.</p>
+                            <p class="clause clause-preview" id="clause-7"><span class="clause-counter">7</span> Tenant is responsible for all utilities including electricity, gas, water, and internet.</p>
+                            <p class="clause clause-preview" id="clause-8"><span class="clause-counter">8</span> Tenant shall maintain the premises in good condition and promptly report any damages.</p>
+                            <p class="clause clause-preview" id="clause-9"><span class="clause-counter">9</span> Landlord shall be responsible for structural repairs and maintenance of common areas.</p>
+                            <p class="clause clause-preview" id="clause-10"><span class="clause-counter">10</span> Tenant may not sublet any portion of the premises without prior written consent.</p>
+                            <p class="clause clause-preview" id="clause-11"><span class="clause-counter">11</span> Tenant shall comply with all building rules and regulations.</p>
+                            <p class="clause clause-preview" id="clause-12"><span class="clause-counter">12</span> Landlord reserves the right to enter the premises for inspections with 24 hours notice.</p>
+                            <p class="clause clause-preview" id="clause-13"><span class="clause-counter">13</span> Tenant shall not keep pets without prior written consent from Landlord.</p>
+                            <p class="clause clause-preview" id="clause-14"><span class="clause-counter">14</span> In case of late rent payment, Tenant shall pay a late fee of Rs. 2,000.</p>
+                            <p class="clause clause-preview" id="clause-15"><span class="clause-counter">15</span> Tenant shall provide Landlord with a copy of any insurance policy covering personal property.</p>
+                            <p class="clause clause-preview" id="clause-16"><span class="clause-counter">16</span> Tenant shall not engage in any illegal activities on the premises.</p>
+                            <p class="clause clause-preview" id="clause-17"><span class="clause-counter">17</span> This agreement may be renewed upon mutual consent of both parties.</p>
+                            <p class="clause clause-preview" id="clause-18"><span class="clause-counter">18</span> Tenant shall not assign this lease without Landlord's written consent.</p>
+                            <p class="clause clause-preview" id="clause-19"><span class="clause-counter">19</span> Landlord shall return security deposit within 30 days of lease termination.</p>
+                            <p class="clause clause-preview" id="clause-20"><span class="clause-counter">20</span> Tenant shall provide 60 days notice before vacating the premises.</p>
+                            <p class="clause clause-preview" id="clause-21"><span class="clause-counter">21</span> In case of dispute, both parties agree to binding arbitration.</p>
+                            <p class="clause clause-preview" id="clause-22"><span class="clause-counter">22</span> Tenant shall not disturb neighbors or create nuisance.</p>
+                            <p class="clause clause-preview" id="clause-23"><span class="clause-counter">23</span> Landlord shall provide Tenant with keys to all locks at move-in.</p>
+                            <p class="clause clause-preview" id="clause-24"><span class="clause-counter">24</span> Tenant shall not change locks without Landlord's permission.</p>
+                            <p class="clause clause-preview" id="clause-25"><span class="clause-counter">25</span> This agreement constitutes the entire understanding between parties.</p>
+                            <p class="clause clause-preview" id="clause-26"><span class="clause-counter">26</span> This agreement shall be governed by the laws of Pakistan.</p>
+                        </div>
+                        
+                        <div class="signature-section">
+                            <div class="d-flex justify-content-between">
+                                <div class="signature-box">
+                                    <p>_________________________</p>
+                                    <p>Owner: <span class="highlight">Ahmed Khan</span></p>
+                                    <p>CNIC: <span class="highlight">12345-6789012-3</span></p>
+                                </div>
+                                <div class="signature-box">
+                                    <p>_________________________</p>
+                                    <p>Tenant: <span class="highlight">Fatima Ali</span></p>
+                                    <p>CNIC: <span class="highlight">98765-4321098-7</span></p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="footer">
+                            <p>Generated at: <span class="highlight">July 26, 2025 10:30 AM</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Edit Form Column -->
+            <div class="col-md-6">
+                <div class="agreement-container">
+                    <div class="toolbar d-flex justify-content-between">
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-dark">
+                                <i class="fas fa-arrow-left me-1"></i> Back
+                            </button>
+                            <button class="btn btn-sm btn-danger">
+                                <i class="fas fa-file-pdf me-1"></i> PDF
+                            </button>
+                            <button class="btn btn-sm btn-primary">
+                                <i class="fas fa-file-word me-1"></i> Word
+                            </button>
+                            <button class="btn btn-sm btn-success">
+                                <i class="fas fa-envelope me-1"></i> Email
+                            </button>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-primary">
+                                <i class="fas fa-save me-1"></i> Save
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card border-0">
+                        <div class="card-header bg-dark text-white py-2">
+                            <h5 class="mb-0 fs-6"><i class="fas fa-edit me-2"></i>Edit Clauses</h5>
+                        </div>
+                        <div class="card-body p-3">
+                            <div class="clause-container">
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 1</label>
+                                    <textarea class="form-control clause-editor" data-clause="1" rows="2">The Landlord rents to Tenant and Tenant rents from Landlord the premises located at [PROPERTY_NAME], Unit [UNIT_NUMBER].</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 2</label>
+                                    <textarea class="form-control clause-editor" data-clause="2" rows="2">The term of this Lease begins on [START_DATE] and ends on [END_DATE].</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 3</label>
+                                    <textarea class="form-control clause-editor" data-clause="3" rows="2">Tenant agrees to pay Rs.[MONTHLY_RENT] per month, due on the 1st day of each calendar month.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 4</label>
+                                    <textarea class="form-control clause-editor" data-clause="4" rows="2">Tenant shall pay a security deposit of Rs.[SECURITY_DEPOSIT] before taking possession of the premises.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 5</label>
+                                    <textarea class="form-control clause-editor" data-clause="5" rows="2">The premises shall be used exclusively as a private residence.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 6</label>
+                                    <textarea class="form-control clause-editor" data-clause="6" rows="2">Tenant shall not make any alterations to the premises without Landlord's written consent.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 7</label>
+                                    <textarea class="form-control clause-editor" data-clause="7" rows="2">Tenant is responsible for all utilities including electricity, gas, water, and internet.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 8</label>
+                                    <textarea class="form-control clause-editor" data-clause="8" rows="2">Tenant shall maintain the premises in good condition and promptly report any damages.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 9</label>
+                                    <textarea class="form-control clause-editor" data-clause="9" rows="2">Landlord shall be responsible for structural repairs and maintenance of common areas.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 10</label>
+                                    <textarea class="form-control clause-editor" data-clause="10" rows="2">Tenant may not sublet any portion of the premises without prior written consent.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 11</label>
+                                    <textarea class="form-control clause-editor" data-clause="11" rows="2">Tenant shall comply with all building rules and regulations.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 12</label>
+                                    <textarea class="form-control clause-editor" data-clause="12" rows="2">Landlord reserves the right to enter the premises for inspections with 24 hours notice.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 13</label>
+                                    <textarea class="form-control clause-editor" data-clause="13" rows="2">Tenant shall not keep pets without prior written consent from Landlord.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 14</label>
+                                    <textarea class="form-control clause-editor" data-clause="14" rows="2">In case of late rent payment, Tenant shall pay a late fee of Rs. 2,000.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 15</label>
+                                    <textarea class="form-control clause-editor" data-clause="15" rows="2">Tenant shall provide Landlord with a copy of any insurance policy covering personal property.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 16</label>
+                                    <textarea class="form-control clause-editor" data-clause="16" rows="2">Tenant shall not engage in any illegal activities on the premises.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 17</label>
+                                    <textarea class="form-control clause-editor" data-clause="17" rows="2">This agreement may be renewed upon mutual consent of both parties.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 18</label>
+                                    <textarea class="form-control clause-editor" data-clause="18" rows="2">Tenant shall not assign this lease without Landlord's written consent.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 19</label>
+                                    <textarea class="form-control clause-editor" data-clause="19" rows="2">Landlord shall return security deposit within 30 days of lease termination.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 20</label>
+                                    <textarea class="form-control clause-editor" data-clause="20" rows="2">Tenant shall provide 60 days notice before vacating the premises.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 21</label>
+                                    <textarea class="form-control clause-editor" data-clause="21" rows="2">In case of dispute, both parties agree to binding arbitration.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 22</label>
+                                    <textarea class="form-control clause-editor" data-clause="22" rows="2">Tenant shall not disturb neighbors or create nuisance.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 23</label>
+                                    <textarea class="form-control clause-editor" data-clause="23" rows="2">Landlord shall provide Tenant with keys to all locks at move-in.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 24</label>
+                                    <textarea class="form-control clause-editor" data-clause="24" rows="2">Tenant shall not change locks without Landlord's permission.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 25</label>
+                                    <textarea class="form-control clause-editor" data-clause="25" rows="2">This agreement constitutes the entire understanding between parties.</textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Clause 26</label>
+                                    <textarea class="form-control clause-editor" data-clause="26" rows="2">This agreement shall be governed by the laws of Pakistan.</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Real-time preview update
+            const editors = document.querySelectorAll('.clause-editor');
+            
+            editors.forEach(editor => {
+                // Update preview when editor loses focus
+                editor.addEventListener('blur', function() {
+                    const clauseId = this.getAttribute('data-clause');
+                    const previewElement = document.getElementById(`clause-${clauseId}`);
+                    if (previewElement) {
+                        // Extract the clause number part and keep it
+                        const clauseNum = previewElement.querySelector('.clause-counter').outerHTML;
+                        previewElement.innerHTML = clauseNum + this.value;
+                    }
+                });
+                
+                // Highlight active clause in preview
+                editor.addEventListener('focus', function() {
+                    const clauseId = this.getAttribute('data-clause');
+                    const previewElement = document.getElementById(`clause-${clauseId}`);
+                    
+                    // Remove active class from all clauses
+                    document.querySelectorAll('.clause-preview').forEach(el => {
+                        el.classList.remove('active');
+                    });
+                    
+                    // Add active class to current clause
+                    if (previewElement) {
+                        previewElement.classList.add('active');
+                        
+                        // Scroll to the active clause
+                        previewElement.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    }
+                });
+            });
+            
+            // Simulate loading lease data from database
+            function loadLeaseData() {
+                // This would normally come from your database
+                const leaseData = {
+                    tenantName: "Fatima Ali",
+                    propertyName: "Silver Plaza, Unit 8B",
+                    agreementDate: "15th July, 2025",
+                    ownerName: "Mr. Ahmed Khan",
+                    ownerCnic: "12345-6789012-3",
+                    ownerAddress: "House #123, Street 45, G-10/4, Islamabad",
+                    tenantCnic: "98765-4321098-7",
+                    tenantAddress: "Apartment #8B, Silver Plaza, Blue Area, Islamabad",
+                    monthlyRent: "55,000",
+                    securityDeposit: "110,000",
+                    startDate: "August 1, 2025",
+                    endDate: "July 31, 2026"
+                };
+                
+                // Update UI with lease data
+                document.querySelector('.tenant-info').innerHTML = 
+                    `Lease Agreement for <span class="highlight">${leaseData.tenantName}</span> - <span class="highlight">${leaseData.propertyName}</span>`;
+                
+                // Update agreement preview
+                document.querySelector('.agreement-title').innerHTML = "RENT AGREEMENT";
+                document.querySelector('.text-center .highlight').textContent = leaseData.agreementDate;
+                document.querySelectorAll('.compact-p .highlight')[0].textContent = leaseData.ownerName;
+                document.querySelectorAll('.compact-p .highlight')[1].textContent = leaseData.ownerCnic;
+                document.querySelectorAll('.compact-p .highlight')[2].textContent = leaseData.ownerAddress;
+                document.querySelectorAll('.compact-p .highlight')[3].textContent = leaseData.tenantName;
+                document.querySelectorAll('.compact-p .highlight')[4].textContent = leaseData.tenantCnic;
+                document.querySelectorAll('.compact-p .highlight')[5].textContent = leaseData.tenantAddress;
+                
+                // Update specific clauses
+                document.getElementById('clause-1').innerHTML = 
+                    `<span class="clause-counter">1</span> The Landlord rents to Tenant and Tenant rents from Landlord the premises located at <span class="highlight">${leaseData.propertyName}</span>.`;
+                
+                document.getElementById('clause-2').innerHTML = 
+                    `<span class="clause-counter">2</span> The term of this Lease begins on <span class="highlight">${leaseData.startDate}</span> and ends on <span class="highlight">${leaseData.endDate}</span>.`;
+                
+                document.getElementById('clause-3').innerHTML = 
+                    `<span class="clause-counter">3</span> Tenant agrees to pay Rs.<span class="highlight">${leaseData.monthlyRent}</span> per month, due on the 1st day of each calendar month.`;
+                
+                document.getElementById('clause-4').innerHTML = 
+                    `<span class="clause-counter">4</span> Tenant shall pay a security deposit of Rs.<span class="highlight">${leaseData.securityDeposit}</span> before taking possession of the premises.`;
+            }
+            
+            // Load lease data on page load
+            loadLeaseData();
+            
+            // Button functionality
+            document.querySelector('.btn-danger').addEventListener('click', function() {
+                alert('PDF export functionality would be implemented here');
+            });
+            
+            document.querySelector('.btn-primary').addEventListener('click', function() {
+                alert('Word document export would be implemented here');
+            });
+            
+            document.querySelector('.btn-success').addEventListener('click', function() {
+                alert('Email functionality would be implemented here');
+            });
+        });
+    </script>
+</body>
+</html>

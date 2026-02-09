@@ -1,0 +1,39 @@
+{# templates/leases/_pcr_gallery.html #}
+{% load static %}
+<div class="row row-cols-2 row-cols-md-4 g-2">
+  {% for p in pcr.photos.all %}
+    <div class="col">
+      <div class="card h-100">
+        <img src="{{ p.thumbnail.url|default:p.image.url }}" class="card-img-top" alt="photo">
+        <div class="card-body p-2">
+          <div class="small fw-bold">{{ p.room|default:"Area" }}</div>
+          <div class="small text-muted">{{ p.taken_at|date:"Y-m-d H:i" }}</div>
+          {% if p.comment %}<div class="small">{{ p.comment }}</div>{% endif %}
+        </div>
+        <div class="card-footer p-2 text-end">
+          <button class="btn btn-danger btn-sm"
+                  onclick="pcrDelete({{ p.id }})">Delete</button>
+          <a class="btn btn-secondary btn-sm" target="_blank" href="{{ p.image.url }}">View</a>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12 text-muted">No photos yet.</div>
+  {% endfor %}
+</div>
+<script>
+async function pcrDelete(id){
+  if(!confirm('Delete this photo?')) return;
+  const url = "{% url 'leases:pcr_photo_delete' 0 %}".replace('/0/','/'+id+'/');
+  const r = await fetch(url, {method:'POST', headers:{'X-CSRFToken': '{{ csrf_token }}'}});
+  if (r.ok) {
+    const box = document.getElementById('pcr-gallery');
+    if (box && box.dataset.url){
+      const rr = await fetch(box.dataset.url, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+      box.innerHTML = await rr.text();
+    }
+  } else {
+    alert('Delete failed');
+  }
+}
+</script>

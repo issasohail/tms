@@ -1,0 +1,215 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}Update{% else %}Create{% endif %} Property{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h4>{% if form.instance.pk %}Update{% else %}Create{% endif %} Property
+        <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
+        </h4>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {{ form|crispy }}
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{% url 'properties:property_list' %}" class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+<style>
+  :root {
+    --gap: 12px;
+    --card-bg: #ffffff;
+    --card-border: #e5e7eb;
+    --label: #111827;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#f8fafc; }
+  .pf-container {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 16px;
+  }
+  .pf-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+
+  /* The outer grid that controls how many fields per row */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr;         /* 1 column on very small screens */
+    gap: var(--gap);
+  }
+  @media (min-width: 640px) {           /* small/tablet */
+    .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (min-width: 1024px) {          /* large/desktop */
+    .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+
+  /* Each field (label + control) lives in a "tile" */
+  .form-item {
+    background: #fff;
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 1fr;   /* label above control by default (mobile) */
+    gap: 6px;
+  }
+
+  /* On medium+ screens, align label and control in one row inside the tile */
+  @media (min-width: 768px) {
+    .form-item { grid-template-columns: 40% 60%; align-items: center; }
+  }
+
+  .form-item label {
+    color: var(--label);
+    font-weight: 600;
+    font-size: 0.92rem;
+  }
+
+  .form-item input,
+  .form-item select,
+  .form-item textarea {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    background: #fff;
+    outline: none;
+  }
+  .form-item input:focus,
+  .form-item select:focus,
+  .form-item textarea:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+  }
+
+  /* Make long textareas span full width on large screens if desired */
+  .span-2 { grid-column: span 2; }
+  .span-4 { grid-column: 1 / -1; }
+
+  /* Buttons row spans full width of the grid */
+  .form-grid .form-actions,
+  .form-grid button[type="submit"],
+  .form-grid input[type="submit"] {
+    grid-column: 1 / -1 !important;
+    justify-self: start;
+  }
+
+  /* Headings tidy */
+  .pf-title { margin: 0 0 12px; font-size: 1.25rem; font-weight: 700; color: #0f172a; }
+  .pf-sub { margin: 0 0 16px; color:#475569; font-size: .95rem; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // If there is already a .form-grid, don't duplicate
+  if (document.querySelector('.form-grid')) return;
+
+  // Find the main form element (first <form> in the page)
+  var form = document.querySelector('form');
+  if (!form) return;
+
+  // Create outer container + card wrapper (non-destructive enhancement)
+  var wrapper = document.createElement('div');
+  wrapper.className = 'pf-container';
+  var card = document.createElement('div');
+  card.className = 'pf-card';
+  wrapper.appendChild(card);
+
+  // Add title if there was an existing <h1> or <h2>
+  var originalTitle = document.querySelector('h1, h2');
+  if (originalTitle) {
+    var title = document.createElement('h2');
+    title.className = 'pf-title';
+    title.textContent = originalTitle.textContent.trim();
+    card.appendChild(title);
+  }
+
+  // Create grid container
+  var grid = document.createElement('div');
+  grid.className = 'form-grid';
+
+  // We will iterate all labels with a "for" attribute
+  var used = new Set();
+  var labels = Array.from(form.querySelectorAll('label[for]'));
+
+  labels.forEach(function (lab) {
+    var id = lab.getAttribute('for');
+    if (!id || used.has(id)) return;
+
+    var control = form.querySelector('#' + CSS.escape(id));
+    if (!control) {
+      // Try name-based fallback
+      control = form.querySelector('[name="' + CSS.escape(id) + '"]');
+    }
+    if (!control) return;
+
+    // Wrap only if not already wrapped
+    if (lab.closest('.form-item') || control.closest('.form-item')) return;
+
+    var item = document.createElement('div');
+    item.className = 'form-item';
+
+    // Insert wrapper before the label's current position to keep order
+    lab.parentNode.insertBefore(item, lab);
+    item.appendChild(lab);
+    item.appendChild(control);
+
+    used.add(id);
+  });
+
+  // Move all .form-item into the grid (keep original order as they now exist in DOM)
+  var items = Array.from(form.querySelectorAll('.form-item'));
+  items.forEach(function (it) { grid.appendChild(it); });
+
+  // Also try to catch any standalone inputs without labels (edge cases)
+  var orphanControls = Array.from(form.querySelectorAll('input, select, textarea'))
+    .filter(function (el) {
+      if (el.type === 'hidden') return false;
+      return !el.closest('.form-item');
+    });
+
+  orphanControls.forEach(function (ctrl) {
+    var item = document.createElement('div');
+    item.className = 'form-item';
+    var fakeLabel = document.createElement('label');
+    fakeLabel.textContent = ctrl.name || ctrl.id || 'Field';
+    item.appendChild(fakeLabel);
+    item.appendChild(ctrl);
+    grid.appendChild(item);
+  });
+
+  // Place action buttons at the end and make them span full width
+  var actions = document.createElement('div');
+  actions.className = 'form-actions';
+  var buttons = Array.from(form.querySelectorAll('button, input[type="submit"], input[type="button"]'))
+    .filter(function (b) { return !b.closest('.form-item'); });
+  if (buttons.length) {
+    buttons.forEach(function (b) { actions.appendChild(b); });
+    grid.appendChild(actions);
+  }
+
+  // Finally, place the grid before the form's first child and move form children into card
+  card.appendChild(grid);
+  form.parentNode.insertBefore(wrapper, form);
+  card.appendChild(form);
+
+  // Optional: If textareas should be wider, let devs add class="span-4" to its label or control.
+});
+</script>

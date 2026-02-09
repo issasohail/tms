@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>{{ notification.title }}</h2>
+<p><strong>Type:</strong> {{ notification.get_notification_type_display }}</p>
+<p><strong>Date:</strong> {{ notification.created_at }}</p>
+<hr>
+<p>{{ notification.message }}</p>
+<a href="{% url 'notifications:notification_list' %}">Back to list</a>
+{% endblock %}

@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load humanize %}
+{% load custom_filters %}
+{% block title %}Tenant Ledger - {{ tenant }}{% endblock %}
+
+{% if not lease %}
+<div class="alert alert-danger">
+    The requested lease does not exist or you don't have permission to view it.
+</div>
+{% else %}
+
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 id="ledger-header">
+            {% if tenant %}
+                Ledger for {{ tenant.get_full_name }}
+                {% if lease %} - {{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}{% endif %}
+            {% else %}
+                Select a tenant
+            {% endif %}
+        </h2>
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary rounded-pill mx-1" onclick="history.back()">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </button>
+            {% if tenant %}
+                <a href="{% url 'payments:payment_create' %}?lease_id={% if lease %}{{ lease.id }}{% endif %}" 
+                   class="btn btn-success rounded-pill mx-1">
+                    <i class="fas fa-money-bill-wave me-1"></i> Payment
+                </a>
+                <button class="btn btn-secondary dropdown-toggle rounded-pill mx-1" type="button" data-bs-toggle="dropdown">
+                    <i class="fas fa-download me-1"></i> Export
+                </button>
+                <ul class="dropdown-menu">
+                    {% for format in export_formats %}
+                    <li>
+                        <a class="dropdown-item export-link" data-format="{{ format }}" href="#">
+                            {{ format|upper }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <button onclick="window.print()" class="btn btn-primary rounded-pill mx-1">
+                    <i class="fas fa-print me-1"></i> Print
+                </button>
+                <button onclick="sendWhatsAppLedger()" class="btn rounded-pill mx-1" style="background-color: #25D366; color: white;">
+                    <i class="fab fa-whatsapp me-1"></i> WhatsApp
+                </button>
+                <button onclick="sendEmailLedger()" class="btn btn-info rounded-pill mx-1">
+                    <i class="fas fa-envelope me-1"></i> Email
+                </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card-body">
+        <form method="get" id="ledger-filter-form" class="mb-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label for="id_tenant" class="form-label">Tenant</label>
+                    <select name="tenant" id="id_tenant" class="form-select select2">
+                        <option value="">Select Tenant</option>
+                        {% for t in tenant_list %}
+                            <option value="{{ t.id }}" {% if t.id|stringformat:"s" == current_tenant|stringformat:"s" %}selected{% endif %}>
+                                {{ t.get_full_name }} - {{ t.property_unit|default:"" }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="id_date_range" class="form-label">Date Range</label>
+                    <select name="date_range" id="id_date_range" class="form-select">
+                        <option value="">Custom Range</option>
+                        <option value="today" {% if current_date_range == 'today' %}selected{% endif %}>Today</option>
+                        <option value="this_week" {% if current_date_range == 'this_week' %}selected{% endif %}>This Week</option>
+                        <option value="this_month" {% if current_date_range == 'this_month' %}selected{% endif %}>This Month</option>
+                        <option value="last_month" {% if current_date_range == 'last_month' %}selected{% endif %}>Last Month</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="id_start_date" class="form-label">From Date</label>
+                    <input type="date" name="start_date" id="id_start_date" class="form-control" 
+                           value="{{ current_start_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label for="id_end_date" class="form-label">To Date</label>
+                    <input type="date" name="end_date" id="id_end_date" class="form-control" 
+                           value="{{ current_end_date }}">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100">Apply</button>
+                </div>
+            </div>
+        </form>
+
+        {% if tenant %}
+        <div class="row mb-3 no-print">
+            <div class="col-md-4">
+                <p><strong>Email:</strong> {{ tenant.email|default:"Not provided" }}</p>
+            </div>
+            <div class="col-md-4">
+                <p><strong>Phone:</strong> {{ tenant.phone|default:"Not provided" }}</p>
+            </div>
+            <div class="col-md-4">
+                <p><strong>Current Balance:</strong> 
+                    <span class="float-end">
+                        {% if transactions %}
+                            {{ current_balance|floatformat:2|intcomma }}
+                        {% else %}
+                            0.00
+                        {% endif %}
+                    </span>
+                </p>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            {% render_table table %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            Please select a tenant to view the ledger.
+        </div>
+        {% endif %}
+    </div>
+</div>
+<!-- Your normal ledger content -->
+{% endif %}
+<style>
+    @media print {
+        body {
+            font-size: 12px;
+        }
+        .no-print, .card-header, .btn, .dataTables_filter, .dataTables_length, .dataTables_info, 
+        .dataTables_paginate, #ledger-filter-form {
+            display: none !important;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        th, td {
+            padding: 4px;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f5f5f5;
+        }
+        .table-responsive {
+            overflow: visible !important;
+        }
+        @page {
+            size: portrait;
+            margin: 0.5cm;
+        }
+    }
+    .rounded-pill {
+        border-radius: 50px !important;
+        padding: 8px 16px !important;
+        margin: 0 2px !important;
+    }
+    .select2-container--default .select2-selection--single {
+        height: 38px;
+        padding-top: 5px;
+    }
+    #ledger-filter-form .form-label {
+        font-size: 0.9rem;
+        margin-bottom: 0.2rem;
+    }
+    #ledger-filter-form .form-control, 
+    #ledger-filter-form .form-select {
+        padding: 0.375rem 0.5rem;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+$(document).ready(function() {
+    // Initialize Select2
+    $('.select2').select2({
+        placeholder: "Select Tenant",
+        allowClear: true,
+        width: '100%'
+    });
+
+    // Auto-submit when filters change
+    $('#id_date_range, #id_start_date, #id_end_date').change(function() {
+        $('#ledger-filter-form').submit();
+    });
+
+    // Handle export links
+    $('.export-link').click(function(e) {
+        e.preventDefault();
+        const format = $(this).data('format');
+        let url = window.location.pathname + '?_export=' + format;
+        if (window.location.search) {
+            url = window.location.pathname + window.location.search + '&_export=' + format;
+        }
+        window.location.href = url;
+    });
+});
+
+function sendWhatsAppLedger() {
+    const tenant = {
+        name: "{{ tenant.get_full_name }}",
+        phone: "{{ tenant.phone }}",
+        property: "{{ lease.unit.property.property_name|default:'N/A' }}",
+        unit: "{{ lease.unit.unit_number|default:'N/A' }}",
+       
+    };
+
+    if (!tenant.phone.trim()) {
+        alert("No phone number available for WhatsApp.");
+        return;
+    }
+
+    // Clean up phone number
+    let cleanedPhone = tenant.phone.replace(/[^\d]/g, '');
+    if (cleanedPhone.startsWith('0')) {
+        cleanedPhone = '+92' + cleanedPhone.substring(1);
+    } else if (!cleanedPhone.startsWith('+')) {
+        cleanedPhone = '+' + cleanedPhone;
+    }
+
+    // Get all transactions for the message
+    let transactionsText = "";
+    {% for transaction in transactions %}
+        {% if not transaction.is_opening %}
+        transactionsText += `
+{{ transaction.date|date:"M d, Y" }} - {{ transaction.type }}: 
+{{ transaction.description }}
+Amount: {{ transaction.amount|floatformat:2 }}
+Balance: {{ transaction.balance|floatformat:2 }}\n\n`;
+        {% endif %}
+    {% endfor %}
+
+    // Compose message
+    const message = `
+*Ledger for {{ tenant.get_full_name }}*
+Property: {{ lease.unit.property.property_name|default:'N/A' }}
+Unit: {{ lease.unit.unit_number|default:'N/A' }}
+
+*Transactions:*
+${transactionsText}
+
+
+`.trim();
+
+    // Open WhatsApp
+    const waUrl = `https://api.whatsapp.com/send?phone=${cleanedPhone}&text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
+}
+
+function sendEmailLedger() {
+    const tenantId = "{{ tenant.id }}";
+    const url = "{% url 'tenants:send_ledger' tenant.id %}";
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            start_date: $('#id_start_date').val(),
+            end_date: $('#id_end_date').val()
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Ledger sent successfully to ' + data.email);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to send ledger');
+    });
+}
+</script>
+{% endblock %}

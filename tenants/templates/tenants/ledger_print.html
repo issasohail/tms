@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ledger - {{ tenant.get_full_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            margin: 0;
+            padding: 10px;
+        }
+        .header {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        h1 {
+            font-size: 16px;
+            margin: 0 0 5px 0;
+        }
+        h2 {
+            font-size: 14px;
+            margin: 0 0 10px 0;
+            color: #555;
+        }
+        .tenant-info {
+            margin-bottom: 10px;
+        }
+        .tenant-info p {
+            margin: 2px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 11px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 5px;
+            text-align: left;
+        }
+        th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .opening-balance {
+            font-weight: bold;
+            background-color: #f0f0f0;
+        }
+        @page {
+            size: portrait;
+            margin: 0.5cm;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Tenant Ledger</h1>
+        <h2>
+            {{ tenant.get_full_name }}
+            {% if lease %} - {{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}{% endif %}
+        </h2>
+        <div class="tenant-info">
+            <p><strong>Generated on:</strong> {% now "M d, Y" %}</p>
+            {% if current_start_date or current_end_date %}
+            <p><strong>Date Range:</strong> 
+                {% if current_start_date %}{{ current_start_date|date:"M d, Y" }}{% endif %} 
+                {% if current_end_date %} to {{ current_end_date|date:"M d, Y" }}{% endif %}
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th class="text-right">Amount</th>
+                <th class="text-right">Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for transaction in transactions %}
+            <tr class="{% if transaction.is_opening %}opening-balance{% endif %}">
+                <td>{{ transaction.line_number }}</td>
+                <td>{{ transaction.date|date:"M d, Y" }}</td>
+                <td>{{ transaction.type }}</td>
+                <td>{{ transaction.description }}</td>
+                <td class="text-right">{{ transaction.amount|floatformat:2 }}</td>
+                <td class="text-right">{{ transaction.balance|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

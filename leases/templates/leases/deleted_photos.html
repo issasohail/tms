@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-4">🗑️ Deleted Photos for {{ lease }}</h2>
+
+  {% if files %}
+    <form method="post" action="{% url 'leases:deleted_photos_delete' lease.id %}" class="card shadow-sm p-3 mb-4">
+      {% csrf_token %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th scope="col" style="width: 40px;">
+                <input type="checkbox" id="select-all">
+              </th>
+              <th scope="col">File Name</th>
+              <th scope="col" class="text-end">Preview</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in files %}
+              <tr>
+                <td>
+                  <input type="checkbox" name="files" value="{{ f.name }}" class="form-check-input">
+                </td>
+                <td>{{ f.name }}</td>
+                <td class="text-end">
+                  <a href="{{ f.url }}" target="_blank" class="btn btn-secondary btn-sm">
+                    View
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between mt-3">
+        <button type="submit" class="btn btn-danger">
+          <i class="bi bi-trash"></i> Delete Selected Permanently
+        </button>
+        <a href="{% url 'leases:deleted_photos_delete_all' lease.id %}" 
+           onclick="return confirm('Are you sure you want to permanently delete all deleted photos for this lease?');"
+           class="btn btn-danger">
+          Delete All Permanently
+        </a>
+      </div>
+    </form>
+  {% else %}
+    <div class="alert alert-info">
+      No deleted photos found for this lease.
+    </div>
+  {% endif %}
+
+  <a href="{% url 'leases:photos_page' lease.id %}" class="btn btn-secondary mt-3">
+    ← Back to Photos
+  </a>
+</div>
+
+<script>
+  // Select/deselect all checkboxes
+  document.addEventListener("DOMContentLoaded", function() {
+    const selectAll = document.getElementById("select-all");
+    if (selectAll) {
+      selectAll.addEventListener("change", function() {
+        document.querySelectorAll('input[name="files"]').forEach(cb => {
+          cb.checked = selectAll.checked;
+        });
+      });
+    }
+  });
+</script>
+{% endblock %}

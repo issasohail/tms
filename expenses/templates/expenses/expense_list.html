@@ -1,0 +1,494 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load crispy_forms_tags %}
+
+{% block title %}Expenses{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Expenses</h2>
+  <a href="{% url 'expenses:expense_create' %}" class="btn btn-primary">
+    <i class="bi bi-plus"></i> <span class="btn-text">Add Expense</span>
+  </a>
+  {% include "includes/export_buttons.html" %}
+</div>
+
+<form id="expense-filter-form" method="get" class="card card-body mb-3 filters-card">
+  <div class="filters-grid">
+    <!-- Property / Unit / Category -->
+    <select name="property" id="id_property" class="form-select form-select-sm" title="Property">
+      <option value="">Property</option>
+      {% for p in property_options %}
+        <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>
+          {{ p.name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="unit" id="id_unit" class="form-select form-select-sm" title="Unit" disabled></select>
+
+    <select name="category" id="id_category" class="form-select form-select-sm" title="Category">
+      <option value="">Category</option>
+      {% for c in category_options %}
+        <option value="{{ c.id }}" {% if request.GET.category == c.id|stringformat:'s' %}selected{% endif %}>
+          {{ c.name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <!-- Period (Custom date) -->
+    <select name="period" id="id_period" class="form-select form-select-sm" title="Custom date">
+      <option value="">All</option>
+      <option value="today"      {% if request.GET.period == 'today' %}selected{% endif %}>Today</option>
+      <option value="yesterday"  {% if request.GET.period == 'yesterday' %}selected{% endif %}>Yesterday</option>
+      <option value="this_week"  {% if request.GET.period == 'this_week' %}selected{% endif %}>This Week</option>
+      <option value="last_week"  {% if request.GET.period == 'last_week' %}selected{% endif %}>Last Week</option>
+      <option value="this_month" {% if request.GET.period == 'this_month' %}selected{% endif %}>This Month</option>
+      <option value="last_month" {% if request.GET.period == 'last_month' %}selected{% endif %}>Last Month</option>
+      <option value="this_year"  {% if request.GET.period == 'this_year' %}selected{% endif %}>This Year</option>
+    </select>
+
+    <!-- From / To -->
+    <input type="date" class="form-control form-control-sm " name="start_date" id="id_start_date"
+           value="{{ request.GET.start_date }}" title="From">
+    <input type="date" class="form-control form-control-sm " name="end_date" id="id_end_date"
+           value="{{ request.GET.end_date }}" title="To">
+
+    <!-- Actions -->
+    <button class="btn btn-secondary btn-sm action-btn apply-btn " type="submit" title="Apply">
+      <i class="fas fa-filter"></i><span class="btn-text ms-1">Apply</span>
+    </button>
+    <a class="btn btn-secondary btn-sm action-btn clear-btn" href="?" title="Clear">
+      <i class="fas fa-undo"></i><span class="btn-text ms-1">Clear</span>
+    </a>
+  </div>
+</form>
+
+<div class="table-responsive">
+  {# IMPORTANT: This expects the updated ExpenseTable (server-side renders mobile lines) #}
+  {% render_table table %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ========= Auto-submit: Period, dates, Property, Unit, Category ========= */
+(function(){
+  const form = document.getElementById('expense-filter-form');
+  if (!form) return;
+  const submit = () => (form.requestSubmit ? form.requestSubmit() : form.submit());
+  ['id_period','id_start_date','id_end_date','id_property','id_unit','id_category']
+    .forEach(id => document.getElementById(id)?.addEventListener('change', submit));
+})();
+
+/* ========= Period → Dates (and auto-submit) ========= */
+(function(){
+  const periodSel = document.getElementById('id_period');
+  const start = document.getElementById('id_start_date');
+  const end = document.getElementById('id_end_date');
+  const form = document.getElementById('expense-filter-form');
+
+  function fmtLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${dd}`;}
+  function sow(d){const c=new Date(d);const day=(c.getDay()+6)%7;c.setDate(c.getDate()-day);return c;}
+  function eow(d){const s=sow(d);const e=new Date(s);e.setDate(s.getDate()+6);return e;}
+  function som(d){return new Date(d.getFullYear(), d.getMonth(), 1);}
+  function eom(d){return new Date(d.getFullYear(), d.getMonth()+1, 0);}
+  function soy(d){return new Date(d.getFullYear(),0,1);}
+  function eoy(d){return new Date(d.getFullYear(),11,31);}
+
+  periodSel?.addEventListener('change', () => {
+    const now = new Date(); let s='', e='';
+    switch(periodSel.value){
+      case 'today': s=e=fmtLocal(now); break;
+      case 'yesterday': {const y=new Date(); y.setDate(now.getDate()-1); s=e=fmtLocal(y); break;}
+      case 'this_week': s=fmtLocal(sow(now)); e=fmtLocal(eow(now)); break;
+      case 'last_week': {const n=new Date(); n.setDate(n.getDate()-7); s=fmtLocal(sow(n)); e=fmtLocal(eow(n)); break;}
+      case 'this_month': s=fmtLocal(som(now)); e=fmtLocal(eom(now)); break;
+      case 'last_month': {const d=new Date(now.getFullYear(), now.getMonth()-1, 1); s=fmtLocal(som(d)); e=fmtLocal(eom(d)); break;}
+      case 'this_year': s=fmtLocal(soy(now)); e=fmtLocal(eoy(now)); break;
+      default: s=''; e='';
+    }
+    start.value = s; end.value = e;
+    (form.requestSubmit ? form.requestSubmit() : form.submit());
+  });
+})();
+
+/* ========= Property → Unit cascade (populate + auto-submit) ========= */
+(function(){
+  const propertySel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit');
+  const form = document.getElementById('expense-filter-form');
+  const unitsByProp = {{ units_by_property_json|default:"{}"|safe }};
+
+  function populateUnits(){
+    const pid = propertySel.value;
+    unitSel.innerHTML = '';
+    if(!pid){ unitSel.disabled = true; return; }
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'All units';
+    unitSel.appendChild(allOpt);
+    (unitsByProp[pid] || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.textContent = u.label;
+      if ("{{ request.GET.unit|default_if_none:'' }}" === String(u.id)) opt.selected = true;
+      unitSel.appendChild(opt);
+    });
+    unitSel.disabled = false;
+  }
+
+  if (propertySel) {
+    propertySel.addEventListener('change', () => { populateUnits(); (form.requestSubmit ? form.requestSubmit() : form.submit()); });
+    unitSel.addEventListener('change', () => (form.requestSubmit ? form.requestSubmit() : form.submit()));
+    populateUnits();
+  }
+})();
+</script>
+
+<style>
+/* ================================
+   VARIABLES (desktop + phone)
+   ================================ */
+:root{
+  /* Desktop (≥ md) column widths + font size */
+  --w-sn-lg:34px;
+  --w-prop-lg:120px;
+  --w-desc-lg:180px;
+  --w-date-lg:120px;
+  --w-amt-lg:120px;
+  --w-receipt-lg:30px;
+  --w-actions-lg:160px;
+  --w-distributed-lg:30px;
+  --fs-table-lg:14px;
+
+  /* Phone (< md) column widths tuned to ~360px screens */
+  --w-sn-sm:15px;
+  --w-prop-sm:76px;
+  --w-desc-sm:86px;
+  --w-when-sm:76px;
+  --w-actions-sm:36px;
+  --fs-table-sm:9px;
+
+  /* Filters layout vars */
+  --filter-gap:.35rem;
+  --filter-row-h:1rem;
+  --filter-input-font:.68rem;
+  --filter-input-pad-y:.05rem;
+  --filter-input-pad-x:.45rem;
+
+  --head-bottom:.5rem; /* spacing under page heading */
+}
+
+/* ================================
+   PAGE HEADER & FILTERS
+   ================================ */
+.d-flex.justify-content-between.align-items-center.mb-4{
+  margin-bottom:var(--head-bottom)!important;
+}
+.filters-card{ margin-top:0!important; padding:.4rem .6rem; }
+.filters-card{ padding:.5rem .75rem; }
+
+/* Desktop: keep the whole filter bar in one row */
+@media (min-width:768px){
+  .filters-grid{
+    display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; overflow-x:auto;
+  }
+  .filters-grid .form-select,
+  .filters-grid .form-control{ height:2rem; font-size:.85rem; padding:.375rem .5rem; }
+}
+
+/* Phone: 3 rows (1) Property/Unit/Category (2) Period/From/To (3) Apply/Clear */
+@media (max-width:767.98px){
+  .filters-grid{
+    display:grid; gap:var(--filter-gap);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "property  unit      category"
+      "period    start     end"
+      "apply     clear     .";
+    grid-auto-rows: var(--filter-row-h);
+  }
+
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .btn{
+    height: var(--filter-row-h);
+    font-size: var(--filter-input-font);
+    padding: var(--filter-input-pad-y) var(--filter-input-pad-x);
+    line-height: 1.2;
+  }
+
+  /* 4) Date input polish (keeps icon but shrinks its box a bit) */
+  input[type="date"].form-control{
+    padding-right: .35rem;              /* trims right side so it fits the row */
+  }
+  input[type="date"].form-control::-webkit-calendar-picker-indicator{
+    transform: scale(.85);              /* smaller calendar icon on WebKit */
+    margin: 0;
+  }
+
+  /* 5) Apply/Clear buttons: center content & shrink icons slightly */
+  .apply-btn, .clear-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+  }
+  .filters-grid .btn i,
+  .filters-grid .btn svg{
+    font-size: .85em;                   /* slightly smaller glyphs inside buttons */
+    line-height: 1;
+  }
+
+  /* 6) Optional: tighten the card’s inner padding on phones */
+  .filters-card{ padding: .35rem .5rem; }
+
+
+  #id_property   { grid-area: property; }
+  #id_unit       { grid-area: unit; }
+  #id_category   { grid-area: category; }
+  #id_period     { grid-area: period; }
+  #id_start_date { grid-area: start; }
+  #id_end_date   { grid-area: end; }
+  .apply-btn     { grid-area: apply; width:100%; }
+  .clear-btn     { grid-area: clear; width:100%; }
+
+ /* Normalize selects, text inputs, and buttons */
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .btn{
+    height: var(--filter-row-h) !important;
+    font-size: var(--filter-input-font) !important;
+    padding: var(--filter-input-pad-y) var(--filter-input-pad-x) !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Date inputs often ignore the generic rule — enforce it here */
+  .filters-grid input[type="date"].form-control{
+    height: var(--filter-row-h) !important;
+    line-height: 1.2 !important;
+    padding-top: var(--filter-input-pad-y) !important;
+    padding-bottom: var(--filter-input-pad-y) !important;
+    padding-left: var(--filter-input-pad-x) !important;
+    padding-right: .35rem !important;   /* room for picker icon */
+    box-sizing: border-box;
+  }
+
+
+
+/* Shrink/align the calendar icon (Chrome/Edge/Safari) */
+  .filters-grid input[type="date"].form-control::-webkit-calendar-picker-indicator{
+    transform: scale(.85);
+    margin: 0;
+  }
+  /* Trim inner padding on iOS/Safari */
+  .filters-grid input[type="date"].form-control::-webkit-datetime-edit,
+  .filters-grid input[type="date"].form-control::-webkit-datetime-edit-fields-wrapper,
+  .filters-grid input[type="date"].form-control::-webkit-date-and-time-value{
+    padding: 0;
+  }
+
+  /* Apply/Clear: center content and shrink their icons a bit */
+  .apply-btn, .clear-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+  }
+  .filters-grid .btn i,
+  .filters-grid .btn svg{
+    font-size: .85em;   /* smaller glyph inside the small button */
+    line-height: 1;
+  }
+
+/* ================================
+   TABLE BASELINE
+   ================================ */
+.table-responsive table th,
+.table-responsive table td{
+  vertical-align: middle;
+}
+}
+/* Desktop/tablet typography */
+@media (min-width:768px){
+  .table-responsive table th,
+  .table-responsive table td{ font-size: var(--fs-table-lg); }
+}
+/* Phone typography + fit helpers */
+@media (max-width:767.98px){
+  .table-responsive table{ table-layout: fixed; width:100%; border-collapse: collapse; }
+  .table-responsive table th,
+  .table-responsive table td{
+    font-size: var(--fs-table-sm);
+    padding-left: 1px !important;  /* tighter padding so we fit 360px */
+    padding-right: 1px !important;
+    box-sizing: border-box;
+  }
+}
+
+/* ================================
+   DESKTOP COLUMN WIDTHS & ELLIPSIS
+   ================================ */
+@media (min-width:768px){
+  .table-responsive th.col-desc,
+  .table-responsive td.col-desc{
+    width:var(--w-desc-lg); max-width:var(--w-desc-lg); overflow:hidden;
+  }
+  .table-responsive th.col-actions,
+  .table-responsive td.col-actions{ width:var(--w-actions-lg); }
+  .table-responsive th.col-receipt,
+  .table-responsive td.col-receipt{ width:var(--w-receipt-lg); }
+  .table-responsive th.col-distributed,
+  .table-responsive td.col-distributed{ width:var(--w-distributed-lg); }
+
+  /* Clamp the desktop description (the ≥md span) */
+  td.col-desc > span.d-md-inline{
+    display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* Actions cell vertical padding on desktop */
+  td.col-actions{ padding-top: 6px; padding-bottom: 6px; }
+}
+
+/* ================================
+   PHONE COLUMN WIDTHS & CLAMPING
+   ================================ */
+@media (max-width:767.98px){
+  /* Widths: tuned to avoid horizontal scroll on ~360px */
+  .table-responsive th.col-sn, .table-responsive td.col-sn{
+    width:var(--w-sn-sm); min-width:var(--w-sn-sm);
+  }
+  .table-responsive th.col-property, .table-responsive td.col-property{
+    width:var(--w-prop-sm);
+  }
+  .table-responsive th.col-desc, .table-responsive td.col-desc{
+    width:var(--w-desc-sm)!important; max-width:var(--w-desc-sm)!important; overflow:hidden;
+  }
+  .table-responsive th.col-when, .table-responsive td.col-when{
+    width:var(--w-when-sm);
+  }
+  .table-responsive th.col-actions, .table-responsive td.col-actions{
+    width:var(--w-actions-sm);
+  }
+
+  /* Allow these cells to wrap internal content (override any text-nowrap) */
+  td.col-property, th.col-property,
+  td.col-actions, th.col-actions{
+    white-space: normal !important;
+  }
+
+  /* Hide the dedicated Receipt column entirely on phones */
+  .table-responsive th.col-receipt,
+  .table-responsive td.col-receipt{ display:none !important; }
+
+  /* Clamp Property link + both mobile description lines to one line with ellipsis */
+  td.col-property a{
+    display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;
+  }
+  td.col-desc .desc-mobile-cat .rt-cat,
+  td.col-desc .desc-mobile-desc{
+    display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;
+  }
+
+  /* Actions cell vertical padding on phone */
+  td.col-actions{ padding-top: 0; padding-bottom: 0; }
+}
+
+/* ================================
+   ACTION BUTTONS
+   ================================ */
+
+/* Desktop: single row, icon + text, comfy padding/gap */
+@media (min-width:768px){
+  .actions-wrap{
+    display:flex; align-items:center; gap:.35rem;
+  }
+  .action-btn{ padding:4px 8px; }                         /* button padding (desktop) */
+}
+
+/* Phone: 2×2 icon grid, tiny icons, ultra-tight padding & gaps */
+@media (max-width:767.98px){
+  .actions-wrap{
+    display:grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));     /* two icons per row */
+    column-gap:.06rem; row-gap:.06rem;                    /* hairline gaps */
+    justify-items:center; align-items:center;
+    margin:0; width:100%;
+  }
+
+  /* Hide labels on phone (supports both .btn-text and .btn-label) */
+  .actions-wrap .action-btn .btn-text,
+  .actions-wrap .action-btn .btn-label{ display:none !important; }
+
+  /* Strip button chrome + shrink padding */
+  .actions-wrap .action-btn{
+    padding:0 1px !important; margin:0 !important;
+    border:0 !important; 
+    width:100%; min-width:0; line-height:1;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+
+  /* Tiny, consistent icon size (FA + Bootstrap Icons) */
+  .actions-wrap .action-btn i,
+  .actions-wrap .action-btn svg{
+    font-size:10px !important; width:10px; height:10px; line-height:1;
+  }
+
+  /* Order: row1 = Receipt + View; row2 = Edit + Delete */
+  .actions-wrap .btn-receipt{ order:0; }
+  .actions-wrap .btn-view   { order:1; }
+  .actions-wrap .btn-edit   { order:2; }
+  .actions-wrap .btn-delete { order:3; }
+
+  /* If you want to hard-limit to 4 buttons on phones, uncomment:
+     .actions-wrap .action-btn:nth-child(n+5){ display:none !important; } */
+}
+
+/* Phones: make ALL filter controls the same compact size */
+@media (max-width: 767.98px){
+  .filters-grid{
+    grid-auto-rows: var(--filter-row-h);   /* each row is exactly 1rem */
+    gap: var(--filter-gap);
+  }
+
+  /* Selects, inputs, and buttons use the same small height */
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .btn{
+    height: var(--filter-row-h) !important;
+    font-size: var(--filter-input-font) !important;
+    padding: var(--filter-input-pad-y) var(--filter-input-pad-x) !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Date inputs sometimes ignore generic rules—force them */
+  .filters-grid .form-control[type="date"]{
+    height: var(--filter-row-h) !important;
+    font-size: var(--filter-input-font) !important;
+    padding-top: var(--filter-input-pad-y) !important;
+    padding-bottom: var(--filter-input-pad-y) !important;
+    padding-left: var(--filter-input-pad-x) !important;
+    padding-right: .35rem !important;   /* room for picker icon */
+    box-sizing: border-box;
+  }
+  .filters-grid .form-control[type="date"]::-webkit-calendar-picker-indicator{
+    transform: scale(.85);               /* shrink calendar icon */
+    margin: 0;
+  }
+  /* Trim inner iOS/WebKit padding so it can be short */
+  .filters-grid .form-control[type="date"]::-webkit-datetime-edit,
+  .filters-grid .form-control[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  .filters-grid .form-control[type="date"]::-webkit-date-and-time-value{
+    padding: 0;
+  }
+}
+
+</style>
+
+
+
+
+{% endblock %}
+
+{% block extra_css %}
+
+{% endblock %}

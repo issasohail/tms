@@ -1,0 +1,125 @@
+{# templates/leases/_photos_grid.html #}
+
+<div id="photos-grid" class="py-2">
+
+  {# ===== FILTER & SEARCH BAR ===== #}
+  <div class="d-flex flex-wrap align-items-center justify-content-between mb-3 gap-2">
+    <div class="d-flex align-items-center gap-2">
+      <label class="small text-muted">Filter:</label>
+      <select id="media-filter" class="form-select form-select-sm" style="width:auto;">
+        <option value="all" selected>All</option>
+        <option value="image">Photos</option>  <!-- was: photo -->
+        <option value="video">Videos</option>
+      </select>
+    </div>
+    <div style="flex:1; max-width:320px;">
+      <input id="media-search" type="text" class="form-control form-control-sm"
+             placeholder="Search by title or description...">
+    </div>
+  </div>
+
+
+  {# ===== SUMMARY ===== #}
+  {% with total=media|length %}
+    <div class="mb-2">
+      <strong>{{ total }} Media File{% if total != 1 %}s{% endif %}</strong>
+    </div>
+  {% endwith %}
+
+  {# ===== STYLES ===== #}
+  <style>
+    .photos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .photo-card {
+      position: relative;
+      border: 1px solid #e3e3e3;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .photo-thumb, video.photo-thumb {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      display: block;
+      background: #f6f6f6;
+    }
+    .photo-meta { padding: 8px 10px 10px 10px; font-size: 0.9rem; }
+    .photo-title { font-weight: 600; margin-bottom: 2px; word-break: break-word; }
+    .photo-desc  { color: #666; word-break: break-word; }
+    .btn-sm {
+      font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid #d0d0d0;
+      padding: 4px 8px; font-size: 0.85rem;
+    }
+    .btn-primary { background:#0d6efd; color:#fff; border-color:#0d6efd; }
+    .btn-danger  { background:#dc3545; color:#fff; border-color:#dc3545; }
+    .btn-success { background:#198754; color:#fff; border-color:#198754; }
+    .index-badge {
+      position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #fff;
+      font-size: 0.8rem; padding: 2px 6px; border-radius: 999px;
+    }
+    .row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .row-top .spacer { flex: 1; }
+    details summary { cursor: pointer; list-style: none; }
+    details summary::marker { display: none; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.98); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+  </style>
+
+  {# ===== GRID ===== #}
+  <div id="photos-grid-inner" class="photos-grid">
+    {% for p in media %}
+      {% include "leases/_photo_card.html" with p=p %}
+    {% empty %}
+      <div>No photos or videos yet.</div>
+    {% endfor %}
+  </div>
+
+  {# (Removed duplicate #media-loading and hx-indicator) #}
+
+  {# ===== CLIENT-SIDE FILTERING & SEARCH ===== #}
+<script>
+(function(){
+  const filterKey = 'lease-media-filter';
+  const searchKey = 'lease-media-search';
+
+  function applySaved() {
+    const f = sessionStorage.getItem(filterKey);
+    const s = sessionStorage.getItem(searchKey);
+    if (f) document.getElementById('media-filter').value = f;
+    if (s) document.getElementById('media-search').value = s;
+    filterAndSearch(); // call your existing function
+  }
+
+  document.addEventListener('htmx:afterSwap', (e) => {
+    if (e.target && e.target.id === 'photos-grid') {
+      // grid was re-rendered; re-bind and reapply
+      applySaved();
+    }
+  });
+
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.id === 'media-search') {
+      sessionStorage.setItem(searchKey, e.target.value);
+    }
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'media-filter') {
+      sessionStorage.setItem(filterKey, e.target.value);
+    }
+  });
+
+  // initial page load
+  applySaved();
+})();
+</script>
+
+
+</div>

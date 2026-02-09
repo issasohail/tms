@@ -1,0 +1,59 @@
+{# templates/includes/meter_filters.html #}
+<form method="get" id="meter-filter-form" class="row row-cols-lg-auto g-2 align-items-center mb-3">
+  <!-- Property -->
+  <div class="col">
+    <select name="property" class="form-select form-select-sm w-auto" id="mf_property" style="min-width:160px">
+      <option value="">All Properties</option>
+      {% for p in all_properties %}
+        <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>
+          {{ p.property_name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Unit (filtered by property) -->
+  <div class="col">
+    <select name="unit" class="form-select form-select-sm w-auto" id="mf_unit" style="min-width:160px">
+      <option value="">All Units</option>
+      {% for u in filtered_units %}
+        <option value="{{ u.id }}" {% if current_unit == u.id|stringformat:"s" %}selected{% endif %}>
+          {{ u.unit_number }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Meter (filtered by unit/property) -->
+  <div class="col">
+    <select name="meter" class="form-select form-select-sm w-auto" id="mf_meter" style="min-width:180px">
+      <option value="">All Meters</option>
+      {% for m in filtered_meters %}
+        <option value="{{ m.id }}" {% if current_meter == m.id|stringformat:"s" %}selected{% endif %}>
+          {{ m.meter_number }} - {{ m.unit.unit_number }} 
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col">
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    {% if request.GET %}
+      <a href="?" class="btn btn-sm btn-outline-secondary">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const $form = document.getElementById('meter-filter-form');
+  const $prop = document.getElementById('mf_property');
+  const $unit = document.getElementById('mf_unit');
+  const $meter = document.getElementById('mf_meter');
+
+  // Auto-submit like leases
+  $prop?.addEventListener('change', () => { $unit.value = ''; $meter.value = ''; $form.submit(); });
+  $unit?.addEventListener('change', () => { $meter.value = ''; $form.submit(); });
+  $meter?.addEventListener('change', () => $form.submit());
+});
+</script>

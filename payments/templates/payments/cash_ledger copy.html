@@ -1,0 +1,99 @@
+{% extends "payments/payment_list.html" %}
+{% load humanize %}
+
+{% block total_label %}Cash Movements:{% endblock %}
+{% block title %}Cash Ledger{% endblock %}
+{% block page_heading %}Cash Ledger{% endblock %}
+{% block filter_action %}{% url 'payments:cash_ledger' %}{% endblock %}
+
+
+{% block header_buttons %}
+  <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
+    <i class="fas fa-plus me-1"></i> Add Payment
+  </a>
+  <a href="{% url 'payments:cash_ledger' %}" class="btn btn-link">Payments</a>
+{% endblock %}
+
+{% block totals_card %}
+<div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex justify-content-between align-items-left">
+      <span class="fw-bold small">Cash Movements:</span>
+      <span class="fw-bold text-success total-amount-display"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  {% include "payments/_allocation_split_modal.html" %}
+  {{ block.super }}
+
+  <script>
+    (function(){
+      function hasDateFilters(){
+        const url = new URL(window.location.href);
+        return !!(url.searchParams.get("date_range") ||
+                  url.searchParams.get("start_date") ||
+                  url.searchParams.get("end_date"));
+      }
+
+      function fetchTotal(){
+        if (!hasDateFilters()) return;
+
+        const url = new URL(window.location.href);
+        url.searchParams.set("ajax", "1");
+
+        fetch(url.toString())
+          .then(r => r.json())
+          .then(data => {
+            const card = document.getElementById("total-card");
+            const out  = document.querySelector(".total-amount-display");
+            if (!card || !out) return;
+            card.style.display = "";
+            out.textContent = "Rs. " + Number(data.total_amount || 0).toLocaleString('en-PK', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+          });
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchTotal);
+    })();
+  </script>
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script>
+    // Open modal from split edit button
+    document.addEventListener("click", function(e){
+      const btn = e.target.closest(".btn-split-edit");
+      if(!btn) return;
+
+      const allocId = btn.dataset.allocationId;
+      const form = document.getElementById("splitForm");
+      form.querySelector("[name=allocation_id]").value = allocId;
+
+      // (Optional) if you have an API to fetch current split amounts, load it here.
+      // For now user enters values.
+
+      new bootstrap.Modal(document.getElementById("splitModal")).show();
+    });
+
+    // Submit split edit to API
+    document.addEventListener("submit", function(e){
+      if(e.target.id !== "splitForm") return;
+      e.preventDefault();
+
+      fetch("{% url 'payments:allocation_update_api' %}", {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
+        },
+        body: new FormData(e.target)
+      }).then(() => location.reload());
+    });
+  </script>
+
+{% endblock %}

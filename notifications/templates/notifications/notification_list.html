@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>Your Notifications</h2>
+<div class="mb-3">
+  {% export_buttons request table %}
+</div>
+{% render_table table %}
+<ul>
+  {% for notification in notifications %}
+  <div class="notification {% if notification.notification_type == 'message' %}message{% endif %}">
+    {% if notification.notification_type == 'message' %}
+      <h4>Message: {{ notification.subject }}</h4>
+      <p>From: {{ notification.created_by.get_full_name }}</p>
+    {% else %}
+      <h4>Notification: {{ notification.subject }}</h4>
+    {% endif %}
+    <p>{{ notification.message }}</p>
+    <!-- Add reply button for messages -->
+  </div>
+{% endfor %}
+</ul>
+{% endblock %}

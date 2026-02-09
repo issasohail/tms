@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Billing Summary PDF</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size:12px; }
+    table{ width:100%; border-collapse:collapse; }
+    th,td{ border:1px solid #ccc; padding:4px 6px; }
+    th{ background:#f5f5f5; }
+    .num{ text-align:right; }
+  </style>
+</head>
+<body>
+  <h2>Billing Summary</h2>
+  <div>Period: {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>S.N.</th>
+        <th>Unit</th>
+        <th>Tenant</th>
+        <th>Phone</th>
+        {% for spec in col_specs %}
+          <th class="num">{{ spec.label|safe }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in groups %}
+        <tr><td colspan="{{ col_specs|length|add:4 }}"><strong>Property: {{ g.property.property_name }}</strong></td></tr>
+        {% for r in g.rows %}
+          <tr>
+            <td>{{ r.sn }}</td>
+            <td>{{ r.unit.unit_number }}</td>
+            <td>{{ r.tenant.name|default:r.tenant }}</td>
+            <td>{{ r.tenant_phone }}</td>
+            {% for spec in col_specs %}
+              {% if spec.kind == "cat" %}
+                <td class="num">{{ r.visible|dictkey:spec.key|default:0|floatformat:0|intcomma }}</td>
+              {% else %}
+                <td class="num">{{ r|dictkey:spec.key|default:0|floatformat:0|intcomma }}</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+        <tr>
+          <td></td><td><strong>Subtotal</strong></td><td></td><td></td>
+          {% for spec in col_specs %}
+            <td class="num"><strong>{{ g.subtotal|dictkey:spec.key|default:0|floatformat:0|intcomma }}</strong></td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td></td><td><strong>GRAND TOTAL</strong></td><td></td><td></td>
+        {% for spec in col_specs %}
+          <td class="num"><strong>{{ grand|dictkey:spec.key|default:0|floatformat:0|intcomma }}</strong></td>
+        {% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>

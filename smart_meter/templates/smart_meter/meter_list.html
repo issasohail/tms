@@ -1,0 +1,452 @@
+{# templates/smart_meter/meter_list.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Smart Meters{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0"><i class="fas fa-bolt text-warning me-2"></i> Smart Meters</h2>
+    <small class="text-muted">
+      Total: {{ total_count }}{% if page_obj %} — showing {{ page_obj|length }}{% endif %}
+    </small>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button id="refreshBtn" class="btn btn-sm btn-primary">
+      <i class="fas fa-rotate-right me-1"></i> Refresh
+    </button>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2 px-3">
+    {% include "includes/meter_filters.html" %}
+      <form id="bulkForm" method="post" action="{% url 'smart_meter:bulk_power_action' %}" class="mb-2">
+    {% csrf_token %}
+    <input type="hidden" name="action" id="bulkAction">
+    <input type="hidden" name="scope"  id="bulkScope" value="selected">
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="" id="checkAll">
+        <label class="form-check-label" for="checkAll">Select all on page</label>
+      </div>
+
+      <div class="vr mx-1"></div>
+
+      <button type="button" class="btn btn-sm btn-danger" id="btnCutoffSel">
+        <i class="fas fa-power-off me-1"></i> Cut Off (selected)
+      </button>
+      <button type="button" class="btn btn-sm btn-success" id="btnRestoreSel">
+        <i class="fas fa-plug me-1"></i> Restore (selected)
+      </button>
+
+      <div class="vr mx-1"></div>
+
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="" id="autoPickNegative">
+        <label class="form-check-label" for="autoPickNegative">Auto-select negative balances</label>
+      </div>
+
+      <button type="button" class="btn btn-sm btn-danger" id="btnCutoffNegative">
+        <i class="fas fa-exclamation-triangle me-1"></i> Cut Off (all negative)
+      </button>
+    </div>
+  </form>
+<td class="sticky-left col-recharge text-center">
+  {% if m and m.id %}
+    <!-- Reset to 0.00 -->
+    <form method="post" action="{% url 'smart_meter:reset_meter_display_balance' m.id %}" class="d-inline">
+      {% csrf_token %}
+      <button class="btn btn-success btn-recharge" title="Reset meter display balance to 0.00">
+        Reset ₨0.00
+      </button>
+    </form>
+
+    <!-- Set custom amount -->
+    <form method="post" action="{% url 'smart_meter:set_meter_display_balance' m.id %}" class="d-inline ms-1">
+      {% csrf_token %}
+      <input name="amount" type="number" step="0.01" min="0" placeholder="₨" class="form-control form-control-sm d-inline" style="width:90px">
+      <button class="btn btn-primary btn-sm ms-1" title="Write this balance to the meter">Set</button>
+    </form>
+  {% else %}
+    <button class="btn btn-secondary btn-recharge" disabled title="No meter attached">
+      Recharge
+    </button>
+  {% endif %}
+</td>
+
+
+
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+      <div class="small text-muted">
+        Legend:
+        <span class="badge bg-secondary ms-1">Offline</span>
+        <span class="badge bg-warning text-dark ms-1">Low Balance</span>
+        <span class="badge bg-danger ms-1">Cutoff</span>
+        <span class="ms-2">• Online window: {{ online_minutes }} min</span>
+      </div>
+
+      {% with qs=request.GET.urlencode %}
+        <div class="ms-auto btn-group">
+            <a class="btn btn-sm btn-success"
+            href="{% url 'smart_meter:meters_export_csv' %}?{{ qs }}">
+            <i class="fas fa-file-csv me-1"></i> CSV
+            </a>
+            <a class="btn btn-sm btn-success"
+            href="{% url 'smart_meter:meters_export_xlsx' %}?{{ qs }}">
+            <i class="fas fa-file-excel me-1"></i> Excel
+            </a>
+        </div>
+        {% endwith %}
+
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header py-2">
+    <h6 class="m-0 text-primary">Meters</h6>
+  </div>
+
+  {% comment %} helper to build next dir per column {% endcomment %}
+
+  
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle text-center mb-0 compact-table">
+        <thead class="table-light sticky-top">
+  <tr>
+    <th class="col-narrow"><span class="th2">Serial<span class="sub">#</span></span></th>
+    <th class="col-select"><span class="th2">Select<span class="sub">#</span></span></th>
+
+    <th class="col-status"><span class="th2">Status</span></th>
+    <th class="col-meter">
+      <a href="{{ header_links.meter }}">
+        Meter #
+        {% if current_sort == 'meter' %}
+          <span class="text-muted">{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}</span>
+        {% endif %}
+      </a>
+    </th>
+    <th class="col-prop">
+      <a href="{{ header_links.property }}">
+        Property
+        {% if current_sort == 'property' %}
+          <span class="text-muted">{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}</span>
+        {% endif %}
+      </a>
+    </th>
+    <th class="col-unit">
+      <a href="{{ header_links.unit }}">
+        Unit
+        {% if current_sort == 'unit' %}
+          <span class="text-muted">{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}</span>
+        {% endif %}
+      </a>
+    </th>
+    <th class="col-power">
+      <a class="text-decoration-none" href="{{ header_links.power }}">
+        Power
+        {% if current_sort == 'power' %}
+          <span class="text-muted">{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}</span>
+        {% endif %}
+      </a>
+    </th>
+    <th class="col-narrow"><span class="th2">Unit<span class="sub">Rate</span></span></th>
+    <th class="col-narrow"><span class="th2">Min<span class="sub">Alert</span></span></th>
+    <th class="col-narrow"><span class="th2">Min<span class="sub">Cutoff</span></span></th>
+    <th class="col-narrow"><span class="th2">Is<span class="sub">Active</span></span></th>
+
+    <th class="col-date-sm"><span class="th2">Installed<span class="sub">Date</span></span></th>
+    <th class="col-balance"><span class="th2">Balance</span></th>
+        <th class="col-ts">
+        <a href="{{ header_links.last }}">
+          Last reading
+          {% if current_sort == 'last' %}
+            <span class="text-muted">{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}</span>
+          {% endif %}
+        </a>
+      </th>
+    
+
+    <th class="col-metric" title="Voltage A (Volts)"><span class="th2">Voltage<span class="sub">(V)</span></span></th>
+    <th class="col-metric" title="Current A (Amps)"><span class="th2">Current<span class="sub">A</span></span></th>
+    <th class="col-metric" title="Total Energy (kWh)"><span class="th2">Total<span class="sub">Unit</span></span></th>
+
+    <th class="col-actions">Actions</th>
+  </tr>
+</thead>
+
+        <tbody>
+        {% for m in meters %}
+          <tr class="
+              {% if not m.is_online %}table-secondary
+              {% elif m.is_cutoff_flag %}table-danger
+              {% elif m.is_low %}table-warning
+              {% endif %}
+          ">
+            <!-- S/N -->
+            <td class="col-serial">
+              {{ start_index|default:1|add:forloop.counter0 }}
+            </td>
+
+            <!-- Select (posts with #bulkForm) -->
+            <td class="col-select">
+              <input type="checkbox"
+                    class="rowcheck"
+                    name="meters"
+                    value="{{ m.id }}"
+                    form="bulkForm"
+                    data-balance="{{ m.balance|default_if_none:0|default:0 }}">
+            </td>
+
+            <td class="col-status">
+              {% if m.is_online %}
+                <span class="badge bg-success">Online</span>
+              {% else %}
+                <span class="badge bg-secondary">Offline</span>
+              {% endif %}
+            </td>
+
+            <td class="col-meter"><span class="badge bg-primary">{{ m.meter_number }}</span></td>
+            
+            <td class="col-prop" title="{{ m.unit.property.property_name }}">{{ m.unit.property.property_name }}</td>
+            <td class="col-unit" title="{{ m.unit.unit_number }}">{{ m.unit.unit_number }}</td>
+
+            <td class="col-power">
+              {% if m.is_cutoff %}<span class="badge bg-danger">OFF</span>
+              {% else %}<span class="badge bg-success">ON</span>{% endif %}
+            </td>
+
+
+            <td class="col-narrow">{{ m.unit_rate|floatformat:2 }}</td>
+            <td class="col-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
+            <td class="col-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
+            <td class="col-narrow">
+              {% if m.is_active %}
+                <span class="badge bg-success">Yes</span>
+              {% else %}
+                <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+
+            <td class="col-date-sm">
+              {% if m.installed_at %}{{ m.installed_at|date:"Y-m-d" }}{% else %}-{% endif %}
+            </td>
+
+            <td class="col-narrow fw-semibold">
+              {% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}
+            </td>
+
+            <td class="col-date-lg">
+              {% if m.last_ts %}{{ m.last_ts|date:"Y-m-d H:i:s" }}{% else %}-{% endif %}
+            </td>
+
+            <td class="col-metric">
+              {% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }}{% else %}-{% endif %}
+            </td>
+            <td class="col-metric">
+              {% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }}{% else %}-{% endif %}
+            </td>
+            <td class="col-metric">
+              {% if m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}
+            </td>
+
+            <td class="text-nowrap col-actions">
+              <div class="btn-group btn-group-sm">
+                <a class="btn btn-primary" href="{% url 'smart_meter:meter_detail' m.id %}">
+                  <i class="fas fa-eye"></i> 
+                </a>
+                <a class="btn btn-secondary" href="{% url 'smart_meter:meter_edit' m.id %}">
+                  <i class="fas fa-pen"></i> 
+                </a>
+                <a class="btn btn-danger" href="{% url 'smart_meter:meter_delete' m.id %}">
+                  <i class="fas fa-trash"></i> 
+                </a>
+                <a class="btn btn-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}">
+                  <i class="fas fa-list"></i> 
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="18" class="py-4 text-center text-muted">No meters found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if page_obj %}
+  <div class="card-footer py-2">
+    <nav aria-label="Meter pagination">
+      <ul class="pagination pagination-sm mb-0 justify-content-end">
+        {% if page_obj.has_previous %}
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode|safe }}">«</a></li>
+        {% else %}
+          <li class="page-item disabled"><span class="page-link">«</span></li>
+        {% endif %}
+        <li class="page-item disabled">
+          <span class="page-link">Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        </li>
+        {% if page_obj.has_next %}
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode|safe }}">»</a></li>
+        {% else %}
+          <li class="page-item disabled"><span class="page-link">»</span></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+/* One-row, compact, no wrapping */
+.compact-table { table-layout: fixed; font-size: 0.93rem; }
+.compact-table th, .compact-table td { padding: .32rem .42rem; white-space: nowrap; }
+
+/* Column widths (tuned to keep everything on one line) */
+.col-serial   { width: 20px; }
+.col-status   { width: 50px; }
+.col-meter    { width: 120px; }
+.col-name     { width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.col-prop     { width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.col-unit     { width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.col-balance  { width: 50px; }
+.col-tight    { width: 40px; }          /* Power chip */
+.col-narrow   { width: 40px; }          /* rate/alerts/active/balance */
+.col-ts    {width: 120px;}
+.col-power    {width 25px;}
+
+.col-date-sm  { width: 70px; font-size: 12px; }  /* installed (wider than before) */
+.col-date-lg  { width: 80px; font-size: 12px; }  /* last reading (wider than before) */
+
+/* Tiny numeric metrics */
+.col-metric   { width: 50px; }
+
+/* Actions */
+.col-actions  { width: 140px; }
+
+/* Keep badges readable */
+.badge.bg-success, .badge.bg-secondary { font-weight: 600; }
+
+/* allow wrapping in header only */
+.compact-table thead th {
+  white-space: normal !important;
+  line-height: 1.1;
+  font-size: 12px;           /* a bit smaller header */
+  padding-top: .35rem;       /* tighter header */
+  padding-bottom: .35rem;
+}
+
+/* handy helper for 2-line labels */
+.th2 { display:inline-block; text-align:center; }
+.th2 .sub { display:block; font-weight:600; font-size:11px; opacity:.85; }
+
+/* if a column must stay extra narrow */
+.col-metric { width: 64px; }          /* shorten Va / Ia / kWh */
+.col-date-lg { width: 100px; }        /* widen Last Reading */
+.col-unit    { width: 120px; }        /* widen Unit */
+
+
+  .col-select { width: 48px; }
+  .col-serial { width: 40px; } /* was 20px; give it a bit more tap room */
+.col-power { width: 88px; white-space: nowrap; }
+
+</style>
+
+<script>
+  // Refresh button: preserve filters, add cache-busting param
+  document.getElementById('refreshBtn')?.addEventListener('click', function() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_r', Date.now());
+    window.location.assign(url.toString());
+  });
+
+  const checkAll = document.getElementById('checkAll');
+  const autoPick = document.getElementById('autoPickNegative');
+  const rows = () => Array.from(document.querySelectorAll('input.rowcheck'));
+  const bulkForm = document.getElementById('bulkForm');
+  const setAct  = (a, scope='selected') => {
+    document.getElementById('bulkAction').value = a;
+    document.getElementById('bulkScope').value  = scope;
+  };
+
+  checkAll?.addEventListener('change', e => {
+    rows().forEach(cb => cb.checked = e.target.checked);
+  });
+
+  autoPick?.addEventListener('change', e => {
+    const negOnly = e.target.checked;
+    rows().forEach(cb => {
+      const bal = parseFloat(cb.dataset.balance || '0');
+      cb.checked = negOnly ? (bal < 0) : cb.checked;
+    });
+  });
+
+  const ensureAnySelected = () => {
+    if (document.getElementById('bulkScope').value === 'negative') return true;
+    return rows().some(cb => cb.checked) || (alert('Select at least one meter.'), false);
+  };
+
+  document.getElementById('btnCutoffSel')?.addEventListener('click', () => {
+    setAct('cutoff', 'selected');
+    if (ensureAnySelected()) bulkForm.submit();
+  });
+  document.getElementById('btnRestoreSel')?.addEventListener('click', () => {
+    setAct('restore', 'selected');
+    if (ensureAnySelected()) bulkForm.submit();
+  });
+  document.getElementById('btnCutoffNegative')?.addEventListener('click', () => {
+    setAct('cutoff', 'negative');
+   
+
+  function appendSelectedToForm() {
+    const form = document.getElementById('bulkForm');
+    // remove previous
+    form.querySelectorAll('input[name="meters"]').forEach(x => {
+      if (x.type === 'hidden') x.remove();
+    });
+    // add selected
+    document.querySelectorAll('input.rowcheck:checked').forEach(cb => {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'meters';
+      hidden.value = cb.value;
+      form.appendChild(hidden);
+    });
+  }
+  // call appendSelectedToForm() right before bulkForm.submit()
+  document.getElementById('btnCutoffSel')?.addEventListener('click', () => {
+    document.getElementById('bulkAction').value = 'cutoff';
+    document.getElementById('bulkScope').value  = 'selected';
+    if (document.querySelectorAll('.rowcheck:checked').length === 0) { alert('Select at least one meter.'); return; }
+    appendSelectedToForm();
+    document.getElementById('bulkForm').submit();
+  });
+  document.getElementById('btnRestoreSel')?.addEventListener('click', () => {
+    document.getElementById('bulkAction').value = 'restore';
+    document.getElementById('bulkScope').value  = 'selected';
+    if (document.querySelectorAll('.rowcheck:checked').length === 0) { alert('Select at least one meter.'); return; }
+    appendSelectedToForm();
+    document.getElementById('bulkForm').submit();
+  });
+  document.getElementById('btnCutoffNegative')?.addEventListener('click', () => {
+    document.getElementById('bulkAction').value = 'cutoff';
+    document.getElementById('bulkScope').value  = 'negative';
+    document.getElementById('bulkForm').submit();
+  });
+
+
+
+    bulkForm.submit();
+  });
+</script>
+
+{% endblock %}

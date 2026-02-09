@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container mt-3">
+  <h5>Switch ON/OFF — Lab (by meter number)</h5>
+  <form method="post" class="mt-3">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label">{{ form.meter_number.label }}</label>
+      {{ form.meter_number }}
+      <div class="form-text">{{ form.meter_number.help_text }}</div>
+      {% for e in form.meter_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label d-block">Action</label>
+      {{ form.action }}
+    </div>
+
+    <div class="form-check mb-3">
+      {{ form.preview_only }} <label class="form-check-label" for="{{ form.preview_only.id_for_label }}">{{ form.preview_only.label }}</label>
+      <div class="form-text">{{ form.preview_only.help_text }}</div>
+    </div>
+
+    <button class="btn btn-primary">Build{{ form.preview_only.value|yesno:", & Send" }}</button>
+  </form>
+
+  {% if result %}
+  <hr>
+  <h6 class="mt-3">Result</h6>
+  <ul class="small">
+    <li><strong>Meter:</strong> {{ result.meter_number }}</li>
+    <li><strong>Action:</strong> {{ result.action }} ({{ result.byCmd }})</li>
+    <li><strong>Frame length:</strong> {{ result.length }} bytes</li>
+  </ul>
+
+  <div class="mb-2">
+    <label class="form-label">Frame (HEX)</label>
+    <textarea class="form-control" rows="3" readonly id="hexOut">{{ result.hex }}</textarea>
+    <button class="btn btn-sm btn-secondary mt-2" type="button"
+            onclick="navigator.clipboard.writeText(document.getElementById('hexOut').value)">Copy</button>
+  </div>
+
+  {% if send_result %}
+    <h6 class="mt-3">Send result</h6>
+    <pre class="bg-light p-2 border rounded small">{{ send_result|json_script:"send_json" }}</pre>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

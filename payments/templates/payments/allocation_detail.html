@@ -1,0 +1,608 @@
+{% extends "base.html" %}
+{% load static humanize %}
+
+{% block title %}Payment for {{ allocation.payment.lease.unit.unit_number }}-{{ allocation.payment.payment_date|date:"M d, Y" }}{% endblock %}
+
+{% block allocation_notice %}{% endblock %}
+
+{% block content %}
+{% with payment=allocation.payment lease=allocation.payment.lease tenant=allocation.payment.lease.tenant unit=allocation.payment.lease.unit prop=allocation.payment.lease.unit.property %}
+
+<div class="container mt-4 no-print">
+    <!-- Action Buttons (Hidden when printing) -->
+    <div class="d-flex justify-content-between mb-4">
+        <div>
+            <button class="btn btn-secondary btn-sm" onclick="history.back()">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+            <a href="{% url 'payments:payment_create' %}" class="btn btn-success">
+                <i class="fas fa-money-bill-wave me-1"></i> Add Payment
+            </a>   
+        </div>
+        <div class="btn-group">
+            <!-- Management Buttons -->
+            <a href="{% url 'payments:allocation_update' payment.pk %}" class="btn btn-primary btn-sm me-1">
+                <i class="fas fa-edit me-1"></i> Edit
+            </a>
+            <a href="{% url 'payments:allocation_delete' payment.pk %}" class="btn btn-danger btn-sm me-1">
+                <i class="fas fa-trash-alt me-1"></i> Delete
+            </a>
+            
+            <!-- Communication Buttons -->
+            <button onclick="window.print()" class="btn btn-primary btn-sm me-1">
+                <i class="fas fa-print me-1"></i> Print
+            </button>
+            <button onclick="sendEmail()" class="btn btn-info btn-sm me-1">
+                <i class="fas fa-envelope me-1"></i> Email
+            </button>
+            <a href="{% url 'payments:payment_pdf' payment.id %}" class="btn btn-primary me-1">
+                Download (PDF)
+            </a>
+           
+            <button onclick="sendSMS()" class="btn btn-warning btn-sm me-1">
+                <i class="fas fa-sms me-1"></i> SMS
+            </button>
+            <button onclick="sendWhatsApp()" class="btn btn-success btn-sm me-1">
+                <i class="fab fa-whatsapp me-1"></i> WhatsApp
+            </button>
+
+            
+        </div>
+    </div>
+</div>
+
+<!-- Printable Payment Content -->
+<div class="container printable-content">
+    <div class="row">
+        <div class="col-md-8 mx-auto"> <!-- Reduced width for quarter page -->
+            <div class="card border-0">
+                <div class="card-body p-3"> <!-- Reduced padding -->
+                    <div class="d-flex justify-content-between mb-2">
+                        <div>
+                            <h4 class="mb-1">PAYMENT ALLOCATION RECEIPT</h4>
+                            <p class="mb-0 text-muted small">#{{ allocation.payment.reference_number|default:"-" }}</p>
+                         
+                        </div>
+                        <div class="text-end">
+                            <p class="mb-1 fs-5"><strong>Date:</strong> {{ allocation.payment.payment_date|date:"M d, Y" }}</p>
+                            <p class="mb-0"><strong>Method:</strong> {{ allocation.payment.get_payment_method_display }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Compact merged meta section (Tenant + Lease) -->
+                    <div class="receipt-meta border rounded p-2 mb-2 small">
+                    <div class="meta-grid">
+                        <!-- LEFT COLUMN: From, Phone, Security -->
+                        <div>
+                        <p class="mb-1"><strong>From:</strong> {{ allocation.payment.lease.tenant.first_name }} {{ allocation.payment.lease.tenant.last_name }}</p>
+                        <p class="mb-1"><strong>Phone:</strong> {{ allocation.payment.lease.tenant.phone|default:"—" }}</p>
+                        <p class="mb-0">
+                            <strong>Security:</strong>
+                            Rs. {{ allocation.payment.lease.security_deposit|floatformat:2|intcomma }}
+                            <span class="{% if allocation.payment.lease.security_deposit_paid %}text-success{% else %}text-danger{% endif %}">
+                            ({% if allocation.payment.lease.security_deposit_paid %}Paid{% else %}Pending{% endif %})
+                            </span>
+                        </p>
+                        <p class="mb-0"><strong>New Bal:</strong> Rs. {{ allocation.payment.lease.get_balance|floatformat:2|intcomma }}</p>
+
+                        </div>
+
+                        <!-- RIGHT COLUMN: Property, Unit, Lease Period -->
+                        <div>
+                        <p class="mb-1"><strong>Property:</strong> {{ allocation.payment.lease.unit.property.property_name }}</p>
+                        <p class="mb-1"><strong>Unit:</strong> {{ allocation.payment.lease.unit.unit_number }}</p>
+                        <p class="mb-0">
+                            <strong>Lease:</strong>
+                            {{ allocation.payment.lease.start_date|date:"M d, Y" }} – {{ allocation.payment.lease.end_date|date:"M d, Y" }}
+                        </p>
+                        </div>
+                    </div>
+                    </div>
+
+
+                    <!-- Payment Details -->
+                    <div class="table-responsive mb-2">
+                        <table class="table table-sm mb-1">
+                            <thead>
+                                <tr class="table-light">
+                                    <th>Description</th>
+                                    <th>Payment Mode</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Lease Portion </td>
+                                    <td>{{ allocation.payment.payment_method.name }}</td>
+                                    <td class="text-end" >Rs. {{ allocation.lease_amount|intcomma  }}</td>
+                                 </tr>
+                                 <tr>
+                                    <td>Security Portion </td>
+                                    <td>{{ allocation.payment.payment_method.name }}</td>
+                                    <td class="text-end" >Rs. {{ allocation.security_amount|intcomma }}</td>
+                                </tr>
+                                {% if allocation.payment.notes %}
+                                <tr>
+                                    <td colspan="3"><strong>Notes:</strong> {{ allocation.payment.notes }}</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    
+
+                    <!-- Totals -->
+                    <div class="border-top pt-2 mb-2">
+                        <div class="row">
+                            <div class="col-6 text-end">
+                                <p class="mb-1"><strong>Amount Paid:</strong></p>
+                                
+                            </div>
+                            <div class="col-6 text-end">
+                                <p class="mb-1 fw-bold">Rs. {{ allocation.payment.amount|floatformat:2|intcomma }}</p>
+                                
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="text-center p-1 mt-2 small text-muted">
+                        <p class="mb-0">Thank you for your payment!</p>
+                        <p class="mb-0">Receipt generated on {% now "M d, Y" %}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ---- Screen layout tweaks ---- */
+.container .btn-group { gap: .25rem; }
+@media (max-width: 420px) {
+  /* Page spacing & type */
+  .no-print .d-flex { flex-wrap: wrap; gap: .4rem; }
+  .no-print .btn-group { flex-wrap: wrap; width: 100%; gap: .25rem; }
+  .no-print .btn-group .btn { flex: 1 1 calc(50% - .25rem); font-size: .75rem; padding: .35rem .4rem; }
+
+  /* Receipt container */
+  .printable-content { max-width: 100% !important; margin: 0 auto; font-size: 12px; }
+  .card-body { padding: .5rem !important; }
+  h4 { font-size: 1rem; margin-bottom: .25rem; }
+
+  /* Header rows: stack left/right blocks */
+  .d-flex.justify-content-between.mb-2 { flex-wrap: wrap; gap: .25rem; }
+  .d-flex.justify-content-between.mb-2 > div { width: 100%; }
+  .d-flex.justify-content-between.mb-2 .text-end { text-align: left !important; }
+
+  /* “From / Property” box */
+  .border.p-2.small, .border.p-2 { padding: .4rem !important; }
+  .border.p-2 .row > [class*="col-"] { width: 100%; }
+  .fs-7 { font-size: .8rem; }
+
+  /* Tables: tighter & scroll-safe */
+  .table-responsive { overflow-x: auto; }
+  .table { font-size: .85rem; margin-bottom: .5rem; }
+  .table th, .table td { padding: .25rem .35rem; }
+
+  /* Section header */
+  .card.border-info .card-header { padding: .25rem .4rem !important; }
+  .card.border-info .card-body { padding: .35rem .4rem !important; }
+
+  /* Final rows */
+  .border-top.pt-2 .row > [class*="col-"] { width: 100%; text-align: left !important; }
+  .border-top.pt-2 .row { row-gap: .1rem; }
+  .border-top.pt-2 .fw-bold { font-size: .95rem; }
+
+  /* Small muted footer */
+  .text-center.p-1.mt-2.small.text-muted { font-size: .75rem; }
+}
+
+/* ---- Print rules kept from your template ---- */
+.printable-content { font-size: 11px; max-width: 50%; margin: 0 auto; }
+.table th, .table td { padding: 0.15rem; }
+
+@media print {
+  @page { size: portrait; margin: 0.5cm; }
+  .no-print { display:none !important; }
+  body { padding:0 !important; font-size:10px !important; }
+  .printable-content { width:50% !important; margin:0 auto !important; padding:0 !important; }
+  .card { border:none !important; box-shadow:none !important; margin:0 !important; }
+  .table { page-break-inside: avoid; margin-bottom: .25rem !important; }
+  .fs-5 { font-size: 1.1rem !important; }
+}
+@media (max-width: 420px) {
+  /* Make the whole action area a 2-row grid */
+  .no-print .btn-group {
+    display: grid !important;
+    grid-template-rows: repeat(2, auto); /* exactly two rows */
+    grid-auto-flow: column;               /* fill rows first, then add new columns */
+    grid-auto-columns: minmax(0, 1fr);    /* each column equal width */
+    gap: .25rem .25rem;
+    width: 100%;
+  }
+
+  /* Compact buttons so labels fit */
+  .no-print .btn-group .btn {
+    font-size: .72rem;
+    padding: .35rem .4rem;
+    line-height: 1.1;
+    min-width: 0;               /* allow shrink */
+    white-space: nowrap;        /* keep label on one line */
+    overflow: hidden;
+    text-overflow: ellipsis;    /* … if too long */
+  }
+
+  /* Tighten icon spacing a touch */
+  .no-print .btn i,
+  .no-print .btn .fa,
+  .no-print .btn [class^="fa-"] {
+    margin-right: .25rem;
+  }
+}
+
+/* ===== spacing cleanup (all screens) ===== */
+.no-print .top-bar,              /* wrap the header row if you have one */
+.no-print .d-flex.justify-content-between.align-items-center,
+.no-print .btn-bar, .no-print .btn-group {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* remove gap between action buttons and receipt title/card */
+.no-print + .printable-content,
+.no-print ~ .printable-content,
+.printable-content .card-header {
+  margin-top: 0 !important;
+  padding-top: .25rem !important;
+}
+
+/* tighten card body right after actions */
+.printable-content .card:first-of-type .card-body {
+  padding-top: .5rem !important;
+}
+
+/* ===== phones (≤420px): compact 2-row action grid, icons only ===== */
+@media (max-width:420px){
+  .no-print .btn-group, .no-print .btn-bar {
+    display: grid !important;
+    grid-template-rows: repeat(2, auto);  /* exactly 2 rows */
+    grid-auto-flow: column;               /* fill rows, then new column */
+    grid-auto-columns: minmax(0, 1fr);
+    gap: .25rem .25rem;
+    width: 100%;
+  }
+  .no-print .btn-group .btn, .no-print .btn-bar .btn {
+    font-size: .74rem;                    /* small but readable */
+    padding: .35rem .4rem;
+    line-height: 1.1;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  /* hide labels for all buttons… */
+  .no-print .btn .btn-label { display:none !important; }
+
+  /* …except Add Payment (keep label visible) */
+  .no-print .btn.btn-add-payment .btn-label { display:inline !important; }
+
+  /* ensure icons have a touch of spacing where label is shown */
+  .no-print .btn i { margin-right: .25rem; }
+}
+</style>
+
+<style>
+/* ===== Height target: fit on ~700px screens without scroll ===== */
+:root { --receipt-max-h: 700px; }
+
+.no-print { margin-top: 0 !important; }
+.container.mt-4.no-print { margin-top: 0 !important; } /* kill Bootstrap mt-4 */
+.no-print .d-flex,
+.no-print .btn-group,
+.no-print .btn-bar {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Make the receipt block itself compact and within the 700px target */
+.printable-content {
+  max-height: var(--receipt-max-h);
+  padding-top: .25rem !important;
+}
+.printable-content .card { margin: 0 !important; }
+.printable-content .card-body {
+  padding: .5rem .6rem !important;   /* tighter body */
+}
+
+/* Header: compress */
+h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
+.d-flex.justify-content-between.mb-2 {
+  margin-bottom: .25rem !important;
+}
+.d-flex.justify-content-between.mb-2 .text-end p {
+  margin-bottom: .15rem !important;
+}
+
+/* === Merged meta (Tenant + Lease) === */
+.receipt-meta { margin-bottom: .35rem !important; }
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;   /* always two columns (desktop + mobile) */
+  column-gap: .75rem;
+  row-gap: .25rem;
+}
+.receipt-meta p { margin-bottom: .2rem !important; line-height: 1.1; }
+
+/* Table: compact */
+.table-responsive { margin-bottom: .35rem !important; }
+.table { font-size: .85rem; margin-bottom: .25rem !important; }
+.table th, .table td { padding: .22rem .35rem !important; }
+
+/* Totals: compact */
+.border-top.pt-2 { padding-top: .35rem !important; margin-bottom: .35rem !important; }
+.border-top.pt-2 .row { row-gap: .05rem; }
+.border-top.pt-2 p { margin-bottom: .2rem !important; }
+
+/* Footer: tiny and tight */
+.text-center.p-1.mt-2.small.text-muted {
+  margin-top: .25rem !important;
+  padding: .25rem !important;
+  font-size: .75rem !important;
+}
+
+/* ===== Action bar: two rows on phones + icon-only except Add Payment ===== */
+@media (max-width: 420px){
+  .no-print .btn-group, .no-print .btn-bar {
+    display: grid !important;
+    grid-template-rows: repeat(2, auto);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: .25rem .25rem;
+    width: 100%;
+  }
+  .no-print .btn-group .btn, .no-print .btn-bar .btn {
+    font-size: .74rem;
+    padding: .35rem .4rem;
+    line-height: 1.1;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .no-print .btn .btn-label { display:none !important; } /* icon only */
+  .no-print .btn.btn-add-payment .btn-label { display:inline !important; } /* keep “+ Add Payment” */
+  .no-print .btn i { margin-right: .25rem; }
+}
+
+/* ===== Printing unchanged ===== */
+@media print {
+  @page { size: portrait; margin: 0.5cm; }
+  .no-print { display:none !important; }
+  body { padding:0 !important; font-size:10px !important; }
+  .printable-content { width:50% !important; margin:0 auto !important; padding:0 !important; }
+  .card { border:none !important; box-shadow:none !important; margin:0 !important; }
+  .table { page-break-inside: avoid; margin-bottom: .25rem !important; }
+}
+</style>
+
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+    // Get default calling code from GlobalSettings, e.g. "+92"
+    const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+
+    function normalizePhone(rawPhone, defaultCountryCodeRaw) {
+        if (!rawPhone) return null;
+
+        let raw = String(rawPhone).trim();
+
+        // Normalize default code: "+92" -> "92"
+        let def = (defaultCountryCodeRaw || "").trim();
+        if (def.startsWith("+")) {
+            def = def.slice(1);
+        }
+
+        // Case 1: user entered an international number with '+'
+        // e.g. "+18144206030" -> "18144206030"
+        if (raw.startsWith("+")) {
+            const digits = raw.replace(/[^\d]/g, "");
+            return digits || null;
+        }
+
+        // Strip all non-digits once for remaining cases
+        let cleaned = raw.replace(/[^\d]/g, "");
+        if (!cleaned) return null;
+
+        // Case 2: user entered 00-prefixed international format
+        // e.g. "00442071234567" -> "442071234567"
+        if (cleaned.startsWith("00")) {
+            return cleaned.slice(2);
+        }
+
+        // Case 3: already starts with default country code
+        // e.g. "923001234567" with default "92"
+        if (def && cleaned.startsWith(def)) {
+            return cleaned;
+        }
+
+        // Case 4: local style starting with 0, e.g. "03331234567"
+        if (def && cleaned.startsWith("0")) {
+            return def + cleaned.slice(1);
+        }
+
+        // Case 5: fallback – if we have a default code, prefix it
+        return def ? def + cleaned : cleaned;
+    }
+
+    function sendWhatsApp() {
+        let rawPhone = "{{ allocation.payment.lease.tenant.phone|default:''|escapejs }}";
+
+        if (!rawPhone.trim()) {
+            alert("No phone number available for WhatsApp.");
+            return;
+        }
+
+        const phone = normalizePhone(rawPhone, DEFAULT_COUNTRY_CODE);
+        if (!phone) {
+            alert("Invalid phone number for WhatsApp.");
+            return;
+        }
+
+        // --- Security deposit info as strings from Django ---
+        const securityRequired = "Rs. {{ sec_totals.required|floatformat:2|intcomma|escapejs }}";
+        const securityStatus   = "{% if sec_totals.balance_to_collect > 0 %}Pending{% else %}Paid{% endif %}";
+
+        // Lease balance after this payment (string, e.g. "32,200.00")
+        const leaseBalStr = "{{ allocation.payment.lease.get_balance|floatformat:2|intcomma|escapejs }}";
+
+        // Security deposit balance to collect (string, e.g. "14,400.00")
+        const secBalStr   = "{{ sec_totals.balance_to_collect|floatformat:2|intcomma|escapejs }}";
+
+        // Helper: parse "12,345.67" → 12345.67
+        function parseAmount(v) {
+            if (!v) return 0;
+            return parseFloat(String(v).replace(/,/g, '')) || 0;
+        }
+
+        const leaseBalNum     = parseAmount(leaseBalStr);
+        const secBalNum       = parseAmount(secBalStr);
+        const totalWithSecNum = leaseBalNum + secBalNum;
+
+        const totalWithSecStr = totalWithSecNum.toLocaleString('en-PK', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+
+        // Build message as lines (Django controls whether sec balance line appears)
+        const lines = [
+            `Dear {{ allocation.payment.lease.tenant.first_name|escapejs }},`,
+            `*Payment received* for {{ allocation.payment.lease.unit.property.property_name|escapejs }}.`,
+            `Unit: {{ allocation.payment.lease.unit.unit_number|escapejs }}`,
+            `Period: {{ allocation.payment.lease.start_date|date:"M d, Y"|escapejs }} – {{ allocation.payment.lease.end_date|date:"M d, Y"|escapejs }}`,
+            `Security Deposit: ${securityRequired} (${securityStatus})`,
+            {% if sec_totals.balance_to_collect > 0 %}
+            `Security Deposit Balance: Rs. ${secBalStr}`,
+            {% endif %}
+            `Date: {{ allocation.payment.payment_date|date:"M d, Y"|escapejs }}`,
+            `*Total Amount Received: Rs. {{ allocation.payment.amount|floatformat:2|intcomma|escapejs }}*`,
+            'Rs. {{ allocation.lease_amount|intcomma }} applied toward lease balance &',
+            'Rs. {{ allocation.security_amount|intcomma }} applied towards Security balance.',
+            `Lease Balance: Rs. ${leaseBalStr}`,
+            `*Total Balance: Rs. ${totalWithSecStr}*`,
+            ``,
+            `Thank you!`
+        ];
+
+        const message = lines.join('\n');
+
+        // WhatsApp expects full international number without '+' in the phone= param
+        const waUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+        window.open(waUrl, '_blank');
+    }
+</script>
+
+<script>
+
+
+
+
+
+    function sendEmail() {
+        const url = "{% url 'payments:send_payment_email' payment.pk %}";
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+            } else {
+                alert("Error: " + data.message);
+            }
+        })
+        .catch(error => {
+            console.error("Error sending email:", error);
+            alert("An error occurred while sending the email.");
+        });
+    }
+
+
+
+
+    
+
+    // --- Download PDF ---
+    window.downloadPDF = function() {
+        const pdfUrl = "{% url 'payments:payment_pdf' payment.pk %}";
+        const link = document.createElement("a");
+        link.href = pdfUrl;
+        link.download = "payment_receipt_{{ payment.id }}.pdf";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // --- Send SMS ---
+    window.sendSMS = function() {
+        const rawPhone = "{{ payment.lease.tenant.phone|default:'' }}";
+        if (!rawPhone.trim()) {
+            alert("No phone number available for SMS");
+            return;
+        }
+
+        const message = `Dear {{ payment.lease.tenant.first_name }},\n\n` +
+            `Payment Receipt #{{ payment.reference|default:payment.id }}\n` +
+            `Amount:Rs. {{ payment.amount|floatformat:2|intcomma }}\n` +
+            `Date: {{ payment.payment_date|date:"M d, Y" }}\n` +
+            `Method: {{ payment.get_payment_method_display }}\n` +
+            `Property: {{ payment.lease.unit.property.property_name }}\n` +
+            `Unit: {{ payment.lease.unit.unit_number }}\n` +
+            `Balance:Rs. {{ payment.lease.get_balance|floatformat:2|intcomma }}\n\n` +
+            `Thank you!`;
+
+        const phone = rawPhone.replace(/[^\d]/g, '');
+        const smsUrl = `sms:${phone}?body=${encodeURIComponent(message)}`;
+
+        if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            window.open(smsUrl, "_blank");
+        } else {
+            alert("SMS functionality is only available on mobile devices.");
+        }
+    };
+
+    // --- Print Receipt ---
+    window.printReceipt = function() {
+        const printUrl = "{% url 'payments:send_receipt' payment.pk %}?print=true";
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = printUrl;
+        form.target = '_blank';
+
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = '{{ csrf_token }}';
+        form.appendChild(csrfInput);
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    };
+
+</script>
+
+
+{% endblock %}

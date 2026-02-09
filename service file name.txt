@@ -1,0 +1,7 @@
+net start DjangoTenantService
+net start MeterListenerService
+net start TenantMgmtService
+
+net stop DjangoTenantService
+net stop MeterListenerService
+net stop TenantMgmtService

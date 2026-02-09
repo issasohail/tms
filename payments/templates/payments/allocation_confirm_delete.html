@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Delete Allocation{% endblock %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="card border-danger">
+    <div class="card-header bg-danger text-white py-2">
+      <strong>Confirm Allocation Delete</strong>
+    </div>
+
+    <div class="card-body">
+      <p class="mb-2">
+        You are about to delete the allocation for:
+      </p>
+
+      <ul class="mb-3">
+        <li><strong>Payment Ref:</strong> {{ allocation.payment.reference_number|default:allocation.payment.id }}</li>
+        <li><strong>Date:</strong> {{ allocation.payment.payment_date|date:"M d, Y" }}</li>
+        <li><strong>Tenant:</strong> {{ allocation.payment.lease.tenant.get_full_name }}</li>
+        <li><strong>Unit:</strong> {{ allocation.payment.lease.unit.property.property_name }} - {{ allocation.payment.lease.unit.unit_number }}</li>
+        <li><strong>Payment Total:</strong> Rs. {{ allocation.payment.amount|floatformat:2|intcomma }}</li>
+        <li><strong>Lease Portion:</strong> Rs. {{ allocation.lease_amount|floatformat:2|intcomma }}</li>
+        <li><strong>Security Portion:</strong> Rs. {{ allocation.security_amount|floatformat:2|intcomma }}</li>
+      </ul>
+
+      <div class="alert alert-warning py-2 mb-3">
+        This will also remove the linked Security Deposit ledger entry (if any).
+        The Payment itself will not be deleted.
+      </div>
+
+      <form method="post" class="d-flex gap-2">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete Allocation
+        </button>
+
+        <a href="{% url 'payments:allocation_detail' allocation.pk %}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left me-1"></i> Cancel
+        </a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

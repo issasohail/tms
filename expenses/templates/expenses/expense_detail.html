@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}Expense #{{ expense.id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Expense #{{ expense.id }}</h2>
+    <div>
+         <button class="btn btn-secondary me-2" onclick="history.back()">Go Back</button>
+        <a href="{% url 'expenses:expense_update' expense.pk %}" class="btn btn-secondary me-2">Edit</a>
+        <a href="{% url 'expenses:expense_delete' expense.pk %}" class="btn btn-danger">Delete</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Expense Details</h5>
+                <p><strong>Property:</strong> {{ expense.property.property_name }}</p>
+
+                <p><strong>Unit:</strong> {{ expense.property.unit.name }}</p>
+                {% if expense.category %}
+                <p><strong>Category:</strong> {{ expense.category }}</p>
+                {% endif %}
+                <p><strong>Date:</strong> {{ expense.date }}</p>
+                <p><strong>Amount:</strong> Rs. {{ expense.amount }}</p>
+                <p><strong>Description:</strong> {{ expense.description }}</p>
+                {% if expense.is_distributed %}
+                <p><strong>Distribution Method:</strong> {{ expense.get_distribution_method_display }}</p>
+                {% endif %}
+                {% if expense.receipt %}
+                <p><strong>Receipt:</strong> <a href="{{ expense.receipt.url }}" target="_blank">View Receipt</a></p>
+                {% endif %}
+            </div>
+            <!-- Add under “Expense Details” card (or as a new card) -->
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Receipts</h5>
+    {% if expense.receipts.all %}
+      <div class="row g-3">
+        {% for r in expense.receipts.all %}
+        <div class="col-6 col-md-4 col-lg-3">
+          <a href="{{ r.image.url }}" class="receipt-link" data-full="{{ r.image.url }}">
+            <img src="{{ r.image.url }}" class="img-fluid rounded shadow-sm" alt="Receipt {{ forloop.counter }}">
+          </a>
+        </div>
+        {% endfor %}
+        </div>
+        <!-- Simple modal for zoom -->
+        <div id="imgModal" class="modal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-body p-0">
+                <img id="modalImg" src="" style="width:100%; cursor: zoom-in;" />
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+            </div>
+        </div>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+            const modalEl = document.getElementById('imgModal');
+            const modalImg = document.getElementById('modalImg');
+            const bsModal = new bootstrap.Modal(modalEl);
+            document.querySelectorAll('.receipt-link').forEach(a => {
+                a.addEventListener('click', (e) => {
+                e.preventDefault();
+                modalImg.src = a.dataset.full;
+                modalImg.style.transform = 'scale(1)';
+                bsModal.show();
+                });
+            });
+            // Simple click-to-zoom
+            modalImg.addEventListener('click', () => {
+                modalImg.style.transform = modalImg.style.transform === 'scale(1)' ? 'scale(2)' : 'scale(1)';
+                modalImg.style.transformOrigin = 'center center';
+            });
+            });
+        </script>
+        {% else %}
+        <p>No receipts uploaded yet.</p>
+        {% endif %}
+    </div>
+    </div>
+
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Distributions</h5>
+                {% if expense.is_distributed and not expense.distributions.first.included_in_invoice %}
+                <a href="{% url 'expenses:add_to_invoices' expense.pk %}" class="btn btn-success btn-sm">
+                    Add to Invoices
+                </a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if expense.is_distributed %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th>Amount</th>
+                                <th>In Invoice</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for dist in expense.distributions.all %}
+                            <tr>
+                                <td>{{ dist.unit }}</td>
+                                <td>${{ dist.amount }}</td>
+                                <td>
+                                    {% if dist.included_in_invoice %}
+                                    <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>This expense has not been distributed yet.</p>
+                <a href="{% url 'expenses:distribute_expense' expense.pk %}" class="btn btn-primary">
+                    Distribute Expense
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+/* Add to your main CSS file */
+.lease-details {
+    background-color: #f8f9fa;
+}
+
+.lease-details-container {
+    background-color: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+}
+
+.toggle-lease {
+    transition: all 0.3s ease;
+}
+
+.toggle-lease:hover {
+    transform: scale(1.1);
+}
+
+/* For the nested lease table */
+.lease-details-container table {
+    margin-bottom: 0;
+}
+
+.lease-details-container table th {
+    border-top: none;
+}

@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+{% load static lease_tags %}
+
+{% block extra_css %}
+<style>
+.clause-editor {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    line-height: 1.6;
+
+    padding: 8px;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;     /* important */
+    resize: none;         /* optional */
+    text-align: left;
+    white-space: pre-wrap;
+}
+
+.panel-scroll{
+  height: 80vh;          /* same height on both sides */
+  overflow-y: auto;      /* scroll inside panel */
+  overflow-x: hidden;
+}
+
+/* optional: keep card header visible while scrolling */
+.card .card-header{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.agreement-preview {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.clauses-section {
+    margin: 20px 0;
+}
+.clause {
+    margin-bottom: 15px;
+    text-align: justify;
+}
+.signature-box {
+    margin-top: 80px;
+}
+.preview-highlight {
+    background-color: #fff9c4;
+    transition: background-color 0.3s ease;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Header with buttons -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Edit Lease Agreement Clauses</h2>
+        <div class="btn-group">
+            <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Lease
+            </a>
+            <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-dark btn-sm">
+                <i class="fas fa-download me-1"></i> Download Preview PDF
+            </a>
+
+            <button type="button" id="btnPdf" class="btn btn-danger me-1">
+                <i class="fas fa-file-pdf"></i> Download PDF
+            </button>
+            <button type="button" id="btnDocx" class="btn btn-success me-1" onclick="generateFile('docx')">
+            <i class="fas fa-file-word"></i> Download Word
+            </button>
+
+
+            <button type="button" class="btn btn-primary" onclick="saveClauses()">
+                <i class="fas fa-save"></i> Save Changes
+            </button>
+
+            <form method="post" action="{% url 'leases:reset_clauses_from_default' lease.pk %}"
+                onsubmit="return confirm('This will overwrite your current clauses. Continue?');"
+                class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-warning">
+                <i class="fas fa-undo"></i> Load Default Clauses
+            </button>
+            </form>
+
+
+
+
+
+            <a href="{% url 'leases:send_agreement_email' lease.pk %}" class="btn btn-info">
+                <i class="fas fa-envelope"></i> Email Agreement
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Preview Column -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Agreement Preview</h5>
+                </div>
+                <div class="card-body panel-scroll" id="agreementPreview">
+                    {% include 'leases/agreement_preview.html' %}
+                </div>
+
+            </div>
+        </div>
+
+        
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Edit Clauses</h5>
+                </div>
+                <div class="card-body panel-scroll" id="clauseEditorPanel">
+                    <form id="clauseForm" method="post" action="{% url 'leases:edit_clauses' lease.pk %}">
+
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label">Agreement Date</label>
+                            <input type="date" class="form-control" 
+                                   name="agreement_date" 
+                                   value="{{ agreement_date|date:'Y-m-d' }}" readonly>
+                        </div>
+                        
+                        {% for clause in clauses %}
+                        <div class="mb-3">
+                            <label class="form-label">Clause {{ clause.clause_number }}</label>
+                            <textarea class="form-control clause-editor"
+                                name="clause_{{ clause.id }}"
+                                id="clause_{{ clause.id }}"> {{ clause.template_text }}</textarea>
+
+                        </div>
+                        {% endfor %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+    const textareas = document.querySelectorAll('.clause-editor');
+    const previewContainer = document.getElementById('agreementPreview');
+
+    function autoResize(el) {
+        el.style.height = 'auto';
+        el.style.height = el.scrollHeight + 'px';
+    }
+
+    function updatePreview(clauseId, content) {
+        const previewText = document.querySelector(`.clause[data-clause-id="${clauseId}"] .clause-text`);
+        const previewClause = document.querySelector(`.clause[data-clause-id="${clauseId}"]`);
+        if (!previewText || !previewClause) return;
+
+        // NOTE: this is still "raw template text" preview (no placeholder render yet)
+        previewText.textContent = content;
+
+        previewClause.classList.add("preview-highlight");
+        setTimeout(() => previewClause.classList.remove("preview-highlight"), 900);
+    }
+
+      const GEN_PDF_URL  = "{% url 'leases:download_preview' lease.id %}";
+  const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' lease.id %}";
+
+  function saveThenDownload(url) {
+    const form = document.getElementById('clauseForm');
+    const formData = new FormData(form);
+
+    fetch(form.action, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+      },
+      body: formData
+    })
+    .then(r => {
+      if (!r.ok) throw new Error("Failed to save clauses");
+      return r.json();
+    })
+    .then(() => {
+      window.location.href = url;   // triggers download
+    })
+    .catch(err => {
+      alert("Error: " + err.message);
+      console.error(err);
+    });
+  }
+
+  document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
+  document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
+
+
+
+    function generateFile(type) {
+    const leaseId = "{{ lease.pk }}";
+
+    const url = (type === 'pdf') ? GEN_PDF_URL : GEN_DOCX_URL;
+
+    const form = document.getElementById('clauseForm');
+    const formData = new FormData(form);
+
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+        },
+        body: formData
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Failed to save clauses");
+        return res.json(); // your save view returns JSON (OK)
+    })
+    .then(() => {
+        // trigger file download (do NOT fetch as JSON)
+        window.location.href = url;
+    })
+    .catch(err => {
+        alert("Error: " + err.message);
+        console.error(err);
+    });
+    }
+
+    const PREVIEW_DOCX_URL = "{% url 'leases:download_preview_docx' lease.id %}";
+
+    function generateWordAfterSave() {
+        const form = document.getElementById('clauseForm');
+        const formData = new FormData(form);
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+            },
+            body: formData
+        })
+        .then(r => {
+            if (!r.ok) throw new Error("Failed to save clauses");
+            return r.json();
+        })
+        .then(() => {
+            window.location.href = PREVIEW_DOCX_URL;
+        })
+        .catch(err => alert("Error: " + err.message));
+    }
+
+    function generatePDFUrl() {
+        return "{% url 'leases:generate_agreement_pdf' lease.pk %}";
+    }
+    function generateDOCXUrl() {
+        return "{% url 'leases:generate_agreement_docx' lease.pk %}";
+    }
+    function scrollPreviewToClause(clauseId) {
+        const clauseEl = document.querySelector(`.clause[data-clause-id="${clauseId}"]`);
+        if (!clauseEl) return;
+
+        clauseEl.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        clauseEl.classList.add("preview-highlight");
+        setTimeout(() => clauseEl.classList.remove("preview-highlight"), 900);
+    }
+
+    // init + bind events
+    textareas.forEach(textarea => {
+        autoResize(textarea);
+
+        const clauseId = textarea.id.split('_')[1];
+
+        textarea.addEventListener('focus', () => scrollPreviewToClause(clauseId));
+
+        textarea.addEventListener('input', function() {
+        autoResize(this);
+        updatePreview(clauseId, this.value);
+        });
+    });
+    });
+</script>
+
+{% endblock %}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ export_name }} testing</title>
+    <style>
+        @page {
+            size: {{ page_format }} {{ orientation }};
+            margin: 1cm;
+        }
+        body {
+            padding: 0;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #000;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        {% for column, width in column_widths.items %}
+        .col-{{ column }} {
+            width: {{ width }}px;
+        }
+        {% endfor %}
+    </style>
+</head>
+<body>
+    <h1>{{ export_name }}</h1>
+    <p>Exported on: {{ exported_at|date:"Y-m-d H:i" }}</p>
+    
+    <table>
+        <thead>
+            <tr>
+                {% for column in table.columns %}
+                    <th class="col-{{ column.name }}">{{ column.header }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in table.rows %}
+                <tr>
+                    {% for column, cell in row.items %}
+                        <td class="col-{{ column.name }}">{{ cell }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

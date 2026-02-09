@@ -1,0 +1,324 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load crispy_forms_tags %}
+
+
+{% block title %}Expenses{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Expenses</h2>
+    <a href="{% url 'expenses:expense_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus"></i> Add Expense
+    </a>
+    {% include "includes/export_buttons.html" %}
+</div>
+<div class="mb-3">
+  
+</div>
+
+<form id="expense-filter-form" method="get" class="card card-body mb-3 filters-card">
+  <div class="filters-grid">
+    <select name="period" id="id_period" class="form-select form-select-sm" title="Period">
+      <option value="">All</option>
+      <option value="today"      {% if request.GET.period == 'today' %}selected{% endif %}>Today</option>
+      <option value="yesterday"  {% if request.GET.period == 'yesterday' %}selected{% endif %}>Yesterday</option>
+      <option value="this_week"  {% if request.GET.period == 'this_week' %}selected{% endif %}>This Week</option>
+      <option value="last_week"  {% if request.GET.period == 'last_week' %}selected{% endif %}>Last Week</option>
+      <option value="this_month" {% if request.GET.period == 'this_month' %}selected{% endif %}>This Month</option>
+      <option value="last_month" {% if request.GET.period == 'last_month' %}selected{% endif %}>Last Month</option>
+      <option value="this_year"  {% if request.GET.period == 'this_year' %}selected{% endif %}>This Year</option>
+    </select>
+
+    <input type="date" class="form-control form-control-sm" name="start_date" id="id_start_date"
+           value="{{ request.GET.start_date }}" title="From">
+    <input type="date" class="form-control form-control-sm" name="end_date" id="id_end_date"
+           value="{{ request.GET.end_date }}" title="To">
+
+    <div class="filter-item property-item">
+      <select name="property" id="id_property" class="form-select form-select-sm" title="Property">
+        <option value="">Property</option>
+        {% for p in property_options %}
+          <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>
+            {{ p.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <select name="unit" id="id_unit" class="form-select form-select-sm" title="Unit" disabled></select>
+
+    <div class="filter-item">
+      <select name="category" id="id_category" class="form-select form-select-sm" title="Category">
+        <option value="">Category</option>
+        {% for c in category_options %}
+          <option value="{{ c.id }}" {% if request.GET.category == c.id|stringformat:'s' %}selected{% endif %}>
+            {{ c.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button class="btn btn-secondary btn-sm action-btn" type="submit" title="Apply">
+      <i class="fas fa-filter"></i><span class="btn-text ms-1">Apply</span>
+    </button>
+    <a class="btn btn-outline-secondary btn-sm action-btn" href="?" title="Clear">
+      <i class="fas fa-undo"></i><span class="btn-text ms-1">Clear</span>
+    </a>
+  </div>
+</form>
+
+
+
+
+
+<div class="table-responsive">  {# lets the table scroll on small screens #}
+  {% render_table table %}
+</div>
+<!-- Receipt Viewer Modal -->
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-9">
+            <img id="receiptMain" src="" alt="Receipt" class="img-fluid w-100 rounded border" style="max-height:75vh; object-fit:contain;">
+          </div>
+          <div class="col-12 col-md-3">
+            <div id="receiptThumbs" class="d-flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <div class="text-muted small">Tip: tap a thumbnail to switch</div>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+<script>
+document.addEventListener('click', function(e){
+  const a = e.target.closest('.view-receipt');
+  if(!a) return;
+
+  e.preventDefault();
+  const urls = (a.dataset.urls || '').split('|').filter(Boolean);
+  if(!urls.length) return;
+
+  const main = document.getElementById('receiptMain');
+  const thumbs = document.getElementById('receiptThumbs');
+  main.src = urls[0];
+  thumbs.innerHTML = '';
+  urls.forEach((u, i) => {
+    const img = document.createElement('img');
+    img.src = u;
+    img.className = 'img-thumbnail';
+    img.style.width = '80px';
+    img.style.height = '80px';
+    img.style.objectFit = 'cover';
+    img.style.cursor = 'pointer';
+    img.onclick = () => (main.src = u);
+    thumbs.appendChild(img);
+  });
+
+  const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+  modal.show();
+}, false);
+</script>
+
+<style>
+.filters-grid {
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Large screens: single row */
+@media (min-width: 992px) {
+  .filters-grid {
+    grid-template-columns:
+      max-content  /* Period */
+      max-content  /* From */
+      max-content  /* To */
+      14rem        /* Property */
+      12rem        /* Unit */
+      14rem        /* Category */
+      max-content  /* Apply */
+      max-content; /* Clear */
+    align-items: center;
+  }
+}
+
+/* Combine property + unit, category + description on small screens */
+@media (max-width: 991px) {
+  .property-item, .unit-item {
+    display: flex;
+    gap: .5rem;
+  }
+  .category-item, .description-item {
+    display: flex;
+    gap: .5rem;
+  }
+}
+/* Card padding kept modest */
+.filters-card { padding: .5rem .75rem; }
+
+/* MOBILE-FIRST: small screens (phones) — three lines (3 columns) */
+.filters-grid {
+  display: grid;
+  gap: .5rem;
+  align-items: center;
+  grid-template-columns: repeat(3, 1fr); /* → three columns, so 8 items become 3 rows (3+3+2) */
+}
+
+/* Make controls comfortable on small screens ≥360px */
+.filters-grid .form-select,
+.filters-grid .form-control {
+  min-width: 0;
+  padding: .375rem .5rem;
+  height: 2rem;
+  font-size: .85rem;
+}
+.filters-grid .action-btn { width: 100%; }
+
+/* Helpful minimums so labels don’t clip */
+#id_period { min-width: 7rem; }
+#id_start_date, #id_end_date { min-width: 8rem; }
+#id_property { min-width: 10rem; }
+#id_unit { min-width: 9rem; }
+#id_category { min-width: 10rem; }
+
+/* MEDIUM screens (tablets etc.): grid adapts naturally—no special rules needed */
+
+/* LARGE screens (desktops): force a single row */
+@media (min-width: 992px) {
+  .filters-grid {
+    grid-template-columns:
+      max-content  /* Period */
+      max-content  /* From */
+      max-content  /* To */
+      14rem        /* Property */
+      12rem        /* Unit */
+      14rem        /* Category */
+      max-content  /* Apply */
+      max-content; /* Clear */
+    align-items: center;
+  }
+  .filters-grid .action-btn { width: auto; white-space: nowrap; }
+}
+
+/* Ultra-small safety (≤400px): slightly tighter sizing */
+@media (max-width: 400px) {
+  .filters-card { padding: .35rem .45rem; }
+  .filters-grid .form-select,
+  .filters-grid .form-control {
+    padding: .25rem .4rem;
+    height: 1.7rem;
+    font-size: .78rem;
+  }
+}
+/* Small screen adjustments */
+@media (max-width: 768px) {
+  table td:nth-child(3), /* Unit col */
+  table th:nth-child(3),
+  table td:nth-child(6), /* Description col */
+  table th:nth-child(6) {
+    display: none;
+  }
+
+  /* Actions → icons only */
+  .btn span.btn-text { display: none; }
+  .btn i { margin: 0; }
+
+  /* Allow columns to shrink/grow */
+  table td, table th {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+}
+
+</style>
+
+
+
+<script>
+/* Period -> Dates + auto-submit (mirrors invoices) */
+(function(){
+  const periodSel = document.getElementById('id_period');
+  const start = document.getElementById('id_start_date');
+  const end = document.getElementById('id_end_date');
+  const form = document.getElementById('expense-filter-form');
+
+  function fmt(d){ return d.toISOString().slice(0,10); }
+  function sow(d){ const c=new Date(d); const day=(c.getDay()+6)%7; c.setDate(c.getDate()-day); return c; }
+  function eow(d){ const s=sow(d); const e=new Date(s); e.setDate(s.getDate()+6); return e; }
+  function som(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function eom(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+  function soy(d){ return new Date(d.getFullYear(),0,1); }
+  function eoy(d){ return new Date(d.getFullYear(),11,31); }
+
+  periodSel?.addEventListener('change', () => {
+    const now = new Date();
+    let s='', e='';
+    switch(periodSel.value){
+      case 'today': s=e=fmt(now); break;
+      case 'yesterday': { const y=new Date(); y.setDate(now.getDate()-1); s=e=fmt(y); break; }
+      case 'this_week': s=fmt(sow(now)); e=fmt(eow(now)); break;
+      case 'last_week': { const n=new Date(); n.setDate(n.getDate()-7); s=fmt(sow(n)); e=fmt(eow(n)); break; }
+      case 'this_month': s=fmt(som(now)); e=fmt(eom(now)); break;
+      case 'last_month': { const d=new Date(now.getFullYear(), now.getMonth()-1, 1); s=fmt(som(d)); e=fmt(eom(d)); break; }
+      case 'this_year': s=fmt(soy(now)); e=fmt(eoy(now)); break;
+      default: s=''; e='';
+    }
+    start.value = s; end.value = e;
+    form.submit();
+  });
+})();
+(function(){
+  const form = document.getElementById('expense-filter-form');
+  const inputs = form.querySelectorAll('select, input[type="date"]');
+
+  inputs.forEach(el => {
+    el.addEventListener('change', () => form.submit());
+  });
+})();
+
+/* Property -> Units cascade */
+(function(){
+  const propertySel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit');
+  const form = document.getElementById('expense-filter-form');
+  const unitsByProp = {{ units_by_property_json|safe }};
+
+  function populateUnits(){
+    const pid = propertySel.value;
+    unitSel.innerHTML = '';
+    if(!pid){ unitSel.disabled = true; return; }
+
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All units';
+    unitSel.appendChild(allOpt);
+
+    (unitsByProp[pid] || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.textContent = u.label;
+      if ("{{ request.GET.unit|default_if_none:'' }}" === String(u.id)) opt.selected = true;
+      unitSel.appendChild(opt);
+    });
+    unitSel.disabled = false;
+  }
+
+  if (propertySel) {
+    propertySel.addEventListener('change', () => { 
+      populateUnits(); 
+      form.submit(); // auto-submit when property changes
+    });
+    unitSel.addEventListener('change', () => form.submit()); // auto-submit on unit change
+    populateUnits();
+  }
+})();
+

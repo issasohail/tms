@@ -1,0 +1,25 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+{% if show_rotation_buttons %}
+<div style="margin: 20px 0;">
+    <h3>Image Rotation</h3>
+    <div style="margin-bottom: 10px;">
+        <h4>Photo</h4>
+        <input type="submit" value="Rotate Left" name="_rotate_photo_left" />
+        <input type="submit" value="Rotate Right" name="_rotate_photo_right" />
+    </div>
+    <div style="margin-bottom: 10px;">
+        <h4>CNIC Front</h4>
+        <input type="submit" value="Rotate Left" name="_rotate_cnic_front_left" />
+        <input type="submit" value="Rotate Right" name="_rotate_cnic_front_right" />
+    </div>
+    <div style="margin-bottom: 10px;">
+        <h4>CNIC Back</h4>
+        <input type="submit" value="Rotate Left" name="_rotate_cnic_back_left" />
+        <input type="submit" value="Rotate Right" name="_rotate_cnic_back_right" />
+    </div>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

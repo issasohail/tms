@@ -1,0 +1,438 @@
+{% extends 'base.html' %}
+{% load humanize static %}
+
+{% block content %}
+<div class="container mt-3">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0">
+      Lease #{{ lease.id }} — {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
+      <small class="text-muted ms-2">(Occupancy: {{ occupancy_count }})</small>
+    </h2>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'leases:lease_list' %}" class="btn btn-secondary btn-sm">Back</a>
+
+      {% if lease.signed_agreement %}
+        <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-success btn-sm">
+          <i class="fas fa-file-signature me-1"></i> View Signed Agreement
+        </a>
+      {% else %}
+        <button class="btn btn-secondary btn-sm" disabled>
+          <i class="fas fa-file-signature me-1"></i> No Signed Agreement
+        </button>
+      {% endif %}
+
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-edit me-1"></i> Edit
+      </a>
+
+      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-danger btn-sm">
+        <i class="fas fa-trash-alt me-1"></i> Delete
+      </a>
+
+      <a href="{% url 'leases:lease_security_list' lease.id %}"
+        class="btn btn-warning btn-sm">
+        <i class="fas fa-piggy-bank me-1"></i> Security Deposit Ledger
+      </a>
+
+      <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-warning btn-sm">
+        <i class="fas fa-book me-1"></i> Ledger
+      </a>
+
+      <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-print me-1"></i> Print
+      </a>
+
+      {% if lease.generated_agreement_pdf %}
+        <button onclick="sendEmail()" class="btn btn-info btn-sm">
+          <i class="fas fa-envelope me-1"></i> Email
+        </button>
+
+        <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-dark btn-sm">
+          <i class="fas fa-download me-1"></i> Download Preview PDF
+        </a>
+      {% endif %}
+
+      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-eye me-1"></i> View Agreement
+      </a>
+    </div>
+  </div>
+
+  <!-- Overview -->
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Property, Tenant & Lease Overview</div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-lg-6">
+          <dl class="row mb-0">
+            <dt class="col-sm-5">Property</dt>
+            <dd class="col-sm-7">{{ lease.unit.property.property_name }}</dd>
+
+            <dt class="col-sm-5">Unit</dt>
+            <dd class="col-sm-7">{{ lease.unit.unit_number }}</dd>
+
+            <dt class="col-sm-5">Tenant</dt>
+            <dd class="col-sm-7">{{ lease.tenant.get_full_name }}</dd>
+
+            <dt class="col-sm-5">Tenant CNIC</dt>
+            <dd class="col-sm-7">{{ lease.tenant.cnic|default:"—" }}</dd>
+
+            <dt class="col-sm-5">Tenant Phone</dt>
+            <dd class="col-sm-7">
+              {% if lease.tenant.phone %}
+                <a href="tel:{{ lease.tenant.phone }}">{{ lease.tenant.phone }}</a>
+              {% else %}—{% endif %}
+            </dd>
+
+            <dt class="col-sm-5">Status</dt>
+            <dd class="col-sm-7">{{ lease.get_status_display }}</dd>
+
+            <dt class="col-sm-5">Rent Increase %</dt>
+            <dd class="col-sm-7">{{ lease.rent_increase_percent|default:0 }}%</dd>
+
+            <dt class="col-sm-5">Rent Due Day</dt>
+            <dd class="col-sm-7">{{ lease.due_date|default:"—" }}</dd>
+
+            <dt class="col-sm-5">Late Fee</dt>
+            <dd class="col-sm-7">Rs {{ lease.late_fee|default:0|floatformat:0|intcomma }}</dd>
+          </dl>
+        </div>
+        <div class="col-lg-6">
+          <dl class="row mb-0">
+            <dt class="col-sm-5">Start Date</dt>
+            <dd class="col-sm-7">{{ lease.start_date }}</dd>
+
+            <dt class="col-sm-5">End Date</dt>
+            <dd class="col-sm-7">{{ lease.end_date }}</dd>
+
+            <dt class="col-sm-5">Agreement Date</dt>
+            <dd class="col-sm-7">{{ lease.agreement_date|default:"—" }}</dd>
+
+            <dt class="col-sm-5">Monthly Rent</dt>
+            <dd class="col-sm-7">Rs {{ lease.monthly_rent|default:0|floatformat:0|intcomma }}</dd>
+
+            <dt class="col-sm-5">Society Maintenance</dt>
+            <dd class="col-sm-7">Rs {{ lease.society_maintenance|default:0|floatformat:0|intcomma }}</dd>
+
+            <dt class="col-sm-5">Total Payment</dt>
+            <dd class="col-sm-7">Rs {{ lease.total_payment|default:0|floatformat:0|intcomma }}</dd>
+
+            <dt class="col-sm-5">Security Deposit</dt>
+            <dd class="col-sm-7">Rs {{ lease.security_deposit|default:0|floatformat:0|intcomma }}</dd>
+
+            <dt class="col-sm-5">Min Occupancy (Months)</dt>
+            <dd class="col-sm-7">{{ lease.min_lease_occupancy_months|default:"—" }}</dd>
+
+            <dt class="col-sm-5">Meter Reading</dt>
+            <dd class="col-sm-7">{{ lease.electricity_meter_reading|default:"—" }}</dd>
+
+            <dt class="col-sm-5">Balance</dt>
+            <dd class="col-sm-7"><strong>Rs {{ balance_due|default:0|floatformat:0|intcomma }}</strong></dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Security Deposit Summary -->
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Security Deposit Summary</div>
+    <div class="card-body">
+      <div class="row">
+        <!-- Summary numbers -->
+        <div class="col-md-4">
+          <table class="table table-sm table-bordered w-auto mb-3">
+            <tbody>
+              <tr>
+                <th>Required</th>
+                <td class="text-end">Rs {{ security_required|default:0|floatformat:0|intcomma }}</td>
+              </tr>
+              <tr>
+                <th>Paid In</th>
+                <td class="text-end">Rs {{ security_paid_in|default:0|floatformat:0|intcomma }}</td>
+              </tr>
+              <tr>
+                <th>Refunded</th>
+                <td class="text-end">Rs {{ security_refunded|default:0|floatformat:0|intcomma }}</td>
+              </tr>
+              <tr>
+                <th>Used for Damages</th>
+                <td class="text-end">Rs {{ security_damages|default:0|floatformat:0|intcomma }}</td>
+              </tr>
+              <tr class="table-warning">
+                <th>Balance to Collect</th>
+                <td class="text-end">Rs {{ security_balance_to_collect|default:0|floatformat:0|intcomma }}</td>
+              </tr>
+              <tr class="table-success">
+                <th>Currently Held</th>
+                <td class="text-end fw-bold">
+                  Rs {{ security_currently_held|default:0|floatformat:0|intcomma }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="small text-muted">
+            {% if lease.security_deposit_paid %}
+              Tenant has marked deposit as <strong>paid</strong> on lease.
+            {% else %}
+              Tenant deposit is <strong>not marked as paid</strong> on lease.
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Ledger -->
+        <div class="col-md-8">
+          <h6 class="mb-2">Security Deposit Ledger</h6>
+          {% if deposit_transactions %}
+            <div class="table-responsive">
+              <table class="table table-sm table-striped mb-0">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th class="text-end">Amount</th>
+                    <th class="text-end">Deposit Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for t in deposit_transactions %}
+                    <tr>
+                      <td>{{ t.date|date:"M d, Y" }}</td>
+                      <td>{{ t.type }}</td>
+                      <td>{{ t.description }}</td>
+                      <td class="text-end">
+                        {% if t.amount > 0 %}
+                          <span class="text-success">+{{ t.amount|intcomma }}</span>
+                        {% else %}
+                          <span class="text-danger">{{ t.amount|intcomma }}</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">{{ t.balance|intcomma }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted small">No security deposit transactions yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Family Members (always visible) -->
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Family Members</div>
+    <div class="card-body p-0">
+      {% if family_members %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Relation</th>
+                <th>Phone</th>
+                <th style="width:100px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in family_members %}
+                <tr>
+                  <td>{{ m.tenant.get_full_name }}</td>
+                  <td>{{ m.relation|default:"—" }}</td>
+                  <td>
+                    {% if m.tenant.phone %}
+                      <a href="tel:{{ m.tenant.phone }}">{{ m.tenant.phone }}</a>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="text-end">
+                    <a class="btn btn-sm btn-secondary" href="{% url 'tenants:tenant_detail' m.tenant.pk %}">Detail</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-3 text-muted">No family members recorded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Witness -->
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Witness</div>
+    <div class="card-body">
+      <div class="row row-cols-1 row-cols-md-2 g-3">
+        <div>
+          <strong>Witness 1 Name:</strong> {{ lease.witness1_name|default:"—" }}<br>
+          <strong>Witness 1 CNIC:</strong> {{ lease.witness1_cnic|default:"—" }}
+        </div>
+        <div>
+          <strong>Witness 2 Name:</strong> {{ lease.witness2_name|default:"—" }}<br>
+          <strong>Witness 2 CNIC:</strong> {{ lease.witness2_cnic|default:"—" }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Financial details + Inventory -->
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Financial & Inventory Information</div>
+    <div class="card-body">
+      <div class="row">
+        <!-- Financial -->
+        <div class="col-lg-8 border-end">
+          <div class="row row-cols-lg-2 row-cols-1 g-3">
+            <div>
+              <div class="small text-muted">Security Installment 1 Amount</div>
+              <div>Rs {{ lease.security_installment_1_amount|default:0|floatformat:0|intcomma }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Security Installment 1 Date</div>
+              <div>{{ lease.security_installment_1_date|default:"—" }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Security Installment 2 Amount</div>
+              <div>Rs {{ lease.security_installment_2_amount|default:0|floatformat:0|intcomma }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Security Installment 2 Date</div>
+              <div>{{ lease.security_installment_2_date|default:"—" }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Security Deposit Return Date</div>
+              <div>{{ lease.security_deposit_return_date|default:"—" }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Security Deposit Return Amount</div>
+              <div>Rs {{ lease.security_deposit_return_amount|default:0|floatformat:0|intcomma }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Early Termination Penalty</div>
+              <div>Rs {{ lease.early_termination_penalty|default:0|floatformat:0|intcomma }}</div>
+            </div>
+            <div>
+              <div class="small text-muted">Security Deposit Paid</div>
+              {% if lease.security_deposit_paid %}
+                <span class="badge bg-success">Yes</span>
+              {% else %}
+                <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Inventory -->
+        <div class="col-lg-4 mt-3 mt-lg-0">
+          <div class="row row-cols-2 g-2">
+            <div><label class="form-label mb-0">Ceiling Fans</label><div>{{ lease.inventory_ceiling_fans|default:"—" }}</div></div>
+            <div><label class="form-label mb-0">Exhaust Fans</label><div>{{ lease.inventory_exhaust_fans|default:"—" }}</div></div>
+            <div><label class="form-label mb-0">Ceiling Lights</label><div>{{ lease.inventory_ceiling_lights|default:"—" }}</div></div>
+            <div><label class="form-label mb-0">Stove</label><div>{{ lease.inventory_stove|default:"—" }}</div></div>
+            <div><label class="form-label mb-0">Wardrobes</label><div>{{ lease.inventory_wardrobes|default:"—" }}</div></div>
+            <div><label class="form-label mb-0">Keys</label><div>{{ lease.inventory_keys|default:"—" }}</div></div>
+            <div class="col-12"><label class="form-label mb-0">Paint Condition</label><div>{{ lease.paint_condition|default:"—" }}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terms / Notes -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header bg-dark text-white py-2 px-3">Terms</div>
+        <div class="card-body"><div class="small">{{ lease.terms|default:"—" }}</div></div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header bg-dark text-white py-2 px-3">Notes</div>
+        <div class="card-body"><div class="small">{{ lease.notes|default:"—" }}</div></div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header bg-dark text-white py-2 px-3">Return Notes</div>
+        <div class="card-body"><div class="small">{{ lease.security_deposit_return_notes|default:"—" }}</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity -->
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Activity</div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-lg-6">
+          <h6>Recent Payments</h6>
+          {% if recent_payments %}
+            <ul class="list-group list-group-flush">
+              {% for p in recent_payments %}
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>{{ p.payment_date }} — {{ p.reference_number|default:"Payment" }}</span>
+                  <strong>Rs {{ p.amount|floatformat:0|intcomma }}</strong>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">No payments yet.</div>
+          {% endif %}
+        </div>
+        <div class="col-lg-6">
+          <h6>Invoices</h6>
+          {% if invoices %}
+            <ul class="list-group list-group-flush">
+              {% for inv in invoices %}
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>{{ inv.issue_date }} — {{ inv.description|default:"Invoice" }}</span>
+                  <strong>Rs {{ inv.amount|floatformat:0|intcomma }}</strong>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">No invoices yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Upload Status -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header bg-dark text-white py-2 px-3">Signed Copy</div>
+        <div class="card-body">
+          {% if lease.signed_copy %}
+            <a class="d-inline-block" href="{{ lease.signed_copy.url }}" target="_blank">Download</a>
+          {% else %}
+            <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Uploaded</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header bg-dark text-white py-2 px-3">Generated Agreement PDF</div>
+        <div class="card-body">
+            <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-dark btn-sm">
+                <i class="fas fa-download me-1"></i> Download Preview PDF
+            </a>
+          {% if lease.generated_agreement_pdf %}
+            <a class="d-inline-block" href="{{ lease.generated_agreement_pdf.url }}" target="_blank">Download</a>
+          {% else %}
+            <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Generated</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+{% endblock %}

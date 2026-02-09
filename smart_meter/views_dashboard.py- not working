@@ -1,0 +1,862 @@
+# smart_meter/views_dashboard.py
+from collections import defaultdict, OrderedDict
+from decimal import Decimal, ROUND_HALF_UP
+from datetime import date, datetime, timedelta
+import calendar
+
+from django.conf import settings
+from django.db.models import Q, Min, Max, F, Value
+from django.db.models.functions import ExtractYear, ExtractMonth, ExtractDay, ExtractHour
+from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+
+from properties.models import Property, Unit
+from smart_meter.models import Meter, MeterReading, MeterBalance, LiveReading
+try:
+    from leases.models import Lease
+except Exception:
+    Lease = None
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+BILLING_RATE_FALLBACK = Decimal("50.00")
+SERVICE_CHARGE_DEFAULT = Decimal("250.00")
+ONLINE_MINUTES = 10
+
+
+def _rate_for_meter(m: Meter) -> Decimal:
+    try:
+        return Decimal(m.unit_rate or BILLING_RATE_FALLBACK)
+    except Exception:
+        return BILLING_RATE_FALLBACK
+
+
+def _svc_for_meter(m: Meter) -> Decimal:
+    # Add service_charges DecimalField to Meter if not present (default 250.00)
+    return Decimal(getattr(m, "service_charges", SERVICE_CHARGE_DEFAULT) or SERVICE_CHARGE_DEFAULT)
+
+
+def _month_bounds(y: int, m: int):
+    first = date(y, m, 1)
+    last = date(y, m, calendar.monthrange(y, m)[1])
+    return first, last
+
+
+def _latest_month_for_queryset(qs):
+    """Return (y,m) of latest month that has snapshots for qs meters."""
+    agg = (MeterReading.objects
+           .filter(meter__in=qs)
+           .annotate(y=ExtractYear("ts", tzinfo=None),
+                     m=ExtractMonth("ts", tzinfo=None))
+           .values("y", "m")
+           .order_by("-y", "-m")
+           .first())
+    if agg:
+        return int(agg["y"]), int(agg["m"])
+    today = timezone.localdate()
+    return today.year, today.month
+
+
+def _month_choices(qs, limit=24):
+    rows = (MeterReading.objects
+            .filter(meter__in=qs)
+            .annotate(y=ExtractYear("ts", tzinfo=None),
+                      m=ExtractMonth("ts", tzinfo=None))
+            .values("y", "m")
+            .distinct()
+            .order_by("-y", "-m"))
+    out = []
+    for r in rows[:limit]:
+        y, m = int(r["y"]), int(r["m"])
+        out.append({
+            "value": f"{y:04d}-{m:02d}",
+            "label": date(y, m, 1).strftime("%b %Y"),
+            "y": y, "m": m,
+        })
+    return out
+
+
+def _human_name_for_meter(m: Meter):
+    try:
+        return f"{m.meter_number} — {m.unit.unit_number}"
+    except Exception:
+        return str(m)
+
+
+def _logged_in_user_phone(request):
+    """
+    Return a phone/WhatsApp for the *logged-in user* (not tenant).
+    Looks for common fields safely.
+    """
+    u = getattr(request, "user", None)
+    if not u or not u.is_authenticated:
+        return None
+    for attr in ("whatsapp", "whatsapp_number", "phone", "mobile"):
+        if hasattr(u, attr) and getattr(u, attr):
+            return str(getattr(u, attr))
+    prof = getattr(u, "profile", None)
+    if prof:
+        for attr in ("whatsapp", "whatsapp_number", "phone", "mobile"):
+            if hasattr(prof, attr) and getattr(prof, attr):
+                return str(getattr(prof, attr))
+    return None
+
+
+def _tenant_name_for_unit(unit: Unit, period_start: date, period_end: date):
+    """
+    Show tenant name only if:
+      - lease is active during the selected range, or
+      - lease is currently active.
+    Else return 'Vacant'.
+    """
+    if not Lease:
+        return "Vacant"
+    # overlap: (lease.start <= end) and (lease.end >= start) or active
+    qs = Lease.objects.filter(unit=unit)
+    qs = qs.filter(
+        Q(start_date__lte=period_end) & Q(end_date__gte=period_start) |
+        Q(end_date__gte=timezone.localdate())
+    ).select_related("tenant").order_by("-start_date")
+    lease = qs.first()
+    if lease and getattr(lease, "tenant", None):
+        return lease.tenant.get_full_name()
+    return "Vacant"
+
+# ------------------------------------------------------------
+# Series builders without MySQL tz conversions
+#   We compute "last kWh per bucket", then usage = diff between consecutive buckets.
+#   This guarantees continuity: End(N) == Begin(N+1).
+# ------------------------------------------------------------
+
+
+def _series_monthly(meters_qs, start_d: date, end_d: date):
+    base = (MeterReading.objects
+            .filter(meter__in=meters_qs,
+                    ts__date__gte=start_d,
+                    ts__date__lte=end_d))
+
+    rows = (base
+            .annotate(y=ExtractYear("ts", tzinfo=None),
+                      m=ExtractMonth("ts", tzinfo=None))
+            .values("meter_id", "y", "m")
+            .annotate(last_kwh=Max("total_energy"))
+            .order_by("meter_id", "y", "m"))
+
+    # group and compute deltas
+    per_meter = defaultdict(list)
+    for r in rows:
+        per_meter[r["meter_id"]].append({
+            "y": int(r["y"]), "m": int(r["m"]),
+            "last": Decimal(r["last_kwh"] or 0)
+        })
+
+    table = []          # for data table
+    # meter_id -> {"label": "m# — unit", "labels": [...], "data": [...]}
+    charts = OrderedDict()
+
+    for mid, points in per_meter.items():
+        mobj = Meter.objects.select_related(
+            "unit", "unit__property").get(pk=mid)
+        rate = _rate_for_meter(mobj)
+        svc = _svc_for_meter(mobj)
+
+        charts[mid] = {"label": _human_name_for_meter(
+            mobj), "labels": [], "data": []}
+        prev_last = None
+
+        for p in points:
+            y, m = p["y"], p["m"]
+            last = p["last"]
+            # begin = prev_last (or last if none)
+            begin = prev_last if prev_last is not None else last
+            usage = (last - begin) if prev_last is not None else Decimal("0")
+            if usage < 0:
+                usage = Decimal("0")
+            usage_rounded = usage.quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP)
+
+            # Money
+            usage_charges = (usage * rate).quantize(Decimal("1"),
+                                                    rounding=ROUND_HALF_UP)
+            service_charges = svc.quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP)
+            total_rs = (
+                usage_charges + service_charges).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+            label = date(y, m, 1).strftime("%b %Y")
+            charts[mid]["labels"].append(label)
+            charts[mid]["data"].append(int(usage_rounded))   # no decimals
+
+            table.append({
+                "meter_id": mid,
+                "meter_no": mobj.meter_number,
+                "unit_no": getattr(mobj.unit, "unit_number", ""),
+                "property": getattr(mobj.unit.property, "property_name", ""),
+                "period": label,
+                "period_sort": (y, m),
+                "begin_kwh": begin,
+                "end_kwh": last,
+                "usage_kwh": usage_rounded,
+                "rate": rate,
+                "usage_charges": usage_charges,
+                "service_charges": service_charges,
+                "total_rs": total_rs,
+                "tenant": _tenant_name_for_unit(mobj.unit, *(_month_bounds(y, m))),
+            })
+            prev_last = last
+
+    # sort data latest->oldest
+    table.sort(key=lambda r: (
+        r["meter_no"], r["period_sort"][0], r["period_sort"][1]), reverse=True)
+    return table, charts
+
+
+def _series_daily(meters_qs, start_d: date, end_d: date):
+    base = (MeterReading.objects
+            .filter(meter__in=meters_qs,
+                    ts__date__gte=start_d,
+                    ts__date__lte=end_d))
+
+    rows = (base
+            .annotate(y=ExtractYear("ts", tzinfo=None),
+                      m=ExtractMonth("ts", tzinfo=None),
+                      d=ExtractDay("ts", tzinfo=None))
+            .values("meter_id", "y", "m", "d")
+            .annotate(last_kwh=Max("total_energy"))
+            .order_by("meter_id", "y", "m", "d"))
+
+    per_meter = defaultdict(list)
+    for r in rows:
+        per_meter[r["meter_id"]].append({
+            "y": int(r["y"]), "m": int(r["m"]), "d": int(r["d"]),
+            "last": Decimal(r["last_kwh"] or 0)
+        })
+
+    table = []
+    charts = OrderedDict()
+
+    for mid, points in per_meter.items():
+        mobj = Meter.objects.select_related(
+            "unit", "unit__property").get(pk=mid)
+        rate = _rate_for_meter(mobj)
+        svc = _svc_for_meter(mobj)
+
+        charts[mid] = {"label": _human_name_for_meter(
+            mobj), "labels": [], "data": []}
+        prev_last = None
+
+        for p in points:
+            y, m, d = p["y"], p["m"], p["d"]
+            last = p["last"]
+            begin = prev_last if prev_last is not None else last
+            usage = (last - begin) if prev_last is not None else Decimal("0")
+            if usage < 0:
+                usage = Decimal("0")
+            usage_rounded = usage.quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP)
+
+            usage_charges = (usage * rate).quantize(Decimal("1"),
+                                                    rounding=ROUND_HALF_UP)
+            service_charges = svc.quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP)
+            total_rs = (
+                usage_charges + service_charges).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+            dt = date(y, m, d)
+            charts[mid]["labels"].append(dt.strftime("%d %b"))
+            charts[mid]["data"].append(int(usage_rounded))
+
+            table.append({
+                "meter_id": mid,
+                "meter_no": mobj.meter_number,
+                "unit_no": getattr(mobj.unit, "unit_number", ""),
+                "property": getattr(mobj.unit.property, "property_name", ""),
+                "period": dt.strftime("%b %d, %Y"),
+                "period_sort": (y, m, d),
+                "begin_kwh": begin,
+                "end_kwh": last,
+                "usage_kwh": usage_rounded,
+                "rate": rate,
+                "usage_charges": usage_charges,
+                "service_charges": service_charges,
+                "total_rs": total_rs,
+                "tenant": _tenant_name_for_unit(mobj.unit, dt, dt),
+            })
+            prev_last = last
+
+    # latest->oldest
+    table.sort(key=lambda r: (r["meter_no"], r["period_sort"]), reverse=True)
+    return table, charts
+
+
+def _series_hourly(meters_qs, start_d: date, end_d: date):
+    """
+    Hourly usage = diff of LAST kWh between consecutive hours (fixes your earlier 'begin from day' bug).
+    """
+    base = (MeterReading.objects
+            .filter(meter__in=meters_qs,
+                    ts__date__gte=start_d,
+                    ts__date__lte=end_d))
+
+    rows = (base
+            .annotate(y=ExtractYear("ts", tzinfo=None),
+                      m=ExtractMonth("ts", tzinfo=None),
+                      d=ExtractDay("ts", tzinfo=None),
+                      h=ExtractHour("ts", tzinfo=None))
+            .values("meter_id", "y", "m", "d", "h")
+            .annotate(last_kwh=Max("total_energy"))
+            .order_by("meter_id", "y", "m", "d", "h"))
+
+    per_meter = defaultdict(list)
+    for r in rows:
+        per_meter[r["meter_id"]].append({
+            "y": int(r["y"]), "m": int(r["m"]), "d": int(r["d"]), "h": int(r["h"]),
+            "last": Decimal(r["last_kwh"] or 0)
+        })
+
+    table = []
+    charts = OrderedDict()
+
+    for mid, points in per_meter.items():
+        mobj = Meter.objects.select_related(
+            "unit", "unit__property").get(pk=mid)
+        rate = _rate_for_meter(mobj)
+        svc = _svc_for_meter(mobj)
+
+        charts[mid] = {"label": _human_name_for_meter(
+            mobj), "labels": [], "data": []}
+        prev_last = None
+
+        for p in points:
+            y, m, d, h = p["y"], p["m"], p["d"], p["h"]
+            last = p["last"]
+            begin = prev_last if prev_last is not None else last
+            usage = (last - begin) if prev_last is not None else Decimal("0")
+            if usage < 0:
+                usage = Decimal("0")
+            usage_rounded = usage.quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP)
+
+            usage_charges = (usage * rate).quantize(Decimal("1"),
+                                                    rounding=ROUND_HALF_UP)
+            service_charges = svc.quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP)
+            total_rs = (
+                usage_charges + service_charges).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+            dt = datetime(y, m, d, h)
+            charts[mid]["labels"].append(dt.strftime("%d %b %H:00"))
+            charts[mid]["data"].append(int(usage_rounded))
+
+            table.append({
+                "meter_id": mid,
+                "meter_no": mobj.meter_number,
+                "unit_no": getattr(mobj.unit, "unit_number", ""),
+                "property": getattr(mobj.unit.property, "property_name", ""),
+                "period": dt.strftime("%b %d %H:00"),
+                "period_sort": (y, m, d, h),
+                "begin_kwh": begin,
+                "end_kwh": last,
+                "usage_kwh": usage_rounded,
+                "rate": rate,
+                "usage_charges": usage_charges,
+                "service_charges": service_charges,
+                "total_rs": total_rs,
+                "tenant": _tenant_name_for_unit(mobj.unit, dt.date(), dt.date()),
+            })
+            prev_last = last
+
+    # latest->oldest
+    table.sort(key=lambda r: (r["meter_no"], r["period_sort"]), reverse=True)
+    return table, charts
+
+# ------------------------------------------------------------
+# Dashboard view
+# ------------------------------------------------------------
+
+
+def energy_dashboard(request):
+    """
+    - Default: ALL meters, current month
+    - All+Monthly: single month picker
+    - Single meter: date inputs allowed
+    - Charts: bar only, no legend; labels dark; integers only
+    - WhatsApp share: to logged-in user's number (pre-filled text link)
+    """
+
+    # --- filters ---
+    prop_id = (request.GET.get("property") or "").strip()
+    unit_id = (request.GET.get("unit") or "").strip()
+    meter_id = (request.GET.get("meter") or "").strip()
+    report_type = request.GET.get(
+        "report_type", "monthly").strip()  # monthly default
+    # 'asc' oldest->latest for bars
+    graph_order = request.GET.get("order", "asc")
+    selected_month = request.GET.get("month")  # only for All+Monthly path
+
+    # drop-down sources
+    all_properties = Property.objects.all().order_by("property_name")
+    units_qs = Unit.objects.all()
+    if prop_id:
+        units_qs = units_qs.filter(property_id=prop_id)
+    filtered_units = units_qs.order_by("unit_number")
+
+    meters_qs = Meter.objects.select_related("unit", "unit__property")
+    if unit_id:
+        meters_qs = meters_qs.filter(unit_id=unit_id)
+    elif prop_id:
+        meters_qs = meters_qs.filter(unit__property_id=prop_id)
+    filtered_meters = meters_qs.order_by("meter_number")
+
+    # final meter set
+    selected_meters = filtered_meters
+    selected_meter_obj = None
+    if meter_id:
+        selected_meters = selected_meters.filter(id=meter_id)
+        selected_meter_obj = get_object_or_404(Meter, id=meter_id)
+
+    # dates
+    # For All+Monthly: force a single month chooser
+    if not meter_id and report_type == "monthly":
+        month_choices = _month_choices(selected_meters)
+        if selected_month:
+            try:
+                y, m = [int(x) for x in selected_month.split("-")]
+            except Exception:
+                y, m = _latest_month_for_queryset(selected_meters)
+        else:
+            y, m = _latest_month_for_queryset(selected_meters)
+        start_date, end_date = _month_bounds(y, m)
+        show_month_picker = True
+    else:
+        # Single meter, or daily/hourly: allow date inputs
+        today = timezone.localdate()
+        start_date = date(today.year, today.month, 1)
+        end_date = today
+        # override if provided
+        if request.GET.get("start") and request.GET.get("end"):
+            try:
+                start_date = date.fromisoformat(request.GET["start"])
+                end_date = date.fromisoformat(request.GET["end"])
+            except Exception:
+                pass
+        month_choices = []
+        show_month_picker = False
+
+    # --- live panel (if single meter) ---
+    latest_ts = latest_voltage_a = latest_current_a = latest_total_energy = None
+    balance_obj = None
+    if selected_meter_obj:
+        live = (LiveReading.objects
+                .filter(meter=selected_meter_obj)
+                .order_by("-ts")
+                .first())
+        if live:
+            latest_ts = live.ts
+            latest_voltage_a = getattr(live, "voltage_a", None)
+            latest_current_a = getattr(live, "current_a", None)
+            latest_total_energy = getattr(live, "total_energy", None)
+        else:
+            snap = (MeterReading.objects
+                    .filter(meter=selected_meter_obj)
+                    .order_by("-ts").first())
+            if snap:
+                latest_ts = snap.ts
+                latest_voltage_a = getattr(snap, "voltage_a", None)
+                latest_current_a = getattr(snap, "current_a", None)
+                latest_total_energy = getattr(snap, "total_energy", None)
+
+        balance_obj, _ = MeterBalance.objects.get_or_create(
+            unit=selected_meter_obj.unit)
+
+    # --- build series (no MySQL tz conversions) ---
+    if report_type == "hourly":
+        data_rows, chart_series = _series_hourly(
+            selected_meters, start_date, end_date)
+    elif report_type == "daily":
+        data_rows, chart_series = _series_daily(
+            selected_meters, start_date, end_date)
+    else:  # monthly
+        data_rows, chart_series = _series_monthly(
+            selected_meters, start_date, end_date)
+
+    # chart ordering
+    # bars should be oldest->latest visually; our builders add labels in ascending time.
+    # If the user asked reverse, flip them here.
+    reverse = (graph_order == "desc")
+    for s in chart_series.values():
+        if reverse:
+            s["labels"] = list(reversed(s["labels"]))
+            s["data"] = list(reversed(s["data"]))
+
+    # totals (rounded, integer)
+    total_usage_kwh = sum((r["usage_kwh"] for r in data_rows),
+                          Decimal("0")).quantize(Decimal("1"))
+    total_usage_charges = sum(
+        (r["usage_charges"] for r in data_rows), Decimal("0")).quantize(Decimal("1"))
+    total_service_charges = sum(
+        (r["service_charges"] for r in data_rows), Decimal("0")).quantize(Decimal("1"))
+    grand_total_rs = (total_usage_charges +
+                      total_service_charges).quantize(Decimal("1"))
+
+    # online/offline (fleet only)
+    online_count = offline_count = 0
+    if not meter_id:
+        cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+        ts_map = {lr.meter_id: lr.ts for lr in LiveReading.objects.filter(
+            meter__in=selected_meters)}
+        for mid in selected_meters.values_list("id", flat=True):
+            ts = ts_map.get(mid)
+            if ts and ts >= cutoff:
+                online_count += 1
+            else:
+                offline_count += 1
+
+    # WhatsApp share to logged in user (text only – media requires Business API)
+    user_phone = _logged_in_user_phone(request)
+    if user_phone:
+        heading = "Energy Report"
+        if not meter_id and report_type == "monthly":
+            heading = f"Energy Report (All) {start_date:%Y-%m}-01 to {end_date:%Y-%m-%d}"
+        elif selected_meter_obj:
+            heading = f"Energy Report {selected_meter_obj.meter_number} ({selected_meter_obj.unit.unit_number}) {start_date:%Y-%m-%d} to {end_date:%Y-%m-%d}"
+        wa_text = (
+            f"{heading}\n"
+            f"Total kWh: {int(total_usage_kwh):,}\n"
+            f"Usage Rs: {int(total_usage_charges):,}\n"
+            f"Service Rs: {int(total_service_charges):,}\n"
+            f"Total Rs: {int(grand_total_rs):,}"
+        )
+        # Build in template with urlencode; pass components plainly
+        wa_link_base = "https://wa.me/"
+        wa_number = user_phone
+    else:
+        wa_text = None
+        wa_number = None
+        wa_link_base = None
+
+    context = {
+        # filter choices + current
+        "all_properties": all_properties,
+        "filtered_units": filtered_units,
+        "filtered_meters": filtered_meters,
+        "current_property": prop_id,
+        "current_unit": unit_id,
+        "current_meter": meter_id,
+
+        "report_type": report_type,
+        "start_date": start_date,
+        "end_date": end_date,
+
+        # month picker (All+Monthly)
+        "show_month_picker": show_month_picker,
+        "month_choices": month_choices,
+        "selected_month": selected_month or (f"{start_date:%Y}-{start_date:%m}"),
+
+        # chart + table
+        # [{label, labels, data}, ...]
+        "chart_series": list(chart_series.values()),
+        "rows": data_rows,
+
+        # totals
+        "total_usage_kwh": int(total_usage_kwh),
+        "total_usage_charges": int(total_usage_charges),
+        "total_service_charges": int(total_service_charges),
+        "grand_total_rs": int(grand_total_rs),
+
+        # live panel (single meter)
+        "selected_meter": selected_meter_obj,
+        "latest_ts": latest_ts,
+        "latest_voltage_a": latest_voltage_a,
+        "latest_current_a": latest_current_a,
+        "latest_total_energy": latest_total_energy,
+        "balance": balance_obj,
+
+        # fleet status
+        "online_count": online_count,
+        "offline_count": offline_count,
+        "online_minutes": ONLINE_MINUTES,
+
+        # WhatsApp share pieces (build link in template with urlencode)
+        "wa_link_base": wa_link_base,
+        "wa_number": wa_number,
+        "wa_text": wa_text,
+
+        # export URLs (point these to your existing endpoints if you already have them)
+        "csv_export_url": "smart_meter:energy_export_csv",
+        "xlsx_export_url": "smart_meter:energy_export_xlsx",
+        "pdf_export_url": "smart_meter:energy_export_pdf",
+    }
+    return render(request, "smart_meter/dashboard.html", context)
+
+
+# -----------------------------
+# Exporters (CSV/XLSX/PDF) for dashboard data
+# -----------------------------
+def _rebuild_for_export(request):
+    """Recompute the same series for exporters using the current GET filters."""
+    prop_id = (request.GET.get("property") or "").strip()
+    unit_id = (request.GET.get("unit") or "").strip()
+    meter_id = (request.GET.get("meter") or "").strip()
+    report_type = request.GET.get("report_type", "daily")
+
+    # Dates
+    today = timezone.localdate()
+    start_date = request.GET.get("start")
+    end_date = request.GET.get("end")
+    start_date_obj = today.replace(day=1)
+    end_date_obj = today
+    if start_date and end_date:
+        try:
+            start_date_obj = timezone.datetime.fromisoformat(start_date).date()
+            end_date_obj = timezone.datetime.fromisoformat(end_date).date()
+        except Exception:
+            pass
+
+    # All + monthly + ?month=YYYY-MM
+    selected_month = (request.GET.get("month") or "").strip()
+    if not meter_id and report_type == "monthly" and selected_month:
+        try:
+            y, m = map(int, selected_month.split("-"))
+            start_date_obj = timezone.datetime(y, m, 1).date()
+            if m == 12:
+                end_date_obj = timezone.datetime(
+                    y + 1, 1, 1).date() - timezone.timedelta(days=1)
+            else:
+                end_date_obj = timezone.datetime(
+                    y, m + 1, 1).date() - timezone.timedelta(days=1)
+        except Exception:
+            pass
+
+    # datasets
+    all_properties = Property.objects.all()
+    units_qs = Unit.objects.all()
+    if prop_id:
+        units_qs = units_qs.filter(property_id=prop_id)
+
+    meters_qs = Meter.objects.select_related("unit", "unit__property")
+    if unit_id:
+        meters_qs = meters_qs.filter(unit_id=unit_id)
+    elif prop_id:
+        meters_qs = meters_qs.filter(unit__property_id=prop_id)
+
+    selected_meters = meters_qs
+    if meter_id:
+        selected_meters = selected_meters.filter(id=meter_id)
+
+    labels, datasets, rows, totals = _per_meter_series(
+        selected_meters, start_date_obj, end_date_obj, report_type
+    )
+
+    # derive a filename stem
+    if meter_id:
+        m = selected_meters.first()
+        who = f"{m.meter_number}"
+    elif prop_id:
+        pname = Property.objects.filter(id=prop_id).values_list(
+            "property_name", flat=True).first() or "Property"
+        who = f"{pname}"
+    else:
+        who = "All-meters"
+    stem = f"{who}_{start_date_obj:%Y-%m-%d}_{end_date_obj:%Y-%m-%d}"
+
+    return rows, totals, stem, (start_date_obj, end_date_obj), report_type, bool(meter_id), who
+
+
+@login_required
+def energy_export_csv(request):
+    rows, totals, stem, (start_d, end_d), report_type, per_meter, who = _rebuild_for_export(
+        request)
+
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="{stem}.csv"'
+
+    import csv
+    w = csv.writer(resp)
+    # Heading
+    w.writerow([f"Energy Report — {who}",
+               f"{start_d:%Y-%m-%d} to {end_d:%Y-%m-%d}"])
+    # Columns
+    headers = ["S/N", "Meter #", "Unit", "Property", "Period", "Begin", "End", "Usage", "Rate (Rs./kWh)",
+               "Usage Charges (Rs.)", "Service Charges (Rs.)", "Total (Rs.)", "Tenant"]
+    w.writerow(headers)
+    for r in rows:
+        w.writerow([
+            r.sn, r.meter_number, r.unit_number, r.property_name, r.period_label,
+            _round0(r.begin_kwh), _round0(r.end_kwh), _round0(r.usage_kwh),
+            _round0(r.rate_rs), _round0(r.usage_charges), _round0(
+                r.service_charges), _round0(r.total_amount),
+            r.tenant_name
+        ])
+    # Totals
+    w.writerow([])
+    w.writerow(["Totals", "", "", "", "",
+                "", "", _round0(sum(rr.usage_kwh for rr in rows)),
+                "", _round0(sum(rr.usage_charges for rr in rows)),
+                _round0(sum(rr.service_charges for rr in rows)),
+                _round0(sum(rr.total_amount for rr in rows)),
+                "",
+                ])
+    return resp
+
+
+@login_required
+def energy_export_xlsx(request):
+    rows, totals, stem, (start_d, end_d), report_type, per_meter, who = _rebuild_for_export(
+        request)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Energy"
+
+    ws.append([f"Energy Report — {who}",
+              f"{start_d:%Y-%m-%d} to {end_d:%Y-%m-%d}"])
+    ws.append([])
+
+    headers = ["S/N", "Meter #", "Unit", "Property", "Period", "Begin", "End", "Usage",
+               "Rate (Rs./kWh)", "Usage Charges (Rs.)", "Service Charges (Rs.)", "Total (Rs.)", "Tenant"]
+    ws.append(headers)
+
+    for r in rows:
+        ws.append([
+            r.sn, r.meter_number, r.unit_number, r.property_name, r.period_label,
+            _round0(r.begin_kwh), _round0(r.end_kwh), _round0(r.usage_kwh),
+            _round0(r.rate_rs), _round0(r.usage_charges), _round0(
+                r.service_charges), _round0(r.total_amount),
+            r.tenant_name
+        ])
+
+    ws.append([])
+    ws.append(["Totals", "", "", "", "",
+               "", "", _round0(sum(rr.usage_kwh for rr in rows)),
+               "", _round0(sum(rr.usage_charges for rr in rows)),
+               _round0(sum(rr.service_charges for rr in rows)),
+               _round0(sum(rr.total_amount for rr in rows)),
+               "",
+               ])
+
+    # auto widths
+    for col in ws.columns:
+        try:
+            max_len = max(len(str(c.value))
+                          if c.value is not None else 0 for c in col)
+        except ValueError:
+            max_len = 10
+        letter = get_column_letter(col[0].column)
+        ws.column_dimensions[letter].width = min(max(10, max_len + 2), 36)
+
+    from io import BytesIO
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    resp = HttpResponse(
+        bio.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = f'attachment; filename="{stem}.xlsx"'
+    return resp
+
+
+@login_required
+def energy_export_pdf(request):
+    rows, totals, stem, (start_d, end_d), report_type, per_meter, who = _rebuild_for_export(
+        request)
+
+    from io import BytesIO
+    bio = BytesIO()
+    pagesize = landscape(A4)
+    c = canvas.Canvas(bio, pagesize=pagesize)
+    width, height = pagesize
+
+    # Header
+    title = f"Energy Report — {who}"
+    subtitle = f"{start_d:%Y-%m-%d} to {end_d:%Y-%m-%d}"
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(15 * mm, height - 15 * mm, title)
+    c.setFont("Helvetica", 11)
+    c.drawString(15 * mm, height - 22 * mm, subtitle)
+
+    # Table
+    y = height - 32 * mm
+    c.setFont("Helvetica-Bold", 9)
+    headers = ["S/N", "Meter #", "Unit", "Property", "Period", "Begin", "End", "Usage",
+               "Rate", "Usage (Rs.)", "Service (Rs.)", "Total (Rs.)", "Tenant"]
+    col_w = [14, 28, 28, 26, 38, 18, 18, 18, 14, 26, 26, 26, 34]  # mm
+    x = 10 * mm
+    # header line 1
+    for i, htxt in enumerate(headers):
+        c.drawString(x, y, htxt)
+        x += col_w[i]
+
+    c.line(10 * mm, y - 2, width - 10 * mm, y - 2)
+    y -= 8 * mm
+    c.setFont("Helvetica", 8)
+
+    for r in rows:
+        vals = [
+            str(r.sn), r.meter_number, r.unit_number, r.property_name, r.period_label,
+            str(_round0(r.begin_kwh)), str(
+                _round0(r.end_kwh)), str(_round0(r.usage_kwh)),
+            str(_round0(r.rate_rs)), str(_round0(r.usage_charges)), str(
+                _round0(r.service_charges)),
+            str(_round0(r.total_amount)), r.tenant_name
+        ]
+        x = 10 * mm
+        for i, v in enumerate(vals):
+            c.drawString(x, y, v)
+            x += col_w[i]
+        y -= 6 * mm
+        if y < 15 * mm:
+            # footer with page number
+            _draw_page_footer(c)
+            c.showPage()
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(15 * mm, height - 15 * mm, title)
+            c.setFont("Helvetica", 11)
+            c.drawString(15 * mm, height - 22 * mm, subtitle)
+            c.setFont("Helvetica-Bold", 9)
+            y = height - 32 * mm
+            x = 10 * mm
+            for i, htxt in enumerate(headers):
+                c.drawString(x, y, htxt)
+                x += col_w[i]
+            c.line(10 * mm, y - 2, width - 10 * mm, y - 2)
+            y -= 8 * mm
+            c.setFont("Helvetica", 8)
+
+    # Totals row
+    c.setFont("Helvetica-Bold", 9)
+    x = 10 * mm
+    totals_vals = [
+        "Totals", "", "", "", "",
+        "", "", _fmt_commas_int(sum(rr.usage_kwh for rr in rows)),
+        "", _fmt_commas_int(sum(rr.usage_charges for rr in rows)),
+        _fmt_commas_int(sum(rr.service_charges for rr in rows)),
+        _fmt_commas_int(sum(rr.total_amount for rr in rows)),
+        ""
+    ]
+    for i, v in enumerate(totals_vals):
+        c.drawString(x, y, v)
+        x += col_w[i]
+
+    _draw_page_footer(c)
+    c.save()
+    bio.seek(0)
+
+    resp = HttpResponse(bio.getvalue(), content_type="application/pdf")
+    resp["Content-Disposition"] = f'attachment; filename="{stem}.pdf"'
+    return resp
+
+
+# page number: "Page n of N" (ReportLab trick: we’ll do a single-page footer painter)
+def _draw_page_footer(cnv: canvas.Canvas):
+    # This only draws "Page N" (ReportLab doesn’t know the total until saved);
+    # for "Page N of M" you can use a PageCount canvas class; keeping it simple here.
+    page_num = cnv.getPageNumber()
+    txt = f"Page {page_num}"
+    cnv.setFont("Helvetica", 8)
+    w, h = cnv._pagesize
+    cnv.drawRightString(w - 10 * mm, 10 * mm, txt)

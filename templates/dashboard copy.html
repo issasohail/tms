@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Properties</h5>
+                <p class="card-text display-4">{{ total_properties }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Units</h5>
+                <p class="card-text display-4">{{ total_units }}</p>
+                <small>{{ occupied_units }} occupied ({{ vacancy_rate }}% vacant)</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Tenants</h5>
+                <p class="card-text display-4">{{ total_tenants }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">Net Income</h5>
+                <p class="card-text display-4">${{ net_income|floatformat:2 }}</p>
+                <small>Last 30 days</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Payments -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Recent Payments</h5>
+                <a href="{% url 'payments:payment_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Tenant</th>
+                                <th>Property-Unit</th>
+                                <th>Amount</th>
+                                <th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for payment in recent_payments %}
+                            <tr onclick="window.location='{{ payment.get_absolute_url }}'" style="cursor: pointer;">
+                                <td>{{ payment.payment_date|date:"M d" }}</td>
+                                <td>{{ payment.lease.tenant.get_full_name }}</td>
+                                <td>{{ payment.lease.unit.property.property_name }}-{{ payment.lease.unit.unit_number }}</td>
+                                <td>${{ payment.amount }}</td>
+                                <td>${{ payment.lease.get_balance|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center">No recent payments</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upcoming Invoices -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Upcoming Invoices</h5>
+                <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Due Date</th>
+                                <th>Tenant</th>
+                                <th>Property-Unit</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invoice in upcoming_invoices %}
+                            <tr onclick="window.location='{{ invoice.get_absolute_url }}'" style="cursor: pointer;">
+                                <td>{{ invoice.due_date|date:"M d" }}</td>
+                                <td>{{ invoice.lease.tenant.get_full_name }}</td>
+                                <td>{{ invoice.lease.unit.property.property_name }}-{{ invoice.lease.unit.unit_number }}</td>
+                                <td>${{ invoice.amount }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">No upcoming invoices</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- Lease Ending Soon -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-warning text-white">
+                <h5>Leases Ending Soon (within 40 days)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Tenant</th>
+                                <th>Property-Unit</th>
+                                <th>End Date</th>
+                                <th>Total Payment</th>
+                                <th>Deposit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lease in ending_soon_leases %}
+                            <tr onclick="window.location='{{ lease.get_absolute_url }}'" style="cursor: pointer;">
+                                <td>{{ lease.tenant.get_full_name }}</td>
+                                <td>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</td>
+                                <td>{{ lease.end_date|date:"M d, Y" }}</td>
+                                <td>${{ lease.total_payment|floatformat:2 }}</td>
+                                <td>${{ lease.security_deposit|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center">No leases ending soon</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vacant Units -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5>Vacant Units</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Property-Unit</th>
+                                <th>Rent</th>
+                                <th>Maintenance</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for unit in vacant_units %}
+                            <tr onclick="window.location='{% url 'properties:unit_detail' unit.id %}'" style="cursor: pointer;">
+                                <td>{{ unit.property.property_name }}-{{ unit.unit_number }}</td>
+                                <td>${{ unit.monthly_rent|floatformat:2 }}</td>
+                                <td>${{ unit.society_maintenance|floatformat:2 }}</td>
+                                <td>{{ unit.property.get_property_type_display }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">No vacant units</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- Recent Expenses -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Recent Expenses</h5>
+                <a href="{% url 'expenses:expense_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Property</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for expense in recent_expenses %}
+                            <tr onclick="window.location='{{ expense.get_absolute_url }}'" style="cursor: pointer;">
+                                <td>{{ expense.date|date:"M d" }}</td>
+                                <td>{{ expense.category }}</td>
+                                <td>{{ expense.property.property_name|default:"-" }}</td>
+                                <td>${{ expense.amount|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">No recent expenses</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Balances -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5>Tenant Balances</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Tenant</th>
+                                <th>Property-Unit</th>
+                                <th>Balance</th>
+                                <th>Last Payment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tenant in tenant_balances %}
+                            <tr onclick="window.location='{% url 'tenants:tenant_detail' tenant.id %}'" style="cursor: pointer;">
+                                <td>{{ tenant.get_full_name }}</td>
+                                <td>
+                                    {% if tenant.current_lease %}
+                                        {{ tenant.current_lease.unit.property.property_name }}-{{ tenant.current_lease.unit.unit_number }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>${{ tenant.balance|floatformat:2 }}</td>
+                                <td>
+                                    {% if tenant.last_payment_date %}
+                                        {{ tenant.last_payment_date|date:"M d" }}
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">No tenant data</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

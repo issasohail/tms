@@ -1,0 +1,56 @@
+{% load static %}
+
+<nav class="navbar navbar-dark bg-dark navbar-expand-md py-1 mb-0 no-print">
+  <div class="container-fluid px-2">
+    <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'dashboard:dashboard' %}">
+      <img src="{% static 'images/logo.png' %}" alt="Logo" height="28">
+      <span class="fw-semibold text-white">TMS</span>
+    </a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+            data-bs-target="#mainNav" aria-controls="mainNav"
+            aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto my-2 my-md-0">
+        <li class="nav-item"><a class="nav-link" href="{% url 'properties:property_list' %}">Properties</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'properties:unit_list' %}">Units</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'payments:payment_list' %}">Payments</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'leases:lease_list' %}">Leases</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'expenses:expense_list' %}">Expenses</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'utilities:utility_list' %}">Utilities</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'core:settings' %}">Settings</a></li>
+      </ul>
+      <div class="d-flex gap-2">
+        <a href="{% url 'leases:lease_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Add Lease
+        </a>
+        <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Add Payment
+        </a>
+        
+    </div>
+
+      <ul class="navbar-nav">
+        {% if user.is_authenticated %}
+          <li class="nav-item"><a class="nav-link text-light" href="{% url 'logout' %}">Logout</a></li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link text-light" href="{% url 'login' %}">Login</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<style>
+  /* Tighten navbar on very small screens */
+  @media (max-width: 575.98px){
+    .navbar { padding-top:.25rem; padding-bottom:.25rem; }
+    .navbar .nav-link { padding:.35rem .5rem; }
+  }
+</style>

@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load humanize %}
+
+{% block title %}Lease Ledger - {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h2>
+            Ledger for {{ tenant.get_full_name }} - 
+            {{ lease.unit.property.property_name }} - 
+            {{ lease.unit.unit_number }}
+        </h2>
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary mx-1" onclick="history.back()">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </button>
+            <a href="{% url 'payments:payment_create' %}?lease_id={{ lease.id }}" 
+               class="btn btn-success mx-1">
+                <i class="fas fa-money-bill-wave me-1"></i> Record Payment
+            </a>
+            <button class="btn btn-secondary dropdown-toggle mx-1" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-download me-1"></i> Export
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item export-link" data-format="csv" href="#">CSV</a></li>
+                <li><a class="dropdown-item export-link" data-format="xlsx" href="#">Excel</a></li>
+                <li><a class="dropdown-item export-link" data-format="pdf" href="#">PDF</a></li>
+            </ul>
+            <button onclick="window.print()" class="btn btn-primary mx-1">
+                <i class="fas fa-print me-1"></i> Print
+            </button>
+            <button onclick="sendWhatsAppLedger()" class="btn mx-1" style="background-color: #25D366; color: white;">
+                <i class="fab fa-whatsapp me-1"></i> WhatsApp
+            </button>
+            <button onclick="sendEmailLedger()" class="btn btn-info mx-1">
+                <i class="fas fa-envelope me-1"></i> Email
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <form method="get" id="ledger-filter-form" class="mb-3">
+            <div class="row g-2 align-items-center">  <!-- Changed to align-items-center -->
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center">
+                        <select name="tenant" id="id_tenant" class="form-select me-2" style="width: 70%">
+                            <option value="">Select Tenant</option>
+                            {% for t in tenant_list %}
+                                <option value="{{ t.id }}" {% if t.id == current_tenant %}selected{% endif %}>
+                                    {{ t.get_full_name }} - {{ t.property_unit|default:"" }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="include_inactive" id="include_inactive" {% if include_inactive %}checked{% endif %}>
+                            <label class="form-check-label" for="include_inactive">
+                                Include Inactive
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label for="id_date_range" class="form-label">Date Range</label>
+                    <select name="date_range" id="id_date_range" class="form-select">
+                        <option value="">All Dates</option>
+                        <option value="today" {% if current_date_range == 'today' %}selected{% endif %}>Today</option>
+                        <option value="this_week" {% if current_date_range == 'this_week' %}selected{% endif %}>This Week</option>
+                        <option value="last_week" {% if current_date_range == 'last_week' %}selected{% endif %}>Last Week</option>
+                        <option value="this_month" {% if current_date_range == 'this_month' %}selected{% endif %}>This Month</option>
+                        <option value="last_month" {% if current_date_range == 'last_month' %}selected{% endif %}>Last Month</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="id_start_date" class="form-label">From Date</label>
+                    <input type="date" name="start_date" id="id_start_date" class="form-control" 
+                           value="{{ current_start_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label for="id_end_date" class="form-label">To Date</label>
+                    <input type="date" name="end_date" id="id_end_date" class="form-control" 
+                           value="{{ current_end_date }}">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100">Apply</button>
+                </div>
+            </div>
+        </form>
+
+        {% if table %}
+        <div class="table-responsive">
+            {% render_table table %}
+        </div>
+        {% else %}
+        <div class="alert alert-warning">
+            No transactions found for this lease.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    // Initialize Select2 for tenant dropdown
+    $('#id_tenant').select2({
+        placeholder: "Select Tenant",
+        width: '100%'
+    });
+
+    // Auto-submit when filters change
+    $('#id_tenant, #include_inactive').change(function() {
+        $('#id_date_range').val('');
+        $('#id_start_date').val('');
+        $('#id_end_date').val('');
+        $('#ledger-filter-form').submit();
+    });
+
+    $('#id_date_range, #id_start_date, #id_end_date').change(function() {
+        $('#ledger-filter-form').submit();
+    });
+
+    // Handle export links
+    $('.export-link').click(function(e) {
+        e.preventDefault();
+        const format = $(this).data('format');
+        let url = window.location.pathname + '?_export=' + format;
+        if (window.location.search) {
+            url = window.location.pathname + window.location.search + '&_export=' + format;
+        }
+        window.location.href = url;
+    });
+});
+
+function sendWhatsAppLedger() {
+    // ... keep your existing WhatsApp function ...
+}
+
+function sendEmailLedger() {
+    // ... keep your existing email function ...
+}
+</script>
+
+<style>
+    .btn-group .btn {
+        border-radius: 4px !important; /* Remove pill shape */
+        margin: 0 4px; /* Space between buttons */
+    }
+    .form-check-inline {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 10px;
+    }
+</style>
+{% endblock %}

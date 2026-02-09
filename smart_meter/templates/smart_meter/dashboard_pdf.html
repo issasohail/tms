@@ -1,0 +1,232 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+<style>
+  @page {
+    size: portrait;
+    margin: 5mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); }
+  }
+
+  /* Base + print */
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 9px; }
+  h2, h3 { margin: 0 0 8px 0; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { border: 1px solid #ddd; padding: 4px 6px; }   /* 12px total horizontal padding */
+  th { background: #f5f5f5; }
+  .right { text-align: right; }
+  @media print {
+    html, body { height: auto; }
+    table, tr, td, th { page-break-inside: avoid; }
+  }
+
+  /* ✅ close this brace properly */
+  .truncate-1 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  :root{
+    --tbl-font: 10px;
+    --tbl-line-height: 1.2;
+
+    /* Width knobs */
+    --col-sn:         15px;
+    --col-meter:      70px;
+    --col-unit:       70px;
+    --col-property:   70px;
+    --col-tenant:     80px;  /* only for monthly */
+    --col-whatsapp:    5px;
+    --col-period:     45px;
+    --col-begin:      20px;
+    --col-end:        20px;
+    --col-usage:      25px;
+    --col-rate:       15px;
+    --col-usage-amt:  35px;
+    --col-service:    30px;  /* only for monthly */
+    --col-total:      40px;  /* only for monthly */
+  }
+
+  th, td {
+    font-size: var(--tbl-font);
+    line-height: var(--tbl-line-height);
+    /* allow wrapping by default to help fit portrait, but we’ll override for numbers/tenant wrapper */
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 2-line headers */
+  th > span { display:block; }
+  th > span + span { margin-top: 2px; font-weight: normal; color:#666; }
+
+  /* Fixed widths via classes */
+  .col-sn        { width: var(--col-sn);        max-width: var(--col-sn); }
+  .col-meter     { width: var(--col-meter);     max-width: var(--col-meter); }
+  .col-unit      { width: var(--col-unit);      max-width: var(--col-unit); }
+  .col-property  { width: var(--col-property);  max-width: var(--col-property); }
+  .col-tenant    { width: var(--col-tenant);    max-width: var(--col-tenant); }
+  .col-whatsapp  { width: var(--col-whatsapp);  max-width: var(--col-whatsapp); }
+  .col-period    { width: var(--col-period);    max-width: var(--col-period); }
+  .col-begin     { width: var(--col-begin);     max-width: var(--col-begin); text-align:right; white-space:nowrap; }
+  .col-end       { width: var(--col-end);       max-width: var(--col-end);   text-align:right; white-space:nowrap; }
+  .col-usage     { width: var(--col-usage);     max-width: var(--col-usage); text-align:right; white-space:nowrap; }
+  .col-rate      { width: var(--col-rate);      max-width: var(--col-rate);  text-align:right; white-space:nowrap; }
+  .col-usage-amt { width: var(--col-usage-amt); max-width: var(--col-usage-amt); text-align:right; white-space:nowrap; }
+  .col-service   { width: var(--col-service);   max-width: var(--col-service); text-align:right; white-space:nowrap; }
+  .col-total     { width: var(--col-total);     max-width: var(--col-total); text-align:right; white-space:nowrap; }
+
+  /* ✅ correct selector (with dot) + width from the cell box */
+  .clip-1 {
+    display: block;
+    max-width: 100%;       /* respect the fixed column width */
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Totals row styling */
+  tfoot th {
+    background: #fafafa;
+    font-weight: 600;
+    border-top: 2px solid #bbb;
+  }
+</style>
+
+</head>
+<body>
+  {% if property_name and not current_meter %}
+    <h2>Energy Report for {{ property_name }} from {{ start_date|date:'b d, Y' }} to {{ end_date|date:'b d, Y' }}</h2>
+  {% else %}
+    <h2>Report from {{ start_date|date:'b d, Y' }} to {{ end_date|date:'b d, Y' }}</h2>
+  {% endif %}
+
+  {% if report_type == 'monthly' and month_heading %}
+    <h3>{{ month_heading }}</h3>
+  {% endif %}
+
+  <p><strong>Total kWh:</strong> {{ totals_disp.total_kwh }} &nbsp;&nbsp;
+     <strong>Usage Charges:</strong> {{ currency }} {{ totals_disp.usage_charges }}
+     {% if report_type == 'monthly' %}
+       &nbsp;&nbsp;<strong>Service Charges:</strong> {{ currency }} {{ totals_disp.service_charges }}
+       &nbsp;&nbsp;<strong>Total:</strong> {{ currency }} {{ totals_disp.grand_total }}
+     {% endif %}
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-sn"><span>S/N</span></th>
+        <th class="col-meter"><span>Meter #</span><span> </span></th>
+        <th class="col-unit"><span>Unit</span><span> </span></th>
+        <th class="col-property"><span>Property</span><span> </span></th>
+        {% if report_type == 'monthly' %}
+          <th class="col-tenant"><span>Tenant</span><span> </span></th>
+        {% endif %}
+        <th class="col-whatsapp"><span>WhatsApp</span><span> </span></th>
+        <th class="col-period"><span>Period</span><span> </span></th>
+        <th class="col-begin"><span>Begin</span><span>(kWh)</span></th>
+        <th class="col-end"><span>End</span><span>(kWh)</span></th>
+        <th class="col-usage"><span>Usage</span><span>(kWh)</span></th>
+        <th class="col-rate"><span>Rate</span><span>({{ currency }}/kWh)</span></th>
+        <th class="col-usage-amt"><span>Usage</span><span>({{ currency }})</span></th>
+        {% if report_type == 'monthly' %}
+          <th class="col-service"><span>Service</span><span> ({{ currency }})</span></th>
+          <th class="col-total"><span>Total</span><span>({{ currency }})</span></th>
+        {% endif %}
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for r in rows_disp %}
+        <tr>
+          <td class="col-sn">{{ forloop.counter }}</td>
+
+          <td class="col-meter">
+            <div>{{ r.meter_number }}</div>
+            <small class="text-muted"></small>
+          </td>
+
+          <td class="col-unit">
+            <div>{{ r.unit_number }}</div>
+            
+          </td>
+
+          <td class="col-property">{{ r.property_name }}</td>
+
+          {% if report_type == 'monthly' %}
+             <td class="col-tenant">
+              <span class="clip-1">{{ r.tenant_name }}</span>
+            </td>
+          {% endif %}
+
+          <td class="col-whatsapp">{{ r.whatsapp }}</td>
+          <td class="col-period">{{ r.period_label }}</td>
+
+          <td class="col-begin right">{{ r.start_kwh }}</td>
+          <td class="col-end right">{{ r.end_kwh }}</td>
+          <td class="col-usage right">{{ r.usage }}</td>
+          <td class="col-rate right">{{ r.unit_rate }}</td>
+          <td class="col-usage-amt right">{{ r.usage_amount }}</td>
+
+          {% if report_type == 'monthly' %}
+            <td class="col-service right">{{ r.service_charges }}</td>
+            <td class="col-total right">{{ r.total_amount }}</td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+
+      <tfoot>
+        {% if report_type == 'monthly' %}
+          <!-- MONTHLY (has Tenant + Service + Total columns) -->
+          <tr>
+            <!-- Span all leading non-numeric columns: S/N, Meter, Unit, Property, Tenant, WhatsApp, Period = 7 -->
+            <th class="right" colspan="7">Totals</th>
+
+            <!-- Begin / End have no totals -->
+            <th class="col-begin right"></th>
+            <th class="col-end right"></th>
+
+            <!-- Usage (kWh) total -->
+            <th class="col-usage right">{{ totals_disp.total_kwh }}</th>
+
+            <!-- Rate has no total -->
+            <th class="col-rate right"></th>
+
+            <!-- Usage Charges total -->
+            <th class="col-usage-amt right">{{ totals_disp.usage_charges }}</th>
+
+            <!-- Service Charges total -->
+            <th class="col-service right">{{ totals_disp.service_charges }}</th>
+
+            <!-- Grand Total -->
+            <th class="col-total right">{{ totals_disp.grand_total }}</th>
+          </tr>
+        {% else %}
+          <!-- HOURLY/DAILY (no Tenant, no Service/Grand Total columns) -->
+          <tr>
+            <!-- Span non-numeric columns: S/N, Meter, Unit, Property, WhatsApp, Period = 6 -->
+            <th class="right" colspan="6">Totals</th>
+
+            <!-- Begin / End have no totals -->
+            <th class="col-begin right"></th>
+            <th class="col-end right"></th>
+
+            <!-- Usage (kWh) total -->
+            <th class="col-usage right">{{ totals_disp.total_kwh }}</th>
+
+            <!-- Rate has no total -->
+            <th class="col-rate right"></th>
+
+            <!-- Usage Charges total -->
+            <th class="col-usage-amt right">{{ totals_disp.usage_charges }}</th>
+          </tr>
+        {% endif %}
+      </tfoot>
+
+  </table>
+</body>
+</html>

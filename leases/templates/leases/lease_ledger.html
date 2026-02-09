@@ -1,0 +1,710 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+
+{# ===================== FILTER TOOLBAR ===================== #}
+<form id="lease-filter-form" method="get" class="mb-2">
+  <div class="toolbar toolbar-grid">
+
+    {# Row 1 (mobile): Property • Unit #}
+    <div class="filters-row d-flex align-items-center gap-2 flex-nowrap">
+      <div class="filter-item filter-property">
+        <label for="id_property" class="form-label mb-0">Property</label>
+        <select name="property" id="id_property" class="form-select form-select-sm">
+          <option value="">All</option>
+          {% for p in all_properties %}
+          <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>
+            {{ p.property_name }}
+          </option>
+          {% endfor %}
+
+        </select>
+      </div>
+
+      <div class="filter-item filter-unit">
+        <label for="id_unit" class="form-label mb-0">Unit</label>
+        <select name="unit" id="id_unit" class="form-select form-select-sm">
+          <option value="">All</option>
+          {% for u in all_units %}
+          <option value="{{ u.id }}" {% if current_unit == u.id|stringformat:"s" %}selected{% endif %}>
+            {{ u.unit_number }}
+          </option>
+
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {# Row 2 (mobile): Lease (Select2) + Show inactive #}
+    <div class="lease-row d-flex align-items-center gap-2 flex-nowrap">
+      <div class="filter-item filter-lease">
+        <div class="d-flex align-items-center gap-2">
+          <label for="id_lease" class="form-label mb-0">Lease</label>
+          <div class="form-check form-check-inline mt-1">
+            <input class="form-check-input" type="checkbox" id="show_inactive" name="show_inactive" 
+            {% if show_inactive %} checked {% endif %}>
+            <label class="form-check-label" for="show_inactive">Show inactive</label>
+          </div>
+        </div>
+        <select name="lease_id" id="id_lease" class="form-select form-select-sm mt-1">
+          <option value="">Select a lease</option>
+          {% for l in lease_choices %}
+          <option value="{{ l.id }}" {% if current_lease == l.id|stringformat:"s" %}selected{% endif %}>
+            {{ l.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {# Row 3 (mobile): Buttons #}
+    <div class="btn-row d-flex align-items-center gap-2 ms-auto">
+      <button class="btn btn-secondary btn-slim" type="button" onclick="history.back()">
+        <i class="fas fa-arrow-left me-1"></i> Back
+      </button>
+      {% if lease %}
+      <a href="{% url 'leases:lease_ledger_pdf' lease.id %}" class="btn btn-primary btn-slim" target="_blank">
+        <i class="fas fa-file-pdf"></i> PDF
+      </a>
+      <a href="{% url 'leases:export_ledger_excel' lease.id %}" class="btn btn-success btn-slim">
+        <i class="fas fa-file-excel"></i> Excel
+      </a>
+      <a href="{% url 'leases:send_ledger_email' lease.id %}" class="btn btn-info btn-slim">
+        <i class="fas fa-envelope"></i> Email
+      </a>
+      {% endif %}
+    </div>
+
+  </div>
+</form>
+
+{# Row 4 (mobile): Heading with period on next line #}
+{% if lease %}
+<div class="mobile-heading">
+  <h6 class="mb-0">Lease Ledger for {{ lease.tenant.get_full_name|truncatechars:15 }}</h6>
+  <div class="xsmall text-muted">
+    {{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}
+    <br class="d-360-break"><span class="heading-period">
+      <span class="text-muted">Period:</span>
+      <strong>{{ lease.start_date|date:"M d, Y" }} – {{ lease.end_date|date:"M d, Y" }}</strong>
+    </span>
+  </div>
+</div>
+{% endif %}
+
+{# Hints when nothing selected #}
+{% if current_property and not current_unit and not current_lease %}
+<div class="alert alert-info py-1 px-2 my-2 small">
+  Please select a <strong>Unit</strong> or choose a <strong>Lease</strong>.
+</div>
+{% elif current_unit and not current_lease %}
+<div class="alert alert-info py-1 px-2 my-2 small">
+  Please select a <strong>Lease</strong> for the chosen unit.
+</div>
+{% endif %}
+
+{# ===================== SUMMARY (Toggle on Mobile) ===================== #}
+{% if lease %}
+<div class="summary-toggle-row mb-2 d-360">
+  <span id="toggleSummaryBtn" class="badge text-bg-secondary cursor-pointer">
+    Display Lease Summary
+  </span>
+</div>
+
+<div id="leaseSummary" class="card mb-3 d-none-mobile">
+  <div class="card-body py-2 px-3">
+    <div class="summary-line">
+      <div class="summary-item">
+        <span class="muted">Period:</span>
+        <strong>{{ lease.start_date|date:"M d, Y" }} – {{ lease.end_date|date:"M d, Y" }}</strong>
+      </div>
+      <div class="divider">•</div>
+
+      <div class="summary-item">
+        <span class="muted">Status:</span>
+        <strong>{{ lease.get_status_display }}</strong>
+      </div>
+      <div class="divider">•</div>
+
+      <div class="summary-item">
+        <span class="muted">Rent:</span>
+        <strong>Rs. {{ lease.monthly_rent|intcomma }}</strong>
+      </div>
+      <div class="divider">•</div>
+
+      <div class="summary-item">
+        <span class="muted">Society Maint.:</span>
+        <strong>Rs. {{ lease.society_maintenance|intcomma|default:"0" }}</strong>
+      </div>
+      <div class="divider">•</div>
+
+      <div class="summary-item">
+        <span class="muted">Increase:</span>
+        <strong>{{ lease.rent_increase_percent|default:"0" }}%</strong>
+      </div>
+      <div class="divider">•</div>
+
+      <div class="summary-item">
+        <span class="muted">New Rent:</span>
+        <strong>Rs. {{ lease.new_rent_after_increase|intcomma:"2"|default:"N/A" }}</strong>
+      </div>
+      <div class="divider">•</div>
+
+      <div class="summary-item">
+        <span class="muted">Deposit:</span>
+        <strong>Rs. {{ lease.security_deposit|intcomma }}</strong>
+        {% if lease.security_deposit_paid %}
+        <span class="badge badge-compact bg-success-subtle text-success border border-success-subtle ms-1">Paid</span>
+        {% else %}
+        <span class="badge badge-compact bg-danger-subtle text-danger border border-danger-subtle ms-1">Not Paid</span>
+        {% endif %}
+        {% if lease.security_deposit_return_amount %}
+        <span class="muted mx-2">Return:</span>
+        <strong>{{ lease.security_deposit_return_date|date:"M d, Y"|default:"N/A" }}</strong>
+        <span class="muted mx-1">•</span>
+        <strong>Rs. {{ lease.security_deposit_return_amount|intcomma }}</strong>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+<h4>Security Deposit Summary</h4>
+<table class="table table-sm table-bordered w-auto ms-auto">
+  <tr>
+    <th>Required</th>
+    <td>{{ security_required|intcomma }}</td>
+  </tr>
+  <tr>
+    <th>Paid In</th>
+    <td>{{ security_paid_in|intcomma }}</td>
+  </tr>
+  <tr>
+    <th>Refunded</th>
+    <td>{{ security_refunded|intcomma }}</td>
+  </tr>
+  <tr>
+    <th>Used for Damages</th>
+    <td>{{ security_damages|intcomma }}</td>
+  </tr>
+  <tr class="table-warning">
+    <th>Balance to Collect</th>
+    <td>{{ security_balance_to_collect|intcomma }}</td>
+  </tr>
+  <tr class="table-success">
+    <th>Currently Held</th>
+    <td>{{ security_currently_held|intcomma }}</td>
+  </tr>
+</table>
+
+<h5>Security Deposit Ledger</h5>
+{% if deposit_transactions %}
+<table class="table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Type</th>
+      <th>Description</th>
+      <th class="text-end">Amount</th>
+      <th class="text-end">Deposit Balance</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in deposit_transactions %}
+    <tr>
+      <td>{{ t.date|date:"M d, Y" }}</td>
+      <td>{{ t.type }}</td>
+      <td>{{ t.description }}</td>
+      <td class="text-end">{{ t.amount|intcomma }}</td>
+      <td class="text-end">{{ t.balance|intcomma }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No security deposit transactions yet.</p>
+{% endif %}
+
+{# ===================== TRANSACTIONS ===================== #}
+{% if lease %}
+
+{# Pagination controls (top) #}
+<div class="d-flex justify-content-between align-items-center my-2">
+  <div class="xsmall text-muted">Page {{ page }} of {{ total_pages }}</div>
+  <div class="d-flex gap-2">
+    {% if has_prev %}
+    <a class="btn btn-secondary btn-slim"
+      href="?property={{ current_property }}&unit={{ current_unit }}&lease_id={{ current_lease }}&show_inactive={% if show_inactive %}on{% endif %}&page={{ page|add:'-1' }}">Prev</a>
+    {% else %}
+    <button class="btn btn-secondary btn-slim" disabled>Prev</button>
+    {% endif %}
+    {% if has_next %}
+    <a class="btn btn-secondary btn-slim"
+      href="?property={{ current_property }}&unit={{ current_unit }}&lease_id={{ current_lease }}&show_inactive={% if show_inactive %}on{% endif %}&page={{ page|add:'1' }}">Next</a>
+    {% else %}
+    <button class="btn btn-secondary btn-slim" disabled>Next</button>
+    {% endif %}
+  </div>
+</div>
+
+{# Mobile: single compact table (≤360px) — Description column hidden #}
+<div class="d-lg-none">
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped table-sm text-center align-middle compact-table mobile-tiny mobile-nowrap">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date</th>
+              <th>Type</th>
+              <th class="desc-col">Description</th>
+              <th>Amount</th>
+              <th>Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in transactions %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ t.date|date:"M d, Y" }}</td>
+              <td>{{ t.type }}</td>
+              <td class="desc-col">{{ t.description }}</td>
+              <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                <a href="{{ t.url }}"
+                  class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                  {{ t.amount|intcomma }}
+                </a>
+              </td>
+              <td>{{ t.balance|intcomma }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Desktop: two side-by-side tables (≥1200px) #}
+<div class="d-none d-lg-block">
+  <div class="row g-3">
+    <div class="col-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped table-sm text-center align-middle compact-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in tx_col1 %}
+                <tr>
+                  <td>{{ forloop.counter }}</td>
+                  <td>{{ t.date|date:"M d, Y" }}</td>
+                  <td>{{ t.type }}</td>
+                  <td>{{ t.description }}</td>
+                  <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                    <a href="{{ t.url }}"
+                      class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                      {{ t.amount|intcomma }}
+                    </a>
+                  </td>
+                  <td>{{ t.balance|intcomma }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped table-sm text-center align-middle compact-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in tx_col2 %}
+                <tr>
+                  <td>{{ forloop.counter|add:"20" }}</td>
+                  <td>{{ t.date|date:"M d, Y" }}</td>
+                  <td>{{ t.type }}</td>
+                  <td>{{ t.description }}</td>
+                  <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                    <a href="{{ t.url }}"
+                      class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                      {{ t.amount|intcomma }}
+                    </a>
+                  </td>
+                  <td>{{ t.balance|intcomma }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block extra_css %}
+{# ===== Select2 CSS ===== #}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+
+<style>
+  /* ================== GLOBAL KNOBS ================== */
+  :root {
+    /* font sizes desktop defaults */
+    --fs-app-base: .95rem;
+    --fs-toolbar-label: .8rem;
+    --fs-prop-label: .8rem;
+    --fs-unit-label: .8rem;
+    --fs-lease-label: .8rem;
+    --fs-prop-value: .9rem;
+    --fs-unit-value: .9rem;
+    --fs-lease-value: .9rem;
+
+    /* widths desktop */
+    --w-prop: 220px;
+    --w-unit: 220px;
+    --w-lease: 300px;
+
+    /* table + select2 */
+    --table-fs: .85rem;
+    --badge-fs: .72rem;
+    --select2-fs: .85rem;
+    --select2-h: 30px;
+
+    /* summary (desktop) */
+    --summary-fs: .85rem;
+    --summary-gap: .6rem;
+  }
+
+  body {
+    font-size: var(--fs-app-base);
+  }
+
+  /* Toolbar structure */
+  .toolbar-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-row-gap: .35rem;
+  }
+
+  .filters-row {
+    order: 1;
+  }
+
+  .lease-row {
+    order: 2;
+  }
+
+  .btn-row {
+    order: 3;
+  }
+
+  .mobile-heading {
+    order: 4;
+    margin-bottom: .25rem;
+  }
+
+  /* Filters row scrolling + snap */
+  .filters-row,
+  .lease-row {
+    display: flex;
+    gap: .35rem;
+    white-space: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+  }
+
+  .filter-item {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  .filter-item .form-label {
+    font-size: var(--fs-toolbar-label);
+    margin-bottom: 0;
+  }
+
+  /* Per-filter sizes */
+  .filter-property {
+    width: var(--w-prop);
+  }
+
+  .filter-unit {
+    width: var(--w-unit);
+  }
+
+  .filter-lease {
+    width: var(--w-lease);
+  }
+
+  .filter-property select {
+    font-size: var(--fs-prop-value);
+  }
+
+  .filter-unit select {
+    font-size: var(--fs-unit-value);
+  }
+
+  .filter-lease select {
+    font-size: var(--fs-lease-value);
+  }
+
+  /* Buttons */
+  .btn-slim {
+    padding: .2rem .5rem;
+    line-height: 1.1;
+    font-size: .85rem;
+  }
+
+  /* Summary (desktop one-line, mobile compact via media query) */
+  .summary-line {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--summary-gap);
+    font-size: var(--summary-fs);
+    white-space: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .summary-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .divider {
+    color: #adb5bd;
+  }
+
+  .muted {
+    color: #6c757d;
+  }
+
+  .badge-compact {
+    font-size: var(--badge-fs);
+    font-weight: 600;
+    padding: .15rem .35rem;
+    line-height: 1;
+  }
+
+  .cursor-pointer {
+    cursor: pointer;
+  }
+
+  /* Tables */
+  .compact-table th,
+  .compact-table td {
+    padding: .3rem .5rem !important;
+    font-size: var(--table-fs);
+  }
+
+  .compact-table td a {
+    text-decoration: none;
+  }
+
+  .mobile-nowrap td,
+  .mobile-nowrap th {
+    white-space: nowrap;
+  }
+
+  /* Select2 compact styling */
+  .select2-container--default .select2-selection--single {
+    height: var(--select2-h);
+    min-height: var(--select2-h);
+    padding: 0 .25rem;
+    font-size: var(--select2-fs);
+    border: 1px solid #dee2e6;
+  }
+
+  .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: calc(var(--select2-h) - 2px);
+    padding-left: .25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: var(--select2-h);
+    right: .25rem;
+  }
+
+  .select2-dropdown {
+    font-size: var(--select2-fs);
+  }
+
+  .filter-lease .select2-container {
+    width: var(--w-lease) !important;
+  }
+
+  /* ===== Mobile ≤ 360px ===== */
+  @media (max-width: 360px) {
+    :root {
+      --fs-app-base: .88rem;
+      --fs-toolbar-label: .72rem;
+      --fs-prop-label: .72rem;
+      --fs-unit-label: .72rem;
+      --fs-lease-label: .72rem;
+      --fs-prop-value: .78rem;
+      --fs-unit-value: .78rem;
+      --fs-lease-value: .78rem;
+      --w-prop: 160px;
+      --w-unit: 160px;
+      --w-lease: 220px;
+      --select2-fs: .82rem;
+      --select2-h: 28px;
+      --summary-fs: .8rem;
+      --summary-gap: .5rem;
+    }
+
+    /* Hide description column in mobile */
+    .mobile-tiny th.desc-col,
+    .mobile-tiny td.desc-col {
+      display: none !important;
+    }
+
+    /* Tiny font */
+    .mobile-tiny th,
+    .mobile-tiny td {
+      font-size: .58rem !important;
+    }
+
+    /* Show period on next line in heading */
+    .d-360-break {
+      display: inline;
+    }
+
+    .heading-period {
+      display: inline-block;
+      margin-top: .1rem;
+    }
+  }
+
+  /* ===== Desktop ≥ 1200px ===== */
+  @media (min-width: 1200px) {
+    :root {
+      --fs-app-base: 1rem;
+      --table-fs: .9rem;
+      --fs-prop-label: .85rem;
+      --fs-unit-label: .85rem;
+      --fs-lease-label: .85rem;
+      --fs-prop-value: .95rem;
+      --fs-unit-value: .95rem;
+      --fs-lease-value: .95rem;
+      --w-prop: 260px;
+      --w-unit: 260px;
+      --w-lease: 320px;
+    }
+
+    .toolbar-grid {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    #leaseSummary.d-none-mobile {
+      display: block;
+    }
+
+    /* summary always visible on desktop */
+    .d-360-break {
+      display: none;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+{# ===== jQuery + Select2 ===== #}
+<script>
+  (function ensureLibs(cb) {
+    function load(src, onload) { var s = document.createElement('script'); s.src = src; s.onload = onload; document.head.appendChild(s); }
+    if (!window.jQuery) { load('https://code.jquery.com/jquery-3.6.0.min.js', function () { load('https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', cb); }); }
+    else if (!jQuery.fn.select2) { load('https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', cb); }
+    else { cb(); }
+  })(function () {
+    jQuery(function ($) {
+      const $form = $('#lease-filter-form');
+      const $property = $('#id_property');
+      const $unit = $('#id_unit');
+      const $lease = $('#id_lease');
+      const $showInactive = $('#show_inactive');
+
+      // Initialize Select2 on Lease select (use CSS width)
+      $lease.select2({
+        width: 'style',
+        dropdownAutoWidth: true,
+        placeholder: 'Select a lease',
+        allowClear: true,
+        minimumResultsForSearch: 0
+      });
+
+      // Focus the Select2 search on open
+      $lease.on('select2:open', function () {
+        setTimeout(function () {
+          const sf = document.querySelector('.select2-container .select2-search__field');
+          if (sf) { sf.focus(); sf.select(); }
+        }, 0);
+      });
+
+      // Submit on filter changes
+      $property.on('change', function () { $form.submit(); });
+      $unit.on('change', function () { $form.submit(); });
+      $showInactive.on('change', function () { $form.submit(); });
+      $lease.on('change', function () { $form.submit(); });
+
+      // Mobile Summary Toggle
+      const btn = document.getElementById('toggleSummaryBtn');
+      const summary = document.getElementById('leaseSummary');
+      if (btn && summary) {
+        let visible = false;
+        const update = () => {
+          if (window.matchMedia('(max-width: 360px)').matches) {
+            summary.style.display = visible ? 'block' : 'none';
+            btn.textContent = visible ? 'Hide Lease Summary' : 'Display Lease Summary';
+          } else {
+            summary.style.display = 'block';
+            btn.textContent = 'Display Lease Summary';
+          }
+        };
+        btn.addEventListener('click', function (e) { e.preventDefault(); visible = !visible; update(); });
+        update();
+        window.addEventListener('resize', update);
+      }
+    });
+  });
+</script>
+{% endblock %}

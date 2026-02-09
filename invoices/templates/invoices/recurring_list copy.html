@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center">
+  <h4>Recurring Charges</h4>
+  <div>
+    <button class="btn btn-sm btn-secondary" onclick="history.back()">Go Back</button>
+    <a href="{% url 'invoices:recurring_add' %}" class="btn btn-primary btn-sm">Add Rule</a>
+    <a href="{% url 'invoices:recurring_wizard' %}" class="btn btn-primary btn-sm">Recurring Wizard</a>
+    <!-- Run billing for next month -->
+    <a href="{% url 'invoices:run_billing' %}" class="btn btn-success btn-sm">Run Next Month</a>
+  </div>
+</div>
+
+<table class="table table-sm mt-3">
+  <thead>
+    <tr class="table-light">
+      <th>S.No#</th>
+      <th>Target</th>
+      <th>Category</th>
+      <th>Description</th>
+      <th class="text-end">Amount (Rs.)</th>
+      <th>Start</th>
+      <th>End</th>
+      <th>Day</th>
+      <th>Active</th>
+      <th>Next Run</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ forloop.counter }}</td>
+      <td>
+        {% if row.rc.lease %}
+          {{ row.rc.lease.tenant.first_name }} {{ row.rc.lease.tenant.last_name }} — {{ row.rc.lease.unit.unit_number }}
+        {% elif row.rc.property %}
+          Property: {{ row.rc.property.property_name }}
+        {% else %}
+          All active leases
+        {% endif %}
+      </td>
+      <td>{{ row.rc.category.name }}</td>
+      <td>{{ row.rc.description|default:"—" }}</td>
+      <td class="text-end">Rs. {{ row.rc.amount|floatformat:2|intcomma }}</td>
+      <td>{{ row.rc.start_date }}</td>
+      <td>{{ row.rc.end_date|default:"—" }}</td>
+      <td>{{ row.rc.day_of_month }}</td>
+      <td>{{ row.rc.active|yesno:"Yes,No" }}</td>
+      <td>{{ row.next_run|default:"—" }}</td>
+      <td class="text-nowrap">
+        <a href="{% url 'invoices:recurring_edit' row.rc.id %}" class="btn btn-sm btn-primary">Edit</a>
+        {% if row.rc.id %}
+        <a href="{% url 'invoices:recurring_delete' row.rc.id %}" class="btn btn-sm btn-danger">Delete</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="10" class="text-center text-muted">No recurring rules yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

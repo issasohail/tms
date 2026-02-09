@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+
+<div class="container" style="max-width:900px">
+  <h3 class="mb-3"><i class="fas fa-sliders-h me-2"></i>System Settings</h3>
+
+  <form method="post" enctype="multipart/form-data" class="card">
+    <div class="card-body">
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="global_settings">
+      {{ form|crispy }}
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:dashboard' %}">Cancel</a>
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<hr class="my-4">
+
+<div class="container" style="max-width:900px">
+  <h4 class="mb-3"><i class="fas fa-money-bill-wave me-2"></i>Payment Methods</h4>
+
+  <button class="btn btn-sm btn-primary mb-2" id="btn-add-method">
+    + Add Payment Method
+  </button>
+
+  <table class="table table-sm table-bordered align-middle">
+    <thead class="table-light">
+      <tr>
+        <th style="width:40%">Name</th>
+        <th style="width:25%">Code</th>
+        <th style="width:15%">Active</th>
+        <th style="width:20%">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="pm-table-body">
+      {% for pm in payment_methods %}
+      <tr data-id="{{ pm.id }}">
+        <td class="pm-name">{{ pm.name }}</td>
+        <td class="pm-code">{{ pm.code }}</td>
+        <td class="pm-active">
+          {% if pm.is_active %}
+            <span class="badge bg-success">Active</span>
+          {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+          {% endif %}
+        </td>
+        <td>
+          <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary btn-edit"
+              data-id="{{ pm.id }}"
+              data-url="{% url 'core:payment_method_get' pm.id %}">
+            Edit
+          </button>
+          {% if pm.is_active %}
+          <button
+              type="button"
+              class="btn btn-sm btn-outline-danger btn-toggle"
+              data-id="{{ pm.id }}"
+              data-url="{% url 'core:payment_method_toggle' pm.id %}">
+            Deactivate
+          </button>
+          {% else %}
+          <button
+              type="button"
+              class="btn btn-sm btn-outline-success btn-toggle"
+              data-id="{{ pm.id }}"
+              data-url="{% url 'core:payment_method_toggle' pm.id %}">
+            Activate
+          </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-center py-3 text-muted">No payment methods added.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ADD / EDIT MODAL -->
+<div class="modal fade" id="pmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="pm-form">
+        {% csrf_token %}
+        <input type="hidden" id="pm-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pmModalTitle">Add Payment Method</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="pm-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="pm-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="pm-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="pm-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// CSRF helper
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const csrftoken = getCookie("csrftoken");
+  const modalEl = document.getElementById("pmModal");
+  const modal = new bootstrap.Modal(modalEl);
+
+  const pmForm = document.getElementById("pm-form");
+  const btnAdd = document.getElementById("btn-add-method");
+
+  // Open empty modal for Add
+  btnAdd.addEventListener("click", function () {
+    document.getElementById("pmModalTitle").innerText = "Add Payment Method";
+    document.getElementById("pm-id").value = "";
+    document.getElementById("pm-name").value = "";
+    document.getElementById("pm-code").value = "";
+    document.getElementById("pm-sort").value = "50";
+    document.getElementById("pm-active").value = "1";
+    modal.show();
+  });
+
+  // Edit buttons
+  document.querySelectorAll(".btn-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const url = this.dataset.url;
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("pmModalTitle").innerText = "Edit Payment Method";
+          document.getElementById("pm-id").value = data.id;
+          document.getElementById("pm-name").value = data.name;
+          document.getElementById("pm-code").value = data.code || "";
+          document.getElementById("pm-sort").value = data.sort_order || 50;
+          document.getElementById("pm-active").value = data.is_active ? "1" : "0";
+          modal.show();
+        });
+    });
+  });
+
+  // Toggle active/inactive
+  document.querySelectorAll(".btn-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const url = this.dataset.url;
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrftoken,
+        },
+      })
+      .then(r => r.json())
+      .then(_ => {
+        // Simple solution: reload to refresh list
+        window.location.reload();
+      })
+      .catch(err => {
+        alert("Error toggling payment method: " + err.message);
+      });
+    });
+  });
+
+  // Save form via AJAX
+  pmForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(pmForm);
+    fetch("{% url 'core:payment_method_save' %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": csrftoken,
+      },
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) {
+        return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      }
+      return r.json();
+    })
+    .then(_ => {
+      modal.hide();
+      window.location.reload();  // simplest way to refresh table
+    })
+    .catch(err => {
+      alert("Could not save payment method: " + err.message);
+    });
+  });
+});
+</script>
+
+{% endblock %}

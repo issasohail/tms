@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+
+{% block title %}Financial Reports{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Financial Reports</h2>
+    <a href="{% url 'reports:financial_report_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus"></i> Create Report
+    </a>
+</div>
+
+{% render_table table %}
+{% endblock %}

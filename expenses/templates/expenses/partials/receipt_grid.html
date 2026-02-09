@@ -1,0 +1,79 @@
+{% load static %}
+<div id="existing-receipts">
+  {# ---- ADD NEW RECEIPT (file + optional comment) ---- #}
+  <form class="mb-2"
+        action="{% url 'expenses:receipt_add' expense.id %}"
+        method="post"
+        enctype="multipart/form-data"
+        hx-post="{% url 'expenses:receipt_add' expense.id %}"
+        hx-encoding="multipart/form-data"
+        hx-target="#existing-receipts"
+        hx-swap="outerHTML">
+    {% csrf_token %}
+    <div class="input-group input-group-sm">
+      <input type="file" name="image" accept="image/*" class="form-control" required>
+      <input type="text" name="comment" class="form-control" placeholder="Add a comment (optional)">
+      <button class="btn btn-primary" type="submit">Add</button>
+    </div>
+  </form>
+
+  {% if expense.receipts.all %}
+  <div class="receipt-grid mb-2">
+    {% for r in expense.receipts.all %}
+    <div class="receipt-card p-1 border-0">
+      <div class="thumb mb-1">
+        <img src="{{ r.image.url }}" alt="Receipt {{ forloop.counter }}">
+      </div>
+
+      {# --- inline comment editor for this receipt --- #}
+      <form class="mb-1"
+            action="{% url 'expenses:receipt_update' r.pk %}"
+            method="post"
+            hx-post="{% url 'expenses:receipt_update' r.pk %}"
+            hx-target="#existing-receipts"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <div class="input-group input-group-sm">
+          <input type="text"
+                 name="comment"
+                 class="form-control"
+                 value="{{ r.comment|default_if_none:'' }}"
+                 placeholder="Comment">
+          <button class="btn btn-success" type="submit">Save</button>
+        </div>
+      </form>
+
+      <div class="d-flex justify-content-between gap-1">
+        {# --- Replace (file upload) --- #}
+        <form action="{% url 'expenses:receipt_update' r.pk %}"
+              method="post"
+              enctype="multipart/form-data"
+              hx-post="{% url 'expenses:receipt_update' r.pk %}"
+              hx-encoding="multipart/form-data"
+              hx-target="#existing-receipts"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <label class="btn btn-sm btn-primary m-0">
+            Replace
+            <input type="file" name="image" accept="image/*" class="d-none"
+                   onchange="this.form.submit()">
+          </label>
+        </form>
+
+        {# --- Delete --- #}
+        <form action="{% url 'expenses:receipt_delete' r.pk %}"
+              method="post"
+              hx-post="{% url 'expenses:receipt_delete' r.pk %}"
+              hx-target="#existing-receipts"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <div class="text-muted">No receipts yet.</div>
+  {% endif %}
+</div>

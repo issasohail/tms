@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}Update{% else %}Create{% endif %} Tenant{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">{% if form.instance.pk %}Update{% else %}Create New{% endif %} Tenant</h4>
+            <div class="form-group mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                    <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" 
+                       class="btn btn-secondary btn-sm">Cancel</a>
+                </div>
+            <button class="btn btn-outline-secondary btn-sm" onclick="history.back()">Go Back</button>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data" class="compact-form">
+                {% csrf_token %}
+                
+                <div class="row">
+                    <!-- Personal Info Column -->
+                    <div class="col-md-8">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light py-2">
+                                <h5 class="mb-0">Personal Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        {{ form.first_name|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        {{ form.last_name|as_crispy_field }}
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        {{ form.email|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ form.phone|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ form.cnic|as_crispy_field }}
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        {{ form.gender|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ form.date_of_birth|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        {{ form.number_of_family_member|as_crispy_field }}
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        {{ form.address|as_crispy_field }}
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        {{ form.emergency_contact_name|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ form.emergency_contact_phone|as_crispy_field }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ form.emergency_contact_relation|as_crispy_field }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Documents Column -->
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light py-2">
+                                <h5 class="mb-0">Documents & Status</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    {{ form.photo|as_crispy_field }}
+                                    {% if form.instance.photo %}
+                                        <div class="mt-2 text-center">
+                                            <img src="{{ form.instance.photo.url }}" class="img-thumbnail" style="max-height: 100px;">
+                                            <small class="d-block text-muted">{{ form.instance.photo.name|cut:"tenants/photos/" }}</small>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="form-group">
+                                    {{ form.cnic_front|as_crispy_field }}
+                                    {% if form.instance.cnic_front %}
+                                        <div class="mt-2 text-center">
+                                            <img src="{{ form.instance.cnic_front.url }}" class="img-thumbnail" style="max-height: 100px;">
+                                            <small class="d-block text-muted">{{ form.instance.cnic_front.name|cut:"tenants/cnic/" }}</small>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="form-group">
+                                    {{ form.cnic_back|as_crispy_field }}
+                                    {% if form.instance.cnic_back %}
+                                        <div class="mt-2 text-center">
+                                            <img src="{{ form.instance.cnic_back.url }}" class="img-thumbnail" style="max-height: 100px;">
+                                            <small class="d-block text-muted">{{ form.instance.cnic_back.name|cut:"tenants/cnic/" }}</small>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        {{ form.is_active|as_crispy_field }}
+                                    </div>
+                                </div>
+                                
+                                {{ form.notes|as_crispy_field }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                    <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" 
+                       class="btn btn-secondary btn-sm">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .compact-form .form-group {
+        margin-bottom: 0.5rem;
+    }
+    .card-header {
+        padding: 0.5rem 1rem;
+    }
+    .card-body {
+        padding: 1rem;
+    }
+    /* Make date input fields smaller */
+    input[type="date"].form-control {
+        line-height: 1.2;
+        padding: 0.25rem 0.5rem;
+    }
+    /* Make select fields smaller */
+    select.form-control {
+        padding: 0.25rem 0.5rem;
+        height: calc(1.8125rem + 2px);
+    }
+</style>
+{% endblock %}

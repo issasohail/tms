@@ -1,0 +1,1433 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="meterbar-shell">
+  {% include "smart_meter/meterbar.html" %}
+</div>
+
+<style>
+  /* ===========================
+     SIZE KNOBS (Desktop widths)
+     =========================== */
+  :root {
+    /* Column widths (desktop) */
+    --w-sno: 30px;
+    --w-rech: 80px;
+    --w-prop: 60px;
+    --w-unit: 100px;
+    --w-meter: 110px;
+    --w-status: 60px;
+    --w-power: 60px;
+
+    --w-updated: 180px;
+    --w-balance: 100px;
+    --w-total-energy: 120px;
+    --w-source-ip: 120px;
+    --w-port: 60px;
+    --w-voltage: 60px;
+    --w-current: 60px;
+    --w-total-power: 60px;
+    --w-pf: 60px;
+
+    /* Row density */
+    --row-font: .74rem;
+    --row-pad-y: .14rem;
+    --row-pad-x: .46rem;
+
+    /* Global buttons & filters */
+    --btn-font: .80rem;
+    --btn-pad-y: .25rem;
+    --btn-pad-x: .5rem;
+
+    --filter-font: .80rem;
+    --filter-minw: 160px;
+    --filter-maxw: 260px;
+
+    /* ====== NEW: per-row action controls (small-screen under Meter #) */
+    --row-action-font: .58rem;
+    /* font size of action buttons/badges */
+    --row-action-pad-y: .18rem;
+    /* Y padding for small action buttons */
+    --row-action-pad-x: .22rem;
+    /* X padding for small action buttons */
+    --row-action-gap: .20rem;
+    /* gap between the 3 controls */
+    --row-action-space-top: .18rem;
+    /* space above the controls block */
+
+    /* ====== NEW: Voltage/Current text under Total Energy (small screens) */
+    --mobile-voltage-font: .56rem;
+    --mobile-current-font: .56rem;
+  }
+
+  /* ===========================
+     SIZE KNOBS (<= 576px)
+     =========================== */
+  @media (max-width: 576px) {
+    :root {
+      --w-sno: 18px;
+      --w-prop: 62px;
+      --w-unit: 70px;
+      --w-meter: 110px;
+      /* wider to fit 3-controls block beneath */
+      --w-status: 108px;
+      /* hidden on small, value not critical */
+      --w-power: 118px;
+      /* hidden on small unless you re-enable */
+
+      --w-updated: 80px;
+      --w-total-energy: 80px;
+
+      --row-font: .58rem;
+      --row-pad-y: .20rem;
+      --row-pad-x: .38rem;
+
+      --btn-font: .58rem;
+      --btn-pad-y: .22rem;
+      --btn-pad-x: .46rem;
+
+      --filter-font: .58rem;
+      --filter-minw: 130px;
+      --filter-maxw: 130px;
+
+      /* Row actions (beneath Meter #) */
+      --row-action-font: .56rem;
+      --row-action-pad-y: .16rem;
+      --row-action-pad-x: .38rem;
+      --row-action-gap: .35rem;
+      --row-action-space-top: .16rem;
+
+      /* Voltage/Current under Total Energy */
+      --mobile-voltage-font: .54rem;
+      --mobile-current-font: .54rem;
+    }
+  }
+
+  /* ===========================
+     SIZE KNOBS (<= 360px)
+     =========================== */
+  @media (max-width: 360px) {
+    :root {
+      --row-font: .56rem;
+      --row-pad-y: .18rem;
+      --row-pad-x: .34rem;
+
+      --btn-font: .54rem;
+      --btn-pad-y: .18rem;
+      --btn-pad-x: .40rem;
+
+      --filter-font: .54rem;
+      --filter-minw: 110px;
+      --filter-maxw: 180px;
+
+      --w-sno: 18px;
+      --w-prop: 62px;
+      --w-meter: 80px;
+      --w-updated: 60px;
+      --w-total-energy: 80px;
+      --w-total-power: 40px;
+      --w-pf: 40px;
+
+      --row-action-font: .44rem;
+      --row-action-pad-y: .24rem;
+      --row-action-pad-x: .2334rem;
+      --row-action-gap: .10rem;
+      --row-action-space-top: .14rem;
+
+      --mobile-voltage-font: .52rem;
+      --mobile-current-font: .52rem;
+
+      --filter-font: .58rem;
+      --filter-minw: 130px;
+      --filter-maxw: 130px;
+    }
+
+    th.col-unit,
+    td.col-unit,
+    th.col-total_power,
+    td.col-total_power,
+    th.col-pf_total,
+    td.col-pf_total,
+    th.col-status,
+    td.col-status,
+    /* hide Status column per request */
+    th[data-col="source_ip"],
+    td[data-col="source_ip"],
+    th[data-col="port"],
+    td[data-col="port"],
+    th[data-col="voltage_a"],
+    td[data-col="voltage_a"],
+    /* move under Total Energy */
+    th[data-col="current_a"],
+    td[data-col="current_a"],
+    /* move under Total Energy */
+    th.col-power,
+    td.col-power {
+      /* keep hidden as before */
+      display: none !important;
+    }
+  }
+
+  /* ===========================
+     Compact table styling
+     =========================== */
+  main,
+  .container-fluid {
+    padding-top: 0 !important;
+  }
+
+  /* All columns non-sticky */
+  .table thead th {
+    position: static !important;
+    background: var(--bs-body-bg);
+  }
+
+  .sticky-left {
+    position: static !important;
+    left: auto !important;
+    z-index: auto !important;
+    box-shadow: none !important;
+  }
+
+  .table.table-compact {
+    table-layout: fixed;
+  }
+
+  .table.table-compact th,
+  .table.table-compact td {
+    white-space: nowrap;
+    font-size: var(--row-font);
+    padding: var(--row-pad-y) var(--row-pad-x) !important;
+    vertical-align: middle;
+    line-height: 1.2;
+  }
+
+  .card .table-responsive {
+    margin: 0;
+  }
+
+  .table-responsive {
+    overflow-x: auto;
+  }
+
+  /* Width helpers */
+  th.sno,
+  td.sno {
+    min-width: var(--w-sno);
+    width: var(--w-sno);
+  }
+
+  th.col-recharge,
+  td.col-recharge {
+    min-width: var(--w-rech);
+    width: var(--w-rech);
+  }
+
+  th.col-prop,
+  td.col-prop {
+    min-width: var(--w-prop);
+    width: var(--w-prop);
+  }
+
+  th.col-unit,
+  td.col-unit {
+    min-width: var(--w-unit);
+    width: var(--w-unit);
+  }
+
+  th.col-meter,
+  td.col-meter {
+    min-width: var(--w-meter);
+    width: var(--w-meter);
+  }
+
+  th.col-status,
+  td.col-status {
+    min-width: var(--w-status);
+    width: var(--w-status);
+  }
+
+  th.col-power,
+  td.col-power {
+    min-width: var(--w-power);
+    width: var(--w-power);
+  }
+
+  th[data-col="updated"],
+  td[data-col="updated"] {
+    min-width: var(--w-updated);
+    width: var(--w-updated);
+  }
+
+  th[data-col="balance"],
+  td[data-col="balance"] {
+    min-width: var(--w-balance);
+    width: var(--w-balance);
+  }
+
+  th[data-col="total_energy"],
+  td[data-col="total_energy"] {
+    min-width: var(--w-total-energy);
+    width: var(--w-total-energy);
+  }
+
+  th[data-col="source_ip"],
+  td[data-col="source_ip"] {
+    min-width: var(--w-source-ip);
+    width: var(--w-source-ip);
+  }
+
+  th[data-col="port"],
+  td[data-col="port"] {
+    min-width: var(--w-port);
+    width: var(--w-port);
+  }
+
+  th[data-col="voltage_a"],
+  td[data-col="voltage_a"] {
+    min-width: var(--w-voltage);
+    width: var(--w-voltage);
+  }
+
+  th[data-col="current_a"],
+  td[data-col="current_a"] {
+    min-width: var(--w-current);
+    width: var(--w-current);
+  }
+
+  th[data-col="total_power"],
+  td[data-col="total_power"] {
+    min-width: var(--w-total-power);
+    width: var(--w-total-power);
+  }
+
+  th[data-col="pf_total"],
+  td[data-col="pf_total"] {
+    min-width: var(--w-pf);
+    width: var(--w-pf);
+  }
+
+  .hidden-col {
+    display: none !important;
+  }
+
+  /* Subtle row tint */
+  .row-online {
+    background-image: linear-gradient(to right, rgba(25, 135, 84, .05), transparent);
+  }
+
+  .row-offline {
+    background-image: linear-gradient(to right, rgba(108, 117, 125, .05), transparent);
+  }
+
+  /* Compact badges + power control (global) */
+  .online-badge,
+  .power-badge {
+    font-size: var(--micro-font);
+    padding: var(--btn-pad-y) var(--btn-pad-x);
+  }
+
+  .btn.power-toggle {
+    padding: .12rem .38rem;
+    line-height: 1;
+    font-size: .78rem;
+  }
+
+  .btn-recharge {
+    font-size: var(--micro-font);
+    padding: var(--micro-pad-y) var(--micro-pad-x);
+    line-height: 1;
+    border-radius: 999px;
+  }
+
+  /* Buttons & filters */
+  .topbar-actions {
+    white-space: nowrap;
+  }
+
+  .form-select.form-select-sm,
+  .btn.btn-sm {
+    padding: var(--btn-pad-y) var(--btn-pad-x);
+    font-size: var(--btn-font);
+  }
+
+  .filters-inline select.form-select {
+    min-width: var(--filter-minw);
+    max-width: var(--filter-maxw);
+    font-size: var(--filter-font);
+  }
+
+  /* Optional desktop/mobile profile helpers */
+  body.profile-desktop [data-visible-desktop="0"],
+  body.profile-mobile [data-visible-mobile="0"] {
+    display: none !important;
+  }
+
+  /* Spinner in heading */
+  #headingPowerMsg.processing::before {
+    content: "";
+    display: inline-block;
+    width: .9rem;
+    height: .9rem;
+    margin-right: .45rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: -.15rem;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg)
+    }
+  }
+
+  /* ===========================
+     GLOBAL HIDES
+     =========================== */
+  /* Keep Recharge & Balance in DOM but hide always */
+  th.col-recharge,
+  td.col-recharge,
+  th[data-col="balance"],
+  td[data-col="balance"] {
+    display: none !important;
+  }
+
+  /* ===========================
+     SCREENSHOT MODE
+     =========================== */
+  .screenshot-mode header,
+  .screenshot-mode nav,
+  .screenshot-mode footer,
+  .screenshot-mode .navbar,
+  .screenshot-mode .sidebar,
+  .screenshot-mode .meterbar-shell,
+  .screenshot-mode form.filters-inline,
+  .screenshot-mode .topbar-actions,
+  .screenshot-mode [role="button"],
+  .screenshot-mode select,
+  .screenshot-mode input,
+  .screenshot-mode label[for="offlineOnly"],
+  .screenshot-mode dialog#colsDlg {
+    visibility: hidden !important;
+    /* keep space, avoid reflow */
+  }
+
+  .screenshot-mode th.col-recharge,
+  .screenshot-mode td.col-recharge,
+  .screenshot-mode .power-toggle {
+    display: none !important;
+  }
+
+  .screenshot-mode,
+  .screenshot-mode html,
+  .screenshot-mode body {
+    background: #fff !important;
+  }
+
+  .screenshot-mode #captureArea .table-responsive {
+    overflow: visible !important;
+  }
+
+  .screenshot-mode #captureArea {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* ===========================
+     SMALL SCREEN LAYOUT (< = 576px)
+     =========================== */
+  @media (max-width: 576px) {
+
+    /* Hide columns on small */
+    th.col-unit,
+    td.col-unit,
+    th.col-total_power,
+    td.col-total_power,
+    th.col-pf_total,
+    td.col-pf_total,
+    th.col-status,
+    td.col-status,
+    /* hide Status column per request */
+    th[data-col="source_ip"],
+    td[data-col="source_ip"],
+    th[data-col="port"],
+    td[data-col="port"],
+    th[data-col="voltage_a"],
+    td[data-col="voltage_a"],
+    /* move under Total Energy */
+    th[data-col="current_a"],
+    td[data-col="current_a"],
+    /* move under Total Energy */
+    th.col-power,
+    td.col-power {
+      /* keep hidden as before */
+      display: none !important;
+    }
+
+    /* Property cell: show Unit beneath */
+    .col-prop .mobile-unit {
+      display: block;
+      font-size: .52rem;
+      opacity: .85;
+      margin-top: .12rem;
+      line-height: 1.0;
+    }
+
+    /* METER COLUMN: show 3 controls beneath (Online badge, Power badge, Toggle) */
+    .col-meter .mobile-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: var(--row-action-gap);
+      margin-top: var(--row-action-space-top);
+    }
+
+    .col-meter .mobile-actions .badge {
+      font-size: var(--row-action-font);
+      padding: var(--row-action-pad-y) var(--row-action-pad-x);
+    }
+
+    .col-meter .mobile-actions .btn {
+      font-size: var(--row-action-font);
+      padding: var(--row-action-pad-y) var(--row-action-pad-x);
+      line-height: 1;
+    }
+
+    /* UPDATED: date + time stacked on small */
+    td[data-col="updated"] .u-date {
+      display: block;
+    }
+
+    td[data-col="updated"] .u-time {
+      display: block;
+      font-size: .52rem;
+      opacity: .85;
+      line-height: 1.1;
+    }
+
+    /* TOTAL ENERGY: show Voltage & Current beneath */
+    td[data-col="total_energy"] .mobile-voltage,
+    td[data-col="total_energy"] .mobile-current {
+      display: block;
+      margin-top: .10rem;
+      line-height: 1.1;
+      opacity: .95;
+    }
+
+    td[data-col="total_energy"] .mobile-voltage {
+      font-size: var(--mobile-voltage-font);
+    }
+
+    td[data-col="total_energy"] .mobile-current {
+      font-size: var(--mobile-current-font);
+    }
+
+    /* Filters: meter + filter + reset on same line */
+    .filters-inline {
+      width: 100%;
+    }
+
+    .filters-inline .meter-actions {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      flex-wrap: nowrap;
+    }
+
+    .filters-inline .meter-actions select {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .filters-inline .meter-actions .btn {
+      flex: 0 0 auto;
+    }
+  }
+
+  @media (min-width: 577px) {
+
+    /* Desktop: inline "Updated" time with separator */
+    td[data-col="updated"] .u-time {
+      display: inline;
+      opacity: 1;
+      margin-left: .25rem;
+    }
+
+    .u-sep {
+      display: inline;
+      margin: 0 .15rem;
+      opacity: .6;
+    }
+
+    /* Hide mobile helpers on desktop */
+    .mobile-unit,
+    .col-meter .mobile-actions,
+    td[data-col="total_energy"] .mobile-voltage,
+    td[data-col="total_energy"] .mobile-current {
+      display: none !important;
+    }
+  }
+</style>
+<style>
+  .delta {
+    font-size: 0.85em;
+    margin-left: 6px;
+    opacity: 0.9;
+    white-space: nowrap;
+  }
+
+  .delta.up {
+    font-weight: 700;
+  }
+
+  .delta.down {
+    font-weight: 700;
+  }
+</style>
+
+<style>
+  /* Flash effect when a cell value changes */
+  @keyframes flashChange {
+    0% {
+      background-color: rgba(255, 215, 0, 0.85);
+    }
+
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .cell-changed {
+    animation: flashChange 1200ms ease-out;
+  }
+
+  /* Optional: a subtle left marker */
+  .cell-changed::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: rgba(255, 165, 0, 0.95);
+    vertical-align: middle;
+  }
+</style>
+<script>
+  function toNum(x) {
+    if (x === null || x === undefined) return null;
+    const s = String(x).replace(/,/g, "").trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function setDelta(td, dir) {
+    if (!td) return;
+
+    // remove old arrow if any
+    const old = td.querySelector(".delta");
+    if (old) old.remove();
+
+    if (!dir) return; // no arrow
+
+    const span = document.createElement("span");
+    span.className = `delta ${dir}`;
+    span.textContent = (dir === "up") ? "▲" : "▼";
+    td.appendChild(span);
+  }
+
+  // Use for numeric cells where you want ▲▼
+  function setNumericCellWithDelta(tr, col, newText, flash = true) {
+    const td = tr.querySelector(`td[data-col="${col}"]`);
+    if (!td) return;
+
+    const prevNum = toNum(td.dataset.prevNum);
+    const nextNum = toNum(newText);
+
+    // Update display text only when changed (keeps calm UI)
+    const prevText = (td.firstChild && td.firstChild.nodeType === Node.TEXT_NODE)
+      ? td.firstChild.textContent.trim()
+      : (td.textContent || "").trim();
+
+    const nextText = (newText ?? "").toString().trim();
+
+    if (prevText !== nextText) {
+      // Replace only the text node (so arrow span remains managed)
+      // Clear and set text node first, then arrow span.
+      td.textContent = nextText;
+
+      // Determine direction
+      let dir = null;
+      if (prevNum !== null && nextNum !== null) {
+        if (nextNum > prevNum) dir = "up";
+        else if (nextNum < prevNum) dir = "down";
+      }
+
+      // Store new numeric as previous
+      if (nextNum !== null) td.dataset.prevNum = String(nextNum);
+      else td.dataset.prevNum = "";
+
+      // Add arrow
+      setDelta(td, dir);
+
+      // Optional flash on change (if you already implemented flashCell/cell-changed)
+      if (flash && typeof flashCell === "function") flashCell(td);
+    }
+  }
+</script>
+
+<script>
+  // Poll JSON and update only cells (no full page reload)
+  const POLL_MS = 15000;
+  const DATA_URL = "{% url 'smart_meter:smart_meter_live_custom_data' %}";
+
+  function setRowOnlineState(tr, isOnline) {
+    tr.classList.toggle("row-online", !!isOnline);
+    tr.classList.toggle("row-offline", !isOnline);
+
+    tr.querySelectorAll(".online-badge").forEach(b => {
+      b.classList.remove("bg-success", "bg-secondary");
+      if (isOnline) { b.classList.add("bg-success"); b.textContent = "Online"; }
+      else { b.classList.add("bg-secondary"); b.textContent = "Offline"; }
+    });
+  }
+
+  function setRowPowerState(tr, powerStatus) {
+    const isOn = (powerStatus || "OFF").toUpperCase() === "ON";
+    tr.querySelectorAll(".power-badge").forEach(b => {
+      b.classList.remove("bg-success", "bg-danger");
+      if (isOn) { b.classList.add("bg-success"); b.textContent = "ON"; }
+      else { b.classList.add("bg-danger"); b.textContent = "OFF"; }
+    });
+
+    tr.querySelectorAll(".power-toggle").forEach(btn => {
+      btn.dataset.status = isOn ? "ON" : "OFF";
+    });
+  }
+  function flashCell(td) {
+    if (!td) return;
+    td.classList.remove("cell-changed");   // restart animation
+    void td.offsetWidth;                  // force reflow
+    td.classList.add("cell-changed");
+  }
+
+  function setCell(tr, col, newText, tsIso = null, flash = true) {
+    const td = tr.querySelector(`td[data-col="${col}"]`);
+    if (!td) return;
+
+    // UPDATED column: supports your existing .u-date/.u-time layout
+    if (col === "updated") {
+      const prevTs = td.dataset.ts || "";
+      const nextTs = tsIso || "";
+
+      if (nextTs && nextTs !== prevTs) {
+        td.dataset.ts = nextTs;
+
+        const dt = new Date(nextTs);
+        const dateStr = dt.toLocaleDateString();
+        const timeStr = dt.toLocaleTimeString();
+
+        const uDate = td.querySelector(".u-date");
+        const uTime = td.querySelector(".u-time");
+
+        if (uDate) uDate.textContent = dateStr;
+        if (uTime) uTime.textContent = timeStr;
+        if (!uDate && !uTime) td.textContent = `${dateStr} ${timeStr}`;
+
+        // Timestamp will change often; keep it subtle by default
+        if (flash) flashCell(td);
+      }
+      return;
+    }
+
+    // All other columns: compare old vs new and flash only on change
+    const prev = (td.textContent || "").trim();
+    const next = (newText ?? "").toString().trim();
+
+    if (prev !== next) {
+      td.textContent = next;
+      if (flash) flashCell(td);
+    }
+  }
+
+  async function refreshLiveRows() {
+    try {
+      const res = await fetch(DATA_URL + window.location.search, {
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const rows = data.rows || [];
+
+      for (const r of rows) {
+        const tr = document.querySelector(`tr[data-meter-id="${r.meter_id}"]`);
+        if (!tr) continue;
+
+        setRowOnlineState(tr, r.is_online);
+        setRowPowerState(tr, r.power_status);
+
+        setCell(tr, "source_ip", r.source_ip);
+        setCell(tr, "port", r.port);
+        setNumericCellWithDelta(tr, "total_energy", r.total_energy, true);
+        setNumericCellWithDelta(tr, "voltage_a", r.voltage_a, true);
+        setNumericCellWithDelta(tr, "current_a", r.current_a, true);
+        setNumericCellWithDelta(tr, "total_power", r.total_power, true);
+        setNumericCellWithDelta(tr, "pf_total", r.pf_total, true);
+
+        setCell(tr, "updated", "", r.updated_ts, false);// no flash for timestamp
+      }
+
+      if (typeof markStaleUpdatedCells === "function") markStaleUpdatedCells();
+    } catch (e) { }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(refreshLiveRows, 800);
+    setInterval(refreshLiveRows, POLL_MS);
+  });
+</script>
+
+<script>
+
+
+
+  /* Column chooser keys (kept) */
+  const COLS_KEY_BASE = 'live_cols_v5';
+  const COLS_KEY_DESKTOP = COLS_KEY_BASE + '_desktop';
+  const COLS_KEY_MOBILE = COLS_KEY_BASE + '_mobile';
+  const ALL_COLS = [
+    'status', 'updated', 'source_ip', 'port',
+    'voltage_a', 'current_a',
+    'total_power', 'pf_total',
+    'total_energy'
+  ];
+
+  const mqMobile = window.matchMedia('(max-width: 576px)');
+  function currentKey() { return mqMobile.matches ? COLS_KEY_MOBILE : COLS_KEY_DESKTOP; }
+  function loadPrefs(key) {
+    try {
+      const raw = localStorage.getItem(key || currentKey());
+      if (!raw) return null;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.filter(c => ALL_COLS.includes(c));
+    } catch (e) { }
+    return null;
+  }
+  function savePrefs(cols, key) { localStorage.setItem(key || currentKey(), JSON.stringify(cols)); }
+
+  function labelOf(k) {
+    const m = {
+      status: 'Status', updated: 'Updated',
+      source_ip: 'Source IP', port: 'Port',
+      voltage_a: 'Voltage (V)', current_a: 'Current (A)',
+      total_power: 'Total Power (kW)', pf_total: 'PF Total',
+      total_energy: 'Total Energy (kWh)'
+    };
+    return m[k] || k;
+  }
+
+  function applyCols(cols) {
+    const show = new Set(cols);
+    ALL_COLS.forEach(key => {
+      document.querySelectorAll('[data-col="' + key + '"]').forEach(el => {
+        el.classList.toggle('hidden-col', !show.has(key));
+      });
+      const cb = document.getElementById('cb-' + key);
+      if (cb) cb.checked = show.has(key);
+    });
+  }
+
+  function openCols() {
+    buildColsUI(activeProfile);
+    const dlg = document.getElementById('colsDlg');
+    if (dlg?.showModal) dlg.showModal();
+  }
+  function closeCols() { const d = document.getElementById('colsDlg'); if (d?.close) d.close(); }
+
+  let activeProfile = mqMobile.matches ? 'mobile' : 'desktop';
+  function keyForProfile(p) { return p === 'mobile' ? COLS_KEY_MOBILE : COLS_KEY_DESKTOP; }
+
+  function buildColsUI(profile) {
+    const body = document.getElementById('colsBody');
+    if (!body) return;
+    body.innerHTML = '';
+    const key = keyForProfile(profile);
+    const cols = loadPrefs(key) || (profile === 'mobile'
+      ? ['status', 'updated', 'total_power', 'pf_total', 'voltage_a', 'current_a', 'total_energy']
+      : ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a']
+    );
+    const frag = document.createDocumentFragment();
+    ALL_COLS.forEach(k => {
+      const label = document.createElement('label');
+      label.className = 'd-flex align-items-center gap-2 border rounded p-2';
+      label.innerHTML = `<input id="cb-${k}" type="checkbox" ${cols.includes(k) ? 'checked' : ''}>
+                         <span>${labelOf(k)}</span>`;
+      label.querySelector('input').addEventListener('change', () => {
+        const sel = ALL_COLS.filter(c => document.getElementById('cb-' + c).checked);
+        savePrefs(sel, key);
+        if ((activeProfile === 'mobile' && mqMobile.matches) || (activeProfile === 'desktop' && !mqMobile.matches)) {
+          applyCols(sel);
+        }
+      });
+      frag.appendChild(label);
+    });
+    body.appendChild(frag);
+  }
+
+  function setHeaderMsg(text, tone, processing = false) {
+    const el = document.getElementById('headingPowerMsg');
+    if (!el) return;
+    el.className = 'small ms-3 ' + (tone || 'text-muted') + (processing ? ' processing' : '');
+    el.textContent = text || '';
+  }
+
+  /* Power toggle helpers */
+  function setOnlineBadge(badge, state) {
+    if (!badge) return;
+    badge.classList.remove('bg-success', 'bg-secondary', 'bg-warning', 'text-dark');
+    if (state === 'online') { badge.classList.add('bg-success'); badge.textContent = 'Online'; }
+    else if (state === 'pending') { badge.classList.add('bg-warning', 'text-dark'); badge.textContent = 'Pending…'; }
+    else { badge.classList.add('bg-secondary'); badge.textContent = 'Offline'; }
+  }
+  function setPowerBadge(badge, isOn) {
+    if (!badge) return;
+    badge.classList.remove('bg-success', 'bg-danger');
+    if (isOn) { badge.classList.add('bg-success'); badge.textContent = 'ON'; }
+    else { badge.classList.add('bg-danger'); badge.textContent = 'OFF'; }
+  }
+  async function pollOnline(statusUrl, tries = [0, 2000, 5000, 10000, 20000]) {
+    for (let i = 0; i < tries.length; i++) {
+      if (tries[i] > 0) await new Promise(r => setTimeout(r, tries[i]));
+      try {
+        const res = await fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await res.json();
+        if (data && data.online === true) return true;
+      } catch { }
+    }
+    return false;
+  }
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
+  let _headingMsgClearTimer = null;
+
+  async function togglePower(btn) {
+    if (_headingMsgClearTimer) { clearTimeout(_headingMsgClearTimer); _headingMsgClearTimer = null; }
+
+    const row = btn.closest('[data-meter-row]') || btn.closest('tr') || document;
+    const onlineEl = row.querySelector('.online-badge');   /* finds the one in mobile-actions */
+    const powerEl = row.querySelector('.power-badge');    /* finds the one in mobile-actions */
+
+    const isOff = (btn.dataset.status || 'OFF').toUpperCase() === 'OFF';
+    const url = isOff ? btn.dataset.restoreUrl : btn.dataset.cutoffUrl;
+    const nextIsOn = isOff;
+    const unitNumber = btn.dataset.unitNumber || '';
+    const statusUrl = btn.dataset.statusUrl;
+
+    setHeaderMsg(`${isOff ? 'Turning ON' : 'Turning OFF'} power for unit ${unitNumber}…`, 'text-warning', true);
+
+    btn.disabled = true;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken') || ''
+        },
+        body: JSON.stringify({ meter_id: btn.dataset.meterId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.error || 'Request failed');
+
+      setPowerBadge(powerEl, nextIsOn);
+      row.querySelectorAll('.power-toggle').forEach(b => b.dataset.status = nextIsOn ? 'ON' : 'OFF');
+
+      setHeaderMsg(`Power ${nextIsOn ? 'ON (restored)' : 'OFF (cut)'} for unit ${unitNumber}`, nextIsOn ? 'text-success' : 'text-danger');
+      _headingMsgClearTimer = setTimeout(() => setHeaderMsg('', 'text-muted', false), 6000);
+
+      if (nextIsOn) {
+        setOnlineBadge(onlineEl, 'pending');
+        if (statusUrl) {
+          const ok = await pollOnline(statusUrl);
+          setOnlineBadge(onlineEl, ok ? 'online' : 'offline');
+        } else {
+          setOnlineBadge(onlineEl, 'offline');
+        }
+      } else {
+        setOnlineBadge(onlineEl, 'offline');
+      }
+    } catch (e) {
+      setHeaderMsg(`Error toggling power for unit ${unitNumber}: ${e.message || 'Request failed'}`, 'text-danger');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.power-toggle');
+    if (btn) togglePower(btn);
+  });
+
+  /* Init */
+  document.addEventListener('DOMContentLoaded', () => {
+    document.body.classList.toggle('profile-mobile', mqMobile.matches);
+    document.body.classList.toggle('profile-desktop', !mqMobile.matches);
+
+    const cols = loadPrefs() || (mqMobile.matches
+      ? ['status', 'updated', 'total_power', 'pf_total', 'voltage_a', 'current_a', 'total_energy']
+      : ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a']
+    );
+    applyCols(cols);
+
+    mqMobile.addEventListener('change', (e) => {
+      document.body.classList.toggle('profile-mobile', e.matches);
+      document.body.classList.toggle('profile-desktop', !e.matches);
+      applyCols(loadPrefs() || []);
+    });
+
+    buildColsUI(activeProfile);
+
+    const sel = document.getElementById('colsProfile');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        activeProfile = sel.value;
+        buildColsUI(activeProfile);
+      });
+    }
+
+    const btnEss = document.getElementById('colsEssentials');
+    const btnAll = document.getElementById('colsShowAll');
+    const btnReset = document.getElementById('colsReset');
+    btnEss && (btnEss.onclick = () => {
+      const essential = activeProfile === 'mobile'
+        ? ['status', 'updated', 'total_power', 'pf_total', 'voltage_a', 'current_a', 'total_energy']
+        : ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a'];
+      savePrefs(essential, keyForProfile(activeProfile)); applyCols(essential); buildColsUI(activeProfile);
+    });
+    btnAll && (btnAll.onclick = () => {
+      savePrefs(ALL_COLS.slice(), keyForProfile(activeProfile)); applyCols(ALL_COLS); buildColsUI(activeProfile);
+    });
+    btnReset && (btnReset.onclick = () => {
+      localStorage.removeItem(keyForProfile(activeProfile)); buildColsUI(activeProfile);
+      applyCols(loadPrefs() || []);
+    });
+  });
+</script>
+
+<!-- Updated cell: mark red if ≥ 2 hours -->
+<script>
+  function markStaleUpdatedCells() {
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    document.querySelectorAll('td[data-col="updated"][data-ts]').forEach(td => {
+      const ts = new Date(td.dataset.ts).getTime();
+      if (isNaN(ts)) return;
+
+      const age = now - ts;
+      td.classList.toggle('text-danger', age >= TWO_HOURS_MS);
+
+      const mins = Math.round(age / 60000);
+      td.title = `Age: ${mins} minute${mins === 1 ? '' : 's'}`;
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    markStaleUpdatedCells();
+    setInterval(markStaleUpdatedCells, 60 * 1000);
+  });
+</script>
+
+<!-- Screenshot tools -->
+<script>
+  function loadHtml2Canvas() {
+    return new Promise((resolve, reject) => {
+      if (window.html2canvas) return resolve(window.html2canvas);
+      const s = document.createElement('script');
+      s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+      s.async = true;
+      s.onload = () => resolve(window.html2canvas);
+      s.onerror = () => reject(new Error('Failed to load html2canvas'));
+      document.head.appendChild(s);
+    });
+  }
+
+  function tsName() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const t = document.getElementById('btnCleanView');
+    if (!t) return;
+    t.addEventListener('click', () => {
+      document.body.classList.toggle('screenshot-mode');
+      t.innerHTML = document.body.classList.contains('screenshot-mode')
+        ? '<i class="fas fa-eye me-1"></i>Exit clean view'
+        : '<i class="fas fa-eye-slash me-1"></i>Clean view';
+    });
+  });
+
+  async function takeScreenshot() {
+    const btn = document.getElementById('btnScreenshot');
+    if (!btn) return;
+    btn.disabled = true;
+
+    const dlg = document.getElementById('colsDlg');
+    if (dlg && typeof dlg.close === 'function' && dlg.open) dlg.close();
+
+    try {
+      const html2canvas = await loadHtml2Canvas();
+
+      document.body.classList.add('screenshot-mode');
+
+      const target = document.getElementById('captureArea') || document.body;
+      const tableWrap = target.querySelector('.table-responsive');
+      const table = target.querySelector('table');
+
+      const rect = target.getBoundingClientRect();
+      const cssWidth = Math.round(rect.width);
+
+      const prev = {
+        wrapOverflow: tableWrap ? tableWrap.style.overflow : null,
+        targetBg: target.style.backgroundColor,
+        targetPaddingTop: target.style.paddingTop,
+        targetPaddingBottom: target.style.paddingBottom
+      };
+      if (tableWrap) tableWrap.style.overflow = 'visible';
+      target.style.backgroundColor = '#fff';
+
+      const CAPTURE_PAD = 16;
+      target.style.paddingTop = (parseInt(getComputedStyle(target).paddingTop) + CAPTURE_PAD) + 'px';
+      target.style.paddingBottom = (parseInt(getComputedStyle(target).paddingBottom) + CAPTURE_PAD) + 'px';
+      await new Promise(requestAnimationFrame);
+
+      const fullWidth = table ? table.scrollWidth : target.scrollWidth;
+      const fullHeight = target.scrollHeight;
+      const HEIGHT_BUFFER = 80;
+
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#fff',
+        windowWidth: cssWidth,
+        windowHeight: fullHeight + HEIGHT_BUFFER,
+        width: Math.max(fullWidth, cssWidth),
+        height: fullHeight + HEIGHT_BUFFER,
+        scrollX: 0,
+        scrollY: 0
+      });
+
+      canvas.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `live-readings-${tsName()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      }, 'image/png');
+
+      setHeaderMsg?.('Screenshot saved.', 'text-success');
+      setTimeout(() => setHeaderMsg?.('', 'text-muted'), 4000);
+
+      if (tableWrap) tableWrap.style.overflow = prev.wrapOverflow ?? '';
+      target.style.backgroundColor = prev.targetBg || '';
+      target.style.paddingTop = prev.targetPaddingTop || '';
+      target.style.paddingBottom = prev.targetPaddingBottom || '';
+    } catch (e) {
+      setHeaderMsg?.('Could not capture screenshot.', 'text-danger');
+      console.error(e);
+    } finally {
+      document.body.classList.remove('screenshot-mode');
+      btn.disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnScreenshot');
+    if (btn) btn.addEventListener('click', takeScreenshot);
+  });
+</script>
+
+
+{% if vpn_connected %}
+<div class="alert alert-warning d-flex align-items-center" role="alert" style="margin-top:8px;">
+  <span class="me-2">⚠️</span>
+  <div>
+    <strong>VPN detected on server.</strong>
+    Live connections from meters may fail while a VPN is active. Disconnect the VPN or enable split tunneling.
+  </div>
+</div>
+{% endif %}
+{% if public_ip %}
+<div class="text-muted small">Public IP: {{ public_ip }}</div>
+{% endif %}
+
+<div class="container-fluid" id="captureArea">
+  <div class="d-flex justify-content-between align-items-end mb-2">
+    <div>
+      <!-- Heading + message + subtext -->
+      <div class="d-flex align-items-start flex-wrap gap-2">
+        <div class="me-3">
+          <h2 class="mb-0 d-flex align-items-center">
+            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings
+            <span id="headingPowerMsg" class="small ms-3 text-muted" aria-live="polite"></span>
+          </h2>
+          <small class="text-muted d-block lh-1">
+            Online = updated within last {{ online_minutes }} min
+          </small>
+        </div>
+
+        <!-- Column chooser dialog (exists; no launcher button) -->
+        <dialog id="colsDlg" style="border:0;border-radius:12px;max-width:560px;width:92%;padding:0;">
+          <div class="p-3 d-flex justify-content-between align-items-center border-bottom fw-semibold">
+            <span>Select Columns</span>
+            <div class="d-flex align-items-center gap-2">
+              <label class="small text-muted">Profile</label>
+              <select id="colsProfile" class="form-select form-select-sm w-auto">
+                <option value="desktop">Desktop</option>
+                <option value="mobile">Mobile</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="p-2 d-flex gap-2 justify-content-end border-top">
+            <button class="btn btn-sm btn-secondary" id="colsEssentials" type="button">Essentials</button>
+            <button class="btn btn-sm btn-secondary" id="colsShowAll" type="button">Show all</button>
+            <button class="btn btn-sm btn-secondary" id="colsReset" type="button">Reset</button>
+            <button class="btn btn-sm btn-primary" type="button" onclick="closeCols()">Close</button>
+          </div>
+
+          <div class="p-3" id="colsBody" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;">
+          </div>
+
+          <div class="p-2 d-flex gap-2 justify-content-end border-top">
+            <button class="btn btn-sm btn-secondary" id="colsEssentials" type="button">Essentials</button>
+            <button class="btn btn-sm btn-secondary" id="colsShowAll" type="button">Show all</button>
+            <button class="btn btn-sm btn-secondary" id="colsReset" type="button">Reset</button>
+            <button class="btn btn-sm btn-primary" type="button" onclick="closeCols()">Close</button>
+          </div>
+        </dialog>
+
+        <!-- Filters / actions -->
+        <form method="get" class="filters-inline d-flex align-items-center flex-wrap gap-2 m-0 w-100">
+          <!-- Property -->
+          <select name="property" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <option value="{{ p.id }}" {% if p.is_selected %} selected{% endif %}>{{ p.property_name }}</option>
+
+
+
+
+          </select>
+
+
+          <!-- Unit -->
+          <select name="unit" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <option value="{{ u.id }}" {% if u.is_selected %} selected{% endif %}>{{ u.unit_number }}</option>
+
+
+
+
+
+          </select>
+
+
+          <!-- Meter + Filter + Reset grouped on small -->
+          <div class="meter-actions d-flex align-items-center gap-2">
+            <select name="meter" class="form-select form-select-sm text-truncate"
+              style="min-width:var(--filter-minw);max-width:var(--filter-maxw)" onchange="this.form.submit()">
+              <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>{{ m.unit.unit_number }} — {{
+                m.meter_number }}
+              </option>
+
+
+
+
+
+            </select>
+
+            <button class="btn btn-sm btn-primary" type="submit">
+              <i class="fas fa-search me-1"></i>Filter
+            </button>
+            <a class="btn btn-sm btn-secondary" href="{% url 'smart_meter:smart_meter_live_custom' %}">Reset</a>
+          </div>
+
+          <!-- Offline only -->
+          <div class="d-flex align-items-center">
+            {% if offline_only %}
+            <input class="form-check-input me-2 my-0" type="checkbox" id="offlineOnly" name="offline" value="1" checked
+              onchange="this.form.submit()">
+            {% else %}
+            <input class="form-check-input me-2 my-0" type="checkbox" id="offlineOnly" name="offline" value="1"
+              onchange="this.form.submit()">
+            {% endif %}
+            <label class="form-check-label small m-0" for="offlineOnly">Offline only</label>
+          </div>
+
+
+          <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap flex-shrink-0 topbar-actions">
+            <button type="button" class="btn btn-sm btn-secondary" id="btnCleanView">
+              <i class="fas fa-eye-slash me-1"></i>Clean view
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btnScreenshot" title="Save a PNG of this page"
+              aria-label="Save a PNG of this page">
+              <i class="fas fa-camera me-1"></i>Screenshot
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="location.reload()">Refresh</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped table-hover mb-0 align-middle table-compact">
+        <thead class="table-light">
+          <tr>
+            <th class="sticky-left sno">S/N</th>
+            <th class="sticky-left col-recharge">Recharge</th>
+            <th class="sticky-left col-prop">Property</th>
+            <th class="sticky-left col-unit">Unit</th>
+            <th class="sticky-left col-meter">Meter #</th>
+            <th class="sticky-left col-status">Status</th>
+            <th class="sticky-left col-power">Power</th>
+
+            <th data-col="updated">Updated</th>
+            <th data-col="balance">Balance</th>
+            <th data-col="total_energy">Total Energy</th>
+            <th data-col="source_ip">Source IP</th>
+            <th data-col="port">Port</th>
+
+            <th data-col="voltage_a">Voltage</th>
+            <th data-col="current_a">Current</th>
+            <th data-col="total_power">Power</th>
+            <th data-col="pf_total">PF Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for r in rows %}
+          {% with m=r.meter u=r.meter.unit p=r.meter.unit.property %}
+          <tr class="row-{% if r.is_online %}online{% else %}offline{% endif %}" data-meter-row
+            data-meter-id="{{ m.id }}">
+            <td class="sticky-left sno text-center">{{ forloop.counter }}</td>
+
+            <td class="sticky-left col-recharge text-center">
+              <button type="button" class="btn btn-success btn-recharge" onclick="openRechargeModal('{{ m.id }}')"
+                title="Recharge this meter">
+                Recharge
+              </button>
+            </td>
+
+            <td class="sticky-left col-prop text-center" title="{{ p.property_name }}">
+              {{ p.property_name|slice:":8" }}
+              <span class="mobile-unit" aria-hidden="true">{{ u.unit_number|default:"" }}</span>
+            </td>
+
+            <td class="sticky-left col-unit text-center" title="{{ u.unit_number }}">
+              {{ u.unit_number|default:"" }}
+            </td>
+
+            <td class="sticky-left col-meter text-center" title="{{ m.meter_number }}">
+              {{ m.meter_number }}
+              <!-- Small-screen: place 3 controls under Meter # -->
+              <div class="mobile-actions">
+                <span
+                  class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">
+                  {% if r.is_online %}Online{% else %}Offline{% endif %}
+                </span>
+                <span
+                  class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">
+                  {% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}
+                </span>
+                <button type="button" class="btn btn-sm btn-secondary power-toggle" title="Toggle power"
+                  aria-label="Toggle power" data-status="{{ m.power_status|upper|default:'OFF' }}"
+                  data-meter-id="{{ m.id }}" data-unit-number="{{ u.unit_number }}"
+                  data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
+                  data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
+                  data-status-url="{% url 'smart_meter:meter_status' m.id %}">
+                  <i class="fas fa-power-off"></i>
+                </button>
+              </div>
+            </td>
+
+            <!-- Status column (hidden on small) remains for desktop -->
+            <td class="sticky-left col-status text-center">
+              <span
+                class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">
+                {% if r.is_online %}Online{% else %}Offline{% endif %}
+              </span>
+            </td>
+
+            <!-- Desktop Power column (hidden on small) -->
+            <td class="sticky-left col-power text-center">
+              <span
+                class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">
+                {% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}
+              </span>
+              <button type="button" class="btn btn-sm btn-secondary power-toggle" title="Toggle power"
+                aria-label="Toggle power" data-status="{{ m.power_status|upper|default:'OFF' }}"
+                data-meter-id="{{ m.id }}" data-unit-number="{{ u.unit_number }}"
+                data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
+                data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
+                data-status-url="{% url 'smart_meter:meter_status' m.id %}">
+                <i class="fas fa-power-off"></i>
+              </button>
+            </td>
+
+            <!-- Updated: date + time -->
+            <td class="text-center" data-col="updated" data-ts="{{ r.ts|date:'c' }}">
+              <span class="u-date">{{ r.ts|date:"Y-m-d" }}</span>
+              <span class="u-sep">•</span>
+              <span class="u-time">{{ r.ts|date:"H:i:s" }}</span>
+              <span class="d-none d-sm-inline"> ±{{ online_minutes }}m</span>
+            </td>
+
+            <td class="text-center" data-col="balance">Rs. {{ r.balance|default:"0.00" }}</td>
+
+            <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
+            <td class="text-right" data-col="total_energy">
+              {{ r.total_energy|default:"—" }} kWh
+              <span class="mobile-voltage">V: {{ r.voltage_a|default:"—" }} V</span>
+              <span class="mobile-current">I: {{ r.current_a|default:"—" }} A</span>
+            </td>
+
+            <td data-col="source_ip">{{ r.source_ip|default:"—" }}</td>
+            <td data-col="port">{{ r.source_port|default:"—" }}</td>
+
+            <!-- Hidden on small; desktop shows these normally -->
+            <td class="text-center" data-col="voltage_a">{{ r.voltage_a|default:"—" }} V</td>
+            <td class="text-center" data-col="current_a">{{ r.current_a|default:"—" }} A</td>
+
+            <td class="text-center" data-col="total_power">{{ r.total_power|default:"—" }}</td>
+            <td class="text-center" data-col="pf_total">{{ r.pf_total|default:"—" }}</td>
+          </tr>
+          {% endwith %}
+          {% empty %}
+          <tr>
+            <td colspan="999" class="text-muted px-3 py-3">No live data yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Secondary dialog tag kept for safety; stays hidden -->
+<dialog id="colsDlg" style="display:none"></dialog>
+
+{% endblock %}

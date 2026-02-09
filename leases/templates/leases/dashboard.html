@@ -1,0 +1,46 @@
+<!-- leases/templates/leases/dashboard.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <h2>Leases Ending Soon</h2>
+    
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Property</th>
+                    <th>Unit</th>
+                    <th>Tenant</th>
+                    <th>End Date</th>
+                    <th>Days Remaining</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lease in ending_leases %}
+                <tr>
+                    <td>{{ lease.unit.property.property_name }}</td>
+                    <td>{{ lease.unit.unit_number }}</td>
+                    <td>{{ lease.tenant.get_full_name }}</td>
+                    <td>{{ lease.end_date }}</td>
+                    <td>{{ lease.end_date|timeuntil }}</td>
+                    <td>
+                        <a href="{% url 'leases:lease_detail' pk=lease.pk %}" class="btn btn-sm btn-info">
+                            View Lease
+                        </a>
+                        <a href="{% url 'leases:lease_renew' pk=lease.pk %}" class="btn btn-sm btn-primary">
+                            Renew
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6">No leases ending soon</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

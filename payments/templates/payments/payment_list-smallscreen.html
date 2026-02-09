@@ -1,0 +1,1093 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Payments{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Payment Records</h2>
+    <div class="d-flex gap-2">
+        <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Add Payment
+        </a>
+        {% include "includes/export_buttons.html" %}
+    </div>
+</div>
+
+<!-- Filter form -->
+<div class="card mb-3">
+  <div class="card-body p-3">
+    <form method="get" id="payment-filter-form">
+      <div class="row row-cols-auto g-2 align-items-end">
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Property</label>
+          <select name="property" id="id_property" class="form-select form-select-sm w-auto" style="min-width: 200px";>
+            <option value="">All</option>
+            {% for property in all_properties %}
+              <option value="{{ property.id }}" {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+                {{ property.property_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Unit</label>
+          <select name="unit" id="id_unit" class="form-select form-select-sm w-auto" style="min-width: 200px";>
+            <option value="">All</option>
+            {% for unit in filtered_units %}
+              <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                {{ unit.unit_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Tenant</label>
+          <select name="tenant" id="id_tenant" class="form-select form-select-sm select2 w-auto" style="min-width: 300px";>
+            <option value="">All</option>
+            {% for tenant in tenant_list %}
+              <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                {{ tenant.get_full_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Date Range</label>
+          <select name="date_range" id="id_date_range" class="form-select form-select-sm w-auto" style="min-width: 200px";>
+            <option value="">Custom</option>
+            <option value="all" {% if request.GET.date_range == 'all' %}selected{% endif %}>All</option>
+            <option value="today" {% if request.GET.date_range == 'today' %}selected{% endif %}>Today</option>
+            <option value="yesterday" {% if request.GET.date_range == 'yesterday' %}selected{% endif %}>Yesterday</option>
+            <option value="this_week" {% if request.GET.date_range == 'this_week' %}selected{% endif %}>This Week</option>
+            <option value="last_week" {% if request.GET.date_range == 'last_week' %}selected{% endif %}>Last Week</option>
+            <option value="this_month" {% if request.GET.date_range == 'this_month' %}selected{% endif %}>This Month</option>
+            <option value="last_month" {% if request.GET.date_range == 'last_month' %}selected{% endif %}>Last Month</option>
+            <option value="this_year" {% if request.GET.date_range == 'this_year' %}selected{% endif %}>This Year</option>
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1 w-auto" style="min-width: 100px";>From</label>
+          <input type="date" name="start_date" id="id_start_date" class="form-control form-control-sm" value="{{ request.GET.start_date }}">
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1 w-auto" style="min-width: 100px";>To</label>
+          <input type="date" name="end_date" id="id_end_date" class="form-control form-control-sm" value="{{ request.GET.end_date }}">
+        </div>
+  
+  </div>
+
+</div>
+   </form>
+<!-- Total Amount Display -->
+<div class="card mb-2 mt-2" id="total-card" style="display:none">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex justify-content-between align-items-left">
+      <span class="fw-bold small">Payments Received:</span>
+      <span class="fw-bold text-success total-amount-display"></span>
+    </div>
+  </div>
+</div>
+
+<div class="table-responsive">
+    {% render_table table %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    .select2-container--default .select2-selection--single {
+        height: 38px;
+        padding-top: 5px;
+    }
+    .form-check {
+        min-height: 38px;
+        display: flex;
+        align-items: center;
+    }
+    .form-label {
+    font-size: 0.85rem;
+    }
+    .form-select-sm, .form-control-sm {
+        font-size: 0.85rem;
+        padding: 0.25rem 0.5rem;
+    }
+    .select2-container--default .select2-selection--single {
+        height: 32px !important;
+        line-height: 32px !important;
+        padding: 0 6px;
+        font-size: 0.85rem;
+    }
+    .select2-selection__arrow {
+        height: 32px !important;
+    }
+
+  /* existing styles ... */
+  .truncate-25 {
+    max-width: 25ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: bottom;
+  }
+
+
+</style>
+
+<style>
+:root {
+  --sm-page-font: 0.58rem;
+  --sm-table-font: 0.58rem;
+  --sm-filter-font: 0.58rem;
+  --sm-heading-font: 0.9rem;
+  --sm-btn-font: 0.75rem;
+  --sm-subtext-font: 0.58rem;
+}
+
+/* Catch both CSS width and device width */
+@media (max-width: 430px), (max-device-width: 430px) {
+  html, body { font-size: var(--sm-page-font) !important; }
+
+  .mb-4.d-flex.justify-content-between.align-items-center { flex-wrap: nowrap; gap: .25rem; }
+  .mb-4.d-flex.justify-content-between.align-items-center h2 {
+    font-size: var(--sm-heading-font) !important;
+    margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55vw;
+  }
+  .mb-4.d-flex.justify-content-between.align-items-center .btn {
+    font-size: var(--sm-btn-font) !important;
+    padding: .25rem .4rem; line-height: 1.1;
+  }
+  .mb-4.d-flex.justify-content-between.align-items-center .btn i { margin-right: .3rem !important; }
+
+  table, .table { font-size: var(--sm-table-font) !important; }
+  .table-responsive, .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table tr > *:first-child { width: 28px; max-width: 28px; min-width: 28px; }
+
+  .sm-subline { display:block; font-size: var(--sm-subtext-font); line-height:1.15; opacity:.9; margin-top:.1rem; white-space:nowrap; }
+  .sm-nowrap { white-space: nowrap; }
+  .sm-wrap { white-space: normal; }
+  .sm-tenant { white-space: nowrap; }
+  .sm-actions .btn span, .sm-actions .dropdown-toggle span { display:none; }
+  .sm-actions .btn, .sm-actions .dropdown-toggle { padding:.25rem .35rem; }
+
+  form.sm-filters { display:grid; grid-template-columns:1fr 1fr; gap:.4rem .4rem; font-size: var(--sm-filter-font) !important; }
+  form.sm-filters .sm-row { display:contents; }
+  form.sm-filters .sm-field { min-width:0; }
+}
+
+/* JS-forced fallback (applies even if media queries don't due to missing viewport) */
+html.sm-mobile-active, html.sm-mobile-active body { font-size: var(--sm-page-font) !important; }
+html.sm-mobile-active .mb-4.d-flex.justify-content-between.align-items-center { flex-wrap: nowrap; gap:.25rem; }
+html.sm-mobile-active .mb-4.d-flex.justify-content-between.align-items-center h2 { font-size: var(--sm-heading-font) !important; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:55vw; }
+html.sm-mobile-active .mb-4.d-flex.justify-content-between.align-items-center .btn { font-size: var(--sm-btn-font) !important; padding:.25rem .4rem; line-height:1.1; }
+html.sm-mobile-active table, html.sm-mobile-active .table { font-size: var(--sm-table-font) !important; }
+html.sm-mobile-active .table-responsive, html.sm-mobile-active .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+html.sm-mobile-active table tr > *:first-child { width:28px; max-width:28px; min-width:28px; }
+html.sm-mobile-active .sm-subline { display:block; font-size: var(--sm-subtext-font); line-height:1.15; opacity:.9; margin-top:.1rem; white-space:nowrap; }
+html.sm-mobile-active .sm-actions .btn span, html.sm-mobile-active .sm-actions .dropdown-toggle span { display:none; }
+html.sm-mobile-active .sm-actions .btn, html.sm-mobile-active .sm-actions .dropdown-toggle { padding:.25rem .35rem; }
+html.sm-mobile-active form.sm-filters { display:grid; grid-template-columns:1fr 1fr; gap:.4rem .4rem; font-size: var(--sm-filter-font) !important; }
+html.sm-mobile-active form.sm-filters .sm-row { display:contents; }
+html.sm-mobile-active form.sm-filters .sm-field { min-width:0; }
+</style>
+
+<style>
+/* Desktop (lg+) — keep filter row in a single line */
+@media (min-width: 992px) {
+  #payment-filter-form .row {
+    display: flex;
+    flex-wrap: nowrap !important;   /* force one line */
+    align-items: flex-end;
+    gap: .5rem .75rem;              /* tidy spacing */
+  }
+  #payment-filter-form .col-auto {
+    flex: 0 0 auto;
+    white-space: nowrap;            /* prevent wrapping of labels */
+  }
+  #payment-filter-form .form-select,
+  #payment-filter-form .form-control {
+    width: auto;                    /* shrink to fit */
+  }
+  /* Make select2 obey the field width instead of 100% */
+  .select2-container {
+    min-width: 200px;
+    width: auto !important;
+  }
+}
+
+/* Gap between action buttons — both screen sizes */
+.actions-gap .btn,
+.actions-gap .dropdown-toggle,
+.sm-actions .btn,
+.sm-actions .dropdown-toggle {
+  margin-right: .35rem;
+}
+.actions-gap .btn:last-child,
+.sm-actions .btn:last-child,
+.actions-gap .dropdown-toggle:last-child,
+.sm-actions .dropdown-toggle:last-child {
+  margin-right: 0;
+}
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Initialize Select2 (we’ll customize display below)
+  $('#id_tenant').select2({
+    placeholder: "Search tenant...",
+    allowClear: true,
+    width: '100%',
+    // Truncate to 35 chars in the dropdown + selection
+    templateResult: function (data) {
+      if (!data.id) return data.text;
+      const full = data.text || '';
+      const short = full.length > 35 ? (full.slice(0, 35) + '…') : full;
+      const $el = $('<span>').text(short).attr('title', full);
+      return $el;
+    },
+    templateSelection: function (data) {
+      const full = data.text || '';
+      const short = full.length > 35 ? (full.slice(0, 35) + '…') : full;
+      return short;
+    }
+  });
+
+  // Auto-open & autofocus search box when tenant filter is focused/opened
+  $('#id_tenant').on('focus', function () {
+    $(this).select2('open');
+  });
+  $('#id_tenant').on('select2:opening', function () {
+    setTimeout(function () {
+      $('.select2-container .select2-search__field').trigger('focus');
+    }, 0);
+  });
+
+  function hasDateFilter() {
+    const dr = $('#id_date_range').val();
+    const s = $('#id_start_date').val();
+    const e = $('#id_end_date').val();
+    return (dr && dr !== '') || !!s || !!e;
+  }
+
+    // Auto-submit form when include_inactive checkbox changes
+    $('#id_include_inactive').change(function() {
+        updateTotalAmount();
+        $('#payment-filter-form').submit();
+    });
+
+    // Property change - reset tenant filter
+    $('#id_property').change(function() {
+        $('#id_tenant').val('').trigger('change');
+        $('#id_date_range').val('').trigger('change');
+        $('#id_start_date').val('');
+        $('#id_end_date').val('');
+        updateTotalAmount();
+        $('#payment-filter-form').submit();
+    });
+
+    // Unit change - reset tenant filter
+    $('#id_unit').change(function() {
+        $('#id_tenant').val('').trigger('change');
+        $('#id_date_range').val('');
+        $('#id_start_date').val('');
+        $('#id_end_date').val('');
+        updateTotalAmount();
+        $('#payment-filter-form').submit();
+    });
+
+    // Tenant change - reset property and unit filters
+    $('#id_tenant').change(function() {
+        if ($(this).val()) {
+            $('#id_property').val('');
+            $('#id_unit').val('');
+            $('#id_date_range').val('');
+            $('#id_start_date').val('');
+            $('#id_end_date').val('');
+        }
+        updateTotalAmount();
+        $('#payment-filter-form').submit();
+    });
+
+    // Status change - auto submit
+    $('#id_status').change(function() {
+        updateTotalAmount();
+        $('#payment-filter-form').submit();
+    });
+
+    // Date range preset change
+    $('#id_date_range').change(function() {
+        if ($(this).val()) {
+            $('#id_property').val('');
+            $('#id_unit').val('');
+            $('#id_tenant').val('').trigger('change');
+            // Clear the manual date inputs when a preset is selected
+            $('#id_start_date').val('');
+            $('#id_end_date').val('');
+        }
+        updateTotalAmount();
+        $('#payment-filter-form').submit();
+    });
+
+    let dateTimeout;
+    // Date inputs change - auto submit
+    $('#id_start_date, #id_end_date').on('change input', function () {
+        clearTimeout(dateTimeout);
+        dateTimeout = setTimeout(function () {
+            const startDate = $('#id_start_date').val();
+            const endDate = $('#id_end_date').val();
+        
+            if (startDate || endDate) {
+                $('#id_date_range').val('');
+                updateTotalAmount();
+                $('#payment-filter-form').submit();
+            }
+        }, 1000); // wait 500ms    
+    });
+
+
+
+    // Set date values based on preset when page loads
+    function setDateRangePreset() {
+        const preset = $('#id_date_range').val();
+        let startDate = '';
+        let endDate = '';
+        const today = new Date();
+        
+        if (preset === 'today') {
+            startDate = endDate = formatDate(today);
+        } else if (preset === 'yesterday') {
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            startDate = endDate = formatDate(yesterday);
+        } else if (preset === 'this_week') {
+            const firstDay = new Date(today);
+            firstDay.setDate(firstDay.getDate() - firstDay.getDay()); // Sunday
+            const lastDay = new Date(today);
+            lastDay.setDate(lastDay.getDate() + (6 - lastDay.getDay())); // Saturday
+            startDate = formatDate(firstDay);
+            endDate = formatDate(lastDay);
+        } else if (preset === 'last_week') {
+            const firstDay = new Date(today);
+            firstDay.setDate(firstDay.getDate() - firstDay.getDay()-7); // Sunday
+            const lastDay = new Date(today);
+            lastDay.setDate(lastDay.getDate() + (6 - lastDay.getDay())-7); // Saturday
+            startDate = formatDate(firstDay);
+            endDate = formatDate(lastDay);
+        } else if (preset === 'this_month') {
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            startDate = formatDate(firstDay);
+            endDate = formatDate(lastDay);
+        } else if (preset === 'last_month') {
+            const firstDay = new Date(today.getFullYear(), today.getMonth()-1, 1);
+            const lastDay = new Date(today.getFullYear(), today.getMonth()-1 + 1, 0);
+            startDate = formatDate(firstDay);
+            endDate = formatDate(lastDay);
+        } else if (preset === 'this_year') {
+            const firstDay = new Date(today.getFullYear(), 0, 1);
+            const lastDay = new Date(today.getFullYear(), 11, 31);
+            startDate = formatDate(firstDay);
+            endDate = formatDate(lastDay);
+        }
+        
+        if (startDate && endDate) {
+            $('#id_start_date').val(startDate);
+            $('#id_end_date').val(endDate);
+        }
+    }
+    
+    function formatDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    // Initialize date presets on page load
+    setDateRangePreset();
+     // Do NOT fetch or show total on page load unless a date filter is present
+  if (hasDateFilter()) {
+    updateTotalAmount();
+  }
+});
+
+// Add this to your existing JavaScript
+function updateTotalAmount() {
+    // Get all form data
+    const formData = $('#payment-filter-form').serialize();
+
+      // guard: no date filter chosen yet → hide the card and bail
+    const hasAnyDate =
+      ($('#id_date_range').val() && $('#id_date_range').val() !== '') ||
+      $('#id_start_date').val() || $('#id_end_date').val();
+
+    if (!hasAnyDate) {
+      $('#total-card').hide();
+      return;
+    }
+
+  // show card, then populate
+  $('#total-card').show();
+    
+    // Make AJAX request to get updated total
+    $.ajax({
+      url: window.location.pathname,
+      data: formData + '&ajax=1',
+      success: function(data) {
+        if (data.total_amount !== undefined && data.total_amount !== null) {
+          const formatted = '$' + parseFloat(data.total_amount)
+            .toFixed(2)
+            .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+          $('.total-amount-display').text(formatted);
+        } else {
+          // if your view ever returns nothing, clear the display safely
+          $('.total-amount-display').text('$0.00');
+        }
+      }
+    });
+}
+
+$(document).ready(function() {
+    // Add to all your existing filter change handlers
+    $('#id_property, #id_unit, #id_tenant, #id_status, #id_date_range, #id_start_date, #id_end_date').change(function() {
+        updateTotalAmount();
+    });
+    
+    // Also call it on page load
+    updateTotalAmount();
+});
+
+function sendWhatsAppSingle(paymentId, phone, firstName, propertyName, unitNumber, amount, paymentDate, balance) {
+    if (!phone.trim()) {
+        alert("No phone number available for WhatsApp.");
+        return;
+    }
+
+    // Clean up phone number (same logic as in detail view)
+    let cleanedPhone = phone.replace(/[^\d]/g, '');
+    if (cleanedPhone.startsWith('0')) {
+        cleanedPhone = '+92' + cleanedPhone.substring(1);
+    } else if (!cleanedPhone.startsWith('+')) {
+        cleanedPhone = cleanedPhone; // fallback if user entered without 0 or 92
+    }
+
+    // Compose message (similar to detail view)
+    const message = `
+Dear ${firstName},
+Payment received for 
+Unit: ${propertyName}-${unitNumber}
+Amount:  ${parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+Date: ${paymentDate}
+Balance:  ${parseFloat(balance).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+
+Thank you!
+`.trim();
+
+    // Open WhatsApp
+    const waUrl = `https://api.whatsapp.com/send?phone=${cleanedPhone}&text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
+}
+
+
+
+</script>
+
+
+
+
+
+
+
+
+<script>
+(function() {
+  // If base.html is missing viewport, dynamically add (Safari may not reflow, so we also add fallback class)
+  var vp = document.querySelector('meta[name="viewport"]');
+  if (!vp) {
+    vp = document.createElement('meta');
+    vp.setAttribute('name','viewport');
+    vp.setAttribute('content','width=device-width, initial-scale=1');
+    document.head.appendChild(vp);
+  }
+
+  // Robust "small device" detection even without proper viewport
+  var cssW = Math.min(window.innerWidth || 9999, document.documentElement.clientWidth || 9999);
+  var screenCssW = (window.screen && window.devicePixelRatio) ? Math.min(window.screen.width / window.devicePixelRatio, window.screen.width) : (window.screen ? window.screen.width : cssW);
+  var isProbablyPhone = (cssW <= 430) || (screenCssW <= 430);
+
+  if (isProbablyPhone) {
+    document.documentElement.classList.add('sm-mobile-active');
+  }
+
+  // Helper: normalize header text
+  const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Main table
+  const tbl = document.querySelector('table');
+  if (!tbl) return;
+
+  // Wrap for overflow
+  if (!tbl.parentElement.classList.contains('table-responsive') && !tbl.parentElement.classList.contains('table-wrap')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    tbl.parentElement.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
+  }
+
+  const thead = tbl.querySelector('thead');
+  let cols = {}, ths = [];
+
+  if (thead) {
+    ths = Array.from(thead.querySelectorAll('th'));
+  } else {
+    const firstRow = tbl.querySelector('tr');
+    if (firstRow) ths = Array.from(firstRow.children);
+  }
+
+  ths.forEach((th, i) => {
+    const t = norm(th.textContent);
+    if (t.includes('s.no') || t.includes('sr') || t.includes('s #') || t === '#' || t.includes('sno')) cols.sno = i;
+    if (t.includes('tenant')) cols.tenant = i;
+    if (t.includes('unit')) cols.unit = i;
+    if (t.includes('amount') || t.includes('amt')) cols.amount = i;
+    if (t.includes('method')) cols.method = i;
+    if (t.includes('date')) cols.date = i;
+    if (t.includes('balance') || t.includes('bal')) cols.balance = i;
+    if (t.includes('action') || t.includes('command') || t.includes('option')) cols.actions = i;
+  });
+
+  function hideColumn(idx) {
+    if (idx == null) return;
+    if (thead) Array.from(thead.querySelectorAll('tr')).forEach(row => { const c = row.children[idx]; if (c) c.style.display = 'none'; });
+    Array.from(tbl.querySelectorAll('tbody tr, tr')).forEach(row => { const c = row.children[idx]; if (c) c.style.display = 'none'; });
+  }
+
+  function setColWidth(idx, w) {
+    if (idx == null) return;
+    const all = [];
+    if (thead) all.push(...thead.querySelectorAll('tr'));
+    all.push(...tbl.querySelectorAll('tbody tr'));
+    all.forEach(row => { const c = row.children[idx]; if (c) { c.style.width = w; c.style.maxWidth = w; c.style.minWidth = w; } });
+  }
+
+  function truncate(txt, n) { txt = (txt || '').trim(); return (txt.length <= n) ? txt : (txt.slice(0, n) + '…'); }
+
+  // Date format helper
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function parseFlexDate(s) {
+    if (!s) return null; s = s.trim();
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (m) { let a=+m[1],b=+m[2],y=+m[3]; if (y<100) y+=2000; if (a>12) return new Date(y,b-1,a); if (b>12) return new Date(y,a-1,b); return new Date(y,a-1,b); }
+    const d = new Date(s); return isNaN(d) ? null : d;
+  }
+  function fmtMMMddYYYY(d) { const dd = String(d.getDate()).padStart(2,'0'); return months[d.getMonth()] + ' ' + dd + ', ' + d.getFullYear(); }
+
+  const rows = tbl.querySelectorAll('tbody tr');
+  rows.forEach(row => {
+    const cells = row.children;
+
+    // Tenant with Unit on second line
+    if (cols.tenant != null) {
+      const tCell = cells[cols.tenant];
+      if (tCell) {
+        const orig = tCell.textContent.trim();
+        const truncated = truncate(orig, 15);
+        if (truncated !== orig) tCell.setAttribute('title', orig);
+        tCell.textContent = truncated;
+        tCell.classList.add('sm-tenant','sm-wrap');
+        if (cols.unit != null && cells[cols.unit]) {
+          const unitText = cells[cols.unit].textContent.trim();
+          if (unitText) {
+            const sub = document.createElement('span');
+            sub.className = 'sm-subline';
+            sub.textContent = 'Unit # ' + unitText;
+            tCell.appendChild(sub);
+          }
+        }
+      }
+    }
+
+    // Amount + Method
+    if (cols.amount != null && cols.method != null) {
+      const aCell = cells[cols.amount];
+      const mCell = cells[cols.method];
+      if (aCell && mCell) {
+        const methodText = mCell.textContent.trim();
+        if (methodText) {
+          const sub = document.createElement('span');
+          sub.className = 'sm-subline';
+          sub.textContent = methodText;
+          aCell.appendChild(sub);
+        }
+        mCell.style.display = 'none';
+      }
+    }
+
+    // Date + Balance (also reformat date)
+    if (cols.date != null) {
+      const dCell = cells[cols.date];
+      if (dCell) {
+        const parsed = parseFlexDate(dCell.textContent);
+        if (parsed) dCell.textContent = fmtMMMddYYYY(parsed);
+        if (cols.balance != null && cells[cols.balance]) {
+          const bal = cells[cols.balance].textContent.trim();
+          if (bal) {
+            const sub = document.createElement('span');
+            sub.className = 'sm-subline';
+            sub.textContent = 'Bal: ' + bal;
+            dCell.appendChild(sub);
+          }
+          cells[cols.balance].style.display = 'none';
+        }
+      }
+    }
+
+    // Actions: icons only
+    if (cols.actions != null && cells[cols.actions]) {
+      const act = cells[cols.actions];
+      act.classList.add('sm-actions');
+      act.querySelectorAll('a, button').forEach(btn => {
+        const text = btn.textContent.trim();
+        if (text) {
+          if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', text);
+          if (!btn.getAttribute('title')) btn.setAttribute('title', text);
+        }
+        Array.from(btn.childNodes).forEach(n => { if (n.nodeType === Node.TEXT_NODE) n.remove(); });
+      });
+    }
+  });
+
+  if (cols.unit != null) hideColumn(cols.unit);
+  if (cols.sno != null) setColWidth(cols.sno, '28px');
+
+  // Filter layout
+  const filterForm = document.querySelector('form#payment-filter-form');
+  if (filterForm) {
+    filterForm.classList.add('sm-filters');
+    function findField(labelContains) {
+      const labels = Array.from(filterForm.querySelectorAll('label'));
+      const lbl = labels.find(l => norm(l.textContent).includes(labelContains));
+      if (!lbl) return null;
+      const group = lbl.closest('.col-auto, .form-group') || lbl.parentElement;
+      return group || lbl;
+    }
+    const fields = [
+      findField('property'),
+      findField('unit'),
+      findField('date range') || findField('range'),
+      findField('date'),
+      findField('from'),
+      findField('to')
+    ].filter(Boolean);
+
+    const want = [[ 'property','unit' ], [ 'date', 'date range' ], [ 'from','to' ]];
+    const mapByName = (name) => fields.find(f => norm(f.textContent).includes(name));
+    want.forEach(names => {
+      const row = document.createElement('div');
+      row.className = 'sm-row';
+      names.forEach(nm => { const f = mapByName(nm); if (f) { f.classList.add('sm-field'); row.appendChild(f); } });
+      if (row.children.length) filterForm.appendChild(row);
+    });
+  }
+})();
+</script>
+<script>
+(function() {
+  ...
+  var isProbablyPhone = (cssW <= 430) || (screenCssW <= 430);
+
+  // Helper: normalize header text
+  const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Main table
+  const tbl = document.querySelector('table');
+  if (!tbl) return;
+
+  // Always wrap for overflow (safe both sizes)
+  if (!tbl.parentElement.classList.contains('table-responsive') && !tbl.parentElement.classList.contains('table-wrap')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    tbl.parentElement.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
+  }
+
+  const thead = tbl.querySelector('thead');
+  let cols = {}, ths = [];
+
+  if (thead) {
+    ths = Array.from(thead.querySelectorAll('th'));
+  } else {
+    const firstRow = tbl.querySelector('tr');
+    if (firstRow) ths = Array.from(firstRow.children);
+  }
+
+  ths.forEach((th, i) => {
+    const t = norm(th.textContent);
+    if (t.includes('s.no') || t.includes('sr') || t.includes('s #') || t === '#' || t.includes('sno')) cols.sno = i;
+    if (t.includes('tenant')) cols.tenant = i;
+    if (t.includes('property')) cols.property = i;
+    if (t.includes('unit')) cols.unit = i;
+    if (t.includes('amount') || t.includes('amt')) cols.amount = i;
+    if (t.includes('method')) cols.method = i;
+    if (t.includes('date')) cols.date = i;
+    if (t.includes('balance') || t.includes('bal')) cols.balance = i;
+    if (t.includes('action') || t.includes('command') || t.includes('option')) cols.actions = i;
+  });
+
+  // Always add a small gap class to the actions column (both sizes)
+  if (cols.actions != null) {
+    Array.from(tbl.querySelectorAll('tbody tr, tr')).forEach(row => {
+      const c = row.children[cols.actions];
+      if (c) c.classList.add('actions-gap');
+    });
+  }
+
+  // -------- MOBILE-ONLY TRANSFORMS --------
+  if (isProbablyPhone) {
+    function hideColumn(idx) {
+      if (idx == null) return;
+      if (thead) Array.from(thead.querySelectorAll('tr')).forEach(row => { const c = row.children[idx]; if (c) c.style.display = 'none'; });
+      Array.from(tbl.querySelectorAll('tbody tr, tr')).forEach(row => { const c = row.children[idx]; if (c) c.style.display = 'none'; });
+    }
+    function setColWidth(idx, w) {
+      if (idx == null) return;
+      const all = [];
+      if (thead) all.push(...thead.querySelectorAll('tr'));
+      all.push(...tbl.querySelectorAll('tbody tr'));
+      all.forEach(row => { const c = row.children[idx]; if (c) { c.style.width = w; c.style.maxWidth = w; c.style.minWidth = w; } });
+    }
+    function truncate(txt, n) { txt = (txt || '').trim(); return (txt.length <= n) ? txt : (txt.slice(0, n) + '…'); }
+
+    // Date helpers (unchanged)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function parseFlexDate(s) {
+      if (!s) return null; s = s.trim();
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+      if (m) { let a=+m[1],b=+m[2],y=+m[3]; if (y<100) y+=2000; if (a>12) return new Date(y,b-1,a); if (b>12) return new Date(y,a-1,b); return new Date(y,a-1,b); }
+      const d = new Date(s); return isNaN(d) ? null : d;
+    }
+    function fmtMMMddYYYY(d) { const dd = String(d.getDate()).padStart(2,'0'); return months[d.getMonth()] + ' ' + dd + ', ' + d.getFullYear(); }
+
+    const rows = tbl.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+      const cells = row.children;
+
+      // Mobile: Tenant + (Unit as subline)
+      if (cols.tenant != null) {
+        const tCell = cells[cols.tenant];
+        if (tCell) {
+          const orig = tCell.textContent.trim();
+          const truncated = truncate(orig, 15);
+          if (truncated !== orig) tCell.setAttribute('title', orig);
+          tCell.textContent = truncated;
+          tCell.classList.add('sm-tenant','sm-wrap');
+          if (cols.unit != null && cells[cols.unit]) {
+            const unitText = cells[cols.unit].textContent.trim();
+            if (unitText) {
+              const sub = document.createElement('span');
+              sub.className = 'sm-subline';
+              sub.textContent = 'Unit # ' + unitText;
+              tCell.appendChild(sub);
+            }
+          }
+        }
+      }
+
+      // Mobile: Amount + (Method under it)
+      if (cols.amount != null && cols.method != null) {
+        const aCell = cells[cols.amount];
+        const mCell = cells[cols.method];
+        if (aCell && mCell) {
+          const methodText = mCell.textContent.trim();
+          if (methodText) {
+            const sub = document.createElement('span');
+            sub.className = 'sm-subline';
+            sub.textContent = methodText;
+            aCell.appendChild(sub);
+          }
+          mCell.style.display = 'none';
+        }
+      }
+
+      // Mobile: Date + (Balance under it) and reformat date
+      if (cols.date != null) {
+        const dCell = cells[cols.date];
+        if (dCell) {
+          const parsed = parseFlexDate(dCell.textContent);
+          if (parsed) dCell.textContent = fmtMMMddYYYY(parsed);
+          if (cols.balance != null && cells[cols.balance]) {
+            const bal = cells[cols.balance].textContent.trim();
+            if (bal) {
+              const sub = document.createElement('span');
+              sub.className = 'sm-subline';
+              sub.textContent = 'Bal: ' + bal;
+              dCell.appendChild(sub);
+            }
+            cells[cols.balance].style.display = 'none';
+          }
+        }
+      }
+
+      // Mobile: Actions icons only (keep your existing behavior)
+      if (cols.actions != null && cells[cols.actions]) {
+        const act = cells[cols.actions];
+        act.classList.add('sm-actions');
+        act.querySelectorAll('a, button').forEach(btn => {
+          const text = btn.textContent.trim();
+          if (text) {
+            if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', text);
+            if (!btn.getAttribute('title')) btn.setAttribute('title', text);
+          }
+          Array.from(btn.childNodes).forEach(n => { if (n.nodeType === Node.TEXT_NODE) n.remove(); });
+        });
+      }
+    });
+
+    // Mobile: hide unit & squeeze S.No width
+    if (cols.unit != null) hideColumn(cols.unit);
+    if (cols.sno != null) setColWidth(cols.sno, '28px');
+  }
+  // -------- END MOBILE-ONLY TRANSFORMS --------
+
+
+  // MOBILE-ONLY filter re-layout — run only on small screens now
+  const filterForm = document.querySelector('form#payment-filter-form');
+  if (filterForm && isProbablyPhone) {
+    filterForm.classList.add('sm-filters');
+    function findField(labelContains) {
+      const labels = Array.from(filterForm.querySelectorAll('label'));
+      const lbl = labels.find(l => norm(l.textContent).includes(labelContains));
+      if (!lbl) return null;
+      const group = lbl.closest('.col-auto, .form-group') || lbl.parentElement;
+      return group || lbl;
+    }
+    const fields = [
+      findField('property'),
+      findField('unit'),
+      findField('date range') || findField('range'),
+      findField('date'),
+      findField('from'),
+      findField('to')
+    ].filter(Boolean);
+
+    const want = [[ 'property','unit' ], [ 'date', 'date range' ], [ 'from','to' ]];
+    const mapByName = (name) => fields.find(f => norm(f.textContent).includes(name));
+    want.forEach(names => {
+      const row = document.createElement('div');
+      row.className = 'sm-row';
+      names.forEach(nm => { const f = mapByName(nm); if (f) { f.classList.add('sm-field'); row.appendChild(f); } });
+      if (row.children.length) filterForm.appendChild(row);
+    });
+  }
+})();
+</script>
+<script>
+(function() {
+  ...
+  var isProbablyPhone = (cssW <= 430) || (screenCssW <= 430);
+
+  // Helper: normalize header text
+  const norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Main table
+  const tbl = document.querySelector('table');
+  if (!tbl) return;
+
+  // Always wrap for overflow (safe both sizes)
+  if (!tbl.parentElement.classList.contains('table-responsive') && !tbl.parentElement.classList.contains('table-wrap')) {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    tbl.parentElement.insertBefore(wrap, tbl);
+    wrap.appendChild(tbl);
+  }
+
+  const thead = tbl.querySelector('thead');
+  let cols = {}, ths = [];
+
+  if (thead) {
+    ths = Array.from(thead.querySelectorAll('th'));
+  } else {
+    const firstRow = tbl.querySelector('tr');
+    if (firstRow) ths = Array.from(firstRow.children);
+  }
+
+  ths.forEach((th, i) => {
+    const t = norm(th.textContent);
+    if (t.includes('s.no') || t.includes('sr') || t.includes('s #') || t === '#' || t.includes('sno')) cols.sno = i;
+    if (t.includes('tenant')) cols.tenant = i;
+    if (t.includes('property')) cols.property = i;
+    if (t.includes('unit')) cols.unit = i;
+    if (t.includes('amount') || t.includes('amt')) cols.amount = i;
+    if (t.includes('method')) cols.method = i;
+    if (t.includes('date')) cols.date = i;
+    if (t.includes('balance') || t.includes('bal')) cols.balance = i;
+    if (t.includes('action') || t.includes('command') || t.includes('option')) cols.actions = i;
+  });
+
+  // Always add a small gap class to the actions column (both sizes)
+  if (cols.actions != null) {
+    Array.from(tbl.querySelectorAll('tbody tr, tr')).forEach(row => {
+      const c = row.children[cols.actions];
+      if (c) c.classList.add('actions-gap');
+    });
+  }
+
+  // -------- MOBILE-ONLY TRANSFORMS --------
+  if (isProbablyPhone) {
+    function hideColumn(idx) {
+      if (idx == null) return;
+      if (thead) Array.from(thead.querySelectorAll('tr')).forEach(row => { const c = row.children[idx]; if (c) c.style.display = 'none'; });
+      Array.from(tbl.querySelectorAll('tbody tr, tr')).forEach(row => { const c = row.children[idx]; if (c) c.style.display = 'none'; });
+    }
+    function setColWidth(idx, w) {
+      if (idx == null) return;
+      const all = [];
+      if (thead) all.push(...thead.querySelectorAll('tr'));
+      all.push(...tbl.querySelectorAll('tbody tr'));
+      all.forEach(row => { const c = row.children[idx]; if (c) { c.style.width = w; c.style.maxWidth = w; c.style.minWidth = w; } });
+    }
+    function truncate(txt, n) { txt = (txt || '').trim(); return (txt.length <= n) ? txt : (txt.slice(0, n) + '…'); }
+
+    // Date helpers (unchanged)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function parseFlexDate(s) {
+      if (!s) return null; s = s.trim();
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+      if (m) { let a=+m[1],b=+m[2],y=+m[3]; if (y<100) y+=2000; if (a>12) return new Date(y,b-1,a); if (b>12) return new Date(y,a-1,b); return new Date(y,a-1,b); }
+      const d = new Date(s); return isNaN(d) ? null : d;
+    }
+    function fmtMMMddYYYY(d) { const dd = String(d.getDate()).padStart(2,'0'); return months[d.getMonth()] + ' ' + dd + ', ' + d.getFullYear(); }
+
+    const rows = tbl.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+      const cells = row.children;
+
+      // Mobile: Tenant + (Unit as subline)
+      if (cols.tenant != null) {
+        const tCell = cells[cols.tenant];
+        if (tCell) {
+          const orig = tCell.textContent.trim();
+          const truncated = truncate(orig, 15);
+          if (truncated !== orig) tCell.setAttribute('title', orig);
+          tCell.textContent = truncated;
+          tCell.classList.add('sm-tenant','sm-wrap');
+          if (cols.unit != null && cells[cols.unit]) {
+            const unitText = cells[cols.unit].textContent.trim();
+            if (unitText) {
+              const sub = document.createElement('span');
+              sub.className = 'sm-subline';
+              sub.textContent = 'Unit # ' + unitText;
+              tCell.appendChild(sub);
+            }
+          }
+        }
+      }
+
+      // Mobile: Amount + (Method under it)
+      if (cols.amount != null && cols.method != null) {
+        const aCell = cells[cols.amount];
+        const mCell = cells[cols.method];
+        if (aCell && mCell) {
+          const methodText = mCell.textContent.trim();
+          if (methodText) {
+            const sub = document.createElement('span');
+            sub.className = 'sm-subline';
+            sub.textContent = methodText;
+            aCell.appendChild(sub);
+          }
+          mCell.style.display = 'none';
+        }
+      }
+
+      // Mobile: Date + (Balance under it) and reformat date
+      if (cols.date != null) {
+        const dCell = cells[cols.date];
+        if (dCell) {
+          const parsed = parseFlexDate(dCell.textContent);
+          if (parsed) dCell.textContent = fmtMMMddYYYY(parsed);
+          if (cols.balance != null && cells[cols.balance]) {
+            const bal = cells[cols.balance].textContent.trim();
+            if (bal) {
+              const sub = document.createElement('span');
+              sub.className = 'sm-subline';
+              sub.textContent = 'Bal: ' + bal;
+              dCell.appendChild(sub);
+            }
+            cells[cols.balance].style.display = 'none';
+          }
+        }
+      }
+
+      // Mobile: Actions icons only (keep your existing behavior)
+      if (cols.actions != null && cells[cols.actions]) {
+        const act = cells[cols.actions];
+        act.classList.add('sm-actions');
+        act.querySelectorAll('a, button').forEach(btn => {
+          const text = btn.textContent.trim();
+          if (text) {
+            if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', text);
+            if (!btn.getAttribute('title')) btn.setAttribute('title', text);
+          }
+          Array.from(btn.childNodes).forEach(n => { if (n.nodeType === Node.TEXT_NODE) n.remove(); });
+        });
+      }
+    });
+
+    // Mobile: hide unit & squeeze S.No width
+    if (cols.unit != null) hideColumn(cols.unit);
+    if (cols.sno != null) setColWidth(cols.sno, '28px');
+  }
+  // -------- END MOBILE-ONLY TRANSFORMS --------
+
+
+  // MOBILE-ONLY filter re-layout — run only on small screens now
+  const filterForm = document.querySelector('form#payment-filter-form');
+  if (filterForm && isProbablyPhone) {
+    filterForm.classList.add('sm-filters');
+    function findField(labelContains) {
+      const labels = Array.from(filterForm.querySelectorAll('label'));
+      const lbl = labels.find(l => norm(l.textContent).includes(labelContains));
+      if (!lbl) return null;
+      const group = lbl.closest('.col-auto, .form-group') || lbl.parentElement;
+      return group || lbl;
+    }
+    const fields = [
+      findField('property'),
+      findField('unit'),
+      findField('date range') || findField('range'),
+      findField('date'),
+      findField('from'),
+      findField('to')
+    ].filter(Boolean);
+
+    const want = [[ 'property','unit' ], [ 'date', 'date range' ], [ 'from','to' ]];
+    const mapByName = (name) => fields.find(f => norm(f.textContent).includes(name));
+    want.forEach(names => {
+      const row = document.createElement('div');
+      row.className = 'sm-row';
+      names.forEach(nm => { const f = mapByName(nm); if (f) { f.classList.add('sm-field'); row.appendChild(f); } });
+      if (row.children.length) filterForm.appendChild(row);
+    });
+  }
+})();
+</script>
+
+{% endblock %}

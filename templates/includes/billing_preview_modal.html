@@ -1,0 +1,319 @@
+<div class="modal fade" id="billingPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      {# inside billing_preview_modal.html, in the modal body #}
+
+      {% if lease_change_flags %}
+        {% with f=lease_change_flags %}
+          <div class="alert alert-warning small mb-2">
+            <strong>Lease changes detected:</strong>
+            <ul class="mb-0">
+              {# 1) Security deposit #}
+              {% if f.security_changed %}
+                <li>
+                  Security deposit changed from
+                  <strong>Rs {{ f.old_required|floatformat:0|intcomma }}</strong>
+                  to
+                  <strong>Rs {{ f.new_required|floatformat:0|intcomma }}</strong>.
+                </li>
+              {% endif %}
+
+              {# 2) Rent (base) #}
+              {% if f.rent_changed %}
+                <li>
+                  Rent changed from
+                  <strong>Rs {{ f.old_rent|floatformat:0|intcomma }}</strong>
+                  to
+                  <strong>Rs {{ f.new_rent|floatformat:0|intcomma }}</strong>.
+                </li>
+              {% endif %}
+
+              {# 3) Maintenance #}
+              {% if f.maintenance_changed %}
+                <li>
+                  Society maintenance changed from
+                  <strong>Rs {{ f.old_maintenance|floatformat:0|intcomma }}</strong>
+                  to
+                  <strong>Rs {{ f.new_maintenance|floatformat:0|intcomma }}</strong>.
+                </li>
+              {% endif %}
+
+              {# 4) Combined monthly total (rent + maintenance) #}
+              {% if f.rent_changed or f.maintenance_changed %}
+                <li>
+                  Total monthly charges (rent + maintenance) changed from
+                  <strong>Rs {{ f.old_rent_total|floatformat:0|intcomma }}</strong>
+                  to
+                  <strong>Rs {{ f.new_rent_total|floatformat:0|intcomma }}</strong>.
+                </li>
+              {% endif %}
+
+              {# 5) End date #}
+              {% if f.end_date_changed %}
+                <li>
+                  Lease end date changed from
+                  <strong>{{ f.old_end_date|date:"Y-m-d" }}</strong>
+                  to
+                  <strong>{{ f.new_end_date|date:"Y-m-d" }}</strong>.
+                </li>
+              {% endif %}
+            </ul>
+          </div>
+        {% endwith %}
+      {% endif %}
+
+
+      <div class="modal-header py-2">
+        <h5 class="modal-title">
+          Billing preview
+          <small class="text-muted d-block">
+            {% if object.unit %}Unit: <strong>{{ object.unit }}</strong>{% endif %}
+            {% if object.pk %} &nbsp;•&nbsp; Lease #<strong>{{ object.pk }}</strong>{% endif %}
+          </small>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body py-3">
+        <div id="securityOnlyBox" class="alert alert-info small mb-2" style="display:none;">
+          Only the <strong>security deposit</strong> invoice will be updated. 
+          Monthly rent / maintenance invoices will not be changed.
+        </div>
+
+
+
+        <!-- Past-month backfill + existing invoices -->
+        <div id="backfillBox" class="mb-2" style="display:none;"></div>
+
+        <!-- Recurring summary (compact) -->
+        <div id="recurringBox" class="mb-2">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <strong class="me-1">Recurring charges</strong>
+            <span id="recurringNote" class="badge bg-secondary" style="display:none;">will not be created</span>
+          </div>
+          <div class="border rounded p-2 small">
+            <div class="row gy-1">
+              <div class="col-12 col-md-6">
+                <div class="d-flex justify-content-between">
+                  <span>Rent</span>
+                  <span id="rentLine">—</span>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="d-flex justify-content-between">
+                  <span>Maintenance</span>
+                  <span id="maintLine">—</span>
+                </div>
+              </div>
+              <div class="col-12">
+                <div class="d-flex justify-content-between">
+                  <span>Period</span>
+                  <span id="periodLine">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hidden inputs posted with the main form -->
+        <!-- inside billing_preview_modal.html -->
+      
+
+
+        <input type="hidden" name="include_backfill" id="include_backfill" value="1" form="lease-form">
+        <input type="hidden" name="update_existing" id="update_existing" value="0" form="lease-form">
+
+
+        <!-- Plan JSON for live UI updates -->
+        {{ billing_plan|json_script:"billingPlanData" }}
+
+      </div>
+
+      <div class="modal-footer py-2">
+        <div class="me-auto small text-muted" id="footerHint">Review and confirm.</div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" id="confirmBillingBtn" class="btn btn-primary" form="lease-form">
+          Proceed &amp; Save
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function fmtRs(x) {
+    if (x === null || x === undefined || x === '') return 'Rs 0';
+    // Ensure number; your plan may have strings
+    var n = typeof x === 'number' ? x : parseFloat(x);
+    if (isNaN(n)) return 'Rs ' + x;
+    return 'Rs ' + n.toLocaleString('en-PK', { maximumFractionDigits: 0 });
+  }
+  function firstOfNextMonth(d){
+    return new Date(d.getFullYear(), d.getMonth()+1, 1);
+  }
+  function ymd(d){
+    if (!d) return '—';
+    var dt = (d instanceof Date) ? d : new Date(d);
+    return dt.toLocaleDateString('en-GB', { year:'numeric', month:'short', day:'2-digit' });
+  }
+
+    var plan = {};
+  try {
+    plan = JSON.parse(document.getElementById('billingPlanData').textContent);
+  } catch(e) {}
+
+  var backfillBox       = document.getElementById('backfillBox');
+  var includeBackfillInput = document.getElementById('include_backfill');
+  var updateExistingInput  = document.getElementById('update_existing');
+  var securityOnlyBox   = document.getElementById('securityOnlyBox');
+  var recurringBox      = document.getElementById('recurringBox');
+
+  // Convenience flags from plan (set in preview_billing_on_change)
+  var rentChanged   = !!plan.rent_changed;
+  var maintChanged  = !!plan.maintenance_changed;
+  var termChanged   = !!plan.end_date_changed;
+  var securityPlan  = plan.security_item || null;
+  var rentOrTermChanged = rentChanged || maintChanged || termChanged;
+
+  function buildBackfillUI(){
+    // If there is no rent/term change, don't show backfill at all.
+    if (!rentOrTermChanged) {
+      backfillBox.style.display = 'none';
+      return;
+    }
+
+    var months = (plan.backfill_months || []).slice();
+    if (!months.length) {
+      backfillBox.style.display = 'none';
+      return;
+    }
+
+    var requiresBackfill = !!plan.requires_backfill_confirmation;
+    var hasExisting = !!plan.has_existing_invoices;
+
+    var html = '';
+
+    if (requiresBackfill) {
+      html += '<div class="py-2 mb-2">'+
+              'Lease start <strong>' + (plan.recurring_start || '') + '</strong> is in the past. '+
+              'Include past months up to today?'+
+              '<div class="form-check mt-2">'+
+              '<input class="form-check-input" type="checkbox" id="chkBackfill" '+ (includeBackfillInput.value==='1'?'checked':'') +'>'+
+              '<label class="form-check-label" for="chkBackfill"> Yes, include past months ('+ months.length +')</label>'+
+              '</div></div>';
+    }
+
+    html += '<div class="border rounded p-2 small">';
+    if (hasExisting) {
+      html += '<div class="py-1 mb-2">'+
+              'Some months already have invoices.'+
+              '<div class="form-check mt-1">'+
+              '<input class="form-check-input" type="checkbox" id="chkUpdate" '+ (updateExistingInput.value==='1'?'checked':'') +'>'+
+              '<label class="form-check-label" for="chkUpdate"> Update amounts on existing invoices</label>'+
+              '</div></div>';
+    }
+
+    // Live month list (compact)
+    html += '<div class="row row-cols-2 row-cols-md-4 g-1" id="monthGrid">';
+    months.forEach(function(row){
+      var label = new Date(row.month).toLocaleDateString('en-GB', { month:'short', year:'numeric' });
+      var badge = row.exists ? '<span class="badge bg-secondary ms-1">exists</span>'
+                             : '<span class="badge bg-success ms-1">new</span>';
+      html += '<div class="col"><div class="border rounded px-2 py-1 text-truncate">'+label+badge+'</div></div>';
+    });
+    html += '</div></div>';
+
+    backfillBox.innerHTML = html;
+    backfillBox.style.display = 'block';
+
+    // Wire up toggles (don’t close modal)
+    var chkBackfill = document.getElementById('chkBackfill');
+    var chkUpdate = document.getElementById('chkUpdate');
+    if (chkBackfill) chkBackfill.addEventListener('change', function(){
+      includeBackfillInput.value = this.checked ? '1' : '0';
+      var first = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+      var grid = document.getElementById('monthGrid');
+      if (!grid) return;
+      Array.from(grid.children).forEach(function(col, idx){
+        var row = months[idx];
+        var isCurrent = (String(row.month).slice(0,10) === first);
+        col.style.opacity = (includeBackfillInput.value==='1' || isCurrent) ? '1' : '0.35';
+      });
+    });
+    if (chkUpdate) chkUpdate.addEventListener('change', function(){
+      updateExistingInput.value = this.checked ? '1' : '0';
+    });
+  }
+
+  // Compact recurring section with before → after (Rs)
+  function buildRecurringUI(){
+    var rentLine     = document.getElementById('rentLine');
+    var maintLine    = document.getElementById('maintLine');
+    var periodLine   = document.getElementById('periodLine');
+    var recurringNote = document.getElementById('recurringNote');
+    var footerHint   = document.getElementById('footerHint');
+
+    function line(before, after){
+      if (before == null && after == null) return '—';
+      var b = (before == null ? '—' : fmtRs(before));
+      var a = (after == null ? '—' : fmtRs(after));
+      var deltaNum = (before == null || after == null) ? null : (parseFloat(after)-parseFloat(before));
+      var delta = (deltaNum === null || isNaN(deltaNum)) ? '' :
+                  (' &nbsp;<small>(' + (deltaNum >= 0 ? '+' : '') + deltaNum.toFixed(0) + ')</small>');
+      return b + ' → <strong>' + a + '</strong>' + delta;
+    }
+
+    // If no rent/term changes, hide recurring box and show security-only note (if applicable)
+    if (!rentOrTermChanged) {
+      if (recurringBox) recurringBox.style.display = 'none';
+
+      if (securityPlan && securityOnlyBox) {
+        securityOnlyBox.style.display = 'block';
+        footerHint.textContent = 'Review the security deposit change and confirm.';
+      }
+      return;
+    }
+
+    // We DO have rent/term changes: show recurring box normally
+    if (recurringBox) recurringBox.style.display = 'block';
+    if (securityOnlyBox) securityOnlyBox.style.display = 'none';
+
+    var rent = (plan.recurring || []).find(function(r){ return r.category === 'Rent'; });
+    var maint = (plan.recurring || []).find(function(r){ return r.category === 'Society Maintenance'; });
+
+    rentLine.innerHTML  = line(rent && rent.before && rent.before.amount,   rent && rent.after && rent.after.amount);
+    maintLine.innerHTML = line(maint && maint.before && maint.before.amount, maint && maint.after && maint.after.amount);
+
+    var start = plan.recurring_start ? new Date(plan.recurring_start) : null;
+    var end   = plan.recurring_end   ? new Date(plan.recurring_end)   : null;
+    periodLine.textContent = ymd(start) + ' → ' + (end ? ymd(end) : 'Open-ended');
+
+    // If lease ends before next month, show “will not be created”
+    var endsBeforeNext = end && end < firstOfNextMonth(new Date());
+    if (endsBeforeNext) {
+      recurringNote.style.display = 'inline-block';
+      footerHint.textContent = 'Recurring will not be created because lease ends before next month.';
+    } else {
+      recurringNote.style.display = 'none';
+      footerHint.textContent = 'Review and confirm.';
+    }
+  }
+
+  // Wire up the main confirm button to submit the main form
+  document.getElementById('confirmBillingBtn')?.addEventListener('click', function(){
+    var form = document.getElementById('lease-form');
+    if (!form) return;
+    var confirmField = document.getElementById('confirm_billing_field');
+    if (confirmField) {
+        confirmField.value = "1";   // mark as confirmed
+      }
+    form.submit();
+  });
+
+
+  buildBackfillUI();
+  buildRecurringUI();
+})();
+</script>

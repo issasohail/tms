@@ -1,0 +1,39 @@
+{# templates/smart_meter/partials/reading_row_display.html #}
+<tr
+  hx-get="{% url 'smart_meter:meter_reading_row_edit' r.pk %}"
+  hx-trigger="dblclick"
+  hx-target="this"
+  hx-swap="outerHTML"
+  title="Double-click to edit"
+  style="cursor:pointer;"
+>
+    
+  <td class="col-ts text-nowrap">
+    <div>{{ r.ts|date:"Y-m-d" }}</div>
+    <div class="d-sm-none">{{ r.ts|date:"H:i:s" }}</div>
+    <div class="d-none d-sm-block">{{ r.ts|date:"H:i:s" }}</div>
+  </td>
+  <td class="col-prop">
+    <div>{{ r.meter.unit.property.property_name }}</div>
+    <div class="text-muted d-sm-none">Unit {{ r.meter.unit.unit_number }}</div>
+  </td>
+  <td class="col-unit">{{ r.meter.unit.unit_number }}</td>
+  <td class="col-meter">
+    <div><span class="badge bg-primary">{{ r.meter.meter_number }}</span></div>
+    <div class="text-muted d-sm-none">
+      {{ r.voltage_a|default_if_none:""|floatformat:0 }}V,
+      {{ r.current_a|default_if_none:""|floatformat:4 }}A,
+      {{ r.total_power|default_if_none:""|floatformat:3 }}W
+    </div>
+  </td>
+  <td class="col-ip">{{ r.source_ip|default_if_none:"" }}</td>
+  <td class="col-port">{{ r.source_port|default_if_none:"" }}</td>
+  <td class="col-volt">{{ r.voltage_a|default_if_none:""|floatformat:1 }}</td>
+  <td class="col-amp">{{ r.current_a|default_if_none:""|floatformat:3 }}</td>
+  <td class="col-watt">{{ r.total_power|default_if_none:""|floatformat:3 }}</td>
+  <td class="col-energy fw-bold">
+    <div>{{ r.total_energy|default_if_none:""|floatformat:3 }}</div>
+    <div class="text-muted d-sm-none">PF {{ r.pf_total|default_if_none:""|floatformat:3 }}</div>
+  </td>
+  <td class="col-pf">{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>
+</tr>

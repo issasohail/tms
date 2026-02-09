@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Search Results for "{{ search_term }}"</h2>
+    
+    <div class="card">
+        <div class="card-body">
+            {% if invoices %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Invoice #</th>
+                        <th>Tenant</th>
+                        <th>Date</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                    <tr>
+                        <td><a href="{% url 'invoices:detail' invoice.pk %}">{{ invoice.id }}</a></td>
+                        <td>{{ invoice.tenant.get_full_name }}</td>
+                        <td>{{ invoice.issue_date|date:"Y-m-d" }}</td>
+                        <td>${{ invoice.amount }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No invoices found matching "{{ search_term }}"</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

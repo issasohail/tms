@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Edit Clauses for Lease #{{ lease.id }}</h1>
+<p>Tenant: {{ lease.tenant }} | Unit: {{ lease.unit }}</p>
+
+<form method="post">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Text (template)</th>
+        <th>Customized?</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for form in formset %}
+      <tr>
+        <td>{{ form.instance.clause_number }}</td>
+        <td>
+          {{ form.template_text.errors }}
+          {{ form.template_text }}
+        </td>
+        <td>
+          {{ form.is_customized }}
+          {{ form.is_customized.errors }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <p>
+    <small>
+      You can use the same variables as in defaults, e.g.
+      {{ "{{ monthly_rent }}" }}, {{ "{{ total_monthly }}" }},
+      {{ "{{ tenant.full_name }}" }}, etc.
+    </small>
+  </p>
+
+  <button type="submit">Save changes</button>
+</form>
+{% endblock %}

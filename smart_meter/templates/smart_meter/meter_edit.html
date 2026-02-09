@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container mt-4">
+    <h2>{% if form.instance.pk %}Edit{% else %}Add New{% endif %} Meter</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        <div class="card mb-4">
+            <div class="card-body">
+                {{ form.as_p }}
+            </div>
+        </div>
+        
+        <div class="d-flex justify-content-between">
+            <a href="{% if form.instance.pk %}{% url 'smart_meter:meter_detail' form.instance.pk %}{% else %}{% url 'smart_meter:meter_list' %}{% endif %}" 
+               class="btn btn-secondary">
+                Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">Save Meter</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

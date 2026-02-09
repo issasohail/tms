@@ -1,0 +1,145 @@
+import io
+import logging
+from datetime import datetime
+from django.http import HttpResponse
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+
+logger = logging.getLogger(__name__)
+
+
+class PDFTableExport:
+    def __init__(self, table, export_name="property_export", is_test=False):
+        self.table = table
+        self.export_name = export_name
+        self.is_test = is_test
+
+    def export_pdf(self, request=None):
+        buffer = io.BytesIO()
+
+        try:
+            logger.debug("Starting PDF export process...")
+
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=letter,
+                leftMargin=20,
+                rightMargin=20,
+                topMargin=20,
+                bottomMargin=20,
+                title="Property PDF"
+            )
+
+            styles = getSampleStyleSheet()
+            normal_style = styles['Normal']
+            normal_style.wordWrap = 'CJK'
+
+            wrap_style = ParagraphStyle(
+                name='WrapStyle',
+                parent=normal_style,
+                alignment=TA_LEFT,
+                fontSize=9,
+                leading=11,
+            )
+
+            elements = []
+
+            header_title = "TEST EXPORT - NOT FOR PRODUCTION" if self.is_test else "OFFICIAL PROPERTY EXPORT-i m here"
+            generation_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            elements.append(Paragraph(
+                f"<b>{header_title}</b><br/>"
+                f"<font size=9>Generated at: {generation_time}</font><br/><br/>",
+                styles['Heading2']
+            ))
+
+            data = []
+
+            # Exclude 'Actions' and 'Created' columns
+            original_headers = [col.header for col in self.table.columns]
+            excluded_keys = ['actions', 'created']
+            clean_headers = [
+                h for h in original_headers if h.lower() not in excluded_keys]
+
+            formatted_headers = [
+                Paragraph(h.replace(' ', '<br/>'), wrap_style) for h in clean_headers]
+
+            headers = [Paragraph('#', wrap_style)] + formatted_headers
+            data.append(headers)
+
+            logger.debug("Headers added: %s", [
+                         h.getPlainText() for h in headers])
+
+            # Indexes to skip in row data
+            skip_indexes = [i for i, h in enumerate(
+                original_headers) if h.lower() in excluded_keys]
+
+            for i, row in enumerate(self.table.rows, start=1):
+                formatted_row = [str(i)]
+                for j, cell in enumerate(row):
+                    if j in skip_indexes:
+                        continue
+                    text = str(cell)
+                    formatted_row.append(Paragraph(text, wrap_style))
+                data.append(formatted_row)
+
+            # Define column widths
+            col_widths = [0.5 * inch]  # Serial column
+            for header in clean_headers:
+                key = header.lower()
+                if 'owner' in key or 'caretaker' in key:
+                    col_widths.append(1.0 * inch)
+                elif 'property' in key:
+                    col_widths.append(0.8 * inch)
+                elif 'city' in key:
+                    col_widths.append(0.8 * inch)
+                elif 'type' in key:
+                    col_widths.append(0.8 * inch)
+                elif 'total' in key or 'units' in key:
+                    col_widths.append(0.8 * inch)
+                else:
+                    col_widths.append(1.0 * inch)
+
+            table = Table(data, colWidths=col_widths)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
+            ]))
+
+            elements.append(table)
+            doc.build(elements)
+
+            pdf_content = buffer.getvalue()
+            logger.debug("PDF built successfully.")
+
+            if request:
+                response = HttpResponse(
+                    pdf_content, content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="Property PDF.pdf"'
+                return response
+
+            return pdf_content
+
+        except Exception as e:
+            logger.error("PDF generation failed: %s", str(e), exc_info=True)
+            if request:
+                return HttpResponse(f"PDF generation failed: {str(e)}", content_type='text/plain', status=500)
+            raise
+
+        finally:
+            buffer.close()
+            logger.debug("Buffer closed.")

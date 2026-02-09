@@ -1,0 +1,22 @@
+{% extends "payments/_payments_list_layout.html" %}
+
+{% block title %}Payments{% endblock %}
+{% block page_heading %}Payment Records{% endblock %}
+
+{% block header_buttons %}
+  <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
+    <i class="fas fa-plus me-1"></i> Add Payment
+  </a>
+  <a href="{% url 'payments:cash_ledger' %}" class="btn btn-link">Cash Ledger</a>
+{% endblock %}
+
+{% block totals_card %}
+<div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex justify-content-between align-items-left">
+      <span class="fw-bold small">Payments Received:</span>
+      <span class="fw-bold text-success total-amount-display"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}

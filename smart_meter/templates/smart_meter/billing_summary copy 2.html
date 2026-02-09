@@ -1,0 +1,322 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Billing Summary</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{ --fs-body:12.5px; --fs-th:12px; --pad:.22rem .38rem; }
+  body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:var(--fs-body); }
+  .toolbar{ display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .table-wrap{ overflow-x:auto; border:1px solid #e5e7eb; border-radius:8px; }
+  table{ width:100%; border-collapse:separate; border-spacing:0; min-width:900px; table-layout:fixed; }
+  th,td{ padding:var(--pad); border-bottom:1px solid #f0f0f0; }
+  th{ position:relative; background:#fafafa; text-align:left; }
+  th .lbl{ display:block; line-height:1.05; white-space:normal; } /* 2 lines allowed */
+  .num{ text-align:right; }
+  .prop-row{ background:#f8fafc; font-weight:600; }
+  .sub-row{ background:#f9f9f9; font-weight:600; }
+  .muted{ color:#6b7280; font-size:11px; }
+  .tenant .name{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tenant .meta{ display:block; font-size:11px; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  a.js-detail{ text-decoration:underline dotted; text-underline-offset:2px; }
+  a.js-detail:hover{ text-decoration:underline; }
+
+  .badge{ display:inline-flex; align-items:center; gap:.35rem; padding:.28rem .5rem; border-radius:999px; text-decoration:none; font-weight:600; }
+  .badge-excel{ background:#e6f4ea; color:#137333; border:1px solid #c3e6cd; }
+  .badge-pdf{ background:#fde7e9; color:#b3261e; border:1px solid #f5c2c7; }
+  .btn{ display:inline-flex; align-items:center; gap:.5rem; padding:.38rem .7rem; border-radius:10px; border:1px solid #e5e7eb; background:#fff; cursor:pointer; font-weight:600; }
+  .btn:hover{ background:#f8fafc; }
+  .btn-accent{ border-color:#a7f3d0; color:#065f46; background:linear-gradient(180deg,#d1fae5,#a7f3d0); }
+  .btn-accent:hover{ filter:saturate(1.05) brightness(.98); }
+
+  .modal{ position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center; padding:6vh 1rem; z-index:50; background:rgba(0,0,0,.35); opacity:0; visibility:hidden; pointer-events:none; transition:.18s; }
+  .modal.open{ opacity:1; visibility:visible; pointer-events:auto; }
+  .modal-card{ width:min(760px,96vw); background:#fff; border-radius:14px; box-shadow:0 20px 45px rgba(0,0,0,.25); overflow:hidden; }
+  .modal-head,.modal-foot{ padding:.7rem .9rem; background:linear-gradient(180deg,#f8fafc,#eef2ff); display:flex; align-items:center; justify-content:space-between; }
+  .modal-body{ padding:.9rem; max-height:60vh; overflow:auto; }
+  .close{ background:#fff; border:1px solid #e5e7eb; width:28px; height:28px; border-radius:8px; line-height:26px; text-align:center; cursor:pointer; }
+  .grid2{ display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:.4rem .8rem; }
+  .ck{ display:flex; gap:.45rem; align-items:center; padding:.25rem .4rem; border-radius:8px; }
+  .ck:hover{ background:#f9fafb; }
+
+  .resizer{ position:absolute; top:0; right:0; width:6px; cursor:col-resize; user-select:none; }
+  .resizer::after{ content:""; display:block; height:100%; border-right:2px solid transparent; }
+  th:hover .resizer::after{ border-right-color:#d1d5db; }
+</style>
+</head>
+<body>
+
+<h2 style="margin:0 0 .25rem">Billing Summary</h2>
+<div class="muted" style="margin-bottom:.5rem">
+  Period: {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}
+</div>
+
+<form method="get" class="toolbar" id="toolbarForm">
+  <label>Month:
+    <input id="monthPicker" name="month" type="month" value="{{ year }}-{{ month|stringformat:'02d' }}" />
+  </label>
+
+  <!-- extras the user selects (defaults are forced server-side anyway) -->
+  <input type="hidden" name="cols" id="colsField" value="{{ visible_cat_ids|join:',' }}" />
+
+  <button type="button" id="btnCols" class="btn">Show more Categories</button>
+  <button type="submit" class="btn btn-accent">Apply</button>
+
+  <div style="flex:1"></div>
+
+  {% with cols_param=visible_cat_ids|join:"," %}
+    <a class="badge badge-excel" title="Export Excel"
+       href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 4h9l7 7v9a2 2 0 0 1-2 2H4zM15 4v5a2 2 0 0 0 2 2h5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      Excel
+    </a>
+    <a class="badge badge-pdf" title="Export PDF"
+       href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 8h6M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5"/></svg>
+      PDF
+    </a>
+  {% endwith %}
+</form>
+
+<!-- Category picker modal -->
+<div id="colsModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Choose Categories</strong>
+      <button type="button" class="close" id="colsClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        {% for c in all_categories %}
+          <label class="ck">
+            <input type="checkbox" value="{{ c.id }}"
+                   {% if c.id in visible_cat_ids %}checked{% endif %}
+                   {% if c.id in '1,2,12,4,7' %}disabled{% endif %}>
+            <span>{{ c.name }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="muted" style="margin-top:.35rem">
+        Defaults (Rent, Society, Water, Internet, Electric) are always on. “Other” and totals show automatically.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="colsApply" class="btn btn-accent">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div id="detailModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Details</strong>
+      <button id="detailClose" class="close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody">Loading…</div>
+  </div>
+</div>
+
+<div class="table-wrap" style="margin-top:.5rem">
+  <table id="billingTbl">
+    <thead>
+      <tr>
+        <th><span class="lbl">S.N.</span><span class="resizer"></span></th>
+        <th><span class="lbl">Unit</span><span class="resizer"></span></th>
+        <th class="tenant"><span class="lbl">Tenant</span><span class="resizer"></span></th>
+        <th><span class="lbl">Phone</span><span class="resizer"></span></th>
+
+        {% for col in header_cols %}
+          <th class="num" data-col="{{ col.key }}"><span class="lbl">{{ col.label }}</span><span class="resizer"></span></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in groups %}
+        <tr class="prop-row"><td colspan="{{ header_cols|length|add:4 }}">Property: {{ g.property.property_name }}</td></tr>
+
+        {% for r in g.rows %}
+          <tr>
+            <td>{{ r.sn }}</td>
+            <td>{{ r.unit.unit_number }}</td>
+            <td class="tenant"><span class="name" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span></td>
+            <td>{{ r.tenant_phone }}</td>
+
+            {% for cell in r.cells %}
+              <td class="num" data-col="{{ cell.key }}">
+                {% if cell.kind in 'cat other total' %}
+                  <a href="#" class="js-detail"
+                     data-scope="unit"
+                     data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                     data-unit="{{ r.unit.id }}"
+                     data-category="{% if cell.kind == 'cat' %}{{ cell.cat_id }}{% elif cell.kind == 'other' %}other{% else %}*all*{% endif %}"
+                     data-cols="{{ visible_cat_ids|join:',' }}">
+                    {{ cell.value|floatformat:0|intcomma }}
+                  </a>
+                {% elif cell.kind == 'balance' %}
+                  {{ cell.value|floatformat:0|intcomma }}
+                {% else %}
+                  {# WhatsApp button #}
+                  {% if cell.phone %}
+                  <button type="button"
+                    onclick="sendWhatsAppReminder('{{ cell.phone|escapejs }}','{{ cell.tenant_name|escapejs }}','{{ cell.property_name|escapejs }}','{{ cell.unit_number|escapejs }}','{{ cell.balance }}')"
+                    style="background:#10b981; color:#fff; border:0; border-radius:6px; padding:.22rem .5rem; cursor:pointer;">
+                    WhatsApp
+                  </button>
+                  {% else %}—{% endif %}
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+
+        <tr class="sub-row">
+          <td></td><td>Subtotal</td><td></td><td></td>
+          {% for v in g.subtotal_row %}
+            <td class="num">{% if v %}{{ v|floatformat:0|intcomma }}{% else %}&nbsp;{% endif %}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+
+    <tfoot>
+      <tr class="sub-row">
+        <td></td><td>GRAND TOTAL</td><td></td><td></td>
+        {% for v in grand_row %}
+          <td class="num"><strong>{% if v %}{{ v|floatformat:0|intcomma }}{% else %}&nbsp;{% endif %}</strong></td>
+        {% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<script>
+  // auto-submit month
+  document.getElementById('monthPicker')?.addEventListener('change', ()=> {
+    document.getElementById('toolbarForm').submit();
+  });
+
+  // column resizer (simple)
+  (function(){
+    const table = document.getElementById('billingTbl');
+    if (!table) return;
+    const ths = table.querySelectorAll('thead th');
+    ths.forEach((th, idx) => {
+      const handle = th.querySelector('.resizer');
+      if (!handle) return;
+      let startX=0, startW=0;
+      handle.addEventListener('mousedown', (e)=>{
+        startX=e.pageX; startW=th.offsetWidth;
+        document.body.style.cursor='col-resize';
+        const onMove=(e2)=>{
+          const w=Math.max(40, startW+(e2.pageX-startX));
+          th.style.width=w+'px';
+          table.querySelectorAll('tbody tr').forEach(tr=>{
+            const td=tr.children[idx];
+            if(td) td.style.width=w+'px';
+          });
+          table.querySelectorAll('tfoot tr').forEach(tr=>{
+            const td=tr.children[idx];
+            if(td) td.style.width=w+'px';
+          });
+        };
+        const onUp=()=>{
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          document.body.style.cursor='';
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  })();
+
+  // modal helpers
+  function openModal(el){ el.classList.add('open'); el.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
+  function closeModal(el){ el.classList.remove('open'); el.setAttribute('aria-hidden','true'); document.body.style.overflow=''; }
+
+  // column picker
+  (function(){
+    const btn=document.getElementById('btnCols');
+    const modal=document.getElementById('colsModal');
+    const close=document.getElementById('colsClose');
+    const apply=document.getElementById('colsApply');
+    const field=document.getElementById('colsField');
+    const form=document.getElementById('toolbarForm');
+
+    btn.addEventListener('click', ()=> openModal(modal));
+    close.addEventListener('click', ()=> closeModal(modal));
+    modal.addEventListener('click', e=>{ if(e.target===modal) closeModal(modal); });
+
+    apply.addEventListener('click', ()=>{
+      const checked=[...modal.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.value);
+      // defaults are enforced server-side; just submit whatever extras user picked
+      field.value = checked.join(',');
+      closeModal(modal);
+      form.submit();
+    });
+  })();
+
+  // drilldown loader (fixes "failed to load details")
+  (function(){
+    const modal=document.getElementById('detailModal');
+    const body=document.getElementById('detailBody');
+    const close=document.getElementById('detailClose');
+    close.addEventListener('click', ()=> closeModal(modal));
+    modal.addEventListener('click', e=>{ if(e.target===modal) closeModal(modal); });
+
+    document.addEventListener('click', async (e)=>{
+      const a=e.target.closest('a.js-detail'); if(!a) return;
+      e.preventDefault();
+
+      const params=new URLSearchParams({
+        month: a.dataset.month || '',
+        scope: a.dataset.scope || '',
+        category: a.dataset.category || ''
+      });
+      if(a.dataset.unit) params.set('unit_id', a.dataset.unit);
+      if(a.dataset.property) params.set('property_id', a.dataset.property);
+      if(a.dataset.cols) params.append('cols', a.dataset.cols);
+
+      body.textContent='Loading…';
+      openModal(modal);
+      try{
+        const url="{% url 'smart_meter:billing_summary_items' %}?"+params.toString();
+        const res=await fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data=await res.json();
+        body.innerHTML=data.html || '<div class="muted">No items.</div>';
+      }catch(err){
+        body.innerHTML='<div style="color:#b00">Failed to load details.</div>';
+      }
+    });
+  })();
+
+  // WhatsApp helper
+  function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balance) {
+    try {
+      if (!phone) { alert("No phone number provided"); return; }
+      const cleaned = phone.toString().replace(/\D/g, '');
+      const formatted = cleaned.startsWith('0') ? '92' + cleaned.slice(1)
+                      : cleaned.startsWith('92') ? cleaned : '92' + cleaned;
+      const formattedBalance = parseFloat(balance).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const message = `Dear ${firstName},\n\nPayment Reminder:\nProperty: ${propertyName}\nUnit: ${unitNumber}\nBalance Due: Rs. ${formattedBalance}\n\nPlease pay at your earliest convenience.`;
+      window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
+    } catch (error) {
+      console.error("WhatsApp error:", error);
+      alert("Failed to send WhatsApp: " + error.message);
+    }
+  }
+  window.sendWhatsAppReminder = sendWhatsAppReminder;
+</script>
+
+</body>
+</html>
+{% endblock %}

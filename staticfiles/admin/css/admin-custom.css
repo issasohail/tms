@@ -1,0 +1,151 @@
+/* Action buttons in list view */
+.object-tools a.button {
+    background: #417690;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 3px;
+    text-decoration: none;
+    font-size: 12px;
+    margin-right: 5px;
+}
+
+.object-tools a.button:hover {
+    background: #205067;
+}
+
+/* Style for the change property button */
+a.button {
+    background: #417690;
+    padding: 4px 8px;
+    color: white !important;
+    border-radius: 4px;
+    text-decoration: none;
+    margin-left: 8px;
+}
+
+a.button:hover {
+    background: #205067;
+}
+
+/* Hide the unit ID label */
+.field-unit .field-label {
+    display: none;
+}
+
+/* Make the property/unit display stand out */
+.field-property_unit_display {
+    font-weight: bold;
+    font-size: 14px;
+    padding: 8px 0;
+}
+
+/* Image preview styling */
+.field-image_preview img {
+    border: 1px solid #ddd;
+    margin: 5px 0;
+    max-width: 200px;
+}
+
+/* Style for thumbnail links */
+a img[width="50"],
+a img[width="80"] {
+    transition: transform 0.2s;
+}
+
+a img[width="50"]:hover,
+a img[width="80"]:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Style form fields */
+.field-first_name,
+.field-last_name,
+.field-email,
+.field-phone,
+.field-cnic,
+.field-family_members,
+.field-emergency_contact_name,
+.field-emergency_contact_phone {
+    display: inline-block;
+    width: 48%;
+    margin-right: 2%;
+    vertical-align: top;
+}
+
+/* Photo preview styling */
+.field-photo_preview {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.field-photo_preview img {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Address field */
+.field-address textarea {
+    min-height: 100px !important;
+}
+
+/* Print button */
+.button.print-btn {
+    background: #4CAF50;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    text-decoration: none;
+
+    /* Lease terms textarea */
+    .field-terms textarea {
+        height: 300px;
+        width: 80%;
+    }
+
+    fieldset.wide .form-row {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    fieldset.wide .form-row>div {
+        flex: 1;
+        min-width: 250px;
+    }
+
+    .extrapretty {
+        background: #f8f8f8;
+        padding: 20px;
+        margin-top: 20px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+    }
+
+    .extrapretty img {
+        margin-bottom: 10px;
+    }
+
+    .extrapretty strong {
+        display: block;
+        margin-bottom: 5px;
+    }
+
+    /* CNIC preview container */
+    .cnic-previews {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .button {
+        background: #417690;
+        color: white;
+        padding: 2px 5px;
+        text-decoration: none;
+        border-radius: 3px;
+        font-size: 12px;
+    }
+
+    .button:hover {
+        background: #205067;
+    }

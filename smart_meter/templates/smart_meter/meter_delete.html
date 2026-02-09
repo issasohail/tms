@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-danger text-white">
+            <h2>Confirm Meter Deletion</h2>
+        </div>
+        <div class="card-body">
+            <p>Are you sure you want to delete meter <strong>{{ meter.meter_number }}</strong>?</p>
+            <p class="text-danger">This action cannot be undone and will permanently delete all associated data.</p>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between mt-4">
+                    <a href="{% url 'smart_meter:meter_detail' meter.pk %}" class="btn btn-secondary">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn btn-danger">Delete Meter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

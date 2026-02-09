@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<h2>Assign Smart Meter to Unit — {{ unit }}</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Save</button>
+</form>
+{% endblock %}

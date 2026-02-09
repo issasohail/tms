@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Profit &amp; Loss Report{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-3">Profit &amp; Loss Report</h2>
+
+  <!-- Date range / filter info -->
+  <p class="text-muted">
+    {% if start or end %}
+      Period:
+      {% if start %}from <strong>{{ start }}</strong>{% endif %}
+      {% if start and end %} to {% endif %}
+      {% if end %} <strong>{{ end }}</strong>{% endif %}
+    {% else %}
+      Showing all data.
+    {% endif %}
+  </p>
+
+  <!-- Filter form -->
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% csrf_token %}
+    <div class="col-12 col-sm-3">
+      <label class="form-label mb-1" for="id_property">Property</label>
+      {{ form.property }}
+    </div>
+    <div class="col-6 col-sm-2">
+      <label class="form-label mb-1" for="id_unit">Unit</label>
+      {{ form.unit }}
+    </div>
+    <div class="col-6 col-sm-2">
+      <label class="form-label mb-1" for="id_category">Category</label>
+      {{ form.category }}
+    </div>
+    <div class="col-6 col-sm-2">
+      <label class="form-label mb-1" for="id_preset">Preset</label>
+      {{ form.preset }}
+    </div>
+    <div class="col-6 col-sm-1">
+      <label class="form-label mb-1" for="id_start">Start</label>
+      {{ form.start }}
+    </div>
+    <div class="col-6 col-sm-1">
+      <label class="form-label mb-1" for="id_end">End</label>
+      {{ form.end }}
+    </div>
+    <div class="col-6 col-sm-1">
+      <button class="btn btn-primary w-100 btn-sm">Filter</button>
+    </div>
+  </form>
+
+  <!-- Results table -->
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Property</th>
+          <th>Unit</th>
+          <th>Category</th>
+          <th class="text-end">Revenue (Rs)</th>
+          <th class="text-end">Expense (Rs)</th>
+          <th class="text-end">Profit / Loss (Rs)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.property }}</td>
+            <td>{{ r.unit }}</td>
+            <td>{{ r.category|default:"(Uncategorized)" }}</td>
+            <td class="text-end">Rs {{ r.revenue|floatformat:2 }}</td>
+            <td class="text-end">Rs {{ r.expense|floatformat:2 }}</td>
+            <td class="text-end">
+              {% if r.profit_loss < 0 %}
+                <span class="text-danger">Rs {{ r.profit_loss|floatformat:2 }}</span>
+              {% else %}
+                <span class="text-success">Rs {{ r.profit_loss|floatformat:2 }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-muted">No data</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

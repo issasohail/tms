@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial; font-size: 10pt; }
+        h1 { color: #333; font-size: 14pt; margin-bottom: 5px; }
+        h2 { color: #555; font-size: 12pt; margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 5px; text-align: left; }
+        th { background-color: #f5f5f5; }
+        .text-right { text-align: right; }
+        .text-success { color: #28a745; }
+        .text-danger { color: #dc3545; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .footer { margin-top: 20px; font-size: 9pt; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>{{ title }}</h1>
+            <h2>
+                {{ tenant.get_full_name }} - 
+                {% if lease %}
+                    {{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}
+                {% endif %}
+            </h2>
+            <p>Generated on: {{ date|date:"M d, Y" }}</p>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th class="text-right">Amount</th>
+                <th class="text-right">Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for transaction in transactions %}
+            <tr>
+                <td>{{ transaction.line_number }}</td>
+                <td>{{ transaction.date|date:"M d, Y" }}</td>
+                <td>{{ transaction.type }}</td>
+                <td>{{ transaction.description }}</td>
+                <td class="text-right {% if transaction.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if transaction.amount > 0 %}+{% else %}-{% endif %}${{ transaction.amount|abs|floatformat:2 }}
+                </td>
+                <td class="text-right {% if transaction.balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    ${{ transaction.balance|abs|floatformat:2 }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>End of report</p>
+    </div>
+</body>
+</html>

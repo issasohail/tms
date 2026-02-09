@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid py-2">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div>
+      <div class="small text-muted">Tenant • Property • Unit • Period</div>
+      <div class="fw-semibold">
+        {{ lease.tenant }} • {{ lease.property_name }} • {{ lease.unit_number }}
+        • {{ lease.start_date }} → {{ lease.end_date }}
+      </div>
+    </div>
+
+    <div class="col-md-2">
+      <select id="p-pdf-layout" class="form-control form-control-sm" title="PDF layout">
+        <option value="1up">1 photo per page</option>
+        <option value="2up">2 photos per page</option>
+        <option value="4up" selected>4 photos per page (landscape)</option>
+      </select>
+    </div>
+
+    
+    <div id="media-loading">
+      <div class="panel" style="display:flex;align-items:center;">
+        <div class="spinner"></div>
+        <span id="media-loading-text">Working…</span>
+      </div>
+    </div>
+    <!-- In templates/leases/photos_page.html, near your export buttons -->
+<div class="d-flex gap-2 align-items-center">
+  <label for="pdf-layout" class="small text-muted mb-0">Per page</label>
+  <select id="pdf-layout" class="form-select form-select-sm" style="width:auto;">
+    <option value="1up">1</option>
+    <option value="2up">2</option>
+    <option value="4up" selected>4</option>
+  </select>
+
+  <!-- Save PDF to lease (server-side file) -->
+  <a id="btn-export-save"
+     class="btn btn-primary btn-sm"
+     href="{% url 'leases:photos_export' lease.id %}?layout=4up">
+     Export PDF
+  </a>
+
+  <!-- Download as file -->
+  <a id="btn-export-download"
+     class="btn btn-secondary btn-sm"
+     href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1"
+     target="_blank" rel="noopener">
+     Download Photos PDF
+  </a>
+
+  <!-- Open in new tab -->
+  <a id="btn-export-open"
+     class="btn btn-primary btn-sm"
+     href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up"
+     target="_blank" rel="noopener">
+     Export Photos (opens in new tab)
+  </a>
+</div>
+
+<script>
+(function () {
+  const sel = document.getElementById('pdf-layout');
+  const save = document.getElementById('btn-export-save');
+  const dl   = document.getElementById('btn-export-download');
+  const open = document.getElementById('btn-export-open');
+
+  function updateLinks() {
+    const layout = sel.value || '4up';
+    // keep any existing query params, just replace/add layout=
+    function withLayout(url) {
+      const u = new URL(url, window.location.origin);
+      u.searchParams.set('layout', layout);
+      return u.pathname + '?' + u.searchParams.toString();
+    }
+    save.href = withLayout(save.href);
+    dl.href   = withLayout(dl.href);
+    open.href = withLayout(open.href);
+  }
+
+  sel.addEventListener('change', updateLinks);
+  // initialize on load
+  updateLinks();
+})();
+</script>
+
+    <div class="d-flex gap-2">
+      <form method="post" action="{% url 'leases:photos_export' lease.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-primary btn-sm">Export PDF</button>
+      </form>
+
+      <!-- page-level indicator so hx-indicator always resolves -->
+      <div id="media-loading" style="display:none;"></div>
+
+      <form id="lease-photo-add"
+            method="post"
+            enctype="multipart/form-data"
+            action="{% url 'leases:photo_add' lease.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="title" id="hidden-title" value="">
+        <input type="hidden" name="description" id="hidden-desc" value="">
+        <input type="hidden" name="pdf_layout" id="hidden-pdf-layout" value="">
+
+        <!-- Hidden file input (HTMX posts this input on change) -->
+        <input id="add-photos-input"
+              class="d-none"
+              type="file"
+              name="photos"
+              accept="image/*,video/*"
+              multiple
+              hx-post="{% url 'leases:photo_add' lease.pk %}"
+              hx-encoding="multipart/form-data"
+              hx-target="#photos-grid"
+              hx-swap="outerHTML"
+              hx-indicator="#media-loading"
+              hx-trigger="change"
+              hx-include="#lease-photo-add [name=title], #lease-photo-add [name=description], #lease-photo-add [name=pdf_layout], #lease-photo-add [name=csrfmiddlewaretoken]">
+
+        <button type="button"
+                class="btn btn-primary btn-sm"
+                onclick="triggerUpload()">
+          Add Photos
+        </button>
+      </form>
+
+      <script>
+      function triggerUpload() {
+        // push current title/description into hidden fields, then open file picker
+        document.getElementById('hidden-title').value =
+          document.getElementById('p-title')?.value || "";
+        document.getElementById('hidden-desc').value =
+          document.getElementById('p-desc')?.value || "";
+        document.getElementById('hidden-pdf-layout').value =
+          document.getElementById('p-pdf-layout')?.value || "";
+        document.getElementById('add-photos-input').click();
+      }
+      </script>
+
+      <div style="margin-top: 1rem;">
+        <a href="{% url 'leases:deleted_photos_view' lease.id %}" class="btn btn-warning">
+          View Deleted Photos
+        </a>
+      </div>
+
+      <a href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1" target="_blank" class="btn btn-secondary">
+        Download Photos PDF
+      </a>
+      <a href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up" target="_blank" class="btn btn-primary">
+        Export Photos (opens in new tab)
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-2">
+    <div class="col-md-3">
+      <input id="p-title" class="form-control form-control-sm" placeholder="Title (optional)">
+    </div>
+    <div class="col-md-5">
+      <input id="p-desc" class="form-control form-control-sm" placeholder="Description (optional)">
+    </div>
+    <div class="col-auto d-flex align-items-center small text-muted">
+      (These will be stamped and saved on each photo)
+    </div>
+  </div>
+
+  <div id="photos-grid" hx-get="{% url 'leases:photos_grid' lease.pk %}" hx-trigger="load"></div>
+</div>
+
+<div id="photo-toast" style="
+  display:none;
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#198754;
+  color:#fff;
+  padding:8px 16px;
+  border-radius:8px;
+  font-size:0.9rem;
+  box-shadow:0 2px 6px rgba(0,0,0,0.2);
+  z-index:2000;
+">Saved ✅</div>
+
+<!-- NEW error toast -->
+<div id="photo-error" style="
+  display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:#dc3545; color:#fff; padding:8px 16px; border-radius:8px; font-size:0.9rem;
+  box-shadow:0 2px 6px rgba(0,0,0,0.2); z-index:2001;">Error</div>
+
+<script>
+document.body.addEventListener("htmx:afterSwap", function(evt) {
+  // show success toast if the swap targeted a photo card or the photos grid
+  if (evt.target && (evt.target.id?.startsWith("photo-card") || evt.target.id === "photos-grid")) {
+    const toast = document.getElementById("photo-toast");
+    toast.style.display = "block";
+    setTimeout(() => toast.style.display = "none", 1500);
+  }
+});
+// show red toast on any HTMX error (400/403/500, etc.)
+document.body.addEventListener("htmx:responseError", function(evt) {
+  const status = evt.detail.xhr.status;
+  let msg = evt.detail.xhr.responseText || "";
+  // simple, readable message:
+  if (status === 400) msg = "No files uploaded. Please pick at least one photo/video.";
+  if (!msg.trim()) msg = "Something went wrong.";
+  const er = document.getElementById("photo-error");
+  er.textContent = `Error ${status}: ${msg.replace(/<[^>]+>/g,'').slice(0,180)}`;
+  er.style.display = "block";
+  setTimeout(() => er.style.display = "none", 2500);
+});
+</script>
+
+
+<script>
+  // copy title/description into the upload form before HTMX posts
+  document.getElementById('add-photos-input')?.addEventListener('change', function(){
+    const form = document.getElementById('lease-photo-add');
+    form.querySelector('input[name="title"]').value = document.getElementById('p-title')?.value || "";
+    form.querySelector('input[name="description"]').value = document.getElementById('p-desc')?.value || "";
+  });
+</script>
+
+<script>
+document.body.addEventListener('htmx:beforeRequest', function (e) {
+  const url = e.detail?.pathInfo?.path || '';
+  const label = (
+    url.includes('/photo_add')   ? 'Adding photos…' :
+    url.includes('/photo_update')? 'Updating image…' :
+    url.includes('/photo_delete')? 'Removing photo…' :
+                                   'Working…'
+  );
+  const el = document.getElementById('media-loading-text');
+  if (el) el.textContent = label;
+});
+</script>
+
+
+<script>
+document.body.addEventListener("htmx:afterSwap", function(evt) {
+  if (evt.detail.xhr && evt.detail.xhr.response) {
+    try {
+      const data = JSON.parse(evt.detail.xhr.response);
+      if (data.html) {
+        const toast = document.getElementById("photo-toast");
+        toast.style.display = "block";
+        setTimeout(() => toast.style.display = "none", 1500);
+      }
+    } catch {}
+  }
+});
+
+function fadeDelete(evt, id) {
+  evt.preventDefault();
+  const card = document.getElementById("photo-card-" + id);
+  if (card) {
+    card.style.transition = "opacity 0.4s ease";
+    card.style.opacity = "0";
+    setTimeout(() => card.remove(), 400);
+  }
+  htmx.ajax("POST", evt.target.action, { target: null, swap: "none" });
+}
+</script>
+<script>
+function triggerUpload() {
+  // push current title/description into hidden fields
+  document.getElementById('hidden-title').value =
+    document.getElementById('p-title')?.value || "";
+  document.getElementById('hidden-desc').value =
+    document.getElementById('p-desc')?.value || "";
+
+  // open file dialog
+  document.getElementById('add-photos-input').click();
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+</style>
+<style>
+#media-loading {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.35);
+  z-index: 3000;
+  font: 500 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  color: #fff;
+}
+#media-loading.htmx-request { display: flex; }
+#media-loading .panel {
+  background: rgba(0,0,0,.65);
+  padding: 14px 18px;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+}
+#media-loading .spinner {
+  width: 20px; height: 20px; margin-right: 8px;
+  border: 3px solid rgba(255,255,255,.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+{% endblock %}

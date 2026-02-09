@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <div class="card">
+        <div class="card-header">
+            <h3>Lease Renewal for Lease #{{ lease.id }}</h3>
+            <h4><p class="mb-0">Current Tenant: {{ lease.tenant.get_full_name }}</p></h4>
+            <p class="mb-0">Current Rent: ${{ lease.monthly_rent|floatformat:2 }}</p>
+            <p class="mb-0">Maintenance Fee: ${{ lease.society_maintenance|floatformat:2 }}</p>
+        </div>
+        
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="{{ form.rent_increase_percent.id_for_label }}">
+                                {{ form.rent_increase_percent.label }}
+                            </label>
+                            <div class="input-group">
+                                {{ form.rent_increase_percent }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            <small class="form-text text-muted">
+                                {{ form.rent_increase_percent.help_text }}
+                            </small>
+                            {% for error in form.rent_increase_percent.errors %}
+                                <div class="invalid-feedback d-block">{{ error }}</div>
+                            {% endfor %}
+                            
+                            <div class="mt-2">
+                                <strong>New Monthly Rent:</strong> 
+                                <span id="new-rent-amount">${{ lease.get_renewal_rent|floatformat:2 }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="{{ form.new_end_date.id_for_label }}">
+                                {{ form.new_end_date.label }}
+                            </label>
+                            {{ form.new_end_date }}
+                            <small class="form-text text-muted">
+                                {{ form.new_end_date.help_text }}
+                            </small>
+                            {% for error in form.new_end_date.errors %}
+                                <div class="invalid-feedback d-block">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="{{ form.notes.id_for_label }}">
+                        {{ form.notes.label }}
+                    </label>
+                    {{ form.notes }}
+                    <small class="form-text text-muted">
+                        {{ form.notes.help_text }}
+                    </small>
+                </div>
+                
+                <!-- Hidden field for society maintenance -->
+                <input type="hidden" name="society_maintenance" value="{{ lease.society_maintenance }}">
+                
+                <div class="form-group mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Confirm Renewal
+                    </button>
+                    <a href="{% url 'leases:lease_detail' pk=lease.pk %}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get elements
+    const percentInput = document.getElementById('{{ form.rent_increase_percent.id_for_label }}');
+    const newRentDisplay = document.getElementById('new-rent-amount');
+    const currentRent = {{ lease.monthly_rent }};
+    
+    // Function to calculate and display new rent
+    function calculateNewRent() {
+        const increasePercent = parseFloat(percentInput.value) || {{ lease.rent_increase_percent }};
+        const newRent = currentRent * (1 + increasePercent / 100);
+        newRentDisplay.textContent = '$' + newRent.toFixed(2);
+    }
+    
+    // Calculate immediately on load
+    calculateNewRent();
+    
+    // Recalculate when percentage changes
+    percentInput.addEventListener('input', calculateNewRent);
+    
+    // Set default end date (1 year from lease end)
+    const endDateInput = document.getElementById('{{ form.new_end_date.id_for_label }}');
+    if (!endDateInput.value) {
+        const currentEndDate = new Date('{{ lease.end_date|date:"Y-m-d" }}');
+        const newEndDate = new Date(currentEndDate);
+        newEndDate.setFullYear(newEndDate.getFullYear() + 1);
+        
+        // Format as YYYY-MM-DD (HTML date input format)
+        const formattedDate = newEndDate.toISOString().split('T')[0];
+        endDateInput.value = formattedDate;
+    }
+});
+</script>
+{% endblock %}

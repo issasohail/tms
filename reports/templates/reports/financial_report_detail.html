@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ report.get_report_type_display }} Report{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>{{ report.get_report_type_display }} Report</h2>
+    <div>
+        {% if report.report_file %}
+        <a href="{{ report.report_file.url }}" class="btn btn-primary" download>
+            <i class="bi bi-download"></i> Download
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Report Details</h5>
+        <p><strong>Period:</strong> {{ report.start_date }} to {{ report.end_date }}</p>
+        <p><strong>Generated On:</strong> {{ report.generated_at }}</p>
+        {% if report.notes %}
+        <p><strong>Notes:</strong> {{ report.notes }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Quick Reports</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <a href="{% url 'reports:generate_property_report' 1 %}" class="btn btn-outline-primary w-100 mb-2">
+                    Property 1 Report
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{% url 'reports:generate_property_report' 2 %}" class="btn btn-outline-primary w-100 mb-2">
+                    Property 2 Report
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{% url 'reports:generate_tenant_statement' 1 %}" class="btn btn-outline-primary w-100 mb-2">
+                    Sample Tenant Statement
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

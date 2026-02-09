@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lease Agreement</title>
+    <style>
+        body { font-family: 'Times New Roman', serif; line-height: 1.6; }
+        .header { text-align: center; }
+        .clause { margin-bottom: 15px; text-align: justify; }
+        .signature-section { margin-top: 100px; }
+        .signature { width: 45%; float: left; }
+        .footer { font-size: 0.8em; text-align: center; margin-top: 50px; }
+        .clearfix { clear: both; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3>RENT AGREEMENT</h3>
+        This RENT AGREEMENT is made at Islamabad on this {{ lease.agreement_date|date:"d-m-Y" }} <strong>BETWEEN</strong></p></p>
+    </div>
+
+    <div>
+        
+        <p>{{ lease.unit.property.owner_name }} holding CNIC NO. {{ lease.unit.property.owner_cnic }}
+        {{ lease.unit.property.owner_address }} (Hereinafter called "Owner")
+        
+        <strong>AND</strong><br>
+        {{ lease.tenant.get_full_name }} holding CNIC NO. {{ lease.tenant.cnic }}
+        {{ lease.tenant.address }} (Hereinafter called "Tenant")
+    </div>
+
+    <div>
+        {% for clause in clauses %}
+            <div class="clause">
+                <strong>{{ clause.clause_number }}.</strong> {{ clause.rendered_text|safe }}
+            </div>
+
+        {% endfor %}
+            </p>
+    </div>
+
+    <div class="signature-section mt-5">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="signature-box">
+                    <p>_________________________</p>
+                    Owner: {{ lease.unit.property.owner_name }}<br>
+                    CNIC: {{ lease.unit.property.owner_cnic }}<br>
+                </div>
+            </div>
+             <div class="col-md-6">
+                <div class="signature-box">
+                    <p>_________________________</p>
+                    Tenant: {{ lease.tenant.get_full_name }}<br>
+                    CNIC: {{ lease.tenant.cnic }}<br>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="signature-box">
+                    <p>_________________________</p>
+                    Witness 1: {{ lease.witness1_name|default:"_________________________" }}<br>
+                    CNIC: {{ lease.witness1_cnic|default:"_________________________" }}<br>
+                </div>
+           
+            <div class="col-md-6">
+                <div class="signature-box">
+                    <p>_________________________</p>
+                    Witness 2: {{ lease.witness2_name|default:"_________________________" }}</br>
+                    CNIC: {{ lease.witness2_cnic|default:"_________________________" }}<br>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer mt-4 text-center">
+        <p>Generated at: {% now "DATETIME_FORMAT" %}</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,78 @@
+{% extends "payments/base_pdf.html" %}
+{% load static humanize %}
+
+{% block content %}
+<div class="receipt-container">
+    <!-- Header -->
+    <div class="receipt-header">
+        <h1>PAYMENT RECEIPT-testing</h1>
+        <p class="receipt-number">#{{ payment.reference|default:"-" }}</p>
+    </div>
+
+    <!-- Payment Info -->
+    <div class="payment-info">
+        <div class="payment-meta">
+            <p><strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}</p>
+            <p><strong>Method:</strong> {{ payment.get_payment_method_display }}</p>
+            <p><strong>Amount:</strong> ${{ payment.amount|floatformat:2|intcomma }}</p>
+        </div>
+    </div>
+
+    <!-- Tenant and Property Info -->
+    <div class="tenant-info">
+        <h3>Tenant Information</h3>
+        <table class="info-table">
+            <tr>
+                <td><strong>Name:</strong></td>
+                <td>{{ payment.lease.tenant.first_name }} {{ payment.lease.tenant.last_name }}</td>
+            </tr>
+            <tr>
+                <td><strong>Phone:</strong></td>
+                <td>{{ payment.lease.tenant.phone }}</td>
+            </tr>
+            <tr>
+                <td><strong>Property:</strong></td>
+                <td>{{ payment.lease.unit.property.property_name }}</td>
+            </tr>
+            <tr>
+                <td><strong>Unit:</strong></td>
+                <td>{{ payment.lease.unit.unit_number }}</td>
+            </tr>
+            <tr>
+                <td><strong>Balance:</strong></td>
+                <td>${{ payment.lease.get_balance|floatformat:2|intcomma }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Payment Details -->
+    <div class="payment-details">
+        <h3>Payment Details</h3>
+        <table class="details-table">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Payment for {{ payment.get_payment_method_display }}</td>
+                    <td class="text-right">${{ payment.amount|floatformat:2|intcomma }}</td>
+                </tr>
+                {% if payment.notes %}
+                <tr>
+                    <td colspan="2"><strong>Notes:</strong> {{ payment.notes }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="receipt-footer">
+        <p>Thank you for your payment!</p>
+        <p class="generated-date">Generated on {% now "M d, Y" %}</p>
+    </div>
+</div>
+{% endblock %}

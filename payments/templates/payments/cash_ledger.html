@@ -1,0 +1,151 @@
+{% extends "payments/payment_list.html" %}
+{% load humanize %}
+
+{% block total_label %}Cash Movements:{% endblock %}
+{% block title %}Cash Ledger{% endblock %}
+{% block page_heading %}Cash Ledger{% endblock %}
+{% block filter_action %}{% url 'payments:cash_ledger' %}{% endblock %}
+
+{% block header_buttons %}
+  <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
+    <i class="fas fa-plus me-1"></i> Add Payment
+  </a>
+  <a href="{% url 'payments:cash_ledger' %}" class="btn btn-link">Payments</a>
+{% endblock %}
+
+{% block totals_card %}
+<div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex justify-content-between align-items-start">
+      <span class="fw-bold small">Cash Movements:</span>
+      <span class="fw-bold text-success total-amount-display"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  {% include "payments/_allocation_split_modal.html" %}
+  {{ block.super }}
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+
+  <script>
+    // ==========================
+    // Total card (AJAX)
+    // ==========================
+    (function(){
+      function hasDateFilters(){
+        const url = new URL(window.location.href);
+        return !!(url.searchParams.get("date_range") ||
+                  url.searchParams.get("start_date") ||
+                  url.searchParams.get("end_date"));
+      }
+
+      function fetchTotal(){
+        if (!hasDateFilters()) return;
+
+        const url = new URL(window.location.href);
+        url.searchParams.set("ajax", "1");
+
+        fetch(url.toString())
+          .then(r => r.json())
+          .then(data => {
+            const card = document.getElementById("total-card");
+            const out  = document.querySelector(".total-amount-display");
+            if (!card || !out) return;
+
+            card.style.display = "";
+            out.textContent = "Rs. " + Number(data.total_amount || 0).toLocaleString('en-PK', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+          })
+          .catch(() => {});
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchTotal);
+    })();
+  </script>
+
+<script>
+document.addEventListener("click", async function(e){
+  const a = e.target.closest(".btn-wa-receipt");
+  if (!a) return;
+
+  e.preventDefault();
+
+  const apiUrl = a.dataset.waUrl;
+  if (!apiUrl) return;
+
+  try {
+    const r = await fetch(apiUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+    const data = await r.json();
+
+    const phoneRaw = (data.phone || "").toString().trim();
+    const msg = (data.message || "").toString();
+
+    if (!phoneRaw) { alert("No phone number."); return; }
+
+    // normalize phone for wa.me (remove non-digits, drop leading 0, add 92 if needed)
+    let digits = phoneRaw.replace(/\D/g,'');
+    if (digits.startsWith("0")) digits = "92" + digits.slice(1);
+    if (!digits.startsWith("92") && digits.length <= 12) digits = "92" + digits; // your default Pakistan behavior
+
+    const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, "_blank");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to open WhatsApp.");
+  }
+});
+</script>
+<script>
+  document.addEventListener("click", async function(e){
+    const btn = e.target.closest(".btn-split-edit");
+    if(!btn) return;
+
+    const allocId = btn.dataset.allocationId;
+    const modalEl = document.getElementById("splitModal");
+    const form = document.getElementById("splitForm");
+
+    form.querySelector("[name=allocation_id]").value = allocId;
+
+    // Prefill
+    const url = new URL("{% url 'payments:allocation_prefill_api' %}", window.location.origin);
+    url.searchParams.set("allocation_id", allocId);
+
+    const r = await fetch(url.toString());
+    const data = await r.json();
+
+    form.querySelector("[name=lease_amount]").value = data.lease_amount || "0.00";
+    form.querySelector("[name=security_amount]").value = data.security_amount || "0.00";
+    form.querySelector("[name=security_type]").value = data.security_type || "PAYMENT";
+
+    new bootstrap.Modal(modalEl).show();
+  });
+
+  document.addEventListener("submit", function(e){
+    if(e.target.id !== "splitForm") return;
+    e.preventDefault();
+
+    fetch("{% url 'payments:allocation_update_api' %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value },
+      body: new FormData(e.target)
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(()=>null);
+        alert(err?.error || "Failed to save split.");
+        return;
+      }
+      location.reload();
+    });
+  });
+</script>
+
+
+
+{% endblock %}

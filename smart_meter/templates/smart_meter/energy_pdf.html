@@ -1,0 +1,147 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Energy Report</title>
+  <style>
+    /* Page setup (WeasyPrint / wkhtmltopdf-friendly) */
+    @page {
+      size: A4 landscape;
+      margin: 14mm 16mm 16mm 16mm;
+    }
+    /* WeasyPrint footer with counters */
+    @page {
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-size: 10px;
+        color: #333;
+      }
+    }
+
+    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 12px; color: #111; }
+    h1, h2, h3 { margin: 0 0 8px 0; }
+    .muted { color: #666; }
+    .mt-1 { margin-top: 4px; }
+    .mt-2 { margin-top: 8px; }
+    .mt-3 { margin-top: 12px; }
+    .mb-0 { margin-bottom: 0; }
+    .mb-1 { margin-bottom: 4px; }
+    .mb-2 { margin-bottom: 8px; }
+    .mb-3 { margin-bottom: 12px; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .small { font-size: 11px; }
+
+    .header-row { display: flex; justify-content: space-between; align-items: baseline; }
+    .filters { font-size: 11px; color: #333; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; }
+    th { background: #f3f5f8; font-weight: 600; }
+    tbody tr:nth-child(even) { background: #fafafa; }
+
+    .nowrap { white-space: nowrap; }
+    .num { text-align: right; }
+    .twoline { line-height: 1.1; }
+  </style>
+</head>
+<body>
+
+  {# ---- Heading ---- #}
+  <div class="header-row">
+    <h2>Energy Report</h2>
+    <div class="small muted">
+      Generated on {{ now|default:None|date:"Y-m-d H:i" }}
+    </div>
+  </div>
+
+  {# ---- Filters line (safe defaults) ---- #}
+  <div class="filters mt-2">
+    {% with sd=start_date|default:None ed=end_date|default:None %}
+      <strong>Period:</strong>
+      {% if sd and ed %}{{ sd|date:"Y-m-d" }} to {{ ed|date:"Y-m-d" }}{% else %}—{% endif %}
+      &nbsp; | &nbsp; <strong>Report:</strong> {{ report_type|default:"monthly"|title }}
+      {% if current_property %}
+        &nbsp; | &nbsp; <strong>Property ID:</strong> {{ current_property }}
+      {% endif %}
+      {% if current_unit %}
+        &nbsp; | &nbsp; <strong>Unit ID:</strong> {{ current_unit }}
+      {% endif %}
+      {% if current_meter %}
+        &nbsp; | &nbsp; <strong>Meter ID:</strong> {{ current_meter }}
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  {# ---- Totals block ---- #}
+  <div class="mt-2">
+    <strong>Total kWh:</strong> {{ total_usage_kwh|default:0|intcomma }}
+    &nbsp; | &nbsp; <strong>Usage (Rs):</strong> {{ total_usage_charges|default:0|intcomma }}
+    &nbsp; | &nbsp; <strong>Service (Rs):</strong> {{ total_service_charges|default:0|intcomma }}
+    &nbsp; | &nbsp; <strong>Total (Rs):</strong> {{ grand_total_rs|default:0|intcomma }}
+  </div>
+
+  {# ---- Data table ---- #}
+  <div class="mt-3">
+    <table>
+      <thead>
+        <tr>
+          <th class="nowrap">S/N</th>
+          <th class="nowrap twoline">Meter #</th>
+          <th class="nowrap twoline">Unit</th>
+          <th class="nowrap twoline">Property</th>
+          <th class="nowrap twoline">Tenant</th>
+          <th class="nowrap twoline">Period</th>
+          <th class="nowrap twoline num">Begin</th>
+          <th class="nowrap twoline num">End</th>
+          <th class="nowrap twoline num">Usage</th>
+          <th class="nowrap twoline num">Rate<br>(Rs/kWh)</th>
+          <th class="nowrap twoline num">Usage<br>Charges (Rs)</th>
+          <th class="nowrap twoline num">Service<br>Charges (Rs)</th>
+          <th class="nowrap twoline num">Total (Rs)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if rows %}
+          {% for r in rows %}
+          <tr>
+            <td class="nowrap">{{ forloop.counter }}</td>
+            <td class="nowrap">{{ r.meter_no|default:"-" }}</td>
+            <td class="nowrap">{{ r.unit_no|default:"-" }}</td>
+            <td class="nowrap">{{ r.property|default:"-" }}</td>
+            <td class="nowrap">{{ r.tenant|default:"Vacant" }}</td>
+            <td class="nowrap">{{ r.period|default:"-" }}</td>
+
+            {# Begin/End can keep 2dp; usage/currency -> integers with comma #}
+            <td class="num">{{ r.begin_kwh|default:0|floatformat:2 }}</td>
+            <td class="num">{{ r.end_kwh|default:0|floatformat:2 }}</td>
+            <td class="num">{{ r.usage_kwh|default:0|floatformat:0|intcomma }}</td>
+
+            <td class="num">{{ r.rate|default:0|floatformat:0|intcomma }}</td>
+            <td class="num">{{ r.usage_charges|default:0|floatformat:0|intcomma }}</td>
+            <td class="num">{{ r.service_charges|default:0|floatformat:0|intcomma }}</td>
+            <td class="num"><strong>{{ r.total_rs|default:0|floatformat:0|intcomma }}</strong></td>
+          </tr>
+          {% endfor %}
+
+          {# Totals row #}
+          <tr>
+            <td colspan="6" class="text-right"><strong>Totals</strong></td>
+            <td class="num">—</td>
+            <td class="num">—</td>
+            <td class="num"><strong>{{ total_usage_kwh|default:0|floatformat:0|intcomma }}</strong></td>
+            <td class="num">—</td>
+            <td class="num"><strong>{{ total_usage_charges|default:0|floatformat:0|intcomma }}</strong></td>
+            <td class="num"><strong>{{ total_service_charges|default:0|floatformat:0|intcomma }}</strong></td>
+            <td class="num"><strong>{{ grand_total_rs|default:0|floatformat:0|intcomma }}</strong></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="13" class="text-center">No data for selected parameters.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>

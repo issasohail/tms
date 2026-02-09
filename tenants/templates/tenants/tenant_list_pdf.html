@@ -1,0 +1,235 @@
+{% load static humanize %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Tenants List-PDF</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: .5cm;
+            @bottom-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 8px;
+            }
+        }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 8px;
+            margin: 0;
+            padding: 0;
+        }
+        @page {
+            size: A4 landscape;
+            margin: 0.5cm;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 8px;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            padding: 0.5cm;
+        }
+        table {
+            width: 95%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            margin-top: 0.5cm;
+            margin-bottom: 0.5cm;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 3px;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            text-align: center;
+                   }
+
+        .sn-cell {
+            vertical-align: middle !important;
+            text-align: center;
+            font-size: 10px;
+         }
+        .photo-cell {
+            
+            height: 45px;
+            text-align: center;
+            overflow: hidden; /* Hide any overflow */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px !important; /* Reduce padding */
+        }
+        .photo-cell img {
+            
+            object-fit: contain;
+            max-width: 100%; 
+            max-height: 100%; 
+            object-fit: contain; 
+        }
+        .cnic-cell {
+            width: 60px;
+            height: 40px;
+            text-align: center;
+        }
+        .cnic-cell img {
+            max-width: 60px;
+            max-height: 40px;
+            object-fit: contain;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start; /* Changed to align at top */
+            margin-bottom: 0.5px;
+            
+        }
+        .header h1 {
+            font-size: 16px;
+            margin: 0;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .tenant-name {
+            font-size: 12px;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+        .contact-cell {
+            word-wrap: break-word;
+            white-space: normal;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+        .xxsmall {
+            font-size: 9px;
+            line-height: 1.2;
+        }
+        .notes-cell {
+            word-wrap: break-word;
+            font-size: 8px;
+        }
+        tr {
+            page-break-inside: avoid;
+        }
+        .footer-space {
+            height: 0.5cm;
+        }
+        .filter-description {
+            font-size: 9px;
+            font-weight: bold;
+            color: #444;
+            margin-top: 3px;
+            padding: 2px 5px;
+            background-color: #f8f9fa;
+            border-radius: 3px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Tenants List for {{ filter_text }}</h1> 
+                
+            </div>
+            <div class="xxsmall">Generated on: {{ date }} | Showing {{ tenants|length }} records</div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 3%">SN.#</th>
+                    <th style="width: 7%">Photo</th>
+                    <th style="width: 10%">Tenant Info</th>
+                    <th style="width: 10%">Contact</th>
+                    <th style="width: 15%">Lease & Payment</th>
+                    <th style="width: 9%">Emergency</th>
+                    <th style="width: 8%">CNIC Front</th>
+                    <th style="width: 8%">CNIC Back</th>
+                    <th style="width: 15%">Address</th>
+                    <th style="width: 15%">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tenant in tenants %}
+                {% with lease=tenant.current_lease %}
+                <tr>
+                    <td class="sn-cell">{{ forloop.counter }}</td>
+                    <td class="photo-cell">
+                        {% if tenant.photo %}
+                        <img src="{{ tenant.photo.url }}" alt="Photo">
+                        {% else %}
+                        <div style="background-color: #f0f0f0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <span class="xxsmall">No Photo</span>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="tenant-name">{{ tenant.first_name }} {{ tenant.last_name }}</div>
+                        <div class="xxsmall">{{ tenant.number_of_family_member }} Family - {{ tenant.get_gender_display }}</div>
+                    </td>
+                    <td class="contact-cell">
+                        <div>{{ tenant.phone }}</div>
+                        <div class="xxsmall">{{ tenant.email }}</div>
+                    </td>
+                    <td class="xxsmall">
+                        {% if lease %}
+                        <div>
+                            <strong>{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</strong><br>
+                            Ends: {{ lease.end_date|date:"Y-m-d" }}<br>
+                            Monthly: {{ lease.total_payment|intcomma }}<br>
+                            Balance: {{ lease.get_balance|intcomma }}
+                        </div>
+                        {% else %}
+                        <span>No active lease</span>
+                        {% endif %}
+                    </td>
+                    <td class="xxsmall">
+                        {{ tenant.emergency_contact_name }}<br>
+                        {{ tenant.emergency_contact_phone }}
+                    </td>
+                    <td class="cnic-cell">
+                        {% if tenant.cnic_front %}
+                        <img src="{{ tenant.cnic_front.url }}" alt="CNIC Front">
+                        {% else %}
+                        <div style="background-color: #f0f0f0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <span class="xxsmall">No CNIC FRONT</span>
+                        </div>
+                        {% endif %}
+                        
+                    </td>
+                    <td class="cnic-cell">
+                        {% if tenant.cnic_back %}
+                        <img src="{{ tenant.cnic_back.url }}" alt="CNIC Back">
+                        {% else %}
+                        <div style="background-color: #f0f0f0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <span class="xxsmall">No CNIC BACK</span>
+                        </div>
+                        {% endif %}
+                        
+                    </td>
+                    <td class="xxsmall">{{ tenant.address|default:"-" }}</td>
+                    <td class="notes-cell xxsmall">{{ tenant.notes|default:"-" }}</td>
+                </tr>
+                {% endwith %}
+                {% empty %}
+                <tr>
+                    <td colspan="10" class="text-center xxsmall">No tenants found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div class="footer-space"></div>
+    </div>
+</body>
+</html>

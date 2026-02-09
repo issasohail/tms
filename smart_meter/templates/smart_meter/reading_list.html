@@ -1,0 +1,540 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h2 class="mb-0 sm-heading"><i class="fas fa-bolt text-warning me-2"></i>Meter Readings</h2>
+  <div class="text-muted total-readings">
+    Total readings: {{ total_count }}
+    {% if page_obj %} — showing {{ page_obj|length }}{% endif %}
+  </div>
+</div>
+
+<div class="card mb-2">
+  <div class="card-body py-2 px-2">
+    <form id="filtersForm" method="get" class="container-fluid px-0">
+      <div class="align-items-end filter-grid">
+        {# Row A (sm): Property / Unit / Meter #}
+        <div class="grp grp-a f-prop">
+          <label class="form-label mb-1 small">Property</label>
+          <select name="property" class="form-select form-select-sm auto-submit">
+            <option value="">All</option>
+            {% for p in all_properties %}
+              <option value="{{ p.id }}" {% if current_property|stringformat:'s' == p.id|stringformat:'s' %}selected{% endif %}>{{ p.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="grp grp-a f-unit">
+          <label class="form-label mb-1 small">Unit</label>
+          <select name="unit" class="form-select form-select-sm auto-submit">
+            <option value="">All</option>
+            {% for u in filtered_units %}
+              <option value="{{ u.id }}" {% if current_unit|stringformat:'s' == u.id|stringformat:'s' %}selected{% endif %}>{{ u.unit_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="grp grp-a f-meter">
+          <label class="form-label mb-1 small">Meter</label>
+          <select name="meter" class="form-select form-select-sm auto-submit">
+            <option value="">All</option>
+            {% for m in filtered_meters %}
+              <option value="{{ m.id }}" {% if current_meter|stringformat:'s' == m.id|stringformat:'s' %}selected{% endif %}>{{ m.meter_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Row B (sm): Range / Start / End #}
+        <div class="grp grp-b f-range">
+          <label class="form-label mb-1 small">Range</label>
+          <select name="range" id="rangeSel" class="form-select form-select-sm auto-submit">
+            <option value="">All time</option>
+            <option value="today"      {% if range == 'today' %}selected{% endif %}>Today</option>
+            <option value="yesterday"  {% if range == 'yesterday' %}selected{% endif %}>Yesterday</option>
+            <option value="this_week"  {% if range == 'this_week' %}selected{% endif %}>This week</option>
+            <option value="last_week"  {% if range == 'last_week' %}selected{% endif %}>Last week</option>
+            <option value="this_month" {% if range == 'this_month' %}selected{% endif %}>This month</option>
+            <option value="last_month" {% if range == 'last_month' %}selected{% endif %}>Last month</option>
+            <option value="custom"     {% if range == 'custom' %}selected{% endif %}>Custom</option>
+          </select>
+        </div>
+
+        <div class="grp grp-b f-start">
+          <label class="form-label mb-1 small">Start</label>
+          <input type="date" name="start" id="startInp" value="{{ start|date:'Y-m-d' }}" class="form-control form-control-sm auto-submit" placeholder="From">
+        </div>
+
+        <div class="grp grp-b f-end">
+          <label class="form-label mb-1 small">End</label>
+          <input type="date" name="end" id="endInp" value="{{ end|date:'Y-m-d' }}" class="form-control form-control-sm auto-submit" placeholder="To">
+        </div>
+
+
+
+        {# Row C (as one grid item) #}
+        <div class="grp grp-c f-actions">
+          <div class="toggle-wrap">
+            <label class="form-check mb-0 toggle-check">
+              <input class="form-check-input" type="checkbox" id="toggleIp">
+              <span class="form-check-label one-line-toggle">Show IP</span>
+            </label>
+            <label class="form-check mb-0 toggle-check">
+              <input class="form-check-input" type="checkbox" id="togglePort">
+              <span class="form-check-label one-line-toggle">Show Port</span>
+            </label>
+          </div>
+
+          <div class="actions-wrap">
+            <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meter_readings_export_csv' %}?{{ qs }}"><i class="fas fa-file-csv me-1"></i>CSV</a>
+            <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meter_readings_export_xlsx' %}?{{ qs }}"><i class="fas fa-file-excel me-1"></i>Excel</a>
+            <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_reading_create' %}?next={{ request.get_full_path|urlencode }}"><i class="fas fa-plus me-1"></i>Add</a>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="history.back()"><i class="fas fa-arrow-left me-1"></i>Back</button>
+          </div>
+        </div>
+
+      </div>
+    </form>
+  </div>
+</div>
+
+
+
+<div class="card-body p-0">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0 text-center">
+      <thead class="table-light sticky-top">
+        <tr>
+          <th class="col-idx">#</th>
+          <th class="col-ts">Timestamp</th>
+          <th class="col-prop">Property</th>
+          <th class="col-unit">Unit</th>
+          <th class="col-meter">Meter #</th>
+          {# Use unified toggle class on headers so they hide too #}
+          <th class="col-ip toggle-col-ip d-none">Source IP</th>
+          <th class="col-port toggle-col-port d-none">Port</th>
+          <th class="col-volt">Voltage (V)</th>
+          <th class="col-amp">Current (A)</th>
+          <th class="col-watt">Total Power (W)</th>
+          <th class="col-energy">Total Energy (kWh)</th>
+          <th class="col-pf">PF Total</th>
+        </tr>
+      </thead>
+
+        <tbody>
+          {% for r, form in rows %}
+            {% if page_obj %}
+              {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter0|add:page_obj.start_index %}
+            {% else %}
+              {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter %}
+            {% endif %}
+          {% empty %}
+            <tr><td colspan="12" class="text-center py-3">No readings found.</td></tr>
+          {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page_obj and paginator.num_pages > 1 %}
+      <nav aria-label="Readings pages" class="p-2 small">
+        <ul class="pagination pagination-sm mb-0 justify-content-end">
+          <li class="page-item {% if page_obj.number == 1 %}disabled{% endif %}">
+            {% if page_obj.number == 1 %}<span class="page-link">&laquo;</span>
+            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page=1" aria-label="First">&laquo;</a>{% endif %}
+          </li>
+          <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+            {% if page_obj.has_previous %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.previous_page_number }}">Prev</a>
+            {% else %}<span class="page-link">Prev</span>{% endif %}
+          </li>
+          {% for i in paginator.page_range %}
+            {% if i >= page_obj.number|add:'-2' and i <= page_obj.number|add:'2' %}
+              <li class="page-item {% if page_obj.number == i %}active{% endif %}">
+                {% if page_obj.number == i %}<span class="page-link">{{ i }}</span>
+                {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ i }}">{{ i }}</a>{% endif %}
+              </li>
+            {% endif %}
+          {% endfor %}
+          <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+            {% if page_obj.has_next %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+            {% else %}<span class="page-link">Next</span>{% endif %}
+          </li>
+          <li class="page-item {% if page_obj.number == paginator.num_pages %}disabled{% endif %}">
+            {% if page_obj.number == paginator.num_pages %}<span class="page-link">&raquo;</span>
+            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ paginator.num_pages }}" aria-label="Last">&raquo;</a>{% endif %}
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
+  </div>
+</div>
+
+
+{# Compact styles + column widths #}
+<style>
+  /* =========================
+     TWEAKABLE KNOBS (edit here)
+     ========================= */
+  :root{
+    /* ===== Large (≥992px) filter widths ===== */
+    --lg-w-prop: 12%;
+    --lg-w-unit:  8%;
+    --lg-w-meter:12%;
+    --lg-w-range:12%;
+    --lg-w-start:12%;
+    --lg-w-end:  12%;
+    --lg-gap:   .5rem;
+
+    /* ===== Large toggles ===== */
+    --lg-toggle-row-gap:  .12rem;  /* gap between Show IP and Show Port (vertical stack) */
+    --lg-toggle-label-gap:.25rem;  /* checkbox ↔ label */
+    --lg-toggle-size:      .95rem; /* checkbox size */
+    --lg-toggle-label-fz:  .72rem; /* label font size */
+
+    /* ===== Small (≤576px) grid gaps ===== */
+    --sm-col-gap: .25rem;  /* horizontal gap between filters */
+    --sm-row-gap: .12rem;  /* vertical gap between rows */
+
+    /* ===== Small filter label/inputs ===== */
+    --sm-filter-label-fz: .58rem;
+    --sm-filter-text-fz:  .58rem;
+    --sm-filter-ctrl-py:  .14rem;  /* input top/bottom padding */
+    --sm-filter-ctrl-px:  .30rem;  /* input left/right padding */
+    --sm-filter-label-mb: .05rem;  /* space between label and input */
+    --sm-card-py:         .20rem;  /* top/bottom padding of the filter card body */
+
+    /* ===== Small toggles (side-by-side) ===== */
+    --sm-toggle-col-gap:  .20rem;  /* Show IP ↔ Show Port horizontal gap */
+    --sm-toggle-row-gap:  0;       /* vertical gap (0 = no vertical space) */
+    --sm-toggle-label-gap:.12rem;  /* checkbox ↔ label */
+    --sm-toggle-size:     .78rem;  /* checkbox size */
+    --sm-toggle-label-fz: .52rem;  /* label font size */
+
+    /* ===== Action buttons ===== */
+    --lg-btn-fz:        .80rem; --lg-btn-icon-fz: .95rem; --lg-btn-icon-gap: .35rem; --lg-btn-py: .22rem; --lg-btn-px: .50rem;
+    --sm-btn-fz:        .52rem; --sm-btn-icon-fz: .50rem; --sm-btn-icon-gap: .020rem; --sm-btn-py: .012rem; --sm-btn-px: .030rem;
+
+    /* ===== Table sizing ===== */
+    --table-fz: .82rem;
+    --table-pad-y: .25rem;
+    --table-pad-x: .35rem;
+
+    /* ===== Column widths (large) ===== */
+    --lg-col-idx: 4%;
+    --lg-col-ts:  20%;
+    --lg-col-prop:14%;
+    --lg-col-unit:8%;
+    --lg-col-meter:10%;
+    --lg-col-ip:  10%;
+    --lg-col-port:6%;
+    --lg-col-volt:8%;
+    --lg-col-amp: 8%;
+    --lg-col-watt:8%;
+    --lg-col-energy:8%;
+    --lg-col-pf:  6%;
+
+    /* ===== Column widths (small visible ones only) ===== */
+    --sm-col-idx:    7%;
+    --sm-col-ts:    20%;
+    --sm-col-prop:  24%;
+    --sm-col-meter: 31%;
+    --sm-col-energy:18%;
+
+    /* Small heading */
+    --sm-heading-fz: 1rem;
+  }
+
+  /* =========================
+     TABLE
+     ========================= */
+  .table { table-layout: fixed; font-size: var(--table-fz); }
+  .table td, .table th { padding: var(--table-pad-y) var(--table-pad-x); vertical-align: middle; }
+  .table .badge { font-size: .7rem; }
+  @media (min-width: 992px){
+    .col-idx   { width: var(--lg-col-idx); }
+    .col-ts    { width: var(--lg-col-ts); }
+    .col-prop  { width: var(--lg-col-prop); }
+    .col-unit  { width: var(--lg-col-unit); }
+    .col-meter { width: var(--lg-col-meter); }
+    .col-ip    { width: var(--lg-col-ip); }
+    .col-port  { width: var(--lg-col-port); }
+    .col-volt  { width: var(--lg-col-volt); }
+    .col-amp   { width: var(--lg-col-amp); }
+    .col-watt  { width: var(--lg-col-watt); }
+    .col-energy{ width: var(--lg-col-energy); }
+    .col-pf    { width: var(--lg-col-pf); }
+  }
+  @media (max-width: 576px){
+    .table { font-size: .54rem; }
+    .table td, .table th { padding: .02rem .025rem; }
+    .col-unit, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf { display:none; }
+    .col-idx   { width: var(--sm-col-idx); }
+    .col-ts    { width: var(--sm-col-ts); }
+    .col-prop  { width: var(--sm-col-prop); }
+    .col-meter { width: var(--sm-col-meter); }
+    .col-energy{ width: var(--sm-col-energy); }
+  }
+
+  /* Heading smaller on phones; hide totals on phones */
+  .sm-heading { line-height: 1.1; }
+  @media (max-width: 576px){
+    .sm-heading { font-size: var(--sm-heading-fz); line-height: 1.0; }
+    .total-readings { display: none !important; }
+  }
+
+  /* =========================
+     FILTER GRID (works for both screens)
+     ========================= */
+  .filter-grid{ display:flex; flex-wrap: wrap; gap:.25rem; }
+  .filter-grid .grp{ min-width:0; }
+
+  /* Large: all filters in one line; actions on the right */
+  @media (min-width: 992px){
+    .filter-grid{ flex-wrap: nowrap; gap: var(--lg-gap); align-items: end; }
+    .filter-grid .f-prop  { width: var(--lg-w-prop); }
+    .filter-grid .f-unit  { width: var(--lg-w-unit); }
+    .filter-grid .f-meter { width: var(--lg-w-meter); }
+    .filter-grid .f-range { width: var(--lg-w-range); }
+    .filter-grid .f-start { width: var(--lg-w-start); }
+    .filter-grid .f-end   { width: var(--lg-w-end); }
+    .filter-grid .f-actions{ margin-left:auto; display:flex; align-items:center; gap:.75rem; }
+
+    /* Toggles stacked (top/bottom) on large */
+    .toggle-wrap{
+      display:flex; flex-direction: column; align-items:flex-start;
+      gap: var(--lg-toggle-row-gap);
+    }
+    .toggle-wrap .toggle-check{ display:flex; align-items:center; gap: var(--lg-toggle-label-gap); margin:0; padding:0; }
+    .toggle-wrap .form-check-input{ width: var(--lg-toggle-size); height: var(--lg-toggle-size); margin:0; }
+    .toggle-wrap .form-check-label{ font-size: var(--lg-toggle-label-fz); line-height:1.1; white-space:nowrap; }
+
+    /* Action buttons on large */
+    .actions-wrap{ display:flex; flex-wrap:nowrap; gap:.35rem; }
+    .actions-wrap .btn{ font-size: var(--lg-btn-fz); padding: var(--lg-btn-py) var(--lg-btn-px); line-height:1.1; }
+    .actions-wrap .btn i{ font-size: var(--lg-btn-icon-fz); margin-right: var(--lg-btn-icon-gap); }
+  }
+
+  /* Small: 3-per-row + compact labels/controls; toggles side-by-side */
+  @media (max-width: 576px){
+    .card > .card-body { padding-top: var(--sm-card-py) !important; padding-bottom: var(--sm-card-py) !important; }
+
+    .filter-grid{ gap: var(--sm-row-gap) var(--sm-col-gap); }
+    .filter-grid .grp{ margin:0; }
+    /* 3 per row, gap-aware */
+    .filter-grid .f-prop,
+    .filter-grid .f-unit,
+    .filter-grid .f-meter,
+    .filter-grid .f-range,
+    .filter-grid .f-start,
+    .filter-grid .f-end{
+      flex: 0 0 calc((100% - (2 * var(--sm-col-gap))) / 3);
+      max-width: calc((100% - (2 * var(--sm-col-gap))) / 3);
+    }
+
+    .filter-grid .form-label{
+      font-size: var(--sm-filter-label-fz);
+      margin-bottom: var(--sm-filter-label-mb);
+      line-height: 1.05;
+    }
+    .filter-grid .form-select-sm,
+    .filter-grid .form-control-sm{
+      font-size: var(--sm-filter-text-fz);
+      padding: var(--sm-filter-ctrl-py) var(--sm-filter-ctrl-px);
+      line-height: 1.15;
+      min-height: calc(1.1em + (var(--sm-filter-ctrl-py) * 2) + 2px);
+    }
+
+    /* Toggles: side-by-side with zero vertical gap */
+    .toggle-wrap{
+      display:flex; flex-direction: row; flex-wrap: wrap; align-items:center;
+      gap: var(--sm-toggle-row-gap) var(--sm-toggle-col-gap); /* row | col */
+      margin:0;
+    }
+    .toggle-wrap .toggle-check{
+      display:flex; align-items:center; margin:0 !important; padding:0 !important;
+      gap: var(--sm-toggle-label-gap);
+      min-height: 0 !important;             /* kill Bootstrap min-height */
+    }
+    .toggle-wrap .form-check{ margin:0 !important; padding:0 !important; min-height: 0 !important; }
+    .toggle-wrap .form-check-input{
+      width: var(--sm-toggle-size); height: var(--sm-toggle-size);
+      margin:0 !important; position: static;
+    }
+    .toggle-wrap .form-check-label{
+      margin:0 !important; line-height:1; white-space:nowrap;
+      font-size: var(--sm-toggle-label-fz);
+    }
+
+    /* Actions tighter on small */
+    .actions-wrap{ display:flex; flex-wrap:wrap; gap:.2rem; }
+    .actions-wrap .btn{ font-size: var(--sm-btn-fz); padding: var(--sm-btn-py) var(--sm-btn-px); line-height:1.1; }
+    .actions-wrap .btn i{ font-size: var(--sm-btn-icon-fz); margin-right: var(--sm-btn-icon-gap); }
+  }
+  /* Kill Bootstrap .row overflow on the filter bar only */
+  .filter-grid.row{
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    --bs-gutter-x: 0;            /* we drive spacing with gap already */
+  }
+
+  /* Undo text-nowrap that was forcing overflow on narrow screens */
+  .filter-grid{ white-space: normal; }
+
+  /* Extra safety so the card never spills horizontally */
+  .card > .card-body{ overflow-x: hidden; }
+
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const form     = document.getElementById('filtersForm');
+  if (!form) return;
+
+  const rangeSel = document.getElementById('rangeSel');
+  const startInp = document.getElementById('startInp');
+  const endInp   = document.getElementById('endInp');
+
+  // never disable dates
+  [startInp, endInp].forEach(el => { if (el) el.disabled = false; });
+
+  // optional: remember which preset user chose (not used by backend)
+  let presetHidden = form.querySelector('input[name="range_preset"]');
+  if (!presetHidden) {
+    presetHidden = document.createElement('input');
+    presetHidden.type  = 'hidden';
+    presetHidden.name  = 'range_preset';
+    form.appendChild(presetHidden);
+  }
+
+  // keep original name so we can remove/restore it safely
+  const rangeOriginalName = rangeSel ? rangeSel.getAttribute('name') || 'range' : 'range';
+
+  // helpers
+  const pad = n => String(n).padStart(2,'0');
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const today = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
+  const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+  const startOfWeekMon = d => { const x=new Date(d); const dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); return x; };
+  const firstOfMonth = d => new Date(d.getFullYear(), d.getMonth(), 1);
+  const lastOfMonth  = (y,m) => new Date(y, m+1, 0);
+
+  function applyRange(val){
+    const t = today();
+    let s='', e='';
+    switch(val){
+      case 'today':       s = ymd(t); e = s; break;
+      case 'yesterday': { const y = addDays(t,-1); s = ymd(y); e = s; break; }
+      case 'this_week': { const mon = startOfWeekMon(t); s = ymd(mon); e = ymd(t); break; }
+      case 'last_week': { const mon = startOfWeekMon(addDays(t,-7)); const sun = addDays(mon,6); s = ymd(mon); e = ymd(sun); break; }
+      case 'this_month': { const fm = firstOfMonth(t); s = ymd(fm); e = ymd(t); break; }
+      case 'last_month': { const y = t.getFullYear(), m = t.getMonth()-1; const fm=new Date(y,m,1); const lm=lastOfMonth(y,m); s=ymd(fm); e=ymd(lm); break; }
+      case 'custom':       return;                          // let user dates stand
+      default:             startInp.value=''; endInp.value=''; return; // All time
+    }
+    startInp.value = s;
+    endInp.value   = e;
+  }
+
+  // fill dates if a preset already selected on first load
+  if (rangeSel) applyRange(rangeSel.value);
+
+  function submitSoon(){ clearTimeout(form._t); form._t=setTimeout(()=>form.submit(),60); }
+
+  // remove 'range' from submission unless it's 'custom'
+  function suppressRangeParam(){
+    if (!rangeSel) return;
+    if (rangeSel.value === 'custom' || rangeSel.value === '') {
+      // ensure it WILL be sent
+      if (!rangeSel.hasAttribute('name')) rangeSel.setAttribute('name', rangeOriginalName);
+    } else {
+      // ensure it will NOT be sent (backend will then use start/end only)
+      rangeSel.removeAttribute('name');        // safest: omit param entirely
+      presetHidden.value = rangeSel.value;     // keep UI memory (optional)
+    }
+  }
+
+  // auto-submit flow
+  form.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('auto-submit')) return;
+
+    if (e.target === rangeSel) {
+      applyRange(rangeSel.value);
+      suppressRangeParam();
+    }
+    submitSoon();
+  });
+
+  // if user edits dates manually, force request to not include 'range'
+  [startInp, endInp].forEach(el => el && el.addEventListener('input', () => {
+    if (!rangeSel) return;
+    rangeSel.value = 'custom';
+    // keep param so the server knows it's custom if it actually uses it
+    if (!rangeSel.hasAttribute('name')) rangeSel.setAttribute('name', rangeOriginalName);
+  }));
+
+  // column toggles
+  function bindToggle(checkboxId, colClass, defaultChecked=false){
+    const cb = document.getElementById(checkboxId);
+    if (!cb) return;
+    cb.checked = !!defaultChecked;
+    const apply = () => { document.querySelectorAll('.' + colClass).forEach(el => el.classList.toggle('d-none', !cb.checked)); };
+    cb.addEventListener('change', apply); apply();
+  }
+  bindToggle('toggleIp',   'toggle-col-ip',   false);
+  bindToggle('togglePort', 'toggle-col-port', false);
+
+  // inline edit + dblclick
+  window.toggleInlineEdit = function(id, show) {
+    const disp = document.getElementById(`r${id}-display`);
+    const edit = document.getElementById(`r${id}-edit`);
+    if (!disp || !edit) return;
+    if (show) {
+      disp.classList.add('d-none');
+      edit.classList.remove('d-none');
+      const firstInput = edit.querySelector('input, select, textarea');
+      if (firstInput) firstInput.focus();
+    } else {
+      edit.classList.add('d-none');
+      disp.classList.remove('d-none');
+    }
+  };
+
+  const tbody = document.querySelector('table tbody');
+  if (tbody) {
+    tbody.addEventListener('dblclick', (e) => {
+      const tr = e.target.closest('tr[id^="r"][id$="-display"]');
+      if (!tr) return;
+      const id = tr.id.match(/^r(\d+)-display$/)?.[1];
+      if (id) window.toggleInlineEdit(id, true);
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('tr[id$="-edit"]:not(.d-none)').forEach(tr => {
+      const id = tr.id.match(/^r(\d+)-edit$/)?.[1];
+      if (id) window.toggleInlineEdit(id, false);
+    });
+  });
+})();
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,187 @@
+<!-- templates/invoices/category_list.html -->
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">Invoice Categories</h4>
+    <button class="btn btn-secondary" onclick="history.back()">Go Back</button>
+    <a href="{% url 'invoices:category_add' %}" class="btn btn-primary btn-sm">+ New Category</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <input type="text" name="q" value="{{ request.GET.q }}" class="form-control form-control-sm" placeholder="Search name…">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-secondary btn-sm">Filter</button>
+    </div>
+  </form>
+
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr class="table-light">
+            <th style="width:8%" class="text-muted">S.N#</th>
+            <th style="width:8%" class="text-muted">Id#</th>
+            <th style="width:44%">
+              <a class="link-body-emphasis text-decoration-none" href="?sort=name&dir={% if request.GET.sort == 'name' and request.GET.dir == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">
+                Name
+                {% if request.GET.sort == 'name' %}
+                  <span class="ms-1">{% if request.GET.dir == 'desc' %}&darr;{% else %}&uarr;{% endif %}</span>
+                {% endif %}
+              </a>
+            </th>
+            <th style="width:15%">Status</th>
+            <th style="width:15%" class="text-end">Items</th>
+            <th style="width:18%" class="text-end"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cat in object_list %}
+            <tr data-id="{{ cat.pk }}" data-update-url="{% url 'invoices:category_inline_update' cat.pk %}">
+                            <td class="text-muted">
+                {% if is_paginated %}
+                  {{ forloop.counter0|add:page_obj.start_index }}
+                {% else %}
+                  {{ forloop.counter }}
+                {% endif %}
+              </td>
+              <td class="fw-medium">
+                <span class="name-id">{{ cat.pk }}</span>
+                
+              </td>
+              <td class="fw-medium">
+                <span class="name-text">{{ cat.name }}</span>
+                <input type="text" class="form-control form-control-sm d-none name-input"
+                      value="{{ cat.name }}" maxlength="80">
+                
+              </td>
+
+              <td>
+                {% if cat.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+              </td>
+              <td class="text-end text-muted">
+                {{ cat.item_count|default:cat.invoiceitem_set.count }}
+              </td>
+              <td class="text-end">
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-primary btn-sm btn-edit" data-id="{{ cat.pk }}">Edit</button>
+                  <button type="button" class="btn btn-success btn-sm d-none btn-save" data-id="{{ cat.pk }}">Save</button>
+                  <button type="button" class="btn btn-secondary btn-sm d-none btn-cancel">Cancel</button>
+                  <a href="{% url 'invoices:category_delete' cat.pk %}" class="btn btn-danger btn-sm">Delete</a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">No categories found.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- CSRF token source for AJAX -->
+    <form id="csrf-form" style="display:none">{% csrf_token %}</form>
+
+    <script>
+    (function(){
+      const table = document.querySelector('table');
+      const tokenInput = document.querySelector('#csrf-form input[name=csrfmiddlewaretoken]');
+      const csrfToken = tokenInput ? tokenInput.value : '';
+
+      function enterEdit(tr){
+        tr.classList.add('editing');
+        tr.querySelector('.name-text').classList.add('d-none');
+        tr.querySelector('.name-input').classList.remove('d-none');
+        tr.querySelector('.btn-edit').classList.add('d-none');
+        tr.querySelector('.btn-save').classList.remove('d-none');
+        tr.querySelector('.btn-cancel').classList.remove('d-none');
+        tr.querySelector('.name-input').focus();
+      }
+      function exitEdit(tr, reset=false){
+        if(reset){
+          const input = tr.querySelector('.name-input');
+          const text = tr.querySelector('.name-text');
+          input.value = text.textContent.trim();
+        }
+        tr.classList.remove('editing');
+        tr.querySelector('.name-text').classList.remove('d-none');
+        tr.querySelector('.name-input').classList.add('d-none');
+        tr.querySelector('.btn-edit').classList.remove('d-none');
+        tr.querySelector('.btn-save').classList.add('d-none');
+        tr.querySelector('.btn-cancel').classList.add('d-none');
+      }
+
+      table.addEventListener('click', function(e){
+        const btn = e.target.closest('button');
+        if(!btn) return;
+        const tr = btn.closest('tr');
+        if(btn.classList.contains('btn-edit')){
+          enterEdit(tr);
+        } else if(btn.classList.contains('btn-cancel')){
+          exitEdit(tr, true);
+        } else if(btn.classList.contains('btn-save')){
+          const url = tr.getAttribute('data-update-url');
+          const newName = tr.querySelector('.name-input').value.trim();
+          if(!newName){
+            alert('Name is required.');
+            return;
+          }
+          fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfToken,
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ name: newName })
+          }).then(async res => ({ ok: res.ok, data: await res.json().catch(()=>({})) }))
+            .then(({ok, data})=>{
+              if(!ok || data.ok === false){
+                throw new Error(data.error || 'Unable to save');
+              }
+              tr.querySelector('.name-text').textContent = data.name;
+              exitEdit(tr);
+            })
+            .catch(err=>{
+              alert(err.message || 'Save failed');
+            });
+        }
+      });
+    })();
+    </script>
+
+    {% if is_paginated %}
+      <div class="card-body">
+        <nav aria-label="Pagination">
+          <ul class="pagination pagination-sm justify-content-end mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Prev</a></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} / {{ paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}
+              <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Next</a></li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Reports List{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Header + filters + actions -->
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <h2 class="mb-0">Reports</h2>
+
+        <!-- Filters -->
+        <form method="get" id="lease-filter-form" class="me-3">
+            <!-- ROW 1 -->
+            <div class="filter-row1 d-flex flex-wrap gap-2">
+                <div class="filter-item filter-property me-2">
+                    <label for="id_property" class="form-label mb-1">Property</label>
+                    <select name="property" class="form-select form-select-sm w-auto" id="id_property">
+                        <option value="">All</option>
+                        {% for property in all_properties %}
+                            <option value="{{ property.id }}"
+                                    {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+                                {{ property.property_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-item filter-unit me-2">
+                    <label for="id_unit" class="form-label mb-1">Unit</label>
+                    <select name="unit" class="form-select form-select-sm w-auto fixed-120" id="id_unit">
+                        <option value="">All</option>
+                        {% for unit in filtered_units %}
+                            <option value="{{ unit.id }}"
+                                    {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                                {{ unit.unit_number }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-item filter-tenant">
+                    <label for="id_tenant" class="form-label mb-1">Tenant</label>
+                    <select name="tenant" class="form-select form-select-sm select2 w-auto" id="id_tenant">
+                        <option value="">All</option>
+                        {% for tenant in all_tenants %}
+                            <option value="{{ tenant.id }}"
+                                    {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                                {{ tenant.get_full_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- ROW 2 -->
+            <div class="filter-row2 d-flex align-items-center mt-2">
+                <div class="filter-flags me-3">
+                    <label class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" name="include_inactive" id="id_include_inactive"
+                               {% if include_inactive %}checked{% endif %}>
+                        <span class="form-check-label">Include<br>Inactive</span>
+                    </label>
+                    <label class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" name="nonzero_balance" id="id_nonzero_balance"
+                               {% if nonzero_balance %}checked{% endif %}>
+                        <span class="form-check-label">Non-Zero<br>Balance</span>
+                    </label>
+                </div>
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-sm btn-primary btn-slim">
+                        <i class="fas fa-filter"></i><span class="btn-label"> Filter</span>
+                    </button>
+                    {% if request.GET %}
+                        <a href="?" class="btn btn-sm btn-secondary btn-slim">
+                            <i class="fas fa-undo"></i><span class="btn-label"> Clear</span>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+
+        <!-- Global report actions -->
+        <div class="d-flex flex-column gap-2">
+            <!-- Financial Report create -->
+            <a href="{% url 'reports:financial_report_create' %}" class="btn btn-sm btn-primary">
+                <i class="fas fa-plus"></i> New Financial Report
+            </a>
+
+            <!-- Other report views -->
+            <a href="{% url 'reports:expense_summary' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-file-alt"></i> Expense Summary
+            </a>
+            <a href="{% url 'reports:expense_detail' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-list"></i> Expense Detail
+            </a>
+            <a href="{% url 'reports:profit_loss' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-balance-scale"></i> Profit &amp; Loss
+            </a>
+            <a href="{% url 'reports:security_deposit_report' %}"
+            class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-shield-alt me-1"></i> Security Deposit Report
+            </a>
+
+            <!-- Financial report list page -->
+            <a href="{% url 'reports:financial_report_list' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-table"></i> Financial Reports
+            </a>
+        </div>
+    </div>
+
+    <!-- Reports Table -->
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle">
+            <thead class="thead-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Created At</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in reports %}
+                    <tr>
+                        <td>{{ report.id }}</td>
+                        <td>{{ report.title }}</td>
+                        <td>{{ report.created_at|date:"M d, Y" }}</td>
+                        <td>
+                            {% if report.status %}
+                                <span class="badge
+                                    {% if report.status == 'completed' %} bg-success
+                                    {% elif report.status == 'pending' %} bg-warning text-dark
+                                    {% else %} bg-secondary{% endif %}">
+                                    {{ report.get_status_display|default:report.status }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">No reports found</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                    </li>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                    </li>
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Extra JS for this page if needed -->
+{% endblock %}

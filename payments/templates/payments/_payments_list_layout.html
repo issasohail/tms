@@ -1,0 +1,656 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}{{ page_title|default:"Records" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 payment-page-compact payment-list-dense">
+  <h2>{{ heading|default:"Records" }}</h2>
+  <div class="d-flex gap-2">
+    {% block header_buttons %}{% endblock %}
+    {% include "includes/export_buttons.html" %}
+  </div>
+</div>
+
+<!-- Filter form -->
+<div class="card mb-3 payment-page-compact payment-list-dense">
+  <div class="card-body p-3">
+    <form method="get" id="payment-filter-form" action="{% block filter_action %}{{ request.path }}{% endblock %}">
+
+      <div class="row row-cols-auto g-2 align-items-end">
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Property</label>
+          <select name="property" id="id_property" class="form-select form-select-sm fixed-120 w-auto" style="min-width:200px">
+            <option value="">All</option>
+            {% for property in all_properties %}
+              <option value="{{ property.id }}" {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+                {{ property.property_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Unit</label>
+          <select name="unit" id="id_unit" class="form-select form-select-sm w-auto" style="min-width:200px">
+            <option value="">All</option>
+            {% for unit in filtered_units %}
+              <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                {{ unit.unit_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Tenant</label>
+          <select name="tenant" id="id_tenant" class="form-select form-select-sm select2 w-auto" style="min-width:10rem">
+            <option value="">All</option>
+            {% for tenant in tenant_list %}
+              <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                {{ tenant.get_full_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1">Date Range</label>
+          <select name="date_range" id="id_date_range" class="form-select form-select-sm w-auto" style="min-width:200px">
+            <option value="">Custom</option>
+            <option value="all" {% if request.GET.date_range == 'all' %}selected{% endif %}>All</option>
+            <option value="today" {% if request.GET.date_range == 'today' %}selected{% endif %}>Today</option>
+            <option value="yesterday" {% if request.GET.date_range == 'yesterday' %}selected{% endif %}>Yesterday</option>
+            <option value="this_week" {% if request.GET.date_range == 'this_week' %}selected{% endif %}>This Week</option>
+            <option value="last_week" {% if request.GET.date_range == 'last_week' %}selected{% endif %}>Last Week</option>
+            <option value="this_month" {% if request.GET.date_range == 'this_month' %}selected{% endif %}>This Month</option>
+            <option value="last_month" {% if request.GET.date_range == 'last_month' %}selected{% endif %}>Last Month</option>
+            <option value="this_year" {% if request.GET.date_range == 'this_year' %}selected{% endif %}>This Year</option>
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1 w-auto" style="min-width:100px">From</label>
+          <input type="date" name="start_date" id="id_start_date" class="form-control form-control-sm" value="{{ request.GET.start_date }}">
+        </div>
+
+        <div class="col-auto">
+          <label class="form-label mb-1 w-auto" style="min-width:100px">To</label>
+          <input type="date" name="end_date" id="id_end_date" class="form-control form-control-sm" value="{{ request.GET.end_date }}">
+        </div>
+
+      </div>
+    </form>
+  </div>
+</div>
+
+{% block totals_card %}
+  {# show total ONLY when date filter exists #}
+  {% if request.GET.date_range or request.GET.start_date or request.GET.end_date %}
+    <div class="card mb-2 mt-2 payment-list-dense" id="total-card">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-left">
+          <span class="fw-bold small">{% block total_label %}Payments Received:{% endblock %}</span>
+          <span class="fw-bold text-success total-amount-display">
+            Rs. {{ total_amount|floatformat:2|intcomma }}
+          </span>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none"></div>
+  {% endif %}
+{% endblock %}
+
+
+<div class="table-responsive payment-list-dense"
+     style="--sm-actions-w:16rem; --lg-tenant-w: 24rem; --sm-action-gap:.05rem; --sm-btn-pad-x:.06rem; --sm-btn-pad-y:.04rem; --sm-icon-size:.72rem;">
+  {% render_table table %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+{{ block.super }}
+
+<style>
+  /* (YOUR CSS UNCHANGED) */
+  .payment-page-compact .card-header,
+  .payment-page-compact .card-body,
+  .payment-page-compact .card-footer { padding:.5rem .75rem; }
+  .payment-list-dense table.table > :not(caption) > * > * { padding:.25rem .4rem; }
+
+  .actions-wrap{ display:flex; flex-wrap:nowrap; gap:.32rem; align-items:center; }
+  .actions-wrap .btn{ display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; white-space:nowrap; }
+
+  .select2-dropdown { font-size: .78rem; }
+  .select2-results__options { max-height: 220px; }
+  .select2-results__option {
+    padding: .18rem .45rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .select2-search--dropdown .select2-search__field{
+    height: 28px;
+    padding: .2rem .4rem;
+    font-size: .8rem;
+  }
+
+  #id_tenant{ width:10rem !important; }
+  .select2-container--default .select2-selection--single{
+    height:32px; line-height:32px; padding:0 .5rem; font-size:.85rem;
+  }
+  .select2-container--default .select2-selection--single .select2-selection__rendered{
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .select2-container--default .select2-selection--single .select2-selection__arrow{ height:32px; }
+
+  @media (min-width:992px){
+    .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
+      text-align:right; font-variant-numeric:tabular-nums;
+    }
+  }
+
+  @media (max-width:420px){
+    html{ font-size:10px; }
+    .payment-page-compact .card .card-body{ overflow: hidden; }
+    #payment-filter-form .row.row-cols-auto{
+      display:grid !important; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+      gap:.25rem .35rem !important;
+    }
+    #payment-filter-form .form-control-sm,
+    #payment-filter-form .form-select-sm,
+    #payment-filter-form .select2-container--default .select2-selection--single{
+      font-size:.68rem!important; min-height:28px!important; height:28px!important;
+      padding-top:.2rem!important; padding-bottom:.2rem!important;
+    }
+    #payment-filter-form .form-control-sm,
+    #payment-filter-form .form-select-sm,
+    #payment-filter-form .select2,
+    #payment-filter-form .select2-selection--single{ width:100% !important; min-width:0 !important; }
+    .select2-container{ max-width:100% !important; }
+
+    .payment-list-dense{
+      --sm-col-sn:        40px;
+      --sm-col-tenant:    15ch;
+      --sm-col-property:  100px;
+      --sm-col-property-box: 15ch;
+      --sm-col-date:      100px;
+      --sm-col-amount:    7.2rem;
+      --sm-col-actions:   16rem;
+      --sm-action-gap:    .05rem;
+      --sm-btn-pad-x:     .16rem;
+      --sm-btn-pad-y:     .04rem;
+      --sm-icon-size:     .72rem;
+    }
+
+    .payment-list-dense th.col-sn,      .payment-list-dense td.col-sn      { width: var(--sm-col-sn); }
+    .payment-list-dense th.col-tenant,  .payment-list-dense td.col-tenant  { max-width: var(--sm-col-tenant); }
+    .payment-list-dense th.col-property,.payment-list-dense td.col-property{ max-width: var(--sm-col-property); }
+    .payment-list-dense th.col-date,    .payment-list-dense td.col-date    { width: var(--sm-col-date); white-space:nowrap; }
+    .payment-list-dense th.col-amount,  .payment-list-dense td.col-amount  { width: var(--sm-col-amount); white-space:nowrap; text-align:right; }
+
+    .payment-list-dense th.col-actions, .payment-list-dense td.col-actions { width: var(--sm-col-actions) !important; white-space:nowrap; }
+    .payment-list-dense td.col-actions .actions-wrap{ gap: var(--sm-action-gap) !important; }
+    .payment-list-dense td.col-actions .btn{
+      padding: var(--sm-btn-pad-y) var(--sm-btn-pad-x) !important; line-height:1 !important; min-width:0;
+    }
+    .payment-list-dense td.col-actions .btn i{ font-size: var(--sm-icon-size) !important; margin:0; }
+    .payment-list-dense td.col-actions .btn .btn-text{ display:none !important; }
+
+    th.col-id, td.col-id,
+    th.col-unit, td.col-unit,
+    th.col-method, td.col-method,
+    th.col-balance, td.col-balance{ display:none !important; }
+
+    .payment-list-dense td.col-tenant,
+    .payment-list-dense td.col-property{
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+
+    .payment-list-dense td.col-property { white-space: normal; }
+    .payment-list-dense td.col-property .prop-box{
+      display:block; width: var(--sm-col-property-box);
+    }
+    .payment-list-dense td.col-property .prop-name{
+      display:block; width:100%;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      vertical-align:bottom;
+    }
+    .payment-list-dense td.col-property .subline{
+      display:block !important; font-size:.58rem; line-height:1.1; white-space:normal;
+    }
+  }
+
+  @media (min-width: 992px) {
+    .payment-list-dense th.col-tenant,
+    .payment-list-dense td.col-tenant {
+      max-width: var(--lg-tenant-w, 18rem);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #id_tenant { width: 18rem !important; }
+    .payment-page-compact .card-header,
+    .payment-page-compact .card-body,
+    .payment-page-compact .card-footer { padding:.4rem .6rem; }
+    .payment-page-compact h2{ font-size:1.15rem; margin:0; }
+
+    #payment-filter-form .form-label{ margin-bottom:.25rem!important; font-size:.78rem; }
+    #payment-filter-form .form-control-sm,
+    #payment-filter-form .form-select-sm{ height:30px; padding:.2rem .4rem; font-size:.8rem; }
+    #payment-filter-form .select2-container--default .select2-selection--single{
+      height:30px; line-height:30px; font-size:.8rem; padding:0 .4rem;
+    }
+    #payment-filter-form .select2-container--default .select2-selection--single .select2-selection__arrow{ height:30px; }
+    #id_property, #id_unit{ min-width: 160px!important; }
+
+    .payment-list-dense table.table > :not(caption) > * > *{
+      padding:.18rem .32rem;
+      vertical-align: middle;
+      font-size:.87rem;
+    }
+    .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
+      text-align:right; font-variant-numeric: tabular-nums; width: 7.5rem; white-space: nowrap;
+    }
+    .payment-list-dense th.col-date, .payment-list-dense td.col-date{ white-space: nowrap; }
+    .payment-list-dense td.col-actions .actions-wrap{ gap:.18rem; }
+    .payment-list-dense td.col-actions .btn{
+      padding:.18rem .035rem; font-size:.78rem; min-width:0;
+    }
+    .payment-list-dense td.col-actions .btn i{ font-size:.8rem; margin:0 .2rem 0 0; }
+    .payment-list-dense td.col-method,
+    .payment-list-dense td.col-balance{ color:#6c757d; }
+  }
+
+  @media (min-width: 1400px){
+    .payment-list-dense table.table > :not(caption) > * > *{
+      padding:.16rem .28rem; font-size:.85rem;
+    }
+    #id_tenant{ width: 28rem!important; }
+    .payment-page-compact .btn{ padding:.18rem .45rem; font-size:.8rem; }
+  }
+
+  .payment-list-dense table.table > :not(caption) > * > *{
+    padding:.14rem .26rem;
+    font-size:.82rem;
+    vertical-align: middle;
+  }
+  .payment-list-dense thead th{
+    padding:.22rem .26rem;
+    font-size:.76rem;
+    letter-spacing:.01em;
+  }
+
+  .payment-list-dense th.col-actions,
+  .payment-list-dense td.col-actions{
+    width: 11.5rem;
+    white-space:nowrap;
+  }
+  .payment-list-dense td.col-actions .actions-wrap{
+    gap:.14rem;
+  }
+  .payment-list-dense td.col-actions .btn{
+    padding:.10rem .18rem !important;
+    line-height:1 !important;
+    min-width:0;
+    font-size:.78rem;
+  }
+  .payment-list-dense td.col-actions .btn i{
+    font-size:.82rem;
+    margin:0;
+  }
+
+  .payment-list-dense td.col-actions .btn .btn-text{
+    display:none !important;
+  }
+
+  @media (min-width:1400px){
+    .payment-list-dense th.col-actions,
+    .payment-list-dense td.col-actions{ width: 15rem; }
+    .payment-list-dense td.col-actions .btn .btn-text{ display:inline !important; }
+    .payment-list-dense td.col-actions .btn i{ margin-right:.2rem; }
+  }
+
+  .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
+    text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .payment-list-dense th.col-date, .payment-list-dense td.col-date{ white-space:nowrap; }
+
+  #payment-filter-form .form-control-sm,
+  #payment-filter-form .form-select-sm{
+    height:28px; padding:.18rem .35rem; font-size:.78rem;
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{{ block.super }}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // jQuery handles (assumes jQuery already loaded in base.html)
+  const $form   = $('#payment-filter-form');
+  const $tenant = $('#id_tenant');
+  const $prop   = $('#id_property');
+  const $unit   = $('#id_unit');
+  const $range  = $('#id_date_range');
+  const $start  = $('#id_start_date');
+  const $end    = $('#id_end_date');
+
+  /* ---------- Tenant Select2 ---------- */
+  if ($tenant.length){
+    $tenant.select2({
+      placeholder: "Search tenant...",
+      allowClear: true,
+      width: 'style',
+      templateResult: function (data) {
+        if (!data.id) return data.text;
+        const full = data.text || '';
+        const short = full.length > 35 ? (full.slice(0, 35) + '…') : full;
+        return $('<span>').text(short).attr('title', full);
+      },
+      templateSelection: function (data) {
+        const full = data.text || '';
+        return full.length > 35 ? (full.slice(0, 35) + '…') : full;
+      }
+    });
+
+    $tenant.on('select2:open', function(){
+      setTimeout(function(){
+        const f = document.querySelector('.select2-container .select2-search__field');
+        if (f) f.focus();
+      }, 0);
+    });
+  }
+
+  /* ---------- Date preset helpers ---------- */
+  function formatDate(date){
+    const y = date.getFullYear();
+    const m = String(date.getMonth()+1).padStart(2,'0');
+    const d = String(date.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function setDateRangePreset(){
+    const p = $range.val();
+    let s = '', e = '';
+    const t = new Date();
+    if (p === 'today'){ s=e=formatDate(t); }
+    else if (p === 'yesterday'){ const y=new Date(t); y.setDate(y.getDate()-1); s=e=formatDate(y); }
+    else if (p === 'this_week'){ const f=new Date(t); f.setDate(f.getDate()-f.getDay()); const l=new Date(t); l.setDate(l.getDate()+(6-l.getDay())); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'last_week'){ const f=new Date(t); f.setDate(f.getDate()-f.getDay()-7); const l=new Date(t); l.setDate(l.getDate()+(6-l.getDay())-7); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'this_month'){ const f=new Date(t.getFullYear(), t.getMonth(), 1); const l=new Date(t.getFullYear(), t.getMonth()+1, 0); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'last_month'){ const f=new Date(t.getFullYear(), t.getMonth()-1, 1); const l=new Date(t.getFullYear(), t.getMonth(), 0); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'this_year'){ const f=new Date(t.getFullYear(),0,1); const l=new Date(t.getFullYear(),11,31); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'all'){ s=''; e=''; }
+    $start.val(s); $end.val(e);
+  }
+
+  function hasAnyFilter(){
+    return !!(
+      $prop.val() ||
+      $unit.val() ||
+      $tenant.val() ||
+      ($range.val() && $range.val() !== '') ||
+      $start.val() ||
+      $end.val()
+    );
+  }
+
+  /* ---------- Total (AJAX optional) ---------- */
+  async function updateTotalAmountAjax(){
+    const card = document.getElementById('total-card');
+    const totalEl = document.querySelector('.total-amount-display');
+    if (!card || !totalEl) return;
+
+    if (!hasAnyFilter()){
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+
+    const params = new URLSearchParams(new FormData($form[0]));
+    params.set('ajax', '1');
+    const url = window.location.pathname + '?' + params.toString();
+
+    try{
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const amt = Number(data.total_amount || 0);
+      totalEl.textContent = 'Rs. ' + amt.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } catch(e){
+      console.log('Total AJAX failed:', e);
+    }
+  }
+
+  /* ---------- Filter behaviors (submit page + update total) ---------- */
+
+  // clearing rules
+  $tenant.on('change', function(){
+    if ($(this).val()){
+      $prop.val(''); $unit.val(''); 
+    }
+  });
+  $prop.on('change', function(){ $tenant.val('').trigger('change');  });
+  $unit.on('change', function(){ $tenant.val('').trigger('change');  });
+  $range.on('change', function(){
+    if ($(this).val()){
+      
+      setDateRangePreset();
+    }
+  });
+
+  // date inputs: clear preset when user manually picks
+  let dateTimeout;
+  $start.add($end).on('change input', function(){
+    clearTimeout(dateTimeout);
+    dateTimeout = setTimeout(function(){
+      if ($start.val() || $end.val()){
+        $range.val('');
+      }
+    }, 250);
+  });
+
+  function hasDateFilter(){
+    return !!(($range.val() && $range.val() !== '') || $start.val() || $end.val());
+    }
+  // On any change: update total (optional) then submit (real GET)
+  $form.on('change', 'select,input', function(){
+    updateTotalAmountAjax();
+    $form[0].submit();
+  });
+
+  // initial (if already filtered, show/update)
+  if (hasAnyFilter()){
+    updateTotalAmountAjax();
+  }
+
+  /* ---------- Mobile enhancer: add Unit under Property; clamp support ---------- */
+  (function(){
+    const MQ = window.matchMedia('(max-width: 420px)');
+    const TABLE_SEL = 'table.table';
+
+    function ensurePropBox(td){
+      if (!td) return;
+      if (td.querySelector('.prop-box .prop-name')) return;
+
+      let nameEl = td.querySelector('a, span, div');
+      if (!nameEl) {
+        const tn = Array.from(td.childNodes).find(n => n.nodeType===3 && n.nodeValue.trim().length);
+        if (tn){
+          nameEl = document.createElement('span');
+          nameEl.textContent = tn.nodeValue.trim();
+          tn.parentNode.insertBefore(nameEl, tn);
+          tn.nodeValue = '';
+        }
+      }
+      if (!nameEl) return;
+
+      const box = document.createElement('div');
+      box.className = 'prop-box';
+      const propName = document.createElement('span');
+      propName.className = 'prop-name';
+      propName.appendChild(nameEl);
+      td.insertBefore(box, td.firstChild);
+      box.appendChild(propName);
+    }
+
+    function makeSub(label, value, extraClass){
+      const v = (value || '').trim(); if (!v) return null;
+      const wrap = document.createElement('div');
+      wrap.className = `subline mt-1 text-muted ${extraClass||''}`;
+      wrap.style.fontSize = '.58rem';
+      wrap.style.lineHeight = '1.1';
+      wrap.innerHTML = label
+        ? `<strong>${label}</strong> <span class="ellipsis" title="${v}">${v}</span>`
+        : `<span class="ellipsis" title="${v}">${v}</span>`;
+      return wrap;
+    }
+
+    function enhance(){
+      if (!MQ.matches) return;
+      document.querySelectorAll(TABLE_SEL).forEach(table=>{
+        table.querySelectorAll('tbody tr').forEach(tr=>{
+          if (tr.dataset.enhanced === '1') return;
+
+          const get = sel => tr.querySelector(sel);
+          const tdProperty = get('td.col-property');
+          const tdUnit     = get('td.col-unit');
+          const tdAmount   = get('td.col-amount');
+          const tdMethod   = get('td.col-method');
+          const tdDate     = get('td.col-date');
+          const tdBalance  = get('td.col-balance');
+
+          ensurePropBox(tdProperty);
+
+          tdProperty?.querySelectorAll('.subline.unit-sub').forEach(n=>n.remove());
+          tdAmount?.querySelectorAll('.subline.method-sub').forEach(n=>n.remove());
+          tdDate?.querySelectorAll('.subline.balance-sub').forEach(n=>n.remove());
+
+          if (tdProperty && tdUnit){
+            const s = makeSub('', tdUnit.textContent, 'unit-sub');
+            if (s) tdProperty.appendChild(s);
+          }
+          if (tdAmount && tdMethod){
+            const s = makeSub('', tdMethod.textContent, 'method-sub');
+            if (s) tdAmount.appendChild(s);
+          }
+          if (tdDate && tdBalance){
+            const s = makeSub('Bal:', tdBalance.textContent, 'balance-sub');
+            if (s) tdDate.appendChild(s);
+          }
+
+          tr.dataset.enhanced = '1';
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enhance); else enhance();
+    window.addEventListener('load', enhance);
+    MQ.addEventListener('change', function(){
+      document.querySelectorAll('tbody tr').forEach(tr=>{ delete tr.dataset.enhanced; });
+      enhance();
+    });
+  })();
+
+});
+</script>
+
+{# ✅ WhatsApp universal handler (unchanged) #}
+<script>
+  const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+
+  function normalizePhone(rawPhone, defaultCountryCodeRaw) {
+    if (!rawPhone) return null;
+    let raw = String(rawPhone).trim();
+    let def = (defaultCountryCodeRaw || "").trim();
+    if (def.startsWith("+")) def = def.slice(1);
+
+    if (raw.startsWith("+")) {
+      const digits = raw.replace(/[^\d]/g, "");
+      return digits || null;
+    }
+    let cleaned = raw.replace(/[^\d]/g, "");
+    if (!cleaned) return null;
+    if (cleaned.startsWith("00")) return cleaned.slice(2);
+    if (def && cleaned.startsWith(def)) return cleaned;
+    if (def && cleaned.startsWith("0")) return def + cleaned.slice(1);
+    return def ? def + cleaned : cleaned;
+  }
+
+  function formatPKR(num) {
+    return (parseFloat(num) || 0).toLocaleString("en-PK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-wa-receipt");
+    if (!btn) return;
+    e.preventDefault();
+
+    try {
+      const url = btn.dataset.waUrl;
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error("Failed to fetch receipt payload");
+
+      const data = await res.json();
+
+      const phone = normalizePhone(data.phone, DEFAULT_COUNTRY_CODE);
+      if (!phone) throw new Error("Invalid phone number");
+
+      let message = data.message || "";
+
+      if (!message) {
+        const headingMap = {
+          "PAYMENT":  "*Security Deposit payment received*",
+          "REFUND":   "*Security Deposit refunded*",
+          "DAMAGE":   "*Security Deposit used for damages*",
+          "ADJUST":   "*Security Deposit adjusted*",
+          "REQUIRED": "*Security Deposit requirement recorded*",
+        };
+        const heading = headingMap[data.type] || "*Security Deposit update*";
+
+        const leaseBal = parseFloat(data.leaseBalance || 0);
+        const secBal   = parseFloat(data.secBalToCollect || 0);
+        const totalBal = leaseBal + secBal;
+
+        const lines = [
+          `Dear ${data.tenantName || "Customer"},`,
+          `${heading} for ${data.propertyName || ""}.`,
+          `Unit: ${data.unitNumber || ""}`,
+          `Period: ${data.periodStart || ""} – ${data.periodEnd || ""}`,
+          `Security Deposit: Rs. ${formatPKR(data.securityRequired || 0)} (${data.securityStatus || ""})`,
+        ];
+
+        if (secBal > 0) lines.push(`Security Deposit Balance: Rs. ${formatPKR(secBal)}`);
+
+        lines.push(
+          `Date: ${data.tranDate || ""}`,
+          `*Security Amount: Rs. ${formatPKR(data.txAmount || 0)}*`,
+          `Lease Balance: Rs. ${formatPKR(leaseBal)}`,
+          `*Total Balance: Rs. ${formatPKR(totalBal)}*`,
+          ``,
+          `Thank you!`
+        );
+
+        message = lines.join("\n");
+      }
+
+      const wa = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      window.open(wa, "_blank");
+    } catch (err) {
+      alert("Could not open WhatsApp: " + (err.message || err));
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">
+      Security Deposit Ledger –
+      Lease #{{ lease.id }} ({{ lease.tenant.get_full_name }})
+    </h4>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'leases:lease_detail' lease.id %}" class="btn btn-secondary btn-sm">
+        Back to Lease
+      </a>
+      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&allocation_mode=SECURITY"
+        class="btn btn-primary btn-sm">
+        Add Entry
+      </a>
+
+
+    </div>
+  </div>
+
+  {# Summary block using security_totals from services #}
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Security Deposit Summary</div>
+    <div class="card-body">
+      <div class="row row-cols-2 row-cols-md-3 row-cols-lg-6 g-2 small">
+        <div>
+          <div class="text-muted">Required</div>
+          <div><strong>Rs {{ security_totals.required|floatformat:0|intcomma }}</strong></div>
+        </div>
+        <div>
+          <div class="text-muted">Paid In</div>
+          <div><strong>Rs {{ security_totals.paid_in|floatformat:0|intcomma }}</strong></div>
+        </div>
+        <div>
+          <div class="text-muted">Refunded</div>
+          <div><strong>Rs {{ security_totals.refunded|floatformat:0|intcomma }}</strong></div>
+        </div>
+        <div>
+          <div class="text-muted">Used for Damages</div>
+          <div><strong>Rs {{ security_totals.damages|floatformat:0|intcomma }}</strong></div>
+        </div>
+        <div>
+          <div class="text-muted">Balance to Collect</div>
+          <div class="text-danger fw-bold">
+            Rs {{ security_totals.balance_to_collect|floatformat:0|intcomma }}
+          </div>
+        </div>
+        <div>
+          <div class="text-muted">Currently Held</div>
+          <div class="text-success fw-bold">
+            Rs {{ security_totals.currently_held|floatformat:0|intcomma }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Ledger table #}
+  <div class="card">
+    <div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center">
+      <span class="fw-semibold">Security Deposit Transactions</span>
+      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&allocation_mode=SECURITY"
+        class="btn btn-primary btn-sm">
+        Add Entry
+      </a>
+    </div>
+    <div class="card-body p-0">
+      {% if ledger_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 120px;">Date</th>
+                <th style="width: 200px;">Type</th>
+                <th>Description</th>
+                <th class="text-end" style="width: 140px;">Amount</th>
+                <th class="text-end" style="width: 160px;">Deposit Balance</th>
+                <th class="text-center" style="width: 120px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in ledger_rows %}
+                <tr>
+                  <td>{{ row.date|date:"M d, Y" }}</td>
+                  <td>{{ row.type }}</td>
+                  <td>
+                    {{ row.description }}
+                    {% if row.obj.payment %}
+                        <br><small class="text-muted">
+                        Payment:
+                        <a href="{% url 'payments:payment_detail' row.obj.payment.id %}">
+                            #{{ row.obj.payment.id }}
+                        </a>
+                        </small>
+                    {% endif %}
+                    {% if row.obj.invoice_item %}
+                        <br><small class="text-muted">
+                        Invoice:
+                        <a href="{% url 'invoices:invoice_detail' row.obj.invoice_item.invoice.id %}">
+                            #{{ row.obj.invoice_item.invoice.id }}
+                        </a>
+                        </small>
+                    {% endif %}
+                    </td>
+
+                    <td class="text-end {% if row.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ row.amount|floatformat:0|intcomma }}
+                    </td>
+
+                  <td class="text-end fw-semibold">
+                    {{ row.balance|floatformat:0|intcomma }}
+                  </td>
+                  <td class="text-center">
+
+                    <div class="d-flex justify-content-center gap-1">
+
+                      {% if row.obj.type in "REQUIRED PAYMENT REFUND DAMAGE ADJUST" %}
+                        {% if row.obj.payment and row.obj.payment.allocation %}
+                          <a class="btn btn-success btn-sm"
+                            href="{% url 'payments:api_allocation_receipt_whatsapp' row.obj.payment.allocation.id %}"
+                            target="_blank">
+                            Receipt
+                          </a>
+                        {% elif row.obj.payment %}
+                          <a class="btn btn-success btn-sm"
+                            href="{% url 'payments:api_payment_receipt_whatsapp' row.obj.payment.id %}"
+                            target="_blank">
+                            Receipt
+                          </a>
+                        {% else %}
+                          <a class="btn btn-success btn-sm"
+                            href="{% url 'invoices:api_security_receipt_whatsapp' row.obj.id %}"
+                            target="_blank">
+                            Receipt
+                          </a>
+                        {% endif %}
+
+
+                      {% endif %}
+
+                      {% if row.obj.payment %}
+                        <a href="{% url 'payments:payment_update' row.obj.payment.id %}"
+                          class="btn btn-secondary btn-sm">
+                          Edit
+                        </a>
+                      {% else %}
+                        <a href="{% url 'leases:lease_security_edit' lease.id row.obj.id %}"
+                          class="btn btn-secondary btn-sm">
+                          Edit
+                        </a>
+                      {% endif %}
+
+
+                      <a href="{% url 'leases:lease_security_delete' lease.id row.obj.id %}"
+                        class="btn btn-danger btn-sm">
+                        Delete
+                      </a>
+
+                    </div>
+
+                  </td>
+                  
+
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-3 text-muted small">No security deposit transactions yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Default calling code from GlobalSettings, e.g. "+92"
+  const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+
+  function normalizePhone(rawPhone, defaultCountryCodeRaw) {
+    if (!rawPhone) return null;
+
+    let raw = String(rawPhone).trim();
+
+    // Normalize default code: "+92" -> "92"
+    let def = (defaultCountryCodeRaw || "").trim();
+    if (def.startsWith("+")) def = def.slice(1);
+
+    // If user entered international with '+': "+1814..." -> "1814..."
+    if (raw.startsWith("+")) {
+      const digits = raw.replace(/[^\d]/g, "");
+      return digits || null;
+    }
+
+    // Remove non-digits for other cases
+    let cleaned = raw.replace(/[^\d]/g, "");
+    if (!cleaned) return null;
+
+    // "00" international prefix: "0044..." -> "44..."
+    if (cleaned.startsWith("00")) {
+      return cleaned.slice(2);
+    }
+
+    // Already starts with default country code
+    if (def && cleaned.startsWith(def)) {
+      return cleaned;
+    }
+
+    // Local starting with 0: "0300..." -> "92" + "300..."
+    if (def && cleaned.startsWith("0")) {
+      return def + cleaned.slice(1);
+    }
+
+    // Fallback: prefix default if present, else keep cleaned
+    return def ? def + cleaned : cleaned;
+  }
+</script>
+
+<script>
+  // Get default calling code from GlobalSettings, e.g. "+92"
+  
+
+  function parseAmount(v) {
+    if (v === null || v === undefined) return 0;
+    return parseFloat(String(v).replace(/,/g, "")) || 0;
+  }
+
+  function formatPKR(num) {
+    return (parseFloat(num) || 0).toLocaleString("en-PK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function sendSecurityReceipt(
+    type,                    // REQUIRED / PAYMENT / REFUND / DAMAGE / ADJUST
+    phone,
+    tenantName,
+    propertyName,
+    unitNumber,
+    periodStart,
+    periodEnd,
+
+    // Security overview
+    securityRequiredStr,     // e.g. "64,400.00" (digits/commas ok)
+    securityStatus,          // "Pending" / "Paid"
+    secBalToCollectStr,      // e.g. "14,400.00" (balance_to_collect)
+
+    // Transaction details
+    tranDate,
+    txAmountStr,             // this row's tx.amount (can be signed already)
+    leaseBalStr              // lease.get_balance (e.g. "32,200.00")
+  ) {
+    try {
+      if (!phone) {
+        alert("No phone number provided");
+        return;
+      }
+
+      // Normalize phone to digits-only E.164 (no '+') for WhatsApp
+      const formattedPhone = normalizePhone(phone, DEFAULT_COUNTRY_CODE);
+      if (!formattedPhone) {
+        alert("Invalid phone number");
+        return;
+      }
+
+      // Heading
+      let heading;
+      switch (type) {
+        case "PAYMENT":  heading = "*Security Deposit payment received*"; break;
+        case "REFUND":   heading = "*Security Deposit refunded*"; break;
+        case "DAMAGE":   heading = "*Security Deposit used for damages*"; break;
+        case "ADJUST":   heading = "*Security Deposit adjusted*"; break;
+        case "REQUIRED": heading = "*Security Deposit requirement recorded*"; break;
+        default:         heading = "*Security Deposit update*";
+      }
+
+      // Numbers
+      const leaseBalNum   = parseAmount(leaseBalStr);
+      const secBalNum     = parseAmount(secBalToCollectStr);
+      const totalBalNum   = leaseBalNum + secBalNum;
+
+      const txAmountNum   = parseAmount(txAmountStr);
+      const txAmountFmt   = formatPKR(txAmountNum);
+
+      const leaseBalFmt   = formatPKR(leaseBalNum);
+      const secBalFmt     = formatPKR(secBalNum);
+      const totalBalFmt   = formatPKR(totalBalNum);
+
+      // Security required display: keep "Rs." formatting consistent
+      const securityRequiredFmt = formatPKR(parseAmount(securityRequiredStr));
+
+      // Build lines (same structure as Payment receipt)
+      const lines = [
+        `Dear ${tenantName},`,
+        `${heading} for ${propertyName}.`,
+        `Unit: ${unitNumber}`,
+        `Period: ${periodStart} – ${periodEnd}`,
+        `Security Deposit: Rs. ${securityRequiredFmt} (${securityStatus})`,
+      ];
+
+      // Show Security Deposit Balance line only if pending / balance exists
+      if (secBalNum > 0) {
+        lines.push(`Security Deposit Balance: Rs. ${secBalFmt}`);
+      }
+
+      lines.push(
+        `Date: ${tranDate}`,
+        `*Security Amount: Rs. ${txAmountFmt}*`,
+        `Lease Balance: Rs. ${leaseBalFmt}`,
+        `*Total Balance: Rs. ${totalBalFmt}*`,
+        ``,
+        `Thank you!`
+      );
+
+      const message = lines.join("\n");
+      const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+      window.open(waUrl, "_blank");
+    } catch (error) {
+      console.error("WhatsApp error:", error);
+      alert("Failed to send WhatsApp: " + error.message);
+    }
+  }
+</script>
+
+
+
+{% endblock %}

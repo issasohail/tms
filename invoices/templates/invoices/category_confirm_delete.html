@@ -1,0 +1,29 @@
+<!-- templates/invoices/category_confirm_delete.html -->
+{% extends "base.html" %}
+{% block title %}Delete Category{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <div class="card border-0">
+    <div class="card-header bg-danger text-white">
+      <strong>Delete Category</strong>
+    </div>
+    <div class="card-body">
+      <p class="mb-3">Are you sure you want to delete <strong>{{ object.name }}</strong>?</p>
+
+      {% with cnt=object.item_count|default:object.invoiceitem_set.count %}
+        {% if cnt and cnt|add:0 > 0 %}
+          <div class="alert alert-warning">
+            This category is referenced by <strong>{{ cnt }}</strong> invoice item(s). Deletion may be blocked by database rules.
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <form method="post">
+        {% csrf_token %}
+        <a href="{% url 'invoices:category_list' %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

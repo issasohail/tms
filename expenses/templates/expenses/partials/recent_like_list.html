@@ -1,0 +1,126 @@
+{% load humanize %}
+
+{# templates/expenses/partials/recent_like_list.html #}
+<div class="card">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <h6 class="m-0">Recent Transactions</h6>
+    <div class="d-inline-flex align-items-center gap-2">
+      <label for="recent-count" class="form-label m-0 small">Show</label>
+      <select id="recent-count" class="form-select form-select-sm" style="width:auto;">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle m-0" id="recent-table">
+        <thead class="table-light">
+          <tr>
+            <th class="col-sn text-nowrap">#</th>
+            <th class="col-property text-nowrap">Property</th>
+            <th class="col-description text-nowrap">Description</th>
+            <th class="col-when text-end text-nowrap">When</th>
+            <th class="col-actions text-nowrap">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for e in recent_expenses %}
+          <tr class="recent-row">
+            {# SN #}
+            <td class="text-muted text-nowrap">{{ forloop.counter }}</td>
+
+            {# Property + (unit under it on phones) #}
+            <td class="col-property">
+              {{ e.property.property_name|default:"—" }}
+              <div class="prop-mobile-unit">
+                {% if e.unit %}
+                  {{ e.unit.unit_number }}
+                {% elif e.distributions.all|length and e.distributions.all|length == e.property.unit_set.all|length %}
+                  All Unit
+                {% elif e.distributions.all|length == 1 %}
+                  {{ e.distributions.first.unit.unit_number }}
+                {% elif e.distributions.all|length > 1 %}
+                  Multiple
+                {% else %} — {% endif %}
+              </div>
+            </td>
+
+            {# Category on first line, description on second (phone-friendly) #}
+            <td class="col-description">
+              <div class="desc-mobile-cat">
+                <span class="rt-cat">{{ e.category.name|default:"(Uncategorized)" }}</span>
+              </div>
+              <div class="desc-mobile-desc text-muted">
+                {{ e.description }}
+              </div>
+            </td>
+
+            {# Date (first line) + Amount (second line), right-aligned #}
+            <td class="col-when text-end">
+              <div class="when-date">{{ e.date }}</div>
+              <div class="when-amt">Rs {{ e.amount|floatformat:2|intcomma }}</div>
+            </td>
+
+            {# Actions (NO receipt button) #}
+            <td class="col-actions text-nowrap">
+              <a class="btn btn-primary btn-sm" href="{% url 'expenses:expense_update' e.id %}">
+                <i class="bi bi-pencil"></i><span class="btn-text ms-1">Edit</span>
+              </a>
+              <form method="post" action="{% url 'expenses:expense_delete' e.id %}" class="d-inline"
+                    onsubmit="return confirm('Delete this expense?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger btn-sm">
+                  <i class="bi bi-trash"></i><span class="btn-text ms-1">Delete</span>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No recent expenses.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const sel = document.getElementById('recent-count');
+  const rows = Array.from(document.querySelectorAll('#recent-table tbody tr.recent-row'));
+  function applyLimit(){
+    const n = parseInt(sel.value || '10', 10);
+    rows.forEach((tr, i) => tr.style.display = i < n ? '' : 'none');
+  }
+  sel?.addEventListener('change', applyLimit);
+  applyLimit();
+})();
+</script>
+
+<style>
+/* thin separators between rows like your list */
+#recent-table tbody tr.recent-row + tr.recent-row td{
+  border-top: 1px solid rgba(0,0,0,.075);
+}
+
+/* Reuse the same class names your expense list CSS expects */
+.when-date{ font-weight:600; line-height:1; }
+.when-amt { opacity:.85;   line-height:1; }
+
+/* Make sure long category/desc ellipsize on wide screens */
+.col-description .desc-mobile-cat .rt-cat{
+  display:inline-block; max-width:12rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* On phones your expense_list rules hide label text inside .col-actions buttons.
+   If those rules live only in that template, keep a tiny fallback here: */
+@media (max-width: 767.98px){
+  .col-actions .btn .btn-text{ display:none; }
+  .desc-mobile-desc{ font-size:.82em; }
+}
+</style>

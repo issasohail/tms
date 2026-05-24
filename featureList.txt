@@ -1,0 +1,16 @@
+can you help me in buidling website for tenant management system using windows with python, jdango, and mysql. please show step by step detail with comments and instruction with explanation. The  system should 
+email and sms and watsapp payment receipt to tenant
+add rent autotmaticlly on first of the month 
+email and sms balance after due date
+create financial reporting with income and expense,
+upload lease document, CNIC front and back photos and Tenant Picture.
+create lease document and other doucments.
+The system also distribute the water expense, motor expense, maintainence charges, electric bill to each property based on # of people or usage or divide equally which will be collected with the rent. 
+maintain email, sms and watapp log.
+Create,view and edit tenant ledger which will have monthly rent, payment, expenses addess. 
+able to see all tables in admin screen to view, edit all the data.
+show all file and folder stucture
+how to create database in mysql and tables. also, make the frontend to view, and edit tables data. also, show how to upload the file on the server to make it working
+Please put 10 dummy data in the each tables to see it working.
+Also, show me how to create table, , and how to run the website on local computer and on webserver, s.  and . also, show on local host to see its working.  Please also show how to setup local host and where to save all these files so the localhost server works fine and show instruction to test the full website.SHOW coding with explanation also.
+

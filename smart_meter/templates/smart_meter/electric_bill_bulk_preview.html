@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+
+<div class="container" style="max-width:1000px">
+  <h2 class="mt-2 mb-3">Electric Bills — {{ month }} (All meters)</h2>
+
+  {% if rows or duplicates %}
+    <form method="post" action="{% url 'smart_meter:electric_bill_bulk_commit' %}" id="bulkForm" class="card shadow-sm">
+      {% csrf_token %}
+      <input type="hidden" name="month" value="{{ month }}"/>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle mb-0 tbl-tight">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th class="col-sn">S/N</th>
+              <th>Meter</th>
+              <th>Unit</th>
+              <th>Beg</th>
+              <th>End</th>
+              <th>Units</th>
+              <th>Rate</th>
+              <th>Service</th>
+              <th>Total</th>
+              <th>Description (wraps)</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {# ---------- Non-duplicates (Append/Skip) ---------- #}
+            {% for r in rows %}
+            <tr data-meter-id="{{ r.meter.id }}">
+                <!-- S/N -->
+                <td class="col-sn">{{ forloop.counter }}</td>
+              <td>
+                <div class="fw-semibold">{{ r.meter.meter_number }}</div>
+                <div class="text-muted small">{{ r.meter.unit.unit_number }}</div>
+                <input type="hidden" name="lease-{{ r.meter.id }}" value="{{ r.lease.id }}"/>
+              </td>
+              <td>{{ r.meter.unit.unit_number }}</td>
+              <td><input class="form-control form-control-sm" name="beg-{{ r.meter.id }}" value="{{ r.ctx.beg_kwh }}"></td>
+              <td><input class="form-control form-control-sm" name="end-{{ r.meter.id }}" value="{{ r.ctx.end_kwh }}"></td>
+              <td><input class="form-control form-control-sm" name="units-{{ r.meter.id }}" value="{{ r.ctx.units }}" disabled></td>
+              <td><input class="form-control form-control-sm" name="rate-{{ r.meter.id }}" value="{{ r.ctx.unit_rate }}"></td>
+              <td><input class="form-control form-control-sm" name="svc-{{ r.meter.id }}" value="{{ r.ctx.service_charges }}"></td>
+              <td><input class="form-control form-control-sm" name="total-{{ r.meter.id }}" value="{{ r.ctx.line_total }}" disabled></td>
+              <td class="desc-wrap"><div class="small">{{ r.ctx.description_text }}</div></td>
+              <td>
+                <div class="d-flex gap-1">
+                  <select class="form-select form-select-sm" name="action-{{ r.meter.id }}">
+                    <option value="append" selected>Append</option>
+                    <option value="skip">Skip</option>
+                  </select>
+                  <button type="button" class="btn btn-sm btn-secondary hide-row" title="Hide this row">✓</button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+
+            {# ---------- Duplicates (Replace/Keep old) ---------- #}
+            {% for r in duplicates %}
+            <tr class="table-warning" data-meter-id="{{ r.meter.id }}">
+              <td>
+                <div class="fw-semibold">{{ r.meter.meter_number }}</div>
+                <div class="text-muted small">{{ r.meter.unit.unit_number }}</div>
+                <input type="hidden" name="lease-{{ r.meter.id }}" value="{{ r.lease.id }}"/>
+              </td>
+              <td>{{ r.meter.unit.unit_number }}</td>
+              <td><input class="form-control form-control-sm" name="beg-{{ r.meter.id }}" value="{{ r.ctx.beg_kwh }}"></td>
+              <td><input class="form-control form-control-sm" name="end-{{ r.meter.id }}" value="{{ r.ctx.end_kwh }}"></td>
+              <td><input class="form-control form-control-sm" name="units-{{ r.meter.id }}" value="{{ r.ctx.units }}" disabled></td>
+              <td><input class="form-control form-control-sm" name="rate-{{ r.meter.id }}" value="{{ r.ctx.unit_rate }}"></td>
+              <td><input class="form-control form-control-sm" name="svc-{{ r.meter.id }}" value="{{ r.ctx.service_charges }}"></td>
+              <td><input class="form-control form-control-sm" name="total-{{ r.meter.id }}" value="{{ r.ctx.line_total }}" disabled></td>
+              <td class="desc-wrap">
+                <div class="small"><strong>New:</strong> {{ r.ctx.description_text }}</div>
+                <div class="small text-muted"><strong>Existing:</strong> {{ r.existing.description }} ({{ r.existing.amount }})</div>
+              </td>
+              <td>
+                <div class="d-flex gap-1">
+                  <select class="form-select form-select-sm" name="action-{{ r.meter.id }}">
+                    <option value="replace">Replace</option>
+                    <option value="skip" selected>Keep old</option>
+                  </select>
+                  <button type="button" class="btn btn-sm btn-secondary hide-row" title="Hide this row">✓</button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-flex gap-2 p-2 border-top bg-light">
+        <button class="btn btn-primary btn-sm" type="submit">Commit selected</button>
+        <a href="{{ request.META.HTTP_REFERER|default:'/' }}" class="btn btn-secondary btn-sm">Cancel</a>
+        <span class="ms-auto small text-muted">Descriptions wrap to column width; edit numbers inline.</span>
+      </div>
+    </form>
+  {% else %}
+    <div class="alert alert-info">No meters found for this selection.</div>
+  {% endif %}
+</div>
+
+<style>
+  .desc-wrap { white-space: normal; max-width: 320px; }
+  .desc-wrap .small { line-height: 1.2; }
+  @media (max-width: 575.98px){ .container{ padding-left:.5rem; padding-right:.5rem; } }
+</style>
+
+<script>
+// Live recompute units and totals per row
+(function(){
+  const form = document.getElementById('bulkForm'); if(!form) return;
+  function recompute(row){
+    const id = row.getAttribute('data-meter-id');
+    const beg = parseFloat(form.querySelector(`[name="beg-${id}"]`)?.value||'0');
+    const end = parseFloat(form.querySelector(`[name="end-${id}"]`)?.value||'0');
+    const rate= parseFloat(form.querySelector(`[name="rate-${id}"]`)?.value||'0');
+    const svc = parseFloat(form.querySelector(`[name="svc-${id}"]`)?.value||'0');
+    const units = Math.max(0, end - beg);
+    const usageAmt = units * rate;
+    const total = usageAmt + svc;
+    const uEl = form.querySelector(`[name="units-${id}"]`);
+    const tEl = form.querySelector(`[name="total-${id}"]`);
+    if(uEl) uEl.value = units.toFixed(2);
+    if(tEl) tEl.value = total.toFixed(2);
+  }
+  form.addEventListener('input', (e)=>{
+    const row = e.target.closest('tr[data-meter-id]');
+    if(row) recompute(row);
+  });
+})();
+</script>
+
+<script>
+// Hide-row UX (lets you shrink the list as you decide)
+(function(){
+  const form = document.getElementById('bulkForm'); if(!form) return;
+  form.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('hide-row')) return;
+    const tr = e.target.closest('tr');
+    if (tr) tr.remove();
+  });
+})();
+</script>
+
+<style>
+  /* ---- Tweak knobs (change these only) ---- */
+  :root{
+    --tbl-font: .9rem;      /* overall table font size (e.g., .85rem, .95rem) */
+    --tbl-line: 1.25;       /* line-height */
+    --tbl-pad-y: .25rem;    /* vertical cell padding */
+    --tbl-pad-x: .5rem;     /* horizontal cell padding */
+    --btn-font: .75rem;     /* actions buttons font size */
+    --btn-py: .2rem;        /* actions buttons vertical padding */
+    --btn-px: .45rem;       /* actions buttons horizontal padding */
+  }
+
+  /* apply to this page’s table */
+  .tbl-tight { table-layout: fixed; }
+  .tbl-tight th,
+  .tbl-tight td {
+    font-size: var(--tbl-font);
+    line-height: var(--tbl-line);
+    padding: var(--tbl-pad-y) var(--tbl-pad-x);
+  }
+
+  /* narrow S/N, right aligned */
+  .col-sn { width: 60px; text-align: right; }
+
+  /* Actions column: smaller text/buttons so labels fit */
+  .col-actions { width: 1%; white-space: nowrap; }
+  .col-actions .btn {
+    font-size: var(--btn-font);
+    padding: var(--btn-py) var(--btn-px);
+    line-height: 1.1;
+  }
+  .col-actions .btn-hide {
+    font-size: calc(var(--btn-font) - .05rem);
+    padding: .1rem .3rem;
+  }
+
+  /* Description: show full text (wrap; no ellipsis) and tidy list */
+  .col-items { min-width: 260px; }
+  .col-items .items-list { margin-bottom: 0; padding-left: 1rem; }
+  .col-items .items-list li { display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
+  .col-items .desc { white-space: normal; overflow: visible; text-overflow: clip; }
+  .badge-cat { font-weight: 500; }
+</style>
+
+{% endblock %}

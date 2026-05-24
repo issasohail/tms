@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Lease Agreements</h1>
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Tenant</th>
+            <th>Property</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for lease in leases %}
+        <tr>
+            <td>{{ lease.id }}</td>
+            <td>{{ lease.tenant.name }}</td>
+            <td>{{ lease.property.address }}</td>
+            <td>{{ lease.start_date }}</td>
+            <td>{{ lease.end_date }}</td>
+            <td>{{ lease.get_status_display }}</td>
+            <td>
+                <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-sm btn-info">View</a>
+                <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-warning">Edit</a>
+                <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-danger">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="{% url 'leases:create' %}" class="btn btn-primary">Add New Lease</a>
+{% endblock %}

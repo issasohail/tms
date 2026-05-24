@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>{% if object %}Edit{% else %}Create{% endif %} Lease Template</h2>
+    
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Available Variables</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <ul>
+                        <li><code>{{ tenant_full_name }}</code> - Tenant's full name</li>
+                        <li><code>{{ tenant_contact }}</code> - Tenant's phone number</li>
+                        <li><code>{{ property_name }}</code> - Property name</li>
+                        <li><code>{{ unit_number }}</code> - Unit number</li>
+                        <li><code>{{ property_address }}</code> - Full property address</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <ul>
+                        <li><code>{{ start_date }}</code> - Lease start date</li>
+                        <li><code>{{ end_date }}</code> - Lease end date</li>
+                        <li><code>{{ monthly_rent }}</code> - Monthly rent amount</li>
+                        <li><code>{{ security_deposit }}</code> - Security deposit</li>
+                        <li><code>{{ today_date }}</code> - Current date</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Save Template</button>
+        <a href="{% url 'leases:template_list' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<!-- templates/smart_meter/unknown_meter_list.html -->
+
+<h1>Pending meters</h1>
+
+<form method="get" class="mb-3">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search meter number">
+  <button type="submit">Search</button>
+</form>
+
+<table border="1" cellpadding="6">
+  <thead>
+    <tr>
+      <th>Meter #</th><th>First seen</th><th>Last seen</th><th>Seen</th><th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for um in unknown_meters %}
+    <tr>
+      <td><code>{{ um.meter_number }}</code></td>
+      <td>{{ um.first_seen }}</td>
+      <td>{{ um.last_seen }}</td>
+      <td>{{ um.seen_count }}</td>
+      <td>
+         <a href="{% url 'smart_meter:unknown_meter_convert' um.pk %}">Approve & Assign</a>
+        |
+        <a href="{% url 'smart_meter:unknown_meter_ignore' um.pk %}">Ignore</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No pending meters.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

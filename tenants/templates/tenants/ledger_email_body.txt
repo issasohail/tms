@@ -1,0 +1,15 @@
+Dear {{ tenant.get_full_name }},
+
+Please find attached your rent ledger as requested.
+
+{% if lease %}
+Property: {{ lease.unit.property.property_name }}
+Unit: {{ lease.unit.unit_number }}
+{% endif %}
+
+Current Balance: ${{ current_balance|floatformat:2 }}
+
+If you have any questions about your ledger, please don't hesitate to contact us.
+
+Thank you,
+{{ settings.COMPANY_NAME }}

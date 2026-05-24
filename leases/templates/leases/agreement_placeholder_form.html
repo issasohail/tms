@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-2 px-md-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">{{ title }}</h3>
+      <div class="text-muted small">Use the key without brackets. Example: MONTHLY_RENT becomes [MONTHLY_RENT].</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'leases:agreement_placeholder_list' %}">Back to Placeholders</a>
+  </div>
+
+  <form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-header py-2">
+      <strong>Placeholder Details</strong>
+    </div>
+    <div class="card-body">
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.key.id_for_label }}">Key</label>
+          {{ form.key }}
+          {{ form.key.errors }}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.label.id_for_label }}">Label</label>
+          {{ form.label }}
+          {{ form.label.errors }}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.category.id_for_label }}">Category</label>
+          {{ form.category }}
+          {{ form.category.errors }}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.source_type.id_for_label }}">Source Type</label>
+          {{ form.source_type }}
+          {{ form.source_type.errors }}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.resolver_key.id_for_label }}">Resolver Key</label>
+          {{ form.resolver_key }}
+          {{ form.resolver_key.errors }}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.sort_order.id_for_label }}">Sort Order</label>
+          {{ form.sort_order }}
+          {{ form.sort_order.errors }}
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1" for="{{ form.django_path.id_for_label }}">Django Path</label>
+          {{ form.django_path }}
+          {{ form.django_path.errors }}
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1" for="{{ form.default_value.id_for_label }}">Default Value</label>
+          {{ form.default_value }}
+          {{ form.default_value.errors }}
+        </div>
+        <div class="col-12">
+          <label class="form-label mb-1" for="{{ form.description.id_for_label }}">Description</label>
+          {{ form.description }}
+          {{ form.description.errors }}
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            {{ form.is_active }}
+            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label>
+          </div>
+          {{ form.is_active.errors }}
+        </div>
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'leases:agreement_placeholder_list' %}">Cancel</a>
+      <button type="submit" class="btn btn-primary btn-sm">Save Placeholder</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

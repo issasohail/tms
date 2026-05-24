@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}Review Tenant Registration{% endblock %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0 fs-5">Review Registration - {{ submission.tenant.get_full_name }}</h2>
+    <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-secondary btn-sm">Back</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header bg-dark text-white py-2 px-3">Submitted Details</div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-bordered mb-0">
+            <tbody>
+              {% for key, value in submission.submitted_data.items %}
+                <tr>
+                  <th style="width: 240px;">{{ key|title }}</th>
+                  <td>{{ value|default:"-" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card mb-3">
+        <div class="card-header bg-dark text-white py-2 px-3">Review</div>
+        <div class="card-body">
+          <form method="post" action="{% url 'tenants:registration_submission_review' submission.pk %}">
+            {% csrf_token %}
+            {% for field in form %}
+              <div class="mb-2">
+                <label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% for error in field.errors %}
+                  <div class="text-danger small">{{ error }}</div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-primary btn-sm">Save Review</button>
+          </form>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header bg-dark text-white py-2 px-3">Fresh Public Link</div>
+        <div class="card-body">
+          <input class="form-control form-control-sm" value="{{ registration_link }}" readonly onclick="this.select();">
+          <div class="form-text">This link expires after 7 days.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

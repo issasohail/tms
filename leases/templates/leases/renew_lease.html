@@ -1,0 +1,15 @@
+<!-- leases/templates/leases/renew_lease.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <h2>Renew Lease #{{ view.kwargs.pk }}</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Renew Lease</button>
+        <a href="{% url 'leases:lease_detail' pk=view.kwargs.pk %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

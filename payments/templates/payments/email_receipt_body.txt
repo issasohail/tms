@@ -1,0 +1,13 @@
+Dear {{ payment.lease.tenant.first_name }} {{ payment.lease.tenant.last_name }},
+
+Please find your payment receipt attached.
+
+Receipt #: {{ payment.reference_number|default:payment.id }}
+Amount: KES {{ payment.amount|floatformat:2 }}
+Date: {{ payment.payment_date|date:"M d, Y" }}
+Method: {{ payment.get_payment_method_display }}
+Property: {{ payment.lease.unit.property.property_name }}
+Unit: {{ payment.lease.unit.unit_number }}
+Balance: KES {{ payment.lease.get_balance|floatformat:2 }}
+
+Thank you for your payment!

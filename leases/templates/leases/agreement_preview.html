@@ -1,0 +1,125 @@
+{% load lease_tags %}
+
+<style>
+    .and-separator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 10%;
+        font-weight: bold;
+    }
+    @page {
+        size: A4;
+        margin: 18mm 14mm 18mm 14mm;
+
+        @bottom-center {
+            content: "Page " counter(page) " of " counter(pages);
+            font-family: "Times New Roman";
+            font-size: 10pt;
+        }
+    }
+
+</style>
+
+<div id="agreement-doc" class="agreement-preview">
+
+    
+    <h2 class="text-center">RENT AGREEMENT</h2>
+    <p class="text-center">This RENT AGREEMENT is made at Islamabad on this {{ agreement_date|date:"d-m-Y" }} BETWEEN </p>
+    
+    <div class="parties-section mt-4">
+
+        <p>
+            <strong>{{ lease.unit.property.owner_prefix }} {{ lease.unit.property.owner_name }} {{lease.unit.property.relation}}
+             {{lease.unit.property.owner_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.owner_cnic }}</strong> R/O
+        {{ lease.unit.property.owner_address }} (Hereinafter called "Owner") of the <strong>ONE PART. through
+         {{ lease.unit.property.caretaker_prefix }} {{ lease.unit.property.caretaker_name }} {{lease.unit.property.caretaker_relation}} 
+         {{lease.unit.property.caretaker_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.caretaker_cnic }}</strong> R/O
+        {{ lease.unit.property.caretaker_address }}.
+        
+        <strong>AND</strong><br>
+       
+        <strong>{{ lease.tenant.prefix }} {{ lease.tenant.get_full_name_agreement }}</strong> holding CNIC NO. <strong>{{ lease.tenant.cnic }}</strong> R/O
+        {{ lease.tenant.address }} (Hereinafter called "Tenant")
+
+        
+         <strong>WHEREAS</strong> the Owner is the lawful owner and in possession of 
+        <strong>{{ lease.unit.unit_number }}, located at {{ lease.unit.property.full_address }},</strong>
+        and has agreed to rent out {{ lease.unit.unit_number }} to the Tenant and the Tenant 
+        has also agreed to take the same on the following terms and conditions.
+    </p>
+    </div>
+    
+    <div class="clauses-section mt-4">
+        
+        
+        {% for clause in clauses %}
+        {% with clause_text=clause.template_text|replace_placeholders:lease %}
+            {% if clause.clause_number == 4 %}
+            {# ALWAYS show clause 4 #}
+            <div class="clause" data-clause-id="{{ clause.id }}">
+                <strong>{{ clause.clause_number }}.</strong>
+                <span class="clause-text">{{ clause_text|safe }}</span>
+            </div>
+
+            {% elif "SECURITY_INSTALLMENT" in clause.template_text %}
+            {% if lease.security_installment_1_amount or lease.security_installment_2_amount %}
+                <div class="clause" data-clause-id="{{ clause.id }}">
+                <strong>{{ clause.clause_number }}.</strong>
+                <span class="clause-text">{{ clause_text|safe }}</span>
+                </div>
+            {% endif %}
+
+            {% else %}
+            <div class="clause" data-clause-id="{{ clause.id }}">
+                <strong>{{ clause.clause_number }}.</strong>
+                <span class="clause-text">{{ clause_text|safe }}</span>
+            </div>
+            {% endif %}
+        {% endwith %}
+        {% endfor %}
+
+
+    </div>
+    
+    <div class="signature-section" style="margin-top: 60px; font-family: 'Times New Roman', Times, serif; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
+        <tr>
+            <td style="width: 50%; padding-right: 20px;">
+                <p>_________________________</p>
+                <p><strong>Owner:</strong> {{ lease.unit.property.owner_name }}</p>
+                <p><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic }}</p>
+            </td>
+            <td style="width: 50%; padding-left: 20px;">
+                <p>_________________________</p>
+                <p><strong>Tenant:</strong>  {{ lease.tenant.get_full_name }}</p>
+                <p><strong>CNIC:</strong> {{ lease.tenant.cnic }}</p>
+            </td>
+        </tr>
+    </table>
+
+    
+
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="width: 50%; padding-right: 20px;">
+                <p>_________________________</p>
+                <p><strong>Witness 1:</strong> {{ lease.witness1_name|default:"_________________________" }}</p>
+                <p><strong>CNIC:</strong> {{ lease.witness1_cnic|default:"_________________________" }}</p>
+            </td>
+            <td style="width: 50%; padding-left: 20px;">
+                <p>_________________________</p>
+                <p><strong>Witness 2:</strong> {{ lease.witness2_name|default:"_________________________" }}</p>
+                <p><strong>CNIC:</strong> {{ lease.witness2_cnic|default:"_________________________" }}</p>
+            </td>
+        </tr>
+    </table>
+
+    <div class="footer" style="text-align: center; margin-top: 40px;">
+        <p>Generated at: {% now "d M Y" %}.</p>
+    </div>
+</div>
+
+    
+    
+</div>

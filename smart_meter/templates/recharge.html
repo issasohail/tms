@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>🔋 Recharge Meter for {{ unit }}</h2>
+
+<p>Current Balance: ₹{{ balance.balance }}</p>
+<p>Security Deposit: ₹{{ balance.security_deposit }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Recharge</button>
+</form>
+
+<a href="{% url 'meter_dashboard' unit.id %}">⬅️ Back to Dashboard</a>
+{% endblock %}

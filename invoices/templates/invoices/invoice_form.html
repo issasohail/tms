@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+{% load static humanize %}
+
+{% block title %}{% if invoice.pk %}Edit{% else %}Create{% endif %} Invoice{% endblock %}
+
+{% block content %}
+<div class="container mt-3">
+
+  <form method="post" id="invoice-form" class="invoice-tight">
+    {% csrf_token %}
+
+    {% if form.errors %}
+      <div class="alert alert-danger small">{{ form.errors }}</div>
+    {% endif %}
+    {% if items.non_form_errors %}
+      <div class="alert alert-danger small">{{ items.non_form_errors }}</div>
+    {% endif %}
+
+    <!-- Header: INVOICE + # + Date + Due all in one line -->
+    <div class="card border-0 shadow-sm mb-2">
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-4 d-flex align-items-center gap-2">
+            <h5 class="mb-0 lh-1">INVOICE</h5>
+            <span class="text-muted small">#{{ invoice.invoice_number|default:"(pending)" }}</span>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label mb-0 small"><strong>Date</strong></label>
+            {{ form.issue_date }}
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label mb-0 small"><strong>Due</strong></label>
+            {{ form.due_date }}
+          </div>
+          <div class="col-12 col-md-2 text-md-end d-flex gap-1 justify-content-end">
+            <a href="{% if invoice.pk %}{% url 'invoices:invoice_detail' invoice.pk %}{% else %}#{% endif %}" class="btn btn-secondary btn-sm">View</a>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="history.back()">Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters (line 1): Property + Unit + Tenant (Tenant is always enabled & type-in) -->
+    <div class="card border-0 mb-2">
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-0 small"><strong>Property</strong></label>
+            <select id="filter-property" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label mb-0 small"><strong>Unit</strong></label>
+            <select id="filter-unit" class="form-select form-select-sm" disabled></select>
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label mb-0 small"><strong>Tenant</strong></label>
+            <select id="filter-tenant" class="form-select form-select-sm"></select>
+
+
+          </div>
+        </div>
+
+        <!-- Filters (line 2): Lease -->
+        <div class="row g-2 align-items-end mt-2">
+          <div class="col-12 col-md-8">
+            <label class="form-label mb-0 small"><strong>Lease</strong></label>
+            <select id="filter-lease" class="form-select form-select-sm" disabled></select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- Keep the real lease field hidden -->
+    {{ form.lease.as_hidden }}
+
+
+    <!-- Description + Notes in one line (each 2 rows) -->
+    <div class="row g-2 mb-2">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1 small">Description</label>
+        {{ form.description }}
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1 small">Notes</label>
+        {{ form.notes }}
+      </div>
+    </div>
+
+    <!-- Items (small font, tight padding) -->
+    <div class="card border-0">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Invoice Items <small class="text-muted">(Category is required)</small></h6>
+          <button type="button" id="add-row" class="btn btn-primary btn-sm">Add Item</button>
+        </div>
+
+        {{ items.management_form }}
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-2" id="invoice-items">
+            <thead>
+              <tr class="table-light">
+                <th style="width:6%">#</th>
+                <th style="width:22%">Category</th>
+                <th>Description</th>
+                <th class="text-end" style="width:18%">Amount (Rs.)</th>
+                <th style="width:8%"></th>
+              </tr>
+            </thead>
+            <tbody id="items-body">
+              {% for f in items %}
+              <tr class="item-form" data-index="{{ forloop.counter0 }}">
+                {# 🔽 Add this line so id (and any hidden fields) are posted #}
+                {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+                <td class="text-muted sn">{{ forloop.counter }}</td>
+                <td class="d-flex gap-1">
+                  {{ f.category }}
+                  <button class="btn btn-sm btn-secondary add-cat-btn" type="button" title="Add Category">+</button>
+                </td>
+                <td>{{ f.description }}</td>
+                <td class="text-end">{{ f.amount }}</td>
+                <td>
+                  {% if f.instance.pk %}
+                    {{ f.DELETE }}
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-danger remove-row">×</button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if items.errors %}
+          <div class="alert alert-danger small">
+            <ul class="mb-0">
+              {% for form in items.forms %}
+                {% if form.errors %}
+                  <li>
+                    Row {{ forloop.counter }}:
+                    {% for field, errs in form.errors.items %}
+                      {{ field }} – {{ errs|join:", " }}
+                    {% endfor %}
+                  </li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <!-- empty_form row template -->
+        <template id="item-empty-row">
+          <tr class="item-form" data-index="__prefix__">
+            {% for hidden in items.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+            <td class="text-muted sn"></td>
+            <td class="d-flex gap-1">
+              {{ items.empty_form.category }}
+              <button class="btn btn-sm btn-secondary add-cat-btn" type="button" title="Add Category">+</button>
+            </td>
+            <td>{{ items.empty_form.description }}</td>
+            <td class="text-end">{{ items.empty_form.amount }}</td>
+            <td><button type="button" class="btn btn-sm btn-danger remove-row">×</button></td>
+          </tr>
+        </template>
+
+        <!-- Totals (intcomma-style formatting) -->
+        <div class="row g-2 border-top pt-2 mt-2">
+          <div class="col text-end small">
+            <div><strong>Subtotal:</strong> Rs. <span id="subtotal">0.00</span></div>
+            <div class="fw-bold">Total: Rs. <span id="grandtotal">0.00</span></div>
+          </div>
+        </div>
+
+        <div class="d-grid mt-3">
+          <button type="submit" class="btn btn-primary btn-sm py-2">Save Invoice</button>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+
+<style>
+  /* tighter, compact UI */
+  .invoice-tight .form-control,
+  .invoice-tight .form-select { font-size: .9rem; padding: .25rem .5rem; }
+  #invoice-items th, #invoice-items td { font-size: .9rem; padding: .25rem .5rem; }
+  @media (max-width: 576px) {
+    .card .card-body { padding: .5rem !important; }
+  }
+  #id_lease { display: none !important; }
+  
+</style>
+{% endblock %}
+
+
+{% block extra_js %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Attach to the two date inputs by ID
+    flatpickr("#id_issue_date, #id_due_date", {
+      dateFormat: "m/d/Y",   // mm/dd/yyyy
+      allowInput: true,      // users can type 08/25/2025
+      clickOpens: true
+    });
+  });
+</script>
+
+<script>
+(function () {
+  // CSRF
+  var csrfEl = document.querySelector('input[name=csrfmiddlewaretoken]');
+  const csrfToken = csrfEl && csrfEl.value ? csrfEl.value : '';
+
+  // --- Filter elements ---
+  const $prop       = document.getElementById('filter-property');
+  const $unit       = document.getElementById('filter-unit');
+  const $tenant     = document.getElementById('filter-tenant');   // <-- now a SELECT
+  const $lease      = document.getElementById('filter-lease');
+  const $leaseHidden= document.getElementById('id_lease');  // hidden Django field
+
+  // --- Helpers ---
+  const focusFirstCategory = () => {
+    const firstCat = document.querySelector('select[name$="-category"]');
+    if (firstCat) firstCat.focus();
+  };
+ 
+  function loadPropertiesSelect() {
+    $prop.innerHTML = `<option value="">Loading…</option>`;
+    fetch("{% url 'invoices:api_properties' %}")
+      .then(r => r.json())
+      .then(rows => fillOptions($prop, rows, 'Select property…'))
+      
+      .catch(err => {
+        console.error('Load properties failed', err);
+        $prop.innerHTML = `<option value="">(failed to load properties)</option>`;
+      });
+  }
+
+
+  // NORMALIZE anything into an array of objects
+  function loadTenantsSelect() {
+    $tenant.innerHTML = `<option value="">Loading…</option>`;
+    fetch('/invoices/api/tenants/')
+      .then(r => r.json())
+      .then(rows => fillOptions($tenant, rows, 'Select tenant…'))
+      
+      .catch(err => {
+        console.error('Load tenants failed', err);
+        $tenant.innerHTML = `<option value="">(failed to load tenants)</option>`;
+      });
+  }
+
+
+  // ----------------- Normalizers (prevents rows.map error) -----------------
+  const toArray = (rows) => {
+    if (Array.isArray(rows)) return rows;
+    if (rows && typeof rows === 'object') {
+      for (const k of ['results','data','items','rows','list','units','tenants','leases']) {
+        if (Array.isArray(rows[k])) return rows[k];
+      }
+      // dict like {"55":"Lease …","56":"Lease …"}
+      if (Object.values(rows).every(v => typeof v !== 'object')) {
+        return Object.entries(rows).map(([id, label]) => ({ id, label }));
+      }
+      const firstArray = Object.values(rows).find(Array.isArray);
+      if (firstArray) return firstArray;
+    }
+    return [];
+  };
+
+  // first non-empty helper
+// pick the first defined, non-empty value
+  // helper: first defined, non-empty
+  function pick() {
+    for (let i = 0; i < arguments.length; i++) {
+      const v = arguments[i];
+      if (v !== undefined && v !== null) {
+        if (typeof v === 'string') { if (v.trim() !== '') return v; }
+        else { return v; }
+      }
+    }
+    return undefined;
+  }
+
+
+  function fillOptions(sel, rows, placeholder) {
+    const arr = toArray(rows).map(function(r){
+      const id = pick(
+        r && r.id, r && r.pk, r && r.value, r && r.key, r && r.code, r && r.uuid,
+        Array.isArray(r) ? r[0] : undefined
+      );
+
+      const fullName = ((r.first_name ?? '') + ' ' + (r.last_name ?? '')).trim() || undefined;
+      const label = pick(
+        r.label, r.name, r.full_name, r.display_name, r.unit_number,
+        r.property_name, r.address, r.title, fullName,
+        Array.isArray(r) ? r[1] : undefined
+      );
+
+      return { id: id, label: label };
+    }).filter(function(o){ return o.id && o.label; });
+
+    sel.innerHTML =
+      '<option value="">' + placeholder + '</option>' +
+      arr.map(function(r){ return '<option value="'+r.id+'">'+r.label+'</option>'; }).join('');
+
+    sel.disabled = arr.length === 0;
+  }
+
+
+
+    // ---------- Kick things off ----------
+  loadPropertiesSelect();
+  loadTenantsSelect();
+  // ----------------- Tenants via datalist -----------------
+  let tenantIndex = new Map(); // label(lowercased) -> id
+
+
+  
+
+  // ----------------- Units (on property change) -----------------
+  $prop.addEventListener('change', () => {
+    const pid = $prop.value || 'all';
+    $unit.innerHTML = '';
+    $unit.disabled = true;
+    $lease.innerHTML = '';
+    $lease.disabled = true;
+    $leaseHidden.value = '';
+
+    fetch(`/invoices/api/units/?property_id=${encodeURIComponent(pid)}`)
+      .then(r => r.json())
+      .then(rows => {
+        console.log('API payload for units:', rows);   // ✅ log here
+        fillOptions($unit, rows, 'Select unit…');
+      })
+      .catch(err => console.error('Load units failed', err));
+  });
+
+
+  // ----------------- Leases (when unit or tenant changes) -----------------
+  const autoSelectIfSingle = (sel, after) => {
+    const opts = [...sel.options].filter(o => o.value);
+    if (opts.length === 1) {
+      sel.value = opts[0].value;
+      sel.dispatchEvent(new Event('change'));
+      if (after) after();
+      return true;
+    }
+    return false;
+  };
+
+  function refreshLeases() {
+    const qs = new URLSearchParams();
+    const uid = ($unit.value || '').trim();
+    const tid = ($tenant.value || '').trim();
+
+    if (uid) qs.append('unit_id', uid);
+    if (tid) qs.append('tenant_id', tid);
+
+    $lease.innerHTML = '';
+    $lease.disabled = true;
+    $leaseHidden.value = '';
+
+    if (!qs.toString()) return;
+
+    fetch(`/invoices/api/leases/?${qs.toString()}`)
+      .then(r => r.json())
+      .then(rows => {
+        console.log('API payload for leases:', rows);  // ✅ log here
+        fillOptions($lease, rows, 'Select lease…');
+        if (autoSelectIfSingle($lease, () => {
+          $leaseHidden.value = $lease.value || '';
+        })) return;
+      })
+      .catch(err => console.error('Load leases failed', err));
+  }
+
+
+  $tenant.addEventListener('change', refreshLeases);
+  $unit.addEventListener('change', refreshLeases);
+  $lease.addEventListener('change', () => { $leaseHidden.value = $lease.value || ''; });
+
+
+
+  // --- Preselect Lease if editing ---
+  const EXISTING_LEASE_ID = {{ invoice.lease_id|default:'null' }};
+  if (EXISTING_LEASE_ID) {
+    fetch(`{% url 'invoices:api_leases' %}`)
+      .then(r => r.json())
+      .then(rows => {
+        fillOptions($lease, rows, 'Select lease…');
+        $lease.value = String(EXISTING_LEASE_ID);
+        if ($lease.value) $leaseHidden.value = $lease.value;
+      })
+      .catch(err => console.error('Preselect lease failed', err));
+  }
+
+  // --- Submit guard (make sure we have a lease) ---
+  document.getElementById('invoice-form').addEventListener('submit', (e) => {
+    if (!$leaseHidden.value) {
+      e.preventDefault();
+      alert('Please select a lease before saving.');
+    }
+  });
+
+  // --- Items: totals & dynamic formset rows ---
+  const tbody = document.getElementById('items-body');
+  const tmpl = document.getElementById('item-empty-row');
+  const totalFormsInput = document.getElementById('id_items-TOTAL_FORMS');
+
+  const getTotalForms = ()=> parseInt(totalFormsInput.value || '0', 10) || 0;
+  const setTotalForms = n => totalFormsInput.value = String(n);
+
+  function renumberRows(){
+    let i = 1;
+    tbody.querySelectorAll('tr.item-form .sn').forEach(sn=> sn.textContent = i++);
+  }
+
+  function formatMoney(n){
+    // gives 12,345.67 (intcomma-like)
+    const parts = Number(n).toFixed(2).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+  }
+
+  function recalcTotals(){
+    let total = 0;
+    tbody.querySelectorAll('input[name$="-amount"]').forEach(input=>{
+      const v = parseFloat(input.value || '0');
+      if(!isNaN(v)) total += v;
+    });
+    document.getElementById('subtotal').textContent   = formatMoney(total);
+    document.getElementById('grandtotal').textContent = formatMoney(total);
+  }
+
+  tbody.addEventListener('input', (e)=>{
+    if(e.target.name && /items-\d+-amount$/.test(e.target.name)){
+      recalcTotals();
+    }
+  });
+
+  document.getElementById('add-row').addEventListener('click', ()=>{
+    const idx = getTotalForms();
+    const html = tmpl.innerHTML.replace(/__prefix__/g, idx);
+    const wrap = document.createElement('tbody');
+    wrap.innerHTML = html.trim();
+    const tr = wrap.firstElementChild;
+    tbody.appendChild(tr);
+    setTotalForms(idx + 1);
+    renumberRows();
+    recalcTotals();
+  });
+
+  tbody.addEventListener('click', (e)=>{
+    // remove newly added row
+    if(e.target.classList.contains('remove-row')){
+      const tr = e.target.closest('tr.item-form');
+      tr.remove();
+      renumberRows();
+      recalcTotals();
+      return;
+    }
+    // quick add category
+    if(e.target.classList.contains('add-cat-btn')){
+      const select = e.target.closest('td').querySelector('select');
+      const name = prompt('New category name:');
+      if(!name) return;
+      fetch("{% url 'invoices:category_create_ajax' %}", {
+        method:'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'Content-Type':'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({name})
+      })
+      .then(r=>r.json())
+      .then(j=>{
+        document.querySelectorAll('select[name$="-category"]').forEach(sel=>{
+          sel.insertAdjacentHTML('beforeend', `<option value="${j.id}">${j.name}</option>`);
+        });
+        if(select) select.value = j.id;
+      })
+      .catch(()=>alert('Could not add category'));
+    }
+  });
+
+  // make description & notes compact (2 rows + small controls)
+  var descEl = document.getElementById('id_description');
+  if (descEl) descEl.setAttribute('rows','2');
+  var notesEl = document.getElementById('id_notes');
+  if (notesEl) notesEl.setAttribute('rows','2');
+
+  document.querySelectorAll('#invoice-form textarea, #invoice-form input, #invoice-form select')
+    .forEach(el => el.classList.add('form-control-sm','form-select-sm'));
+
+  // initial numbering + totals
+  renumberRows();
+  recalcTotals();
+
+
+
+
+})();
+
+</script>
+{% endblock %}

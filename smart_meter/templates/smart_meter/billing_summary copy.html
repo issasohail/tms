@@ -1,0 +1,382 @@
+{% extends 'base.html' %}
+{% load humanize dictutil %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<style>
+  /* Ultra-compact table + two-line headers */
+  .toolbar{ display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .table-wrap{ overflow-x:auto; border:1px solid #e5e7eb; border-radius:8px; }
+  table{ width:100%; border-collapse:separate; border-spacing:0; min-width:900px; table-layout:fixed; }
+  th,td{ padding:.20rem .40rem; border-bottom:1px solid #f0f0f0; font-size:12.5px; line-height:1.15; }
+  th{ position:relative; background:#fafafa; white-space:normal; }
+  .thlbl{ display:block; line-height:1.1; max-height:2.2em; overflow:hidden; }
+  .prop-row{ background:#f8fafc; font-weight:700; }
+  .sub-row{ background:#f9f9f9; font-weight:700; }
+  .num{ text-align:right; }
+  .muted{ color:#6b7280; font-size:12px; }
+
+  /* Month chip + auto-submit look */
+  .month-wrap{ display:inline-flex; align-items:center; gap:.4rem; padding:.25rem .55rem; border:1px solid #e5e7eb; border-radius:999px; background:#fff; }
+  .month-wrap input[type="month"]{ border:0; outline:0; background:transparent; font-weight:600; cursor:pointer; padding:0; }
+
+  /* Clickable numbers */
+  a.js-detail{ text-decoration:underline dotted; text-underline-offset:2px; }
+  a.js-detail:hover{ text-decoration:underline; }
+
+  /* Badges for export (links provided elsewhere) */
+  .badge{ display:inline-flex; align-items:center; gap:.35rem; padding:.28rem .5rem; border-radius:999px; text-decoration:none; font-weight:600; }
+  .badge-excel{ background:#e6f4ea; color:#137333; border:1px solid #c3e6cd; }
+  .badge-pdf{ background:#fde7e9; color:#b3261e; border:1px solid #f5c2c7; }
+
+  /* Resizer handle */
+  .resizer{ position:absolute; top:0; right:0; width:6px; cursor:col-resize; user-select:none; }
+  .resizer::after{ content:""; display:block; height:100%; border-right:2px solid transparent; }
+  th:hover .resizer::after{ border-right-color:#d1d5db; }
+
+  /* Responsive knobs and dynamic widths (generic fallback for unknown categories) */
+  :root{
+    --w-generic:110px;
+    --w-sn:46px; --w-unit:86px; --w-tenant:168px;
+    /* Known defaults you care about */
+    --w-c1:98px;  /* Rent (ID 1) */
+    --w-c2:120px; /* Society */
+    --w-c12:98px; /* Water */
+    --w-c4:98px;  /* Internet */
+    --w-c7:108px; /* Electric */
+    --w-other:102px; --w-total_balance:120px; --w-total:112px;
+  }
+  @media (max-width:640px){
+    :root{
+      --w-tenant:138px; --w-c1:90px; --w-c12:90px; --w-c4:90px; --w-c7:98px; --w-other:96px; --w-total:102px;
+    }
+  }
+  th[data-col], td[data-col]{ width:var(--w-generic); min-width:var(--w-generic); }
+  th[data-col="sn"], td[data-col="sn"]{ width:var(--w-sn); min-width:var(--w-sn); }
+  th[data-col="unit"], td[data-col="unit"]{ width:var(--w-unit); min-width:var(--w-unit); }
+  th[data-col="tenant"], td[data-col="tenant"]{ width:var(--w-tenant); min-width:var(--w-tenant); }
+
+  /* Category ID-specific widths (optional, fallback is generic) */
+  th[data-col="c1"], td[data-col="c1"]{ width:var(--w-c1); min-width:var(--w-c1); }
+  th[data-col="c2"], td[data-col="c2"]{ width:var(--w-c2); min-width:var(--w-c2); }
+  th[data-col="c12"], td[data-col="c12"]{ width:var(--w-c12); min-width:var(--w-c12); }
+  th[data-col="c4"], td[data-col="c4"]{ width:var(--w-c4); min-width:var(--w-c4); }
+  th[data-col="c7"], td[data-col="c7"]{ width:var(--w-c7); min-width:var(--w-c7); }
+
+  th[data-col="other"], td[data-col="other"]{ width:var(--w-other); min-width:var(--w-other); }
+  th[data-col="total_balance"], td[data-col="total_balance"]{ width:var(--w-total_balance); min-width:var(--w-total_balance); }
+  th[data-col="total"], td[data-col="total"]{ width:var(--w-total); min-width:var(--w-total); }
+
+  /* Tenant ellipsis in one line */
+  td.tenant .ellipsis{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Modal */
+  .modal{ position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center; padding:6vh 1rem; z-index:50; background:rgba(0,0,0,.35); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .18s ease, visibility .18s ease; }
+  .modal.open{ opacity:1; visibility:visible; pointer-events:auto; }
+  .modal-card{ width:min(760px, 96vw); background:#fff; border-radius:14px; box-shadow:0 20px 45px rgba(0,0,0,.25); overflow:hidden; }
+  .modal-head,.modal-foot{ padding:.6rem .8rem; background:linear-gradient(180deg,#f8fafc,#eef2ff); display:flex; align-items:center; justify-content:space-between; }
+  .modal-title{ font-weight:700; display:flex; align-items:center; gap:.5rem; }
+  .pill{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .pill-accent{ background:#10b981; } .pill-info{ background:#3b82f6; }
+  .modal-body{ padding:.75rem .85rem; max-height:60vh; overflow:auto; }
+  .close{ background:#fff; border:1px solid #e5e7eb; width:28px; height:28px; border-radius:8px; line-height:26px; text-align:center; cursor:pointer; font-size:16px; }
+  .close:hover{ background:#f3f4f6; }
+  .grid2{ display:grid; grid-template-columns:repeat(2, minmax(220px,1fr)); gap:.35rem .75rem; }
+  .ck{ display:flex; gap:.55rem; align-items:center; padding:.25rem .4rem; border-radius:8px; }
+  .ck:hover{ background:#f9fafb; }
+</style>
+
+<h2 style="margin:0 0 .25rem">Billing Summary</h2>
+<div class="muted" style="margin-bottom:.6rem">
+  Period: {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}
+</div>
+
+<form method="get" class="toolbar" id="toolbarForm">
+  <label class="month-wrap" title="Change month">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 2v4M17 2v4M4 9h16M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+    <input name="month" type="month" value="{{ year }}-{{ month|stringformat:'02d' }}" />
+  </label>
+
+  <input type="hidden" name="cols" id="colsField" value="{{ cols_param }}"/>
+
+  <button type="button" id="btnCols" class="badge" style="border:1px solid #a7f3d0; background:#ecfdf5; color:#065f46">Show more Categories</button>
+
+  <div style="flex:1"></div>
+
+  {% with cols_param=cols_param %}
+    <a class="badge badge-excel" title="Export Excel"
+       href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param|urlencode }}">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 4h9l7 7v9a2 2 0 0 1-2 2H4zM15 4v5a2 2 0 0 0 2 2h5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      Excel
+    </a>
+    <a class="badge badge-pdf" title="Export PDF"
+       href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param|urlencode }}">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 8h6M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5"/></svg>
+      PDF
+    </a>
+  {% endwith %}
+</form>
+
+<!-- Category picker modal -->
+<div id="colsModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title"><span class="pill pill-accent"></span> Choose Categories</div>
+      <button type="button" class="close" id="colsClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        {% for c in all_categories %}
+          <label class="ck">
+            <input type="checkbox" value="{{ c.id }}" {% if c.id in visible_ids %}checked{% endif %}>
+            <span>{{ c.name }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="muted" style="margin-top:.35rem">
+        “Other” includes anything not selected. “Total” always shows.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="colsApply" class="badge" style="border:1px solid #a7f3d0; background:#ecfdf5; color:#065f46">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div id="detailModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title"><span class="pill pill-info"></span> Details</div>
+      <button id="detailClose" class="close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody">Loading…</div>
+  </div>
+</div>
+
+<div class="table-wrap" style="margin-top:.5rem">
+  <table id="billingTbl">
+    <thead>
+      <tr>
+        <th data-col="sn"><span class="thlbl">S.N.</span><span class="resizer"></span></th>
+        <th data-col="unit"><span class="thlbl">Unit</span><span class="resizer"></span></th>
+        <th data-col="tenant" class="tenant"><span class="thlbl">Tenant</span><span class="resizer"></span></th>
+        {% for spec in col_specs %}
+          <th class="num" data-col="{{ spec.key }}">
+            <span class="thlbl">{{ spec.label|safe }}</span><span class="resizer"></span>
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for g in groups %}
+        <tr class="prop-row">
+          <td colspan="{{ col_specs|length|add:3 }}">Property: {{ g.property.property_name }}</td>
+        </tr>
+        {% for r in g.rows %}
+          <tr>
+            <td data-col="sn">{{ r.sn }}</td>
+            <td data-col="unit">{{ r.unit.unit_number }}</td>
+            <td data-col="tenant" class="tenant">
+              <span class="ellipsis" title="{{ r.tenant.name|default:r.tenant }}">{{ r.tenant.name|default:r.tenant }}</span>
+            </td>
+
+            {% for spec in col_specs %}
+              {% if spec.kind == "cat" %}
+                {% with val=r.visible|dictkey:spec.key|default:0 %}
+                  <td class="num" data-col="{{ spec.key }}">
+                    <a href="#" class="js-detail"
+                       data-scope="unit"
+                       data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                       data-unit="{{ r.unit.id }}"
+                       data-category="{{ spec.id }}"
+                       data-cols="{{ cols_param }}">{{ val|default_if_none:0|floatformat:0|intcomma }}</a>
+                  </td>
+                {% endwith %}
+              {% elif spec.key == "other" %}
+                <td class="num" data-col="other">
+                  <a href="#" class="js-detail"
+                     data-scope="unit"
+                     data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                     data-unit="{{ r.unit.id }}"
+                     data-category="other"
+                     data-cols="{{ cols_param }}">{{ r.other|default_if_none:0|floatformat:0|intcomma }}</a>
+                </td>
+              {% elif spec.key == "total_balance" %}
+                <td class="num" data-col="total_balance">
+                  {{ r.total_balance|default_if_none:0|floatformat:0|intcomma }}
+                </td>
+              {% elif spec.key == "total" %}
+                <td class="num" data-col="total">
+                  <strong>
+                    <a href="#" class="js-detail"
+                       data-scope="unit"
+                       data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                       data-unit="{{ r.unit.id }}"
+                       data-category="*all*"
+                       data-cols="{{ cols_param }}">{{ r.total|default_if_none:0|floatformat:0|intcomma }}</a>
+                  </strong>
+                </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+
+        <!-- Subtotal -->
+        <tr class="sub-row">
+          <td></td><td>Subtotal</td><td></td>
+          {% for spec in col_specs %}
+            {% with val=g.subtotal|dictkey:spec.key|default:0 %}
+              <td class="num" data-col="{{ spec.key }}">
+                {% if spec.kind == "cat" or spec.key in "other total" %}
+                  <a href="#" class="js-detail"
+                     data-scope="property"
+                     data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                     data-property="{{ g.property.id }}"
+                     data-category="{% if spec.key == 'other' %}other{% elif spec.key == 'total' %}*all*{% else %}{{ spec.id }}{% endif %}"
+                     data-cols="{{ cols_param }}">{{ val|default_if_none:0|floatformat:0|intcomma }}</a>
+                {% else %}
+                  {{ val|default_if_none:0|floatformat:0|intcomma }}
+                {% endif %}
+              </td>
+            {% endwith %}
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+
+    <tfoot>
+      <tr class="sub-row">
+        <td></td><td>GRAND TOTAL</td><td></td>
+        {% for spec in col_specs %}
+          {% with val=grand|dictkey:spec.key|default:0 %}
+            <td class="num" data-col="{{ spec.key }}">
+              {% if spec.kind == "cat" or spec.key in "other total" %}
+                <a href="#" class="js-detail"
+                   data-scope="grand"
+                   data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                   data-category="{% if spec.key == 'other' %}other{% elif spec.key == 'total' %}*all*{% else %}{{ spec.id }}{% endif %}"
+                   data-cols="{{ cols_param }}"><strong>{{ val|default_if_none:0|floatformat:0|intcomma }}</strong></a>
+              {% else %}
+                <strong>{{ val|default_if_none:0|floatformat:0|intcomma }}</strong>
+              {% endif %}
+            </td>
+          {% endwith %}
+        {% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<script>
+  // Auto-submit on month change
+  (function(){
+    const form = document.getElementById('toolbarForm');
+    const month = form.querySelector('input[name="month"]');
+    month.addEventListener('change', ()=> form.submit());
+  })();
+
+  // Open/Close modal helpers
+  function openModal(el){ el.classList.add('open'); el.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
+  function closeModal(el){ el.classList.remove('open'); el.setAttribute('aria-hidden','true'); document.body.style.overflow=''; }
+
+  // Category picker modal
+  (function(){
+    const btn = document.getElementById('btnCols');
+    const modal = document.getElementById('colsModal');
+    const close = document.getElementById('colsClose');
+    const apply = document.getElementById('colsApply');
+    const colsField = document.getElementById('colsField');
+    const form = document.getElementById('toolbarForm');
+
+    btn.addEventListener('click', ()=> openModal(modal));
+    close.addEventListener('click', ()=> closeModal(modal));
+    modal.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(modal); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && modal.classList.contains('open')) closeModal(modal); });
+
+    apply.addEventListener('click', ()=>{
+      const checked = [...modal.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.value);
+      // Keep meta toggles from current param (other/total_balance/total)
+      const current = (colsField.value || "").split(",").map(s=>s.trim()).filter(Boolean);
+      const keepMeta = current.filter(x=>isNaN(parseInt(x,10))); // non-digits => meta
+      if (!keepMeta.includes('total')) keepMeta.push('total'); // always keep total
+      colsField.value = [...checked, ...keepMeta].join(',');
+      closeModal(modal);
+      form.submit();
+    });
+  })();
+
+  // Detail drill-down (fix for "Failed to load details")
+  (function(){
+    const modal = document.getElementById('detailModal');
+    const body  = document.getElementById('detailBody');
+    const close = document.getElementById('detailClose');
+
+    close.addEventListener('click', ()=> closeModal(modal));
+    modal.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(modal); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && modal.classList.contains('open')) closeModal(modal); });
+
+    document.addEventListener('click', async (e)=>{
+      const a = e.target.closest('a.js-detail');
+      if(!a) return;
+      e.preventDefault();
+
+      const params = new URLSearchParams({
+        month: a.dataset.month || '',
+        scope: a.dataset.scope || '',
+        category: a.dataset.category || ''
+      });
+      if (a.dataset.unit) params.set('unit_id', a.dataset.unit);
+      if (a.dataset.property) params.set('property_id', a.dataset.property);
+      if (a.dataset.cols) params.append('cols', a.dataset.cols);
+
+      const url = "{% url 'smart_meter:billing_summary_items' %}?" + params.toString();
+      body.textContent = 'Loading…';
+      openModal(modal);
+      try{
+        const res = await fetch(url, { headers: { 'X-Requested-With':'XMLHttpRequest' } });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        body.innerHTML = data.html || '<div class="muted">No items.</div>';
+      }catch(err){
+        console.error(err);
+        body.innerHTML = '<div style="color:#b00">Failed to load details.</div>';
+      }
+    });
+  })();
+
+  // Column resizing: drag the slim resizer at right side of each TH
+  (function() {
+    const table = document.getElementById('billingTbl');
+    const ths = table.querySelectorAll('thead th');
+    ths.forEach((th, idx) => {
+      const handle = th.querySelector('.resizer');
+      if (!handle) return;
+      let startX, startW;
+      handle.addEventListener('mousedown', (e) => {
+        startX = e.pageX; startW = th.offsetWidth;
+        document.body.style.cursor = 'col-resize';
+        const onMove = (e2) => {
+          const w = Math.max(40, startW + (e2.pageX - startX));
+          th.style.width = w + 'px';
+          table.querySelectorAll('tbody tr').forEach(tr => {
+            const td = tr.children[idx];
+            if (td) td.style.width = w + 'px';
+          });
+          const tf = table.tFoot?.rows[0]?.children[idx];
+          if (tf) tf.style.width = w + 'px';
+        };
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          document.body.style.cursor = '';
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  })();
+</script>
+{% endblock %}

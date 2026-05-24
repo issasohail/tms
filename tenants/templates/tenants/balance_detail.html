@@ -1,0 +1,77 @@
+<!-- templates/balance_detail.html -->
+<div class="card">
+    <div class="card-header">
+        <h3>Balance Details for 
+            {% if object|model_type == 'tenant' %}
+            {{ object.name }}
+            {% else %}
+            Lease #{{ object.id }} ({{ object.tenant.name }} - {{ object.unit.unit_number }})
+            {% endif %}
+        </h3>
+    </div>
+    
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h4>Invoices</h4>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        <tr>
+                            <td>{{ invoice.issue_date }}</td>
+                            <td>{{ invoice.total_amount }}</td>
+                            <td>{{ invoice.get_status_display }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="col-md-6">
+                <h4>Payments</h4>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Amount</th>
+                            <th>Method</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr>
+                            <td>{{ payment.payment_date }}</td>
+                            <td>{{ payment.amount }}</td>
+                            <td>{{ payment.get_payment_method_display }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="alert alert-info">
+                    <h5>Summary</h5>
+                    <p>Total Invoiced: {{ invoices|sum_attr:'total_amount' }}</p>
+                    <p>Total Paid: {{ payments|sum_attr:'amount' }}</p>
+                    <p>Current Balance: 
+                        {% if object.balance > 0 %}
+                        <span class="text-danger">{{ object.balance }} (Due)</span>
+                        {% else %}
+                        <span class="text-success">{{ object.balance }} (Credit)</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

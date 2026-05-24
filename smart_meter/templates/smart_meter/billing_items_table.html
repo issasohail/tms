@@ -1,0 +1,32 @@
+{# Light table used inside the details modal #}
+<div style="overflow:auto">
+  <table style="width:100%; border-collapse:collapse">
+    <thead>
+      <tr>
+        <th style="text-align:left; padding:.3rem .4rem; border-bottom:1px solid #eee;">Invoice #</th>
+        <th style="text-align:left; padding:.3rem .4rem; border-bottom:1px solid #eee;">Lease #</th>
+        <th style="text-align:left; padding:.3rem .4rem; border-bottom:1px solid #eee;">Category</th>
+        <th style="text-align:right; padding:.3rem .4rem; border-bottom:1px solid #eee;">Amount</th>
+        <th style="text-align:center; padding:.3rem .4rem; border-bottom:1px solid #eee;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td style="padding:.25rem .4rem; border-bottom:1px solid #f6f6f6">{{ r.inv_no }}</td>
+        <td style="padding:.25rem .4rem; border-bottom:1px solid #f6f6f6">{{ r.lease_id }}</td>
+        <td style="padding:.25rem .4rem; border-bottom:1px solid #f6f6f6">{{ r.cat }}</td>
+        <td style="padding:.25rem .4rem; border-bottom:1px solid #f6f6f6; text-align:right">{{ r.amt|floatformat:2 }}</td>
+        <td style="padding:.25rem .4rem; border-bottom:1px solid #f6f6f6; text-align:center">
+          <a href="{{ r.view_url }}" target="_blank" rel="noopener">View details</a>
+        </td>
+      </tr>
+    {% endfor %}
+      <tr style="font-weight:700">
+        <td colspan="3" style="padding:.35rem .4rem; text-align:right;">Subtotal</td>
+        <td style="padding:.35rem .4rem; text-align:right;">{{ total|floatformat:2 }}</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+</div>

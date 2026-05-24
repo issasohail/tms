@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+<div class="container" style="max-width:900px">
+  <h3 class="mb-3"><i class="fas fa-sliders-h me-2"></i>System Settings</h3>
+  <form method="post" enctype="multipart/form-data" class="card">
+    <div class="card-body">
+      {% csrf_token %}
+      {{ form|crispy }}
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:dashboard' %}">Cancel</a>
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+    </div>
+  </form>
+</div>  <!-- container ends -->
+
+<hr class="my-4">
+
+<div class="container" style="max-width:900px">
+
+  <h4 class="mb-3"><i class="fas fa-money-bill-wave me-2"></i>Payment Methods</h4>
+
+  <!-- Add New Button -->
+  <button class="btn btn-sm btn-primary mb-2" id="btn-add-method">
+    + Add Payment Method
+  </button>
+
+  <!-- Table -->
+  <table class="table table-sm table-bordered align-middle">
+    <thead class="table-light">
+      <tr>
+        <th style="width:40%">Name</th>
+        <th style="width:25%">Code</th>
+        <th style="width:15%">Active</th>
+        <th style="width:20%">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="pm-table-body">
+      {% for pm in payment_methods %}
+      <tr data-id="{{ pm.id }}">
+        <td>{{ pm.name }}</td>
+        <td>{{ pm.code }}</td>
+        <td>
+          {% if pm.is_active %}
+            <span class="badge bg-success">Active</span>
+          {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+          {% endif %}
+        </td>
+        <td>
+          <button class="btn btn-sm btn-outline-secondary btn-edit" data-id="{{ pm.id }}" data-name="{{ pm.name }}">
+            Edit
+          </button>
+          {% if pm.is_active %}
+          <button class="btn btn-sm btn-outline-danger btn-toggle" data-id="{{ pm.id }}" data-active="0">
+            Deactivate
+          </button>
+          {% else %}
+          <button class="btn btn-sm btn-outline-success btn-toggle" data-id="{{ pm.id }}" data-active="1">
+            Activate
+          </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-center py-3 text-muted">No payment methods added.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+
+<!-- ADD / EDIT MODAL -->
+<div class="modal fade" id="pmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="pm-form">
+        {% csrf_token %}
+        <input type="hidden" id="pm-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pmModalTitle">Add Payment Method</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="pm-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="pm-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="pm-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="pm-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- JS -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  const csrftoken = "{{ csrf_token }}";
+  const modal = new bootstrap.Modal(document.getElementById("pmModal"));
+
+  // Open empty modal for ADD
+  document.getElementById("btn-add-method").addEventListener("click", function () {
+    document.getElementById("pmModalTitle").innerText = "Add Payment Method";
+    document.getElementById("pm-id").value = "";
+    document.getElementById("pm-name").value = "";
+    document.getElementById("pm-code").value = "";
+    document.getElementById("pm-sort").value = "50";
+    document.getElementById("pm-active").value = "1";
+    modal.show();
+  });
+
+  // Edit buttons
+  document.querySelectorAll(".btn-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const id = this.dataset.id;
+      const name = this.dataset.name;
+
+      document.getElementById("pmModalTitle").innerText = "Edit Payment Method";
+      document.getElementById("pm-id").value = id;
+      document.getElementById("pm-name").value = name;
+
+      fetch(`/core/payment-methods/get/${id}/`)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("pm-code").value = data.code;
+          document.getElementById("pm-sort").value = data.sort_order;
+          document.getElementById("pm-active").value = data.is_active ? "1" : "0";
+          modal.show();
+        });
+    });
+  });
+
+  // Activate / deactivate
+  document.querySelectorAll(".btn-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const id = this.dataset.id;
+      const active = this.dataset.active;
+
+      fetch(`/core/payment-methods/toggle/${id}/`, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken}
+      })
+      .then(() => location.reload());
+    });
+  });
+
+  // Save form
+  document.getElementById("pm-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+
+    fetch("/core/payment-methods/save/", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken},
+      body: formData,
+    })
+    .then(r => r.json())
+    .then(() => location.reload());
+  });
+
+});
+</script>
+
+{% endblock %}

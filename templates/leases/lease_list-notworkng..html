@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load static %}
+{% load lease_filters %}
+{%load lease_utils%}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Lease Management</h2>
+        <div>
+            <a href="{% url 'admin:leases_lease_add' %}" class="btn btn-primary mr-2">
+                <i class="fas fa-plus"></i> Add New Lease
+            </a>
+            <a href="{% url 'payments:payment_create' %}" class="btn btn-success">
+                <i class="fas fa-money-bill-wave"></i> Add Payment
+            </a>
+        </div>
+    </div>
+
+    <!-- Enhanced Search and Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" id="filter-form" class="row g-3">
+                <div class="col-md-3">
+                    <select name="tenant" id="tenant-select" class="form-select">
+                        <option value="">All Tenants</option>
+                        {% for tenant in tenant_list %}
+                        <option value="{{ tenant.id }}" 
+                            {% if request.GET.tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                            {{ tenant.first_name }} {{ tenant.last_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="property" id="property-select" class="form-select">
+                        <option value="">All Properties</option>
+                        {% for property in property_list %}
+                        <option value="{{ property.id }}" 
+                            {% if request.GET.property == property.id|stringformat:"s" %}selected{% endif %}>
+                            {{ property.property_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="unit" id="unit-select" class="form-select" {% if not request.GET.property %}disabled{% endif %}>
+                        <option value="">All Units</option>
+                        {% if request.GET.property %}
+                            {% for unit in unit_list|filter_by_property:request.GET.property %}
+                            <option value="{{ unit.id }}" 
+                                {% if request.GET.unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                                {{ unit.unit_number }}
+                            </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="status" id="status-select" class="form-select">
+                        <option value="">All Statuses</option>
+                        <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="expired" {% if request.GET.status == 'expired' %}selected{% endif %}>Expired</option>
+                    </select>
+                </div>
+                <div class="col-md-12 mt-2">
+                    <button type="submit" class="btn btn-primary mr-2 d-none" id="submit-btn">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                    <a href="{% url 'leases:lease_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-sync-alt"></i> Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rest of your template remains the same -->
+    <!-- ... -->
+</div>
+
+<!-- JavaScript for automatic filtering and dependent dropdowns -->
+<script src="{% static 'js/lease_filters.js' %}"></script>
+{% endblock %}

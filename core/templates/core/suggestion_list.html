@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Suggestions / Report Errors{% endblock %}
+{% block content %}
+<style>
+  .ticket-page { margin: 0 auto; max-width: 1100px; }
+  .ticket-table-card { width: max-content; max-width: 100%; margin: 0 auto; }
+  .ticket-table { white-space: nowrap; }
+  @media (max-width: 576px) {
+    .ticket-page { padding-left: .25rem; padding-right: .25rem; }
+    .ticket-hdr h5 { font-size: 1rem; }
+    .ticket-hdr .btn { padding: .2rem .45rem; font-size: .85rem; }
+    .ticket-filters .form-label { margin-bottom: .15rem; }
+    .ticket-table th,
+    .ticket-table td { padding: .28rem .4rem; font-size: .85rem; }
+  }
+  @media (max-width: 360px) {
+    .ticket-page { font-size: .78rem; }
+    .ticket-table th,
+    .ticket-table td { font-size: .76rem; }
+  }
+</style>
+
+<div class="ticket-page">
+  <div class="d-flex justify-content-between align-items-center mb-2 ticket-hdr">
+    <h5 class="mb-0">Suggestions / Report Errors</h5>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newTicketModal">
+      <i class="bi bi-plus-circle"></i> New
+    </button>
+  </div>
+
+  <form method="get" class="card card-body shadow-sm mb-2 py-2 ticket-filters">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3 col-6">
+        <label class="form-label small mb-1">Status</label>
+        <select name="status" class="form-select form-select-sm js-ticket-filter">
+          <option value="">All</option>
+          {% for value,label in status_choices %}
+            <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 col-6">
+        <label class="form-label small mb-1">Type</label>
+        <select name="type" class="form-select form-select-sm js-ticket-filter">
+          <option value="">All</option>
+          {% for value,label in type_choices %}
+            <option value="{{ value }}" {% if selected_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 col-12 d-flex gap-1">
+        <button class="btn btn-sm btn-dark">Filter</button>
+        <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-outline-secondary">Pending</a>
+        <a href="{% url 'core:suggestion_list' %}?status=" class="btn btn-sm btn-outline-secondary">All</a>
+      </div>
+    </div>
+  </form>
+
+  <div class="card shadow-sm ticket-table-card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 ticket-table">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Type</th>
+            <th>Title</th>
+            <th>Screen</th>
+            <th>Status</th>
+            <th>User</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tickets %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ t.get_ticket_type_display }}</td>
+              <td>
+                <a href="{% url 'core:suggestion_detail' t.id %}" class="fw-semibold text-decoration-none">
+                  {{ t.title }}
+                </a>
+              </td>
+              <td>{{ t.screen_name|default:"-" }}</td>
+              <td>
+                {% if request.user.is_staff or request.user.is_superuser %}
+                  <select class="form-select form-select-sm js-ticket-status"
+                          data-url="{% url 'core:suggestion_status_update' t.id %}">
+                    {% for value,label in status_choices %}
+                      <option value="{{ value }}" {% if t.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <span class="badge bg-secondary">{{ t.get_status_display }}</span>
+                {% endif %}
+              </td>
+              <td>{{ t.user_name_snapshot }}</td>
+              <td>{{ t.created_at }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">No records found.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="newTicketModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" action="{% url 'core:suggestion_create' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">New Suggestion / Report Error</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label">Type</label>
+              <select name="ticket_type" class="form-select" required>
+                <option value="SUGGESTION">Suggestion</option>
+                <option value="ERROR">Report Error</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Priority</label>
+              <select name="priority" class="form-select">
+                <option value="NORMAL">Normal</option>
+                <option value="LOW">Low</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Screen Name</label>
+              <input type="text" name="screen_name" class="form-control" placeholder="Example: Settings, Cash Ledger">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Title</label>
+              <input type="text" name="title" class="form-control" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control" rows="4" required></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Photos / Screenshots</label>
+              <div id="newTicketPhotoAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
+              <input type="file" name="photos" class="form-control" multiple accept="image/*">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function suggestionGetCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+document.addEventListener("change", function (e) {
+  const filterEl = e.target.closest(".js-ticket-filter");
+  if (filterEl) {
+    const form = filterEl.closest("form");
+    if (form) form.submit();
+    return;
+  }
+
+  const el = e.target.closest(".js-ticket-status");
+  if (!el) return;
+
+  const formData = new FormData();
+  formData.append("status", el.value);
+  const csrftoken = suggestionGetCookie("csrftoken");
+  formData.append("csrfmiddlewaretoken", csrftoken || "{{ csrf_token }}");
+
+  fetch(el.dataset.url, {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      "X-CSRFToken": csrftoken || "{{ csrf_token }}"
+    },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data || !data.ok) {
+      throw new Error((data && data.error) || "Could not update status.");
+    }
+  })
+  .catch(err => alert(err && err.message ? err.message : "Status update failed."));
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("#newTicketModal form[enctype='multipart/form-data']");
+  const input = form ? form.querySelector("input[type='file'][name='photos']") : null;
+  const alertEl = document.getElementById("newTicketPhotoAlert");
+  if (!form || !input || !alertEl) return;
+
+  const MAX = 5 * 1024 * 1024;
+  const allowedExt = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
+
+  function showError(msg) {
+    alertEl.textContent = msg || "";
+    alertEl.classList.toggle("d-none", !msg);
+  }
+
+  function validateFiles(files) {
+    Array.from(files || []).forEach(function (file) {
+      const name = String(file.name || "").toLowerCase();
+      const ext = name.slice(name.lastIndexOf("."));
+      if (file.size > MAX) throw new Error((file.name || "Photo") + ": maximum allowed size is 5MB.");
+      if (ext && !allowedExt.includes(ext)) throw new Error((file.name || "Photo") + ": unsupported image type.");
+    });
+  }
+
+  input.addEventListener("change", function () {
+    try { validateFiles(input.files); showError(""); }
+    catch (e) { showError(e && e.message ? e.message : "Invalid photo."); }
+  });
+
+  form.addEventListener("submit", function (e) {
+    try { validateFiles(input.files); showError(""); }
+    catch (err) {
+      e.preventDefault();
+      showError(err && err.message ? err.message : "Invalid photo.");
+    }
+  });
+});
+</script>
+{% endblock %}

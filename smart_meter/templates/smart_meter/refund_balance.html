@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<h2>💸 Refund Balance for Unit {{ unit }}</h2>
+<p>Current Balance: ₹{{ balance }}</p>
+
+<form method="post">
+  {% csrf_token %}
+  <input type="number" name="amount" step="0.01" placeholder="Refund amount">
+  <button type="submit">Refund</button>
+</form>
+{%endblock%}

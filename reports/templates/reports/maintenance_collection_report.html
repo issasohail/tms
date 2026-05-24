@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">Maintenance Collection Report</h4>
+    <div class="d-flex gap-2">
+      <a href="?start={{ filters.start }}&end={{ filters.end }}&building={{ filters.building }}&unit={{ filters.unit }}&tenant_status={{ filters.tenant_status }}&export=csv" class="btn btn-outline-secondary btn-sm">CSV</a>
+      <a href="?start={{ filters.start }}&end={{ filters.end }}&building={{ filters.building }}&unit={{ filters.unit }}&tenant_status={{ filters.tenant_status }}&export=xlsx" class="btn btn-outline-success btn-sm">Excel</a>
+      <a href="{% url 'reports:report_list' %}" class="btn btn-secondary btn-sm">Reports</a>
+    </div>
+  </div>
+
+  <form method="get" class="card mb-3">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Date From</label>
+          <input type="date" name="start" value="{{ filters.start }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Date To</label>
+          <input type="date" name="end" value="{{ filters.end }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Building</label>
+          <select name="building" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for property in properties %}
+              <option value="{{ property.id }}" {% if filters.building == property.id|stringformat:"s" %}selected{% endif %}>{{ property.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for unit in units %}
+              <option value="{{ unit.id }}" {% if filters.unit == unit.id|stringformat:"s" %}selected{% endif %}>{{ unit }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Tenant Status</label>
+          <select name="tenant_status" class="form-select form-select-sm">
+            <option value="all" {% if filters.tenant_status == "all" %}selected{% endif %}>All</option>
+            <option value="active" {% if filters.tenant_status == "active" %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if filters.tenant_status == "inactive" %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+        <div class="col-md-1 d-grid">
+          <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="row row-cols-1 row-cols-md-3 g-2 mb-3">
+    <div class="col"><div class="border rounded p-2"><div class="text-muted small">Charged</div><strong>Rs {{ totals.charged|floatformat:0|intcomma }}</strong></div></div>
+    <div class="col"><div class="border rounded p-2"><div class="text-muted small">Paid</div><strong>Rs {{ totals.paid|floatformat:0|intcomma }}</strong></div></div>
+    <div class="col"><div class="border rounded p-2"><div class="text-muted small">Balance</div><strong>Rs {{ totals.balance|floatformat:0|intcomma }}</strong></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Building / Unit</th>
+              <th>Tenant</th>
+              <th>Invoice</th>
+              <th>Description</th>
+              <th class="text-end">Charged</th>
+              <th class="text-end">Paid</th>
+              <th class="text-end">Balance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.date|date:"M d, Y" }}</td>
+                <td>{{ row.building|default:"-" }}<div class="small text-muted">{{ row.unit|default:"" }}</div></td>
+                <td>
+                  {{ row.tenant|default:"-" }}
+                  <div class="small text-muted">{% if row.tenant_active %}Active{% else %}Inactive{% endif %}</div>
+                </td>
+                <td><a href="{% url 'invoices:invoice_detail' row.invoice.id %}">{{ row.invoice.invoice_number }}</a></td>
+                <td>{{ row.description }}</td>
+                <td class="text-end">Rs {{ row.charged|floatformat:0|intcomma }}</td>
+                <td class="text-end">Rs {{ row.paid|floatformat:0|intcomma }}</td>
+                <td class="text-end">Rs {{ row.balance|floatformat:0|intcomma }}</td>
+                <td>{{ row.status }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="9" class="text-muted p-3">No maintenance charges found for this period.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

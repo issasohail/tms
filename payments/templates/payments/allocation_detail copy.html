@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Allocation #{{ allocation.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h4>Payment Allocation</h4>
+
+  <div class="card mt-3">
+    <div class="card-body">
+
+      <p><strong>Payment Ref:</strong> {{ allocation.payment.reference_number }}</p>
+      <p><strong>Date:</strong> {{ allocation.payment.payment_date }}</p>
+      <p><strong>Tenant:</strong>
+        {{ allocation.payment.lease.tenant.first_name }}
+        {{ allocation.payment.lease.tenant.last_name }}
+      </p>
+
+      <hr>
+
+      <table class="table table-sm">
+        <tr>
+          <th>Lease Portion</th>
+          <td>Rs. {{ allocation.lease_amount|intcomma }}</td>
+        </tr>
+        <tr>
+          <th>Security Portion</th>
+          <td>Rs. {{ allocation.security_amount|intcomma }}</td>
+        </tr>
+        <tr>
+          <th>Total</th>
+          <td class="fw-bold">
+            Rs. {{ allocation.payment.amount|intcomma }}
+          </td>
+        </tr>
+      </table>
+
+      <a href="{% url 'payments:payment_detail' allocation.payment_id %}"
+        class="btn btn-secondary btn-sm">
+        Back to Payment
+      </a>
+
+
+      <a href="{% url 'payments:allocation_pdf' allocation.pk %}"
+         class="btn btn-primary btn-sm">
+        Download PDF
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

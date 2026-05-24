@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <h5 class="mb-0"><i class="fas fa-plus-circle me-2 text-success"></i>Add Manual Reading</h5>
+    <a href="{{ return_to }}" class="btn btn-sm btn-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+  </div>
+  <div class="card-body">
+    <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="row g-3">
+    <div class="col-md-6">
+        <label class="form-label">Timestamp</label>
+        {{ form.ts }}
+        {{ form.ts.errors }}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Meter</label>
+        {{ form.meter }}
+        {{ form.meter.errors }}
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Source IP</label>
+        {{ form.source_ip }}
+        {{ form.source_ip.errors }}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">Port</label>
+        {{ form.source_port }}
+        {{ form.source_port.errors }}
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label">Voltage A (V)</label>
+        {{ form.voltage_a }}
+        {{ form.voltage_a.errors }}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Current A (A)</label>
+        {{ form.current_a }}
+        {{ form.current_a.errors }}
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Total Power (W)</label>
+        {{ form.total_power }}
+        {{ form.total_power.errors }}
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Total Energy (kWh)</label>
+        {{ form.total_energy }}
+        {{ form.total_energy.errors }}
+    </div>
+    <div class="col-md-6">
+        <label class="form-label">PF Total</label>
+        {{ form.pf_total }}
+        {{ form.pf_total.errors }}
+    </div>
+    </div>
+
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-success">
+          <i class="fas fa-save me-1"></i> Save Reading
+        </button>
+        <a href="{{ return_to }}" class="btn btn-secondary">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

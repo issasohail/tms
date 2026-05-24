@@ -1,0 +1,114 @@
+{% load static %}
+
+{% url 'smart_meter:meter_switch' as url_meter_switch %}
+{% url 'smart_meter:prepaid_params' as url_prepaid_params %}
+
+<nav class="meterbar bg-dark text-light no-print mb-0 border-top border-secondary">
+  <div class="container-fluid px-2 py-1">
+
+    <ul class="menu-grid">
+      <li>
+        <a class="nav-link{% if cur == 'unknown_meter_list' %} active{% endif %}"
+           href="{% url 'smart_meter:unknown_meter_list' %}" aria-label="Add Meter">
+          <span class="d-sm-none">Add</span><span class="d-none d-sm-inline">Add<BR>Meter</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'smart_meter:assign_meter' %}" aria-label="Assign Meter">
+          <span class="d-sm-none">Assign</span><span class="d-none d-sm-inline">Assign<BR>Meter</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'smart_meter:meter_list' %}" aria-label="Meter List">
+          <span class="d-sm-none">List</span><span class="d-none d-sm-inline">Meter<BR>List</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'smart_meter:smart_meter_live_custom' %}" aria-label="Live Reading">
+          <span class="d-sm-none">Live</span><span class="d-none d-sm-inline">Live<BR>Reading</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link{% if url_meter_switch in request.path %} active{% endif %}"
+           href="{{ url_meter_switch }}" aria-label="Power Switch">
+          <span class="d-sm-none">Switch</span><span class="d-none d-sm-inline">Power<BR>Switch</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'smart_meter:switch_lab' %}" aria-label="Switch Lab">
+          <span class="d-sm-none">Lab</span><span class="d-none d-sm-inline">Switch<BR>Lab</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link{% if url_prepaid_params in request.path %} active{% endif %}"
+           href="{{ url_prepaid_params }}" aria-label="Prepaid Params">
+          <span class="d-sm-none">Prepaid</span><span class="d-none d-sm-inline">Prepaid<BR>Params</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'smart_meter:reading_list' %}" aria-label="Meter Reading">
+          <span class="d-sm-none">Reading</span><span class="d-none d-sm-inline">Meter<BR>Reading</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'tenants:tenant_list' %}" aria-label="Meter Settings">
+          <span class="d-sm-none">Settings</span><span class="d-none d-sm-inline">Meter<BR>Settings</span>
+        </a>
+      </li>
+
+      <li>
+        <a class="nav-link" href="{% url 'smart_meter:energy_dashboard' %}" aria-label="Dashboard">
+          <span class="d-sm-none">Dash</span><span class="d-none d-sm-inline">Dashboard</span>
+        </a>
+      </li>
+    </ul>
+
+  </div>
+</nav>
+
+<style>
+  /* Remove any gap between the main navbar and this meterbar */
+  .navbar + .meterbar { margin-top: 0 !important; }
+
+  /* Dense multi-column grid: 5 per row on the tiniest screens */
+  .menu-grid {
+    margin: 0; padding: 0; list-style: none;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr)); /* 5 across on <576px */
+    gap: .25rem;
+  }
+  @media (min-width: 576px) {
+    .menu-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } /* 6 across on ≥sm */
+  }
+  @media (min-width: 768px) {
+    .menu-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); } /* denser on ≥md */
+  }
+
+  .menu-grid .nav-link {
+    display: block; text-align: center;
+    padding: .38rem .4rem;
+    font-size: .9rem; line-height: 1.1;
+    color: #f8f9fa; text-decoration: none;
+    border-radius: .375rem;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.08);
+    white-space: nowrap;
+  }
+  .menu-grid .nav-link:hover { background: rgba(255,255,255,.12); }
+  .menu-grid .nav-link.active {
+    background: #0d6efd; border-color: #0d6efd; color: #fff;
+  }
+
+  /* Tighten side padding on very small screens */
+  @media (max-width: 575.98px) {
+    .meterbar .container-fluid { padding-left: .5rem; padding-right: .5rem; }
+  }
+</style>

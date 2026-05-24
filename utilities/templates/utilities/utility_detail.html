@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% load utility_filters %}
+{% block title %}Utility Bill Details {% endblock %}
+<button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
+<!-- Your existing property display -->
+<tr>
+    <th>Property</th>
+    <td>
+        {% if property and property_url %}
+            <a href="{{ property_url }}">
+                {{ property.property_name }}
+            </a>
+        {% elif property %}
+            {{ property.property_name }} <small class="text-muted">(detail view not available)</small>
+        {% else %}
+            <span class="text-danger">Not assigned to any property</span>
+        {% endif %}
+    </td>
+</tr>
+
+{% block content %}
+<div class="container">
+    <div class="container mt-4 no-print">
+    <!-- Action Buttons (Hidden when printing) -->
+    <div class="d-flex justify-content-between mb-4">
+        <div>
+            <a href="{% url 'utilities:utility_list' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </a>
+        </div>
+        <div class="btn-group">
+            <!-- Management Buttons -->
+            <a href="{% url 'utilities:utility_update' utility.pk %}" class="btn btn-outline-primary btn-sm me-1">
+                <i class="fas fa-edit me-1"></i> Edit
+            </a>
+            <a href="{% url 'utilities:utility_delete' utility.pk %}" class="btn btn-outline-danger btn-sm me-1">
+                <i class="fas fa-trash-alt me-1"></i> Delete
+            </a>
+            
+            <!-- Communication Buttons -->
+            <button onclick="window.print()" class="btn btn-primary btn-sm me-1">
+                <i class="fas fa-print me-1"></i> Print
+            </button>
+            <button onclick="sendEmail()" class="btn btn-info btn-sm me-1">
+                <i class="fas fa-envelope me-1"></i> Email
+            </button>
+            <button onclick="downloadPDF()" class="btn btn-secondary btn-sm me-1">
+                <i class="fas fa-download me-1"></i> Download
+            </button>
+            <button onclick="sendSMS()" class="btn btn-warning btn-sm me-1">
+                <i class="fas fa-sms me-1"></i> SMS
+            </button>
+            <button onclick="sendWhatsApp()" class="btn btn-success btn-sm me-1">
+                <i class="fab fa-whatsapp me-1"></i> WhatsApp
+            </button>
+        </div>
+    </div>
+</div>
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4>Utility Bill Details</h4>
+        
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <h5>Basic Information
+                    <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
+                </h5>
+                <table class="table table-bordered">
+                    <tr>
+                        <th>Property</th>
+                         <td>
+                            {% if utility.property %}
+                                {{ utility.property.property_name }} 
+                            {% else %}
+                                <span class="text-danger">No property assigned</span>
+                            {% endif %}
+                        </td>
+                        
+                    </tr>
+                    <tr>
+                        <th>Utility Type</th>
+                        <td>{{ utility.get_utility_type_display }}</td>
+                    </tr>
+                    <tr>
+                        <th>Amount</th>
+                        <td>${{ utility.amount }}</td>
+                    </tr>
+                    <tr>
+                        <th>Billing Date</th>
+                        <td>{{ utility.billing_date }}</td>
+                    </tr>
+                    <tr>
+                        <th>Due Date</th>
+                        <td>{{ utility.due_date }}</td>
+                    </tr>
+                    <tr>
+                        <th>Distribution Method</th>
+                        <td>{{ utility.get_distribution_method_display }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h5>Description</h5>
+                <p>{{ utility.description|default:"No description provided" }}</p>
+            </div>
+        </div>
+        
+        <div class="d-flex justify-content-between">
+            <a href="{% url 'utilities:utility_list' %}" class="btn btn-secondary">Back to List</a>
+            <div>
+                <a href="{% url 'utilities:utility_update' utility.pk %}" class="btn btn-warning">Edit</a>
+                <a href="{% url 'utilities:utility_distribute' utility.pk %}" class="btn btn-success">Distribute Charges</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-light">
+        <h5>Affected Tenants</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Unit</th>
+                        <th>Estimated Charge</th>
+                    </tr>
+                </thead>
+                <tbody>
+    {% for lease in active_leases %}
+    <tr>
+        <td>{{ lease.tenant.get_full_name }}</td>
+        <td>{{ lease.unit.unit_number }}</td>
+        <td>
+            {% if utility.distribution_method == 'equal' %}
+                ${{ utility.amount|divide:active_leases.count|floatformat:2 }}
+            {% else %}
+                ${{ utility.amount|divide:active_leases.count|floatformat:2 }} (estimate)
+            {% endif %}
+        </td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="3">
+            {% if not utility.property %}
+                No property assigned
+            {% else %}
+                No active leases found for this property
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

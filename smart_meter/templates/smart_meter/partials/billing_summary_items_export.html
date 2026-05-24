@@ -1,0 +1,75 @@
+{% load humanize %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ heading_text }}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 10mm 16mm 10mm;
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages) " • {{ generated_at }}";
+        font-size: 10px;
+        color: #6b7280;
+      }
+    }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11.5px; }
+    h2 { margin: 0 0 8px 0; font-weight:700; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    thead th { background: #f8fafc; }
+    tfoot td { font-weight: 700; background: #f9fafb; }
+    .num { text-align: right; }
+    .cat2 { white-space: normal; line-height: 1.05; }
+    th.c-sn, td.c-sn { width: 32px; }
+    th.c-date, td.c-date { width: 66px; }
+    th.c-inv, td.c-inv { width: 36px; }
+    th.c-tenant, td.c-tenant { width: 120px; }
+    th.c-unit, td.c-unit { width: 120px; }
+    th.c-cat, td.c-cat { width: 80px; }
+    th.c-amt, td.c-amt { width: 100px; text-align: right; }
+  </style>
+</head>
+<body>
+  <h2>{{ heading_text }}</h2>
+
+  {% if lines %}
+    <table>
+      <thead>
+        <tr>
+          <th class="c-sn">S.N.</th>
+          <th class="c-date">Date</th>
+          <th class="c-inv">Inv#</th>
+          <th class="c-tenant">Tenant</th>
+          <th class="c-unit">Unit</th>
+          <th class="c-cat">Category</th>
+          <th class="c-amt">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in lines %}
+          <tr>
+            <td class="c-sn">{{ it.sn }}</td>
+            <td class="c-date">{{ it.issue_date|date:"d-M-y" }}</td>
+            <td class="c-inv">{{ it.invoice_id }}</td>
+            <td class="c-tenant">{{ it.tenant|default:"—" }}</td>
+            <td class="c-unit">{{ it.unit|default:"—" }}</td>
+            <<td class="c-cat nowrap-clip" title="{{ it.category|default:'—' }}">{{ it.category|default:"—" }}</td>
+            <td class="c-amt">{{ it.amount|floatformat:0|intcomma }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td></td>
+          <td colspan="5">Total</td>
+          <td class="num">{{ total_amount|floatformat:0|intcomma }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  {% else %}
+    <div>No items.</div>
+  {% endif %}
+</body>
+</html>

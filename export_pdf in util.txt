@@ -1,0 +1,64 @@
+import io
+from datetime import datetime
+from django.template.loader import render_to_string
+from django.http import HttpResponse
+from weasyprint import HTML
+from django_tables2.export.export import TableExport
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class PDFTableExport:
+    print("This file is located in utils\\pdf_export.py")
+
+    def __init__(self, table, export_name='export'):
+        self.table = table
+        self.export_name = export_name
+
+    def export_pdf(self, request):
+        html_string = render_to_string('includes/pdf_template.html', {
+            'table': self.table,
+            'request': request,
+            'exported_at': datetime.now()
+        })
+        html = HTML(string=html_string, base_url=request.build_absolute_uri())
+        pdf_file = html.write_pdf()
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{self.export_name}.pdf"'
+        return response
+
+
+def handle_export(request, table, app_name, allowed_formats=('csv', 'xlsx', 'pdf'), custom_fields=None):
+    print("exporting file")
+    export_format = request.GET.get('_export')
+    if not export_format or export_format not in allowed_formats:
+        return None
+
+    # Exclude 'actions' column unless explicitly listed in custom_fields
+    all_columns = set(table.base_columns.keys())
+    excluded_columns = {'actions'}
+    if custom_fields:
+        # Only exclude 'actions' if not in custom_fields
+        table.exclude = all_columns - set(custom_fields)
+    else:
+        table.exclude = all_columns & excluded_columns
+
+    export_name = f"{app_name}_{datetime.now().strftime('%Y%m%d')}"
+
+    if export_format == 'pdf':
+        try:
+            exporter = PDFTableExport(table=table, export_name=export_name)
+            return exporter.export_pdf(request)
+        except Exception:
+            logger.exception(
+                "PDF export failed-under pdf_export.py in utils.d")
+            return HttpResponse("PDF export failed-under pdf_export.py in utils.d", status=500)
+    exporter = TableExport(export_format, table)
+    if not exporter:
+        return HttpResponse("Unsupported format", status=400)
+
+    data = exporter.export()
+    response = HttpResponse(data, content_type=exporter.content_type)
+    response['Content-Disposition'] = f'attachment; filename="{export_name}.{export_format}"'
+    return response

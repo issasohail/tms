@@ -1,0 +1,80 @@
+{% load humanize %}
+
+<div class="card mb-3">
+  <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
+    <span>Lease Renewal History</span>
+    <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-primary btn-sm">
+      <i class="fas fa-sync-alt me-1"></i> Renew Lease
+    </a>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Start</th>
+            <th>End</th>
+            <th class="text-end">Rent</th>
+            <th class="text-end">Total Monthly</th>
+            <th>Signed</th>
+            <th>Files</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for renewal in renewals %}
+            <tr>
+              <td>
+                <strong>#{{ renewal.renewal_number }}</strong>
+                {% if renewal.is_original %}
+                  <span class="badge bg-info text-dark ms-1">Original</span>
+                {% else %}
+                  <span class="badge bg-secondary ms-1">Renewal</span>
+                {% endif %}
+              </td>
+              <td>{{ renewal.start_date|date:"M d, Y" }}</td>
+              <td>{{ renewal.end_date|date:"M d, Y" }}</td>
+              <td class="text-end">Rs {{ renewal.monthly_rent|floatformat:0|intcomma }}</td>
+              <td class="text-end">Rs {{ renewal.total_monthly_amount|floatformat:0|intcomma }}</td>
+              <td>
+                {% if renewal.is_agreement_signed %}
+                  <span class="badge bg-success">Signed</span>
+                {% else %}
+                  <span class="badge bg-secondary">Pending</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if renewal.generated_agreement_pdf %}
+                  <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                {% endif %}
+                {% if renewal.generated_agreement_docx %}
+                  <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                {% endif %}
+                {% if renewal.signed_copy %}
+                  <a href="{{ renewal.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                {% endif %}
+                {% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm">
+                  <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
+                  <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-secondary">Edit</a>
+                  <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-success">Clauses</a>
+                  <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-primary">Generate PDF</a>
+                  <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-secondary">Upload Signed</a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="text-muted p-3">No renewals recorded yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

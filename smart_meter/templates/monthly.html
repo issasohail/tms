@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+<!doctype html><html><head>
+  <meta charset="utf-8"><title>Monthly Report</title>
+  <style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px}th{background:#f3f3f3}</style>
+</head><body>
+<h2>Monthly Consumption — {{ unit }}</h2>
+<table>
+  <thead><tr><th>Month</th><th>Start kWh</th><th>End kWh</th><th>Units</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>
+      <td>{{ row.month|date:"Y-m" }}</td>
+      <td>{{ row.start_kwh }}</td>
+      <td>{{ row.end_kwh }}</td>
+      <td>{{ row.units }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="4">No data.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</body></html>

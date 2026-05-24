@@ -1,0 +1,89 @@
+# AGENTS.md
+
+## High Priority Rules
+
+- Always inspect existing code before editing.
+- Preserve existing logic, JS, CSS, layout, and functionality unless explicitly asked to change them.
+- Make minimal targeted changes only.
+- Never refactor unrelated code.
+- Never remove existing features without permission.
+- Never assume models, relationships, or field names - inspect first.
+
+## Django Project Standards
+
+- Follow existing Django patterns in the repository.
+- Preserve current architecture and naming conventions.
+- Reuse existing helpers/utilities before creating new ones.
+- Prefer extending existing views/templates/forms over rewriting.
+
+## UI / Frontend Rules
+
+- Do NOT break existing layout.
+- Preserve Bootstrap, Select2, jQuery, html2canvas integrations.
+- Preserve responsiveness and mobile behavior.
+- Keep compact admin layout style.
+- For UI changes, modify only related sections.
+
+## Code Output Rules
+
+- Always provide complete copy-paste-ready code.
+- When editing a file, return the full affected section or full file if safer.
+- Clearly mark exactly where code should go.
+- Avoid placeholders like "existing code here".
+
+## Database / Migrations
+
+- Never create migrations unless explicitly requested.
+- Never alter production-sensitive models without warning.
+- Preserve backward compatibility.
+
+## Safety Rules
+
+- Before changing any existing file, make a timestamped backup copy of that file.
+- Never delete files automatically.
+- Never run destructive commands.
+- Ask before:
+  - deleting data
+  - changing schema
+  - modifying deployment
+  - changing nginx/docker/systemd
+  - altering permissions
+
+## Debugging Rules
+
+- Fix root cause, not symptoms.
+- Read logs before suggesting changes.
+- Prefer minimal surgical fixes.
+
+## Git Rules
+
+- Never commit or push unless explicitly asked.
+- Do not modify `.env`, secrets, or credentials.
+- Ignore generated files, media, staticfiles, backups.
+
+## IVS / TMS Project Context
+
+### IVS
+
+- Django 6 + MySQL
+- Bootstrap 5 + Select2 + jQuery
+- Uses html2canvas, WeasyPrint, openpyxl
+- Preserve WhatsApp integrations
+- Preserve grouped table layouts and exports
+- Preserve mobile compact admin layout
+
+### TMS
+
+- Django + MySQL
+- Running behind nginx reverse proxy
+- Hosted under `/tms/`
+- HTTPS + Gunicorn deployment
+- Media root: `/home/ivs/tms_media`
+
+## Response Style
+
+- Be precise and direct.
+- Explain WHY a change is needed.
+- Prefer minimal diffs.
+- Do not over-engineer.
+- Preserve existing behavior by default.

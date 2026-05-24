@@ -1,0 +1,527 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags humanize %}
+
+{% block content %}
+<div class="row g-3">
+  <!-- LEFT: Create/Update form -->
+  <div class="col-12 col-md-6">
+    <div class="card mb-3">
+      <div class="card-header py-2">
+        <h5 class="m-0">{% if form.instance.pk %}Update{% else %}Create{% endif %} Expense</h5>
+      </div>
+      <div class="card-body">
+        {# Normal POST so server can redirect to detail view after save #}
+        <form id="expense-form"
+           hx-boost="false"
+          method="post"
+          novalidate
+          hx-disable
+          enctype="multipart/form-data"
+          action="{% if form.instance.pk %}{% url 'expenses:expense_update' form.instance.pk %}{% else %}{% url 'expenses:expense_create' %}{% endif %}">
+
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+          {% for field in form %}
+            {% if field.errors %}
+              <div class="text-danger small">{{ field.label }}: {{ field.errors|join:", " }}</div>
+            {% endif %}
+          {% endfor %}
+
+
+          {# Row 1: Property + Unit #}
+          <div class="d-flex flex-nowrap gap-2 overflow-auto pb-2">
+            <div class="flex-fill" style="min-width:220px;">
+              {{ form.property|as_crispy_field }}
+            </div>
+            <div class="flex-fill" style="min-width:180px;">
+              <label for="id_unit_inline" class="form-label">Unit</label>
+              <select id="id_unit_inline" name="unit" class="form-select" aria-label="Select unit">
+                <option value="">All Unit</option>
+              </select>
+            </div>
+          </div>
+
+          {# Row 2: Category + Amount + Date #}
+          <div class="d-flex flex-nowrap gap-2 overflow-auto pb-2">
+            <div class="flex-fill" style="min-width:180px;">
+              {{ form.category|as_crispy_field }}
+            </div>
+           <div class="flex-fill" style="min-width:170px;">
+            <label for="id_amount_display" class="form-label">Amount (Rs)</label>
+            <div class="input-group">
+              <span class="input-group-text">Rs</span>
+              <input
+                type="text"
+                id="id_amount_display"
+                class="form-control text-end"
+                inputmode="decimal"
+                placeholder="0.00"
+                aria-label="Amount in rupees">
+            </div>
+              {% if form.amount.errors %}
+                <div class="text-danger small mt-1">{{ form.amount.errors|join:", " }}</div>
+              {% endif %}
+
+            {# Real Django field (hidden) so validation/errors still bind #}
+            <div class="d-none">
+              {{ form.amount.as_widget|safe }}
+            </div>
+          </div>
+
+            <div class="flex-fill" style="min-width:160px;">
+              {{ form.date|as_crispy_field }}
+            </div>
+          </div>
+
+          {# Description #}
+          <div class="mb-3">
+            {{ form.description|as_crispy_field }}
+          </div>
+
+          {# Receipts: add + thumbnails #}
+          <!-- Buttons -->
+          <div class="mb-2 d-flex justify-content-between align-items-center">
+            <label class="form-label m-0">Receipts</label>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-add-camera">+ Camera</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-add-gallery">+ Gallery</button>
+            </div>
+          </div>
+          <div id="new-receipts-grid" class="receipt-grid mb-3" aria-live="polite"></div>
+          <div id="receipt-inputs" class="d-none"></div>
+
+
+
+
+
+
+          <!-- GOOD: one form, three buttons -->
+          <div class="d-flex gap-1 align-items-center mt-3 flex-nowrap">
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            <a href="{% url 'expenses:expense_list' %}" class="btn btn-secondary btn-sm">Cancel</a>
+
+            {% if form.instance.pk %}
+            <button type="submit"
+                    class="btn btn-outline-danger btn-sm ms-auto"
+                    formmethod="post"
+                    formaction="{% url 'expenses:expense_delete' form.instance.pk %}"
+                    formnovalidate
+                    onclick="return confirm('Delete this expense?');">
+              Delete
+            </button>
+            {% endif %}
+          </div>
+
+
+        </form>
+        {% if form.instance.pk %}
+            <div id="existing-receipts">
+              {# Ideally each thumb in this partial is <a href="{{ r.image.url }}" target="_blank"><img ...></a> #}
+              {% include 'expenses/partials/receipt_grid.html' with expense=form.instance %}
+            </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Recent Transactions -->
+  <div class="col-12 col-md-6" id="recent-wrap">
+    <div class="card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h6 class="m-0">Recent Transactions</h6>
+        <div class="d-inline-flex align-items-center gap-2">
+          <label for="recent-count" class="form-label m-0 small">Show</label>
+          <select id="recent-count" class="form-select form-select-sm" style="width:auto;">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle m-0" id="recent-table">
+            <thead class="table-light">
+              <tr>
+                <th class="text-nowrap">#</th>
+                <th class="text-nowrap">Date</th>
+                <th class="text-nowrap d-none d-sm-table-cell">Property</th>
+                <th class="text-nowrap d-none d-sm-table-cell">Unit</th>
+                <th class="text-nowrap d-none d-sm-table-cell">Category</th>
+                <th class="d-none d-sm-table-cell">Description</th>
+                <th class="text-end text-nowrap">Amount (Rs)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in recent_expenses %}
+
+              {# ---------- DESKTOP (unchanged) ---------- #}
+              <tr class="d-none d-sm-table-row">
+                <td class="text-muted text-nowrap">{{ forloop.counter }}</td>
+                <td class="text-nowrap">{{ e.date }}</td>
+
+                <td class="text-nowrap d-none d-sm-table-cell">{{ e.property.property_name }}</td>
+                <td class="text-nowrap d-none d-sm-table-cell">
+                  {% if e.unit %}
+                    {{ e.unit.unit_number }}
+                  {% elif e.distributions.all|length and e.distributions.all|length == e.property.unit_set.all|length %}
+                    All Unit
+                  {% elif e.distributions.all|length == 1 %}
+                    {{ e.distributions.first.unit.unit_number }}
+                  {% elif e.distributions.all|length > 1 %}
+                    Multiple
+                  {% else %} — {% endif %}
+                </td>
+                <td class="text-nowrap d-none d-sm-table-cell">{{ e.category.name|default:"(Uncategorized)" }}</td>
+                <td class="d-none d-sm-table-cell col-desc text-truncate" title="{{ e.description }}">{{ e.description }}</td>
+                <td class="text-end text-nowrap d-none d-sm-table-cell">Rs {{ e.amount|floatformat:2|intcomma }}</td>
+                <td class="text-nowrap">
+                  <a class="btn btn-outline-primary btn-xs" href="{% url 'expenses:expense_update' e.id %}">Edit</a>
+                  <form method="post" action="{% url 'expenses:expense_delete' e.id %}" class="d-inline" onsubmit="return confirm('Delete this expense?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger btn-xs">Delete</button>
+                  </form>
+                </td>
+              </tr>
+
+              {# ---------- MOBILE ROW 1 ---------- #}
+              <tr class="d-sm-none mob-row">
+                <td class="mob-sn">{{ forloop.counter }}</td>
+
+                <td class="mob-td mob-property">
+                  <span class="mob-line text-truncate" title="{{ e.property.property_name }}">{{ e.property.property_name }}</span>
+                </td>
+
+                <td class="mob-td mob-category">
+                  <span class="mob-line text-truncate" title="{{ e.category.name|default:'(Uncategorized)' }}">
+                    {{ e.category.name|default:"(Uncategorized)" }}
+                  </span>
+                </td>
+
+                <td class="mob-td mob-date text-end">
+                  <span class="mob-line">{{ e.date }}</span>
+                </td>
+
+                <td class="mob-td mob-actions">
+                  <a class="btn btn-outline-secondary btn-xs" href="{% url 'expenses:expense_update' e.id %}#existing-receipts">Receipt</a>
+                  <a class="btn btn-outline-primary btn-xs" href="{% url 'expenses:expense_update' e.id %}" title="Edit" aria-label="Edit">✎</a>
+                  <form method="post" action="{% url 'expenses:expense_delete' e.id %}" class="d-inline" onsubmit="return confirm('Delete this expense?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger btn-xs" title="Delete" aria-label="Delete">🗑</button>
+                  </form>
+                </td>
+              </tr>
+
+              {# ---------- MOBILE ROW 2 ---------- #}
+              <tr class="d-sm-none mob-row mob-row-2">
+                <td class="mob-sn">&nbsp;</td>
+
+                <td class="mob-td mob-property">
+                  <span class="mob-sub text-truncate" title="{% if e.unit %}{{ e.unit.unit_number }}{% elif e.distributions.all|length and e.distributions.all|length == e.property.unit_set.all|length %}All Unit{% elif e.distributions.all|length == 1 %}{{ e.distributions.first.unit.unit_number }}{% elif e.distributions.all|length > 1 %}Multiple{% else %}—{% endif %}">
+                    {% if e.unit %}
+                      {{ e.unit.unit_number }}
+                    {% elif e.distributions.all|length and e.distributions.all|length == e.property.unit_set.all|length %}
+                      All Unit
+                    {% elif e.distributions.all|length == 1 %}
+                      {{ e.distributions.first.unit.unit_number }}
+                    {% elif e.distributions.all|length > 1 %}
+                      Multiple
+                    {% else %} — {% endif %}
+                  </span>
+                </td>
+
+                <td class="mob-td mob-category">
+                  <span class="mob-sub text-truncate" title="{{ e.description }}">{{ e.description }}</span>
+                </td>
+
+                <td class="mob-td mob-date text-end">
+                  <span class="mob-sub">Rs {{ e.amount|floatformat:2|intcomma }}</span>
+                </td>
+
+                <td class="mob-td mob-actions">&nbsp;</td>
+              </tr>
+
+              {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-3">No recent expenses.</td></tr>
+              {% endfor %}
+            </tbody>
+
+
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- jQuery (for Select2 if you keep it) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
+
+<script>
+(function(){
+  // ------- Property -> Unit cascade -------
+  const unitsByProp = JSON.parse('{{ units_by_property_json|default:"{}"|escapejs }}');
+
+  const propSel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit_inline');
+
+  function populateUnits(){
+    if(!propSel || !unitSel) return;
+    unitSel.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = ''; optAll.textContent = 'All Unit';
+    unitSel.appendChild(optAll);
+    const pid = propSel.value;
+    (unitsByProp[pid] || []).forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.id; o.textContent = u.label;
+      unitSel.appendChild(o);
+    });
+    const initialUnit = '{{ form.instance.unit_id|default_if_none:"" }}';
+    if (initialUnit) unitSel.value = initialUnit;
+  }
+  propSel?.addEventListener('change', populateUnits);
+  populateUnits();
+
+})();
+</script>
+<script>
+(function(){
+  const form    = document.getElementById('expense-form');
+  const display = document.getElementById('id_amount_display');
+  const real    = document.getElementById('id_amount'); // Django renders this
+
+  function clean(s){ return (s||'').toString().replace(/[,\sRs]/gi,''); }
+  function format(n){ return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function sync(){
+    const n = parseFloat(clean(display?.value));
+    real.value = isNaN(n) ? "" : n.toFixed(2);
+  }
+
+  // Make sure hidden number input can't block submit
+  real?.removeAttribute('required');
+  real?.removeAttribute('min');
+  real?.removeAttribute('max');
+  real?.removeAttribute('step');
+  real?.setAttribute('inputmode','decimal');
+
+  // Init pretty display
+  (function(){
+    const v = real?.value;
+    if(!v) return;
+    const n = parseFloat(v);
+    if(!isNaN(n)) display.value = format(n);
+  })();
+
+  // Keep synced
+  display?.addEventListener('input', sync);
+  display?.addEventListener('change', ()=>{ sync(); const n=parseFloat(clean(display.value)); if(!isNaN(n)) display.value = format(n); });
+
+  // Final guard
+  form?.addEventListener('submit', function(){
+    sync();
+    console.log('Submitting to', this.action);
+  });
+})();
+</script>
+
+<script>
+(function(){
+  const inputsWrap = document.getElementById('receipt-inputs');  // inside the main form
+  const grid = document.getElementById('new-receipts-grid');
+  let counter = 0;
+
+  function makeInput(useCamera){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.name = 'receipts';          // Django: request.FILES.getlist('receipts')
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.className = 'd-none';
+    input.dataset.pid = 'pick' + (++counter);
+    if (useCamera) input.setAttribute('capture','environment');
+    input.addEventListener('change', () => {
+      if (!input.files || !input.files.length) { input.remove(); return; }
+      renderCardForPick(input);
+    });
+    inputsWrap.appendChild(input);
+    return input;
+  }
+
+  function renderCardForPick(input){
+    const card = document.createElement('div');
+    card.className = 'receipt-card';
+    card.dataset.pid = input.dataset.pid;
+
+    const thumbs = document.createElement('div');
+    // show a small preview for each selected file
+    for (const f of input.files){
+      const wrap = document.createElement('div');
+      wrap.className = 'thumb';
+      const img = document.createElement('img');
+      img.alt = f.name;
+      const reader = new FileReader();
+      reader.onload = e => img.src = e.target.result;
+      reader.readAsDataURL(f);
+      wrap.appendChild(img);
+      thumbs.appendChild(wrap);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'mt-1 d-flex justify-content-between';
+    actions.innerHTML = `
+      <small class="text-muted">${input.files.length} file(s)</small>
+      <button type="button" class="btn btn-sm btn-outline-danger">Remove</button>
+    `;
+    actions.querySelector('button').onclick = () => {
+      // remove this selection (cannot remove a single file from a FileList)
+      input.remove();
+      card.remove();
+    };
+
+    card.appendChild(thumbs);
+    card.appendChild(actions);
+    grid.appendChild(card);
+  }
+
+  function openPicker(useCamera){
+    const input = makeInput(useCamera);
+    input.click();
+  }
+
+  document.getElementById('btn-add-camera')?.addEventListener('click', ()=> openPicker(true));
+  document.getElementById('btn-add-gallery')?.addEventListener('click', ()=> openPicker(false));
+})();
+</script>
+
+
+
+<style>
+/* Global smaller font to see more data */
+html { font-size: 14px; }              /* desktop/tablet baseline */
+@media (max-width: 576px){ html{ font-size: 12px; } }  /* phones */
+
+
+/* keep row groups single-line; allow horizontal scroll instead of wrapping */
+.d-flex.flex-nowrap { scrollbar-width: thin; }
+
+/* Receipts: two thumbnails per row */
+.receipt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+.receipt-card .thumb { width: 100%; aspect-ratio: 1 / 1; overflow: hidden; border: 1px solid #dee2e6; border-radius: .5rem; }
+.receipt-card img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+
+/* Table row hover so it feels clickable */
+#recent-table tbody tr.rt-row { cursor: pointer; }
+#recent-table tbody tr.rt-row:hover { background: rgba(108,117,125,.08); }
+
+/* make description narrower on large screens */
+#recent-table td.col-desc{ max-width: 140px; }
+#recent-table td.col-category{ max-width: 140px; }
+
+/* tiny buttons for row actions */
+.btn-xs{ padding:.10rem .35rem; font-size:.55rem; line-height:1.0; }
+
+
+
+/* Small-screen polish (≤400px, optimized for 360px) */
+@media (max-width: 360px){
+  
+  :root { --rt-font: .58rem; }
+  .card-header h5, .card-header h6 { font-size: calc(var(--rt-font) + .14rem); }
+  .form-control, .form-select, .input-group-text, .btn, label, .table, .table th, .table td {
+    font-size: var(--rt-font);
+  }
+  .card-body { padding: .5rem; }
+  .card-header { padding-top: .25rem !important; padding-bottom: .25rem !important; }
+  .mb-3, .pb-2, .gap-2 { margin-bottom: .25rem !important; padding-bottom: .25rem !important; gap: .25rem !important; }
+  #recent-table th,
+  #recent-table td{
+    padding: .05rem .05rem !important;  /* top/btm .25, left/right .5 */
+    font-size: .44rem;
+    vertical-align: middle;
+  }
+
+  #recent-table { table-layout: fixed; width:100%; }
+  #recent-table thead { display: table-header-group !important; } /* keep header visible */
+}
+
+/* Mobile column widths in *pixels* */
+
+  .mob-sn       { width: 15px;  white-space: nowrap; }
+  .mob-property { width: 112px; }
+  .mob-category { width: 88px; }
+  .mob-date     { width: 48px; }
+  .mob-actions  { width: 84px;  white-space: nowrap; }
+
+
+  /* Lines inside cells */
+  .mob-line { display:block; font-weight: 600; }
+  .mob-sub  { display:block; opacity:.8; font-weight: 400; }
+
+  /* Ellipsis helpers */
+  .mob-td, .mob-line, .mob-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* keep action buttons compact */
+  .mob-actions .btn { margin-left:.15rem; }
+  .mob-actions .btn:first-child { margin-left:0; }
+  /* Combined lines */
+  .rt-line { display:flex; gap:.25rem; }
+  .rt-label { opacity:.7; min-width:5.5rem; }
+  .rt-value { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+
+  /* let flex rows wrap instead of forcing horizontal scroll */
+  .d-flex.flex-nowrap{ flex-wrap: wrap !important; overflow: visible !important; }
+
+  /* override the inline min-widths on the .flex-fill columns */
+  .flex-fill[style*="min-width"]{ min-width: 0 !important; flex: 1 1 0% !important; }
+
+  /* keep inputs from overflowing */
+  .input-group .form-control{ min-width: 0; }
+}
+
+/* Slightly tighten default paddings */
+.table td, .table th { vertical-align: middle; }
+
+.receipt-card .thumb { position: relative; }
+.thumb-date{
+  position: absolute;
+  left: .25rem;
+  top: .25rem;
+  background: rgba(0,0,0,.65);
+  color: #fff;
+  padding: .1rem .3rem;
+  border-radius: .25rem;
+  font-size: .58rem; /* tiny for 360px screens */
+  line-height: 1;
+}
+</style>
+{% endblock %}
+
+{# Keep your Select2 TAB behavior (unchanged) #}
+<script>
+$(function () {
+  $('#id_category').select2({ width: '100%', selectOnClose: true });
+  $(document).on('keydown', function (e) {
+    if (e.key === 'Tab' && $('.select2-container--open').length) {
+      $('.select2-hidden-accessible').each(function () {
+        try { $(this).select2('close'); } catch (_){}
+      });
+    }
+  });
+  $(document).on('keydown', '.select2-search__field, .select2-selection', function (e) {
+    if (e.key === 'Tab') {
+      const $sel = $(this).closest('.select2-container').prev('.select2-hidden-accessible');
+      try { $sel.select2('close'); } catch (_){}
+    }
+  });
+});
+</script>

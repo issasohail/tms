@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load url_helpers from payments %}
+{% load url_helpers from tenants %}
+
+{% load lease_filters %}
+{%load lease_utils%}
+{% block content %}
+
+<style>
+select:disabled {
+    background-color: #f8f9fa;
+    color: #6c757d;
+}
+</style>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Lease Management</h2>
+        <div>
+            <a href="{% url 'admin:leases_lease_add' %}" class="btn btn-primary mr-2">
+                <i class="fas fa-plus"></i> Add New Lease
+            </a>
+            <a href="{% url 'payments:payment_create' %}" class="btn btn-success">
+                <i class="fas fa-money-bill-wave"></i> Add Payment
+            </a>
+        </div>
+    </div>
+
+    <!-- Enhanced Search and Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <select name="tenant" id="tenant-select" class="form-select">
+                        <option value="">All Tenants</option>
+                        {% for tenant in tenant_list|dictsort:"first_name" %}
+                        <option value="{{ tenant.id }}" 
+                            {% if request.GET.tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                            {{ tenant.first_name }} {{ tenant.last_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="property" id="property-select" class="form-select">
+                        <option value="">All Properties</option>
+                        {% for property in property_list %}
+                        <option value="{{ property.id }}" 
+                            {% if request.GET.property == property.id|stringformat:"s" %}selected{% endif %}>
+                            {{ property.property_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="unit" id="unit-select" class="form-select">
+                        <option value="">All Units</option>
+                        {% for unit in unit_list %}
+                        <option value="{{ unit.id }}" 
+                            {% if request.GET.unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                            {{ unit.unit_number }} - {{ unit.property.property_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="status" class="form-select" id="status-select">
+                        <option value="">All Statuses</option>
+                        <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="expired" {% if request.GET.status == 'expired' %}selected{% endif %}>Expired</option>
+                    </select>
+                </div>
+                <div class="col-md-12 mt-2">
+                    <button type="submit" class="btn btn-primary mr-2">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                    <a href="{% url 'leases:lease_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-sync-alt"></i> Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Lease Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>S.No</th>
+                            <th>Status</th>
+                            <th>Property</th>
+                            <th>Tenant</th>
+                            <th>Lease End</th>
+                            <th>Monthly Payment</th>
+                            <th>Security Deposit</th>
+                            <th>Balance</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lease in leases %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>
+                                {% if lease.status == 'active' %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Expired</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'leases:lease_detail' lease.id %}">
+                                    {{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if lease.tenant %}
+                                    {{ lease.tenant.first_name }} {{ lease.tenant.last_name }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ lease.end_date|date:"M d, Y" }}</td>
+                            <td>{{ lease.get_total_payment|intcomma }}</td>
+                            <td>{{ lease.security_deposit|intcomma|default:"-" }}</td>
+                            <td>
+                                {% with balance=lease.get_balance %}
+                                    {% if balance > 0 %}
+                                        <span class="text-danger">${{ balance|intcomma }}</span>
+                                    {% else %}
+                                        <span class="text-success">${{ balance|intcomma }}</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" 
+                                       class="btn btn-success" title="Make Payment">
+                                        
+                                    </a>
+                                    <a href="{% url 'tenants:ledger_pdf' lease.id %}" 
+                                       class="btn btn-info" title="View Ledger">
+                                        
+                                    </a>
+                                    <a href="{% url 'admin:leases_lease_change' lease.id %}" 
+                                       class="btn btn-warning" title="Edit">
+                                        
+                                    </a>
+                                    <a href="{% url 'admin:leases_lease_delete' lease.id %}" 
+                                       class="btn btn-danger" title="Delete">
+                                        
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center">No leases found</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+    <div class="mt-3">
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?{% url_replace request page=page_obj.previous_page_number %}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <li class="page-item active"><a class="page-link" href="?{% url_replace request page=num %}">{{ num }}</a></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?{% url_replace request page=num %}">{{ num }}</a></li>
+                {% endif %}
+                {% endfor %}
+                
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?{% url_replace request page=page_obj.next_page_number %}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+$(document).ready(function () {
+    $('#tenant-select, #property-select, #unit-select, #status-select').select2({
+        allowClear: true,
+        width: '100%'
+    });
+
+    // Initialize unit select based on current property selection
+    if ($('#property-select').val()) {
+        updateUnitSelect($('#property-select').val());
+    }
+
+    // On Tenant or Status change
+    $('#tenant-select, #status-select').on('change', function () {
+        $('#property-select').val('').trigger('change');
+        $('#unit-select').val('').trigger('change');
+        $('form').submit();
+    });
+
+    // On Property change
+    $('#property-select').on('change', function () {
+        let propertyId = $(this).val();
+        $('#unit-select').val('').trigger('change');
+        
+        if (propertyId) {
+            updateUnitSelect(propertyId);
+            $('#unit-select').prop('disabled', false);
+        } else {
+            $('#unit-select').html('<option value="">All Units</option>').prop('disabled', true);
+        }
+        
+        $('form').submit();
+    });
+
+    // On Unit change
+    $('#unit-select').on('change', function () {
+        $('form').submit();
+    });
+
+    // Function to update unit select options
+    function updateUnitSelect(propertyId) {
+        $.ajax({
+            url: "{% url 'leases:get_units_by_property' %}",
+            data: { property_id: propertyId },
+            success: function (data) {
+                $('#unit-select').html('<option value="">All Units</option>');
+                $.each(data, function (i, item) {
+                    $('#unit-select').append(new Option(item.text, item.id));
+                });
+                // Preserve selected unit if it belongs to the current property
+                let selectedUnit = "{{ request.GET.unit }}";
+                if (selectedUnit) {
+                    $('#unit-select').val(selectedUnit).trigger('change');
+                }
+            },
+            error: function (xhr, status, error) {
+                console.log("AJAX error:", status, error);
+            }
+        });
+    }
+});
+</script>
+
+
+{% endblock %}

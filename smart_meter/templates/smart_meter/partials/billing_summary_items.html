@@ -1,0 +1,128 @@
+{% load humanize %}
+
+<style>
+  #itemsCapture table { width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; font-size:12px; }
+  #itemsCapture thead th, #itemsCapture td { padding:.20rem .36rem; border-bottom:1px solid #e5e7eb; }
+  #itemsCapture thead th { background:#f8fafc; white-space:nowrap; }
+  .nowrap-clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  th.c-sn,     td.c-sn     { width:32px; }
+  th.c-date,   td.c-date   { width:72px; }
+  th.c-inv,    td.c-inv    { width:36px; }
+  th.c-tenant, td.c-tenant { width:120px; }
+  th.c-unit,   td.c-unit   { width:120px; }
+  th.c-cat,    td.c-cat    { width:80px; }
+  th.c-amt,    td.c-amt    { width:96px; text-align:right; }
+  th.c-wa,     td.c-wa     { width:98px; text-align:center; } /* WhatsApp col */
+
+  .cat2 { white-space:normal; line-height:1.05; }  /* two-line cat name */
+  tr.prop-head td { background:#f8fafc; font-weight:700; }
+  tr.prop-sub  td { background:#f9fafb; font-weight:700; }
+  tfoot td        { background:#eef2ff; font-weight:800; }
+</style>
+<style>
+  #itemsCapture table { width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; font-size:12px; }
+  #itemsCapture thead th, #itemsCapture td { padding:.20rem .36rem; border-bottom:1px solid #e5e7eb; }
+  #itemsCapture thead th { background:#f8fafc; white-space:nowrap; }
+  .nowrap-clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  th.c-sn,     td.c-sn     { width:32px; }
+  th.c-date,   td.c-date   { width:72px; }
+  th.c-inv,    td.c-inv    { width:36px; }
+  th.c-tenant, td.c-tenant { width:120px; }
+  th.c-unit,   td.c-unit   { width:120px; }
+  th.c-cat,    td.c-cat    { width:80px; }             /* category column width */
+  td.c-cat { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }  /* <= force one line */
+  th.c-amt,    td.c-amt    { width:66px; text-align:right; }
+  th.c-wa,     td.c-wa     { width:98px; text-align:center; } /* WhatsApp col */
+
+  /* remove/ignore any .cat2 multi-line rules here */
+  tr.prop-head td { background:#f8fafc; font-weight:700; }
+  tr.prop-sub  td { background:#f9fafb; font-weight:700; }
+  tfoot td        { background:#eef2ff; font-weight:800; }
+</style>
+
+<div id="itemsCapture">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 .5rem 0; flex-wrap:wrap; gap:.5rem">
+    <div class="muted" style="font-weight:700">{{ heading_text }}</div>
+
+    <!-- Controls (visible in UI, hidden for screenshot via .no-export) -->
+    <div class="no-export" style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+      <a href="{% url 'smart_meter:billing_summary_items' %}?{{ qs }}&export=excel"
+         class="badge badge-excel" style="text-decoration:none;">Excel</a>
+      <a href="{% url 'smart_meter:billing_summary_items' %}?{{ qs }}&export=pdf"
+         class="badge badge-pdf" style="text-decoration:none;">PDF</a>
+      <button id="itemsShotBtn" type="button" class="chip-btn">Screenshot</button>
+      <input id="waNumberInput" type="tel" placeholder="WhatsApp number (optional)"
+             style="border:1px solid #e5e7eb;border-radius:8px;padding:.25rem .5rem;" />
+      <button id="itemsWaBtn" type="button" class="chip-btn" title="Send WhatsApp">
+        <i class="fab fa-whatsapp"></i> WhatsApp
+      </button>
+    </div>
+  </div>
+
+  {% if groups %}
+    <table id="itemsTable">
+      <thead>
+        <tr>
+          <th class="c-sn">S.N.</th>
+          <th class="c-date">Date</th>
+          <th class="c-inv">Inv#</th>
+          <th class="c-tenant">Tenant</th>
+          <th class="c-unit">Unit</th>
+          <th class="c-cat">Category</th>
+          <th class="c-amt">Amount</th>
+          <th class="c-wa no-export">WhatsApp</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for g in groups %}
+          <tr class="prop-head"><td colspan="8" style="padding:.28rem .36rem;">Property: {{ g.property|default:"—" }}</td></tr>
+
+          {% for it in g.rows %}
+            <tr>
+              <td class="c-sn nowrap-clip"     title="{{ it.sn }}">{{ it.sn }}</td>
+              <td class="c-date nowrap-clip"   title="{{ it.issue_date|date:'d-M-y' }}">{{ it.issue_date|date:"d-M-y" }}</td>
+              <td class="c-inv nowrap-clip"    title="{{ it.invoice_id }}">{{ it.invoice_id }}</td>
+              <td class="c-tenant nowrap-clip" title="{{ it.tenant }}">{{ it.tenant|default:"—" }}</td>
+              <td class="c-unit nowrap-clip"   title="{{ it.unit }}">{{ it.unit|default:"—" }}</td>
+              <td class="c-cat nowrap-clip" title="{{ it.category|default:'—' }}">{{ it.category|default:"—" }}</td>
+
+              <td class="c-amt nowrap-clip">{{ it.amount|floatformat:0|intcomma }}</td>
+
+              <!-- WhatsApp action (hidden from screenshot/exports) -->
+              <td class="c-wa no-export">
+                <button type="button" class="wa-btn"
+                        data-tenant="{{ it.tenant|escapejs }}"
+                        data-unit="{{ it.unit|escapejs }}"
+                        data-category="{{ it.category_short|escapejs }}"
+                        data-amount="{{ it.amount|floatformat:0|intcomma }}">
+                  <i class="fab fa-whatsapp"></i> WhatsApp
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+
+          <tr class="prop-sub">
+            <td></td>
+            <td colspan="5" style="padding:.26rem .36rem;">Subtotal — {{ g.property|default:"—" }}</td>
+            <td class="c-amt">{{ g.subtotal|floatformat:0|intcomma }}</td>
+            <td class="no-export"></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+
+      <tfoot>
+        <tr>
+          <td></td>
+          <td colspan="5" style="padding:.26rem .36rem;">GRAND TOTAL</td>
+          <td class="c-amt">{{ total_amount|floatformat:0|intcomma }}</td>
+          <td class="no-export"></td>
+        </tr>
+      </tfoot>
+    </table>
+  {% else %}
+    <div class="muted" style="color:#6b7280;">No items.</div>
+  {% endif %}
+</div>

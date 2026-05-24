@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="d-flex align-items-center mb-3">
+    <h1 class="flex-grow-1">Usage Chart</h1>
+    <a href="{{ back_url }}" class="btn btn-secondary btn-sm">Close</a>
+  </div>
+
+  <!-- Same filter form as dashboard (copy/paste your form block) -->
+  <div class="card mb-3">
+    <div class="card-body py-2 px-3">
+      <form id="meter-filter-form" method="get" class="row row-cols-lg-auto g-2 align-items-end">
+        <!-- (repeat your Property / Unit / Meter / Start / End / Report inputs here, unchanged) -->
+        <!-- ... your exact filter controls from dashboard ... -->
+
+        <div class="col d-flex align-items-end gap-2">
+          <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+          <button id="btn-save-chart" class="btn btn-sm btn-dark" type="button">Save Chart (PNG)</button>
+          <button id="btn-save-both"  class="btn btn-sm btn-dark"         type="button">Save Chart + Table (JPEG)</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if report_type == 'monthly' and month_heading %}
+    <h5 class="mb-2">{{ month_heading }}</h5>
+  {% endif %}
+
+  <!-- Chart -->
+  <div class="card mb-4" id="chart-card">
+    <div class="card-body" style="height: 420px;">
+      <canvas id="energyChartFull" height="380"></canvas>
+    </div>
+  </div>
+
+  <!-- Optional: collapsible table so Save Both works on this page too -->
+  {% if rows %}
+  <div class="d-flex align-items-center mb-2">
+    <h5 class="mb-0 flex-grow-1">Data Table</h5>
+    <button class="btn btn-sm btn-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#chartTableWrap">
+      Toggle Table
+    </button>
+  </div>
+  <div class="collapse show" id="chartTableWrap">
+    <div class="card" id="table-card">
+      <div class="card-body">
+        <!-- paste the same table markup you use on dashboard (energyTable) -->
+        {% include "smart_meter/_energy_table.html" %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script>
+(function(){
+  const labels       = {{ labels|default:"[]"|safe }};
+  const datasetsRaw  = {{ datasets|default:"[]"|safe }};
+  const perMeterMode = {{ current_meter|yesno:"true,false" }};
+  const reportType   = "{{ report_type }}";
+  const barSets = (datasetsRaw || []).map(d => ({
+    label: d.label,
+    data: d.data,
+    meterNumber: d.meterNumber || "",
+    unitNumber:  d.unitNumber  || "",
+    borderWidth: 1
+  }));
+
+  let chartInstance = null;
+  function buildChart(){
+    if (!labels?.length || !barSets?.length) return;
+    const el = document.getElementById('energyChartFull');
+    if (!el) return;
+    const ctx = el.getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: barSets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            labels: {
+              value: {
+                formatter: (v) => v == null ? '' : (reportType === 'monthly' ? Math.round(v) : Number(v).toFixed(2)),
+                anchor: 'end', align: 'end', offset: 2, clamp: true
+              },
+              meter: {
+                formatter: (_v, ctx) => {
+                  if (perMeterMode) return '';
+                  const ds = ctx?.dataset || {};
+                  if (!ds.meterNumber) return '';
+                  return ds.unitNumber ? `${ds.unitNumber}\n${ds.meterNumber}` : ds.meterNumber;
+                },
+                anchor: 'center', align: 'center', rotation: -90, color: '#000', clamp: true
+              }
+            }
+          }
+        },
+        scales: { x: { ticks: { maxRotation: 45, minRotation: 45 } }, y: { beginAtZero: true, title: { display: true, text: 'kWh' } } }
+      },
+      plugins: [ChartDataLabels]
+    });
+  }
+
+  // Save helpers
+  let html2canvasLoaded = false;
+  function ensureHtml2Canvas() {
+    return new Promise((resolve) => {
+      if (html2canvasLoaded) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+      s.onload = () => { html2canvasLoaded = true; resolve(); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function saveChartPNG() {
+    await ensureHtml2Canvas();
+    const canvas = document.getElementById('energyChartFull');
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = 'energy-chart.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  async function saveChartAndTableJPEG() {
+    await ensureHtml2Canvas();
+    const chartCanvas = document.getElementById('energyChartFull');
+    const tableCard   = document.getElementById('table-card');
+    const wrap = document.createElement('div');
+    wrap.style.background = '#fff';
+    wrap.style.padding = '12px';
+
+    const img = new Image();
+    if (chartCanvas) { img.src = chartCanvas.toDataURL('image/jpeg', 0.92); }
+    img.style.display = 'block';
+    img.style.maxWidth = '100%';
+    img.style.marginBottom = '12px';
+    wrap.appendChild(img);
+
+    if (tableCard) wrap.appendChild(tableCard.cloneNode(true));
+
+    document.body.appendChild(wrap);
+    const canvas = await html2canvas(wrap, { scale: 2 });
+    const link = document.createElement('a');
+    link.download = 'energy-chart-and-table.jpeg';
+    link.href = canvas.toDataURL('image/jpeg', 0.92);
+    link.click();
+    wrap.remove();
+  }
+
+  document.getElementById('btn-save-chart')?.addEventListener('click', saveChartPNG);
+  document.getElementById('btn-save-both') ?.addEventListener('click', saveChartAndTableJPEG);
+
+  buildChart();
+})();
+</script>
+{% endblock %}

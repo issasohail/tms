@@ -1,0 +1,470 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+{% load payments_url_helpers %}
+{% load tenants_url_helpers %}
+
+{% block content %}
+<div class="container-fluid grid-tight">
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <h1 class="h5 mb-0 d-inline">Tenants</h1>
+            {% if is_paginated %}
+            <div class="d-flex justify-content-between align-items-center">
+                <nav aria-label="Page navigation">
+                    <ul class="pagination pagination-sm mb-0">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                                Previous
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                        <li class="page-item active"><a class="page-link" href="#">{{ num }}</a></li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                        <li class="page-item"><a class="page-link" href="?page={{ num }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a></li>
+                        {% endif %}
+                        {% endfor %}
+                        
+                        {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                                Next 
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                <div class="text-muted small">
+                    Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="d-flex align-items-center">
+            <a href="{% url 'tenants:tenant_create' %}" class="btn btn-primary btn-sm me-2">
+                <i class="fas fa-plus"></i> Add Tenants
+            </a>
+        </div>    
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-download"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&export=pdf">
+                    <i class="fas fa-file-pdf text-danger me-1"></i> PDF
+                </a></li>
+                <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&export=csv">
+                    <i class="fas fa-file-csv text-success me-1"></i> CSV
+                </a></li>
+                <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&export=xlsx">
+                    <i class="fas fa-file-excel text-success me-1"></i> Excel
+                </a></li>
+            </ul>
+            </div>   
+        
+            
+           
+            
+            
+        </div>
+    </div>
+
+    <form method="get" id="filter-form" class="mb-2">
+        <div class="row gx-1">
+            <div class="col-md-2">
+                
+                <select id="tenant-filter" name="tenant" class="form-control form-control-sm select2" data-placeholder="All Tenants" style="min-width:450px">
+                    <option value="">All Tenants</option>
+                    {% for t in all_tenants %}
+                        <option value="{{ t.id }}" {% if request.GET.tenant == t.id|stringformat:"s" %}selected{% endif %}>
+                            {{ t.first_name }} {{ t.last_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
+                <input type="text" name="phone" class="form-control form-control-sm" placeholder="Phone" value="{{ request.GET.phone }}"style="min-width:450px">
+            </div>
+            <div class="col-md-2">
+                <select name="property" class="form-control form-control-sm" id="property-select">
+                    <option value="">All Properties</option>
+                    {% for property in properties %}
+                        <option value="{{ property.id }}" {% if request.GET.property == property.id|stringformat:"s" %}selected{% endif %}style="min-width:250px">
+                            {{ property.property_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="unit" class="form-control form-control-sm" id="unit-select">
+                    <option value="">All Units</option>
+                    {% for unit in all_units %}
+                        <option value="{{ unit.id }}" {% if request.GET.unit == unit.id|stringformat:"s" %}selected{% endif %}style="min-width:350px">
+                            {{ unit.unit_number }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 form-check d-flex align-items-center">
+                <input type="checkbox" name="show_inactive" class="form-check-input" id="show_inactive" {% if request.GET.show_inactive %}checked{% endif %}>
+                <label class="form-check-label ml-1" for="show_inactive">Show Inactive</label>
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    Filter
+                </button>
+            </div>
+            <div class="col-md-1">
+                <a href="{% url 'tenants:tenant_list' %}" class="btn btn-secondary btn-sm w-100">
+                    Reset
+                </a>
+            </div>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover table-sm">
+            <thead class="thead-light">
+                <tr>
+                    <th style="width: 2%">#</th>
+                    <th style="width: 9%">Photo</th>
+                    <th style="width: 10%">Tenant Info</th>
+                    <th style="width: 6%">Contact/nEmail</th>
+                    <th style="width: 8%">Emergency</th>
+
+                    <th style="width: 8%">Address</th>
+                    <th style="width: 8%">Notes</th>
+                    <th style="width: 11%">Lease & Payment</th>
+                    <th style="width: 28%">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tenant in tenants %}
+                {% with lease=tenant.current_lease %}
+                <tr>
+                    <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
+                    <td class="p-0">
+                        {% if tenant.photo %}
+                        <a href="{{ tenant.photo.url }}" data-toggle="lightbox" class="d-block">
+                            <img src="{{ tenant.photo.url }}" style="width: 100px; height: 100px; object-fit: contain; object-position: center;" alt="Photo">
+                        </a>
+                        {% else %}
+                        <div class="bg-secondary d-flex align-items-center justify-content-center" style="height: 60px;">
+                            <i class="fas fa-user text-white fa-lg"></i>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="p-1">
+                        <a href="{% url 'tenants:tenant_update' tenant.id %}" class="text-primary d-block">
+                            <strong>{{ tenant.first_name }} </strong>
+                        </a>
+                        <span class="text-muted xsmall d-block">
+                            {{ tenant.number_of_family_member }} Family - {{ tenant.get_gender_display }}
+                        </span>
+                    </td>
+                    <td class="p-1 xsmall">
+                        {{ tenant.phone }}
+                       <span class="text-muted xsmall d-block">
+                            {{ tenant.email }} 
+                        </span> 
+                    </td>
+                    <td style="font-size: 0.7rem">
+                        {{ tenant.emergency_contact_name }}<br>
+                        {{ tenant.emergency_contact_phone }}
+                    </td>
+                    
+                    <td style="font-size: 0.7rem">{{ tenant.address|default:"-"|truncatechars:40 }}</td>
+                    <td style="font-size: 0.7rem">{{ tenant.notes|default:"-"|truncatechars:40 }}</td>
+                    <td class="p-1 small" style="font-size: 0.7rem">
+                        {% if lease %}
+                        <div class="d-flex flex-column">
+                            
+                            <a href="{% url 'leases:lease_detail' lease.pk %}" class="link-primary text-decoration-none">
+                            <span><strong>{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</strong></span>
+                            </a>
+
+                            
+                            <span>Ends: <span class="{% if lease.is_ending_soon %}text-danger{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span></span>
+                            <span>Monthly: {{ lease.total_payment|intcomma }}</span>
+                            <span class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                                Balance: {{ lease.get_balance|intcomma }}
+                            </span>
+                        </div>
+                        {% else %}
+                        <span class="text-muted">No active lease</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-1">
+                        <div class="d-flex flex-wrap">
+                            <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="btn btn-info btn-xs m-1">
+                                View
+                            </a>
+                            <a href="{% url 'tenants:tenant_update' tenant.id %}" class="btn btn-primary btn-xs m-1">
+                                Edit
+                            </a>
+                            {% if lease %}
+                            <a href="{% url 'leases:lease_ledger' lease.id %}" class="btn btn-secondary btn-xs m-1">
+                                Ledger
+                            </a>
+                            <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="btn btn-success btn-xs m-1">
+                                Pay
+                            </a>
+                            <button class="btn btn-warning btn-xs m-1" 
+                                    onclick="sendWhatsAppReminder('{{ tenant.first_name }}','{{ tenant.last_name }}','{{ tenant.phone }}','{{ lease.get_balance }}','{{ lease.unit.property.property_name }}','{{ lease.unit.unit_number }}')">
+                                Remind
+                            </button>
+                            {% endif %}
+                            <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="btn btn-danger btn-xs m-1">
+                                Delete
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endwith %}
+                {% empty %}
+                <tr>
+                    <td colspan="11" class="text-center py-2 xxsmall">No tenants found matching your criteria</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if is_paginated %}
+    <div class="d-flex justify-content-between align-items-center">
+        <nav aria-label="Page navigation">
+            <ul class="pagination pagination-sm mb-0">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                        Previous
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <li class="page-item active"><a class="page-link" href="#">{{ num }}</a></li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <li class="page-item"><a class="page-link" href="?page={{ num }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a></li>
+                {% endif %}
+                {% endfor %}
+                
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                        Next
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        <div class="text-muted small">
+            Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    /* Compact table styling */
+    .table-sm td, .table-sm th {
+        padding: 0.2rem;
+        font-size: 0.8rem;
+        vertical-align: middle;
+    }
+    
+    .small {
+        font-size: 0.8rem;
+    }
+    
+    .xsmall {
+        font-size: 0.7rem;
+        color: #666;
+    }
+    
+    .xxsmall {
+        font-size: 0.6rem;
+        color: #666;
+    }
+    
+    /* Buttons */
+    .btn-xs {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        line-height: 1.2;
+        border-radius: 0.2rem;
+    }
+    
+    /* Images */
+    .table img {
+        max-height: 40px;
+        width: 100%;
+        object-fit: cover;
+    }
+    
+    /* Select2 dropdown */
+    .select2-container .select2-selection--single {
+        height: 30px !important;
+        font-size: 0.8rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 28px;
+    }
+    
+    /* Form controls */
+    .form-control-sm {
+        height: calc(1.2em + 0.5rem + 2px);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Pagination */
+    .pagination-sm .page-link {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Photo column */
+    td.p-0 {
+        padding: 0 !important;
+    }
+    
+    /* Action buttons */
+    .btn-group-vertical .btn {
+        margin-bottom: 0.1rem;
+    }
+    
+    /* Unit select width */
+    #unit-select {
+        width: 120px !important;
+    }
+    
+    /* Disabled unit select */
+    #unit-select:disabled {
+        background-color: #e9ecef;
+        opacity: 1;
+    }
+    
+    /* Button spacing */
+    .btn-group, .btn {
+        margin-right: 0.5rem;
+    }
+    
+    /* Dropdown fix */
+    .dropdown-menu {
+        min-width: 7rem;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+// Define the function in global scope before DOM ready
+// WhatsApp reminder function - working version from lease template
+function sendWhatsAppReminder(phone, firstName, lastName, propertyName, unitNumber, balance) {
+    try {
+        if (!phone) {
+            alert("No phone number provided");
+            return;
+        }
+
+        const cleaned = phone.toString().replace(/\D/g, '');
+        const formatted = cleaned.startsWith('0') ? '92' + cleaned.slice(1) :
+                         cleaned.startsWith('92') ? cleaned : '92' + cleaned;
+
+        const formattedBalance = parseFloat(balance).toLocaleString('en-PK', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+
+        const message = `Dear ${firstName} ${lastName},\n\nPayment Reminder:\nProperty: ${propertyName}\nUnit: ${unitNumber}\nBalance Due: Rs. ${formattedBalance}\n\nPlease pay at your earliest convenience.`;
+
+        window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
+    } catch (error) {
+        console.error("WhatsApp error:", error);
+        alert("Failed to send WhatsApp: " + error.message);
+    }
+}
+
+// Make it globally available
+window.sendWhatsAppReminder = sendWhatsAppReminder;
+
+
+document.addEventListener('DOMContentLoaded', function () {
+  const $form      = $('#filter-form');
+  const $tenantSel = $('#tenant-filter');
+  const $propSel   = $('#property-select');
+  const $unitSel   = $('#unit-select');
+  const $inactive  = $('#show_inactive');
+
+  // --- Select2 tenant (type to search) + UX niceties ---
+  $tenantSel.select2({
+    width: '100%',
+    placeholder: "All Tenants",
+    allowClear: true,
+    minimumResultsForSearch: 0,
+    selectOnClose: true
+  });
+
+  // Open on focus, and focus the search input (saves a click)
+  $(document).on('focus', '#tenant-filter + .select2 .select2-selection', function () {
+    $tenantSel.select2('open');
+  });
+  $(document).on('select2:open', () => {
+    const sf = document.querySelector('.select2-container--open .select2-search__field');
+    if (sf) { sf.focus(); sf.select(); }
+  });
+
+  // --- Mirror lease_list behavior: auto-submit on change --------------------
+  // Checkboxes submit immediately
+  $inactive.on('change', function () {
+    $form.submit();
+  });
+
+  // Property change: clear tenant (server will recalc units), submit
+  $propSel.on('change', function () {
+    $tenantSel.val('').trigger('change');
+    $form.submit();
+  });
+
+  // Unit change: clear tenant, submit
+  $unitSel.on('change', function () {
+    $tenantSel.val('').trigger('change');
+    $form.submit();
+  });
+
+  // Tenant change: clear property + unit, submit
+  $tenantSel.on('change', function () {
+    if ($(this).val()) {
+      $propSel.val('');
+      $unitSel.val('');
+    }
+    $form.submit();
+  });
+
+  // Phone: press Enter to submit (no auto-submit on typing)
+  $('input[name="phone"]').on('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $form[0].submit();
+    }
+  });
+
+  // (Optional) If no property selected at load, keep unit enabled; the page re-render will
+  // repopulate units just like the lease page. No custom AJAX is needed here.
+  // Remove any previous code that fetched /api/properties/.../units/ via $.get().
+});
+</script>
+
+
+{% endblock %}

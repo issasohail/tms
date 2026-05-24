@@ -1,0 +1,72 @@
+{# templates/leases/photos_modal.html — header row #}
+<div class="row g-2 align-items-center">
+  <div class="col">
+    <div class="small text-muted">Tenant</div>
+    <div class="fw-semibold">{{ lease.tenant_name|default:lease.tenant }}</div>
+  </div>
+  <div class="col">
+    <div class="small text-muted">Property • Unit • Period</div>
+    <div class="fw-semibold">
+      {{ lease.property_name }} • {{ lease.unit_number }} • {{ lease.start_date }} → {{ lease.end_date }}
+    </div>
+  </div>
+
+  <div class="col text-end d-flex justify-content-end gap-2">
+    {# Export to PDF #}
+    <form method="post" action="{% url 'leases:photos_export' lease.pk %}">
+      {% csrf_token %}
+      <button class="btn btn-primary btn-sm">Export PDF</button>
+    </form>
+
+    {# Add Photos (hidden input, opens OS dialog / camera) #}
+    <form id="lease-photo-add"
+          method="post"
+          enctype="multipart/form-data"
+          hx-post="{% url 'leases:photo_add' lease.pk %}"
+          hx-encoding="multipart/form-data"
+          hx-target="#photos-grid"
+          hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="title" value="">
+      <input type="hidden" name="description" value="">
+      <input id="add-photos-input" class="d-none" type="file" name="photos"
+             accept="image/*" multiple capture="environment"
+             hx-post="{% url 'leases:photo_add' lease.pk %}"
+             hx-encoding="multipart/form-data"
+             hx-target="#photos-grid"
+             hx-swap="outerHTML"
+             hx-trigger="change">
+      <button type="button" class="btn btn-primary btn-sm"
+              onclick="document.getElementById('add-photos-input').click()">
+        Add Photos
+      </button>
+    </form>
+  </div>
+</div>
+
+<hr class="my-2">
+
+{# Optional inline title/description (pre-fill the hidden inputs above) #}
+<div class="row g-2 mb-2">
+  <div class="col-md-3">
+    <input id="p-title" class="form-control form-control-sm" placeholder="Title (optional)">
+  </div>
+  <div class="col-md-5">
+    <input id="p-desc" class="form-control form-control-sm" placeholder="Description (optional)">
+  </div>
+  <div class="col-auto d-flex align-items-center small text-muted">
+    (These will be stamped + stored on each added photo)
+  </div>
+</div>
+
+<script>
+  // When user clicks Add Photos and picks files, copy title/description into the form before HTMX posts.
+  document.getElementById('add-photos-input')?.addEventListener('change', function(){
+    const form = document.getElementById('lease-photo-add');
+    form.querySelector('input[name="title"]').value = document.getElementById('p-title')?.value || "";
+    form.querySelector('input[name="description"]').value = document.getElementById('p-desc')?.value || "";
+  });
+</script>
+
+{# Thumbs grid #}
+<div id="photos-grid" hx-get="{% url 'leases:photos_grid' lease.pk %}" hx-trigger="load"></div>

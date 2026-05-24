@@ -1,0 +1,10 @@
+{% load thumbnail %}
+
+{% if record.cnic_back  %}
+<a href="#" data-bs-toggle="modal" data-bs-target="#imageModal" 
+   data-img-url="{{ record.cnic_back.url }}" data-title="{{ record.get_full_name }}">
+    <img src="{{ record.cnic_back.url }}" class="img-thumbnail" style="width: 100px; height: 75px; object-fit: cover;">
+</a>
+{% else %}
+-
+{% endif %}

@@ -1,0 +1,833 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Billing Summary</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- html2canvas for screenshot -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+
+<style>
+  /* ======= Sizing knobs you can tweak ======= */
+  :root{
+    --fs-body: 0.72rem;         /* base text */
+    --fs-th:   0.70rem;         /* header text */
+    --fs-th-cat: 0.66rem;       /* category header (can be smaller) */
+    --pad-cell: .20rem .36rem;  /* ultra-compact rows */
+    --pad-btn:  .36rem .56rem;  /* buttons */
+    --radius:   10px;
+    --w-generic: 80px; /* default width for generic fixed headers */
+
+    /* Fixed column widths (never change) */
+    --w-sn: 46px;
+    --w-unit: 96px;
+    --w-tenant: 120px;
+    --w-phone: 90px;
+    --w-total: 90px;          /* Total Invoice */
+    --w-balance: 90px;        /* Total Balance */
+    --w-wa: 98px;             /* WhatsApp button col */
+
+    /* Small-screen button/icon knobs */
+    --wa-icon-size: 16px;
+    --wa-icon-pad: 4px 6px;
+  }
+  @media (max-width: 400px){
+    :root{
+      --fs-body: .58rem;
+      --fs-th:   .58rem;
+      --fs-th-cat: .54rem;
+      --w-tenant: 145px;
+      --w-phone: 100px;
+      --w-wa: 44px;                 /* show only icon */
+      --wa-icon-size: 14px;
+      --wa-icon-pad: 2px 4px;
+    }
+  }
+
+  body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:var(--fs-body); }
+  .topbar{
+    display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+    margin-bottom:.4rem;
+  }
+  .title{ font-size:1.05rem; font-weight:700; margin-right:.25rem; }
+
+  .toolbar { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+
+  .muted{ color:#6b7280; font-size:.72em; }
+
+  .chip-btn, .badge{
+    display:inline-flex; align-items:center; gap:.35rem; padding:var(--pad-btn);
+    border-radius:999px; text-decoration:none; font-weight:600; border:1px solid #e5e7eb;
+    background:#fff; cursor:pointer;
+  }
+  .chip-btn:hover{ background:#f8fafc; }
+  .badge-excel{ background:#e6f4ea; color:#137333; border-color:#c3e6cd; }
+  .badge-pdf{ background:#fde7e9; color:#b3261e; border-color:#f5c2c7; }
+
+  .month{
+    display:inline-flex; align-items:center; gap:.35rem; border:1px solid #e5e7eb; border-radius:999px; padding:.2rem .45rem;
+    background:#fff;
+  }
+  .month input[type="month"]{
+    border:0; outline:0; font:inherit; padding:.15rem .15rem; background:transparent; cursor:pointer;
+  }
+  .month .nav{
+    display:inline-flex; gap:.15rem;
+  }
+  .nav button{
+    border:1px solid #e5e7eb; background:#fff; padding:.1rem .35rem; border-radius:999px; cursor:pointer;
+  }
+  .nav button:hover{ background:#f3f4f6; }
+
+  .table-wrap{ overflow-x:auto; border:1px solid #e5e7eb; border-radius:8px; }
+  table{ width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; }
+  th,td{ padding:var(--pad-cell); border-bottom:1px solid #f0f0f0; }
+  th{ position:relative; background:#fafafa; text-align:left; }
+  .lbl{ display:block; line-height:1.05; white-space:normal; }
+  .lbl.cat{ font-size:var(--fs-th-cat); }
+  .num{ text-align:right; }
+  .tenant .name{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .prop-row{ background:#f8fafc; font-weight:600; }
+  .sub-row{ background:#f9f9f9; font-weight:600; }
+
+  /* Fixed widths: never resized */
+  th[data-fixed], td[data-fixed]{ width:var(--w-generic); }
+  th[data-col="sn"],              td[data-col="sn"]              { width:var(--w-sn) !important;    min-width:var(--w-sn) !important; }
+  th[data-col="unit"],            td[data-col="unit"]            { width:var(--w-unit) !important;  min-width:var(--w-unit) !important; }
+  th[data-col="tenant"],          td[data-col="tenant"]          { width:var(--w-tenant) !important;min-width:var(--w-tenant) !important; }
+  th[data-col="phone"],           td[data-col="phone"]           { width:var(--w-phone) !important; min-width:var(--w-phone) !important; }
+  th[data-col="total"],           td[data-col="total"]           { width:var(--w-total) !important; min-width:var(--w-total) !important; }
+  th[data-col="total_balance"],   td[data-col="total_balance"]   { width:var(--w-balance) !important; min-width:var(--w-balance) !important; }
+  th[data-col="whatsapp"],        td[data-col="whatsapp"]        { width:var(--w-wa) !important;    min-width:var(--w-wa) !important; text-align:center; }
+
+  /* Category columns can shrink; smaller font */
+  th.cat-col .lbl{ font-size:var(--fs-th-cat); }
+  td.cat-col{ font-size:calc(var(--fs-body) - 0.06rem); }
+
+  a.js-detail{ text-decoration:underline dotted; text-underline-offset:2px; }
+  a.js-detail:hover{ text-decoration:underline; }
+
+  /* Resizer: only add to non-fixed category columns */
+  .resizer{ position:absolute; top:0; right:0; width:6px; cursor:col-resize; user-select:none; }
+  .resizer::after{ content:""; display:block; height:100%; border-right:2px solid transparent; }
+  th:hover .resizer::after{ border-right-color:#d1d5db; }
+  th[data-fixed] .resizer{ display:none; } /* disable on fixed cols */
+
+  /* Modals */
+  .modal{ position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center;
+          padding:6vh 1rem; z-index:50; background:rgba(0,0,0,.35);
+          opacity:0; visibility:hidden; pointer-events:none; transition:.18s; }
+  .modal.open{ opacity:1; visibility:visible; pointer-events:auto; }
+  .modal-card{ width:min(760px,96vw); background:#fff; border-radius:var(--radius); box-shadow:0 20px 45px rgba(0,0,0,.25); overflow:hidden; }
+  .modal-head,.modal-foot{ padding:.6rem .8rem; background:linear-gradient(180deg,#f8fafc,#eef2ff); display:flex; align-items:center; justify-content:space-between; }
+  .modal-body{ padding:.8rem; max-height:60vh; overflow:auto; }
+  .close{ background:#fff; border:1px solid #e5e7eb; width:28px; height:28px; border-radius:8px; line-height:26px; text-align:center; cursor:pointer; }
+
+  .grid2{ display:grid; grid-template-columns:repeat(2, minmax(180px,1fr)); gap:.4rem .8rem; }
+  .ck{ display:flex; gap:.45rem; align-items:center; padding:.25rem .35rem; border-radius:8px; }
+  .ck:hover{ background:#f9fafb; }
+
+  /* WhatsApp button styles */
+  .wa-btn{
+    background:#10b981; color:#fff; border:0; border-radius:6px; padding:.18rem .42rem; cursor:pointer; font-weight:600;
+  }
+  .wa-btn:hover{ filter:brightness(.98); }
+  @media (max-width: 400px){
+    .wa-btn{ padding:var(--wa-icon-pad); }
+    .wa-btn span.txt{ display:none; } /* show icon only */
+  }
+
+  /* Tiny SVG icon size control */
+  .icon{ width:var(--wa-icon-size); height:var(--wa-icon-size); display:inline-block; }
+</style>
+<style>
+  /* ======= Sizing knobs you can tweak ======= */
+  :root{
+    --fs-body: 0.70rem;         /* slightly tighter */
+    --fs-th:   0.68rem;
+    --fs-th-cat: 0.64rem;
+    --pad-cell: .18rem .30rem;  /* compact rows */
+    --pad-btn:  .30rem .48rem;
+    --radius:   10px;
+    --w-generic: 76px;
+
+    /* Fixed column widths (tighter for readability) */
+    --w-sn: 42px;
+    --w-unit: 84px;
+    --w-tenant: 110px;
+    --w-phone: 84px;
+    --w-total: 86px;
+    --w-balance: 86px;
+    --w-wa: 84px;   /* WhatsApp button col */
+
+    /* Category column width (applies to each cat col) */
+    --w-cat: 78px;
+
+    /* Small-screen button/icon knobs */
+    --wa-icon-size: 16px;
+    --wa-icon-pad: 4px 6px;
+  }
+  @media (max-width: 400px){
+    :root{
+      --fs-body: .58rem;
+      --fs-th:   .58rem;
+      --fs-th-cat: .54rem;
+      --w-tenant: 100px;
+      --w-phone: 96px;
+      --w-unit:90px;
+      --w-wa: 44px;
+      --wa-icon-size: 14px;
+      --wa-icon-pad: 2px 4px;
+    }
+  }
+
+  body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:var(--fs-body); }
+  .topbar{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.4rem; }
+  .title{ font-size:1.05rem; font-weight:700; margin-right:.25rem; }
+  .toolbar { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+  .muted{ color:#6b7280; font-size:.72em; }
+
+  .chip-btn, .badge{
+    display:inline-flex; align-items:center; gap:.35rem; padding:var(--pad-btn);
+    border-radius:999px; text-decoration:none; font-weight:600; border:1px solid #e5e7eb;
+    background:#fff; cursor:pointer;
+  }
+  .chip-btn:hover{ background:#f8fafc; }
+  .badge-excel{ background:#e6f4ea; color:#137333; border-color:#c3e6cd; }
+  .badge-pdf{ background:#fde7e9; color:#b3261e; border-color:#f5c2c7; }
+
+  .month{ display:inline-flex; align-items:center; gap:.35rem; border:1px solid #e5e7eb; border-radius:999px; padding:.2rem .45rem; background:#fff; }
+  .month input[type="month"]{ border:0; outline:0; font:inherit; padding:.15rem .15rem; background:transparent; cursor:pointer; }
+  .month .nav{ display:inline-flex; gap:.15rem; }
+  .nav button{ border:1px solid #e5e7eb; background:#fff; padding:.1rem .35rem; border-radius:999px; cursor:pointer; }
+  .nav button:hover{ background:#f3f4f6; }
+
+  .table-wrap{ overflow-x:auto; border:1px solid #e5e7eb; border-radius:8px; }
+  table{ width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; }
+  th,td{ padding:var(--pad-cell); border-bottom:1px solid #f0f0f0; }
+  th{ position:relative; background:#fafafa; text-align:left; }
+  .lbl{ display:block; line-height:1.05; white-space:normal; }
+  .lbl.cat{ font-size:var(--fs-th-cat); white-space:normal; line-height:1.05; } /* allow two lines */
+  .num{ text-align:right; }
+  .tenant .name{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .nowrap-clip{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .prop-row{ background:#f8fafc; font-weight:600; }
+  .sub-row{ background:#f9f9f9; font-weight:600; }
+
+  /* Fixed widths */
+  th[data-fixed], td[data-fixed]{ width:var(--w-generic); }
+  th[data-col="sn"],              td[data-col="sn"]              { width:var(--w-sn) !important;    min-width:var(--w-sn) !important; }
+  th[data-col="unit"],            td[data-col="unit"]            { width:var(--w-unit) !important;  min-width:var(--w-unit) !important; }
+  th[data-col="tenant"],          td[data-col="tenant"]          { width:var(--w-tenant) !important;min-width:var(--w-tenant) !important; }
+  th[data-col="phone"],           td[data-col="phone"]           { width:var(--w-phone) !important; min-width:var(--w-phone) !important; }
+  th[data-col="total"],           td[data-col="total"]           { width:var(--w-total) !important; min-width:var(--w-total) !important; }
+  th[data-col="total_balance"],   td[data-col="total_balance"]   { width:var(--w-balance) !important; min-width:var(--w-balance) !important; }
+  th[data-col="whatsapp"],        td[data-col="whatsapp"]        { width:var(--w-wa) !important;    min-width:var(--w-wa) !important; text-align:center; }
+
+  /* Category columns narrower and 2-line headers */
+  th.cat-col, td.cat-col{ width:var(--w-cat); min-width:var(--w-cat); }
+  th.cat-col .lbl{ white-space:normal; }
+
+  a.js-detail{ text-decoration:underline dotted; text-underline-offset:2px; }
+  a.js-detail:hover{ text-decoration:underline; }
+
+  /* Resizer for non-fixed headers */
+  .resizer{ position:absolute; top:0; right:0; width:6px; cursor:col-resize; user-select:none; }
+  .resizer::after{ content:""; display:block; height:100%; border-right:2px solid transparent; }
+  th:hover .resizer::after{ border-right-color:#d1d5db; }
+  th[data-fixed] .resizer{ display:none; }
+  
+  /* Modals (unchanged) */
+  .modal{ position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center;
+          padding:6vh 1rem; z-index:50; background:rgba(0,0,0,.35);
+          opacity:0; visibility:hidden; pointer-events:none; transition:.18s; }
+  .modal.open{ opacity:1; visibility:visible; pointer-events:auto; }
+  .modal-card{ width:min(760px,96vw); background:#fff; border-radius:var(--radius); box-shadow:0 20px 45px rgba(0,0,0,.25); overflow:hidden; }
+  .modal-head,.modal-foot{ padding:.6rem .8rem; background:linear-gradient(180deg,#f8fafc,#eef2ff); display:flex; align-items:center; justify-content:space-between; }
+  .modal-body{ padding:.8rem; max-height:60vh; overflow:auto; }
+  .close{ background:#fff; border:1px solid #e5e7eb; width:28px; height:28px; border-radius:8px; line-height:26px; text-align:center; cursor:pointer; }
+
+  .grid2{ display:grid; grid-template-columns:repeat(2, minmax(180px,1fr)); gap:.4rem .8rem; }
+  .ck{ display:flex; gap:.45rem; align-items:center; padding:.25rem .35rem; border-radius:8px; }
+  .ck:hover{ background:#f9fafb; }
+
+  .wa-btn{ background:#10b981; color:#fff; border:0; border-radius:6px; padding:.18rem .42rem; cursor:pointer; font-weight:600; }
+  .wa-btn:hover{ filter:brightness(.98); }
+  @media (max-width: 400px){
+    .wa-btn{ padding:var(--wa-icon-pad); }
+    .wa-btn span.txt{ display:none; }
+  }
+  .icon{ width:var(--wa-icon-size); height:var(--wa-icon-size); display:inline-block; }
+</style>
+
+</head>
+<body>
+
+<!-- TOP BAR: everything on one line (wraps if needed) -->
+<div class="topbar">
+  <div class="title">Billing Summary</div>
+
+  <div class="muted" id="periodText">
+    Period: {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}
+  </div>
+
+  <form method="get" class="toolbar" id="toolbarForm" style="margin-left:.5rem;">
+    <div class="month">
+      <div class="nav">
+        <button type="button" id="prevMonth" title="Previous month">‹</button>
+      </div>
+      <input id="monthPicker" name="month" type="month" value="{{ year }}-{{ month|stringformat:'02d' }}" />
+      <div class="nav">
+        <button type="button" id="nextMonth" title="Next month">›</button>
+      </div>
+    </div>
+
+    <input type="hidden" name="cols" id="colsField" value="{{ visible_cat_ids|join:',' }}" />
+
+    <button type="button" id="btnCols" class="chip-btn">Show more Categories</button>
+
+    <button type="submit" class="chip-btn" title="Apply filters">Apply</button>
+
+    {% with cols_param=visible_cat_ids|join:"," %}
+      <a class="badge badge-excel" title="Export Excel"
+         href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}">
+        Excel
+      </a>
+      <a class="badge badge-pdf" title="Export PDF"
+         href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}">
+        PDF
+      </a>
+    {% endwith %}
+
+    <button type="button" id="btnShot" class="chip-btn" title="Download JPEG">Take Screenshot</button>
+  </form>
+</div>
+
+<!-- CATEGORY PICKER MODAL -->
+<div id="colsModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Choose Categories</strong>
+      <button type="button" class="close" id="colsClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        {% for c in all_categories %}
+          <label class="ck">
+            <input type="checkbox" value="{{ c.id }}"
+                   {% if c.id in visible_cat_ids %}checked{% endif %}
+                   {% if c.id in '1,2,12,4,7' %}disabled{% endif %}>
+            <span>{{ c.name }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="muted" style="margin-top:.4rem">
+        Defaults (Rent, Society, Water, Internet, Electric) are always on and cannot be turned off.
+      </div>
+    </div>
+    <div class="modal-foot" style="gap:.5rem;">
+      <div style="display:flex; gap:.4rem; align-items:center;">
+        <button type="button" id="colsSelectAll" class="chip-btn">Select All</button>
+        <button type="button" id="colsSelectDefault" class="chip-btn">Default</button>
+      </div>
+      <div>
+        <button type="button" id="colsApply" class="chip-btn" style="background:#ecfeff; border-color:#bae6fd;">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div id="detailModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span class="pill pill-info"></span>
+        <span id="detailTitleText">Details</span>
+      </div>
+      <button id="detailClose" class="close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody">Loading…</div>
+  </div>
+</div>
+
+<div class="table-wrap" id="captureArea">
+  <table id="billingTbl">
+    <thead>
+      <tr>
+        <th data-col="sn" data-fixed><span class="lbl">S.N.</span><span class="resizer"></span></th>
+        <th data-col="unit" data-fixed><span class="lbl">Unit</span><span class="resizer"></span></th>
+        <th data-col="tenant" data-fixed class="tenant"><span class="lbl">Tenant</span><span class="resizer"></span></th>
+        <th data-col="phone" data-fixed><span class="lbl">Phone</span><span class="resizer"></span></th>
+
+        {% for col in header_cols %}
+          {% if col.kind == 'cat' %}
+            <th class="num cat-col" data-col="{{ col.key }}"><span class="lbl cat">{{ col.label }}</span><span class="resizer"></span></th>
+          {% elif col.kind == 'other' %}
+            <th class="num cat-col" data-col="other"><span class="lbl cat">Other</span><span class="resizer"></span></th>
+          {% elif col.kind == 'total' %}
+            <th class="num" data-col="total" data-fixed><span class="lbl">Total<br>Invoice</span><span class="resizer"></span></th>
+          {% elif col.kind == 'balance' %}
+            <th class="num" data-col="total_balance" data-fixed><span class="lbl">Total<br>Balance</span><span class="resizer"></span></th>
+          {% else %}
+            <th class="num" data-col="whatsapp" data-fixed><span class="lbl">WhatsApp<br>Reminder</span></th>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for g in groups %}
+        <tr class="prop-row">
+          <td colspan="{{ header_cols|length|add:4 }}">Property: {{ g.property.property_name }}</td>
+        </tr>
+
+        {% for r in g.rows %}
+          <tr>
+            <td data-col="sn">{{ r.sn }}</td>
+            <td data-col="unit">{{ r.unit.unit_number }}</td>
+            <td data-col="tenant" class="tenant"><span class="name" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span></td>
+            <td data-col="phone">{{ r.tenant_phone }}</td>
+
+            {% for cell in r.cells %}
+              {% if cell.kind == 'cat' %}
+                <td class="num cat-col" data-col="{{ cell.key }}">
+                  <a href="#" class="js-detail"
+                     data-scope="unit"
+                     data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                     data-unit="{{ r.unit.id }}"
+                     data-category="{{ cell.cat_id }}"
+                     data-cols="{{ visible_cat_ids|join:',' }}">{{ cell.value|floatformat:0|intcomma }}</a>
+                </td>
+              {% elif cell.kind == 'other' %}
+                <td class="num cat-col" data-col="other">
+                  <a href="#" class="js-detail"
+                     data-scope="unit"
+                     data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                     data-unit="{{ r.unit.id }}"
+                     data-category="other"
+                     data-cols="{{ visible_cat_ids|join:',' }}">{{ cell.value|floatformat:0|intcomma }}</a>
+                </td>
+              {% elif cell.kind == 'total' %}
+                <td class="num" data-col="total" data-fixed>
+                  <a href="#" class="js-detail"
+                     data-scope="unit"
+                     data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                     data-unit="{{ r.unit.id }}"
+                     data-category="*all*"
+                     data-cols="{{ visible_cat_ids|join:',' }}">{{ cell.value|floatformat:0|intcomma }}</a>
+                </td>
+              {% elif cell.kind == 'balance' %}
+                <td class="num" data-col="total_balance" data-fixed>{{ cell.value|floatformat:0|intcomma }}</td>
+              {% else %}
+                <td class="num" data-col="whatsapp" data-fixed>
+                  {% if cell.phone %}
+                    <button type="button" class="wa-btn"
+                      onclick="sendWhatsAppReminder('{{ cell.phone|escapejs }}','{{ cell.tenant_name|escapejs }}','{{ cell.property_name|escapejs }}','{{ cell.unit_number|escapejs }}','{{ cell.balance }}')"
+                      title="Send WhatsApp reminder">
+                      <span class="txt"><i class="fab fa-whatsapp"></i> WhatsApp</span>
+                    </button>
+                  {% else %}—{% endif %}
+                </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+
+        <tr class="sub-row">
+          <td></td><td colspan="2">Subtotal for {{ g.property.property_name }}</td><td></td>
+          {% for cell in g.subtotal_cells %}
+            {% if cell.kind == 'cat' %}
+              <td class="num">
+                <a href="#" class="js-detail"
+                   data-scope="property"
+                   data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                   data-property="{{ g.property.id }}"
+                   data-category="{{ cell.cat_id }}"
+                   data-cols="{{ visible_cat_ids|join:',' }}">
+                   {{ cell.value|floatformat:0|intcomma }}
+                </a>
+              </td>
+            {% elif cell.kind == 'other' %}
+              <td class="num">
+                <a href="#" class="js-detail"
+                   data-scope="property"
+                   data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                   data-property="{{ g.property.id }}"
+                   data-category="other"
+                   data-cols="{{ visible_cat_ids|join:',' }}">
+                   {{ cell.value|floatformat:0|intcomma }}
+                </a>
+              </td>
+            {% elif cell.kind == 'total' %}
+              <td class="num">
+                <a href="#" class="js-detail"
+                   data-scope="property"
+                   data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                   data-property="{{ g.property.id }}"
+                   data-category="*all*"
+                   data-cols="{{ visible_cat_ids|join:',' }}">
+                   {{ cell.value|floatformat:0|intcomma }}
+                </a>
+              </td>
+            {% elif cell.kind == 'balance' %}
+              <td class="num">{{ cell.value|floatformat:0|intcomma }}</td>
+            {% else %}
+              <td class="num">&nbsp;</td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+
+      {% endfor %}
+    </tbody>
+
+    <tfoot>
+      <tr class="sub-row">
+        <td></td><td colspan="2">GRAND TOTAL</td><td></td>
+        {% for cell in grand_cells %}
+          {% if cell.kind == 'cat' %}
+            <td class="num">
+              <a href="#" class="js-detail"
+                 data-scope="grand"
+                 data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                 data-category="{{ cell.cat_id }}"
+                 data-cols="{{ visible_cat_ids|join:',' }}">
+                 <strong>{{ cell.value|floatformat:0|intcomma }}</strong>
+              </a>
+            </td>
+          {% elif cell.kind == 'other' %}
+            <td class="num">
+              <a href="#" class="js-detail"
+                 data-scope="grand"
+                 data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                 data-category="other"
+                 data-cols="{{ visible_cat_ids|join:',' }}">
+                 <strong>{{ cell.value|floatformat:0|intcomma }}</strong>
+              </a>
+            </td>
+          {% elif cell.kind == 'total' %}
+            <td class="num">
+              <a href="#" class="js-detail"
+                 data-scope="grand"
+                 data-month="{{ year }}-{{ month|stringformat:'02d' }}"
+                 data-category="*all*"
+                 data-cols="{{ visible_cat_ids|join:',' }}">
+                 <strong>{{ cell.value|floatformat:0|intcomma }}</strong>
+              </a>
+            </td>
+          {% elif cell.kind == 'balance' %}
+            <td class="num"><strong>{{ cell.value|floatformat:0|intcomma }}</strong></td>
+          {% else %}
+            <td class="num"><strong>&nbsp;</strong></td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    </tfoot>
+
+  </table>
+</div>
+
+<script>
+  // ===== helpers available to both sections =====
+  function openModal(el){ el.classList.add('open'); el.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
+  function closeModal(el){ el.classList.remove('open'); el.setAttribute('aria-hidden','true'); document.body.style.overflow=''; }
+
+  // ===== month UX (auto-submit + prev/next) =====
+  const form = document.getElementById('toolbarForm');
+  const monthInput = document.getElementById('monthPicker');
+  function ymToDate(v){ const [y,m]=v.split('-').map(n=>+n); return new Date(y, m-1, 1); }
+  function dateToYm(d){ const y=d.getFullYear(); const m=(d.getMonth()+1).toString().padStart(2,'0'); return `${y}-${m}`; }
+  monthInput?.addEventListener('change', ()=> form.submit());
+  document.getElementById('prevMonth')?.addEventListener('click', ()=>{
+    const d=ymToDate(monthInput.value); d.setMonth(d.getMonth()-1); monthInput.value=dateToYm(d); form.submit();
+  });
+  document.getElementById('nextMonth')?.addEventListener('click', ()=>{
+    const d=ymToDate(monthInput.value); d.setMonth(d.getMonth()+1); monthInput.value=dateToYm(d); form.submit();
+  });
+
+  // ===== column picker =====
+  const colsModal = document.getElementById('colsModal');
+  document.getElementById('btnCols')?.addEventListener('click', ()=> openModal(colsModal));
+  document.getElementById('colsClose')?.addEventListener('click', ()=> closeModal(colsModal));
+  colsModal?.addEventListener('click', (e)=>{ if(e.target===colsModal) closeModal(colsModal); });
+
+  // Select All / Default
+  document.getElementById('colsSelectAll')?.addEventListener('click', ()=>{
+    colsModal?.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(cb=> cb.checked=true);
+  });
+  document.getElementById('colsSelectDefault')?.addEventListener('click', ()=>{
+    colsModal?.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(cb=> cb.checked=false);
+  });
+
+  // Apply
+  document.getElementById('colsApply')?.addEventListener('click', ()=>{
+    const checked = [...(colsModal?.querySelectorAll('input[type=checkbox]:checked')||[])].map(i => i.value);
+    document.getElementById('colsField').value = checked.join(',');
+    closeModal(colsModal);
+    form.submit();
+  });
+
+  // ===== resizer only on non-fixed headers =====
+  (function(){
+    const table = document.getElementById('billingTbl');
+    const ths = table.querySelectorAll('thead th:not([data-fixed])');
+    ths.forEach((th, idx) => {
+      const handle = document.createElement('span');
+      handle.className='resizer';
+      th.appendChild(handle);
+      let startX=0, startW=0;
+      handle.addEventListener('mousedown', (e)=>{
+        startX=e.pageX; startW=th.offsetWidth; document.body.style.cursor='col-resize';
+        const onMove=(e2)=>{
+          const w=Math.max(44, startW+(e2.pageX-startX));
+          th.style.width=w+'px';
+          // match in body & foot: +4 offset because first 4 columns are fixed (sn,unit,tenant,phone)
+          table.querySelectorAll('tbody tr').forEach(tr=>{ const td=tr.children[idx+4]; if(td) td.style.width=w+'px'; });
+          table.querySelectorAll('tfoot tr').forEach(tr=>{ const td=tr.children[idx+4]; if(td) td.style.width=w+'px'; });
+        };
+        const onUp=()=>{ document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); document.body.style.cursor=''; };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  })();
+
+
+
+  // ===== WhatsApp helper (bulk reminder button in table rows) =====
+  function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balance) {
+    try {
+      if (!phone) { alert("No phone number provided"); return; }
+      const cleaned = phone.toString().replace(/\D/g, '');
+      const formatted = cleaned.startsWith('0') ? '92' + cleaned.slice(1)
+                      : cleaned.startsWith('92') ? cleaned : '92' + cleaned;
+      const formattedBalance = parseFloat(balance).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const message = `Dear ${firstName},\n\nPayment Reminder:\nProperty: ${propertyName}\nUnit: ${unitNumber}\nBalance Due: Rs. ${formattedBalance}\n\nPlease pay at your earliest convenience.`;
+      window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
+    } catch (error) {
+      console.error("WhatsApp error:", error);
+      alert("Failed to send WhatsApp: " + error.message);
+    }
+  }
+  window.sendWhatsAppReminder = sendWhatsAppReminder;
+</script>
+
+<script>
+  (function(){
+    const modal = document.getElementById('detailModal');
+    const body  = document.getElementById('detailBody');
+    const close = document.getElementById('detailClose');
+    const title = document.getElementById('detailTitleText');
+
+    close?.addEventListener('click', ()=> closeModal(modal));
+    modal?.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(modal); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && modal.classList.contains('open')) closeModal(modal); });
+
+    // Delegate clicks on any ".js-detail"
+    document.addEventListener('click', async (e)=>{
+      const a = e.target.closest('a.js-detail');
+      if(!a) return;
+      e.preventDefault();
+
+      // build title — unit/property/grand
+      let t = 'Details';
+      if (a.dataset.scope === 'property') {
+        t = 'Details for ' + (a.dataset.propname || 'Property');
+      } else if (a.dataset.scope === 'grand') {
+        t = 'Details for All properties';
+      }
+      if (title) title.textContent = t;
+
+      // params
+      const params = new URLSearchParams({
+        month: a.dataset.month || '',
+        scope: a.dataset.scope || '',
+        category: a.dataset.category || ''
+      });
+      if(a.dataset.unit)     params.set('unit_id', a.dataset.unit);
+      if(a.dataset.property) params.set('property_id', a.dataset.property);
+      if(a.dataset.cols)     params.append('cols', a.dataset.cols);
+
+      const url = "{% url 'smart_meter:billing_summary_items' %}?" + params.toString();
+
+      body.textContent = 'Loading…';
+      openModal(modal);
+      try{
+        const res  = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const text = await res.text();
+        let data   = null;
+        try { data = JSON.parse(text); } catch(e){ /* ignore */ }
+
+        if(!res.ok || !data){
+          const snippet = (text || '').slice(0, 2000);
+          body.innerHTML =
+            `<div style="color:#b00;white-space:pre-wrap;font-family:ui-monospace,monospace">
+Status: ${res.status} ${res.statusText}
+URL: ${url}
+
+${snippet || '(no body)'}
+</div>`;
+          console.error('Drilldown error', res.status, url, snippet);
+          return;
+        }
+        if(data.error){
+          body.innerHTML =
+            `<div style="color:#b00;white-space:pre-wrap;font-family:ui-monospace,monospace">
+${data.error}
+
+${(data.trace||'').slice(0,2000)}
+</div>`;
+          console.error('Server error:', data.error, data.trace);
+          return;
+        }
+
+        // Inject the fragment
+        body.innerHTML = data.html || '<div class="muted">No items.</div>';
+
+        // Hook up fragment buttons (Screenshot + WhatsApp) if present in the fragment
+        // After injecting data.html...
+        // After: body.innerHTML = data.html;
+        const shotBtn = body.querySelector('#itemsShotBtn');
+        const waBtn   = body.querySelector('#itemsWaBtn');
+        const waInput = body.querySelector('#waNumberInput');
+        const capture = body.querySelector('#itemsCapture');
+        const table   = body.querySelector('#itemsTable');
+
+        // Screenshot: clone off-screen, strip .no-export (toolbar, WA col)
+        shotBtn?.addEventListener('click', async () => {
+          if (!window.html2canvas) { alert('html2canvas not loaded'); return; }
+
+          const clone = capture.cloneNode(true);
+          clone.style.position = 'absolute';
+          clone.style.left = '-99999px';
+          clone.style.top = '0';
+          clone.style.width = capture.scrollWidth + 'px';
+          clone.style.maxHeight = 'none';
+          document.body.appendChild(clone);
+
+          // Hide toolbar + WA col for screenshot
+          clone.querySelectorAll('.no-export, th.c-wa, td.c-wa').forEach(el => el.remove());
+
+          const canvas = await html2canvas(clone, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            windowWidth: Math.max(document.body.scrollWidth, clone.scrollWidth),
+            windowHeight: Math.max(document.body.scrollHeight, clone.scrollHeight),
+          });
+
+          document.body.removeChild(clone);
+
+          const link = document.createElement('a');
+          const title = document.getElementById('detailTitleText')?.textContent || 'Items';
+          link.download = `${title}.jpeg`;          // auto-download (your code won’t prompt)
+          link.href = canvas.toDataURL('image/jpeg', 0.92);
+          link.click();
+        });
+
+        // WhatsApp: if number given → chat that number; otherwise open WA with only text so you can PICK contact
+        waBtn?.addEventListener('click', () => {
+          const numberRaw = (waInput?.value || '').trim();
+          const rows = [...table.querySelectorAll('tbody tr')].filter(tr => !tr.classList.contains('prop-head') && !tr.classList.contains('prop-sub'));
+
+          const heading = document.querySelector('#detailTitleText')?.textContent || 'Items';
+          const lines = rows.map((tr, i) => {
+            const tds = tr.querySelectorAll('td');
+            if (!tds || tds.length < 7) return null;
+            const sn   = tds[0].textContent.trim();
+            const unit = tds[4].textContent.trim();
+            const tenant = (tds[3].textContent.trim() || '').slice(0,10);
+            const cat = (tds[5].innerText.trim() || '').slice(0,13);  // innerText keeps 2 lines if any
+            const amt = tds[6].textContent.trim();
+            return `${sn}. ${unit} | ${tenant} | ${cat} | Rs. ${amt}`;
+          }).filter(Boolean);
+
+          // Sum by property rows already subtotalled in UI; here we just send the listing
+          const message = `${heading}\n\n${lines.join('\n')}`;
+
+          let waUrl;
+          if (numberRaw) {
+            const digits = numberRaw.replace(/\D/g,'');
+            const phone = digits.startsWith('0') ? '92' + digits.slice(1) : (digits.startsWith('92') ? digits : '92' + digits);
+            waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+          } else {
+            // No number: open WA with just text so you can choose a contact
+            waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+          }
+          window.open(waUrl, '_blank');
+        });
+
+
+      }catch(err){
+        body.innerHTML = `<div style="color:#b00">JS exception: ${String(err)}</div>`;
+        console.error(err);
+      }
+    });
+  })();
+</script>
+<script>
+  // Format category labels: max 13 chars, two lines, break after first word.
+  function formatCatLabel13TwoLine(txt) {
+    let s = (txt || '').trim();
+    if (s.length > 13) s = s.slice(0, 13);
+    const sp = s.indexOf(' ');
+    if (sp > 0) {
+      return s.slice(0, sp) + '<br>' + s.slice(sp + 1); // break after first word
+    }
+    // no space: hard split near half to keep header compact
+    const cut = Math.min(6, s.length);
+    return s.slice(0, cut) + (s.length > cut ? '<br>' + s.slice(cut) : '');
+  }
+
+  // Apply to all category headers on load
+  (function(){
+    document.querySelectorAll('th.cat-col .lbl').forEach(el => {
+      el.innerHTML = formatCatLabel13TwoLine(el.textContent);
+    });
+  })();
+</script>
+<script>
+  document.getElementById('btnShot')?.addEventListener('click', async ()=>{
+    if(!window.html2canvas){ alert('html2canvas failed to load.'); return; }
+    const area = document.getElementById('captureArea');
+
+    // Clone off-screen so we can strip WhatsApp col from the screenshot
+    const clone = area.cloneNode(true);
+    clone.style.position = 'absolute';
+    clone.style.left = '-99999px';
+    clone.style.top = '0';
+    clone.style.width = area.scrollWidth + 'px';
+    document.body.appendChild(clone);
+
+    // Remove WhatsApp (header + cells) from the clone ONLY
+    clone.querySelectorAll('th[data-col="whatsapp"], td[data-col="whatsapp"]').forEach(el => el.remove());
+
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      windowWidth: Math.max(document.body.scrollWidth, clone.scrollWidth),
+      windowHeight: Math.max(document.body.scrollHeight, clone.scrollHeight),
+    });
+
+    document.body.removeChild(clone);
+
+    const ym=document.getElementById('monthPicker').value; // YYYY-MM
+    const [yy,mm]=ym.split('-');
+    const dt=new Date(+yy, +mm-1, 1).toLocaleString('en-US', {month:'long', year:'numeric'});
+    const a=document.createElement('a');
+    a.download = `Billing-Summary-${dt.replace(' ','-')}.jpeg`;
+    a.href = canvas.toDataURL('image/jpeg', 0.92);
+    a.click();
+  });
+</script>
+
+</body>
+</html>
+{% endblock %}

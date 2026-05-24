@@ -1,0 +1,20 @@
+[
+  {
+    "model": "reports.report",
+    "pk": 1,
+    "fields": {
+      "title": "Monthly Sales",
+      "content": "June sales figures",
+      "created_at": "2023-06-15T10:00:00Z"
+    }
+  },
+  {
+    "model": "reports.report",
+    "pk": 2,
+    "fields": {
+      "title": "User Analytics",
+      "content": "New user signups",
+      "created_at": "2023-06-16T11:30:00Z"
+    }
+  }
+]

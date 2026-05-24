@@ -1,0 +1,6 @@
+<option value=""></option>
+{% for lease in form.lease.field.queryset %}
+    <option value="{{ lease.id }}" {% if form.lease.value == lease.id %}selected{% endif %}>
+        {{ lease.tenant.get_full_name }} | {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
+    </option>
+{% endfor %}

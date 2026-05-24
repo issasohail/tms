@@ -1,0 +1,62 @@
+[RENT AGREEMENT]
+
+This RENT AGREEMENT is made at Islamabad on this {{generation_date}} BETWEEN
+
+Mr. {{owner_name}} S/O {{owner_father_name}} holding CNIC NO.{{owner_cnic}} 
+R/O {{owner_address}} (Hereinafter called "OWNER") of the ONE PART.
+
+And
+
+Mr. {{tenant_name}} S/O {{tenant_father_name}} 
+R/O {{tenant_address}}, CNIC NO. {{tenant_cnic}} 
+(Hereinafter called "TENANT") of the OTHER PART
+
+WHEREAS the Owner is the lawful owner of {{property_name}}, {{property_address}} 
+and agrees to rent {{portion_details}} to Tenant on these terms:
+
+1. Rent: Rs.{{monthly_rent}}/- ({{rent_words}}) per month
+   + Maintenance: Rs.{{society_maintenance}}/-
+   = Total Monthly: Rs.{{total_monthly}}/-
+
+2. Advance: {{advance_months}} month(s) = Rs.{{advance_amount}}/-
+   Security Deposit: Rs.{{security_deposit}}/-
+
+3. Lease Period: {{lease_duration}} months ({{lease_start}} to {{lease_end}})
+   Renewal: {{rent_increase_percent}}% increase after term
+
+4. EARLY VACATION: 
+   - Minimum stay: {{min_stay_months}} months
+   - Penalty: Rs.{{early_vacation_penalty}}/month if vacated early
+
+INVENTORY LIST:
+-----------------------------------------
+| Item               | Quantity | Condition       |
+-----------------------------------------
+| Ceiling Fans       | {{ceiling_fans}} | {{fans_condition}} |
+| Lights             | {{ceiling_lights}} | {{lights_condition}} |
+| Exhaust Fans       | {{exhaust_fans}} | {{exhaust_condition}} |
+| Stove              | {{stove}} | {{stove_condition}} |
+| Wardrobes          | {{wardrobes}} | {{wardrobes_condition}} |
+| Keys               | {{keys}} | {{keys_condition}} |
+-----------------------------------------
+
+SPECIAL CONDITIONS:
+1. {{special_condition_1}}
+2. {{special_condition_2}}
+3. Smoking prohibited in building
+4. Tenant responsible for utility bills
+5. 2 months notice required for vacation
+
+OWNER: _________________________
+CNIC: {{owner_cnic}}
+DATE: {{generation_date}}
+
+TENANT: _________________________
+CNIC: {{tenant_cnic}}
+DATE: _______________
+
+WITNESS 1: _____________________
+CNIC: _______________
+
+WITNESS 2: _____________________
+CNIC: _______________

@@ -1,0 +1,134 @@
+{% extends "payments/payment_list.html" %}
+{% load humanize %}
+
+{% block total_label %}Cash Movements:{% endblock %}
+{% block title %}Cash Ledger{% endblock %}
+{% block page_heading %}Cash Ledger{% endblock %}
+{% block filter_action %}{% url 'payments:cash_ledger' %}{% endblock %}
+
+{% block header_buttons %}
+  <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
+    <i class="fas fa-plus me-1"></i> Add Payment
+  </a>
+  <a href="{% url 'payments:cash_ledger' %}" class="btn btn-link">Payments</a>
+{% endblock %}
+
+{% block totals_card %}
+<div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex justify-content-between align-items-start">
+      <span class="fw-bold small">Cash Movements:</span>
+      <span class="fw-bold text-success total-amount-display"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  {% include "payments/_allocation_split_modal.html" %}
+  {{ block.super }}
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+
+  <script>
+    // ==========================
+    // Total card (AJAX)
+    // ==========================
+    (function(){
+      function hasDateFilters(){
+        const url = new URL(window.location.href);
+        return !!(url.searchParams.get("date_range") ||
+                  url.searchParams.get("start_date") ||
+                  url.searchParams.get("end_date"));
+      }
+
+      function fetchTotal(){
+        if (!hasDateFilters()) return;
+
+        const url = new URL(window.location.href);
+        url.searchParams.set("ajax", "1");
+
+        fetch(url.toString())
+          .then(r => r.json())
+          .then(data => {
+            const card = document.getElementById("total-card");
+            const out  = document.querySelector(".total-amount-display");
+            if (!card || !out) return;
+
+            card.style.display = "";
+            out.textContent = "Rs. " + Number(data.total_amount || 0).toLocaleString('en-PK', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+          })
+          .catch(() => {});
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchTotal);
+    })();
+  </script>
+
+  <script>
+    // ==========================
+    // WhatsApp receipt button (table)
+    // ==========================
+    document.addEventListener("click", function(e){
+      const btn = e.target.closest(".btn-wa-receipt");
+      if (!btn) return;
+
+      e.preventDefault();
+      const url = btn.dataset.waUrl || btn.getAttribute("data-wa-url");
+      if (!url) {
+        alert("WhatsApp receipt URL is missing for this row.");
+        return;
+      }
+      window.open(url, "_blank");
+    });
+  </script>
+  <script>
+
+    // ==========================
+    // Split edit modal (allocation)
+    // ==========================
+    
+    document.addEventListener("click", async function(e){
+      const btn = e.target.closest(".btn-split-edit");
+      if(!btn) return;
+
+      const allocId = btn.dataset.allocationId;
+      const form = document.getElementById("splitForm");
+
+      form.querySelector("[name=allocation_id]").value = allocId;
+
+      try {
+        const res = await fetch("{% url 'payments:allocation_prefill_api' 0 %}".replace("/0/", `/${allocId}/`));
+        const data = await res.json();
+
+        // Fill amounts
+        if (form.querySelector("[name=lease_amount]")) form.querySelector("[name=lease_amount]").value = data.lease_amount.toFixed(2);
+        if (form.querySelector("[name=security_amount]")) form.querySelector("[name=security_amount]").value = data.security_amount.toFixed(2);
+
+        // Fill security type (if field exists)
+        if (form.querySelector("[name=security_type]")) form.querySelector("[name=security_type]").value = data.security_type;
+
+        // Fill mode (radio OR select)
+        const modeEl = form.querySelector("[name=allocation_mode]");
+        if (modeEl) {
+          if (modeEl.type === "radio") {
+            form.querySelectorAll("[name=allocation_mode]").forEach(r => r.checked = (r.value === data.allocation_mode));
+          } else {
+            modeEl.value = data.allocation_mode;
+          }
+        }
+      } catch (err) {
+        console.error("Prefill failed", err);
+      }
+
+      new bootstrap.Modal(document.getElementById("splitModal")).show();
+    });
+  </script>
+
+
+{% endblock %}

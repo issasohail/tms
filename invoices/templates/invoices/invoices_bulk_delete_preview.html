@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+
+<style>
+  /* two-line clamp (tenant) */
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  /* single-line ellipsis (category, etc.) */
+  .truncate-1 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* amount alignment */
+  .amount { text-align: right; }
+
+  /* Small screens: combine Property + Unit into one column */
+  @media (max-width: 575.98px) {
+    .col-property, .col-unit { display: none; }    /* hide separate cols */
+    .col-loc { display: table-cell; }              /* show combined col */
+  }
+  @media (min-width: 576px) {
+    .col-loc { display: none; }                    /* hide combined col on larger screens */
+  }
+
+  /* Category visibility & ellipsis rules around 370px */
+  @media (max-width: 369.98px) {
+    .item-cat { display: none !important; }        /* hide category under 370px */
+  }
+  @media (min-width: 370px) {
+    .item-cat {
+      display: inline-block;
+      max-width: 140px;
+      vertical-align: bottom;
+    }
+  }
+
+  /* Make table more compact on phones */
+  @media (max-width: 575.98px) {
+    .tbl-sm td, .tbl-sm th { padding: .5rem .5rem; font-size: .9rem; }
+  }
+</style>
+
+<form method="post" action="{% url 'invoices:invoices_bulk_delete_confirm' %}">
+  {% csrf_token %}
+  {% if mode == "month" %}
+    <input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
+  {% else %}
+    {% for r in rows %}
+      <input type="hidden" name="ids" value="{{ r.inv.id }}">
+    {% endfor %}
+  {% endif %}
+
+  {# Sticky action bar on TOP with confirm/cancel #}
+  <div class="sticky-top bg-body pt-2 pb-2 mb-3 border-bottom d-flex justify-content-between align-items-center">
+    <div class="fw-semibold">
+      {% if mode == "month" %}
+        Previewing delete for <strong>{{ month|date:"F Y" }}</strong> — {{ count }} invoice(s)
+      {% else %}
+        Previewing delete for <strong>{{ count }}</strong> selected invoice(s)
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'invoices:invoice_list' %}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-danger">Confirm Delete {{ count }}</button>
+    </div>
+  </div>
+
+  {% if count == 0 %}
+    <div class="alert alert-info">Nothing to delete (paid/blocked by safety rules).</div>
+    <a href="{% url 'invoices:invoice_list' %}" class="btn btn-secondary">Back</a>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-striped tbl-sm align-middle">
+        <thead>
+          <tr>
+            <th style="width:60px;">#</th>
+            <th class="col-property">Property</th>
+            <th class="col-unit">Unit</th>
+            <th class="col-loc">Location</th>  {# shown only on XS #}
+            <th>Tenant</th>
+            <th>Invoice Date</th>
+            <th>Items</th>
+            <th class="amount">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            {% with inv=r.inv %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+
+              {# Large screens: separate Property / Unit #}
+              <td class="col-property">{{ inv.lease.unit.property.property_name }}</td>
+              <td class="col-unit">{{ inv.lease.unit.unit_number }}</td>
+
+              {# XS: combined location #}
+              <td class="col-loc">
+                <div class="fw-semibold truncate-1">{{ inv.lease.unit.property.property_name }}</div>
+                <div class="text-muted">{{ inv.lease.unit.unit_number }}</div>
+              </td>
+
+              {# Tenant name (2 lines + ellipsis). Replace the field if different in your model. #}
+              <td style="max-width: 220px;">
+                <div class="clamp-2">
+                  {{ inv.lease.tenant_name }}
+                </div>
+              </td>
+
+              <td>{{ inv.issue_date }}</td>
+
+              <td style="min-width: 220px;">
+                <ul class="mb-0 ps-3">
+                  {% for it in inv.items.all %}
+                    <li class="d-flex justify-content-between gap-2">
+                      <span class="me-2 flex-grow-1">
+                        <span class="truncate-1">{{ it.description }}</span>
+                        {% if it.category %}
+                          <span class="text-muted item-cat ms-1 truncate-1">({{ it.category }})</span>
+                        {% endif %}
+                      </span>
+                      <span class="amount">Rs. {{ it.amount|floatformat:0|intcomma }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </td>
+
+              <td class="amount"><strong>Rs. {{ r.total|floatformat:0|intcomma }}</strong></td>
+            </tr>
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <a href="{% url 'invoices:invoice_list' %}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-danger">Confirm Delete {{ count }}</button>
+    </div>
+    #}
+  {% endif %}
+</form>
+{% endblock %}

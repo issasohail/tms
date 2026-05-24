@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Payments{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h4 mb-0">Payment Records</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'payments:payment_create' %}" class="btn btn-primary btn-sm">
+      <i class="fas fa-plus me-1"></i> Add
+    </a>
+    {% include "includes/export_buttons.html" %}
+  </div>
+</div>
+
+<form id="payment-filter-form" method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-sm-6 col-md-3">
+      <label class="form-label small">Tenant (Name — Unit)</label>
+      <select name="tenant" id="id_tenant" class="form-select form-select-sm">
+        <option value="">All</option>
+        {% for opt in tenant_options %}
+          <option value="{{ opt.id }}" {% if request.GET.tenant == opt.id|stringformat:'s' %}selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Property</label>
+      <select name="property" id="id_property" class="form-select form-select-sm">
+        <option value="">All</option>
+        {% for p in property_options %}
+          <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Date From</label>
+      <input type="date" class="form-control form-control-sm" name="start_date" value="{{ request.GET.start_date }}">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Date To</label>
+      <input type="date" class="form-control form-control-sm" name="end_date" value="{{ request.GET.end_date }}">
+    </div>
+    <div class="col-12 d-flex gap-2 mt-2">
+      <button class="btn btn-secondary btn-sm" type="submit"><i class="fas fa-filter me-1"></i>Apply</button>
+      <a class="btn btn-outline-secondary btn-sm" href="?">Clear</a>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive">
+  {% render_table table %}
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Small screens: 360px support */
+@media (max-width: 400px) {
+  .btn { padding: .4rem .6rem; }
+  h2.h4 { font-size: 1rem; }
+
+  #payment-filter-form .row > [class*='col-'] {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.table { font-size: .82rem; }
+  table.table th, table.table td { white-space: nowrap; }
+}
+</style>
+{% endblock %}

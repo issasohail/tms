@@ -1,0 +1,525 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Leases{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div class="page-header d-flex justify-content-between align-items-center mb-3">
+  <h2 class="page-title mb-0">Leases</h2>
+  <div class="d-flex page-actions">
+    <a href="{% url 'leases:lease_create' %}" class="btn btn-primary btn-slim">
+      <i class="fas fa-plus me-1"></i> Add Lease
+    </a>
+    <a href="{% url 'leases:lease_ledger' %}" class="btn btn-primary btn-slim">
+      <i class="fas fa-book me-1"></i> Lease Ledger
+    </a>
+    <button id="send-all-reminders" class="btn btn-success btn-slim">
+      <i class="fas fa-bell me-1"></i> Send All Reminders
+    </button>
+    {% include "includes/export_buttons.html" %}
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-2">
+  <div class="card-body p-2">
+    <form method="get" id="lease-filter-form">
+      <!-- ROW 1 -->
+      <div class="filter-row1">
+        <div class="filter-item filter-property">
+          <label for="id_property" class="form-label mb-1">Property</label>
+          <select name="property" class="form-select form-select-sm w-auto" id="id_property">
+            <option value="">All</option>
+            {% for property in all_properties %}
+              <option value="{{ property.id }}" {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+                {{ property.property_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filter-item filter-unit">
+          <label for="id_unit" class="form-label mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm w-auto fixed-120" id="id_unit">
+            <option value="">All</option>
+            {% for unit in filtered_units %}
+              <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                {{ unit.unit_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filter-item filter-tenant">
+          <label for="id_tenant" class="form-label mb-1">Tenant</label>
+          <select name="tenant" class="form-select form-select-sm select2 w-auto" id="id_tenant">
+            <option value="">All</option>
+            {% for tenant in all_tenants %}
+              <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                {{ tenant.get_full_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- ROW 2 -->
+      <div class="filter-row2">
+        <div class="filter-flags">
+          <label class="form-check form-check-inline m-0">
+            <input class="form-check-input" type="checkbox" name="include_inactive" id="id_include_inactive" {% if include_inactive %}checked{% endif %}>
+            <span class="form-check-label">Include Inactive</span>
+          </label>
+          <label class="form-check form-check-inline m-0">
+            <input class="form-check-input" type="checkbox" name="nonzero_balance" id="id_nonzero_balance" {% if nonzero_balance %}checked{% endif %}>
+            <span class="form-check-label">Non-Zero Balance</span>
+          </label>
+        </div>
+        <div class="filter-actions">
+          <button type="submit" class="btn btn-sm btn-primary btn-slim">
+            <i class="fas fa-filter"></i><span class="btn-label"> Filter</span>
+          </button>
+          {% if request.GET %}
+          <a href="?" class="btn btn-sm btn-secondary btn-slim">
+            <i class="fas fa-undo"></i><span class="btn-label"> Clear</span>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+
+
+  </div>
+</div>
+
+<div class="text-end mt-2 fw-bold">
+  Total Balance: {{ total_balance|floatformat:2|intcomma }}
+</div>
+
+<div class="table-responsive">
+  {% render_table table %}
+</div>
+
+<div class="text-end mt-2 fw-bold">
+  Total Balance: {{ total_balance|floatformat:2|intcomma }}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+
+<style id="leases-theme">
+:root{
+  /* TWEAK: fonts */
+  --filter-font-lg:.85rem;
+  --filter-font-sm:.68rem;
+  --table-font-lg:.875rem;   /* BIG render_table font */
+  --table-font-sm:.50rem;    /* SMALL render_table font */
+
+   --filter-unit-min: 240px;    /* TWEAK: min width for Unit on big screens */
+  --filter-prop-min: 260px;    /* optional: min width for Property */
+  --filter-tenant-min: 320px;  /* optional: min width for Tenant (when not Select2) */
+
+    /* TWEAK: SN column sizing */
+  --w-sn-lg: 56px;        /* big screen width for SN */
+  --w-sn-sm: 10vw;        /* small screen width (use px if you prefer) */
+  --fs-sn-lg: 0.72rem;    /* big screen font size for SN */
+  --fs-sn-sm: 0.55rem;    /* small screen font size for SN */
+  
+  --page-actions-gap: .5rem;
+  --btn-px-lg:.5rem; --btn-py-lg:.2rem;
+  --btn-px-sm:.35rem; --btn-py-sm:.18rem;
+
+  /* TWEAK: column widths (BIG) */
+  --w-tenant-lg:180px;
+  --w-property-lg:160px;
+  --w-unit-lg:180px;
+  --w-start-lg:180px;
+  --w-end-lg:180px;
+  --w-monthly-lg:120px;
+  --w-balance-lg:120px;
+  --w-status-lg:100px;
+  --w-actions-lg:180px;
+
+  /* TWEAK: column widths (SMALL) */
+  --w-sn-sm:1vw;
+  --w-tenant-sm:15vw;
+  --w-property-sm:15vw;
+  --w-start-sm:15w;
+  --w-monthly-sm:15vw;
+  --w-actions-sm:39vm;
+}
+
+/* Header compact */
+.page-header{margin-bottom:.35rem!important}
+.page-actions{ gap: var(--page-actions-gap) !important; }
+.btn-slim{ padding: var(--btn-py-lg) var(--btn-px-lg); }
+
+/* Hide the text labels to save space on small screens */
+.table-mobile-sm td.actions-cell .btn .btn-label,
+.table-mobile-sm td.actions-cell .btn i + span {
+  display: none !important;
+}
+.actions-wrap .btn > span {
+  display: none !important;
+}
+
+/* ---------- FILTERS ---------- */
+/* BIG: absolutely one line; horizontal scroll instead of wrapping */
+#lease-filter-form{
+  display: inline-flex;
+  align-items: flex-end;
+  gap: .5rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow-x: auto; /* scroll instead of wrap */
+}
+.filter-row1,.filter-row2{
+  display:inline-flex;align-items:end;gap:.5rem;
+  flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;overflow-y:hidden;
+}
+.filter-item{display:flex;flex-direction:column;gap:.15rem}
+.form-label{font-size:var(--filter-font-lg);margin-bottom:.15rem!important}
+.form-select-sm,.form-control-sm{font-size:var(--filter-font-lg);padding:.25rem .5rem}
+.filter-flags,.filter-actions{display:inline-flex;align-items:center;gap:.5rem}
+
+.select2-container { width: auto !important; min-width: 240px; } /* TWEAK */
+/* Keep a visible gap between action buttons on all screens */
+
+td.col-actions{vertical-align:middle;padding-top:.05rem;padding-bottom:.05rem; padding-right:.05rem}
+
+/* SMALL: Row1 = 3 cols; Row2 = flags + buttons on one line */
+@media (max-width:576px){
+  html{font-size:14px}
+  .filter-row1{
+    display:grid;grid-template-columns:1fr 1fr 1fr;
+    gap:.25rem .35rem;align-items:center;
+  }
+  .filter-row2{
+    display:inline-flex;align-items:center;gap:.35rem;
+    flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;
+  }
+  .form-label{font-size:var(--filter-font-sm)}
+  #lease-filter-form .form-select,#lease-filter-form .form-check-input,#lease-filter-form .btn{
+    font-size:var(--filter-font-sm);padding:.18rem .35rem;
+  }
+  #lease-filter-form{ display:block; }
+  .select2-container .select2-selection--single{height:28px!important;display:flex;align-items:center}
+  .select2-container .select2-selection__rendered{line-height:1.1!important;padding-right:1.25rem!important}
+  .select2-container { width: auto !important; min-width: 120px; } /* TWEAK */
+}
+
+.btn-slim{ padding: var(--btn-py-sm) var(--btn-px-sm); }
+
+/* ---------- TABLE ---------- */
+.table{table-layout:fixed;width:100%;font-size:var(--table-font-lg)}
+th.col-sn, td.col-sn{
+  width: var(--w-sn-lg);
+  min-width: var(--w-sn-lg);
+  font-size: var(--fs-sn-lg);
+  text-align: center;      /* optional */
+  white-space: nowrap;     /* keep “SN#” on one line */
+  padding-left: .25rem;    /* optional: tighter cells */
+  padding-right: .25rem;
+}
+th.col-tenant,td.col-tenant{width:var(--w-tenant-lg)}
+th.col-property,td.col-property{width:var(--w-property-lg)}
+th.col-unit,td.col-unit{width:var(--w-unit-lg)}
+th.col-start,td.col-start{width:var(--w-start-lg)}
+th.col-end,td.col-end{width:var(--w-end-lg)}
+th.col-monthly,td.col-monthly{width:var(--w-monthly-lg)}
+th.col-balance,td.col-balance{width:var(--w-balance-lg)}
+th.col-status,td.col-status{width:var(--w-status-lg)}
+th.col-actions,td.col-actions{width:var(--w-actions-lg)}
+
+/* Tenant truncation (BIG = 1 line ellipsis) */
+td.col-tenant .tenant-text{
+  display:block;overflow:hidden; max-width:var(--w-tenant-lg);text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* BIG: show Active column */
+th.col-status,td.col-status{display:table-cell}
+
+/* SMALL overrides */
+@media (max-width:576px){
+  .table{font-size:var(--table-font-sm)!important}
+  thead th{font-size:calc(var(--table-font-sm) + .04rem)}
+
+  th.col-sn, td.col-sn{
+    width: var(--w-sn-sm) !important;
+    min-width: var(--w-sn-sm) !important;
+    font-size: var(--fs-sn-sm);
+  }
+
+  th.col-tenant,td.col-tenant{width:var(--w-tenant-sm)!important}
+  th.col-property,td.col-property{width:var(--w-property-sm)!important}
+  th.col-start,td.col-start{width:var(--w-start-sm)!important}
+  th.col-monthly,td.col-monthly{width:var(--w-monthly-sm)!important}
+  th.col-actions,td.col-actions{width:var(--w-actions-sm)!important}
+  th.col-actions, td.col-actions{
+    width: var(--w-actions-sm) !important;
+    min-width: var(--w-actions-sm) !important;
+  }
+
+  /* Hide columns that we combine on mobile */
+  th.col-unit,td.col-unit,
+  th.col-end,td.col-end,
+  th.col-balance,td.col-balance{display:none!important}
+
+  /* HIDE Active column on small (we’ll show text in Actions) */
+  th.col-status,td.col-status{display:none!important}
+
+  /* Tenant: 2-line clamp + ellipsis */
+  td.col-tenant .tenant-text{
+    white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+
+  /* Actions area on small */
+  td.col-actions{vertical-align:middle;padding-top:.05rem;padding-bottom:.05rem}
+  td.col-actions .actions-wrap{
+    display:grid!important;grid-template-rows:repeat(2,auto);
+    grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:.05rem .05rem;
+  }
+  td.col-actions .btn{font-size:var(--table-font-sm)!important;padding:.05rem .05rem!important;line-height:1;min-width:1rem}
+  .actions-wrap .btn .btn-label{display:none!important}
+  .actions-wrap .btn-status-mobile .btn-label{display:inline!important} /* keep text for status */
+
+    /* ---- ACTION BUTTONS inside the table: mobile tweaks ---- */
+  /* Scope to this page's table container if you used it */
+  /* Make the actions column as narrow as possible */
+  .table-mobile-sm td.actions-cell {
+    width: 1%;                /* shrink-to-fit content */
+    white-space: nowrap;
+  }
+  .table-mobile-sm td.actions-cell .actions-wrap { gap: .05rem;!important; }   /* space between buttons */
+
+  /* Button hit-box size (tweak here to reduce/increase overall space) */
+  .table-mobile-sm td.actions-cell .btn {
+    padding: .10rem .12rem;   /* ← smaller than .16/.20; change to taste */
+    line-height: 1;           /* no extra vertical room inside button */
+    border-width: 1px;        /* keep borders thin */
+  }
+
+  /* Icon size (you set .50rem; change here later if needed) */
+  .table-mobile-sm td.actions-cell .btn i {
+    font-size: .50rem;        /* ← tweak icon size here */
+    margin-right: 0;          /* no space since label is hidden */
+  }
+
+  /* Hide the text labels to save space on small screens */
+  .table-mobile-sm td.actions-cell .btn .btn-label,
+  .table-mobile-sm td.actions-cell .btn i + span {
+    display: none !important;
+  }
+  .actions-wrap .btn > span {
+    display: none !important;
+  }
+
+
+  /* Tight filter card padding */
+  .card.mb-2 .card-body{padding:.5rem .5rem!important}
+  /* Fixed 120px helper */
+  .fixed-120{ width:120px!important; min-width:120px!important; }
+
+  /* Slightly tighter filter card + gaps */
+  .card.mb-2 .card-body{ padding:.4rem .45rem!important; }
+  #lease-filter-form{ gap:.4rem; }
+  .filter-row1,.filter-row2{ gap:.4rem; }
+
+  /* Ensure native select can't auto-expand on long text */
+  #id_unit{ max-width:120px!important; }
+
+  /* Small bump to compactness (optional) */
+  .form-select-sm,.form-control-sm{ padding:.22rem .45rem; }
+
+  .actions-wrap{ gap:.25rem !important; }
+
+  /* Slightly tighter on very small screens */
+  @media (max-width:576px){
+    .actions-wrap{ gap:.15rem !important; }
+  }
+  /* Tighter page header/action buttons */
+  .page-header{ margin-bottom:.3rem!important; }
+  .page-actions{ gap:.4rem!important; }
+  .btn-slim{ padding:.18rem .45rem; }
+
+  /* Slightly smaller table font */
+  .table{ font-size:.84rem; }
+
+  /* Actions column tighter padding */
+  td.col-actions{ padding-right:.15rem; }
+
+  /* Tenant clamp already present; ensure property width stays compact */
+  th.col-property,td.col-property{ width:140px; }
+
+}
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+/* Select2 + autosubmit (mirror payments behavior) */
+document.addEventListener("DOMContentLoaded", function() {
+  $('#id_tenant').select2({
+    placeholder: "Search tenant...",
+    allowClear: true,
+    width: '100%',
+    templateResult: function (data) {
+      if (!data.id) return data.text;
+      const full = data.text || '';
+      const short = full.length > 35 ? (full.slice(0, 35) + '…') : full;
+      const $el = $('<span>').text(short).attr('title', full);
+      return $el;
+    },
+    templateSelection: function (data) {
+      const full = data.text || '';
+      const short = full.length > 35 ? (full.slice(0, 35) + '…') : full;
+      return short;
+    }
+  });
+
+  // autosubmit on filters
+  $('input[type="checkbox"]').change(() => $('#lease-filter-form').submit());
+  $('#id_property, #id_unit').change(() => {
+    $('#id_tenant').val('').trigger('change');
+    $('#lease-filter-form').submit();
+  });
+  $('#id_tenant').change(function () {
+    if ($(this).val()) { $('#id_property, #id_unit').val(''); }
+    $('#lease-filter-form').submit();
+  });
+});
+</script>
+
+<script>
+/* WhatsApp helper (unchanged) */
+function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balance) {
+  try {
+    if (!phone) { alert("No phone number provided"); return; }
+    const cleaned = phone.toString().replace(/\D/g, '');
+    const formatted = cleaned.startsWith('0') ? '92' + cleaned.slice(1)
+                    : cleaned.startsWith('92') ? cleaned : '92' + cleaned;
+    const formattedBalance = parseFloat(balance).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const message = `Dear ${firstName},\n\nPayment Reminder:\nProperty: ${propertyName}\nUnit: ${unitNumber}\nBalance Due: Rs. ${formattedBalance}\n\nPlease pay at your earliest convenience.`;
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
+  } catch (error) {
+    console.error("WhatsApp error:", error);
+    alert("Failed to send WhatsApp: " + error.message);
+  }
+}
+window.sendWhatsAppReminder = sendWhatsAppReminder;
+</script>
+
+<script>
+/* Mobile sublines + Active→Actions (TEXT ONLY on small), and tenant clamps */
+document.addEventListener('DOMContentLoaded', function () {
+  const isSmall = () => window.matchMedia('(max-width: 576px)').matches;
+
+  function makeSub(label, html) {
+    if (!html) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'mobile-subrow text-muted';
+    wrap.style.fontSize = 'var(--table-font-sm)';
+    wrap.style.lineHeight = '1.1';
+    wrap.innerHTML = (label ? `<strong>${label}</strong> ` : '') + html;
+    return wrap;
+  }
+
+  function enhanceRows() {
+    document.querySelectorAll('table tbody tr').forEach(tr => {
+      const already = tr.dataset.enhanced === '1';
+      const q = sel => tr.querySelector(sel);
+
+      const tdTenant = q('td.col-tenant');
+      if (tdTenant && !tdTenant.querySelector('.tenant-text')) {
+        const text = document.createElement('span');
+        text.className = 'tenant-text';
+        text.textContent = tdTenant.textContent.trim();
+        tdTenant.innerHTML = '';
+        tdTenant.appendChild(text);
+      }
+
+      const tdProp  = q('td.col-property');
+      const tdUnit  = q('td.col-unit');
+      const tdStart = q('td.col-start');
+      const tdEnd   = q('td.col-end');
+      const tdMon   = q('td.col-monthly');
+      const tdBal   = q('td.col-balance');
+      const tdActv  = q('td.col-status');
+      const tdActs  = q('td.col-actions');
+
+      // Ensure an actions-wrap exists
+      if (tdActs && !tdActs.querySelector('.actions-wrap')) {
+        const wrap = document.createElement('div');
+        wrap.className = 'actions-wrap';
+        while (tdActs.firstChild) wrap.appendChild(tdActs.firstChild);
+        tdActs.appendChild(wrap);
+      }
+      const wrap = tdActs ? tdActs.querySelector('.actions-wrap') : null;
+
+      // For small screens: add sublines and push Active text into Actions
+      if (isSmall()) {
+        if (!already) {
+          if (tdProp && tdUnit && tdUnit.innerHTML.trim()) tdProp.appendChild(makeSub('', tdUnit.innerHTML));
+          if (tdStart && tdEnd && tdEnd.innerHTML.trim()) tdStart.appendChild(makeSub('', tdEnd.innerHTML));
+          if (tdMon && tdBal && tdBal.textContent.trim()) tdMon.appendChild(makeSub('Bal:', `<span>${tdBal.textContent.trim()}</span>`));
+        }
+
+        // Inject Active/InActive text (no icon) as FIRST action button
+        if (wrap && !wrap.querySelector('.btn-status-mobile')) {
+          const statusText = tdActv ? (tdActv.textContent || '').trim() : '';
+          if (statusText) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-outline-secondary btn-status-mobile';
+            btn.textContent = statusText; /* TEXT ONLY */
+            wrap.insertBefore(btn, wrap.firstChild);
+          }
+        }
+      } else {
+        // Big screens: ensure no mobile status button remains
+        if (wrap) {
+          const mobileBtn = wrap.querySelector('.btn-status-mobile');
+          if (mobileBtn) mobileBtn.remove();
+        }
+      }
+
+      tr.dataset.enhanced = '1';
+    });
+  }
+
+  enhanceRows();
+  window.addEventListener('resize', enhanceRows, { passive: true });
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const sel = document.getElementById('id_property');
+  if (sel) {
+    [...sel.options].forEach(opt => {
+      const full = opt.textContent.trim();
+      opt.setAttribute('title', full);
+      if (full.length > 8) opt.textContent = full.slice(0,8) + '…';
+    });
+  }
+});
+</script>
+
+<!-- Progress Modal (unchanged) -->
+<div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="progressModalLabel">Sending Reminders</h5></div>
+      <div class="modal-body">
+        <div class="progress mb-3"><div id="reminder-progress" class="progress-bar" role="progressbar" style="width: 0%"></div></div>
+        <p id="progress-text">Preparing to send reminders...</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,237 @@
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from django.conf import settings
+from django.utils import timezone
+
+
+STATUS_CHOICES = [
+    ("PENDING", "Pending"),
+    ("IN_PROGRESS", "In Progress"),
+    ("RESOLVED", "Resolved"),
+    ("CLOSED", "Closed"),
+]
+
+TYPE_CHOICES = [
+    ("SUGGESTION", "Suggestion"),
+    ("ERROR", "Report Error"),
+]
+
+PRIORITY_CHOICES = [
+    ("LOW", "Low"),
+    ("NORMAL", "Normal"),
+    ("HIGH", "High"),
+    ("URGENT", "Urgent"),
+]
+
+
+def _data_dir():
+    path = Path(settings.MEDIA_ROOT) / "suggestions"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _data_file():
+    return _data_dir() / "tickets.json"
+
+
+def _photo_dir(ticket_id):
+    path = _data_dir() / "photos" / str(ticket_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _now():
+    return timezone.localtime(timezone.now()).isoformat()
+
+
+def _read_payload():
+    path = _data_file()
+    if not path.exists():
+        return {"last_id": 0, "tickets": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"last_id": 0, "tickets": []}
+    data.setdefault("last_id", 0)
+    data.setdefault("tickets", [])
+    return data
+
+
+def _write_payload(data):
+    _data_file().write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _display(choices, value):
+    return dict(choices).get(value, value)
+
+
+@dataclass
+class SuggestionTicket:
+    id: int
+    ticket_type: str
+    title: str
+    description: str
+    status: str
+    priority: str
+    screen_name: str
+    user_name_snapshot: str
+    phone_snapshot: str
+    created_at: str
+    updated_at: str
+    photos: list = field(default_factory=list)
+    replies: list = field(default_factory=list)
+
+    STATUS_CHOICES = STATUS_CHOICES
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            id=int(data.get("id")),
+            ticket_type=data.get("ticket_type") or "SUGGESTION",
+            title=data.get("title") or "",
+            description=data.get("description") or "",
+            status=data.get("status") or "PENDING",
+            priority=data.get("priority") or "NORMAL",
+            screen_name=data.get("screen_name") or "",
+            user_name_snapshot=data.get("user_name_snapshot") or "",
+            phone_snapshot=data.get("phone_snapshot") or "",
+            created_at=data.get("created_at") or _now(),
+            updated_at=data.get("updated_at") or _now(),
+            photos=data.get("photos") or [],
+            replies=data.get("replies") or [],
+        )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "ticket_type": self.ticket_type,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status,
+            "priority": self.priority,
+            "screen_name": self.screen_name,
+            "user_name_snapshot": self.user_name_snapshot,
+            "phone_snapshot": self.phone_snapshot,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "photos": self.photos,
+            "replies": self.replies,
+        }
+
+    def get_ticket_type_display(self):
+        return _display(TYPE_CHOICES, self.ticket_type)
+
+    def get_status_display(self):
+        return _display(STATUS_CHOICES, self.status)
+
+    def get_priority_display(self):
+        return _display(PRIORITY_CHOICES, self.priority)
+
+    @property
+    def created_display(self):
+        return self.created_at
+
+
+def list_tickets(status=None, ticket_type=None):
+    tickets = [SuggestionTicket.from_dict(item) for item in _read_payload()["tickets"]]
+    if status:
+        tickets = [ticket for ticket in tickets if ticket.status == status]
+    if ticket_type:
+        tickets = [ticket for ticket in tickets if ticket.ticket_type == ticket_type]
+    return sorted(tickets, key=lambda ticket: ticket.id, reverse=True)
+
+
+def get_ticket(ticket_id):
+    for ticket in list_tickets():
+        if ticket.id == int(ticket_id):
+            return ticket
+    return None
+
+
+def _save_ticket(updated_ticket):
+    data = _read_payload()
+    tickets = []
+    replaced = False
+    for item in data["tickets"]:
+        if int(item.get("id")) == int(updated_ticket.id):
+            tickets.append(updated_ticket.to_dict())
+            replaced = True
+        else:
+            tickets.append(item)
+    if not replaced:
+        tickets.append(updated_ticket.to_dict())
+    data["tickets"] = tickets
+    data["last_id"] = max(int(data.get("last_id") or 0), int(updated_ticket.id))
+    _write_payload(data)
+
+
+def _save_photos(ticket_id, files):
+    saved = []
+    for index, upload in enumerate(files or [], start=1):
+        ext = Path(upload.name or "").suffix.lower() or ".jpg"
+        target = _photo_dir(ticket_id) / f"{ticket_id}_{index}{ext}"
+        with target.open("wb") as output:
+            for chunk in upload.chunks():
+                output.write(chunk)
+        rel = Path("suggestions") / "photos" / str(ticket_id) / target.name
+        saved.append({
+            "name": upload.name,
+            "url": f"{settings.MEDIA_URL}{rel.as_posix()}",
+        })
+    return saved
+
+
+def create_ticket(cleaned_data, user, files=None):
+    data = _read_payload()
+    ticket_id = int(data.get("last_id") or 0) + 1
+    username = user.get_username() if getattr(user, "is_authenticated", False) else "Anonymous"
+    now = _now()
+    ticket = SuggestionTicket(
+        id=ticket_id,
+        ticket_type=cleaned_data.get("ticket_type") or "SUGGESTION",
+        title=cleaned_data.get("title") or "",
+        description=cleaned_data.get("description") or "",
+        status="PENDING",
+        priority=cleaned_data.get("priority") or "NORMAL",
+        screen_name=cleaned_data.get("screen_name") or "",
+        user_name_snapshot=username,
+        phone_snapshot="",
+        created_at=now,
+        updated_at=now,
+        photos=_save_photos(ticket_id, files),
+        replies=[],
+    )
+    data["last_id"] = ticket_id
+    data["tickets"].append(ticket.to_dict())
+    _write_payload(data)
+    return ticket
+
+
+def update_status(ticket_id, status):
+    ticket = get_ticket(ticket_id)
+    if not ticket:
+        return None
+    ticket.status = status
+    ticket.updated_at = _now()
+    _save_ticket(ticket)
+    return ticket
+
+
+def add_reply(ticket_id, message, user, status=None):
+    ticket = get_ticket(ticket_id)
+    if not ticket:
+        return None
+    username = user.get_username() if getattr(user, "is_authenticated", False) else "Anonymous"
+    ticket.replies.append({
+        "message": message,
+        "created_by": username,
+        "is_staff_reply": bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)),
+        "created_at": _now(),
+    })
+    if status:
+        ticket.status = status
+    ticket.updated_at = _now()
+    _save_ticket(ticket)
+    return ticket

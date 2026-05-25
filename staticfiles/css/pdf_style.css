@@ -1,0 +1,19 @@
+@page {
+    size: A5 portrait;
+    margin: 1cm;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.4;
+}
+
+.pdf-container {
+    width: 100%;
+    max-width: 14cm;
+    margin: 0 auto;
+    padding: 0.5cm;
+}
+
+/* Add all other styles from the previous example */

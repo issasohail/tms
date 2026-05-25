@@ -1,0 +1,18 @@
+{
+  "python-envs.pythonProjects": [],
+
+  "editor.formatOnSave": false,
+  "editor.formatOnPaste": false,
+  "editor.formatOnType": false,
+
+  "[python]": {
+    "editor.formatOnSave": true
+  },
+
+  "[html]": {
+    "editor.formatOnSave": false
+  },
+
+  "html.format.wrapLineLength": 0
+}
+

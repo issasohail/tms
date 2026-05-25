@@ -1,0 +1,18 @@
+/* Custom table styles */
+.table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Allow wrapping in paint condition */
+.table td[data-field="paint_condition"] {
+    white-space: normal;
+    word-break: break-word;
+}
+
+/* Optional: Add responsive table container */
+.table-container {
+    overflow-x: auto;
+    max-width: 100%;
+}

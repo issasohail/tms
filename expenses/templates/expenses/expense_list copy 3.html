@@ -1,0 +1,412 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load crispy_forms_tags %}
+
+{% block title %}Expenses{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Expenses</h2>
+  <a href="{% url 'expenses:expense_create' %}" class="btn btn-primary">
+    <i class="bi bi-plus"></i> <span class="btn-text">Add Expense</span>
+  </a>
+  {% include "includes/export_buttons.html" %}
+</div>
+
+<form id="expense-filter-form" method="get" class="card card-body mb-3 filters-card">
+  <div class="filters-grid">
+    <!-- Row 1 -->
+    <select name="period" id="id_period" class="form-select form-select-sm" title="Period">
+      <option value="">All</option>
+      <option value="today"      {% if request.GET.period == 'today' %}selected{% endif %}>Today</option>
+      <option value="yesterday"  {% if request.GET.period == 'yesterday' %}selected{% endif %}>Yesterday</option>
+      <option value="this_week"  {% if request.GET.period == 'this_week' %}selected{% endif %}>This Week</option>
+      <option value="last_week"  {% if request.GET.period == 'last_week' %}selected{% endif %}>Last Week</option>
+      <option value="this_month" {% if request.GET.period == 'this_month' %}selected{% endif %}>This Month</option>
+      <option value="last_month" {% if request.GET.period == 'last_month' %}selected{% endif %}>Last Month</option>
+      <option value="this_year"  {% if request.GET.period == 'this_year' %}selected{% endif %}>This Year</option>
+    </select>
+
+    <input type="date" class="form-control form-control-sm" name="start_date" id="id_start_date"
+           value="{{ request.GET.start_date }}" title="From">
+    <input type="date" class="form-control form-control-sm" name="end_date" id="id_end_date"
+           value="{{ request.GET.end_date }}" title="To">
+
+    <!-- Row 2 (small screens combine Property + Unit) -->
+    <div class="filter-item property-group">
+      <select name="property" id="id_property" class="form-select form-select-sm" title="Property">
+        <option value="">Property</option>
+        {% for p in property_options %}
+          <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>
+            {{ p.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <select name="unit" id="id_unit" class="form-select form-select-sm" title="Unit" disabled></select>
+    </div>
+
+    <!-- Row 3 (small screens combine Category + Description) -->
+    <div class="filter-item category-group">
+      <select name="category" id="id_category" class="form-select form-select-sm" title="Category">
+        <option value="">Category</option>
+        {% for c in category_options %}
+          <option value="{{ c.id }}" {% if request.GET.category == c.id|stringformat:'s' %}selected{% endif %}>
+            {{ c.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <!-- Optional: free-text description filter (safe to include; ignored if backend doesn’t use it) -->
+      <input type="text" class="form-control form-control-sm" name="description" id="id_description"
+             placeholder="Description" value="{{ request.GET.description }}">
+    </div>
+
+    <button class="btn btn-secondary btn-sm action-btn" type="submit" title="Apply">
+      <i class="fas fa-filter"></i><span class="btn-text ms-1">Apply</span>
+    </button>
+    <a class="btn btn-outline-secondary btn-sm action-btn" href="?" title="Clear">
+      <i class="fas fa-undo"></i><span class="btn-text ms-1">Clear</span>
+    </a>
+  </div>
+</form>
+
+<div class="table-responsive">
+  {% render_table table %}
+</div>
+
+<!-- Receipt Viewer Modal -->
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-9">
+            <img id="receiptMain" src="" alt="Receipt" class="img-fluid w-100 rounded border" style="max-height:75vh; object-fit:contain;">
+          </div>
+          <div class="col-12 col-md-3">
+            <div id="receiptThumbs" class="d-flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <div class="text-muted small">Tip: tap a thumbnail to switch</div>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+<script>
+/* ========= AUTO-SUBMIT: all filters ========= */
+(function(){
+  const form = document.getElementById('expense-filter-form');
+  if (!form) return;
+  form.querySelectorAll('select, input[type="date"], input[type="text"]').forEach(el => {
+    el.addEventListener('change', () => form.submit());
+    el.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') form.submit();
+    });
+  });
+})();
+
+/* ========= Period -> Dates + auto-submit ========= */
+(function(){
+  const periodSel = document.getElementById('id_period');
+  const start = document.getElementById('id_start_date');
+  const end = document.getElementById('id_end_date');
+  const form = document.getElementById('expense-filter-form');
+
+  function fmt(d){ return d.toISOString().slice(0,10); }
+  function sow(d){ const c=new Date(d); const day=(c.getDay()+6)%7; c.setDate(c.getDate()-day); return c; }
+  function eow(d){ const s=sow(d); const e=new Date(s); e.setDate(s.getDate()+6); return e; }
+  function som(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function eom(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+  function soy(d){ return new Date(d.getFullYear(),0,1); }
+  function eoy(d){ return new Date(d.getFullYear(),11,31); }
+
+  periodSel?.addEventListener('change', () => {
+    const now = new Date();
+    let s='', e='';
+    switch(periodSel.value){
+      case 'today': s=e=fmt(now); break;
+      case 'yesterday': { const y=new Date(); y.setDate(now.getDate()-1); s=e=fmt(y); break; }
+      case 'this_week': s=fmt(sow(now)); e=fmt(eow(now)); break;
+      case 'last_week': { const n=new Date(); n.setDate(n.getDate()-7); s=fmt(sow(n)); e=fmt(eow(n)); break; }
+      case 'this_month': s=fmt(som(now)); e=fmt(eom(now)); break;
+      case 'last_month': { const d=new Date(now.getFullYear(), now.getMonth()-1, 1); s=fmt(som(d)); e=fmt(eom(d)); break; }
+      case 'this_year': s=fmt(soy(now)); e=fmt(eoy(now)); break;
+      default: s=''; e='';
+    }
+    start.value = s; end.value = e;
+    form.submit();
+  });
+})();
+
+/* ========= Property -> Units cascade (with autosubmit) ========= */
+(function(){
+  const propertySel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit');
+  const form = document.getElementById('expense-filter-form');
+  const unitsByProp = {{ units_by_property_json|safe }};
+
+  function populateUnits(){
+    const pid = propertySel.value;
+    unitSel.innerHTML = '';
+    if(!pid){ unitSel.disabled = true; return; }
+
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All units';
+    unitSel.appendChild(allOpt);
+
+    (unitsByProp[pid] || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.textContent = u.label;
+      if ("{{ request.GET.unit|default_if_none:'' }}" === String(u.id)) opt.selected = true;
+      unitSel.appendChild(opt);
+    });
+    unitSel.disabled = false;
+  }
+
+  if (propertySel) {
+    propertySel.addEventListener('change', () => {
+      populateUnits();
+      form.submit();            // auto-submit on property change
+    });
+    unitSel.addEventListener('change', () => form.submit()); // auto-submit on unit change
+    populateUnits(); // initial load
+  }
+})();
+
+/* ========= Receipt modal viewer ========= */
+document.addEventListener('click', function(e){
+  const a = e.target.closest('.view-receipt');
+  if(!a) return;
+  e.preventDefault();
+  const urls = (a.dataset.urls || '').split('|').filter(Boolean);
+  if(!urls.length) return;
+
+  const main = document.getElementById('receiptMain');
+  const thumbs = document.getElementById('receiptThumbs');
+  main.src = urls[0];
+  thumbs.innerHTML = '';
+  urls.forEach((u) => {
+    const img = document.createElement('img');
+    img.src = u;
+    img.className = 'img-thumbnail';
+    img.style.width = '80px';
+    img.style.height = '80px';
+    img.style.objectFit = 'cover';
+    img.style.cursor = 'pointer';
+    img.onclick = () => (main.src = u);
+    thumbs.appendChild(img);
+  });
+
+  const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+  modal.show();
+}, false);
+
+/* ========= Table helpers (responsive columns + date formatting) ========= */
+(function(){
+  const table = document.querySelector('.table-responsive table');
+  if (!table) return;
+
+  // Locate header indexes by label
+  const headerCells = [...table.querySelectorAll('thead th')];
+  const idxByName = {};
+  headerCells.forEach((th, i) => idxByName[th.textContent.trim().toLowerCase()] = i);
+
+  const unitIdx = idxByName['unit'];
+  const descIdx = idxByName['description'];
+  const dateIdx = idxByName['date'];
+  const actionsIdx = idxByName['actions'];
+
+  function markColumn(idx, cls){
+    if (idx == null || idx < 0) return;
+    [...table.rows].forEach(r => {
+      const cell = r.cells[idx];
+      if (cell) cell.classList.add(cls);
+    });
+  }
+
+  markColumn(unitIdx, 'col-unit');
+  markColumn(descIdx, 'col-description');
+  markColumn(actionsIdx, 'col-actions');
+  markColumn(dateIdx, 'col-date');
+
+  // Format date column to "Mon dd, yyyy"
+  if (dateIdx != null && dateIdx >= 0) {
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const bodyRows = table.tBodies.length ? table.tBodies[0].rows : [];
+    [...bodyRows].forEach(tr => {
+      const td = tr.cells[dateIdx];
+      if (!td) return;
+      const raw = td.textContent.trim();
+      const d = new Date(raw.replace(/(\d{2})-(\d{2})-(\d{4})/, '$2/$1/$3')); // support dd-mm-yyyy too
+      if (!isNaN(d)) {
+        td.textContent = `${monthShort[d.getMonth()]} ${String(d.getDate()).padStart(2,'0')}, ${d.getFullYear()}`;
+      } else {
+        // Try ISO or yyyy-mm-dd
+        const d2 = new Date(raw);
+        if (!isNaN(d2)) td.textContent = `${monthShort[d2.getMonth()]} ${String(d2.getDate()).padStart(2,'0')}, ${d2.getFullYear()}`;
+      }
+    });
+  }
+})();
+</script>
+
+<style>
+/* ======= Tweakable small-screen column sizes ======= */
+:root {
+  --col-min: 7rem;      /* minimum width for cells on small screens */
+  --col-max: 18rem;     /* maximum width for flexible cells on small screens */
+}
+
+/* Card padding */
+.filters-card { padding: .5rem .75rem; }
+
+/* MOBILE-FIRST: small screens — 3 lines */
+.filters-grid {
+  display: grid;
+  gap: .5rem;
+  align-items: center;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Controls sizing */
+.filters-grid .form-select,
+.filters-grid .form-control {
+  min-width: 0;
+  padding: .375rem .5rem;
+  height: 2rem;
+  font-size: .85rem;
+}
+.filters-grid .action-btn { width: 100%; }
+
+/* Keep sensible minimums */
+#id_period { min-width: 7rem; }
+#id_start_date, #id_end_date { min-width: 8rem; }
+#id_property { min-width: 10rem; }
+#id_unit { min-width: 9rem; }
+#id_category { min-width: 10rem; }
+
+/* Combine groups on small screens */
+.property-group,
+.category-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+}
+
+/* LARGE screens (≥992px): single row */
+@media (min-width: 992px) {
+  .filters-grid {
+    grid-template-columns:
+      max-content  /* Period */
+      max-content  /* From */
+      max-content  /* To */
+      14rem        /* Property */
+      12rem        /* Unit */
+      14rem        /* Category */
+      16rem        /* Description (text input) */
+      max-content  /* Apply */
+      max-content; /* Clear */
+    align-items: center;
+  }
+  .property-group,
+  .category-group {
+    display: contents; /* show their children inline as separate columns */
+  }
+  .filters-grid .action-btn { width: auto; white-space: nowrap; }
+}
+
+/* Ultra-small (≤400px): slightly tighter sizing */
+@media (max-width: 400px) {
+  .filters-card { padding: .35rem .45rem; }
+  .filters-grid .form-select,
+  .filters-grid .form-control {
+    padding: .25rem .4rem;
+    height: 1.7rem;
+    font-size: .78rem;
+  }
+}
+
+/* ======= Table responsiveness ======= */
+
+/* Base table cell handling on small screens */
+@media (max-width: 768px) {
+  .table-responsive table th,
+  .table-responsive table td {
+    max-width: var(--col-max);
+    min-width: var(--col-min);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Hide Unit and Description columns */
+  .table-responsive table .col-unit,
+  .table-responsive table .col-description {
+    display: none;
+  }
+
+  /* Actions: icons only */
+  .btn span.btn-text { display: none; }
+  .btn i { margin: 0; }
+}
+
+/* Keep the actions column compact on all screens */
+.table-responsive table .col-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Optional: emphasize the Date col a bit */
+.table-responsive table .col-date {
+  font-variant-numeric: tabular-nums;
+}
+/* ===== Extra tuning for very small screens (≤360px) ===== */
+@media (max-width: 360px) {
+  .filters-card { padding: .25rem .35rem; }
+
+  .filters-grid {
+    grid-template-columns: repeat(2, 1fr); /* stack in 2 columns instead of 3 */
+    gap: .35rem;
+  }
+
+  .filters-grid .form-select,
+  .filters-grid .form-control {
+    padding: .2rem .35rem;
+    height: 1.5rem;
+    font-size: .75rem;
+  }
+
+  /* Make combined groups stack vertically if space is too tight */
+  .property-group,
+  .category-group {
+    grid-template-columns: 1fr;  /* one per line */
+  }
+
+  /* Shrink action buttons */
+  .filters-grid .action-btn {
+    font-size: .75rem;
+    padding: .25rem .4rem;
+  }
+
+  /* Table tweaks */
+  .table-responsive table th,
+  .table-responsive table td {
+    min-width: 5rem;    /* allow narrower columns */
+    max-width: 10rem;
+    font-size: .75rem;
+  }
+
+  /* Actions: keep only icons, smaller hit area */
+  .table-responsive table .col-actions .btn {
+    padding: .25rem .35rem;
+  }
+}
+
+</style>

@@ -1,0 +1,64 @@
+<form method="get" class="row g-3 align-items-end">
+
+    {% if show_tenant %}
+    <!-- Tenant Dropdown -->
+    <div class="col-md-3">
+        <label for="tenant-select" class="form-label">Tenant</label>
+        <select name="tenant" id="tenant-select" class="form-select">
+            <option value="">All Tenants</option>
+            {% for tenant in tenant_list %}
+                <option value="{{ tenant.id }}" {% if request.GET.tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                    {{ tenant.first_name }} {{ tenant.last_name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+
+    {% if show_unit %}
+    <!-- Unit Dropdown -->
+    <div class="col-md-3">
+        <label for="unit-select" class="form-label">Unit</label>
+        <select name="unit" id="unit-select" class="form-select">
+            <option value="">All Units</option>
+            {% for unit in unit_list %}
+                <option value="{{ unit.id }}" {% if request.GET.unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                    {{ unit.unit_number }} - {{ unit.property.property_name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+
+    {% if show_dates %}
+    <!-- Date Range -->
+    <div class="col-md-3">
+        <label class="form-label">Date Range</label>
+        <div class="input-group">
+            <input type="date" name="start_date" class="form-control" placeholder="From" value="{{ request.GET.start_date }}">
+            <span class="input-group-text">to</span>
+            <input type="date" name="end_date" class="form-control" placeholder="To" value="{{ request.GET.end_date }}">
+        </div>
+    </div>
+    {% endif %}
+
+    {% if show_status %}
+    <!-- Status Dropdown -->
+    <div class="col-md-2">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+            <option value="">All</option>
+            <option value="pending" {% if request.GET.status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="completed" {% if request.GET.status == 'completed' %}selected{% endif %}>Completed</option>
+        </select>
+    </div>
+    {% endif %}
+
+    <!-- Search Button -->
+    <div class="col-md-1">
+        <button type="submit" class="btn btn-primary w-100">
+            <i class="fas fa-search me-1"></i>Search
+        </button>
+    </div>
+
+</form>

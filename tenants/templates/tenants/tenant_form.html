@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}Update{% else %}Create{% endif %} Tenant{% endblock %}
+
+{% block content %}
+<div class="container-fluid grid-tight control-sm">
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <h5 class="mb-0">{% if form.instance.pk %}Update{% else %}Create{% endif %} Tenant</h5>
+            <div>
+                <button class="btn btn-outline-secondary" onclick="history.back()">Go Back</button>
+                <button type="submit" form="tenantForm" class="btn btn-primary btn-sm">Save</button>
+                <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" 
+                   class="btn btn-outline-secondary btn-sm ms-1">Cancel</a>
+            </div>
+        </div>
+        <div class="card-body p-2">
+            <form method="post" enctype="multipart/form-data" id="tenantForm">
+                {% csrf_token %}
+                
+                <div class="row">
+                    <!-- Left Column - Personal Info -->
+                    <div class="col-lg-7 col-md-6 pe-2">
+                        <!-- Row 1: Basic Info -->
+                        <div class="row gx-1 mb-1">
+                            <div class="col-sm-3 col-6">{{ form.prefix|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.first_name|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.relation|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.last_name|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.cnic|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.phone|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.phone2|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.phone3|as_crispy_field }}</div>
+                        </div>
+                        
+                        <!-- Row 2: Personal Details -->
+                        <div class="row gx-1 mb-1">
+                            <div class="col-sm-4 col-6">{{ form.email|as_crispy_field }}</div>
+                            <div class="col-sm-2 col-6">{{ form.gender|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.date_of_birth|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.number_of_family_member|as_crispy_field }}</div>
+                        </div>
+                        
+                        <!-- Row 3: Emergency Contacts -->
+                        <div class="row gx-1 mb-1">
+                            <div class="col-sm-4 col-6">{{ form.emergency_contact_name|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.emergency_contact_phone|as_crispy_field }}</div>
+                            <div class="col-sm-3 col-6">{{ form.emergency_contact_relation|as_crispy_field }}</div>
+                        </div>
+                        
+                        <!-- Row 4: Address & Notes (side by side with 4 lines each) -->
+                        <div class="row gx-1">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">{{ form.address.label }}</label>
+                                    <textarea name="{{ form.address.name }}" class="form-control" rows="2">{{ form.address.value|default:'' }}</textarea>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">{{ form.notes.label }}</label>
+                                    <textarea name="{{ form.notes.name }}" class="form-control" rows="2">{{ form.notes.value|default:'' }}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Column - Documents -->
+                    <div class="col-lg-5 col-md-6 ps-2">
+                        <div class="card border-0 bg-light h-100">
+                            <div class="card-body p-2 d-flex flex-column">
+                                <!-- Image Upload Section -->
+                                <div class="row gx-1 mb-2 flex-grow-1">
+                                    <!-- Photo -->
+                                    <div class="col-4 d-flex flex-column">
+                                        <label class="small text-muted text-center mb-1">Photo</label>
+                                        <div class="image-upload-container flex-grow-1 d-flex flex-column">
+                                            {% if form.instance.photo %}
+                                                <img src="{{ form.instance.photo.url }}" class="img-thumbnail w-100 mb-1" style="height:100px;object-fit:cover;">
+                                            {% else %}
+                                                <div class="bg-light d-flex justify-content-center align-items-center" style="height:100px;">
+                                                    <i class="fas fa-user-slash text-muted"></i>
+                                                </div>
+                                            {% endif %}
+                                            <label class="btn btn-sm btn-outline-primary w-100">
+                                                <input type="file" name="{{ form.photo.name }}" class="d-none" accept="image/*">
+                                                Upload
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- CNIC Front -->
+                                    <div class="col-4 d-flex flex-column">
+                                        <label class="small text-muted text-center mb-1">CNIC Front</label>
+                                        <div class="image-upload-container flex-grow-1 d-flex flex-column">
+                                            {% if form.instance.cnic_front %}
+                                                <img src="{{ form.instance.cnic_front.url }}" class="img-thumbnail w-100 mb-1" style="height:100px;object-fit:cover;">
+                                            {% else %}
+                                                <div class="bg-light d-flex justify-content-center align-items-center" style="height:100px;">
+                                                    <i class="fas fa-id-card text-muted"></i>
+                                                </div>
+                                            {% endif %}
+                                            <label class="btn btn-sm btn-outline-primary w-100">
+                                                <input type="file" name="{{ form.cnic_front.name }}" class="d-none" accept="image/*">
+                                                Upload
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- CNIC Back -->
+                                    <div class="col-4 d-flex flex-column">
+                                        <label class="small text-muted text-center mb-1">CNIC Back</label>
+                                        <div class="image-upload-container flex-grow-1 d-flex flex-column">
+                                            {% if form.instance.cnic_back %}
+                                                <img src="{{ form.instance.cnic_back.url }}" class="img-thumbnail w-100 mb-1" style="height:100px;object-fit:cover;">
+                                            {% else %}
+                                                <div class="bg-light d-flex justify-content-center align-items-center" style="height:100px;">
+                                                    <i class="fas fa-id-card text-muted"></i>
+                                                </div>
+                                            {% endif %}
+                                            <label class="btn btn-sm btn-outline-primary w-100">
+                                                <input type="file" name="{{ form.cnic_back.name }}" class="d-none" accept="image/*">
+                                                Upload
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Status Section -->
+                                <div class="row gx-1 mt-auto">
+                                    <div class="col-12">
+                                        {{ form.is_active|as_crispy_field }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Compact form styling */
+    .form-control, .form-select, .form-control-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+        height: calc(1.8em + 0.5rem + 2px);
+    }
+    .form-group {
+        margin-bottom: 0.4rem;
+    }
+    .card {
+        font-size: 0.85rem;
+    }
+    .form-label {
+        margin-bottom: 0.1rem;
+        font-size: 0.75rem;
+    }
+    
+    /* Image upload styling */
+    .image-upload-container {
+        min-height: 120px;
+    }
+    .img-thumbnail {
+        padding: 0.1rem;
+        background-color: #fff;
+    }
+    
+    /* Textarea styling */
+    textarea.form-control {
+        min-height: calc(4 * (1.8em + 0.5rem + 2px));
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .pe-2, .ps-2 {
+            padding-right: 0.5rem !important;
+            padding-left: 0.5rem !important;
+        }
+    }
+   
+  .grid-tight .row { --bs-gutter-x: .5rem; --bs-gutter-y: .4rem; }
+  .form-label { margin-bottom: .15rem; font-size: .8rem; }
+  .card, .border { border-radius: .6rem; }
+  .p-2-compact { padding: .5rem !important; }
+  .control-sm .form-control, .control-sm .form-select {
+    padding: .3rem .5rem; font-size: .85rem; height: calc(1.8em + .6rem + 2px);
+  }
+  .section-title { font-weight: 600; font-size: .9rem; color: #6c757d; margin-bottom: .25rem; }
+  textarea.form-control { min-height: unset; }
+</style>
+
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle image preview when files are selected
+    document.querySelectorAll('input[type="file"]').forEach(function(input) {
+        input.addEventListener('change', function(e) {
+            const container = e.target.closest('.image-upload-container');
+            const preview = container.querySelector('img');
+            const placeholder = container.querySelector('.bg-light');
+            
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    if (preview) {
+                        preview.src = event.target.result;
+                    } else if (placeholder) {
+                        placeholder.innerHTML = `<img src="${event.target.result}" class="img-thumbnail w-100" style="height:100px;object-fit:cover;">`;
+                    }
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

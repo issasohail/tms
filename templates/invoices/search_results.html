@@ -1,0 +1,15 @@
+<h1>Invoices containing "{{ search_term }}" in items</h1>
+<ul>
+  {% for invoice in invoices %}
+    <li>
+      {{ invoice.invoice_number }} ({{ invoice.lease.id }})
+      <ul>
+        {% for item in invoice.items.all %}
+          <li>{{ item.description }} - ${{ item.amount }}</li>
+        {% endfor %}
+      </ul>
+    </li>
+  {% empty %}
+    <li>No invoices found.</li>
+  {% endfor %}
+</ul>

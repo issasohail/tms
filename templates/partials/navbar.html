@@ -1,0 +1,152 @@
+{% load static %}
+
+<nav class="navbar bg-dark text-white no-print" style="position:sticky;top:0;z-index:1030;">
+  <div class="container">
+
+    <!-- ===== MOBILE (≤767.98px) ===== -->
+    <div class="nav-mobile">
+      <!-- Left: Logo + TMS -->
+      <a class="brand d-inline-flex align-items-center text-decoration-none" href="{% url 'dashboard:home' %}">
+        <img src="{% static 'images/logo.png' %}" alt="Logo" width="20" height="20" />
+        <span class="ms-1 fw-semibold">TMS</span>
+      </a>
+
+      <!-- Center: single-line links (scrollable) -->
+      <ul class="nav-center list-unstyled mb-0">
+        <li><a class="mlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>
+        <li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>
+        <li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>
+        <li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
+        <li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>
+      </ul>
+
+      <!-- Right: + dropdown (mobile only) + Logout icon -->
+      <div class="right-actions">
+        <div class="dropdown">
+          <button class="btn btn-primary btn-sm px-2 py-0" id="mobQuickAdd" data-bs-toggle="dropdown" aria-expanded="false">+</button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="mobQuickAdd">
+            <li><a class="dropdown-item" href="{% url 'payments:payment_create' %}">Add Payment</a></li>
+            <li><a class="dropdown-item" href="{% url 'leases:lease_create' %}">Add Lease</a></li>
+            <li><a class="dropdown-item" href="{% url 'invoices:invoice_create' %}">Add Invoice</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{% url 'properties:property_list' %}">Properties</a></li>
+            <li><a class="dropdown-item" href="{% url 'properties:unit_list' %}">Units</a></li>
+            <li><a class="dropdown-item" href="{% url 'expenses:expense_list' %}">Expenses</a></li>
+            <li><a class="dropdown-item" href="{% url 'utilities:utility_list' %}">Utilitys</a></li>
+            <li><a class="dropdown-item" href="{% url 'reports:report_list' %}">Reports</a></li>
+            <li><a class="dropdown-item" href="{% url 'core:settings' %}">Settings</a></li>
+          </ul>
+        </div>
+
+        {% if user.is_authenticated %}
+          <!-- Logout icon (SVG), no text -->
+          <a href="{% url 'logout' %}" class="icon-btn" aria-label="Logout" title="Logout">
+            <!-- Lucide "log-out" style -->
+            <svg width="18" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <path d="M16 17l5-5-5-5"/>
+              <path d="M21 12H9"/>
+            </svg>
+          </a>
+        {% else %}
+          <a href="{% url 'login' %}" class="icon-btn" aria-label="Login" title="Login">
+            <!-- "log-in" style -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+              <path d="M10 17l5-5-5-5"/>
+              <path d="M15 12H3"/>
+            </svg>
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ===== DESKTOP / md+ ===== -->
+    <div class="nav-desktop">
+      <a class="d-flex align-items-center text-decoration-none" href="{% url 'dashboard:home' %}">
+        <img src="{% static 'images/logo.png' %}" alt="Logo" width="28" height="28">
+        <span class="ms-2 text-white fw-semibold" style="font-size:1rem;">TMS</span>
+      </a>
+
+      <ul class="d-flex gap-2 mb-0 list-unstyled">
+        <li><a class="dlink" href="{% url 'properties:property_list' %}">Properties</a></li>
+        <li><a class="dlink" href="{% url 'properties:unit_list' %}">Units</a></li>
+        <li><a class="dlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>
+        <li><a class="dlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>
+        <li><a class="dlink" href="{% url 'leases:lease_list' %}">Leases</a></li>
+        <li><a class="dlink" href="{% url 'expenses:expense_list' %}">Expenses</a></li>
+        <li><a class="dlink" href="{% url 'utilities:utility_list' %}">Utilities</a></li>
+        <li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
+        <li><a class="dlink" href="{% url 'reports:report_list' %}">Reports</a></li>
+        <li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>
+        <li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>
+        <!-- Fast data entry -->
+        <li><a class="dlink fw-bold text-success" href="{% url 'payments:payment_create' %}">+ Payment</a></li>
+        <li><a class="dlink fw-bold text-success" href="{% url 'leases:lease_create' %}">+ Lease</a></li>
+        <li><a class="dlink fw-bold text-success" href="{% url 'invoices:invoice_create' %}">+ Invoice</a></li>
+      </ul>
+
+      <div class="d-flex align-items-center gap-2">
+        {% if user.is_authenticated %}
+          <a href="{% url 'logout' %}" class="btn btn-sm btn-light">Logout</a>
+        {% else %}
+          <a href="{% url 'login' %}" class="btn btn-sm btn-light">Login</a>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+<style>
+/* Keep navbar content aligned with your page width */
+.navbar .container { padding-left:.75rem; padding-right:.75rem; }
+
+/* --- Prevent “double navbar” regardless of Bootstrap helpers --- */
+.nav-mobile{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.25rem; }
+.nav-desktop{ display:none; }
+@media (min-width:768px){
+  .nav-mobile{ display:none !important; }
+  .nav-desktop{ display:flex !important; width:100%; align-items:center; justify-content:space-between; }
+}
+
+/* MOBILE center links: one line, scroll horizontally; ensure last item visible */
+.nav-center{
+  display:flex; gap: 0rem; margin:0; padding:0 0rem 0 0;  /* small right padding */
+  white-space:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+  padding-inline-end:54px;            /* extra space so “Smart Meter” isn’t hidden under right actions */
+  scroll-padding-inline-end:54px;     /* improves snap/hint on some browsers */
+}
+.nav-center::-webkit-scrollbar{ height:0px; }
+.nav-center::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:3px; }
+.nav-center{ scrollbar-width:none; -ms-overflow-style:none; }
+.nav-center::-webkit-scrollbar{ display:none; }
+
+/* Make sure list items add no extra margin */
+.nav-center > li{ margin: 0; }
+
+/* Links themselves: reduce side padding a bit */
+.mlink{
+  padding: 0 .05rem;           /* was .25rem */
+  font-size: .55rem;           /* keep your size */
+  line-height: 1;
+}
+
+/* Mobile link style */
+.mlink{ display:block; padding:0 .25rem; font-size:.55rem; line-height:1; color:#fff; text-decoration:none; }
+.mlink:hover{ text-decoration:underline; }
+
+/* Right actions (mobile) never shrink */
+.right-actions{ display:flex; align-items:center; gap:.20rem; flex:0 0 auto; white-space:nowrap; }
+.icon-btn{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:16px;
+  border:1px solid rgba(255,255,255,.4); border-radius:.35rem; color:#fff; text-decoration:none; }
+#mobQuickAdd.btn{ padding-left: .3rem; padding-right: .3rem; } /* slimmer "+" button */
+
+/* Desktop links */
+@media (min-width:768px){
+  .dlink{ color:#fff; text-decoration:none; font-size:.95rem; padding:.25rem .35rem; }
+  .dlink:hover{ text-decoration:underline; }
+}
+</style>

@@ -1,0 +1,19 @@
+<div class="card">
+    <div class="card-header">
+        <h5>Recent Transactions</h5>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for expense in recent_expenses %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>{{ expense.date }}</strong> - {{ expense.property.property_name }}
+                    <br>
+                    <small>{{ expense.description|truncatechars:40 }}</small>
+                </div>
+                <span class="badge bg-primary rounded-pill">{{ expense.amount }}</span>
+            </li>
+        {% empty %}
+            <li class="list-group-item">No recent transactions.</li>
+        {% endfor %}
+    </ul>
+</div>

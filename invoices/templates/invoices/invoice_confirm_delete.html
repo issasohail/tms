@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Delete Invoice {{ object.invoice_number }}{% endblock %}
+
+{% block content %}
+<main class="container" style="max-width: 860px; margin: 2rem auto;">
+  <header style="margin-bottom: 1rem;">
+    <h1 style="margin: 0;">Delete invoice {{ object.invoice_number }}</h1>
+    <p style="margin: .25rem 0 0; color: #b00020; font-weight: 600;">
+      This will permanently delete this invoice <em>and all its line items</em>. This cannot be undone.
+    </p>
+  </header>
+
+  <section aria-labelledby="invoice-summary" style="border: 1px solid #eee; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+    <h2 id="invoice-summary" style="margin-top: 0;">Summary</h2>
+    <dl style="display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px; margin: 0;">
+      <dt>Invoice #</dt><dd>{{ object.invoice_number }}</dd>
+      <dt>Status</dt><dd>{{ object.get_status_display }}</dd>
+      <dt>Issue date</dt><dd>{{ object.issue_date }}</dd>
+      <dt>Due date</dt><dd>{{ object.due_date }}</dd>
+      <dt>Amount</dt><dd>{{ object.amount|floatformat:2|intcomma }}</dd>
+      {% if object.description %}
+        <dt>Description</dt><dd>{{ object.description }}</dd>
+      {% endif %}
+      {% if object.notes %}
+        <dt>Notes</dt><dd>{{ object.notes }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+
+  <section aria-labelledby="invoice-items" style="border: 1px solid #eee; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+    <h2 id="invoice-items" style="margin-top: 0;">Line items</h2>
+    {% with items=object.items.all %}
+      {% if items %}
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="text-align:left; border-bottom:1px solid #ddd; padding:8px;">Category</th>
+                <th style="text-align:left; border-bottom:1px solid #ddd; padding:8px;">Description</th>
+                <th style="text-align:right; border-bottom:1px solid #ddd; padding:8px;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in items %}
+                <tr>
+                  <td style="padding:8px; border-bottom:1px solid #f1f1f1;">{{ item.category.name }}</td>
+                  <td style="padding:8px; border-bottom:1px solid #f1f1f1;">{{ item.description }}</td>
+                  <td style="padding:8px; border-bottom:1px solid #f1f1f1; text-align:right;">
+                    {{ item.amount|floatformat:2|intcomma }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="2" style="padding:8px; text-align:right;">Total</th>
+                <th style="padding:8px; text-align:right;">{{ object.amount|floatformat:2|intcomma }}</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      {% else %}
+        <p>No line items.</p>
+      {% endif %}
+    {% endwith %}
+  </section>
+
+  <form method="post" style="display:flex; gap:.5rem; align-items:center;">
+    {% csrf_token %}
+    <button type="submit"
+            style="background:#b00020; color:white; border:none; padding:.6rem 1rem; border-radius:8px; cursor:pointer;">
+      Yes, delete invoice
+    </button>
+
+    {# Adjust this URL name to match your project if needed #}
+    <a href="{% url 'invoices:invoice_detail' object.pk %}"
+       style="text-decoration:none; border:1px solid #ccc; padding:.55rem 1rem; border-radius:8px;">
+      Cancel
+    </a>
+
+    <a href="javascript:history.back()" style="margin-left:auto; font-size:.95rem;">Go back</a>
+  </form>
+
+  <p style="margin-top: 1rem; color: #555; font-size: .95rem;">
+    Note: Deleting the invoice will also remove its related items due to cascade delete on line items.
+  </p>
+</main>
+{% endblock %}

@@ -1,0 +1,44 @@
+{# templates/leases/photo_viewer.html #}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Photo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{background:#111;color:#eee;margin:0}
+    .wrap{padding:12px}
+    .viewer{display:flex;gap:12px}
+    .main{flex:1;min-width:0}
+    .thumbs{width:92px}
+    .imgbox{text-align:center}
+    .imgbox img{max-width:100%;height:auto;border-radius:6px}
+    .tip{position:fixed;left:24px;bottom:16px;background:rgba(0,0,0,.7);
+         color:#fff;padding:6px 10px;border-radius:6px;font-size:.9rem}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="viewer">
+      <div class="main">
+        <div class="imgbox">
+          <img src="{{ p.image.url }}" alt="">
+        </div>
+      </div>
+      <div class="thumbs">
+        {% for x in p.lease.photos.all %}
+          <a href="{% url 'leases:photo_viewer' x.pk %}">
+            <img src="{{ x.thumbnail.url|default:x.image.url }}" style="width:92px;height:auto;border-radius:8px;margin-bottom:6px;opacity:{% if x.pk == p.pk %}1{% else %}.65{% endif %}">
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="tip">
+    <div><strong>{{ p.title|default:"Photo" }}</strong></div>
+    {% if p.description %}<div>{{ p.description }}</div>{% endif %}
+    {% if p.taken_at %}<div class="text-muted">{{ p.taken_at|date:"Y-m-d H:i" }}</div>{% endif %}
+  </div>
+</body>
+</html>

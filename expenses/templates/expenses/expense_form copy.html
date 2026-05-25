@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags humanize %}
+
+{% block content %}
+<div class="row g-3">
+  <!-- LEFT: Create/Update form -->
+  <div class="col-12 col-md-6">
+    <div class="card mb-3">
+      <div class="card-header py-2">
+        <h5 class="m-0">{% if form.instance.pk %}Update{% else %}Create{% endif %} Expense</h5>
+      </div>
+      <div class="card-body">
+        <form id="expense-form" method="post" enctype="multipart/form-data"
+              hx-post="." hx-target="#recent-wrap" hx-swap="none">
+          {% csrf_token %}
+
+          {# Row 1: Property + Unit (same line on all screens; scrolls horizontally if too narrow) #}
+          <div class="d-flex flex-nowrap gap-2 overflow-auto pb-2">
+            <div class="flex-fill" style="min-width:220px;">
+              {{ form.property|as_crispy_field }}
+            </div>
+            <div class="flex-fill" style="min-width:180px;">
+                <select id="id_unit_inline" name="unit" class="form-select">
+                    <option value="">All Unit</option>
+                </select>
+            </div>
+            <div class="flex-fill" style="min-width:180px;">
+              <select id="id_unit_inline" name="unit" class="form-select">
+                <option value="">All Unit</option>
+              </select>
+            </div>
+          </div>
+
+          {# Row 2: Category + Amount + Date (same line on all screens) #}
+          <div class="d-flex flex-nowrap gap-2 overflow-auto pb-2">
+            <div class="flex-fill" style="min-width:180px;">
+              {{ form.category|as_crispy_field }}
+            </div>
+            <div class="flex-fill" style="min-width:170px;">
+              <div class="input-group">
+                <span class="input-group-text">Rs</span>
+                <input type="text" id="id_amount_display" class="form-control text-end" inputmode="decimal" placeholder="0.00">
+              </div>
+              <input type="hidden" id="id_amount_hidden" name="amount" value="{{ form.instance.amount|default:'' }}">
+            </div>
+            <div class="flex-fill" style="min-width:160px;">
+              {{ form.date|as_crispy_field }}
+            </div>
+          </div>
+
+          {# Description full width #}
+          <div class="mb-3">
+            {{ form.description|as_crispy_field }}
+          </div>
+
+          {# Add Receipts — button creates multiple inputs, camera on phones #}
+          <div class="mb-2 d-flex justify-content-between align-items-center">
+            <div class="form-label m-0">Receipts</div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-add-receipt">+ Add Receipt</button>
+          </div>
+          <div id="new-receipts-grid" class="receipt-grid mb-3"></div>
+          <div id="receipt-inputs" class="d-none"></div>
+
+          {% if form.instance.pk %}
+            {# Existing receipts grid (2 thumbs per row), with Replace/Delete #}
+            <div id="existing-receipts">
+              {% include 'expenses/partials/receipt_grid.html' with expense=form.instance %}
+            </div>
+          {% endif %}
+
+          <div class="d-grid d-sm-flex gap-2 mt-3">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a href="{% url 'expenses:expense_list' %}" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Recent Transactions (full table; no partial; client can change count) -->
+  <div class="col-12 col-md-6" id="recent-wrap">
+    <div class="card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h6 class="m-0">Recent Transactions</h6>
+        <div class="d-inline-flex align-items-center gap-2">
+          <label for="recent-count" class="form-label m-0 small">Show</label>
+          <select id="recent-count" class="form-select form-select-sm" style="width:auto;">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle m-0" id="recent-table">
+            <thead class="table-light">
+              <tr>
+                <th class="text-nowrap">Date</th>
+                <th class="text-nowrap">Property</th>
+                <th class="text-nowrap">Unit</th>
+                <th class="text-nowrap">Category</th>
+                <th>Description</th>
+                <th class="text-end text-nowrap">Amount (Rs)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in recent_expenses %}
+              <tr data-index="{{ forloop.counter0 }}">
+                <td class="text-nowrap">{{ e.date }}</td>
+                <td class="text-nowrap">{{ e.property.property_name }}</td>
+                <td class="text-nowrap">
+                  {% if e.unit %}
+                    {{ e.unit.unit_number }}
+                  {% elif e.distributions.all|length and e.distributions.all|length == e.property.unit_set.all|length %}
+                    All Unit
+                  {% elif e.distributions.all|length == 1 %}
+                    {{ e.distributions.first.unit.unit_number }}
+                  {% elif e.distributions.all|length > 1 %}
+                    Multiple
+                  {% else %} — {% endif %}
+                </td>
+                <td class="text-nowrap">{{ e.category.name|default:"(Uncategorized)" }}</td>
+                <td class="text-truncate" style="max-width:240px;">{{ e.description }}</td>
+                <td class="text-end">Rs {{ e.amount|floatformat:2|intcomma }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="6" class="text-center text-muted py-3">No recent expenses.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- jQuery (for Select2 if you keep it) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
+
+<script>
+(function(){
+  // ------- Property -> Unit cascade -------
+  const unitsByProp = {{ units_by_property_json|safe }};
+  const propSel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit_inline');
+  function populateUnits(){
+    if(!propSel || !unitSel) return;
+    unitSel.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = ''; optAll.textContent = 'All Unit';
+    unitSel.appendChild(optAll);
+    const pid = propSel.value;
+    (unitsByProp[pid] || []).forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.id; o.textContent = u.label;
+      unitSel.appendChild(o);
+    });
+    // keep selection when editing
+    const initialUnit = '{{ form.instance.unit_id|default_if_none:"" }}';
+    if (initialUnit) unitSel.value = initialUnit;
+  }
+  propSel?.addEventListener('change', populateUnits);
+  populateUnits();
+
+  // ------- Amount: Rs + comma formatting (keep clean value in hidden) -------
+  const display = document.getElementById('id_amount_display');
+  const hidden  = document.getElementById('id_amount_hidden');
+  function clean(s){ return (s||'').toString().replace(/[,\sRs]/gi,''); }
+  function format(n){ return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function initAmount(){
+    const v = hidden.value || '{{ form.initial.amount|default:"" }}';
+    if(!v) return;
+    const n = parseFloat(v);
+    if(!isNaN(n)){ display.value = format(n); hidden.value = n.toFixed(2); }
+  }
+  display.addEventListener('blur', ()=>{
+    const n = parseFloat(clean(display.value));
+    if(!isNaN(n)){ hidden.value = n.toFixed(2); display.value = format(n); }
+  });
+  document.getElementById('expense-form').addEventListener('submit', ()=>{
+    const n = parseFloat(clean(display.value));
+    if(!isNaN(n)) hidden.value = n.toFixed(2);
+  });
+  initAmount();
+
+  // ------- Add Receipt: multiple file inputs; camera on phones -------
+  const addBtn = document.getElementById('btn-add-receipt');
+  const inputsWrap = document.getElementById('receipt-inputs');
+  const grid = document.getElementById('new-receipts-grid');
+
+  function addReceiptInput(){
+    const wrap = document.createElement('div');
+    wrap.className = 'd-none';
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.name = 'receipts';
+    input.accept = 'image/*';
+    input.setAttribute('capture','environment');  // <-- opens camera on small screens
+    input.addEventListener('change', ()=>{
+      if(input.files && input.files[0]){
+        const reader = new FileReader();
+        reader.onload = (e)=>{
+          const card = document.createElement('div');
+          card.className = 'receipt-card';
+          card.innerHTML = `
+            <div class="thumb"><img src="${e.target.result}" alt="preview"/></div>
+            <div class="mt-1 d-flex justify-content-between">
+              <small class="text-muted">New</small>
+              <button type="button" class="btn btn-sm btn-danger">Remove</button>
+            </div>`;
+          card.querySelector('button').onclick = ()=>{ grid.removeChild(card); inputsWrap.removeChild(wrap); };
+          grid.appendChild(card);
+        };
+        reader.readAsDataURL(input.files[0]);
+      }
+    });
+    wrap.appendChild(input);
+    inputsWrap.appendChild(wrap);
+    input.click();
+  }
+  addBtn?.addEventListener('click', addReceiptInput);
+
+  // ------- Recent table: let user change visible count (no server call) -------
+  const countSel = document.getElementById('recent-count');
+  const tbody = document.querySelector('#recent-table tbody');
+  function applyCount(){
+    const n = parseInt(countSel.value || '10', 10);
+    tbody.querySelectorAll('tr').forEach((tr, i)=> tr.style.display = (i < n ? '' : 'none'));
+  }
+  applyCount();
+  countSel.addEventListener('change', applyCount);
+})();
+</script>
+
+<style>
+/* keep row groups as single-line even on phones; allow horizontal scroll instead of wrapping */
+.d-flex.flex-nowrap { scrollbar-width: thin; }
+
+/* Receipts: two thumbnails per row (both screen sizes) */
+.receipt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+.receipt-card .thumb { width: 100%; aspect-ratio: 1/1; overflow: hidden; border: 1px solid #dee2e6; border-radius: .5rem; }
+.receipt-card img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Small-screen polish (≥360px) */
+@media (max-width: 400px){
+  .card-header h5 { font-size: 1rem; }
+  .form-control, .form-select { font-size: .9rem; }
+  .input-group-text { padding: .25rem .5rem; }
+}
+</style>
+{% endblock %}
+<script>
+// 1) Make Select2 behave well with Tab
+$(function () {
+  // init (keep whatever options you already have)
+  $('#id_category').select2({ width: '100%', selectOnClose: true });
+
+  // When Tab is pressed and a Select2 is open, close it so focus can move on
+  $(document).on('keydown', function (e) {
+    if (e.key === 'Tab' && $('.select2-container--open').length) {
+      // Close all open select2s (safe even if only one)
+      $('.select2-hidden-accessible').each(function () {
+        try { $(this).select2('close'); } catch (_){}
+      });
+      // Do NOT preventDefault — let the browser move focus naturally
+    }
+  });
+
+  // Also if the select2 search box has focus, let Tab move on
+  $(document).on('keydown', '.select2-search__field, .select2-selection', function (e) {
+    if (e.key === 'Tab') {
+      // Close and let focus continue
+      const $sel = $(this).closest('.select2-container').prev('.select2-hidden-accessible');
+      try { $sel.select2('close'); } catch (_){}
+      // Do not e.preventDefault()
+    }
+  });
+});
+</script>
+<script>
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Tab') {
+    // Close open Select2 dropdowns so Tab can move focus
+    const open = document.querySelector('.select2-container--open');
+    if (open) {
+      const sel = open.previousElementSibling; // hidden <select>
+      if (sel && $(sel).select2) { try { $(sel).select2('close'); } catch(e){} }
+      // don't preventDefault—let Tab proceed
+    }
+  }
+});
+</script>

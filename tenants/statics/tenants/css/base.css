@@ -1,0 +1,27 @@
+/* Ensure table cells have consistent height */
+.table td {
+    vertical-align: middle !important;
+}
+
+/* Make action buttons full width in their column */
+.btn-group-vertical {
+    width: 100%;
+}
+
+/* Light styling for empty cells */
+.table td.empty {
+    color: #999;
+    font-style: italic;
+}
+
+/* Rotate buttons for images */
+.btn-rotate {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}
+
+/* Compact table */
+.table-sm td,
+.table-sm th {
+    padding: 0.3rem;
+}

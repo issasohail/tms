@@ -1,0 +1,876 @@
+{% extends "base.html" %}
+{% load static humanize %}
+
+{% block title %}Invoice #{{ invoice.invoice_number }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 no-print">
+  <div class="top-actions mb-3">
+    <div class="back-wrap">
+      <a href="{% url 'invoices:invoice_list' %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Go Back
+      </a>
+    </div>
+
+    <div class="btn-wrap">
+      <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-plus me-1"></i> Add New Invoice
+      </a>
+
+      <a href="{% url 'invoices:invoice_update' invoice.pk %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-edit me-1"></i> Edit
+      </a>
+
+      <a href="{% url 'invoices:invoice_delete' invoice.pk %}" class="btn btn-danger btn-sm">
+        <i class="fas fa-trash-alt me-1"></i> Delete
+      </a>
+
+      <button onclick="window.print()" class="btn btn-primary btn-sm">
+        <i class="fas fa-print me-1"></i> Print
+      </button>
+
+      <button onclick="sendEmail()" class="btn btn-info btn-sm">
+        <i class="fas fa-envelope me-1"></i> Email
+      </button>
+
+      <button onclick="sendSMS()" class="btn btn-warning btn-sm">
+        <i class="fas fa-sms me-1"></i> SMS
+      </button>
+
+      <button
+        class="btn btn-success btn-sm action-btn"
+        onclick="sendWhatsAppSingleInvoice('{{ invoice.lease.tenant.phone|default:''|escapejs }}')">
+        <i class="fab fa-whatsapp me-1"></i> Send WhatsApp
+      </button>
+
+      {% if invoice.status != 'paid' %}
+      <a href="{% url 'payments:payment_create' %}?invoice={{ invoice.id }}" class="btn btn-danger btn-sm">
+        <i class="fas fa-money-bill-wave me-1"></i> Pay
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+
+<!-- Printable Invoice Content -->
+<div class="container printable-content">
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-md-6">
+            <div class="card border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <div>
+                            <h3 class="mb-1">INVOICE</h3>
+                            <p class="mb-0 text-muted">#{{ invoice.invoice_number }}</p>
+                        </div>
+                        <div class="text-end">
+                            <p class="mb-1"><strong>Date:</strong> {{ invoice.issue_date|date:"M d, Y" }}</p>
+                            <p class="mb-0"><strong>Due:</strong> {{ invoice.due_date|date:"M d, Y" }}</p>
+                        </div>
+                    </div>
+
+                    <div class="border p-2 mb-3 small">
+                        <div class="row">
+                           
+                             <!-- LEFT: To -->
+                            <div class="col-12 col-md-6">
+                                <p class="mb-1"><strong>To:</strong></p>
+                                <p class="mb-1">{{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }}-{{ invoice.lease.tenant.phone}}
+                                <p class="mb-0">{{ invoice.lease.unit.unit_number }}, {{ invoice.lease.unit.property.property_name }}</p>
+                                
+                            </div>
+                            <!-- RIGHT: Lease Balance + Status -->
+                            <div class="col-12 col-md-6">
+                                <p class="mb-1"><strong>Lease Balance:</strong></p>
+                                <p class="mb-1">Rs.{{ invoice.lease.get_balance|floatformat:2|intcomma }}</p>
+                                <p class="mb-0"><strong>Invoice Status:-</strong> <span class="badge bg-{% if invoice.status == 'paid' %}success{% elif invoice.status == 'overdue' %}danger{% else %}warning{% endif %}">
+                                    {{ invoice.get_status_display }}
+                                    </span>
+                                </p>
+
+
+                            </div>
+                            <!-- FULL-WIDTH: Description spans both columns -->
+                            <div class="col-12">
+                              <p class="mb-0 small text-muted">
+                                <strong>Description:</strong>
+                                <span id="invoiceCombinedDescription">{{ combined_description|default:"—" }}</span>
+                              </p>
+                            </div>
+                            
+            
+                            
+                        </div>
+                    </div>
+
+                    <!-- Left Column Items -->
+                    <div class="table-responsive">
+                      <table class="table table-sm" id="itemsTable">
+                          <thead>
+                            <tr class="table-light">
+                              <th class="text-start" style="width:8%">S.n</th>
+                              <th class="text-start">Category</th>
+                              <th class="text-start">Description</th>
+                              <th class="text-end" style="width:16%">Amount</th>
+                              <th style="width:10%"></th> <!-- actions -->
+                              </tr>
+                          </thead>
+                          <tbody>
+                            {% for item in invoice.items.all %}
+                            <tr data-item-id="{{ item.id }}" data-update-url="{% url 'invoices:item_inline_update' item.id %}">
+                                <td class="text-muted">{{ forloop.counter }}</td>
+
+                                <!-- Category (view + input) -->
+                                <td>
+                                    <input class="form-control form-control-sm d-none category-edit"
+                                        list="categoryOptions"
+                                        value="{{ item.category.name|default:item.category|default:'' }}"
+                                        maxlength="80">
+                                <span class="cell-view category-view">{{ item.category.name|default:item.category|default:"—" }}</span>
+                                <input class="form-control form-control-sm d-none category-edit"
+                                        value="{{ item.category.name|default:item.category|default:'' }}"
+                                        maxlength="80">
+                                </td>
+
+                                <!-- Description (view + input) -->
+                                <td>
+                                <span class="cell-view description-view">{{ item.description|default:"" }}</span>
+                                <input class="form-control form-control-sm d-none description-edit"
+                                        value="{{ item.description|default:'' }}">
+                                </td>
+
+                                <!-- Amount (view + input) -->
+                                <td class="text-end">
+                                <span class="cell-view amount-view">Rs.{{ item.amount|floatformat:2 }}</span>
+                                <input type="number" step="0.01"
+                                        class="form-control form-control-sm d-none amount-edit text-end"
+                                        value="{{ item.amount|floatformat:2 }}">
+                                </td>
+
+                                <!-- Actions (link-style buttons keep width tiny) -->
+                                <td class="text-end">
+                                <button type="button" class="btn btn-link p-0 btn-edit-item">Edit</button>
+                                <button type="button" class="btn btn-link p-0 d-none btn-save-item">Save</button>
+                                <button type="button" class="btn btn-link p-0 text-secondary d-none btn-cancel-item">Cancel</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            <datalist id="categoryOptions">
+                                {% for c in categories %}
+                                    <option value="{{ c.name }}" data-id="{{ c.id }}"></option>
+                                {% endfor %}
+                                </datalist>
+                                                      <div class="row">
+                            <div class="col-6 text-end">
+                                
+
+                          </tbody>
+                          
+                        </div>
+                      </table>
+
+                    
+               </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-md-12">
+            <div class="card border-0">
+                <div class="card-body">
+                    
+
+                    <!-- Totals -->
+                    <div class="row align-items-center">
+                      <div class="col-12 col-md-6 text-md-start text-end">
+                        <p class="mb-0"><strong>Total:</strong>Rs.{{ computed_total|floatformat:2 }}</p>
+                      </div>
+                      <div class="col-12 col-md-6 text-end">
+                        <p class="mb-0 fw-bold" id="totalValue">Rs.{{ computed_total|floatformat:2 }}</p>
+                      </div>
+                    </div>
+
+                    <!-- Payment Instructions -->
+                    <div class="alert alert-light p-2 mt-3 small">
+                        <p class="mb-1"><strong>Payment Methods:</strong></p>
+                        <p class="mb-1">• Bank Transfer (Account: 123456789)</p>
+                        <p class="mb-0">• Cash (Office Hours: 9AM-5PM)</p>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="text-center p-2  mt-3 small text-muted">
+                        <p class="mb-0">Thank you for your business!</p>
+                        <p class="mb-1"><strong>Payment Methods:</strong></p>
+                        <p class="mb-1">• Bank Transfer (Account:xxxxxxxxx )</p>
+                        <p class="mb-0">• Cash </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<form id="csrf-form" style="display:none">{% csrf_token %}</form>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ---------- Quick knobs you can tweak ---------- */
+  :root{
+    --base-font-size: .88rem;   /* change me to adjust overall font size */
+    --cell-pad: .25rem;         /* table cell padding */
+    --card-pad: .5rem;          /* card padding on small screens */
+    --btn-pad-y: .25rem;        /* btn vertical padding */
+    --btn-pad-x: .45rem;        /* btn horizontal padding */
+    --gap: .4rem;               /* gaps between buttons/chunks */
+  }
+
+  /* Global sizing */
+  body, .printable-content, .no-print {
+    font-size: var(--base-font-size);
+  }
+  .card .card-body { padding: var(--card-pad); }
+  .table { table-layout: fixed; width:100%; }
+  .table th, .table td { padding: var(--cell-pad) var(--cell-pad); white-space: normal; word-wrap: break-word; }
+
+  /* Make the top area wrap cleanly */
+  .top-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--gap);
+  }
+  .top-actions .btn-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap);
+    justify-content: flex-end;
+  }
+  .top-actions .btn { padding: var(--btn-pad-y) var(--btn-pad-x); font-size: calc(var(--base-font-size) + .02rem); }
+
+  /* Ensure items table behaves on tiny screens */
+  #itemsTable th:nth-child(1){ width: 8%; }
+  #itemsTable th:nth-child(4){ width: 16%; text-align:right; }
+  #itemsTable th:nth-child(5){ width: 10%; }
+
+  /* Fit better up to 700px */
+  @media (max-width: 700px){
+    .container { padding-left: .5rem; padding-right: .5rem; }
+    .top-actions { gap: .35rem; }
+    .top-actions .btn { padding: calc(var(--btn-pad-y) - .05rem) calc(var(--btn-pad-x) - .1rem); }
+  }
+
+  /* Two-line buttons @ <= 360px: make buttons take 50% width */
+  @media (max-width: 360px){
+    --base-font-size: .58rem;
+    .top-actions .back-wrap { width: 100%; }            /* back button full width on row 1 */
+    .top-actions .btn-wrap { width: 100%; }             /* other buttons on row 2 */
+    .top-actions .btn-wrap .btn { flex: 1 1 calc(50% - var(--gap)); }
+    .top-actions .btn-wrap .btn i { margin-right: .25rem; }
+  }
+
+  /* Print adjustments kept small and clean */
+  @media print {
+    .no-print { display: none !important; }
+    body { padding: 10px !important; font-size: var(--base-font-size) !important; }
+    .card { border: none !important; box-shadow: none !important; }
+    .table { page-break-inside: avoid; }
+  }
+</style>
+
+<style>
+  :root{
+    --base-font-size: .88rem;
+    --cell-pad: .25rem;
+    --card-pad: .5rem;
+    --btn-pad-y: .25rem;
+    --btn-pad-x: .45rem;
+    --gap: .4rem;
+  }
+
+  body, .printable-content, .no-print { font-size: var(--base-font-size); }
+  .card .card-body { padding: var(--card-pad); }
+
+  .table { table-layout: fixed; width:100%; }
+  .table th, .table td {
+    padding: var(--cell-pad) var(--cell-pad);
+    white-space: normal;           /* allow wrapping by default */
+    word-wrap: break-word;
+  }
+
+  /* Amount column: never wrap (keeps “Rs.1,234.00” on a single line) */
+  #itemsTable .amount-col,
+  #itemsTable .amount-view,
+  #itemsTable .amount-edit {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Default column widths */
+  #itemsTable th:nth-child(1){ width: 8%; }
+  #itemsTable th:nth-child(4){ width: 16%; text-align:right; }
+  #itemsTable th:nth-child(5){ width: 10%; }
+
+  /* Top bar */
+  .top-actions {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: var(--gap);
+  }
+  .top-actions .btn-wrap {
+    display: flex; flex-wrap: wrap; gap: var(--gap); justify-content: flex-end;
+  }
+  .top-actions .btn { padding: var(--btn-pad-y) var(--btn-pad-x); font-size: calc(var(--base-font-size) + .02rem); }
+
+  /* <= 700px: slight tightening */
+  @media (max-width: 700px){
+    .container { padding-left: .5rem; padding-right: .5rem; }
+    .top-actions { gap: .35rem; }
+    .top-actions .btn { padding: calc(var(--btn-pad-y) - .05rem) calc(var(--btn-pad-x) - .1rem); }
+  }
+
+  /* <= 360px: requested .58rem font + 2-column button wrap */
+  @media (max-width: 360px){
+    :root{ --base-font-size: .58rem; }
+    .top-actions .back-wrap { width: 100%; }
+    .top-actions .btn-wrap { width: 100%; }
+    .top-actions .btn-wrap .btn { flex: 1 1 calc(50% - var(--gap)); }
+    .top-actions .btn-wrap .btn i { margin-right: .25rem; }
+    /* relax fixed width on amount column slightly so it fits */
+    #itemsTable th:nth-child(4){ width: 20%; }
+  }
+
+  /* Print */
+  @media print {
+    .no-print { display: none !important; }
+    body { padding: 10px !important; font-size: var(--base-font-size) !important; }
+    .card { border: none !important; box-shadow: none !important; }
+    .table { page-break-inside: avoid; }
+  }
+</style>
+{% endblock %}
+
+
+
+
+{% block extra_js %}
+<script>
+
+(function(){
+  function csrftoken() {
+    const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : '';
+  }
+  function fmtPKR(n) {
+    const v = Number(n || 0);
+    return 'Rs.' + v.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function ensureCategoryExistsByName(name) {
+    const opts = Array.from(document.querySelectorAll('#categoryOptions option'));
+    const found = opts.find(o => (o.value || '').toLowerCase() === name.toLowerCase());
+    if (found) return { id: found.getAttribute('data-id'), name: found.value };
+
+    if (!confirm(`Category "${name}" not found. Add it?`)) {
+      throw new Error('Category not added');
+    }
+    const res = await fetch("{% url 'invoices:category_create_ajax' %}", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': csrftoken()
+      },
+      body: new URLSearchParams({ name })
+    });
+    const data = await res.json();
+    // Add to the datalist for next time
+    const opt = document.createElement('option');
+    opt.value = data.name; opt.setAttribute('data-id', data.id);
+    document.getElementById('categoryOptions').appendChild(opt);
+    return { id: data.id, name: data.name };
+  }
+
+  const table = document.getElementById('itemsTable');
+  const totalEl = document.getElementById('totalValue');
+
+  async function saveRow(tr){
+    const url  = tr.getAttribute('data-update-url');
+    const name = tr.querySelector('.category-edit')?.value.trim() || '';
+    const desc = tr.querySelector('.description-edit')?.value.trim() || '';
+    const amt  = tr.querySelector('.amount-edit')?.value.trim() || '';
+
+    if(!name){ alert('Category is required.'); return; }
+    if(!amt || isNaN(parseFloat(amt))){ alert('Enter a valid amount.'); return; }
+
+    const cat = await ensureCategoryExistsByName(name);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json',
+        'X-CSRFToken': csrftoken(),
+        'X-Requested-With':'XMLHttpRequest'
+      },
+      body: JSON.stringify({ category_name: cat.name, description: desc, amount: amt })
+    });
+    const data = await res.json().catch(()=> ({}));
+    if(!res.ok || data.ok === false){ throw new Error(data.error || 'Save failed'); }
+
+    // Update row UI
+    tr.querySelector('.category-view').textContent    = data.category_name;
+    tr.querySelector('.description-view').textContent = data.description || '';
+    tr.querySelector('.amount-view').textContent      = fmtPKR(data.amount);
+
+    // Update total
+    if (totalEl && data.invoice_total !== undefined) {
+      totalEl.textContent = fmtPKR(data.invoice_total);
+    }
+
+    // Update the top combined description without reload
+    const parts = [];
+    document.querySelectorAll('#itemsTable tbody tr').forEach(r=>{
+      const c = r.querySelector('.category-view')?.textContent.trim();
+      const d = r.querySelector('.description-view')?.textContent.trim();
+      if (c && d) parts.push(`${c}: ${d}`);
+      else if (c) parts.push(c);
+      else if (d) parts.push(d);
+    });
+    const descEl = document.getElementById('invoiceCombinedDescription');
+    if (descEl) descEl.textContent = parts.join(', ');
+
+    // Exit edit
+    tr.querySelector('.btn-cancel-item')?.click();
+  }
+
+  function enterEdit(tr){
+    tr.querySelectorAll('.cell-view').forEach(el => el.classList.add('d-none'));
+    tr.querySelectorAll('.category-edit,.description-edit,.amount-edit').forEach(el => el.classList.remove('d-none'));
+    tr.querySelector('.btn-edit-item')?.classList.add('d-none');
+    tr.querySelector('.btn-save-item')?.classList.remove('d-none');
+    tr.querySelector('.btn-cancel-item')?.classList.remove('d-none');
+    tr.querySelector('.description-edit')?.focus();
+  }
+  function exitEdit(tr, reset=false){
+    if (reset) {
+      const name = tr.querySelector('.category-view')?.textContent.trim() || '';
+      const desc = tr.querySelector('.description-view')?.textContent.trim() || '';
+      const amt  = (tr.querySelector('.amount-view')?.textContent.replace(/[^\d.-]/g,'') || '').trim();
+      const ci = tr.querySelector('.category-edit'), di = tr.querySelector('.description-edit'), ai = tr.querySelector('.amount-edit');
+      if (ci) ci.value = name; if (di) di.value = desc; if (ai) ai.value = amt;
+    }
+    tr.querySelectorAll('.cell-view').forEach(el => el.classList.remove('d-none'));
+    tr.querySelectorAll('.category-edit,.description-edit,.amount-edit').forEach(el => el.classList.add('d-none'));
+    tr.querySelector('.btn-edit-item')?.classList.remove('d-none');
+    tr.querySelector('.btn-save-item')?.classList.add('d-none');
+    tr.querySelector('.btn-cancel-item')?.classList.add('d-none');
+  }
+
+  table.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const tr = btn.closest('tr');
+    try{
+      if(btn.classList.contains('btn-edit-item'))       enterEdit(tr);
+      else if(btn.classList.contains('btn-cancel-item')) exitEdit(tr, true);
+      else if(btn.classList.contains('btn-save-item'))   await saveRow(tr);
+    }catch(err){ alert(err.message || 'Error'); }
+  });
+})();
+
+// Email Functionality
+function sendEmail() {
+    const subject = `Invoice #{{ invoice.invoice_number }}`;
+    const body = `Dear {{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }},\n\n` +
+                 `Please find your invoice details below:\n\n` +
+                 `Invoice Number: {{ invoice.invoice_number }}\n` +
+                 `Amount: Rs.{{ invoice.amount|floatformat:2 }}\n` +
+                 `Due Date: {{ invoice.due_date|date:"M d, Y" }}\n` +
+                 `Lease Balance: Rs.{{ invoice.lease.get_balance|floatformat:2 }}\n` +
+                 `Property: {{ invoice.lease.unit.property.property_name }}\n` +
+                 `Unit: {{ invoice.lease.unit.unit_number }}\n\n` +
+                 `Thank you!`;
+    
+    window.location.href = `mailto:{{ invoice.lease.tenant.email}}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+// SMS Functionality
+function sendSMS() {
+    const phone = "{{ invoice.lease.tenant.phone|default:'' }}";
+    if (!phone) {
+        alert("No phone number available for this tenant");
+        return;
+    }
+    
+    const message = `Dear {{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }},\n\n` +
+                    `Invoice #{{ invoice.invoice_number }}\n` +
+                    `Amount: Rs.{{ invoice.amount|floatformat:2 }}\n` +
+                    `Due: {{ invoice.due_date|date:"M d, Y" }}\n` +
+                    `Lease Balance: Rs.{{ invoice.lease.get_balance|floatformat:2 }}\n` +
+                    `Property: {{ invoice.lease.unit.property.property_name }}\n` +
+                    `Unit: {{ invoice.lease.unit.unit_number }}\n\n` +
+                    `Please make payment by due date.`;
+    
+    // Try WhatsApp Web first, fall back to SMS
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.open(`sms:${phone}?body=${encodeURIComponent(message)}`, '_blank');
+    } else {
+        window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, '_blank');
+    }
+}
+
+// WhatsApp Functionality with PDF
+function sendWhatsApp() {
+    const phone = "{{ invoice.lease.tenant.phone|default:'' }}".replace(/[^\d]/g, '');
+    if (!phone) {
+        alert("No phone number available for this tenant");
+        return;
+    }
+    
+    const message = `Dear {{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }},\n\n` +
+                    `Please find your invoice details below:\n\n` +
+                    `*Invoice #{{ invoice.invoice_number }}*\n` +
+                    `Amount: Rs.{{ invoice.amount|floatformat:2 }}\n` +
+                    `Due Date: {{ invoice.due_date|date:"M d, Y" }}\n` +
+                    `Lease Balance: Rs.{{ invoice.lease.get_balance|floatformat:2 }}\n` +
+                    `Property: {{ invoice.lease.unit.property.property_name }}\n` +
+                    `Unit: {{ invoice.lease.unit.unit_number }}\n\n` +
+                    `Please make payment by due date.`;
+    
+    // Generate PDF URL (you'll need to implement this endpoint)
+    const pdfUrl = "{% url 'invoices:invoice_pdf' invoice.pk %}";
+    
+    // For mobile devices
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+        // Note: Cannot attach PDF directly via URL in WhatsApp
+    } 
+    // For desktop
+    else {
+        window.open(`https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`, '_blank');
+        // Note: You'll need to manually attach the PDF after the chat opens
+    }
+    
+    // Alternative: Download PDF first then share
+    setTimeout(() => {
+        const link = document.createElement('a');
+        link.href = pdfUrl;
+        link.download = `Invoice_{{ invoice.invoice_number }}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }, 1000);
+}
+
+
+(function () {
+  // ----- Helpers -----
+  function fmtPKR(n) {
+    const val = Number(n || 0);
+    return 'Rs.' + val.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function getCSRFToken() {
+    // Works with Django’s csrftoken cookie
+    const m = document.cookie.match(/(^|;)\\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : '';
+  }
+
+  // ----- State -----
+  let editMode = false;
+
+  const table = document.getElementById('itemsTable');
+  const editBtn = document.getElementById('editItemsBtn');
+  const saveBtn = document.getElementById('saveItemsBtn');
+  const cancelBtn = document.getElementById('cancelEditBtn');
+  const subtotalEl = document.getElementById('subtotalValue');
+  const totalEl = document.getElementById('totalValue');
+
+  function setEditMode(on) {
+    editMode = !!on;
+    table.querySelectorAll('tbody tr').forEach(row => {
+      row.querySelectorAll('.cell-view').forEach(el => el.classList.toggle('d-none', editMode));
+      row.querySelectorAll('input.category-edit, input.description-edit, input.amount-edit')
+         .forEach(el => el.classList.toggle('d-none', !editMode));
+      // Clear "user edited" marker when entering edit
+      if (editMode) {
+        const desc = row.querySelector('.description-edit');
+        if (desc) desc.dataset.userEdited = desc.value.trim() ? 'true' : 'false';
+      }
+    });
+    editBtn.classList.toggle('d-none', editMode);
+    saveBtn.classList.toggle('d-none', !editMode);
+    cancelBtn.classList.toggle('d-none', !editMode);
+    if (editMode) recalc();
+  }
+
+  function recalc() {
+    let sum = 0;
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const amtInput = row.querySelector('.amount-edit');
+      const v = parseFloat(amtInput ? amtInput.value : row.querySelector('.amount-view')?.textContent.replace(/[^\d.\\-]/g,''));
+      sum += isNaN(v) ? 0 : v;
+    });
+    subtotalEl.textContent = fmtPKR(sum);
+    totalEl.textContent = fmtPKR(sum);
+  }
+
+  // Auto-update description when category changes (unless user already edited description)
+  function wireRow(row) {
+    const cat = row.querySelector('.category-edit');
+    const desc = row.querySelector('.description-edit');
+    const amt  = row.querySelector('.amount-edit');
+
+    if (desc) {
+      desc.addEventListener('input', () => { desc.dataset.userEdited = 'true'; });
+    }
+    if (cat) {
+      cat.addEventListener('change', () => {
+        if (desc && desc.dataset.userEdited !== 'true') {
+          desc.value = cat.value || '';
+        }
+      });
+    }
+    if (amt) {
+      amt.addEventListener('input', recalc);
+    }
+  }
+
+  // Save to server via bulk endpoint
+  async function saveItems() {
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const items = rows.map(row => {
+      return {
+        id: row.dataset.itemId,
+        category: row.querySelector('.category-edit')?.value?.trim() || '',
+        description: row.querySelector('.description-edit')?.value?.trim() || '',
+        amount: parseFloat(row.querySelector('.amount-edit')?.value || '0') || 0
+      };
+    });
+
+    try {
+      const resp = await fetch("{% url 'invoices:invoice_items_bulk_update' invoice.pk %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken()
+        },
+        body: JSON.stringify({ items })
+      });
+      if (!resp.ok) throw new Error('Request failed');
+      const data = await resp.json();
+
+      // Update the read-only cells with new values
+      rows.forEach((row, i) => {
+        const { category, description, amount } = items[i];
+        const catView = row.querySelector('.category-view');
+        const descView = row.querySelector('.description-view');
+        const amtView  = row.querySelector('.amount-view');
+
+        if (catView)  catView.textContent  = category || '—';
+        if (descView) descView.textContent = description || '';
+        if (amtView)  amtView.textContent  = fmtPKR(amount);
+      });
+
+      // Update totals from server if provided; otherwise recalc client-side
+      if (data && data.invoice_total) {
+        subtotalEl.textContent = fmtPKR(data.invoice_total);
+        totalEl.textContent = fmtPKR(data.invoice_total);
+      } else {
+        recalc();
+      }
+
+      setEditMode(false);
+      // Optional: quick toast
+      try { new bootstrap.Toast(Object.assign(document.createElement('div'), {className:'toast', innerHTML:'<div class="toast-body">Saved ✅</div>'})).show(); } catch(e) {}
+    } catch (e) {
+      alert('Save failed. Please try again.');
+      console.error(e);
+    }
+  }
+
+  // Wire events
+  table.querySelectorAll('tbody tr').forEach(wireRow);
+  editBtn?.addEventListener('click', () => setEditMode(true));
+  cancelBtn?.addEventListener('click', () => setEditMode(false));
+  saveBtn?.addEventListener('click', saveItems);
+})();
+
+
+(function(){
+  const table = document.getElementById('itemsTable');
+  const csrf = (document.querySelector('#csrf-form input[name=csrfmiddlewaretoken]')||{}).value||'';
+
+  function enterEdit(tr){
+    tr.querySelectorAll('.cell-view').forEach(el=>el.classList.add('d-none'));
+    tr.querySelectorAll('.category-edit,.description-edit,.amount-edit').forEach(el=>el.classList.remove('d-none'));
+    tr.querySelector('.btn-edit-item')?.classList.add('d-none');
+    tr.querySelector('.btn-save-item')?.classList.remove('d-none');
+    tr.querySelector('.btn-cancel-item')?.classList.remove('d-none');
+    tr.querySelector('.description-edit')?.focus();
+  }
+
+  function exitEdit(tr, reset=false){
+    if(reset){
+      // restore input values from spans
+      const name = tr.querySelector('.category-view')?.textContent.trim() || '';
+      const desc = tr.querySelector('.description-view')?.textContent.trim() || '';
+      const amt  = (tr.querySelector('.amount-view')?.textContent.replace('Rs.','')||'').trim();
+      if(tr.querySelector('.category-edit')) tr.querySelector('.category-edit').value = name;
+      if(tr.querySelector('.description-edit')) tr.querySelector('.description-edit').value = desc;
+      if(tr.querySelector('.amount-edit')) tr.querySelector('.amount-edit').value = amt;
+    }
+    tr.querySelectorAll('.cell-view').forEach(el=>el.classList.remove('d-none'));
+    tr.querySelectorAll('.category-edit,.description-edit,.amount-edit').forEach(el=>el.classList.add('d-none'));
+    tr.querySelector('.btn-edit-item')?.classList.remove('d-none');
+    tr.querySelector('.btn-save-item')?.classList.add('d-none');
+    tr.querySelector('.btn-cancel-item')?.classList.add('d-none');
+  }
+
+  async function saveRow(tr){
+    const url  = tr.getAttribute('data-update-url');
+    const name = tr.querySelector('.category-edit')?.value.trim() || '';
+    const desc = tr.querySelector('.description-edit')?.value.trim() || '';
+    const amt  = tr.querySelector('.amount-edit')?.value.trim() || '';
+
+    if(!name){ alert('Category is required.'); return; }
+    if(!amt || isNaN(parseFloat(amt))){ alert('Enter a valid amount.'); return; }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json',
+        'X-CSRFToken': csrf,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ category_name: name, description: desc, amount: amt })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || data.ok === false){ throw new Error(data.error || 'Save failed'); }
+
+    // update view text from server response
+    tr.querySelector('.category-view').textContent    = data.category_name;
+    tr.querySelector('.description-view').textContent = data.description || '';
+    tr.querySelector('.amount-view').textContent      = 'Rs.' + Number(data.amount).toFixed(2);
+
+    // update grand total from server if provided
+    if(data.invoice_total !== undefined){
+      const tv = document.getElementById('totalValue');
+      if(tv) tv.textContent = 'Rs.' + Number(data.invoice_total).toFixed(2);
+    }
+
+    exitEdit(tr);
+  }
+
+  table.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const tr = btn.closest('tr');
+
+    try{
+      if(btn.classList.contains('btn-edit-item'))      enterEdit(tr);
+      else if(btn.classList.contains('btn-cancel-item')) exitEdit(tr, true);
+      else if(btn.classList.contains('btn-save-item'))   await saveRow(tr);
+    }catch(err){
+      alert(err.message || 'Error');
+    }
+  });
+})();
+
+
+</script>
+
+<!-- Add these buttons where you want the actions to appear -->
+
+
+{% load humanize %}
+
+
+<script>
+function sendWhatsAppSingleInvoice(phone) {
+  if (!phone || !String(phone).trim()) {
+    alert('No phone number available for WhatsApp.');
+    return;
+  }
+
+  // Phone cleanup (digits only; default to Pakistan code if leading 0)
+  let cleanedPhone = String(phone).replace(/[^\d]/g, '');
+  if (!cleanedPhone) {
+    alert('No valid phone number for WhatsApp.');
+    return;
+  }
+  if (cleanedPhone.startsWith('0')) {
+    cleanedPhone = '92' + cleanedPhone.substring(1);
+  }
+
+  // ---- Server-rendered fields ----
+  const invoiceNumber = '{{ invoice.invoice_number|default_if_none:''|escapejs }}';
+  const issueDate     = '{{ invoice.issue_date|date:"M d, Y"|escapejs }}';
+  const dueDate       = '{{ invoice.due_date|date:"M d, Y"|escapejs }}';
+
+  const tenantFull  = '{{ invoice.lease.tenant.first_name|default_if_none:''|default:''|add:" "|add:invoice.lease.tenant.last_name|default_if_none:''|default:''|escapejs }}';
+  const tenantShort = String(tenantFull).slice(0, 25); // first 25 chars only
+
+  const propertyName = '{{ invoice.lease.unit.property.property_name|default:''|escapejs }}';
+  const unitNumber   = '{{ invoice.lease.unit.unit_number|default:''|escapejs }}';
+
+  const status       = '{{ invoice.get_status_display|default:''|escapejs }}';
+  const leaseBalFmt  = '{{ invoice.lease.get_balance|floatformat:2|intcomma|escapejs }}';
+  const totalFmt     = '{{ computed_total|floatformat:2|intcomma|escapejs }}';
+
+  // 🔹 NEW: security deposit balance (to collect)
+  const secBalanceFmt = '{{ sec_totals.balance_to_collect|floatformat:2|intcomma|escapejs }}';
+
+  // Items rendered into a JS array, then joined as lines
+  const items = [
+  {% for item in invoice.items.all %}
+    '{{ forloop.counter }}. {{ item.category.name|default:item.category|default_if_none:''|escapejs }} — {{ item.description|default:''|escapejs }} — Rs.{{ item.amount|floatformat:2|intcomma|escapejs }}'{% if not forloop.last %},{% endif %}
+  {% endfor %}
+  ];
+  const itemsText = items.length ? items.join('\n') : '—';
+
+  const rs = v => v ? 'Rs.' + v : 'Rs.0.00';
+
+  function parseAmount(v) {
+    if (!v) return 0;
+      return parseFloat(String(v).replace(/,/g, '')) || 0;
+    }
+
+    // 🔹 Compute Total Balance = New Balance + Security Balance
+    const leaseBalNum   = parseAmount(leaseBalFmt);
+    const secBalNum     = parseAmount(secBalanceFmt);
+    const totalWithSec  = leaseBalNum + secBalNum;
+    const totalWithSecFmt = totalWithSec.toLocaleString('en-PK', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+  });
+
+  // ---- Build WhatsApp message (NO description; Total in bold) ----
+  const msg = [
+    'Dear ' + tenantShort + ',',
+    '*INVOICE #' + invoiceNumber + '*',
+    'Date: ' + issueDate + ' | Due: ' + dueDate,
+    '',
+    'Property / Unit: ' + propertyName + '-' + unitNumber,
+    'Status: ' + status + ' | Lease Bal: ' + rs(leaseBalFmt),
+    'Security Deposit Balance: Rs.' + secBalanceFmt,   // 👈 NEW line
+    '',
+    'Items:',
+    itemsText,
+    '',
+    'Total: *' + rs(totalFmt) + '*', // <-- bold total
+    'New Balance: * Rs.' + leaseBalFmt+ '*',
+    'Total Balance: *Rs.' + totalWithSecFmt + '*',     // 👈 NEW total incl. security
+    '',
+    'Thank you!'
+  ].join('\n');
+
+  const waUrl = 'https://api.whatsapp.com/send?phone=' + encodeURIComponent(cleanedPhone) +
+                '&text=' + encodeURIComponent(msg);
+  window.open(waUrl, '_blank');
+}
+</script>
+
+
+
+{% endblock %}

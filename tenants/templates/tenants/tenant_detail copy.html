@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}{{ tenant }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    {% if tenant.pk %}
+        <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="text-decoration-none">
+            <h2 class="mb-0">{{ tenant.first_name }} {{ tenant.last_name }}
+                <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-sm btn-primary">Edit Tenant</a>
+               
+            </h2>
+        </a>
+    {% else %}
+        <h2 class="mb-0">{{ tenant.first_name }} {{ tenant.last_name }}</h2>
+    {% endif %}
+     <button class="btn btn-outline-secondary" onclick="history.back()">Go Back</button>
+    <div class="text-center">
+        <h4 class="mb-0">
+            <span class="{% if tenant.current_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                Balance: ${{ tenant.current_balance|default:0|floatformat:2|intcomma }}
+            </span>
+        </h4>
+    </div>
+    <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" 
+                    class="btn btn-success">
+                    <i class="fas fa-money-bill-wave"></i> Record Payments
+                </a>
+    <a href="{% url 'tenants:tenant_update' tenant.pk %}">
+        {% if tenant.photo %}
+        <img src="{{ tenant.photo.url }}" alt="Tenant Photo" class="rounded-circle" width="80" height="80">
+        {% else %}
+                        <div class="bg-secondary d-flex align-items-center justify-content-center" style="height: 60px;">
+                            <i class="fas fa-user text-white fa-lg"></i>
+                            
+                        </div>
+                        {% endif %}
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Tenant Details</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>First Name:</strong>{{tenant.prefix}} {{ tenant.first_name }}</p>
+                        <p><strong>Last Name:</strong> {{tenant.relation}} {{ tenant.last_name }}</p>
+                        <p><strong>Email:</strong> {{ tenant.email|default:"-" }}</p>
+                        <p><strong>Phone:</strong> {{ tenant.phone|default:"-" }}, {{ tenant.phone2|default:"-" }}, {{ tenant.phone3|default:"-" }}</p>
+                        <p><strong>CNIC:</strong> {{ tenant.cnic|default:"-" }}</p>
+                        <p><strong>Address:</strong> {{ tenant.address|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Gender:</strong> {{ tenant.get_gender_display|default:"-" }}</p>
+                        <p><strong>Date of Birth:</strong> {% if tenant.date_of_birth %}{{ tenant.date_of_birth|date:"M d, Y" }}{% else %}-{% endif %}</p>
+                        <p><strong>Family Members:</strong> {{ tenant.number_of_family_member|default:"-" }}</p>
+                        <p><strong>Created At:</strong> {{ tenant.created_at|date:"M d, Y" }}</p>
+                        <p><strong>Updated At:</strong> {{ tenant.updated_at|date:"M d, Y" }}</p>
+                        <p><strong>Status:</strong> 
+                            <span class="badge bg-{% if tenant.is_active %}success{% else %}secondary{% endif %}">
+                                {% if tenant.is_active %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                
+                {% if tenant.notes %}
+                <p><strong>Notes:</strong> {{ tenant.notes }}</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Emergency Contact</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Name:</strong> {{ tenant.emergency_contact_name|default:"Not provided" }}</p>
+                <p><strong>Phone:</strong> {{ tenant.emergency_contact_phone|default:"-" }}</p>
+                <p><strong>Relation:</strong> {{ tenant.emergency_contact_relation|default:"-" }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Lease Details 
+                <a class="btn btn-primary btn-sm"
+                    href="{% url 'leases:lease_create' %}?tenant={{ lease.tenant_id }}">
+                    <i class="fas fa-plus me-1"></i> Add Lease
+            </a></h5>
+                {% if tenant.lease %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Property:</strong> {{ tenant.lease.unit.property.property_name }}</p>
+                        <p><strong>Unit:</strong> {{ tenant.lease.unit.unit_number }}</p>
+                        <p><strong>Monthly Rent:</strong> ${{ tenant.lease.monthly_rent|floatformat:2|intcomma }}</p>
+                        <p><strong>Maintenance:</strong> ${{ tenant.lease.society_maintenance|floatformat:2|intcomma }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Lease Start:</strong> {{ tenant.lease.start_date|date:"M d, Y" }}</p>
+                        <p><strong>Lease End:</strong> {{ tenant.lease.end_date|date:"M d, Y" }}</p>
+                        <p><strong>Monthly Payment:</strong> ${{ tenant.lease.get_total_payment|floatformat:2|intcomma }}</p>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-danger">No active lease found</p>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="d-flex justify-content-between">
+                    {% if tenant.lease %}
+                        <a href="{% url 'leases:lease_detail' tenant.lease.pk %}" class="btn btn-sm btn-primary">View Lease Detail</a>
+                        <a href="{% url 'leases:lease_print' tenant.lease.pk %}" class="btn btn-sm btn-secondary">Print Lease</a>
+                        <a href="{% url 'leases:lease_email' tenant.lease.pk %}" class="btn btn-sm btn-info">Email Lease</a>
+                        <a href="{% url 'tenants:lease_ledger_pdf' tenant.lease.pk %}" class="btn btn-sm btn-dark">Ledger</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Documents</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <p><strong>Photo</strong></p>
+                        {% if tenant.photo %}
+                            <a href="{{ tenant.photo.url }}" data-fancybox="gallery" data-caption="Tenant Photo">
+                                <img src="{{ tenant.photo.url }}" alt="Tenant Photo" class="img-thumbnail" width="100">
+                            </a>
+                        {% else %}
+                            <p class="text-muted">No photo</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <p><strong>CNIC Front</strong></p>
+                        {% if tenant.cnic_front %}
+                            <a href="{{ tenant.cnic_front.url }}" data-fancybox="gallery" data-caption="CNIC Front">
+                                <img src="{{ tenant.cnic_front.url }}" alt="CNIC Front" class="img-thumbnail" width="100">
+                            </a>
+                        {% else %}
+                            <p class="text-muted">No CNIC front</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <p><strong>CNIC Back</strong></p>
+                        {% if tenant.cnic_back %}
+                            <a href="{{ tenant.cnic_back.url }}" data-fancybox="gallery" data-caption="CNIC Back">
+                                <img src="{{ tenant.cnic_back.url }}" alt="CNIC Back" class="img-thumbnail" width="100">
+                            </a>
+                        {% else %}
+                            <p class="text-muted">No CNIC back</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Invoices</h5>
+                <a href="{% url 'invoices:invoice_create' %}?tenant={{ tenant.pk }}&property={{ tenant.lease.unit.property.id }}&unit={{ tenant.lease.unit.id }}" 
+                   class="btn btn-sm btn-primary">
+                    Create Invoice
+                </a>
+            </div>
+            <div class="card-body">
+                {% if invoices %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Issue Date</th>
+                                <th>Due Date</th>
+                                <th>Invoice #</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invoice in invoices %}
+                            <tr>
+                                <td>{{ invoice.issue_date|date:"M d, Y" }}</td>
+                                <td>{{ invoice.due_date|date:"M d, Y" }}</td>
+                                <td>
+                                    <a href="{% url 'invoices:invoice_detail' invoice.pk %}">
+                                        {{ invoice.invoice_number }}
+                                    </a>
+                                </td>
+                                <td>${{ invoice.amount|floatformat:2|intcomma }}</td>
+                                <td>
+                                    <span class="badge bg-{% if invoice.status == 'paid' %}success{% elif invoice.status == 'overdue' %}danger{% else %}warning{% endif %}">
+                                        {{ invoice.get_status_display }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>No invoices found.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Payments</h5>
+                <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" 
+                    class="btn btn-success">
+                    <i class="fas fa-money-bill-wave"></i> Record Payment
+                </a>
+            </div>
+            <div class="card-body">
+                {% if payments %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for payment in payments %}
+                            <tr>
+                                <td>{{ payment.payment_date|date:"M d, Y" }}</td>
+                                <td>${{ payment.amount|floatformat:2|intcomma }}</td>
+                                <td>{{ payment.get_payment_method_display }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>No payments found.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>Financial Summary</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <p><strong>Total Invoices:</strong> ${{ total_invoices|default:0|floatformat:2|intcomma }}</p>
+            </div>
+            <div class="col-md-4">
+                <p><strong>Total Payments:</strong> ${{ total_payments|default:0|floatformat:2|intcomma }}</p>
+            </div>
+            <div class="col-md-4">
+                <p><strong>Current Balance:</strong> 
+                    <span class="{% if tenant.current_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                        ${{ tenant.current_balance|default:0|floatformat:2|intcomma }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between mt-4">
+    <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
+    <div>
+        <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-warning">Edit Tenant</a>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css" />
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
+<script>
+    Fancybox.bind("[data-fancybox]", {
+        // Your custom options
+    });
+</script>
+{% endblock %}

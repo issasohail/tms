@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Lease Agreement - {{ lease.tenant.get_full_name }} - {{ lease.unit.property.property_name }}</title>
+    <style>
+        /* Base Styles */
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px;
+            color: #333;
+        }
+        
+        /* Header Styling */
+        .agreement-header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        .agreement-header h1 {
+            margin-bottom: 5px;
+            font-size: 24px;
+            text-transform: uppercase;
+        }
+        
+        /* Parties Section */
+        .parties-section {
+            margin: 30px 0;
+            padding: 20px 0;
+        }
+        
+        .party {
+            margin-bottom: 25px;
+        }
+        
+        .party-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-decoration: underline;
+        }
+        
+        /* Clauses Styling */
+        .clauses-container {
+            margin: 30px 0;
+        }
+        
+        .clause {
+            margin-bottom: 20px;
+            text-align: justify;
+        }
+        
+        .clause-number {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        
+        /* Signature Section */
+        .signature-section {
+            margin-top: 100px;
+            padding-top: 20px;
+        }
+        
+        .signature-box {
+            width: 45%;
+            display: inline-block;
+            text-align: center;
+            margin: 0 2%;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 80%;
+            margin: 20px auto;
+            padding-top: 5px;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        /* Utility Classes */
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-uppercase {
+            text-transform: uppercase;
+        }
+        
+        .text-bold {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Section -->
+    <div class="agreement-header">
+        <h1 class="text-uppercase">Rent Agreement</h1>
+        <p>This RENT AGREEMENT is made at Islamabad on this {{ agreement_date }}</p>
+    </div>
+    
+    <!-- Parties Section -->
+    <div class="parties-section">
+        <div class="party">
+            <div class="party-header">BETWEEN</div>
+            <p>{{ owner_name }}, S/O {{ owner_father_name }}, holding CNIC NO. {{ owner_cnic }},</p>
+            <p>Residing at {{ owner_address }} (Hereinafter called the "Owner")</p>
+        </div>
+        
+        <div class="party">
+            <div class="party-header">AND</div>
+            <p>{{ tenant_name }}, S/O {{ tenant_father_name }}, holding CNIC NO. {{ tenant_cnic }},</p>
+            <p>Residing at {{ tenant_address }} (Hereinafter called the "Tenant")</p>
+        </div>
+    </div>
+    
+    <!-- Property Description -->
+    <div class="clause">
+        <span class="clause-number">WHEREAS</span> the Owner is the lawful owner and in possession of 
+        {{ property_description }}, {{ property_address }} and has agreed to rent out 
+        {{ unit_description }} to the Tenant and the Tenant has also agreed to take the same on the 
+        following terms and conditions.
+    </div>
+    
+    <!-- Numbered Clauses -->
+    <div class="clauses-container">
+        <!-- Clause 1: Rent Amount -->
+        <div class="clause">
+            <span class="clause-number">1.</span> That the rate of rent of the said Premises is hereby agreed at 
+            Rs. <span class="text-bold">{{ rent_amount }}</span>/- (Rupees {{ rent_amount_words }}) per month.
+        </div>
+        
+        <!-- Clause 2: Maintenance Charges -->
+        <div class="clause">
+            <span class="clause-number">2.</span> Tenant will also pay Rs. <span class="text-bold">{{ maintenance_charges }}</span>/- 
+            society maintenance charges along with the rent to the Owner. Tenant will pay total 
+            Rs. <span class="text-bold">{{ total_monthly }}</span>/- monthly.
+        </div>
+        
+        <!-- Clause 3: Advance Rent -->
+        <div class="clause">
+            <span class="clause-number">3.</span> That One month's advance rent amount is 
+            Rs. <span class="text-bold">{{ advance_rent }}</span>/- (Rupees {{ advance_rent_words }}) 
+            has been paid by the Tenant and has been received by the Owner thereafter rent on Monthly 
+            basis will be payable in advance on or before 5th of each month to the Owner. In case of 
+            late payment Rs. <span class="text-bold">{{ late_penalty }}</span>/- (Rupees {{ late_penalty_words }}) 
+            charged as penalty amount on each month for each day after 10th of each month.
+        </div>
+        
+        <!-- Clause 4: Security Deposit -->
+        <div class="clause">
+            <span class="clause-number">4.</span> That a further sum of Rs. <span class="text-bold">{{ security_deposit }}</span>/- 
+            (Rupees {{ security_deposit_words }}) will be paid by the tenant to the Owner as Security, 
+            from which Rs. {{ security_deposit_paid }} has been paid and the remaining balance of 
+            Rs. {{ security_deposit_balance }} will be paid before {{ security_deposit_due_date }}, 
+            which is refundable at the time of the vacation of said premises after deducting breakage 
+            and after repairing all the damages caused to the said premises or to its fittings and 
+            fixtures etc and clearance of outstanding all utility bills i.e. Electricity, Sui Gas, 
+            Society Maintenance Charges, Building Maintenance Charges, Telephone Bill and other bills if any.
+        </div>
+        
+        <!-- Clause 5: Tenancy Period -->
+        <div class="clause">
+            <span class="clause-number">5.</span> That period of tenancy is hereby agreed as 
+            {{ lease_duration }} Months commencing from {{ start_date }} to {{ end_date }}, 
+            the rent will be increased @{{ rent_increase_percent }}% after {{ lease_duration }} months, 
+            however it can be renewed with mutual consent of both the parties on new terms and conditions 
+            and after expiry of Lease period the Tenant shall hand over peaceful vacate possession of the 
+            said premises to the Owner.
+        </div>
+        
+        <!-- Clause 6: Early Vacation -->
+        <div class="clause">
+            <span class="clause-number">6.</span> That the tenant is bound not to vacate the premises within 
+            {{ early_vacation_min_months }} months. If he wish to vacate the premises before 
+            {{ early_vacation_min_months }} month then the tenant has to pay additional 
+            Rs. {{ early_vacation_penalty }}/- per month.
+        </div>
+        
+        <!-- Clause 7: Keys -->
+        <div class="clause">
+            <span class="clause-number">7.</span> That {{ keys_count }} keys/keycards will be issued to tenant 
+            which will be returned to the owner at the time of vacating the premises. If keys/keycards are 
+            lost Rs. {{ key_replacement_cost }}/- per key/keycard will deducted from security amount.
+        </div>
+        
+        <!-- Clause 8: Maintenance -->
+        <div class="clause">
+            <span class="clause-number">8.</span> That Tenant shall maintain the said premises in good condition 
+            and protect the fittings and Fixtures, Water Pump Motors, and replace, all goods and fittings of 
+            the said premises broken by use of fault of the Tenant, by substitute of equal quality. That Tenant 
+            shall not sublet or damage the property willfully. He will not make any alteration in the said premises 
+            without the written permission of the Owner. No drilling or nail allowed on the wall.
+        </div>
+        
+        <!-- Clause 9: Sale of Property -->
+        <div class="clause">
+            <span class="clause-number">9.</span> That in case the Owner wants to dispose off/ sale said premises 
+            the Tenant will have no objection to this deal with any party as selected by the Owner and that the 
+            Tenant will have no objection to execute fresh lease agreement with new Owner on the new terms and 
+            condition for the remaining period of the lease.
+        </div>
+        
+        <!-- Clause 10: Compensation -->
+        <div class="clause">
+            <span class="clause-number">10.</span> That the Tenant would not demand any compensation for the 
+            decoration or any other expenditure on the said premises at the time of vacation of the said premises 
+            and any kind of Legal action regarding the said premises by the Tenant would be considered null and void.
+        </div>
+        
+        <!-- Clause 11: Residential Use -->
+        <div class="clause">
+            <span class="clause-number">11.</span> That the said premises will be used for the Residential Purpose Only.
+        </div>
+        
+        <!-- Clause 12: Police Verification -->
+        <div class="clause">
+            <span class="clause-number">12.</span> That tenant is responsible to complete Verification from Concerned Police Station.
+        </div>
+        
+        <!-- Clause 13: Inventory -->
+        <div class="clause">
+            <span class="clause-number">13.</span> That the said premises has been taken over by the Tenant and all 
+            things are found to be in prefect working order including {{ inventory_description }} and the same 
+            shall be handed over to the Owner in the same condition at the time of vacation of the premises.
+        </div>
+        
+        <!-- Clause 14: Utility Bills -->
+        <div class="clause">
+            <span class="clause-number">14.</span> That the Tenant shall pay all the Utility Bills regularly without 
+            any failure and keep the paid bills in safe custody and photocopies of paid bills hand over to the Owner 
+            on demand. And Whatsapp the copy of paid bill to owner every month. Electricity Bill will be paid at 
+            Rs. {{ electricity_rate }}/- per unit by the tenant to the owner along with the rent.
+        </div>
+        
+        <!-- Clause 15: Vacation Notice -->
+        <div class="clause">
+            <span class="clause-number">15.</span> That {{ vacation_notice_period }} advanced notice is necessary for 
+            vacation of the premises by either party before the completion of Lease period. In case tenant leave the 
+            said portion without {{ vacation_notice_days }} days prior notice then his security money will be 
+            consider forfeited in favor of owner.
+        </div>
+        
+        <!-- Clause 16: Subletting -->
+        <div class="clause">
+            <span class="clause-number">16.</span> That the Tenant will not rent out the said premises to the other person.
+        </div>
+        
+        <!-- Clause 17: Owner Access -->
+        <div class="clause">
+            <span class="clause-number">17.</span> That the Owner shall be entitled to visit the said premises with a reasonable advance notice.
+        </div>
+        
+        <!-- Clause 18: Society Complaints -->
+        <div class="clause">
+            <span class="clause-number">18.</span> That during the Lease period if there will be any problem or complaint 
+            to Society from the Tenant side than all liabilities will be on Tenant.
+        </div>
+        
+        <!-- Clause 19: Meter Readings -->
+        <div class="clause">
+            <span class="clause-number">19.</span> Electricity Meter reading is {{ electricity_meter_reading }} as on 
+            {{ meter_reading_date }} Water Meter Reading {{ water_meter_reading }}
+        </div>
+        
+        <!-- Clause 20: Security Deposit Adjustment -->
+        <div class="clause">
+            <span class="clause-number">20.</span> That the Security amount will not be adjusted in rent.
+        </div>
+        
+        <!-- Clause 21: Smoking Policy -->
+        <div class="clause">
+            <span class="clause-number">21.</span> That smoking is not allowed in building. Tenant is not allowed to 
+            use the common area for drying the clothes and must be kept as is.
+        </div>
+        
+        <!-- Clause 22: Common Areas -->
+        <div class="clause">
+            <span class="clause-number">22.</span> That the tenant cannot use any of the building area (terrace, common area or hall way) other than his own portion.
+        </div>
+        
+        <!-- Clause 23: Cleaning Responsibility -->
+        <div class="clause">
+            <span class="clause-number">23.</span> That Tenant Shall be responsible to clean and maintain of said area 
+            which include but not limited to doors, windows, hallway, offside walls, stairs and Ceiling at least 
+            three time a week.
+        </div>
+        
+        <!-- Clause 24: Legal Rights -->
+        <div class="clause">
+            <span class="clause-number">24.</span> That all the Legal Rights regarding the said Premises are reserved with the Owner.
+        </div>
+        
+        <!-- Clause 25: Terms Compliance -->
+        <div class="clause">
+            <span class="clause-number">25.</span> That both the parties shall abide by all the terms and conditions of this lease agreement.
+        </div>
+        
+        <!-- Clause 26: Illegal Activities -->
+        <div class="clause">
+            <span class="clause-number">26.</span> That tenant will not do any illegal / immoral activity in above said premises.
+        </div>
+    </div>
+    
+    <!-- Signature Section -->
+    <div class="signature-section">
+        <div class="text-center">
+            <p>IN WITNESSES WHEREOF, both the parties have set their respective hands to this deed on the day, month and year first mentioned above, in the presence of the witnesses.</p>
+        </div>
+        
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <p>Owner: {{ owner_name }}</p>
+            <p>CNIC: {{ owner_cnic }}</p>
+            <p>Phone: {{ owner_phone }}</p>
+        </div>
+        
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <p>Tenant: {{ tenant_name }}</p>
+            <p>CNIC: {{ tenant_cnic }}</p>
+            <p>Phone: {{ tenant_phone }}</p>
+        </div>
+        
+        <div style="clear: both;"></div>
+        
+        <div class="witnesses" style="margin-top: 60px;">
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <p>Witness 1: {{ witness1_name }}</p>
+                <p>CNIC: {{ witness1_cnic }}</p>
+            </div>
+            
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <p>Witness 2: {{ witness2_name }}</p>
+                <p>CNIC: {{ witness2_cnic }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+        <p>Generated at: {{ generation_timestamp }}</p>
+        <p>This is a computer generated agreement. No physical signatures are required.</p>
+    </div>
+</body>
+</html>

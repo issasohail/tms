@@ -1,0 +1,1130 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Leases{% endblock %}
+
+{% block content %}
+<!-- Compact, single-line header: title + filters + actions -->
+<div class="page-header mb-2 leases-header">
+  <h2 class="page-title mb-0 me-2 flex-shrink-0">Leases</h2>
+  <!-- Filters inline -->
+  <form method="get" id="lease-filter-form">
+    <!-- ROW 1 -->
+      <div class="filter-row1">
+        <div class="filter-item filter-property">
+          <label for="id_property" class="form-label mb-1">Property</label>
+          <select name="property" class="form-select form-select-sm w-auto" id="id_property">
+            <option value="">All</option>
+            {% for property in all_properties %}
+              <option value="{{ property.id }}"
+                      {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+                {{ property.property_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filter-item filter-unit">
+          <label for="id_unit" class="form-label mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm w-auto fixed-120" id="id_unit">
+            <option value="">All</option>
+            {% for unit in filtered_units %}
+              <option value="{{ unit.id }}"
+                      {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                {{ unit.unit_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="filter-item filter-tenant">
+          <label for="id_tenant" class="form-label mb-1">Tenant</label>
+          <select name="tenant" class="form-select form-select-sm select2 w-auto" id="id_tenant">
+            <option value="">All</option>
+            {% for tenant in all_tenants %}
+              <option value="{{ tenant.id }}"
+                      {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                {{ tenant.get_full_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+    <!-- ROW 2 -->
+    <div class="filter-row2">
+      <div class="filter-flags">
+        <label class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="include_inactive" id="id_include_inactive" 
+          {% if include_inactive %}checked{% endif %}>
+          <span class="form-check-label">Include<BR>Inactive</span>
+        </label>
+        <label class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="nonzero_balance" id="id_nonzero_balance" 
+          {% if nonzero_balance %} checked {% endif %}>
+          <span class="form-check-label">Non-Zero<BR>Balance</span>
+        </label>
+      </div>
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-sm btn-primary btn-slim">
+          <i class="fas fa-filter"></i><span class="btn-label"> Filter</span>
+        </button>
+        {% if request.GET %}
+        <a href="?" class="btn btn-sm btn-secondary btn-slim">
+          <i class="fas fa-undo"></i><span class="btn-label"> Clear</span>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  <!-- Actions on the same row -->
+  <div class="d-inline-flex page-actions gap-2 flex-shrink-0">
+    <a href="{% url 'leases:lease_create' %}" class="btn btn-primary btn-slim">
+      <i class="fas fa-plus me-1"></i> <span class="btn-label">Add<BR>Lease</span>
+    </a>
+    <a href="{% url 'leases:default_clause_list' %}" class="btn btn-primary btn-slim">
+      <i class="fas fa-book me-1"></i> <span class="btn-label">Lease Default<BR>Clause List</span>
+    </a>
+    <a href="{% url 'leases:lease_ledger' %}" class="btn btn-primary btn-slim">
+      <i class="fas fa-book me-1"></i> <span class="btn-label">Lease<BR>Ledger</span>
+    </a>
+    <button id="send-all-reminders" class="btn btn-success btn-slim">
+      <i class="fas fa-bell me-1"></i> <span class="btn-label">Send All<BR>Reminders</span>
+    </button>
+    {% include "includes/export_buttons.html" %}
+  </div>
+</div>
+
+<div class="text-end mt-1 fw-bold">
+  Total Balance: {{ total_balance|floatformat:2|intcomma }}
+</div>
+<div class="text-end">
+  Security Deposit Due: {{ total_security_due|floatformat:2|intcomma }}
+</div>
+
+<div class="table-responsive">
+  {% render_table table %}
+</div>
+
+<div class="text-end mt-1 fw-bold">
+  Total Balance: {{ total_balance|floatformat:2|intcomma }}
+</div>
+<div class="text-end">
+  Security Deposit Due: {{ total_security_due|floatformat:2|intcomma }}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style id="leases-theme">
+  :root {
+    /* TWEAK: fonts */
+    --filter-font-lg: .85rem;
+    --filter-font-sm: .68rem;
+    --table-font-lg: .82rem;
+    /* BIG render_table font */
+    --table-font-sm: .50rem;
+    /* SMALL render_table font */
+
+    --filter-unit-min: 240px;
+    /* TWEAK: min width for Unit on big screens */
+    --filter-prop-min: 260px;
+    /* optional: min width for Property */
+    --filter-tenant-min: 320px;
+    /* optional: min width for Tenant (when not Select2) */
+
+    /* TWEAK: SN column sizing */
+    --w-sn-lg: 56px;
+    /* big screen width for SN */
+    --w-sn-sm: 10vw;
+    /* small screen width (use px if you prefer) */
+    --fs-sn-lg: 0.72rem;
+    /* big screen font size for SN */
+    --fs-sn-sm: 0.55rem;
+    /* small screen font size for SN */
+
+    --page-actions-gap: .5rem;
+    --btn-px-lg: .5rem;
+    --btn-py-lg: .14rem;
+    --btn-px-sm: .35rem;
+    --btn-py-sm: .18rem;
+
+    /* TWEAK: column widths (BIG) */
+    --w-tenant-lg: 180px;
+    --w-property-lg: 160px;
+    --w-unit-lg: 180px;
+    --w-start-lg: 180px;
+    --w-end-lg: 180px;
+    --w-monthly-lg: 120px;
+    --w-balance-lg: 120px;
+    --w-sec-lg: 120px;
+    --w-status-lg: 100px;
+    --w-actions-lg: 180px;
+
+    /* TWEAK: column widths (SMALL) */
+    --w-sn-sm: 1vw;
+    --w-tenant-sm: 15vw;
+    --w-property-sm: 15vw;
+    --w-start-sm: 15w;
+    --w-monthly-sm: 15vw;
+    --w-actions-sm: 39vm;
+  }
+
+  /* Header compact */
+  .page-header {
+    margin-bottom: .35rem !important
+  }
+
+  .page-actions {
+    gap: var(--page-actions-gap) !important;
+  }
+
+  .btn-slim {
+    padding: var(--btn-py-lg) var(--btn-px-lg);
+  }
+
+  /* Move filters into header: keep on one line with scroll */
+  .leases-header {
+    display: flex;
+    align-items: end;
+    gap: .5rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  #lease-filter-form {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: .5rem;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+
+  /* Allow long labels and button text to wrap to two lines */
+  .form-label {
+    white-space: normal !important;
+    line-height: 1.1;
+  }
+
+  .page-actions .btn .btn-label,
+  .actions-wrap .btn .btn-label {
+    display: inline !important;
+    white-space: normal !important;
+    line-height: 1.1;
+  }
+
+  /* Fix Unit select width always */
+  .fixed-120 {
+    width: 120px !important;
+    min-width: 120px !important;
+  }
+
+  /* Keep original rules below */
+  /* Hide the text labels to save space on small screens */
+  .table-mobile-sm td.actions-cell .btn .btn-label,
+  .table-mobile-sm td.actions-cell .btn i+span {
+    display: none !important;
+  }
+
+  .actions-wrap .btn>span {
+    display: none !important;
+  }
+
+  th.col-sec,
+  td.col-sec {
+    width: var(--w-sec-lg);
+  }
+
+  /* ---------- FILTERS ---------- */
+  /* BIG: absolutely one line; horizontal scroll instead of wrapping */
+  .filter-row1,
+  .filter-row2 {
+    display: inline-flex;
+    align-items: end;
+    gap: .5rem;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem
+  }
+
+  .form-label {
+    font-size: var(--filter-font-lg);
+    margin-bottom: .15rem !important
+  }
+
+  .form-select-sm,
+  .form-control-sm {
+    font-size: var(--filter-font-lg);
+    padding: .25rem .5rem
+  }
+
+  .filter-flags,
+  .filter-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem
+  }
+
+  .select2-container {
+    width: auto !important;
+    min-width: 240px;
+  }
+
+  /* TWEAK */
+  /* Keep a visible gap between action buttons on all screens */
+
+  td.col-actions {
+    vertical-align: middle;
+    padding-top: .05rem;
+    padding-bottom: .05rem;
+    padding-right: .05rem
+  }
+
+  /* SMALL: Row1 = 3 cols; Row2 = flags + buttons on one line */
+  @media (max-width:576px) {
+    html {
+      font-size: 14px
+    }
+
+    .filter-row1 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: .25rem .35rem;
+      align-items: center;
+    }
+
+    .filter-row2 {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+
+    .form-label {
+      font-size: var(--filter-font-sm)
+    }
+
+    #lease-filter-form .form-select,
+    #lease-filter-form .form-check-input,
+    #lease-filter-form .btn {
+      font-size: var(--filter-font-sm);
+      padding: .18rem .35rem;
+    }
+
+    #lease-filter-form {
+      display: block;
+    }
+
+    .select2-container .select2-selection--single {
+      height: 28px !important;
+      display: flex;
+      align-items: center
+    }
+
+    .select2-container .select2-selection__rendered {
+      line-height: 1.1 !important;
+      padding-right: 1.25rem !important
+    }
+
+    .select2-container {
+      width: auto !important;
+      min-width: 120px;
+    }
+
+    /* TWEAK */
+  }
+
+  .btn-slim {
+    padding: var(--btn-py-sm) var(--btn-px-sm);
+  }
+
+  /* ---------- TABLE ---------- */
+  .table {
+    table-layout: fixed;
+    width: 100%;
+    font-size: var(--table-font-lg)
+  }
+
+  th.col-sn,
+  td.col-sn {
+    width: var(--w-sn-lg);
+    min-width: var(--w-sn-lg);
+    font-size: var(--fs-sn-lg);
+    text-align: center;
+    /* optional */
+    white-space: nowrap;
+    /* keep “SN#” on one line */
+    padding-left: .25rem;
+    /* optional: tighter cells */
+    padding-right: .25rem;
+  }
+
+  th.col-tenant,
+  td.col-tenant {
+    width: var(--w-tenant-lg)
+  }
+
+  th.col-property,
+  td.col-property {
+    width: var(--w-property-lg)
+  }
+
+  th.col-unit,
+  td.col-unit {
+    width: var(--w-unit-lg)
+  }
+
+  th.col-start,
+  td.col-start {
+    width: var(--w-start-lg)
+  }
+
+  th.col-end,
+  td.col-end {
+    width: var(--w-end-lg)
+  }
+
+  th.col-monthly,
+  td.col-monthly {
+    width: var(--w-monthly-lg)
+  }
+
+  th.col-balance,
+  td.col-balance {
+    width: var(--w-balance-lg)
+  }
+
+  th.col-status,
+  td.col-status {
+    width: var(--w-status-lg)
+  }
+
+  th.col-actions,
+  td.col-actions {
+    width: var(--w-actions-lg)
+  }
+
+  /* Tenant truncation (BIG = 1 line ellipsis) */
+  td.col-tenant .tenant-text {
+    display: block;
+    overflow: hidden;
+    max-width: var(--w-tenant-lg);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* BIG: show Active column */
+  th.col-status,
+  td.col-status {
+    display: table-cell
+  }
+
+  /* SMALL overrides */
+  @media (max-width:576px) {
+    .table {
+      font-size: var(--table-font-sm) !important
+    }
+
+    thead th {
+      font-size: calc(var(--table-font-sm) + .04rem)
+    }
+
+    th.col-sn,
+    td.col-sn {
+      width: var(--w-sn-sm) !important;
+      min-width: var(--w-sn-sm) !important;
+      font-size: var(--fs-sn-sm);
+    }
+
+    th.col-tenant,
+    td.col-tenant {
+      width: var(--w-tenant-sm) !important
+    }
+
+    th.col-property,
+    td.col-property {
+      width: var(--w-property-sm) !important
+    }
+
+    th.col-start,
+    td.col-start {
+      width: var(--w-start-sm) !important
+    }
+
+    th.col-monthly,
+    td.col-monthly {
+      width: var(--w-monthly-sm) !important
+    }
+
+    th.col-actions,
+    td.col-actions {
+      width: var(--w-actions-sm) !important
+    }
+
+    th.col-actions,
+    td.col-actions {
+      width: var(--w-actions-sm) !important;
+      min-width: var(--w-actions-sm) !important;
+    }
+
+    /* Hide columns that we combine on mobile */
+    th.col-unit,
+    td.col-unit,
+    th.col-end,
+    td.col-end,
+    th.col-balance,
+    td.col-balance {
+      display: none !important
+    }
+
+    /* HIDE Active column on small (we’ll show text in Actions) */
+    th.col-status,
+    td.col-status {
+      display: none !important
+    }
+
+    /* Tenant: 2-line clamp + ellipsis */
+    td.col-tenant .tenant-text {
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Actions area on small */
+    td.col-actions {
+      vertical-align: middle;
+      padding-top: .05rem;
+      padding-bottom: .05rem
+    }
+
+    td.col-actions .actions-wrap {
+      display: grid !important;
+      grid-template-rows: repeat(2, auto);
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: .05rem .05rem;
+    }
+
+    td.col-actions .btn {
+      font-size: var(--table-font-sm) !important;
+      padding: .05rem .05rem !important;
+      line-height: 1;
+      min-width: 1rem
+    }
+
+    .actions-wrap .btn .btn-label {
+      display: none !important
+    }
+
+    .actions-wrap .btn-status-mobile .btn-label {
+      display: inline !important
+    }
+
+    /* keep text for status */
+
+    /* ---- ACTION BUTTONS inside the table: mobile tweaks ---- */
+    .table-mobile-sm td.actions-cell {
+      width: 1%;
+      white-space: nowrap;
+    }
+
+    .table-mobile-sm td.actions-cell .actions-wrap {
+      gap: .05rem;
+      !important;
+    }
+
+    .table-mobile-sm td.actions-cell .btn {
+      padding: .10rem .12rem;
+      line-height: 1;
+      border-width: 1px;
+    }
+
+    .table-mobile-sm td.actions-cell .btn i {
+      font-size: .50rem;
+      margin-right: 0;
+    }
+
+    /* Tight filter card padding */
+    .card.mb-2 .card-body {
+      padding: .5rem .5rem !important
+    }
+
+    /* Ensure native select can't auto-expand on long text */
+    #id_unit {
+      max-width: 120px !important;
+    }
+
+    /* Small bump to compactness (optional) */
+    .form-select-sm,
+    .form-control-sm {
+      padding: .22rem .45rem;
+    }
+
+    .actions-wrap {
+      gap: .25rem !important;
+    }
+
+    /* Slightly tighter on very small screens */
+    @media (max-width:576px) {
+      .actions-wrap {
+        gap: .15rem !important;
+      }
+    }
+
+    /* Tighter page header/action buttons */
+    .page-header {
+      margin-bottom: .3rem !important;
+    }
+
+    .page-actions {
+      gap: .4rem !important;
+    }
+
+    .btn-slim {
+      padding: .18rem .45rem;
+    }
+
+    /* Slightly smaller table font */
+    .table {
+      font-size: .84rem;
+    }
+
+    /* Actions column tighter padding */
+    td.col-actions {
+      padding-right: .15rem;
+    }
+
+    /* Tenant clamp already present; ensure property width stays compact */
+    th.col-property,
+    td.col-property {
+      width: 140px;
+    }
+  }
+
+  /* Status coloring for ended + end-date soon */
+  .end-soon {
+    color: #b50707 !important;
+    font-weight: 700;
+  }
+
+  .status-ended {
+    color: #b50707 !important;
+    font-weight: 700;
+  }
+
+  /* Hide header scrollbars on big screens (keep one-line layout without visible bars) */
+  @media (min-width: 577px) {
+
+    .leases-header,
+    #lease-filter-form {
+      overflow-x: auto;
+      /* enable scroll if needed */
+      overflow-y: hidden;
+      /* no vertical bar */
+      scrollbar-width: none;
+      /* Firefox */
+      -ms-overflow-style: none;
+      /* IE/Edge */
+      max-width: 100%;
+    }
+
+    .leases-header::-webkit-scrollbar,
+    #lease-filter-form::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* WebKit */
+  }
+
+  /* === Smaller, two-line flags + buttons in filter-row2 === */
+  .filter-row2 .form-check-label {
+    font-size: .72rem;
+    /* small font */
+    line-height: 1.15;
+    /* tighter */
+    white-space: normal !important;
+    /* allow wrapping */
+    max-width: 7.5rem;
+    /* force possible 2-line wrap */
+    display: inline-block;
+    /* enable width + wrap */
+  }
+
+  .filter-row2 .form-check-input {
+    transform: scale(.9);
+  }
+
+  .filter-row2 .filter-actions .btn {
+    font-size: .72rem;
+    /* small font */
+    line-height: 1.1;
+    /* two-line friendly */
+    padding: .16rem .40rem;
+    /* compact */
+  }
+
+  .filter-row2 .filter-actions .btn .btn-label {
+    display: inline-block !important;
+    white-space: normal !important;
+    /* allow wrapping */
+    line-height: 1.15;
+    max-width: 6.5rem;
+    /* constrain to encourage 2 lines */
+  }
+
+  .filter-row2 .filter-actions .btn i {
+    margin-right: .25rem;
+  }
+
+  /* Tenant Select2: smaller UI + compact results */
+  .select2-container .select2-selection--single {
+    font-size: .72rem;
+    height: 28px;
+  }
+
+  .select2-container .select2-selection__rendered {
+    line-height: 1.25;
+  }
+
+  .select2-dropdown.tenant-compact .select2-results__option {
+    font-size: .72rem;
+    line-height: 1.1;
+    padding: .15rem .35rem;
+  }
+
+  .select2-dropdown.tenant-compact .select2-search__field {
+    font-size: .75rem;
+  }
+
+  /* Big-screen: smaller action buttons height + a bit more gap */
+  @media (min-width:577px) {
+    .actions-wrap {
+      gap: .35rem !important;
+    }
+
+    td.col-actions .btn {
+      padding: .12rem .24rem !important;
+      line-height: 1 !important;
+    }
+  }
+
+  /* === PATCH: Filter/Clear vertical on big; filter bar visible on small; compact table actions on small === */
+
+  /* BIG screens: stack Filter & Clear vertically (top/bottom) */
+  @media (min-width: 577px) {
+    .filter-row2 .filter-actions {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: .25rem !important;
+    }
+  }
+
+  /* SMALL screens: make header + filters wrap visibly (no hidden bar) */
+  @media (max-width: 576px) {
+    .leases-header {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      align-items: flex-start !important;
+      white-space: normal !important;
+      overflow: visible !important;
+    }
+
+    #lease-filter-form {
+      display: block !important;
+      white-space: normal !important;
+      overflow: visible !important;
+    }
+  }
+
+  /* SMALL screens: actions in ONE line, extra compact, tiny gaps, icon-only */
+  @media (max-width: 576px) {
+    td.col-actions {
+      padding-top: .04rem !important;
+      padding-bottom: .04rem !important;
+      padding-right: .010rem !important;
+      vertical-align: middle !important;
+    }
+
+    td.col-actions .actions-wrap {
+      display: inline-flex !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      gap: .10rem !important;
+      /* tiny gap */
+      white-space: nowrap !important;
+      /* force one line */
+    }
+
+    td.col-actions .btn {
+      padding: .010rem .012rem !important;
+      /* low height */
+      line-height: 1 !important;
+      font-size: .58rem !important;
+      min-width: auto !important;
+    }
+
+    td.col-actions .btn i {
+      font-size: .55rem !important;
+      margin-right: 0 !important;
+    }
+
+    /* hide labels for action buttons (keep top header button labels unchanged) */
+    td.col-actions .btn .btn-label {
+      display: none !important;
+    }
+  }
+
+  /* === PATCH START === */
+
+  /* ---------- COLUMN CONTROL ---------- */
+  /* Make Balance visible even on small screens */
+  @media (max-width: 576px) {
+
+    th.col-balance,
+    td.col-balance {
+      display: table-cell !important;
+    }
+  }
+
+  /* Tighten Actions column on small screens */
+  @media (max-width: 576px) {
+    td.col-actions {
+      padding: 0.05rem 0.10rem !important;
+      vertical-align: middle !important;
+    }
+
+    td.col-actions .actions-wrap {
+      display: inline-flex !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      gap: 0.08rem !important;
+      /* tighter gap */
+      white-space: nowrap !important;
+    }
+
+    td.col-actions .btn {
+      padding: var(--btn-py-sm) var(--btn-px-sm) !important;
+      line-height: 1 !important;
+      font-size: 0.55rem !important;
+      min-width: auto !important;
+    }
+
+    td.col-actions .btn i {
+      font-size: 0.55rem !important;
+      margin-right: 0 !important;
+    }
+
+    td.col-actions .btn .btn-label {
+      display: none !important;
+      /* keep icon-only */
+    }
+  }
+
+  /* ---------- BUTTON PADDING TWEAKS ---------- */
+  /* Use these two variables to control all button sizes */
+  :root {
+    --btn-px-lg: 0.5rem;
+    /* horizontal padding big screen */
+    --btn-py-lg: 0.14rem;
+    /* vertical padding big screen */
+    --btn-px-sm: 0.035rem;
+    /* horizontal padding small screen */
+    --btn-py-sm: 0.18rem;
+    /* vertical padding small screen */
+  }
+
+  /* Example use */
+  @media (min-width: 577px) {
+    .btn-slim {
+      padding: var(--btn-py-lg) var(--btn-px-lg) !important;
+    }
+  }
+
+  @media (max-width: 576px) {
+    .btn-slim {
+      padding: var(--btn-py-sm) var(--btn-px-sm) !important;
+    }
+  }
+
+  /* ---------- FILTER WIDTH CONTROL ---------- */
+  /* Adjust these as needed per screen */
+  @media (min-width: 577px) {
+    #id_property {
+      width: var(--filter-prop-lg, 140px) !important;
+    }
+
+    #id_unit {
+      width: var(--filter-unit-lg, 120px) !important;
+    }
+
+    #id_tenant {
+      width: var(--filter-tenant-lg, 160px) !important;
+    }
+  }
+
+  @media (max-width: 576px) {
+    #id_property {
+      width: var(--filter-prop-sm, 60px) !important;
+    }
+
+    #id_unit {
+      width: var(--filter-unit-sm, 60px) !important;
+    }
+
+    #id_tenant {
+      width: var(--filter-tenant-sm, 140px) !important;
+    }
+  }
+
+  /* ---------- FILTER BUTTON STYLE ---------- */
+  .filter-row2 .filter-actions .btn {
+    font-size: var(--filter-btn-font, 0.75rem) !important;
+    padding: var(--filter-btn-y, 0.2rem) var(--filter-btn-x, 0.4rem) !important;
+  }
+
+  /* === PATCH END === */
+
+  /* --- FORCE FULL GRID LINES ON LEASE TABLE --- */
+.table-responsive table.table {
+  border-collapse: collapse;
+}
+
+.table-responsive table.table th,
+.table-responsive table.table td {
+  border: 1px solid #dee2e6 !important;
+}
+
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  /* Select2 + autosubmit */
+  document.addEventListener("DOMContentLoaded", function () {
+    $('#id_tenant').select2({
+      placeholder: "Search tenant...",
+      allowClear: true,
+      width: '100%',
+      dropdownCssClass: 'tenant-compact',
+      selectionCssClass: 'tenant-compact',
+      templateResult: function (data) {
+        if (!data.id) return data.text;
+        const full = data.text || '';
+        const short = full.length > 30 ? (full.slice(0, 30) + '…') : full;
+        const $el = $('<span>').text(short).attr('title', full);
+        return $el;
+      },
+      templateSelection: function (data) {
+        const full = data.text || '';
+        const short = full.length > 30 ? (full.slice(0, 30) + '…') : full;
+        return short;
+      }
+    });
+    // Autofocus when tenant filter opens
+    $('#id_tenant').on('select2:open', function () {
+      setTimeout(() => {
+        const input = document.querySelector('.select2-container .select2-search__field');
+        if (input) input.focus();
+      }, 0);
+    });
+
+    // === RESTORE ORIGINAL AUTOSUBMIT ===
+    $('input[type="checkbox"]').change(() => $('#lease-filter-form').submit());
+    $('#id_property, #id_unit').change(() => {
+      $('#id_tenant').val('').trigger('change');
+      $('#lease-filter-form').submit();
+    });
+    $('#id_tenant').change(function () {
+      if ($(this).val()) { $('#id_property, #id_unit').val(''); }
+      $('#lease-filter-form').submit();
+    });
+  });
+</script>
+
+<script>
+  // This should be filled from Django template (see step 2)
+  const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+
+  function normalizePhone(phone, defaultCountryCodeRaw) {
+    if (!phone) return null;
+
+    let raw = phone.toString().trim();
+
+    // Normalize default country code: "+92" → "92"
+    let defaultCode = (defaultCountryCodeRaw || '').trim();
+    if (defaultCode.startsWith('+')) {
+      defaultCode = defaultCode.slice(1);
+    }
+
+    // 1) If user entered a '+' international number, use that
+    if (raw.startsWith('+')) {
+      const digits = raw.replace(/[^\d]/g, '');  // keep digits only for wa.me
+      return digits || null;
+    }
+
+    // 2) Strip all non-digits
+    const cleaned = raw.replace(/\D/g, '');
+    if (!cleaned) return null;
+
+    // 3) If user entered 00-prefixed international number (e.g. 0044..., 001...)
+    if (cleaned.startsWith('00')) {
+      return cleaned.slice(2);  // remove the leading 00, keep rest
+    }
+
+    // 4) If number already starts with default country code, keep it
+    if (defaultCode && cleaned.startsWith(defaultCode)) {
+      return cleaned;
+    }
+
+    // 5) Local style starting with 0 → strip 0 and add default country code
+    if (defaultCode && cleaned.startsWith('0')) {
+      return defaultCode + cleaned.slice(1);
+    }
+
+    // 6) Fallback: if we have a default code, prefix it; otherwise use cleaned
+    return defaultCode ? defaultCode + cleaned : cleaned;
+  }
+
+  function sendWhatsAppReminder(
+    phone,
+    firstName,
+    propertyName,
+    unitNumber,
+    balance,           // already monthly + security
+    periodStart,
+    periodEnd,
+    securityRequired,
+    securityStatus,
+    securityBalance
+  ) {
+    try {
+      if (!phone) {
+        alert("No phone number provided");
+        return;
+      }
+
+      const formatted = normalizePhone(phone, DEFAULT_COUNTRY_CODE);
+      if (!formatted) {
+        alert("Invalid phone number");
+        return;
+      }
+
+      const formattedBalance = parseFloat(balance || 0).toLocaleString(
+        'en-PK',
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+      );
+
+      let secBalanceLine = "";
+      if (securityBalance) {
+        secBalanceLine = `Security Deposit Balance: ${securityBalance}\n`;
+      }
+
+      const message = `Dear ${firstName},
+
+*Payment Reminder:*
+Property: ${propertyName}
+Unit: ${unitNumber}
+Period: ${periodStart} – ${periodEnd}
+Security Deposit: ${securityRequired} (${securityStatus})
+${secBalanceLine}*Total Balance: Rs. ${formattedBalance}*
+
+Please pay at your earliest convenience.`;
+
+      window.open(
+        `https://wa.me/${formatted}?text=${encodeURIComponent(message)}`,
+        '_blank'
+      );
+    } catch (error) {
+      console.error("WhatsApp error:", error);
+      alert("Failed to send WhatsApp: " + error.message);
+    }
+  }
+</script>
+
+
+
+
+
+<script>
+  /* Minimal enhancements only as requested:
+     - Wrap tenant text once for truncation
+     - Mark status "Ended/Inactive" in red (status cell)
+     - Mark End dates within <= 40 days as red (end cell only)
+     - Keep all widths and action settings unchanged
+  */
+  document.addEventListener('DOMContentLoaded', function () {
+    const today = new Date();
+    const MS_PER_DAY = 86400000;
+    function daysUntil(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return null;
+      const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+      const t1 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      return Math.ceil((t1 - t0) / MS_PER_DAY);
+    }
+
+    document.querySelectorAll('table tbody tr').forEach(tr => {
+      const tdTenant = tr.querySelector('td.col-tenant');
+      const tdEnd = tr.querySelector('td.col-end');
+      const tdStatus = tr.querySelector('td.col-status');
+
+      if (tdTenant && !tdTenant.querySelector('.tenant-text')) {
+        const span = document.createElement('span');
+        span.className = 'tenant-text';
+        span.textContent = (tdTenant.textContent || '').trim();
+        tdTenant.innerHTML = '';
+        tdTenant.appendChild(span);
+      }
+
+      if (tdStatus) {
+        const st = (tdStatus.textContent || '').trim().toLowerCase();
+        if (/ended|inactive/.test(st)) {
+          tdStatus.classList.add('status-ended');
+        }
+      }
+
+      if (tdEnd) {
+        const raw = (tdEnd.textContent || '').trim();
+        const dleft = daysUntil(raw);
+        if (dleft !== null && dleft <= 40) {
+          tdEnd.classList.add('end-soon');
+        }
+      }
+    });
+  });
+</script>
+
+<!-- Progress Modal (unchanged) -->
+<div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="progressModalLabel">Sending Reminders</h5>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3">
+          <div id="reminder-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+        <p id="progress-text">Preparing to send reminders...</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,839 @@
+<!-- File: templates/dashboard.html (REPLACE)
+     Goal: Presentable dashboard that follows meter_list design: compact cards, tidy headings,
+           no duplicate titles, sticky table header, aligned buttons -->
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container-fluid">
+  <div class="d-flex justify-content-between align-items-end mb-3">
+    <div>
+      <h2 class="mb-0"><i class="fas fa-chart-column text-primary me-2"></i>Energy Dashboard</h2>
+      <small class="text-muted">Quick filters, chart, and export</small>
+    </div>
+  </div>
+
+  <!-- Filters & exports -->
+  <div class="card mb-3">
+    <div class="card-body py-2 px-3">
+      <form id="meter-filter-form" method="get" class="row row-cols-lg-auto g-2 align-items-end">
+        <!-- Property -->
+        <div class="col">
+          <label class="form-label mb-1">Property</label>
+          <select name="property" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for p in all_properties %}
+              <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>{{ p.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <!-- Unit -->
+        <div class="col">
+          <label class="form-label mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for u in filtered_units %}
+              <option value="{{ u.id }}" {% if current_unit == u.id|stringformat:"s" %}selected{% endif %}>{{ u.unit_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <!-- Meter -->
+        {% with dropdown_meters=filtered_meters|default:meters %}
+        <div class="col">
+          <label class="form-label mb-1">Meter</label>
+          <select name="meter" class="form-select form-select-sm">
+            <option value="">All meters</option>
+            {% for m in dropdown_meters %}
+              <option value="{{ m.id }}" {% if current_meter == m.id|stringformat:"s" %}selected{% endif %}>
+                {{ m.meter_number }} — {{ m.unit.unit_number }}
+              </option>
+            {% empty %}
+              <option disabled>No meters found</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endwith %}
+        <!-- Report -->
+        <div class="col">
+          <label class="form-label mb-1">Report</label>
+          <select name="report_type" class="form-select form-select-sm">
+            <option value="daily"   {% if report_type == 'daily' %}selected{% endif %}>Daily</option>
+            <option value="monthly" {% if report_type == 'monthly' %}selected{% endif %}>Monthly</option>
+            <option value="hourly"  {% if report_type == 'hourly' %}selected{% endif %}>Hourly</option>
+          </select>
+        </div>
+        <!-- Month (auto when monthly + all meters) -->
+        <div class="col" id="col-month" style="display:none;">
+          <label class="form-label mb-1">Month</label>
+          <input type="month" id="input-month" value="{{ start_date|date:'Y-m' }}" class="form-control form-control-sm">
+        </div>
+        <!-- Start/End -->
+        <div class="col" id="col-start">
+          <label class="form-label mb-1">Start</label>
+          <input type="date" id="input-start" name="start" value="{{ start_date|date:'Y-m-d' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col" id="col-end">
+          <label class="form-label mb-1">End</label>
+          <input type="date" id="input-end" name="end" value="{{ end_date|date:'Y-m-d' }}" class="form-control form-control-sm">
+        </div>
+
+        <!-- Buttons -->
+        <div class="col-12 col-lg d-flex flex-wrap gap-2 ms-lg-auto mt-2 mt-lg-0">
+          <button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-filter me-1"></i>Apply</button>
+          {% with qs=request.GET.urlencode %}
+            <a class="btn btn-sm btn-success"            href="{% url 'smart_meter:energy_export_csv'  %}?{{ qs }}"><i class="fas fa-file-csv me-1"></i>CSV</a>
+            <a class="btn btn-sm btn-success"   href="{% url 'smart_meter:energy_export_xlsx' %}?{{ qs }}"><i class="fas fa-file-excel me-1"></i>Excel</a>
+            <a class="btn btn-sm btn-secondary" href="{% url 'smart_meter:energy_export_pdf'  %}?{{ qs }}"><i class="fas fa-file-pdf me-1"></i>PDF</a>
+          {% endwith %}
+          <button id="btn-save-jpeg"  type="button" class="btn btn-sm btn-dark"><i class="fas fa-image me-1"></i>Save Chart+Table</button>
+          <button id="btn-save-chart" type="button" class="btn btn-sm btn-dark"><i class="fas fa-chart-bar me-1"></i>Chart</button>
+          <button id="btn-save-table" type="button" class="btn btn-sm btn-secondary"><i class="fas fa-table me-1"></i>Table</button>
+          <a
+            class="btn btn-sm btn-primary"
+            href="{% url 'smart_meter:billing_summary' %}?month={{ start_date|date:'Y-m' }}"
+            title="Billing Summary (invoices + rent/maintenance/water/internet/electric prev month + other + total)">
+            <i class="fas fa-receipt me-1"></i>Billing Summary
+          </a>
+          {# ... inside the Buttons div (next to CSV/Excel/PDF) ... #}
+          {# Buttons div … keep your other buttons #}
+
+          {% url 'smart_meter:electric_bill_preview_by_meter' meter_id=0 as preview_url %}
+          {% if not preview_url %}
+            {# If you didn't namespace app_name='smart_meter', fall back to plain name: #}
+            {% url 'electric_bill_preview_by_meter' meter_id=0 as preview_url %}
+          {% endif %}
+
+          {% if report_type == 'monthly' %}
+            {% url 'smart_meter:electric_bill_preview_by_meter' meter_id=0 as preview_by_meter_url %}
+            {% url 'smart_meter:electric_bill_bulk_preview' as bulk_preview_url %}
+
+            <button
+              id="btn-add-to-invoice"
+              type="button"
+              class="btn btn-sm btn-warning"
+              data-preview-url-base="{{ preview_by_meter_url }}"
+              data-bulk-url="{{ bulk_preview_url }}">
+              <i class="fas fa-file-invoice-dollar me-1"></i>Generate Billing
+            </button>
+            <span class="text-muted small d-inline-block ms-1">Finalized months only</span>
+
+          {% endif %}
+
+
+        </div>
+      </form>
+
+      {% if not current_meter %}
+      <div class="mt-2 d-flex align-items-center gap-2">
+        <div class="btn-group btn-group-sm" role="group" id="onlineFilter">
+          <button type="button" class="btn btn-success" data-filter="online">Online <span class="badge bg-success ms-1">{{ online_count }}</span></button>
+          <button type="button" class="btn btn-secondary" data-filter="offline">Offline <span class="badge bg-secondary ms-1">{{ offline_count }}</span></button>
+          <button type="button" class="btn btn-dark" data-filter="all">All</button>
+        </div>
+        <small class="text-muted">Updated in last {{ online_minutes }} min</small>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if current_meter and latest_ts %}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <h6 class="mb-2">Current Status — Meter {{ selected_meter.meter_number }} ({{ unit.unit_number }})</h6>
+      <div class="row row-cols-2 row-cols-md-4 g-2 small">
+        <div><strong>Latest Energy:</strong> {{ latest_total_energy|default:"-"|floatformat:2 }} kWh <small class="text-muted">({{ latest_ts|date:"M d, Y H:i" }})</small></div>
+        <div><strong>Voltage A:</strong> {{ latest_voltage_a|default:"-"|floatformat:1 }} V</div>
+        <div><strong>Current A:</strong> {{ latest_current_a|default:"-"|floatformat:3 }} A</div>
+        {% if balance %}<div><strong>Balance:</strong> {{ currency }} {{ balance.balance|floatformat:2 }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if report_type == 'monthly' and month_heading %}
+    <h5 class="mb-2">{{ month_heading }}</h5>
+  {% endif %}
+
+  {% if rows %}
+    <div class="alert alert-info py-2">
+      <strong>Total kWh:</strong> {{ totals_disp.total_kwh }}
+      <span class="ms-3"><strong>Usage Charges:</strong> {{ currency }} {{ totals_disp.usage_charges }}</span>
+      {% if report_type == 'monthly' %}
+        <span class="ms-3"><strong>Service Charges:</strong> {{ currency }} {{ totals_disp.service_charges }}</span>
+        <span class="ms-3"><strong>Total:</strong> {{ currency }} {{ totals_disp.grand_total }}</span>
+      {% endif %}
+    </div>
+
+    <!-- Chart -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="mb-2">
+          {% if property_name and not current_meter and report_type == 'monthly'%}
+            <h6 class="mb-0">Energy Report for {{ property_name }} — All meters — {{ month_heading }}</h6>
+          {% elif not current_meter and report_type == 'monthly'%}
+            <h6 class="mb-0">Energy Report — All meters — {{ month_heading }}</h6>
+          {% else %}
+            <h6 class="mb-0">Energy {{ start_date|date:'F d, Y' }} – {{ end_date|date:'F d, Y' }}</h6>
+          {% endif %}
+          {% if current_meter %}<div class="small text-muted">Meter {{ selected_meter.meter_number }} — Unit {{ selected_meter.unit.unit_number }}</div>{% endif %}
+        </div>
+        <canvas id="energyChart" height="120" class="mt-2"></canvas>
+      </div>
+    </div>
+
+    <!-- Table -->
+<!-- Table -->
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="energyTable" class="table table-striped table-hover table-sm align-middle text-center mb-0">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th><span>S/N</span></th>
+
+            <!-- Meter #: also shows Period (2nd line) on small -->
+            <th id="th-meter" class="sortable">
+              <span>Meter #</span>
+              <span class="d-sm-none small text-muted d-block">+ Period</span>
+            </th>
+
+            <!-- Unit: shows Tenant below on small; Tenant column stays for ≥sm -->
+            <th id="th-unit" class="sortable"><span>Unit</span></th>
+
+            <!-- Property: hidden on small -->
+            <th class="d-none d-sm-table-cell"><span>Property</span></th>
+
+            {% if report_type == 'monthly' %}
+              <!-- Tenant header (desktop only) -->
+              <th class="d-none d-sm-table-cell col-tenant"><span>Tenant</span></th>
+            {% endif %}
+
+            <!-- Period: hidden on small (shown under Meter# instead) -->
+            <th class="d-none d-sm-table-cell"><span>Period</span></th>
+
+            <!-- Begin: shows End beneath on small -->
+            <th><span>Begin<br>(kWh)</span></th>
+
+            <!-- End: hidden on small (rendered under Begin) -->
+            <th class="d-none d-sm-table-cell"><span>End<br>(kWh)</span></th>
+
+            <th><span>Usage<br>(kWh)</span></th>
+
+            <!-- Rate: shows Usage Charges beneath on small -->
+            <th><span>Rate<br>({{ currency }}/kWh)</span></th>
+
+            <!-- Usage Charges: hidden on small (rendered under Rate) -->
+            <th class="d-none d-sm-table-cell"><span>Usage<br>Charges</span></th>
+
+            {% if report_type == 'monthly' %}
+              <!-- Service Charges: hidden on small (shown in mobile-only totals) -->
+              <th class="d-none d-sm-table-cell"><span>Service<br>Charges</span></th>
+
+              <!-- Total: stays visible (mobile totals shown separately) -->
+              <th class="d-none d-sm-table-cell"><span>Total<br>({{ currency }})</span></th>
+            {% endif %}
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for r in rows_disp %}
+          <tr data-online="{% if r.is_online is not None %}{{ r.is_online|yesno:'true,false' }}{% else %}unknown{% endif %}">
+            <td>{{ forloop.counter }}</td>
+
+            <!-- Meter # + (small) Period under it -->
+            <td data-meter="{{ r.meter_number }}">
+              <div class="d-flex justify-content-center align-items-center gap-1">
+                <span>{{ r.meter_number }}</span>
+                {% if report_type == 'monthly' %}
+                  <a
+                    class="btn btn-xs btn-outline-warning"
+                    title="Add this meter’s month to invoice"
+                    href="{% url 'smart_meter:electric_bill_preview_by_meter' meter_id=r.meter_id %}?month={{ start_date|date:'Y-m' }}">
+                    ➕
+                  </a>
+                {% endif %}
+              </div>
+              <div class="d-sm-none small text-muted ellipsis-1line" title="{{ r.period_label }}">{{ r.period_label }}</div>
+            </td>
+
+
+            <!-- Unit + (small) Tenant under it, ellipsized -->
+            <td data-unit="{{ r.unit_number }}">
+              <div>{{ r.unit_number }}</div>
+              {% if report_type == 'monthly' %}
+                <div class="d-sm-none small text-muted tenant-name--inline ellipsis-1line" title="{{ r.tenant_name }}">{{ r.tenant_name }}</div>
+              {% endif %}
+            </td>
+
+            <!-- Property (desktop only) -->
+            <td class="d-none d-sm-table-cell">{{ r.property_name }}</td>
+
+            {% if report_type == 'monthly' %}
+              <!-- Tenant (desktop only) with ellipsis -->
+              <td class="d-none d-sm-table-cell">
+                <span class="ellipsis-1line" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span>
+              </td>
+            {% endif %}
+
+            <!-- Period (desktop only) -->
+            <td class="d-none d-sm-table-cell">{{ r.period_label }}</td>
+
+            <!-- Begin (small also shows End under it) -->
+            <td>
+              {{ r.start_kwh |floatformat:3}}
+              <div class="d-sm-none small text-muted">End: {{ r.end_kwh |floatformat:2}}</div>
+            </td>
+
+            <!-- End (desktop only) -->
+            <td class="d-none d-sm-table-cell">{{ r.end_kwh |floatformat:3}}</td>
+
+            <td class="fw-semibold">{{ r.usage |default:"0.00"|floatformat:3 }}</td>
+
+            <!-- Rate (small also shows Usage Charges under it) -->
+            <td>
+              {{ r.unit_rate }}
+              <div class="d-sm-none small text-muted">Usage: {{ currency }}{{ r.usage_amount |floatformat:2}}</div>
+            </td>
+
+            <!-- Usage Charges (desktop only) -->
+            <td class="d-none d-sm-table-cell">{{ currency }}{{ r.usage_amount }}</td>
+
+            {% if report_type == 'monthly' %}
+              <!-- Service Charges (desktop only) -->
+              <td class="d-none d-sm-table-cell">{{ currency }}{{ r.service_charges }}</td>
+              <!-- Total (desktop only) -->
+              <td class="fw-semibold d-none d-sm-table-cell">{{ currency }}{{ r.total_amount }}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+
+        <tfoot>
+          <!-- ===== Desktop totals (≥ sm) ===== -->
+          <tr class="fw-bold d-none d-sm-table-row">
+            <!-- S/N -->
+            <td></td>
+
+            <!-- Meter# -->
+            <td class="text-end">Totals</td>
+
+            <!-- Unit column: put TOTAL kWh here -->
+            <td>{{ totals_disp.total_kwh }}</td>
+
+            <!-- Property -->
+            <td></td>
+
+            {% if report_type == 'monthly' %}
+              <!-- Tenant (desktop only) -->
+              <td class="d-none d-sm-table-cell col-tenant">
+                <span class="tenant-name ellipsis-1line" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span>
+              </td>
+            {% endif %}
+
+            <!-- Period -->
+            <td></td>
+
+            <!-- Begin -->
+            <td></td>
+
+            <!-- End -->
+            <td></td>
+
+            <!-- Usage (kWh) -->
+            <td>{{ totals_disp.total_kwh }}</td>
+
+            <!-- Rate -->
+            <td></td>
+
+            <!-- Usage Charges column: put TOTAL amount here -->
+            <td>{{ totals_disp.usage_charges }}</td>
+
+            {% if report_type == 'monthly' %}
+              <!-- Service Charges -->
+              <td>{{ totals_disp.service_charges }}</td>
+              <!-- Grand Total -->
+              <td>{{ totals_disp.grand_total }}</td>
+            {% endif %}
+          </tr>
+
+          <!-- ===== Mobile totals (< sm) ===== -->
+          {% if report_type == 'monthly' %}
+            <!-- Row 1: Service Charges first row (small) -->
+            <tr class="fw-bold d-sm-none">
+              <td></td>
+              <td class="text-end">Service</td>
+              <td>{{ totals_disp.total_kwh }}</td>   <!-- keep "total unit" under Unit col on small too -->
+              <!-- skip hidden cols by spanning across them -->
+              <td colspan="3"></td>
+              <td class="text-end" colspan="2">Amount</td>
+              <td></td>
+              <td></td>
+              <td>{{ totals_disp.service_charges }}</td>
+            </tr>
+            <!-- Row 2: Total as second row (small) -->
+            <tr class="fw-bold d-sm-none">
+              <td></td>
+              <td class="text-end">Total</td>
+              <td>{{ totals_disp.total_kwh }}</td>
+              <td colspan="3"></td>
+              <td class="text-end" colspan="2">Amount</td>
+              <td></td>
+              <td></td>
+              <td>{{ totals_disp.grand_total }}</td>
+            </tr>
+          {% else %}
+            <!-- Non-monthly: single compact mobile totals row -->
+            <tr class="fw-bold d-sm-none">
+              <td></td>
+              <td class="text-end">Totals</td>
+              <td>{{ totals_disp.total_kwh }}</td> <!-- under Unit -->
+              <td colspan="3"></td>
+              <td class="text-end" colspan="2">Amount</td>
+              <td></td>
+              <td></td>
+              <td>{{ totals_disp.usage_charges }}</td>
+            </tr>
+          {% endif %}
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+  {% else %}
+    <div class="alert alert-info">No data available for the selected parameters.</div>
+  {% endif %}
+</div>
+
+<!-- Offcanvas (unchanged, just kept tidy) -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="chartOffcanvas" aria-labelledby="chartOffcanvasLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="chartOffcanvasLabel">Usage Chart</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body">
+    <canvas id="energyChartOffcanvas" height="180"></canvas>
+    <div class="mt-3 d-flex gap-2">
+      <button id="btn-offcanvas-save-chart" class="btn btn-sm btn-outline-dark" type="button">Save Chart (PNG)</button>
+      <button id="btn-offcanvas-save-both"  class="btn btn-sm btn-dark"         type="button">Save Chart + Table (JPEG)</button>
+      <button type="button" class="btn btn-sm btn-secondary ms-auto" data-bs-dismiss="offcanvas">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart libs -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+{{ labels|json_script:"labels-json" }}
+{{ datasets|json_script:"datasets-json" }}
+<script>
+(function(){
+  const labels   = JSON.parse(document.getElementById('labels-json').textContent || '[]');
+  const datasets = JSON.parse(document.getElementById('datasets-json').textContent || '[]');
+  const perMeterMode = {{ current_meter|yesno:"true,false" }};
+  const reportType = "{{ report_type }}";
+  if (!labels.length || !datasets.length) return;
+  const el = document.getElementById('energyChart');
+  if (!el) return;
+  const barSets = datasets.map(d => ({
+    label: d.label,
+    data: d.data,
+    meterNumber: d.meterNumber || '',
+    unitNumber:  d.unitNumber  || '',
+    propertyName: d.propertyName || '',
+    borderWidth: 1
+  }));
+  if (!perMeterMode) {
+    barSets.sort((a, b) =>
+      (a.propertyName || '').localeCompare(b.propertyName || '', undefined, { sensitivity: 'base' }) ||
+      (a.unitNumber   || '').localeCompare(b.unitNumber   || '', undefined, { numeric: true, sensitivity: 'base' }) ||
+      (a.meterNumber  || '').localeCompare(b.meterNumber  || '', undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }
+  const ctx = el.getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: barSets },
+    options: {
+      layout: { padding: { bottom: 0 } },
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          labels: {
+            value: {
+              formatter: (value) => {
+                if (value == null) return '';
+                if (reportType === 'monthly') return Math.round(value);
+                return Number(value).toFixed(2);
+              },
+              anchor: 'end', align: 'end', offset: 8, clamp: true, textAlign: 'left', clip: true
+            },
+            meter: {
+              formatter: (_v, ctx) => {
+                if (perMeterMode) return '';
+                const ds = ctx.dataset || {};
+                if (!ds.meterNumber) return '';
+                return ds.unitNumber ? ds.unitNumber + '\n' + ds.meterNumber : ds.meterNumber;
+              },
+              anchor: 'center', align: 'center', rotation: -90, color: '#000', clamp: true, offset: 120
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxRotation: 45, minRotation: 45 } },
+        y: { beginAtZero: true, title: { display: true, text: 'kWh' } }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+})();
+
+// Sorting helpers
+(function(){
+  const tbl = document.getElementById('energyTable');
+  if (!tbl) return;
+  const body = tbl.querySelector('tbody');
+  function sortBy(selector, attr){
+    const rows = Array.from(body.querySelectorAll('tr'));
+    rows.sort((a,b) => {
+      const va = a.querySelector(selector)?.getAttribute(attr) || '';
+      const vb = b.querySelector(selector)?.getAttribute(attr) || '';
+      const na = Number(va), nb = Number(vb);
+      if(!isNaN(na) && !isNaN(nb)) return na - nb;
+      return va.localeCompare(vb);
+    });
+    body.innerHTML = '';
+    rows.forEach(r => body.appendChild(r));
+    Array.from(body.querySelectorAll('tr')).forEach((r, idx) => r.children[0].textContent = idx + 1);
+  }
+  document.getElementById('th-meter')?.addEventListener('click', () => sortBy('td[data-meter]','data-meter'));
+  document.getElementById('th-unit')?.addEventListener('click',  () => sortBy('td[data-unit]', 'data-unit'));
+})();
+
+// Save chart/table as images
+(function(){
+  function ensureHtml2Canvas(cb){
+    if (window.html2canvas) return cb();
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = cb; document.head.appendChild(s);
+  }
+  function downloadPngFromEl(el, filename){
+    if (!el) return; ensureHtml2Canvas(() => {
+      html2canvas(el, {scale:2}).then(canvas => {
+        const a = document.createElement('a'); a.download = filename; a.href = canvas.toDataURL('image/png'); a.click();
+      });
+    });
+  }
+  document.getElementById('btn-save-jpeg')?.addEventListener('click', () => {
+    ensureHtml2Canvas(async () => {
+      const card = document.querySelector('#energyChart')?.closest('.card');
+      const table = document.querySelector('#energyTable')?.closest('.card');
+      if (!card || !table) return;
+      const wrap = document.createElement('div'); wrap.style.background = '#fff'; wrap.style.padding = '12px';
+      card.parentNode.insertBefore(wrap, card); wrap.appendChild(card); wrap.appendChild(table);
+      const canvas = await html2canvas(wrap, {scale:2});
+      const link = document.createElement('a'); link.download = 'energy-report.jpeg'; link.href = canvas.toDataURL('image/jpeg', 0.92); link.click();
+      wrap.parentNode.insertBefore(card, wrap); wrap.parentNode.insertBefore(table, wrap); wrap.remove();
+    });
+  });
+  document.getElementById('btn-save-chart')?.addEventListener('click', () => {
+    const chartCard = document.getElementById('energyChart')?.closest('.card') || document.getElementById('energyChart');
+    downloadPngFromEl(chartCard, 'chart.png');
+  });
+  document.getElementById('btn-save-table')?.addEventListener('click', () => {
+    const tableCard = document.getElementById('energyTable')?.closest('.card') || document.getElementById('energyTable');
+    downloadPngFromEl(tableCard, 'table.png');
+  });
+})();
+
+// Month mode + daily all-meters lock behavior (same logic, tidied)
+
+(function(){
+  const form = document.getElementById('meter-filter-form'); if (!form) return;
+  const selReport  = form.querySelector('select[name="report_type"]');
+  const selMeter   = form.querySelector('select[name="meter"]');
+  const colMonth   = document.getElementById('col-month');
+  const inputMonth = document.getElementById('input-month');
+  const inputStart = document.getElementById('input-start');
+  const inputEnd   = document.getElementById('input-end');
+
+  function isAllMeters(){ return !selMeter || selMeter.value === ''; }
+  function showMonthMode(){ return selReport && selReport.value === 'monthly' && isAllMeters(); }
+  function setStartEndFromMonth(ym){
+    if(!ym) return;
+    const [y,m]=ym.split('-').map(Number);
+    if(!y||!m) return;
+    const first=new Date(y,m-1,1);
+    const last=new Date(y,m,0);
+    const toISO = d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    inputStart.value=toISO(first);
+    inputEnd.value=toISO(last);
+  }
+  function lockDailyAll(){
+    if(!inputStart||!inputEnd) return;
+    const dailyAll = selReport?.value==='daily' && isAllMeters();
+    if(dailyAll){
+      inputEnd.value=inputStart.value; inputEnd.readOnly=true; inputEnd.classList.add('bg-light'); inputEnd.title='Locked: Daily + All meters';
+    }else{
+      inputEnd.readOnly=false; inputEnd.classList.remove('bg-light'); inputEnd.removeAttribute('title');
+    }
+  }
+
+  // INIT: prefer server-sent start/end (same month); DO NOT force to today's month
+  (function init(){
+    if (inputStart?.value && inputEnd?.value) {
+      const ds = new Date(inputStart.value), de = new Date(inputEnd.value);
+      if (!isNaN(+ds) && !isNaN(+de) && ds.getFullYear()===de.getFullYear() && ds.getMonth()===de.getMonth()) {
+        inputMonth.value = `${ds.getFullYear()}-${String(ds.getMonth()+1).padStart(2,'0')}`;
+      }
+    }
+    // If inputMonth already has a value (from the template), leave it alone.
+    if (showMonthMode()) setStartEndFromMonth(inputMonth.value);
+    colMonth.style.display = showMonthMode() ? '' : 'none';
+    document.getElementById('col-start').style.display = showMonthMode() ? 'none' : '';
+    document.getElementById('col-end').style.display = showMonthMode() ? 'none' : '';
+    lockDailyAll();
+  })();
+
+  // unchanged: on change, update UI + submit
+  form.querySelectorAll('select, input[type="date"], input[type="month"]').forEach(el => {
+    el.addEventListener('change', () => {
+      if(el===inputMonth && showMonthMode()) setStartEndFromMonth(inputMonth.value);
+      if(el===selReport || el===selMeter){
+        colMonth.style.display = showMonthMode() ? '' : 'none';
+        document.getElementById('col-start').style.display = showMonthMode() ? 'none' : '';
+        document.getElementById('col-end').style.display = showMonthMode() ? 'none' : '';
+      }
+      lockDailyAll();
+      form.submit();
+    });
+  });
+})();
+</script>
+
+<script>
+(function(){
+  const btn = document.getElementById('btn-add-to-invoice');
+  if (!btn) return;
+
+  function ymFromStartEnd() {
+    const s = document.getElementById('input-start')?.value;
+    const e = document.getElementById('input-end')?.value;
+    if (!s || !e) return null;
+    const ds = new Date(s), de = new Date(e);
+    if (isNaN(+ds) || isNaN(+de)) return null;
+    if (ds.getFullYear() !== de.getFullYear() || ds.getMonth() !== de.getMonth()) return null;
+    return `${ds.getFullYear()}-${String(ds.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  btn.addEventListener('click', () => {
+    const ym = ymFromStartEnd();
+    if (!ym) { alert('Please select a single completed month in the filters.'); return; }
+
+    // Only allow past months
+    const y = parseInt(ym.slice(0,4), 10), m = parseInt(ym.slice(5,7), 10);
+    const monthEnd = new Date(y, m, 0);
+    const today = new Date();
+    if (monthEnd >= new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+      alert('You can add to invoice only after the month has passed.');
+      return;
+    }
+
+    // If a meter is selected → single; else → bulk (all meters)
+    const sel = document.querySelector('select[name="meter"]');
+    const meterId = sel?.value;
+    if (meterId) {
+      const base = (btn.dataset.previewUrlBase || '').replace(/0\/?$/, '');
+      window.location.href = `${base}${meterId}/?month=${ym}`;
+    } else {
+      const base = btn.dataset.bulkUrl || '';
+      // keep property/unit filters if present
+      const params = new URLSearchParams(window.location.search);
+      params.set('month', ym);
+      // ensure we remove meter filter for all-meters mode
+      params.delete('meter');
+      window.location.href = `${base}?${params.toString()}`;
+    }
+  });
+})();
+</script>
+
+
+<style>
+  /* ===============================
+     WIDTH KNOBS (edit these only)
+     =============================== */
+  :root {
+    /* Large screens (≥576px) */
+    --col-sn-lg:            28px;
+    --col-meter-lg:        180px;
+    --col-unit-lg:         200px;
+    --col-property-lg:     160px;
+    --col-tenant-lg:       120px; /* Your 120px tenant width */
+    --col-period-lg:       160px;
+    --col-begin-lg:         56px;
+    --col-end-lg:           56px;
+    --col-usage-lg:        60px;
+    --col-rate-lg:          50px;
+    --col-usage-amt-lg:    120px;
+    --col-service-lg:      120px;
+    --col-total-lg:        120px;
+
+    /* Small screens (<576px) — only applied to columns that are visible on small */
+    --col-sn-sm:            40px;
+    --col-meter-sm:        110px;
+    --col-unit-sm:         110px;
+    --col-property-sm:     120px; /* property is hidden on small in your markup */
+    --col-tenant-sm:       100px; /* tenant is hidden on small; inline tenant uses var below */
+    --col-period-sm:       120px; /* period is hidden on small in your markup */
+    --col-begin-sm:         86px;
+    --col-end-sm:           86px; /* end is hidden on small in your markup */
+    --col-usage-sm:         90px;
+    --col-rate-sm:          85px;
+    --col-usage-amt-sm:    110px;
+    --col-service-sm:      110px; /* service is hidden on small in your markup */
+    --col-total-sm:        110px; /* total is hidden on small in your markup */
+
+    /* Inline tenant (the small-screen line under Unit) */
+    --tenant-inline-sm:    200px; /* you asked for 200px on small */
+
+    /* Base sizes */
+    --tbl-font-xs: 12px;   /* < 576px */
+    --tbl-font-sm: 12.5px; /* ≥ 576px */
+    --tbl-font-md: 13px;   /* ≥ 768px */
+    --tbl-font-lg: 14px;   /* ≥ 992px */
+    --tbl-font-xl: 15px;   /* ≥ 1200px */
+    --tbl-line-height: 1.2;
+  }
+
+  /* ===============================
+     TABLE BASICS
+     =============================== */
+  #energyTable {
+    table-layout: fixed;       /* honor explicit widths */
+    border-collapse: collapse; /* no gaps between cells */
+    border-spacing: 0;
+    width: 100%;
+    font-size: var(--tbl-font-xs);
+    line-height: var(--tbl-line-height);
+  }
+
+  #energyTable th span { display: block; line-height: 1.1; }
+  .sortable { cursor: pointer; text-decoration: underline; }
+  canvas { max-width: 100%; }
+
+  /* Cell padding + ellipsis defaults */
+  #energyTable th,
+  #energyTable td {
+    padding: .025rem .035rem;
+    white-space: normal;   /* allow wrap by default */
+    overflow: hidden;      /* prevent spill/overlap */
+    text-overflow: ellipsis;
+  }
+
+  /* Keep specific cells on one line when needed */
+  #energyTable .nowrap { white-space: nowrap; }
+
+  /* Single-line ellipsis utility */
+  .ellipsis-1line {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Tighten spacing for very small screens (≤400px) */
+  @media (max-width: 400px) {
+    #energyTable td, #energyTable th { padding-left: .35rem; padding-right: .35rem; }
+    #energyTable .small { font-size: .74rem; }
+  }
+
+  /* ===============================
+     COLUMN WIDTHS BY CLASS (LG)
+     Apply these classes to both TH and TD.
+     =============================== */
+  @media (min-width: 576px) {
+    #energyTable th.col-sn,         #energyTable td.col-sn         { width: var(--col-sn-lg);         max-width: var(--col-sn-lg); }
+    #energyTable th.col-meter,      #energyTable td.col-meter      { width: var(--col-meter-lg);      max-width: var(--col-meter-lg); }
+    #energyTable th.col-unit,       #energyTable td.col-unit       { width: var(--col-unit-lg);       max-width: var(--col-unit-lg); }
+    #energyTable th.col-property,   #energyTable td.col-property   { width: var(--col-property-lg);   max-width: var(--col-property-lg); }
+    #energyTable th.col-tenant,     #energyTable td.col-tenant     { width: var(--col-tenant-lg);     max-width: var(--col-tenant-lg); }
+    #energyTable th.col-period,     #energyTable td.col-period     { width: var(--col-period-lg);     max-width: var(--col-period-lg); }
+    #energyTable th.col-begin,      #energyTable td.col-begin      { width: var(--col-begin-lg);      max-width: var(--col-begin-lg); }
+    #energyTable th.col-end,        #energyTable td.col-end        { width: var(--col-end-lg);        max-width: var(--col-end-lg); }
+    #energyTable th.col-usage,      #energyTable td.col-usage      { width: var(--col-usage-lg);      max-width: var(--col-usage-lg); }
+    #energyTable th.col-rate,       #energyTable td.col-rate       { width: var(--col-rate-lg);       max-width: var(--col-rate-lg); }
+    #energyTable th.col-usage-amt,  #energyTable td.col-usage-amt  { width: var(--col-usage-amt-lg);  max-width: var(--col-usage-amt-lg); }
+    #energyTable th.col-service,    #energyTable td.col-service    { width: var(--col-service-lg);    max-width: var(--col-service-lg); }
+    #energyTable th.col-total,      #energyTable td.col-total      { width: var(--col-total-lg);      max-width: var(--col-total-lg); }
+
+    /* Tenant text ellipsis inside its fixed cell */
+    #energyTable td.col-tenant .tenant-name {
+      display: block;
+      width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  /* ===============================
+     COLUMN WIDTHS BY CLASS (SM)
+     Only affects columns that are visible on small in your markup.
+     =============================== */
+  @media (max-width: 575.98px) {
+    #energyTable th.col-sn,         #energyTable td.col-sn         { width: var(--col-sn-sm);         max-width: var(--col-sn-sm); }
+    #energyTable th.col-meter,      #energyTable td.col-meter      { width: var(--col-meter-sm);      max-width: var(--col-meter-sm); }
+    #energyTable th.col-unit,       #energyTable td.col-unit       { width: var(--col-unit-sm);       max-width: var(--col-unit-sm); }
+    #energyTable th.col-property,   #energyTable td.col-property   { width: var(--col-property-sm);   max-width: var(--col-property-sm); }
+    #energyTable th.col-tenant,     #energyTable td.col-tenant     { width: var(--col-tenant-sm);     max-width: var(--col-tenant-sm); }
+    #energyTable th.col-period,     #energyTable td.col-period     { width: var(--col-period-sm);     max-width: var(--col-period-sm); }
+    #energyTable th.col-begin,      #energyTable td.col-begin      { width: var(--col-begin-sm);      max-width: var(--col-begin-sm); }
+    #energyTable th.col-end,        #energyTable td.col-end        { width: var(--col-end-sm);        max-width: var(--col-end-sm); }
+    #energyTable th.col-usage,      #energyTable td.col-usage      { width: var(--col-usage-sm);      max-width: var(--col-usage-sm); }
+    #energyTable th.col-rate,       #energyTable td.col-rate       { width: var(--col-rate-sm);       max-width: var(--col-rate-sm); }
+    #energyTable th.col-usage-amt,  #energyTable td.col-usage-amt  { width: var(--col-usage-amt-sm);  max-width: var(--col-usage-amt-sm); }
+    #energyTable th.col-service,    #energyTable td.col-service    { width: var(--col-service-sm);    max-width: var(--col-service-sm); }
+    #energyTable th.col-total,      #energyTable td.col-total      { width: var(--col-total-sm);      max-width: var(--col-total-sm); }
+
+    /* Inline tenant (small) under Unit */
+    #energyTable .tenant-name--inline {
+      display: block;
+      max-width: var(--tenant-inline-sm);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Slightly tighter padding on small */
+    #energyTable td, #energyTable th {
+      padding-left: .3rem;
+      padding-right: .3rem;
+    }
+  }
+
+    /* Breakpoint overrides */
+  @media (min-width: 576px){
+    #energyTable{ font-size: var(--tbl-font-sm); }
+  }
+  @media (min-width: 768px){
+    #energyTable{ font-size: var(--tbl-font-md); }
+  }
+  @media (min-width: 992px){
+    #energyTable{ font-size: var(--tbl-font-lg); }
+  }
+  @media (min-width: 1200px){
+    #energyTable{ font-size: var(--tbl-font-xl); }
+  }
+
+  /* Optional: slightly smaller text for table “small” bits you already use */
+  #energyTable .small{
+    font-size: 0.9em; /* scales with the table’s font-size */
+  }
+</style>
+
+{% endblock %}

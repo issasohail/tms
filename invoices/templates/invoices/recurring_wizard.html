@@ -1,0 +1,1557 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% block extra_css %}
+
+
+  <!-- head -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+
+<style>
+/* =============================
+   Base (desktop/tablet unchanged)
+   ============================= */
+:root{
+  /* Recurring list (desktop/tablet) */
+  --propunit-col-w: 170px;
+  --dates-col-w:    120px;
+  --active-col-w:    70px;
+  --amt-col-w:       80px;
+
+  /* Preview (desktop/tablet) — mirror list where it makes sense */
+  --preview-sno-w:    28px;
+  --preview-date-w:   90px;
+  --preview-prop-w:  110px;
+  --preview-tenant-w:150px;       /* hidden on phones */
+  --preview-amt-w:    var(--amt-col-w);
+
+  /* Items (inner grid widths) */
+  --list-cat-max-w:     15ch;     /* show up to 15 characters visually */
+  --list-amt-cell-w:    max-content;
+  --list-actions-cell-w:max-content;
+
+  --preview-cat-max-w:  11rem;
+  --preview-amt-cell-w: 3.8rem;
+}
+
+/* Density + table base */
+table.rc-table{ table-layout:fixed; width:100%; font-size:.85rem; }
+table.rc-table th, table.rc-table td{ overflow:hidden; vertical-align:middle; padding:.22rem .35rem; line-height:1.2; }
+table.rc-table thead th{ position:sticky; top:0; background:#fff; z-index:1; }
+.th-compact{ font-size:.75rem; padding-top:.25rem; padding-bottom:.25rem; }
+.nowrap-ellipsis{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.col-center{ text-align:center; }
+
+th.col-propunit, td.cell-propunit{ width:var(--propunit-col-w); max-width:var(--propunit-col-w); }
+th.col-dates,   td.col-dates    { width:var(--dates-col-w);    max-width:var(--dates-col-w); }
+th.col-active,  td.col-active   { width:var(--active-col-w);   max-width:var(--active-col-w); text-align:center; }
+th.col-amt,     td.col-amt      { width:var(--amt-col-w);      max-width:var(--amt-col-w); }
+th.col-items,   td.col-items    { width:auto; }
+
+/* ===== Items column (ONE LINE per item: Category · Amount · [Edit] [Delete]) ===== */
+.col-items .m-items{ display:flex; flex-direction:column; gap:.125rem; }
+
+.col-items .item-line{
+  display:grid;
+  grid-template-columns: minmax(0, var(--list-cat-max-w)) var(--list-amt-cell-w) var(--list-actions-cell-w);
+  align-items:center;
+  column-gap:.25rem;
+  line-height:1.2;
+  font-size:.75rem;
+  white-space:nowrap;            /* keep entire row to one line */
+}
+
+.col-items .item-cat{
+  min-width:0;
+  max-width:var(--list-cat-max-w);
+  overflow:hidden;
+  text-overflow:ellipsis;        /* visual cap to ~15 characters */
+  font-weight:500;
+}
+
+.col-items .item-amt{
+  text-align:right;
+  font-weight:600;
+}
+
+.col-items .item-actions{
+  display:flex;
+  gap:.25rem;
+}
+
+/* Preview table (desktop/tablet) */
+#previewModal table{ table-layout:fixed; width:100%; border-collapse:collapse; }
+#previewModal col.col-sno    { width:var(--preview-sno-w); }
+#previewModal col.col-date   { width:var(--preview-date-w); }
+#previewModal col.col-prop   { width:var(--preview-prop-w); }
+#previewModal col.col-tenant { width:var(--preview-tenant-w); }
+#previewModal col.col-items  { width:auto; }
+#previewModal col.col-amt    { width:var(--preview-amt-w); }
+
+#previewModal .table thead th,
+#previewModal .table tbody td{
+  padding:.22rem .28rem;
+  font-size:.75rem;   /* desktop/tablet default */
+  line-height:1.2;
+  border-bottom:1px solid #dee2e6;
+}
+
+/* Preview items grid */
+#previewModal .item-line{
+  display:grid;
+  grid-template-columns: minmax(0, var(--preview-cat-max-w)) var(--preview-amt-cell-w);
+  align-items:center;
+  column-gap:0;
+}
+#previewModal .item-cat{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#previewModal .item-amt{ text-align:right; font-weight:600; }
+
+/* Always keep Items visible in list */
+th.col-items, td.col-items{ display:table-cell !important; }
+
+/* ===== FINAL 360–400px OVERRIDES (place LAST in your CSS) ===== */
+@media (max-width:400px){
+
+  /* Make the preview wrapper scrollable if needed */
+  #previewModal .table-responsive{
+    overflow-x:auto !important;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-x;
+  }
+
+  /* Kill any earlier min-widths that forced the table wider than the viewport */
+  #previewModal .rc-preview-table{
+    table-layout:fixed !important;
+    width:100% !important;
+    min-width:0 !important;
+  }
+
+  /* Match your render-table text size everywhere in the preview */
+  #previewModal .rc-preview-table thead th,
+  #previewModal .rc-preview-table tbody td,
+  #previewModal .rc-preview-table tfoot th{
+    font-size:.58rem !important;
+    line-height:1.2 !important;
+    padding:.18rem .20rem !important;
+  }
+
+  /* Hide Tenant column in preview to free width for Total */
+  #previewModal .rc-preview-table col.col-tenant{ width:0 !important; }
+  #previewModal .rc-preview-table th:nth-child(4),
+  #previewModal .rc-preview-table td:nth-child(4){
+    display:none !important;
+  }
+
+  /* Show tenant under the date, single line with ellipsis */
+  #previewModal .invdate-tenant{
+    display:block !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    color:#6c757d;
+  }
+
+  /* Force tenant text anywhere in preview to be 1 line (undo 2-line clamp) */
+  #previewModal .tenant-2line{
+    display:block !important;
+    white-space:nowrap !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    -webkit-line-clamp:unset !important;
+    -webkit-box-orient:unset !important;
+  }
+
+  /* Keep Total column visible and sized; mirror list width */
+  :root{
+    --preview-amt-w: 38px;          /* same as your list’s --amt-col-w on phones */
+    --preview-cat-max-w: 1.4rem;    /* squeeze category so amounts fit */
+    --preview-amt-cell-w: 2.4rem;   /* per-item amount cell inside items */
+  }
+  #previewModal .rc-preview-table col.col-amt{ width:var(--preview-amt-w) !important; }
+  #previewModal .rc-preview-table col.col-items{ width:auto !important; }
+
+  /* Items grid inside preview: Category | Amount (tight, no gap) */
+  #previewModal .item-line{
+    display:grid !important;
+    grid-template-columns:minmax(0, var(--preview-cat-max-w)) var(--preview-amt-cell-w) !important;
+    column-gap:0 !important;
+  }
+}
+/* ===== Ultra-compact overrides (scoped to #rcRoot.rc-compact) ===== */
+#rcRoot.rc-compact{
+  /* narrower column variables (scoped so other pages stay unchanged) */
+  --propunit-col-w: 94px;
+  --dates-col-w:    96px;
+  --active-col-w:   52px;
+  --amt-col-w:      64px;
+
+  --list-cat-max-w:      15ch;   /* ensure visual cap is ~15 chars */
+  --list-amt-cell-w:     max-content;
+  --list-actions-cell-w: max-content;
+}
+
+/* tighter table density */
+#rcRoot.rc-compact .table.rc-table th,
+#rcRoot.rc-compact .table.rc-table td{
+  padding: .16rem .24rem;
+  font-size: .72rem;
+  line-height: 1.05;
+}
+
+/* make header single-line: hide line breaks and sublabels */
+#rcRoot.rc-compact .table.rc-table thead th br{ display:none; }
+#rcRoot.rc-compact .table.rc-table thead th .text-muted{ display:none; }
+
+/* show the shorter Items label */
+#rcRoot.rc-compact .th-items-lg{ display:none; }
+#rcRoot.rc-compact .th-items-sm{ display:inline; }
+
+/* micro buttons for per-item actions */
+#rcRoot.rc-compact .btn-2xs{
+  --bs-btn-padding-y: .075rem;
+  --bs-btn-padding-x: .25rem;
+  --bs-btn-font-size: .62rem;
+  line-height: 1;
+}
+
+/* shrink top toolbar buttons; hide text labels to save width */
+#rcRoot.rc-compact .rc-topbtns .btn{
+  padding: .22rem .38rem;
+  font-size: .72rem;
+}
+#rcRoot.rc-compact .rc-topbtns .btn .btn-text{ display:none; }
+
+/* tighten form + items grid spacing */
+#rcRoot.rc-compact #editorPanel .card-body{ padding: .5rem; }
+#rcRoot.rc-compact #rcTable .m-items{ gap: .08rem; }
+
+/* ensure “cell-propunit” lines don’t wrap to multi-lines on narrow widths */
+#rcRoot.rc-compact .cell-propunit > .prop-line,
+#rcRoot.rc-compact .cell-propunit > .unit-line,
+#rcRoot.rc-compact .cell-propunit > .tenant-line{ white-space: nowrap; }
+
+/* tiny screens: hide tenant line in list to keep rows single-line */
+@media (max-width: 400px){
+  #rcRoot.rc-compact .cell-propunit > .tenant-line{ display:none; }
+}
+
+</style>
+
+
+
+
+
+
+{% endblock %}
+<body>
+<div class="d-flex justify-content-between align-items-center">
+  <h4 class="rc-title">Recurring Charges</h4>
+  <div class="rc-topbtns">
+    <button class="btn btn-sm btn-secondary" onclick="history.back()" title="Go Back">
+      <i class="fas fa-arrow-left"></i> <span class="btn-text">Go Back</span>
+    </button>
+
+    <button id="newBtn" type="button" class="btn btn-secondary btn-sm" title="New">
+      <i class="fas fa-plus"></i> <span class="btn-text">New</span>
+    </button>
+
+    <button id="previewBtn" type="button" class="btn btn-primary btn-sm" title="Preview &amp; Generate (Current)">
+      <i class="fas fa-eye"></i> <span class="btn-text">Run Current Month</span>
+    </button>
+
+    <a id="runNextBtn" href="{% url 'invoices:run_billing' %}" class="btn btn-success btn-sm" title="Run Next Month">
+      <i class="fas fa-forward"></i> <span class="btn-text">Run Next Month</span>
+    </a>
+  </div>
+</div>
+
+
+<div class="rc-compact" id="rcRoot"
+     data-url-leases="{% url 'invoices:api_leases_filtered' %}"
+     data-url-list="{% url 'invoices:api_recurring_list' %}"
+     data-url-create="{% url 'invoices:api_recurring_create' %}"
+     data-url-billing-preview="{% url 'invoices:api_billing_preview_current' %}"
+     data-url-billing-generate="{% url 'invoices:api_billing_generate_current' %}"
+     data-url-billing-preview-for="{% url 'invoices:api_billing_preview_for' %}"
+     data-url-billing-generate-for="{% url 'invoices:api_billing_generate_for' %}"
+>
+    <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="tb-group tb-line1">
+      <select id="propFilter" class="form-select form-select-sm">
+        <option value="all">All properties</option>
+        {% for p in properties %}
+          <option value="{{ p.id }}">{{ p.property_name }}</option>
+        {% endfor %}
+      </select>
+
+      <select id="unitFilter" class="form-select form-select-sm unit">
+        <option value="">All units</option>
+      </select>
+    </div>
+
+    <div class="tb-group tb-line2">
+      <select id="leaseFilter"
+              class="form-select form-select-sm"
+              style="min-width: 120px;"
+              title="Lease (Tenant — Unit — Status)">
+        <option value="">Lease (Tenant — Unit — Status)</option>
+      </select>
+
+      <div class="form-check ms-1">
+        <input class="form-check-input" type="checkbox" id="showInactive">
+        <label class="form-check-label small" for="showInactive">Show inactive</label>
+      </div>
+
+      <button id="resetFiltersBtn" class="btn btn-secondary btn-sm">Reset</button>
+    </div>
+  </div>
+
+
+
+  <div class="row g-3">
+    <!-- LEFT: Add/Edit form -->
+    <div class="col-lg-3">
+      <div id="editorPanel" class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="m-0" id="formTitle">New Recurring</h6>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Property (record)</label>
+              <select id="propSelect" class="form-select form-select-sm">
+                <option value="">— Select property —</option>
+                {% for p in properties %}
+                  <option value="{{ p.id }}">{{ p.property_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Lease</label>
+              <select id="leaseSelect" class="form-select form-select-sm">
+                <option value="">— Select lease —</option>
+              </select>
+            </div>
+          </div>
+
+          <hr class="my-2">
+
+          <form id="rcForm">
+            {% csrf_token %}
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Category</label>
+                <select id="f_category" class="form-select form-select-sm">
+                  {% for c in categories %}
+                    <option value="{{ c.id }}">{{ c.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Amount</label>
+                <input id="f_amt" type="number" step="0.01" class="form-control form-control-sm" value="0.00">
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea id="f_desc" class="form-control form-control-sm" rows="3" placeholder="Description (2 lines max)"></textarea>
+              </div>
+              
+              <div class="col-6">
+                <label class="form-label">Start</label>
+                <input id="f_start" type="date" class="form-control form-control-sm">
+              </div>
+              <div class="col-6">
+                <label class="form-label">End</label>
+                <input id="f_end" type="date" class="form-control form-control-sm">
+              </div>
+
+              <div class="col-8 d-flex align-items-center gap-2 mt-1">
+                <input id="f_active" type="checkbox" class="form-check-input" checked>
+                <label class="form-check-label" for="f_active">Active</label>
+              </div>
+              <div class="col-4">
+                <label class="form-label">Starting Day</label>
+                <input id="f_day" type="number" min="1" max="31" class="form-control form-control-sm" value="1">
+              </div>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button id="saveBtn" type="button" class="btn btn-primary btn-sm">Save</button>
+              <button id="cancelBtn" type="button" class="btn btn-secondary btn-sm">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: list summary + table -->
+    <div class="col-lg-9">
+      <div id="listSummary" class="small text-muted my-1"></div>
+
+      <div class="card">
+        <div class="card-body p-0">
+          <div style="max-height:60vh; overflow:auto;">
+            <table class="table table-sm rc-table table-hover mb-0" id="rcTable">
+              <colgroup>
+                <col style="width:56px"><!-- S.No -->
+                <col style="width:var(--propunit-col-w)"><!-- Prop/Unit/Tenant (3 lines) -->
+                <col style="width:var(--dates-col-w)"><!-- Start/End/Next -->
+                <col style="width:var(--active-col-w)"><!-- Active -->
+                <col><!-- Items (flex) -->
+                <col style="width:var(--amt-col-w)"><!-- Total -->
+              </colgroup>
+
+              <thead>
+                <tr>
+                  <th class="col-center">S.No</th>
+                  <th class="col-propunit">Property / Unit<br><span class="text-muted">Tenant</span></th>
+                  <th class="col-dates">Start / End<br><span class="text-muted">Next</span></th>
+                  <th class="col-active">Active</th>
+                  <th class="col-items">
+                    <span class="th-items-lg">Items</span>
+                    <span class="th-items-sm">Category–Amount</span>
+                  </th>
+
+                  <th class="text-end col-amt">Total</th>
+                </tr>
+              </thead>
+
+              <tbody id="rcTbody">
+                <tr><td colspan="6" class="text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- PREVIEW MODAL -->
+  <div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header align-items-center">
+          <h5 class="modal-title m-0">
+            <span id="previewHeading">Current Month Billing</span>
+            <span id="previewMeta" class="ms-2"></span>
+          </h5>
+          <strong id="previewGrandTop" class="ms-auto me-2"></strong>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="confirmGenerateBtn" class="btn btn-primary btn-sm ms-1">Confirm Generate</button>
+        </div>
+
+        <div class="modal-body">
+          <div id="previewSummary" class="mb-2 small text-muted"></div>
+          <div class="table-responsive">
+            <table class="table table-sm rc-preview-table">
+              <colgroup>
+                <col class="col-sno">
+                <col class="col-date">
+                <col class="col-prop">
+                <col class="col-tenant">
+                <col class="col-items">
+                <col class="col-amt">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="col-center">S.No</th>
+                  <th>Invoice Date</th>
+                  <th>Property / Unit</th>
+                  <th>Tenant</th>
+                  <th>Category - Amount</th>
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody id="previewTbody">
+                <tr><td colspan="6" class="text-muted">Loading…</td></tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th colspan="5" class="text-end">Grand Total</th>
+                  <th class="text-end" id="previewGrand">0.00</th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="small">
+            <span class="badge bg-warning text-dark">Skipped Zero</span> = amount&nbsp;&le;&nbsp;0.00 will not be added. &nbsp;
+            <span class="badge bg-secondary">Duplicate</span> = identical (category, description) already on this month’s invoice.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</body>
+<template id="catOptionsTpl">
+  {% for c in categories %}
+    <option value="{{ c.id }}">{{ c.name }}</option>
+  {% endfor %}
+</template>
+
+{% block extra_js %}
+
+
+<script>
+  console.log('RC script loaded at', performance.now());
+
+(function() {
+
+  (function(){
+  // Map your breakpoints (edit if you use different ones)
+  const BPS = [
+    ['xs', '(max-width: 575.98px)'],
+    ['sm', '(min-width: 576px) and (max-width: 767.98px)'],
+    ['md', '(min-width: 768px) and (max-width: 991.98px)'],
+    ['lg', '(min-width: 992px) and (max-width: 1199.98px)'],
+    ['xl', '(min-width: 1200px) and (max-width: 1399.98px)'],
+    ['xxl','(min-width: 1400px)']
+  ];
+
+  const el = document.createElement('div');
+  el.id = 'screen-debug';
+  document.addEventListener('DOMContentLoaded', () => document.body.appendChild(el));
+
+  const fmt = n => Math.round(n); // whole CSS pixels is fine here
+
+  function currBP(){
+    for (const [name, query] of BPS) {
+      if (window.matchMedia(query).matches) return name;
+    }
+    return '?';
+  }
+
+  function update(){
+    const iw = fmt(window.innerWidth);
+    const ih = fmt(window.innerHeight);
+    const dpr = (window.devicePixelRatio || 1).toFixed(2);
+
+    const vv = window.visualViewport;
+    const vvw = vv ? fmt(vv.width)  : null;
+    const vvh = vv ? fmt(vv.height) : null;
+
+    const orient = (screen.orientation && screen.orientation.type)
+      ? screen.orientation.type.replace('-primary','').replace('-secondary','')
+      : (iw > ih ? 'landscape' : 'portrait');
+
+    el.innerHTML = `
+      <b>${iw}×${ih}</b> css px @ <b>${dpr}</b> dpr
+      &nbsp;•&nbsp; bp: <b>${currBP()}</b>
+      &nbsp;•&nbsp; <span class="muted">visual:</span> <b>${vv ? `${vvw}×${vvh}` : 'n/a'}</b>
+      &nbsp;•&nbsp; <span class="muted">orientation:</span> <b>${orient}</b>
+    `;
+  }
+
+  // Update on all relevant changes
+  ['resize','orientationchange'].forEach(ev => window.addEventListener(ev, update, {passive:true}));
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', update, {passive:true});
+    window.visualViewport.addEventListener('scroll', update, {passive:true}); // URL bar collapse/expand
+  }
+  // First paint
+  update();
+})();
+
+  const root = document.getElementById('rcRoot');
+  if(!root) return;
+
+  const urlLeases  = root.dataset.urlLeases;
+  const urlList    = root.dataset.urlList;
+  const urlCreate  = root.dataset.urlCreate;
+  const urlBillingPreview  = root.dataset.urlBillingPreview;
+  const urlBillingGenerate = root.dataset.urlBillingGenerate;
+  const urlBillingPreviewFor  = root.dataset.urlBillingPreviewFor;
+  const urlBillingGenerateFor = root.dataset.urlBillingGenerateFor;
+  const urlLeasesPrimary = urlLeases; 
+  // Fallbacks to known, working endpoints in urls.py
+  const urlLeasesFallback = "{% url 'invoices:api_leases' %}"; // returns active leases list  :content
+
+  const urlUpdateTpl   = "{% url 'invoices:api_recurring_update' 0 %}";
+  const urlDeleteTpl   = "{% url 'invoices:api_recurring_delete' 0 %}";
+  const urlBackfillTpl = "{% url 'invoices:api_recurring_backfill' 0 %}";
+  const urlUnits   = "{% url 'invoices:api_units_for_property' %}";
+  const urlTenants = "{% url 'invoices:api_tenants_for_property' %}";
+
+  // Form controls
+  const propFilter    = document.getElementById('propFilter');
+  const unitFilter    = document.getElementById('unitFilter');
+  const tenantFilter  = document.getElementById('tenantFilter');
+  const tenantOptions = document.getElementById('tenantOptions');
+  const activeOnly    = document.getElementById('activeOnly');
+  const showInactive = document.getElementById('showInactive');
+
+  const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+  const leaseFilter  = document.getElementById('leaseFilter');
+  const $leaseFilter = window.jQuery ? jQuery('#leaseFilter') : null;
+  const $leaseSelect = window.jQuery ? jQuery('#leaseSelect') : null;
+
+
+
+
+  const propSelect  = document.getElementById('propSelect');
+  const leaseSelect = document.getElementById('leaseSelect');
+
+  const formTitle     = document.getElementById('formTitle');
+  const saveBtn       = document.getElementById('saveBtn');
+  const cancelBtn     = document.getElementById('cancelBtn');
+  const newBtn        = document.getElementById('newBtn');
+
+  // Helpers
+  const firstWord = s => (s||'').trim().split(/\s+/)[0] || '';
+  const cut = (s,n) => (s||'').length>n ? (s||'').slice(0,n) + '…' : (s||'');
+
+  const f_category = document.getElementById('f_category');
+  const f_day      = document.getElementById('f_day');
+  const f_desc     = document.getElementById('f_desc');
+  const f_amt      = document.getElementById('f_amt');
+  const f_start    = document.getElementById('f_start');
+  const f_end      = document.getElementById('f_end');
+  const f_active   = document.getElementById('f_active');
+
+  const previewBtn         = document.getElementById('previewBtn');
+  const previewTbody       = document.getElementById('previewTbody');
+  const previewGrand       = document.getElementById('previewGrand');
+  const previewSummary     = document.getElementById('previewSummary');
+  const confirmGenerateBtn = document.getElementById('confirmGenerateBtn');
+  const runNextBtn = document.getElementById('runNextBtn');
+
+  const editorPanel = document.getElementById('editorPanel');
+
+  const tbody = document.getElementById('rcTbody');
+  const listSummary = document.getElementById('listSummary');
+
+  const tenantMap = new Map();
+  let editId = null;
+  let lastPreviewMonth = null;
+
+function labelFromLease(obj){
+  const tenant = (obj.tenant_first_name || obj.tenant_name || '').toString().trim();
+  const first  = shortN(tenant, tenantClamp());  // 10 on phones, 15 otherwise
+  const unit   = obj.unit_name || obj.unit_number || obj.unit || '';
+  const status = (obj.status || '').toLowerCase();
+  const statusTxt = status ? (status === 'active' ? 'active' : 'expired') : '';
+  return [first, unit, statusTxt].filter(Boolean).join(' - ');
+}
+
+  async function fetchJSON(url){
+    const r = await fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  function csrftoken() {
+    const inp = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (inp && inp.value) return inp.value;
+    const name = 'csrftoken';
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (let i = 0; i < cookies.length; i++) {
+      const c = cookies[i].split('=');
+      if (c[0] === name) return decodeURIComponent(c[1]);
+    }
+    return '';
+  }
+
+  function leaseRowsFrom(data){
+    // Accept: {results:[...]}, {leases:[...]}, or direct array
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.results)) return data.results;
+    if (Array.isArray(data.leases))  return data.leases;
+    return [];
+  }
+
+    // Cache and render helpers for Lease filter
+  let leaseOptionsCache = [];
+  function renderLeaseOptions(filterText = '') {
+    const q = (filterText || '').toLowerCase();
+    leaseFilter.innerHTML = '<option value="">— All leases —</option>';
+    leaseOptionsCache
+      .filter(o => !q || o.text.toLowerCase().includes(q))
+      .forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.text;
+        leaseFilter.appendChild(opt);
+      });
+  }
+
+
+ function leaseLabelFrom(l){
+    // Build "Tenant — Unit — Status" (like invoice_list), clamp tenant to 15 chars
+    const tenant = (l.tenant_name || (l.tenant && l.tenant.name) || l.tenant || '').toString().trim();
+    const unit   = (l.unit_label || l.unit_name || l.unit || '').toString().trim();
+    const statusFlag = (typeof l.status === 'string')
+        ? l.status.toLowerCase() === 'active'
+        : !!(l.is_active || l.active);
+    const status = statusFlag ? 'Active' : 'Expired';
+    const tShort = tenant ? tenant.slice(0, 15) : '';
+    return [tShort, unit, status].filter(Boolean).join(' — ');
+  }
+
+  // Stable sort key by first name (case-insensitive)
+  function leaseSortKey(l){
+    const f = (
+      l.tenant_first_name ??
+      (l.tenant_name ? String(l.tenant_name).trim().split(/\s+/)[0] : null) ??
+      (l.tenant && l.tenant.first_name ? String(l.tenant.first_name) : '') ??
+      ''
+    );
+    return String(f).toLowerCase();
+  }
+  // Replace your intcomma + fmtRsNoDec with this:
+  function intcomma(val){
+    if (val === null || val === undefined) return '';
+    const s = String(Math.trunc(Number(val) || 0)); // whole number
+    return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function fmtRsNoDec(n){ return 'Rs. ' + intcomma(n); }
+
+  function fmtISO(d){ return d ? d.toISOString().slice(0,10) : ''; }
+  function monthLastDay(y, m){ return new Date(y, m + 1, 0).getDate(); }
+  function computeNextRun(startISO, endISO, day){
+    const today = new Date(); today.setHours(0,0,0,0);
+    const start = startISO ? new Date(startISO + 'T00:00:00') : null;
+    const end   = endISO   ? new Date(endISO   + 'T00:00:00') : null;
+    const base  = (start && start > today) ? start : today;
+    const d1 = new Date(base.getFullYear(), base.getMonth(), Math.min(Math.max(1, day || 1), monthLastDay(base.getFullYear(), base.getMonth())));
+    let next = (d1 >= today) ? d1 : new Date(base.getFullYear(), base.getMonth()+1, Math.min(Math.max(1, day || 1), monthLastDay(base.getFullYear(), base.getMonth()+1)));
+    if (start && next < start) {
+      const y = start.getFullYear(), m = start.getMonth();
+      next = new Date(y, m, Math.min(Math.max(1, day || 1), monthLastDay(y, m)));
+      if (next < start) next = new Date(y, m+1, Math.min(Math.max(1, day || 1), monthLastDay(y, m+1)));
+    }
+    if (end && next > end) return null;
+    return next;
+  }
+
+  function addActiveFlag(params) {
+    const showAll = !!(showInactive && showInactive.checked);
+    params.set('show', showAll ? 'all' : 'active');
+  }
+
+  function shortenTenantInUnitLabel(label){
+    if (!label) return '';
+    // Use common separators to detect the tenant portion at the start
+    const seps = [' — ', ' - ', '–', '/', '|', ', '];
+    for (const sep of seps){
+      if (label.includes(sep)){
+        const [tenant, ...rest] = label.split(sep);
+        const t = (tenant || '').trim();
+        const shortT = t.length > 15 ? t.slice(0,15) + '…' : t;
+        return `${shortT}${sep}${rest.join(sep).trim()}`;
+      }
+    }
+    // Fallback: "Tenant (Unit)"
+    const m = label.match(/^(.+?)\s*\((.+)\)$/);
+    if (m){
+      const t = (m[1]||'').trim();
+      const shortT = t.length > 15 ? t.slice(0,15) + '…' : t;
+      return `${shortT} (${m[2].trim()})`;
+    }
+    // If no recognizable pattern, just truncate the whole string cautiously
+    const trimmed = label.trim();
+    return trimmed.length > 15 ? trimmed.slice(0,15) + '…' : trimmed;
+  }
+
+  /* ===== Data loaders ===== */
+  async function loadUnits(){
+    unitFilter.innerHTML = '<option value="">All units</option>';
+
+    const params = new URLSearchParams({
+      property_id: propFilter.value || 'all'
+    });
+    if (activeOnly) params.set('active', activeOnly.checked ? '1' : '0');
+
+    try{
+      const r = await fetch(urlUnits + '?' + params.toString());
+      if(!r.ok) return;
+      const data = await r.json();
+      const rows = Array.isArray(data) ? data : (data.results || []);
+
+      // Sort alphabetically by label/text
+      rows.sort((a,b) => {
+        const A = (a.label || a.text || '').toLowerCase();
+        const B = (b.label || b.text || '').toLowerCase();
+        return A.localeCompare(B);
+      });
+
+      rows.forEach(u=>{
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = shortenTenantInUnitLabel(u.label || u.text || '');
+        unitFilter.appendChild(opt);
+      });
+    }catch(e){ console.error(e); }
+  }
+
+  async function loadTenants(){
+    if (!tenantOptions) return; 
+    tenantOptions.innerHTML = '<option value="All tenants"></option>';
+    tenantMap.clear();
+    const params = new URLSearchParams({
+    property_id: propFilter.value || 'all'
+    });
+    if (activeOnly) params.set('active', activeOnly.checked ? '1' : '0');
+    try{
+      const r = await fetch(urlTenants + '?' + params.toString());
+      if(!r.ok) return;
+      const data = await r.json();
+      const rows = Array.isArray(data) ? data : (data.results || []);
+      rows.forEach(t=>{
+
+        const opt = document.createElement('option');
+        opt.value = t.label;          // "Tenant — Unit"
+        tenantMap.set(t.label, t.id);
+        tenantOptions.appendChild(opt);
+      });
+    }catch(e){ console.error(e); }
+  }
+
+  async function loadLeasesForProperty(){
+    if (!leaseSelect) return;
+    const params = new URLSearchParams();
+    const pid = (propSelect?.value || (propFilter?.value !== 'all' ? propFilter?.value : ''));
+    if (pid) params.set('property_id', pid);
+    if (showInactive?.checked) params.set('show', 'all'); else params.set('show','active');
+
+    // Prefer the same filter endpoint you use for the toolbar
+    const data = await fetchJSON(`${urlLeases}?${params.toString()}`);
+    const items = Array.isArray(data) ? data : (data.results || data.leases || data.rows || []);
+    const mapped = items
+      .map(l => ({
+        id:  l.id || l.lease_id || l.pk,
+        txt: labelFromLease(l),
+        sd:  l.start_date || '',
+        ed:  l.end_date   || ''
+      }))
+      .sort((a,b)=> a.txt.localeCompare(b.txt));
+
+    leaseSelect.innerHTML = '<option value="">— Select lease —</option>';
+    mapped.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.txt;
+      opt.dataset.startDate = m.sd;
+      opt.dataset.endDate   = m.ed;
+      leaseSelect.appendChild(opt);
+    });
+  }
+
+
+  async function loadLeases(){
+      if(!leaseFilter) return;
+      // Build query
+      const p = new URLSearchParams();
+      if (propFilter?.value) p.set('property_id', propFilter.value);
+      if (unitFilter?.value) p.set('unit_id', unitFilter.value);
+
+      if (showInactive?.checked) p.set('show', 'all'); else p.set('show', 'active');
+
+      // Try primary endpoint (api_leases_filtered); fall back to api_leases
+      let data;
+      try {
+        data = await fetchJSON(`${urlLeasesPrimary}?${p.toString()}`);
+      } catch(e){
+        const q = new URLSearchParams();
+        if (unitFilter?.value) q.set('unit_id', unitFilter.value);
+        data = await fetchJSON(`${urlLeasesFallback}?${q.toString()}`);
+      }
+
+      const items = Array.isArray(data) ? data : (data.results || data.rows || []);
+      const mapped = items.map(x => ({
+        id: x.id || x.lease_id || x.pk,
+        text: labelFromLease(x),
+        sortKey: firstWord(x.tenant_first_name || x.tenant_name || '').toLowerCase()
+      })).sort((a,b)=> a.sortKey.localeCompare(b.sortKey));
+
+      leaseFilter.innerHTML =
+        '<option value="">— All leases —</option>' +
+        mapped.map(o => `<option value="${o.id}">${o.text}</option>`).join('');
+    }
+
+  async function refreshGrid(){
+    if(!urlList) return;
+    const q = new URLSearchParams();
+    if (leaseFilter?.value) q.set('lease_id', leaseFilter.value);
+    if (propFilter?.value)  q.set('property_id', propFilter.value);
+    if (unitFilter?.value)  q.set('unit_id', unitFilter.value);
+    if (showInactive?.checked) q.set('show','all');
+
+    try {
+      const payload = await fetchJSON(`${urlList}?${q.toString()}`);
+      // renderRecurringRows(payload);
+    } catch(e){
+      console.error('Failed to load list', e);
+    }
+  }
+
+  function shortN(s, n){ s = (s||'').toString(); return s.length > n ? s.slice(0,n) + '…' : s; }
+  function short15(s){ s = (s||'').toString(); return s.length > 15 ? s.slice(0,15) + '…' : s; }
+  function shortCat11(s){ s = (s||'').toString(); return s.length>11 ? s.slice(0,11)+'…' : s; }
+
+  async function loadLeaseFilterOptions(){
+    const p = new URLSearchParams();
+    if (propFilter?.value && propFilter.value !== 'all') p.set('property_id', propFilter.value);
+    if (unitFilter?.value) p.set('unit_id', unitFilter.value);
+    if (showInactive?.checked) p.set('show','all'); else p.set('show','active');
+
+    const data = await fetchJSON(`${urlLeases}?${p.toString()}`);
+    const items = Array.isArray(data) ? data : (data.results || data.rows || []);
+
+    const prevVal = ($leaseFilter && $leaseFilter.length) ? $leaseFilter.val() : (leaseFilter?.value || '');
+
+    leaseFilter.innerHTML = '<option value="">Lease (Tenant — Unit — Status)</option>';
+    items
+      .map(x => ({ id: (x.id || x.lease_id || x.pk), txt: labelFromLease(x) }))
+      .sort((a,b) => a.txt.localeCompare(b.txt))
+      .forEach(o => {
+        leaseFilter.appendChild(new Option(o.txt, o.id));
+      });
+
+    if ($leaseFilter && $leaseFilter.length) {
+      const exists = $leaseFilter.find(`option[value="${prevVal}"]`).length > 0;
+      $leaseFilter.val(exists ? prevVal : '').trigger('change.select2');
+    }
+  }
+
+  showInactive?.addEventListener('change', async () => {
+    await loadLeaseFilterOptions();
+    loadList();
+  });
+
+  /* ===== Table render (grouped by lease) ===== */
+  function renderTable(data){
+    const rows = (data?.results || data || []);
+    tbody.innerHTML = '';
+    listSummary.textContent = '';
+    if (!rows.length){
+      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No recurring items.</td></tr>';
+      return;
+    }
+
+    const groups = new Map(); // lease key -> grouped data
+    const propLeaseSet = new Map(); // property_name -> Set of lease ids
+
+    rows.forEach(raw => {
+      const leaseId = raw.lease_id ?? raw.lease?.id ?? null;
+      const propName = raw.property_name ?? raw.property?.name ?? raw.property?.property_name ?? raw.property_label ?? '';
+      const key = String(leaseId ?? `p${raw.property_id||''}-t${raw.tenant_id||''}-u${raw.unit_id||''}`);
+      const item = {
+        id:          String(raw.id),
+        category:    raw.category_name ?? raw.category?.name ?? raw.category ?? '—',
+        category_id:  raw.category_id   ?? raw.category?.id   ?? null,
+        amountNum:   Number(raw.amount ?? 0),
+        day_of_month: raw.day_of_month ?? raw.day ?? 1,
+        start_date:   raw.start_date ?? '',
+        end_date:     raw.end_date ?? '',
+        active:       !!raw.active
+      };
+      const shared = groups.get(key) || {
+        lease_id: leaseId,
+        property_id:   raw.property_id ?? raw.property?.id ?? null,
+        property_name: propName,
+        unit_name:     raw.unit_label ?? raw.unit_name ?? raw.unit ?? '',
+        tenant_name:   raw.tenant_label ?? raw.tenant_name ?? raw.tenant ?? '',
+        start_date:    null,
+        end_date:      null,
+        active:        null,
+        items: []
+      };
+      shared.items.push(item);
+      const sd = item.start_date || null;
+      const ed = item.end_date || null;
+      if (sd && (!shared.start_date || sd < shared.start_date)) shared.start_date = sd;
+      if (ed && (!shared.end_date   || ed > shared.end_date))   shared.end_date   = ed;
+      shared.active = (shared.active === null) ? item.active : (shared.active || item.active);
+      groups.set(key, shared);
+
+      if (!propLeaseSet.has(propName)) propLeaseSet.set(propName, new Set());
+      if (leaseId) propLeaseSet.get(propName).add(leaseId);
+    });
+
+    // Build summary per property
+    const summaryBits = [];
+    Array.from(propLeaseSet.entries())
+      .sort((a,b)=>a[0].localeCompare(b[0]))
+      .forEach(([p,set]) => summaryBits.push(`${p}: ${set.size} lease(s)`));
+
+    const totalTransactions = rows.length;
+
+    const grandAll = Array.from(groups.values()).reduce((sum, g) =>
+      sum + g.items.reduce((s, it) => s + Math.round(Number(it.amountNum || 0)), 0)
+    , 0);
+
+    listSummary.textContent =
+      `Transactions: ${totalTransactions} • Grand: ${fmtRsNoDec(grandAll)}`
+      + (summaryBits.length ? ` • ${summaryBits.join(' • ')}` : '');
+
+    function escape(s){ return (s||'').toString().replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+    function groupNextRun(g){
+      let min = null;
+      g.items.forEach(it => {
+        const d = computeNextRun(it.start_date, it.end_date, it.day_of_month);
+        if (d && (!min || d < min)) min = d;
+      });
+      return min;
+    }
+
+    const list = Array.from(groups.values()).sort((a,b) => {
+      const ap = (a.property_name||'').toLowerCase(), bp = (b.property_name||'').toLowerCase();
+      if (ap !== bp) return ap.localeCompare(bp);
+      const au = (a.unit_name||'').toLowerCase(), bu = (b.unit_name||'').toLowerCase();
+      if (au !== bu) return au.localeCompare(bu);
+      const at = (a.tenant_name||'').toLowerCase(), bt = (b.tenant_name||'').toLowerCase();
+      return at.localeCompare(bt);
+    });
+
+    let rowIndex = 0;
+    let lastProp = null;
+    list.forEach((g) => {
+      const nextRun = groupNextRun(g);
+      const total = g.items.reduce((s, it) => s + Math.round(Number(it.amountNum || 0)), 0);
+
+      /* ===== Items HTML (ONE LINE per item) =====
+         Category truncated to 15 chars (title shows full), Amount, then Edit/Delete buttons inline.
+      */const leaseLabel = [g.tenant_name, g.unit_name, (g.active ? 'Active' : 'Expired')]
+  .filter(Boolean).join(' — ');
+
+      const itemsHtml = `
+        <div class="m-items">
+          ${g.items.map(it => `
+            <div class="item-line">
+              <span class="item-cat" title="${(it.category||'').replace(/</g,'&lt;')}">
+                ${short15(it.category || '—')}
+              </span>
+
+              <span class="item-amt">${fmtRsNoDec(it.amountNum)}</span>
+
+              <span class="item-actions">
+                <button class="btn btn-primary btn-2xs rc-edit-one" data-id="${it.id}" data-lease-label="${(leaseLabel || '').replace(/"/g,'&quot;')}"  title="Edit">Edit</button>
+                <button class="btn btn-danger  btn-2xs rc-del-one"  data-id="${it.id}"  title="Delete">Delete</button>
+              </span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      const tr = document.createElement('tr');
+      const propChanged = lastProp !== g.property_name;
+      if (propChanged) tr.classList.add('prop-band','prop-sep');
+      tr.innerHTML = `
+        <td class="col-center">${++rowIndex}</td>
+        <td class="cell-propunit">
+          <div class="prop-line nowrap-ellipsis" title="${escape(g.property_name)}">${escape(g.property_name) || '—'}</div>
+          <div class="unit-line  nowrap-ellipsis" title="${escape(g.unit_name)}">${escape(g.unit_name) || ''}</div>
+          <div class="tenant-line nowrap-ellipsis" title="${escape(g.tenant_name || '')}">
+            ${escape(shortN(g.tenant_name, tenantClamp()))}
+          </div>
+
+        </td>
+        <td class="col-dates col-center">
+          <div>${g.start_date || '—'}</div>
+          <div>${g.end_date || '—'}</div>
+          <div>${nextRun ? fmtISO(nextRun) : '—'}</div>
+        </td>
+        <td class="col-active">${g.active ? 'Yes' : 'No'}</td>
+        <td class="col-items">${itemsHtml}</td>
+        <td class="text-end col-amt">${fmtRsNoDec(total)}</td>
+      `;
+
+      tr.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('.rc-edit-one');
+        if (editBtn){
+          const id = editBtn.dataset.id;
+          const it = g.items.find(x => String(x.id) === String(id));
+          if (!it) return;
+
+          // NOTE the new lease_label we pass in:
+          setModeEdit({
+            id,
+            lease_id: g.lease_id,
+            lease_label: editBtn.dataset.leaseLabel || '',   // <— NEW
+            property_id: g.property_id ?? null,
+            category_id: it.category_id ?? null,
+
+            category: (it.category || '—'),
+            description: '',
+            amount: it.amountNum,
+            day_of_month: it.day_of_month,
+            start_date: it.start_date,
+            end_date: it.end_date,
+            active: it.active
+          });
+          return;
+        }
+        const delBtn = e.target.closest('.rc-del-one');
+        if (delBtn){ onDelete({ id: delBtn.dataset.id }); }
+      });
+
+      tbody.appendChild(tr);
+      lastProp = g.property_name;
+    });
+  }
+
+  /* ===== Preview renderer with property summary + banding ===== */
+  function renderPreview(data){
+    const rows = data?.leases || [];
+    const periodYYYYMM = (data?.period || '').slice(0,7);
+    const invoiceDate = periodYYYYMM ? `${periodYYYYMM}-01` : '';
+    previewTbody.innerHTML = '';
+    if (!rows.length){
+      previewTbody.innerHTML = '<tr><td colspan="6" class="text-muted">Nothing to bill.</td></tr>';
+      previewGrand.textContent = fmtRsNoDec(0);
+      previewSummary.textContent = `Period: ${periodYYYYMM} • 0 lease(s)`;
+      return;
+    }
+
+    const totalTx = rows.reduce((n, lease) => n + (lease.items?.length || 0), 0);
+
+    const propLeaseSet = new Map();
+    rows.forEach(lease => {
+      const prop = lease.property_name || lease.property || '—';
+      const lid  = lease.lease_id || lease.id || `${prop}-${lease.unit_name||''}-${lease.tenant_name||''}`;
+      if (!propLeaseSet.has(prop)) propLeaseSet.set(prop, new Set());
+      propLeaseSet.get(prop).add(lid);
+    });
+    const summaryBits = Array.from(propLeaseSet.entries()).sort((a,b)=>a[0].localeCompare(b[0])).map(([p,set]) => `${p}: ${set.size} lease(s)`);
+    previewSummary.textContent =
+      `Period: ${periodYYYYMM} • ${rows.length} lease(s) • ${totalTx} transaction(s)`
+      + (summaryBits.length ? ` • ${summaryBits.join(' • ')}` : '');
+
+    let grand = 0;
+    let lastProp = null;
+
+    rows.forEach((lease, idx) => {
+      const tr = document.createElement('tr');
+      const propName  = (lease.property_name || lease.property || '—').replace(/</g,'&lt;');
+      const unitName  = (lease.unit_name || lease.unit_label || '').replace(/</g,'&lt;');
+      const tenantStr = (lease.tenant_name || '').toString().replace(/</g,'&lt;');
+
+      const itemsHtml = (lease.items || []).map(it => {
+        return `
+          <div class="item-line">
+            <span class="item-cat">${(shortCat11(it.category || '—')).replace(/</g,'&lt;')}</span>
+            <span class="item-amt">${fmtRsNoDec(it.amount || 0)}</span>
+          </div>
+        `;
+      }).join('');
+
+      const leaseTotal = Math.round(Number(
+        lease.total ?? lease.total_amount ??
+        (lease.items || []).reduce((s, it) => s + Number(it.amount || 0), 0)
+      ));
+      grand += leaseTotal;
+
+      const propChanged = lastProp !== propName;
+      if (propChanged) tr.classList.add('preview-prop-band');
+
+      tr.innerHTML = `
+        <td class="col-center">${lease.sno ?? (idx+1)}</td>
+        <td>
+          <div>${invoiceDate || '—'}</div>
+          <div class="invdate-tenant">${shortN(tenantStr, 10)}</div>
+        </td>
+        <td>
+          <div class="fw-semibold">${propName}</div>
+          <div class="text-muted">${unitName}</div>
+        </td>
+        <td><div class="tenant-2line">${tenantStr}</div></td>
+        <td>${itemsHtml || '<span class="text-muted">—</span>'}</td>
+        <td class="text-end">${fmtRsNoDec(leaseTotal)}</td>
+      `;
+      previewTbody.appendChild(tr);
+      lastProp = propName;
+    });
+
+    previewGrand.textContent = fmtRsNoDec(grand);
+    document.getElementById('previewGrandTop').textContent = fmtRsNoDec(grand);
+    document.getElementById('previewMeta').textContent = `• Period: ${periodYYYYMM} • ${rows.length} lease(s)`;
+  }
+
+  /* ===== CRUD ===== */
+  async function onDelete(row){
+    if(!confirm('Delete this recurring item?')) return;
+    const url = urlDeleteTpl.replace('/0/', '/' + row.id + '/');
+    try{
+      const resp = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrftoken(), 'X-Requested-With':'XMLHttpRequest' } });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      await resp.json().catch(()=> ({}));
+      loadList();
+      if(editId === row.id) setModeNew();
+    }catch(e){
+      alert('Delete failed.');
+      console.error(e);
+    }
+  }
+
+  let isSaving = false;
+
+  async function onSave(){
+    console.log('onSave() entered at', performance.now());
+
+    if (isSaving) {
+      console.log('Save skipped: already saving');
+      return;
+    }
+    isSaving = true;
+
+    console.log('onSave called');
+    const lease_id = leaseSelect.value;
+    const category_id = f_category.value;
+    const day_of_month = parseInt(f_day.value || '1', 10);
+    const amount = (f_amt.value || '0').toString();
+    const description = (f_desc.value || '').trim();
+    const start_date = f_start.value || null;
+    const end_date = f_end.value || null;
+    const active = !!f_active.checked;
+
+    if (!lease_id){
+      alert('Please select a Lease.');
+      leaseSelect.focus();
+      isSaving = false;
+      return;
+    }
+
+    try{
+      if (editId){
+        const url = urlUpdateTpl.replace('/0/', '/' + editId + '/');
+        const payload = { category_id: category_id ? parseInt(category_id,10) : null, description, amount, day_of_month, start_date, end_date, active };
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type':'application/json', 'X-CSRFToken': csrftoken(), 'X-Requested-With':'XMLHttpRequest' }, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error('HTTP '+r.status);
+        await r.json().catch(()=> ({}));
+      }else{
+        const payload = { lease_id: parseInt(lease_id,10), category_id: category_id ? parseInt(category_id,10) : null, description, amount, day_of_month, start_date, end_date, active };
+        const r = await fetch(urlCreate, { method: 'POST', headers: { 'Content-Type':'application/json', 'X-CSRFToken': csrftoken(), 'X-Requested-With':'XMLHttpRequest' }, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error('HTTP '+r.status);
+        await r.json();
+      }
+      setModeNew();
+      await loadList();
+    }catch(e){
+      console.error(e);
+      alert('Save failed.');
+    } finally {
+      isSaving = false;          // ← IMPORTANT
+    }
+  }
+
+  tenantFilter?.addEventListener('focus', () => tenantFilter.select());
+  tenantFilter?.addEventListener('input', () => { loadList(); });
+
+  // Use .onclick so we never stack multiple listeners if the script runs again
+  saveBtn.onclick   = onSave;
+  newBtn.onclick    = () => setModeNew(true);
+  cancelBtn.onclick = () => setModeNew(false);
+
+
+  /* ===== List loader ===== */
+  async function loadList(){
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
+
+    const params = new URLSearchParams();
+    if (propFilter.value && propFilter.value !== 'all') params.set('property_id', propFilter.value);
+    if (unitFilter.value) params.set('unit_id', unitFilter.value);
+
+    if (leaseFilter && leaseFilter.value) {
+      params.set('lease_id', leaseFilter.value);
+    }
+    addActiveFlag(params);
+
+    try{
+      const resp = await fetch(urlList + '?' + params.toString(), { headers: { 'X-Requested-With':'XMLHttpRequest' }});
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      renderTable(data);
+    }catch(e){
+      console.error(e);
+      tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load. Check console.</td></tr>';
+    }
+  }
+
+  function tenantClamp(){ return window.matchMedia('(max-width: 576px)').matches ? 10 : 15; }
+
+  function openPreviewModal(){
+    const el = document.getElementById('previewModal');
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(el).show();
+    } else {
+      el.classList.add('show','d-block');
+      el.setAttribute('aria-hidden','false');
+    }
+    setTimeout(() => document.getElementById('confirmGenerateBtn')?.focus(), 0);
+  }
+
+  function closePreviewModal(){
+    const el = document.getElementById('previewModal');
+    if (window.bootstrap && bootstrap.Modal) {
+      const inst = bootstrap.Modal.getInstance(el) || bootstrap.Modal.getOrCreateInstance(el);
+      inst.hide();
+    } else {
+      el.classList.remove('show','d-block');
+      el.setAttribute('aria-hidden','true');
+    }
+  }
+
+  async function fetchPreview(){
+    try{
+      lastPreviewMonth = null;
+      document.getElementById('previewHeading').textContent = 'Current Month Billing';
+      if (!urlBillingPreview) throw new Error('Missing data-url-billing-preview on #rcRoot');
+
+      const resp = await fetch(urlBillingPreview, { headers:{'X-Requested-With':'XMLHttpRequest'}, credentials: 'same-origin' });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const data = await resp.json();
+      renderPreview(data);
+      openPreviewModal();
+    }catch(e){
+      console.error(e);
+      alert('Failed to load preview.');
+    }
+  }
+
+  runNextBtn?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const today = new Date();
+    const nm = new Date(today.getFullYear(), today.getMonth()+1, 1);
+    const month = `${nm.getFullYear()}-${String(nm.getMonth()+1).padStart(2,'0')}`;
+    const label = nm.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+
+    try{
+      if (!urlBillingPreviewFor) throw new Error('Missing data-url-billing-preview-for on #rcRoot');
+      const resp = await fetch(urlBillingPreviewFor + '?month=' + month, { headers:{'X-Requested-With':'XMLHttpRequest'}, credentials: 'same-origin' });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const data = await resp.json();
+      lastPreviewMonth = month;
+      document.getElementById('previewHeading').textContent = `Billing for ${label}`;
+      renderPreview(data);
+      openPreviewModal();
+    }catch(err){
+      console.error(err);
+      alert('Failed to load next-month preview.');
+    }
+  });
+
+  async function confirmGenerate(){
+    try{
+      if (lastPreviewMonth){
+        const r = await fetch(urlBillingGenerateFor, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','X-CSRFToken': csrftoken(),'X-Requested-With':'XMLHttpRequest'},
+          body: JSON.stringify({ month: lastPreviewMonth })
+        });
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        await r.json().catch(()=> ({}));
+      }else{
+        const r = await fetch(urlBillingGenerate, {
+          method:'POST',
+          headers:{'X-CSRFToken': csrftoken(),'X-Requested-With':'XMLHttpRequest'}
+        });
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        await r.json().catch(()=> ({}));
+      }
+      closePreviewModal();
+      await loadList();
+      alert('Invoices generated.');
+    }catch(e){
+      console.error(e); alert('Failed to generate invoices.');
+    }
+  }
+
+  // Build params — lease takes precedence over prop/unit
+  function buildListParams(){
+    const params = new URLSearchParams();
+
+    if (leaseFilter && leaseFilter.value) {
+      const lid = leaseFilter.value;
+      params.set('lease_id', String(lid));
+      params.set('lease',     String(lid));  // backend compatibility
+    } else {
+      if (propFilter.value && propFilter.value !== 'all') params.set('property_id', propFilter.value);
+      if (unitFilter.value) params.set('unit_id', unitFilter.value);
+    }
+
+    addActiveFlag(params);
+    return params;
+  }
+
+  /* ===== Events ===== */
+  previewBtn.addEventListener('click', fetchPreview);
+  confirmGenerateBtn.addEventListener('click', confirmGenerate);
+
+  leaseSelect.addEventListener('change', () => {
+    const opt = leaseSelect.selectedOptions[0];
+    if (!opt) return;
+    f_start.value = opt.dataset.startDate || '';
+    f_end.value   = opt.dataset.endDate   || '';
+  });
+
+
+
+  propFilter.addEventListener('change', async () => {
+    await Promise.all([loadUnits(), loadTenants()]);
+    unitFilter.value = '';
+    tenantFilter && (tenantFilter.value = '');
+    leaseFilter && (leaseFilter.value = '');
+    await loadLeaseFilterOptions();
+    propSelect.value = (propFilter.value === 'all') ? '' : propFilter.value;
+    await loadLeasesForProperty();
+    loadList();
+  });
+
+  propSelect.addEventListener('change', loadLeasesForProperty);
+
+  unitFilter.addEventListener('change', () => {
+    loadLeaseFilterOptions().then(loadList);
+  });
+
+  resetFiltersBtn?.addEventListener('click', async () => {
+    propFilter.value = 'all';
+    unitFilter.value = '';
+    leaseFilter && (leaseFilter.value = '');
+    showInactive && (showInactive.checked = false);
+    await loadLeaseFilterOptions();
+    await loadList();
+  });
+
+  /* ===== Modes ===== */
+  function setModeNew(openPanel=false){
+    editId = null;
+    formTitle.textContent = 'New Recurring';
+    f_category.selectedIndex = 0;
+    f_day.value = '1';
+    f_desc.value = '';
+    f_amt.value = '0';
+    f_start.value = '';
+    f_end.value = '';
+    f_active.checked = true;
+    propSelect.value = (propFilter.value === 'all') ? '' : propFilter.value;
+    loadLeasesForProperty();
+    if (openPanel && editorPanel && window.matchMedia('(max-width:768px)').matches){
+      editorPanel.classList.add('show');
+    } else {
+      editorPanel?.classList.remove('show');
+    }
+  }
+
+// REPLACE the whole setModeEdit with this async version
+async function setModeEdit(row){
+  editId = row.id;
+  formTitle.textContent = 'Edit Recurring';
+
+  // 1) Ensure property is selected so lease list loads for the correct property
+  propSelect.value = row.property_id || '';
+
+  // 2) Make sure inactive leases are included while loading (so expired ones appear)
+  const prevShowInactive = showInactive?.checked;
+  if (showInactive) showInactive.checked = true;
+
+  // 3) Load leases for this property (populates #leaseSelect)
+  await loadLeasesForProperty();
+
+  // 4) Ensure the lease option exists; if not, synthesize one using provided lease_label
+  const lid = String(row.lease_id || '');
+  let opt = Array.from(leaseSelect.options).find(o => String(o.value) === lid);
+  if (!opt && lid) {
+    const label =
+      row.lease_label // provided by caller (tenant — unit — status)
+      || 'Selected Lease';
+    opt = new Option(label, lid, true, true);
+    leaseSelect.add(opt);
+  }
+
+  // 5) Select the lease (native + Select2 if present)
+  leaseSelect.value = lid || '';
+  if (window.jQuery && jQuery.fn.select2) {
+    jQuery(leaseSelect).val(lid || '').trigger('change.select2');
+  }
+
+  // 6) Restore Show Inactive checkbox to previous state
+  if (showInactive) showInactive.checked = !!prevShowInactive;
+
+  // 7) Fill the rest of the form
+  if (row.category_id){
+    f_category.value = String(row.category_id);
+  } else {
+    const wanted = (row.category || '').trim().toLowerCase();
+    const match = Array.from(f_category.options).find(o => o.text.trim().toLowerCase() === wanted);
+    f_category.value = match ? match.value : '';
+  }
+  f_day.value = row.day_of_month || 1;
+  f_desc.value = row.description || '';
+  f_amt.value  = Math.round(Number(row.amount || 0));
+  f_start.value = row.start_date || '';
+  f_end.value   = row.end_date   || '';
+  f_active.checked = !!row.active;
+
+  if (editorPanel && window.matchMedia('(max-width:768px)').matches){
+    editorPanel.classList.add('show');
+  }
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.__rc_s2_inited) return;
+  window.__rc_s2_inited = true;
+
+  jQuery('.select2-container--open').remove();
+
+  if ($leaseFilter && $leaseFilter.length) {
+    if ($leaseFilter.data('select2')) $leaseFilter.select2('destroy');
+    $leaseFilter.nextAll('.select2').remove();
+
+    $leaseFilter.select2({
+      width: 'style',
+      placeholder: 'All Lease',
+      allowClear: true,
+      minimumResultsForSearch: 0,
+      dropdownAutoWidth: true,
+      selectOnClose: true,
+      dropdownParent: $leaseFilter.closest('.tb-line2').get(0)
+      });
+
+    $(document).on('select2:open', () => {
+      const sf = document.querySelector('.select2-container--open .select2-search__field');
+      if (sf) { sf.focus(); sf.select(); }
+    });
+
+    $leaseFilter.on('change', loadList);
+  }
+
+  if ($leaseSelect && $leaseSelect.length) {
+    if ($leaseSelect.data('select2')) $leaseSelect.select2('destroy');
+    $leaseSelect.nextAll('.select2').remove();
+
+    $leaseSelect.select2({
+      width: '100%',
+      placeholder: '— Select lease —',
+      allowClear: true,
+      minimumResultsForSearch: 0,
+      dropdownAutoWidth: true,
+      selectOnClose: true,
+      dropdownParent: document.getElementById('editorPanel')
+    });
+
+    $(document).on('select2:open', () => {
+      const sf = document.querySelector('.select2-container--open .select2-search__field');
+      if (sf) { sf.focus(); sf.select(); }
+    });
+  }
+});
+
+  // on init
+  (async function init(){
+    await loadLeaseFilterOptions();
+    setModeNew();
+    loadList();
+  })();
+})(); // IIFE
+</script>
+{% endblock %}
+{% endblock %}

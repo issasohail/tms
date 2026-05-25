@@ -1,0 +1,98 @@
+{# Expect: all_leases queryset passed in via {% with %} #}
+{% load static %}{% load humanize %}
+
+<style>
+  /* Shrink table text + padding */
+  .compact-table { font-size: .72rem; }
+  .compact-table th, .compact-table td { padding: .025rem .25rem !important; }
+
+  /* Extra-small button helper (Bootstrap 5 custom properties) */
+  .btn-xxs {
+    --bs-btn-padding-y: .125rem;
+    --bs-btn-padding-x: .4rem;
+    --bs-btn-font-size: .72rem;
+    line-height: 1.1;
+  }
+
+  /* Tighter card body spacing */
+  .card-body { padding: .75rem 1rem; }
+
+  .balance-negative { color: #16a34a; font-weight: 600; } /* green */
+  .balance-positive { color: #dc2626; font-weight: 600; } /* red */
+  .balance-zero     { color: #111827; font-weight: 600; } /* neutral */
+
+  /* When printing, force black */
+  @media print {
+    .balance-positive,
+    .balance-negative,
+    .balance-zero { color: #000 !important; }
+  }
+</style>
+
+<div class="table-responsive">
+  <table class="table table-hover table-sm align-middle compact-table mb-2">
+    <thead>
+      <tr>
+        <th class="text-center" style="width:40px;">S.N #</th>
+        <th style="min-width:90px;">Property</th>
+        <th style="width:20px;">Status</th>
+        <th style="min-width:90px;">Start – End</th>
+        <th class="text-end " style="min-width:85px;">Monthly Payment</th>
+        <th class="text-end " style="min-width:85px;">Balance</th>
+        <th class="text-center" style="width:240px;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {# Tip: order all_leases in the VIEW: .order_by('-is_active','-start_date') #}
+      {% for lease in all_leases %}
+      <tr>
+        <td class="text-center">{{ forloop.counter }}</td>
+        <td>
+          <div class="d-flex flex-column">
+            <span class="text-truncate">{{ lease.unit.property.property_name }}</span>
+            <small class="text-muted">{{ lease.unit.unit_number }}</small>
+          </div>
+        </td>
+        <td class="text-truncate">
+          {% if lease.is_active %}<small class="text-muted">Active</small>{% else %}<small class="text-muted">Inactive</small>{% endif %}
+        </td>
+        <td>
+          <div>{{ lease.start_date|date:"M d, Y" }}</div>
+          <div>{{ lease.end_date|date:"M d, Y" }}</div>
+        </td>
+        <td class="text-end">Rs. {{ lease.get_total_payment|floatformat:2|intcomma }}</td>
+                            
+
+        <td class="text-end">
+          
+          Rs. {{ lease.get_balance|default:0|floatformat:2|intcomma }}
+        </td>
+        <td class="text-center">
+          <div class="d-inline-flex  gap-1 justify-content-center">
+            <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-primary btn-sm btn-xxs">Detail</a>
+            <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-dark btn-sm btn-xxs">Ledger</a>
+            <a href="{% url 'payments:payment_create' %}?tenant={{ tenant.id }}&lease={{ lease.id }}" class="btn btn-outline-primary btn-sm btn-xxs">Payment</a>
+          </div>
+        </td>
+      </tr>
+      
+
+      {% empty %}
+      <tr><td colspan="7" class="text-center text-muted">No leases found.</td></tr>
+      {% endfor %}
+      <tfoot>
+        <tr>
+          <th colspan="5" class="text-end">Total</th>
+          <th class="text-end">
+            {% with total=leases_total_balance %}
+              <span class="{% if total < 0 %}balance-negative{% elif total > 0 %}balance-positive{% else %}balance-zero{% endif %}">
+                Rs. {{ total|default:0|floatformat:2|intcomma }}
+              </span>
+            {% endwith %}
+          </th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </tbody>
+  </table>
+</div>

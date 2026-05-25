@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<h2>🧾 Bills for {{ unit }}</h2>
+
+<a href="{% url 'generate_bill' unit.id %}">➕ Generate This Month's Bill</a>
+
+<table border="1">
+  <tr>
+    <th>Month</th>
+    <th>Usage (kWh)</th>
+    <th>Amount</th>
+    <th>Status</th>
+  </tr>
+  {% for bill in bills %}
+  <tr>
+    <td>{{ bill.month }}</td>
+    <td>{{ bill.total_kwh }}</td>
+    <td>₹{{ bill.amount }}</td>
+    <td>{% if bill.paid %}✅ Paid{% else %}❌ Unpaid{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<a href="{% url 'meter_dashboard' unit.id %}">⬅️ Back to Dashboard</a>
+{% endblock %}

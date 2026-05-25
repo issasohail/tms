@@ -1,0 +1,1242 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+
+{% block title %}Invoices{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 page-header invoice-page-compact">
+  <h2 class="h4 mb-0">Invoices</h2>
+
+  <div class="top-actions d-flex align-items-center flex-wrap gap-2">
+    <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary">
+      <i class="fas fa-plus"></i><span class="btn-label"> New Invoice</span>
+    </a>
+
+    {% include "includes/export_buttons.html" %}
+
+    <a href="{% url 'invoices:generate_monthly' %}" class="btn btn-success">
+      <i class="fas fa-file-invoice-dollar"></i><span class="btn-label"> Generate Billing</span>
+    </a>
+
+    <a href="{% url 'invoices:recurring_wizard' %}" class="btn btn-success">
+      <i class="fas fa-redo-alt"></i><span class="btn-label"> Recurring Invoice</span>
+    </a>
+
+    <a href="{% url 'invoices:waterbill_list' %}" class="btn btn-success">
+      <i class="fas fa-tint"></i><span class="btn-label"> Water Bill</span>
+    </a>
+
+    <a href="{% url 'invoices:category_list' %}" class="btn btn-success">
+      <i class="fas fa-list"></i><span class="btn-label"> View Category</span>
+    </a>
+
+    {# Option A: Month rollback PREVIEW — at top with other buttons #}
+    <form method="get" action="{% url 'invoices:invoices_bulk_delete_preview' %}" class="d-inline-flex align-items-center gap-1">
+      <div class="input-group" style="max-width: 300px;">
+        <span class="input-group-text">Month</span>
+        <input type="month" name="month" required class="form-control">
+        <button type="submit" class="btn btn-danger">
+          <i class="bi bi-trash"></i> Preview Rollback
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<form id="invoice-filter-form" method="get" class="card card-body mb-3 filters-card invoice-page-compact">
+  <div class="filters-grid">
+    <select name="period" id="id_period" class="form-select form-select-sm" title="Period">
+      <option value="">All</option>
+      <option value="today"      {% if request.GET.period == 'today' %}selected{% endif %}>Today</option>
+      <option value="yesterday"  {% if request.GET.period == 'yesterday' %}selected{% endif %}>Yesterday</option>
+      <option value="this_week"  {% if request.GET.period == 'this_week' %}selected{% endif %}>This Week</option>
+      <option value="last_week"  {% if request.GET.period == 'last_week' %}selected{% endif %}>Last Week</option>
+      <option value="this_month" {% if request.GET.period == 'this_month' %}selected{% endif %}>This Month</option>
+      <option value="last_month" {% if request.GET.period == 'last_month' %}selected{% endif %}>Last Month</option>
+      <option value="next_month" {% if request.GET.period == 'next_month' %}selected{% endif %}>Next Month</option>
+      <option value="this_year"  {% if request.GET.period == 'this_year' %}selected{% endif %}>This Year</option>
+    </select>
+
+    <input type="date" class="form-control form-control-sm" name="start_date" id="id_start_date"
+           value="{{ request.GET.start_date }}" title="From">
+    <input type="date" class="form-control form-control-sm" name="end_date" id="id_end_date"
+           value="{{ request.GET.end_date }}" title="To">
+
+    <div class="filter-item property-item">
+      <select name="property" id="id_property" class="form-select form-select-sm" title="Property">
+        <option value="">Property</option>
+        {% for p in property_options %}
+          <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>
+            {{ p.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <select name="unit" id="id_unit" class="form-select form-select-sm" title="Unit" disabled></select>
+
+    <select name="lease" id="id_lease" class="form-select form-select-sm" title="Lease">
+      <option value="">Lease</option>
+      {% for opt in lease_options %}
+        <option value="{{ opt.id }}" {% if request.GET.lease == opt.id|stringformat:'s' %}selected{% endif %}>
+          {{ opt.label }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <button class="btn btn-secondary btn-sm action-btn" type="submit" title="Apply">
+      <i class="fas fa-filter"></i><span class="btn-text ms-1">Apply</span>
+    </button>
+    <a class="btn btn-outline-secondary btn-sm action-btn" href="?" title="Clear">
+      <i class="fas fa-undo"></i><span class="btn-text ms-1">Clear</span>
+    </a>
+
+    <label class="inactive-toggle mb-0" title="Show inactive">
+      <input class="form-check-input" type="checkbox" id="id_show_inactive" name="show_inactive" value="1"
+             {% if show_inactive %}checked{% endif %}>
+      <span class="label-top">Show</span>
+      <span class="label-bottom">inactive</span>
+    </label>
+  </div>
+</form>
+
+{# Option B: Delete selected — PREVIEW first (POST -> preview page). DO NOT nest forms. #}
+<form method="post" action="{% url 'invoices:invoices_bulk_delete_preview' %}">
+  {% csrf_token %}
+  <div class="table-responsive table-mobile-sm invoice-list-dense">
+    {% render_table table 'django_tables2/bootstrap5.html'%}
+  </div>
+
+  <button type="submit" class="btn btn-outline-danger mt-2">
+    <i class="bi bi-search"></i> Preview Delete (Selected)
+  </button>
+</form>
+{% endblock %}
+
+
+
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+/* ---------- Top actions ---------- */
+.page-actions { display: inline-flex; gap: .5rem; flex-wrap: wrap; }
+.btn-xs { padding: .3rem .045rem; font-size: .8rem; line-height: 1.0; }
+
+.actions-wrap .btn .btn-text,
+    .actions-wrap .btn .btn-label { display: none !important; }
+
+    
+.table.table-compact { font-size: .775rem; }
+  .table.table-compact > :not(caption) > * > * { padding: .25rem .5rem; line-height: 1.1; }
+  .table.table-compact .btn.btn-sm { padding: 2px 6px; line-height: 1.1; }
+
+/* ---------- Filters (desktop) ---------- */
+.filters-card { padding: .5rem .75rem; }
+.filters-grid {
+  display: grid;
+  grid-template-columns:
+    7rem   /* Period */
+    8rem   /* From */
+    8rem   /* To */
+    8rem  /* Property */
+    10rem  /* Unit */
+    12rem   /*minmax(18rem,1fr)  Lease */
+    6rem   /* Apply */
+    6rem   /* Clear */
+    6.5rem /* Show inactive */;
+  gap: .5rem;
+  align-items: center;
+}
+.inactive-toggle {
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr 1fr;
+  column-gap: .4rem; align-items: center; padding: .2rem .4rem;
+  border: 1px solid var(--bs-border-color, #e0e0e0); border-radius: .375rem; background: var(--bs-body-bg,#fff);
+}
+.inactive-toggle input { grid-row: 1 / span 2; align-self: center; margin: 0; }
+.inactive-toggle .label-top, .inactive-toggle .label-bottom { line-height: 1.05; font-size: .78rem; display: block; }
+
+/* ---------- Table widths & dates ---------- */
+/* Order: 1 S.N# | 2 Invoice# | 3 Property–Unit | 4 Tenant | 5 Description | 6 Issue | 7 Due | 8 Amount | 9 Actions */
+table.table th:nth-child(1), table.table td:nth-child(1) { width: 4rem; text-align: center; }
+table.table th:nth-child(2), table.table td:nth-child(2) { width: 4rem; }      /* Invoice# */
+table.table th:nth-child(3), table.table td:nth-child(3) { width: 16rem; }     /* Property–Unit */
+table.table th:nth-child(4), table.table td:nth-child(4) { width: 10rem; white-space: nowrap; } /* Tenant */
+table.table th:nth-child(5), table.table td:nth-child(5) { max-width: 30ch; }  /* Description */
+table.table th:nth-child(6), table.table td:nth-child(6) { width: 9rem; white-space: nowrap;  overflow:hidden;  } /* Issue */
+table.table th:nth-child(7), table.table td:nth-child(7) {  width: 9rem;white-space: nowrap;  overflow:hidden;  } /* Due */
+table.table th:nth-child(8), table.table td:nth-child(8) { width: 9rem; text-align: right; }   /* Amount */
+table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       /* Actions */
+
+/* ---------- Small screens (≤400px) ---------- */
+/* ===== SMALL SCREENS (≤ 400px) — compact, readable, no scroll ===== */
+@media (max-width: 400px) {
+  /* Global tiny font & tight spacing */
+  body, .btn, .form-select, .form-control, table.table { font-size: .70rem; }
+  .mb-3 { margin-bottom: .2rem !important; }
+
+  /* Hide page H2 to save space (you asked this earlier) */
+  .page-header .h4 { display: none; }
+
+  
+
+  /* ===== TOP ACTIONS: 2 rows × 3 items (with horizontal scroll if >6 items) ===== */
+.top-actions {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(2.2rem, auto));   /* exactly two rows */
+  grid-auto-flow: column;                                 /* fill rows first, then new column */
+  grid-auto-columns: minmax(7.5rem, 1fr);                 /* each “slot” width */
+  gap: .2rem;
+  width: 100%;
+  overflow-x: auto;                                       /* if >6 items, scroll sideways */
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;                          /* nice snapping while scrolling */
+  padding-bottom: .15rem;                                 /* room for scrollbar */
+}
+
+.top-actions > * {
+  scroll-snap-align: start;
+  min-width: 0;                                           /* prevent overflow inside slots */
+}
+
+/* Buttons compact + readable with icon + text */
+.top-actions .btn {
+  font-size: .70rem !important;
+  width: 100%;
+  padding: .22rem .28rem;
+  line-height: 1.0;
+  border-radius: .3rem;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.top-actions .btn i { font-size: .85rem; margin-right: .25rem; }
+.top-actions .btn .btn-label,
+.top-actions .btn span,
+.top-actions .btn .text,
+.top-actions .btn .label { display: inline !important; }
+
+/* ===== MONTH + PREVIEW ROLLBACK: single row on small screens ===== */
+.top-actions form[action*="invoices_bulk_delete_preview"] .input-group {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto;   /* [Month] [ <input type=month> ] [ Preview ] */
+  align-items: center;
+  gap: .25rem;
+  width: 100% !important;
+  max-width: none !important;
+}
+.top-actions form[action*="invoices_bulk_delete_preview"] .input-group-text {
+  padding: .20rem .35rem;
+  font-size: .70rem;
+}
+.top-actions form[action*="invoices_bulk_delete_preview"] input[type="month"] {
+  min-width: 0;            /* allow to shrink in tight spaces */
+  height: 1.65rem;
+  padding: .25rem .4rem;
+  font-size: .70rem;
+}
+.top-actions form[action*="invoices_bulk_delete_preview"] button {
+  padding: .22rem .35rem;
+  font-size: .70rem;
+  white-space: nowrap;
+}
+
+/* If your export buttons render as a small group, let them fit in one slot */
+.top-actions .btn-group,
+.top-actions .dropdown,
+.top-actions .export-buttons { width: 100%; }
+
+/* Optional: hide H2 to save vertical space (already in your CSS, kept here) */
+.page-header .h4 { display: none; }
+
+
+  /* ===== Filters: keep your previous (good) design =====
+     - 3 controls per row
+     - modest gaps
+     - property ~40% narrower
+     - no horizontal scrolling
+  */
+  .filters-card { padding: .35rem .45rem; border: 0; box-shadow: none; }
+  .filters-grid {
+    display: grid  !important;
+    grid-template-columns: 1fr 1fr 1fr  !important;  /* 3 per row */
+    gap: .35rem  !important;                         /* restore earlier spacing you liked */
+  }
+  /* Inputs/buttons compact so they don’t wrap */
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .action-btn,
+  .inactive-toggle {
+    width: 100%;
+    height: 1.65rem;
+    padding: .025rem .040rem;
+    font-size: .70rem;
+    line-height: 1.0;
+  }
+  /* Property ~40% narrower inside its slot (same as earlier) */
+  .filters-grid .property-item { display: flex; }
+  
+    /* Property narrower but still one slot */
+  .filters-grid .property-item { display: flex; min-width: 0; }
+
+  /* Make sure Apply / Clear sit side-by-side (each 1 slot) */
+  .filters-grid .action-btn { white-space: nowrap; }
+
+  /* (Optional) keep “Show inactive” as a single slot, not spanning rows */
+  .inactive-toggle { grid-column: auto / span 1 !important; }
+
+    /* Each direct child = one slot; allow shrinking inside cells */
+  .filters-grid > * {
+    grid-column: auto / span 1 !important;
+    min-width: 0 !important;
+  }
+
+  /* Filter action buttons — keep compact; text optional here */
+  .filters-grid .action-btn { padding: .28rem .35rem; font-size: .70rem; }
+
+  /* Show inactive (two-line label) remains compact */
+  .inactive-toggle {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: .3rem;
+    align-items: center;
+    padding: .15rem .25rem;
+    border: 1px solid #ddd;
+    border-radius: .3rem;
+  }
+  .inactive-toggle input { grid-row: 1 / span 2; align-self: center; margin: 0; }
+  .inactive-toggle .label-top,
+  .inactive-toggle .label-bottom { font-size: .68rem; line-height: 1.05; }
+
+  /* ===== Table compactness on mobile ===== */
+  /* Hide these columns to prioritize data space (as you asked before) */
+  table.table th:nth-child(3), table.table td:nth-child(3) { display: none; } /* Invoice# */
+  table.table th:nth-child(5), table.table td:nth-child(5) { display: none; } /* Description */
+  table.table th:nth-child(7), table.table td:nth-child(7) { display: none; } /* Due Date */
+
+    .table-mobile-sm table.table th:nth-child(2),
+  .table-mobile-sm table.table td:nth-child(2) {
+    width: .4rem;          /* tweak width here */
+    text-align: center;
+    padding-left: .02rem;
+    padding-right: .02rem;
+  }
+
+  /* Shrink the actual checkbox */
+  .table-mobile-sm table.table th:nth-child(2) .form-check-input,
+  .table-mobile-sm table.table td:nth-child(2) .form-check-input,
+  .table-mobile-sm table.table th:nth-child(2) input[type="checkbox"],
+  .table-mobile-sm table.table td:nth-child(2) input[type="checkbox"] {
+    transform: scale(.8);            /* 80% size */
+    -webkit-transform: scale(.8);
+    transform-origin: center;
+    margin: 0;                       /* remove default spacing */
+  }
+
+  /* Tenant clamp ~10ch; prevent wrapping */
+  td.tenant-cell { max-width: 10ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Dates (Issue/Due) stay one line, visually ≤ 11 chars */
+  table.table td:nth-child(6),
+  table.table td:nth-child(7) {
+    white-space: nowrap;
+    max-width: 11ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .table-mobile-sm table.table { font-size: .45rem !important; }
+
+  .table-mobile-sm table.table th,
+  .table-mobile-sm table.table td {
+    padding: .2rem .3rem;
+    line-height: 1.;
+  }
+
+  .table-mobile-sm .pagination,
+  .table-mobile-sm .page-link {
+    font-size: .45rem;
+    padding: .25rem .4rem;
+  }
+  
+  /* Smaller font for the table only (doesn’t affect navbar or filters) */
+  .table-responsive .table { font-size: .70rem !important; }
+
+  /* Tighten cell padding/row height */
+  .table-responsive .table th,
+  .table-responsive .table td {
+    padding: .022rem .030rem;   /* ← tweak these to increase/decrease spacing */
+    line-height: 1.0;
+  }
+
+  /* ---- ACTION BUTTONS inside the table: mobile tweaks ---- */
+/* Scope to this page's table container if you used it */
+/* Make the actions column as narrow as possible */
+.table-mobile-sm td.actions-cell {
+  width: 1%;                /* shrink-to-fit content */
+  white-space: nowrap;
+}
+.table-mobile-sm td.actions-cell .actions-wrap { gap: .05rem;!important; }   /* space between buttons */
+
+/* Button hit-box size (tweak here to reduce/increase overall space) */
+.table-mobile-sm td.actions-cell .btn {
+  padding: .10rem .12rem;   /* ← smaller than .16/.20; change to taste */
+  line-height: 1;           /* no extra vertical room inside button */
+  border-width: 1px;        /* keep borders thin */
+}
+
+/* Icon size (you set .50rem; change here later if needed) */
+.table-mobile-sm td.actions-cell .btn i {
+  font-size: .50rem;        /* ← tweak icon size here */
+  margin-right: 0;          /* no space since label is hidden */
+}
+
+/* Hide the text labels to save space on small screens */
+.table-mobile-sm td.actions-cell .btn .btn-label,
+.table-mobile-sm td.actions-cell .btn i + span {
+  display: none !important;
+}
+/* Small screens: 3 buttons per row; Month+Preview = full-width row underneath */
+@media (max-width: 360px) {
+  /* Ensure we're in flex mode and wrapping */
+  .top-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: .25rem !important;
+    width: 100%;
+  }
+
+    /* Hide col #1 (Serial #) in header and body */
+  .table-responsive table.table th:nth-child(3),
+  .table-responsive table.table td:nth-child(3) {
+    display: none !important;
+  }
+}
+
+  /* Every normal action item takes exactly 1/3 width */
+  .top-actions > a.btn,
+  .top-actions > .btn,
+  .top-actions > .dropdown,
+  .top-actions > .btn-group,
+  .top-actions > .export-buttons {
+    flex: 0 0 calc(33.333% - .25rem) !important;
+    max-width: calc(33.333% - .25rem) !important;
+  }
+
+  /* Make the Month + Preview Rollback form drop to its own row and span 100% */
+  .top-actions form[action*="invoices_bulk_delete_preview"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+    order: 99; /* ensure it appears after the buttons */
+  }
+
+  /* Keep its internals on one line: [Month] [input] [Preview] */
+  .top-actions form[action*="invoices_bulk_delete_preview"] .input-group {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .25rem;
+    width: 100%;
+    max-width: none;
+  }
+
+  .top-actions .input-group-text { padding: .20rem .35rem; font-size: .70rem; }
+  .top-actions input[type="month"] { min-width: 0; height: 1.65rem; padding: .25rem .4rem; font-size: .70rem; }
+  .top-actions button[type="submit"] { padding: .24rem .35rem; font-size: .70rem; white-space: nowrap; }
+}
+
+
+
+
+</style>
+<style>
+  /* ====== Dense table for invoice list only ====== */
+  .invoice-list-dense table.table {
+    /* slightly smaller text overall */
+    font-size: 13px; /* ~0.8125rem */
+  }
+
+  /* Reduce cell padding & line-height (rows get shorter) */
+  .invoice-list-dense table.table > :not(caption) > * > * {
+    padding: 2px 6px;   /* top/bottom, left/right */
+    line-height: 1.15;  /* tighter */
+    vertical-align: middle;
+  }
+
+  /* Tighter header cells */
+  .invoice-list-dense table.table thead th {
+    padding: 4px 6px;
+    white-space: nowrap;
+  }
+
+  /* Optional: slightly reduce zebra/hover contrast to feel denser */
+  .invoice-list-dense table.table tbody tr {
+    --bs-table-accent-bg: transparent;
+  }
+
+  /* ====== Action buttons: size & spacing ====== */
+  .invoice-list-dense .action-btn.btn {
+    padding: 2px 6px;   /* top/bottom, left/right */
+    line-height: 1.1;
+    border-radius: 6px; /* optional: keep it neat */
+  }
+
+  /* Smaller icons inside action buttons (Font Awesome or similar) */
+  .invoice-list-dense .action-btn i {
+    font-size: 0.9rem;  /* shrink icon */
+    line-height: 1;
+  }
+
+  /* Tighter gap between multiple action buttons */
+  .invoice-list-dense .action-btn + .action-btn,
+  .invoice-list-dense .btn-group .btn + .btn {
+    margin-left: 4px;
+  }
+
+  /* If you use .btn-sm somewhere, make it even tighter here */
+  .invoice-list-dense .btn-sm {
+    padding: 2px 6px;
+    line-height: 1.1;
+  }
+</style>
+<style>
+/* ===== Scoped compact UI for invoice page ===== */
+.invoice-page-compact {
+  --compact-font: 13px;
+  --compact-x: .5rem;      /* left/right padding */
+  --compact-y: .25rem;     /* top/bottom padding */
+  --compact-gap-x: .5rem;  /* grid gap X */
+  --compact-gap-y: .25rem; /* grid gap Y */
+}
+
+/* Make Bootstrap rows tighter (BS5 supports CSS vars) */
+.invoice-page-compact .row {
+  --bs-gutter-x: var(--compact-gap-x);
+  --bs-gutter-y: var(--compact-gap-y);
+}
+
+/* TOP ACTIONS + FILTER BAR + BOTTOM ACTIONS containers */
+.invoice-page-compact .top-actions,
+.invoice-page-compact .filters-bar,
+.invoice-page-compact .bulk-actions {
+  padding: .25rem .5rem;
+  margin-bottom: .25rem;
+}
+
+/* Space between inline controls in those bars */
+.invoice-page-compact .top-actions > *:not(:last-child),
+.invoice-page-compact .filters-bar > *:not(:last-child),
+.invoice-page-compact .bulk-actions > *:not(:last-child) {
+  margin-right: .35rem;
+}
+
+/* Smaller buttons in those bars */
+.invoice-page-compact .top-actions .btn,
+.invoice-page-compact .filters-bar .btn,
+.invoice-page-compact .bulk-actions .btn {
+  font-size: 12.5px;
+  padding: 2px 8px;
+  line-height: 1.1;
+  border-radius: 6px;
+}
+
+/* Smaller icons inside those buttons */
+.invoice-page-compact .top-actions .btn i,
+.invoice-page-compact .filters-bar .btn i,
+.invoice-page-compact .bulk-actions .btn i {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* Compact form fields in filters */
+.invoice-page-compact .filters-bar .form-control,
+.invoice-page-compact .filters-bar .form-select,
+.invoice-page-compact .filters-bar .input-group-text {
+  font-size: var(--compact-font);
+  padding: var(--compact-y) var(--compact-x);
+  line-height: 1.1;
+  height: calc(1.1em + .5rem + 2px); /* keep borders in mind */
+}
+
+/* Labels & checkboxes tighter */
+.invoice-page-compact .filters-bar label {
+  margin-bottom: .1rem;
+  font-size: var(--compact-font);
+}
+.invoice-page-compact .filters-bar .form-check {
+  margin: 0 .5rem 0 0;
+}
+.invoice-page-compact .filters-bar .form-check-input {
+  transform: scale(.9);
+  margin-top: .2rem;
+}
+
+/* TABLE compact (rows & action icons already done earlier) */
+.invoice-page-compact table.table {
+  font-size: var(--compact-font);
+}
+.invoice-page-compact table.table > :not(caption) > * > * {
+  padding: var(--compact-y) var(--compact-x);
+  line-height: 1.15;
+  vertical-align: middle;
+}
+.invoice-page-compact table.table thead th {
+  padding: .35rem .5rem;
+  white-space: nowrap;
+}
+
+/* Compact pagination area (if present) */
+.invoice-page-compact .pagination .page-link {
+  padding: 2px 8px;
+  line-height: 1.1;
+  font-size: 12.5px;
+}
+/* Top actions: smaller buttons + icons + less gap */
+.invoice-page-compact .top-actions {
+  gap: .25rem !important;
+  margin-bottom: .25rem !important;
+}
+.invoice-page-compact .top-actions .btn {
+  padding: 2px 8px !important;
+  line-height: 1.1 !important;
+  font-size: 12.5px !important;
+  border-radius: 6px;
+}
+.invoice-page-compact .top-actions .btn i {
+  font-size: .9rem !important;
+  line-height: 1;
+  margin-right: .25rem;
+}
+/* hide long labels on tight screens but keep icons */
+@media (max-width: 576px) {
+
+}
+.invoice-page-compact .filters-card {
+  padding: .35rem .5rem !important;
+  margin-bottom: .35rem !important;
+}
+.invoice-page-compact .filters-grid {
+  gap: .35rem !important;
+}
+.invoice-page-compact .filters-card .form-control,
+.invoice-page-compact .filters-card .form-select,
+.invoice-page-compact .filters-card .input-group-text {
+  font-size: 13px !important;
+  padding: .2rem .45rem !important;
+  height: 2rem !important;      /* ≈32px */
+  line-height: 1.1 !important;
+}
+.invoice-page-compact .filters-card .btn.action-btn {
+  padding: .2rem .5rem !important;
+  line-height: 1.1 !important;
+}
+.invoice-page-compact .inactive-toggle {
+  padding: .15rem .35rem !important;
+}
+.invoice-page-compact form[action*="invoices_bulk_delete_preview"] .btn {
+  padding: .25rem .5rem !important;
+  font-size: 12.5px !important;
+  line-height: 1.1 !important;
+  margin-top: .25rem !important;   /* reduce vertical space */
+}
+.invoice-list-dense .action-btn.btn {
+  padding: 2px 5px !important;
+  line-height: 1.05 !important;
+}
+.invoice-list-dense .action-btn i {
+  font-size: .85rem !important;
+  line-height: 1;
+  margin: 0;                 /* no extra space if you hide labels */
+}
+.invoice-list-dense .action-btn + .action-btn { margin-left: .25rem; }
+.invoice-page-compact .mb-3 { margin-bottom: .5rem !important; }
+
+/* =========================
+   Compact: Bottom "Preview Delete (Selected)" button
+   ========================= */
+.invoice-page-compact form[action*="invoices_bulk_delete_preview"] > button[type="submit"] {
+  /* matches the bottom form's submit (it's a direct child) */
+  padding: .22rem .5rem !important;   /* tighter top/bottom & sides */
+  line-height: 1.05 !important;
+  font-size: 12.5px !important;
+  border-radius: .35rem !important;
+  margin-top: .25rem !important;       /* reduce vertical gap above */
+}
+.invoice-page-compact form[action*="invoices_bulk_delete_preview"] > button[type="submit"] i {
+  font-size: .9rem !important;         /* slightly smaller icon */
+  margin-right: .25rem;
+}
+
+/* =========================
+   Compact: TOP Month + "Preview Rollback" (the GET form)
+   ========================= */
+.invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] .input-group {
+  max-width: 260px !important;         /* narrower group */
+}
+.invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] .input-group-text {
+  padding: .18rem .4rem !important;
+  font-size: 12.5px !important;
+  line-height: 1.05 !important;
+}
+.invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] input[type="month"] {
+  height: 1.8rem !important;           /* shorter control */
+  padding: .18rem .4rem !important;
+  font-size: 12.5px !important;
+  line-height: 1.1 !important;
+  min-width: 9.5rem;                    /* keep readable; tweak if needed */
+}
+.invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] button[type="submit"] {
+  padding: .22rem .45rem !important;
+  font-size: 12.5px !important;
+  line-height: 1.05 !important;
+  border-radius: .35rem !important;
+  white-space: nowrap;
+}
+.invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] button[type="submit"] i {
+  font-size: .9rem !important;
+  margin-right: .25rem;
+}
+
+/* =========================
+   Optional: even tighter on small screens
+   ========================= */
+@media (max-width: 576px) {
+  .invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] .input-group {
+    max-width: 100% !important;
+  }
+  .invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] input[type="month"] {
+    min-width: 0;                       /* allow full shrink on mobile */
+  }
+  .invoice-page-compact form[action*="invoices_bulk_delete_preview"] > button[type="submit"] {
+    width: auto;                        /* stays compact, not full-width */
+  }
+}
+/* ===== Small-screen compact controls for the Invoice page ===== */
+@media (max-width: 380px) {
+  /* --- TWEAK HERE: your small-screen knobs --- */
+  .invoice-page-compact {
+    --sm-font: 8px;          /* overall table font */
+    --sm-cell-y: 0.15rem;     /* cell top/bottom padding */
+    --sm-cell-x: 0.35rem;     /* cell left/right padding */
+
+    --sm-tenant-ch: 18ch;     /* visible width for tenant name before ellipsis */
+    --sm-propunit-ch: 16ch;   /* visible width for property/unit before ellipsis */
+    --sm-invno-w: 5.5rem;     /* Invoice # column width */
+    --sm-amount-w: 7.5rem;    /* Amount column width */
+
+    --sm-btn-py: 0.015rem;     /* action button vertical padding */
+    --sm-btn-px: 0.030rem;     /* action button horizontal padding */
+    --sm-icon: 0.50rem;       /* action button icon size */
+    --sm-gap: 0.025rem;        /* gaps between inline elements */
+  }
+
+  /* Table text & cell padding */
+  .invoice-list-dense table.table {
+    font-size: var(--sm-font) !important;
+  }
+  .invoice-list-dense table.table > :not(caption) > * > * {
+    padding: var(--sm-cell-y) var(--sm-cell-x) !important;
+    line-height: 1.05 !important;
+    vertical-align: middle !important;
+  }
+
+  /* Column visibility & widths (using the classes we added) */
+  .invoice-list-dense .col-desc { display: none !important; }   /* HIDE Description */
+  .invoice-list-dense .col-due  { display: none !important; }   /* HIDE Due date  */
+  /* Keep Issue date visible (do nothing) */
+
+  .invoice-list-dense .col-tenant {
+    max-width: var(--sm-tenant-ch);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .invoice-list-dense .col-propunit {
+    max-width: var(--sm-propunit-ch);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .invoice-list-dense .col-invno   { width: var(--sm-invno-w); }
+  .invoice-list-dense .col-amount  { width: var(--sm-amount-w); text-align: right; }
+  .invoice-list-dense .col-actions { width: 1%; white-space: nowrap; }
+
+  /* Action buttons inside the table */
+  .invoice-list-dense .action-btn.btn {
+    padding: var(--sm-btn-py) var(--sm-btn-px) !important;
+    line-height: 1 !important;
+  }
+  .invoice-list-dense .action-btn i {
+    font-size: var(--sm-icon) !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+  .invoice-list-dense .action-btn + .action-btn {
+    margin-left: var(--sm-gap) !important;
+  }
+
+  /* Top actions: month+preview and other buttons tighter on small screens */
+  .invoice-page-compact .top-actions {
+    gap: var(--sm-gap) !important;
+  }
+  .invoice-page-compact .top-actions .btn {
+    padding: var(--sm-btn-py) var(--sm-btn-px) !important;
+    font-size: var(--sm-font) !important;
+    line-height: 1.05 !important;
+  }
+  .invoice-page-compact .top-actions .btn i {
+    font-size: var(--sm-icon) !important;
+    margin-right: .25rem;
+  }
+  .invoice-page-compact .top-actions form[action*="invoices_bulk_delete_preview"] .input-group {
+    max-width: 100% !important;
+  }
+  .invoice-page-compact .top-actions .input-group-text,
+  .invoice-page-compact .top-actions input[type="month"],
+  .invoice-page-compact .top-actions button[type="submit"] {
+    padding: var(--sm-btn-py) var(--sm-btn-px) !important;
+    font-size: var(--sm-font) !important;
+    line-height: 1.05 !important;
+  }
+
+  /* Filters: compact fields */
+  .invoice-page-compact .filters-card {
+    padding: .35rem .45rem !important;
+  }
+  .invoice-page-compact .filters-card .form-control,
+  .invoice-page-compact .filters-card .form-select,
+  .invoice-page-compact .filters-card .input-group-text {
+    font-size: var(--sm-font) !important;
+    padding: var(--sm-btn-py) var(--sm-btn-px) !important;
+    height: 2rem !important;
+  }
+
+  /* Bottom "Preview Delete (Selected)" button compact on small screens */
+  .invoice-page-compact form[action*="invoices_bulk_delete_preview"] > button[type="submit"] {
+    padding: var(--sm-btn-py) var(--sm-btn-px) !important;
+    font-size: var(--sm-font) !important;
+    line-height: 1.05 !important;
+    margin-top: .25rem !important;
+  }
+}
+/* =========================================
+   BIG SCREENS (≥ 992px): tune widths here
+   ========================================= */
+@media (min-width: 992px) {
+  .invoice-list-dense {
+    /* 🔧 KNOBS — adjust these to fit your layout */
+    --lg-sn-w:       3.5rem;   /* Serial # */
+    --lg-invno-w:    6.5rem;   /* Invoice # */
+    --lg-propunit-w: 14rem;    /* Property–Unit */
+    --lg-tenant-w:   12rem;    /* Tenant */
+    --lg-desc-ch:    26ch;     /* Description visible chars (1 line + ellipsis) */
+    --lg-issue-w:    8.5rem;   /* Issue date */
+    --lg-due-w:      8.5rem;   /* Due date */
+    --lg-amount-w:   11rem;    /* Amount — increase if you still see wrapping */
+    --lg-actions-w:  7rem;     /* Actions */
+  }
+
+  /* Use your current column order (nth-child) */
+  .invoice-list-dense table.table th:nth-child(1),
+  .invoice-list-dense table.table td:nth-child(1) { width: var(--lg-sn-w); text-align: center; }
+
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2) { width: var(--lg-invno-w); }
+
+  .invoice-list-dense table.table th:nth-child(3),
+  .invoice-list-dense table.table td:nth-child(3) {
+    width: var(--lg-propunit-w);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .invoice-list-dense table.table th:nth-child(4),
+  .invoice-list-dense table.table td:nth-child(4) {
+    width: var(--lg-tenant-w);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td:nth-child(5) {
+    max-width: var(--lg-desc-ch);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* keep row one-line */
+  }
+
+  .invoice-list-dense table.table th:nth-child(6),
+  .invoice-list-dense table.table td:nth-child(6) { width: var(--lg-issue-w); white-space: nowrap; }
+
+  .invoice-list-dense table.table th:nth-child(7),
+  .invoice-list-dense table.table td:nth-child(7) { width: var(--lg-due-w); white-space: nowrap; }
+
+  /* ✅ Stop Amount from wrapping on big screens */
+  .invoice-list-dense table.table th:nth-child(8),
+  .invoice-list-dense table.table td:nth-child(8) {
+    width: var(--lg-amount-w);
+    white-space: nowrap;            /* <<< crucial: forces one line */
+    text-align: right;
+    font-variant-numeric: tabular-nums; /* optional: cleaner digit alignment */
+  }
+
+  .invoice-list-dense table.table th:nth-child(9),
+  .invoice-list-dense table.table td:nth-child(9) { width: var(--lg-actions-w); white-space: nowrap; }
+}
+
+/* =========================================================
+   SMALL SCREENS (≤ 576px): hide/show + size knobs in one place
+   ========================================================= */
+@media (max-width: 576px) {
+  :root{
+   
+   
+  
+    --icon-size:    14px;    /* icon glyph size */
+    --icon-pad:     2px;     /* tap padding */
+    --icon-gap:     4px;     /* gap between icons */
+  }
+
+  .invoice-page-compact {
+    /* 🔧 KNOBS (small screen) */
+    --sm-font:       9px;    /* table font size */
+    --sm-cell-y:     .15rem;  /* cell padding Y */
+    --sm-cell-x:     .35rem;  /* cell padding X */
+
+    --sm-tenant-ch:  18ch;    /* Tenant visible chars */
+    --sm-propunit-ch:16ch;    /* Property–Unit visible chars */
+    --sm-invno-w:    5.5rem;  /* Invoice # width */
+    --sm-amount-w:   7.5rem;  /* Amount width */
+
+    --sm-btn-py:     .015rem;  /* action btn padding Y */
+    --sm-btn-px:     .030rem;  /* action btn padding X */
+    --sm-icon:       .58rem;   /* action icon size */
+    --sm-gap:        .025rem;  /* gaps between buttons */
+  }
+
+  /* Table compaction */
+  .invoice-list-dense table.table {
+    font-size: var(--sm-font) !important;
+  }
+  .invoice-list-dense table.table > :not(caption) > * > * {
+    padding: var(--sm-cell-y) var(--sm-cell-x) !important;
+    line-height: 1.05 !important;
+  }
+
+  /* Column visibility on small screens */
+  /* Keep Issue date visible; hide Description and Due date as requested */
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td:nth-child(5) { display: none !important; } /* Description */
+  .invoice-list-dense table.table th:nth-child(7),
+  .invoice-list-dense table.table td:nth-child(7) { display: none !important; } /* Due */
+
+  /* Tenant & Property/Unit: clamp and ellipsis */
+  .invoice-list-dense table.table th:nth-child(4),
+  .invoice-list-dense table.table td:nth-child(4) {
+    max-width: var(--sm-tenant-ch);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .invoice-list-dense table.table th:nth-child(3),
+  .invoice-list-dense table.table td:nth-child(3) {
+    max-width: var(--sm-propunit-ch);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Invoice #, Amount, Actions */
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2) { width: var(--sm-invno-w); white-space: nowrap; }
+
+  .invoice-list-dense table.table th:nth-child(8),
+  .invoice-list-dense table.table td:nth-child(8) {
+    width: var(--sm-amount-w);
+    white-space: nowrap; text-align: right;
+  }
+
+  .invoice-list-dense table.table th:nth-child(9),
+  .invoice-list-dense table.table td:nth-child(9) { width: 1%; white-space: nowrap; }
+
+  /* Smaller action buttons + icons */
+  .invoice-list-dense .action-btn.btn {
+    padding: var(--sm-btn-py) var(--sm-btn-px) !important;
+    line-height: 1 !important;
+  }
+  .invoice-list-dense .action-btn i {
+    font-size: var(--sm-icon) !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+  .invoice-list-dense .action-btn + .action-btn { margin-left: var(--sm-gap) !important; }
+  .actions-grid .icon-btn i{
+    font-size: var(--icon-size) !important;}
+  .actions-grid .icon-btn{
+    padding: var(--icon-pad) !important;
+  th.col-actions, td.col-actions { width: var(--w-col-actions) !important; }
+  }    
+}
+@media (max-width: 576px) {
+  .invoice-page-compact {
+    /* 🔧 FONT SIZES (set all to .58rem if you like, then tweak individually) */
+    --sm-fs-top:     .58rem;   /* top actions buttons & their icons */
+    --sm-fs-filters: .58rem;   /* filters (inputs & buttons) */
+    --sm-fs-table:   .58rem;   /* table text */
+    --sm-fs-icons:   .458rem;   /* icon glyphs (you can decouple later) */
+
+    /* 🔧 PADDING / SPACING (tweak per area) */
+    --sm-top-btn-py:   .10rem;  /* top actions buttons Y padding */
+    --sm-top-btn-px:   .18rem;  /* top actions buttons X padding */
+
+    --sm-filter-py:    .10rem;  /* filter inputs/buttons Y padding */
+    --sm-filter-px:    .18rem;  /* filter inputs/buttons X padding */
+
+    /* Table action icon-only buttons (left/right space was the issue) */
+    --sm-act-py:       .06rem;  /* actions button Y padding */
+    --sm-act-px:       .010rem;  /* actions button X padding (⬅️ shrink this to remove side space) */
+
+    /* Column width knobs on small screens */
+    --sm-tenant-ch:    18ch;
+    --sm-propunit-ch:  16ch;
+    --sm-invno-w:      5.5rem;
+    --sm-amount-w:     7.5rem;
+  }
+
+  /* Top actions: compact + font-size control */
+  .invoice-page-compact .top-actions .btn {
+    font-size: var(--sm-fs-top) !important;
+    padding: var(--sm-top-btn-py) var(--sm-top-btn-px) !important;
+    line-height: 1.05 !important;
+  }
+  .invoice-page-compact .top-actions .btn i {
+    font-size: var(--sm-fs-icons) !important;
+    line-height: 1 !important;
+    margin-right: .025rem;
+  }
+
+  /* Filters: inputs + buttons use their own size & padding */
+  .invoice-page-compact .filters-card .form-control,
+  .invoice-page-compact .filters-card .form-select,
+  .invoice-page-compact .filters-card .input-group-text {
+    font-size: var(--sm-fs-filters) !important;
+    padding: var(--sm-filter-py) var(--sm-filter-px) !important;
+    height: 1.8rem !important;
+    line-height: 1.05 !important;
+  }
+  .invoice-page-compact .filters-card .btn {
+    font-size: var(--sm-fs-filters) !important;
+    padding: var(--sm-filter-py) var(--sm-filter-px) !important;
+    line-height: 1.05 !important;
+  }
+
+  /* Table font-size */
+  .invoice-list-dense table.table {
+    font-size: var(--sm-fs-table) !important;
+  }
+
+  /* Hide Description + Due on small; keep Issue visible */
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td:nth-child(5) { display: none !important; } /* Description */
+  .invoice-list-dense table.table th:nth-child(7),
+  .invoice-list-dense table.table td:nth-child(7) { display: none !important; } /* Due */
+
+  /* Clamp Tenant + Property/Unit */
+  .invoice-list-dense table.table th:nth-child(4),
+  .invoice-list-dense table.table td:nth-child(4) {
+    max-width: var(--sm-tenant-ch);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .invoice-list-dense table.table th:nth-child(3),
+  .invoice-list-dense table.table td:nth-child(3) {
+    max-width: var(--sm-propunit-ch);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Invoice # & Amount widths */
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2) { width: var(--sm-invno-w); white-space: nowrap; }
+  .invoice-list-dense table.table th:nth-child(8),
+  .invoice-list-dense table.table td:nth-child(8) {
+    width: var(--sm-amount-w);
+    white-space: nowrap; text-align: right;
+  }
+
+  /* ✅ Table action icons: remove extra left/right space */
+  .invoice-list-dense td.actions-cell .btn {
+    padding: var(--sm-act-py) var(--sm-act-px) !important; /* super tight X padding */
+    line-height: 1 !important;
+    border-width: 1px; /* thin border keeps hitbox visible */
+  }
+  .invoice-list-dense td.actions-cell .btn i {
+    font-size: var(--sm-fs-icons) !important;
+    line-height: 1 !important;
+    margin: 0 !important; /* no extra gap around the icon */
+  }
+  .invoice-list-dense td.actions-cell .btn + .btn { margin-left: .02rem !important; }
+}
+</style>
+
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* Period -> Dates + auto-submit */
+(function(){
+  const periodSel = document.getElementById('id_period');
+  const start = document.getElementById('id_start_date');
+  const end = document.getElementById('id_end_date');
+  const form = document.getElementById('invoice-filter-form');
+
+  function fmt(d){ return d.toISOString().slice(0,10); }
+  function sow(d){ const c=new Date(d); const day=(c.getDay()+6)%7; c.setDate(c.getDate()-day); return c; }
+  function eow(d){ const s=sow(d); const e=new Date(s); e.setDate(s.getDate()+6); return e; }
+  function som(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function eom(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+  function soy(d){ return new Date(d.getFullYear(),0,1); }
+  function eoy(d){ return new Date(d.getFullYear(),11,31); }
+
+  periodSel.addEventListener('change', () => {
+    const now = new Date();
+    let s='', e='';
+    switch(periodSel.value){
+      case 'today': s=e=fmt(now); break;
+      case 'yesterday': { const y=new Date(); y.setDate(now.getDate()-1); s=e=fmt(y); break; }
+      case 'this_week': s=fmt(sow(now)); e=fmt(eow(now)); break;
+      case 'last_week': { const n=new Date(); n.setDate(n.getDate()-7); s=fmt(sow(n)); e=fmt(eow(n)); break; }
+      case 'this_month': s=fmt(som(now)); e=fmt(eom(now)); break;
+      case 'last_month': { const d=new Date(now.getFullYear(), now.getMonth()-1, 1); s=fmt(som(d)); e=fmt(eom(d)); break; }
+      case 'next_month': { const d=new Date(now.getFullYear(), now.getMonth()+1, 1); s=fmt(som(d)); e=fmt(eom(d)); break; }
+      case 'this_year': s=fmt(soy(now)); e=fmt(eoy(now)); break;
+      default: s=''; e='';
+    }
+    start.value = s; end.value = e;
+    form.submit();
+  });
+})();
+
+/* Property -> Units; auto-submit on change */
+(function(){
+  const propertySel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit');
+  const form = document.getElementById('invoice-filter-form');
+  const unitsByProp = {{ units_by_property_json|safe }};
+
+  function populateUnits(){
+    const pid = propertySel.value;
+    unitSel.innerHTML = '';
+    if(!pid){ unitSel.disabled = true; return; }
+
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All units';
+    unitSel.appendChild(allOpt);
+
+    const opts = unitsByProp[pid] || [];
+    opts.forEach(o => {
+      const el = document.createElement('option');
+      el.value = o.id;
+      el.textContent = o.label; // Unit — Tenant — End — Status
+      unitSel.appendChild(el);
+    });
+    unitSel.disabled = false;
+  }
+
+  populateUnits();
+  propertySel.addEventListener('change', () => { populateUnits(); form.submit(); });
+  unitSel.addEventListener('change', () => form.submit());
+})();
+
+/* Lease select auto-submit */
+document.getElementById('id_lease')?.addEventListener('change', () => {
+  document.getElementById('invoice-filter-form').submit();
+});
+
+/* Show inactive auto-submit */
+document.getElementById('id_show_inactive')?.addEventListener('change', () => {
+  document.getElementById('invoice-filter-form').submit();
+});
+</script>
+
+<script>
+  // Same phone cleanup used in your detail page
+  function normalizePkPhone(raw) {
+    let cleaned = String(raw || '').replace(/[^\d]/g, '');
+    if (!cleaned) return '';
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    return cleaned;
+  }
+
+  // Mirror your invoice_detail message format 1:1
+  window.sendWhatsAppSingleInvoiceFromList = function(el) {
+    try {
+      // ---- phone ----
+      const phone = normalizePkPhone(el.dataset.phone);
+      if (!phone) { alert('No phone number available for WhatsApp.'); return false; }
+
+      // ---- server-rendered fields from row (via data-*) ----
+      const invoiceNumber = el.dataset.invno || '';
+      const issueDate     = el.dataset.issue || '';
+      const dueDate       = el.dataset.due || '';
+
+      const tenantFull  = ((el.dataset.fname || '') + ' ' + (el.dataset.lname || '')).trim();
+      const tenantShort = tenantFull.slice(0, 25); // match detail page
+
+      const propertyName = el.dataset.property || '';
+      const unitNumber   = el.dataset.unit || '';
+
+      const status      = el.dataset.status || '';
+      const leaseBalFmt = el.dataset.leasebal || '0.00';
+      const totalFmt    = el.dataset.total || '0.00';
+
+      // ---- items (array of {cat, desc, amount}) ----
+      let items = [];
+      try {
+        items = JSON.parse(el.dataset.items || '[]') || [];
+      } catch (_) { items = []; }
+      const itemsText = items.length
+        ? items.map((it, i) => `${i+1}. ${it.cat || ''} — ${(it.desc || '').trim() || '—'} — Rs.${it.amount || '0.00'}`).join('\n')
+        : '—';
+
+      const rs = v => v ? 'Rs.' + v : 'Rs.0.00';
+
+      // ---- build the WhatsApp message (identical to your detail page) ----
+      const msg = [
+        'Dear ' + tenantShort + ',',
+        '*INVOICE #' + invoiceNumber + '*',
+        'Date: ' + issueDate + ' | Due: ' + dueDate,
+        '',
+        'Property / Unit: ' + propertyName + '-' + unitNumber,
+        'Status: ' + status + ' | Lease Bal: ' + rs(leaseBalFmt),
+        '',
+        'Items:',
+        itemsText,
+        '',
+        'Total: *' + rs(totalFmt) + '*',
+        'New Balance: * Rs.' + leaseBalFmt+ '*',
+        '',
+        'Thank you!'
+      ].join('\n');
+
+      // Use wa.me / api.whatsapp (both are fine; this mirrors your detail)
+      const waUrl = 'https://api.whatsapp.com/send?phone=' + encodeURIComponent(phone) +
+                    '&text=' + encodeURIComponent(msg);
+
+      window.open(waUrl, '_blank');
+      return false; // stop default anchor behavior
+    } catch (err) {
+      console.error('WhatsApp error:', err);
+      alert('Failed to send WhatsApp: ' + (err && err.message ? err.message : 'unknown error'));
+      return false;
+    }
+  };
+</script>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document
+    .querySelectorAll('.invoice-list-dense table.table')
+    .forEach(t => t.classList.add('table-compact'));
+});
+</script>
+
+
+{% endblock %}

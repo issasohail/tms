@@ -1,0 +1,112 @@
+{% extends "payments/base_pdf.html" %}
+{% load static humanize %}
+
+{% block content %}
+
+<div class="container printable-content">
+    <div class="row">
+        <div class="col-md-8 mx-auto"> <!-- Reduced width for quarter page -->
+            <div class="card border-0">
+                <div class="card-body p-3"> <!-- Reduced padding -->
+                    <div class="d-flex justify-content-between mb-2">
+                        <div>
+                            <h4 class="mb-1">PAYMENT RECEIPT</h4>
+                            <p class="mb-0 text-muted small">#{{ payment.reference|default:"-" }}</p>
+                        </div>
+                        <div class="text-end">
+                            <p class="mb-1 fs-5"><strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}</p>
+                            <p class="mb-0"><strong>Method:</strong> {{ payment.get_payment_method_display }}</p>
+                        </div>
+                    </div>
+
+                    <div class="border p-2 mb-2 small">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>From:</strong></p>
+                                <p class="mb-1">{{ payment.lease.tenant.first_name }} {{ payment.lease.tenant.last_name }}</p>
+                                <p class="mb-0">{{ payment.lease.tenant.phone }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Property:</strong> {{ payment.lease.unit.property.property_name }}</p>
+                                <p class="mb-1"><strong>Unit:</strong> {{ payment.lease.unit.unit_number }}</p>
+                                <p class="mb-0 fs-5"><strong>Balance:</strong> {{ payment.lease.get_balance|floatformat:2|intcomma }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Details -->
+                    <div class="table-responsive mb-2">
+                        <table class="table table-sm mb-1">
+                            <thead>
+                                <tr class="table-light">
+                                    <th>Description</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Payment for {{ payment.get_payment_method_display }}</td>
+                                    <td class="text-end">{{ payment.amount|floatformat:2|intcomma }}</td>
+                                </tr>
+                                {% if payment.notes %}
+                                <tr>
+                                    <td colspan="2"><strong>Notes:</strong> {{ payment.notes }}</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Lease Information -->
+                    <div class="card border-info mb-2">
+                        <div class="card-header bg-light py-1">
+                            <h6 class="mb-0"><i class="fas fa-file-contract me-1"></i> Lease Information</h6>
+                        </div>
+                        <div class="card-body p-2 small">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="mb-1"><strong>Lease ID:</strong> {{ payment.lease.id }}</p>
+                                    <p class="mb-1"><strong>Period:</strong></p>
+                                    <p class="mb-0">{{ payment.lease.start_date|date:"M d, Y" }} to {{ payment.lease.end_date|date:"M d, Y" }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-1"><strong>Security Deposit:</strong></p>
+                                    <p class="mb-1 {% if payment.lease.security_deposit_paid %}text-success{% else %}text-danger{% endif %}">
+                                        {{ payment.lease.security_deposit|floatformat:2|intcomma }}
+                                        ({% if payment.lease.security_deposit_paid %}Paid{% else %}Pending{% endif %})
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Totals -->
+                    <div class="border-top pt-2 mb-2">
+                        <div class="row">
+                            <div class="col-6 text-end">
+                                <p class="mb-1"><strong>Amount Paid:</strong></p>
+                                {% if payment.related_invoice %}
+                                <p class="mb-1"><strong>Applied to Invoice:</strong></p>
+                                {% endif %}
+                            </div>
+                            <div class="col-6 text-end">
+                                <p class="mb-1 fw-bold">{{ payment.amount|floatformat:2|intcomma }}</p>
+                                {% if payment.related_invoice %}
+                                <p class="mb-1">#{{ payment.related_invoice.invoice_number }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="text-center p-1 mt-2 small text-muted">
+                        <p class="mb-0">Thank you for your payment!!!!!!</p>
+                        <p class="mb-0">Receipt generated on {% now "M d, Y" %}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+                    
+{% endblock %}

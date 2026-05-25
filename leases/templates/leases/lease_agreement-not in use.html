@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Lease Agreement - {{ lease.tenant.first_name }} {{ lease.tenant.last_name }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        body {
+            font-family: "Times New Roman", Times, serif;
+            line-height: 1.6;
+            color: #000;
+            font-size: 12pt;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title {
+            font-size: 16pt;
+            font-weight: bold;
+            text-decoration: underline;
+            margin-bottom: 20px;
+        }
+        .parties {
+            margin-bottom: 30px;
+        }
+        .party {
+            margin-bottom: 15px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .clause {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        .clause-title {
+            font-weight: bold;
+        }
+        .signature-area {
+            margin-top: 50px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .signature-box {
+            width: 45%;
+            border-top: 1px solid #000;
+            padding-top: 5px;
+            text-align: center;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 10pt;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">LEASE AGREEMENT</div>
+        <div>This Lease Agreement is made and entered into this {{ lease.start_date|date:"jS" }} day of {{ lease.start_date|date:"F, Y" }}</div>
+    </div>
+
+    <div class="parties">
+        <div class="party">
+            <strong>LANDLORD/PROPERTY MANAGER:</strong><br>
+            {{ lease.unit.property.owner_name|default:"[Property Owner Name]" }}<br>
+            {{ lease.unit.property.owner_address|default:"[Property Owner Address]" }}<br>
+            Phone: {{ lease.unit.property.owner_phone|default:"[Phone Number]" }}
+        </div>
+        
+        <div class="party">
+            <strong>TENANT:</strong><br>
+            {{ lease.tenant.first_name }} {{ lease.tenant.last_name }}<br>
+            {{ lease.tenant.address|default:"[Tenant Address]" }}<br>
+            Phone: {{ lease.tenant.phone|default:"[Tenant Phone]" }}<br>
+            Email: {{ lease.tenant.email|default:"[Tenant Email]" }}
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="clause">
+            <div class="clause-title">1. PREMISES:</div>
+            The Landlord rents to Tenant and Tenant rents from Landlord the premises located at {{ lease.unit.property.property_name }}, Unit {{ lease.unit.unit_number }}, {{ lease.unit.property.address|default:"[Property Address]" }}. The premises will be used for residential purposes only.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">2. TERM:</div>
+            The initial term of this Lease begins on {{ lease.start_date|date:"F j, Y" }} and ends on {{ lease.end_date|date:"F j, Y" }}. Thereafter, the lease shall continue on a month-to-month basis until terminated by either party with thirty (30) days written notice.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">3. RENT:</div>
+            Tenant agrees to pay ${{ lease.monthly_rent }} per month, due on the 1st day of each calendar month. Rent shall be paid by [Payment Method] to [Payment Address/Account]. Late payments will incur a fee of [Late Fee Amount] if received after the [Grace Period] of the due date.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">4. SECURITY DEPOSIT:</div>
+            Tenant has deposited with Landlord the sum of ${{ lease.security_deposit }} as security for any damages caused by Tenant during the term hereof. The security deposit will be returned to Tenant within [Number] days after the premises are vacated, less any amount retained to cover damages.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">5. MAINTENANCE AND REPAIRS:</div>
+            Tenant will keep the premises in clean, sanitary, and good condition. Tenant will be responsible for any damage caused by their negligence or misuse. Landlord will be responsible for maintaining the premises in habitable condition and making all necessary repairs.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">6. UTILITIES:</div>
+            Tenant shall be responsible for the following utilities and services: [List Tenant Responsibilities]. Landlord shall be responsible for the following utilities and services: [List Landlord Responsibilities].
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">7. OCCUPANTS:</div>
+            The premises shall not be occupied by any person other than Tenant and the following individuals: [List Additional Occupants if any]. No additional occupants may stay in the premises for more than [Number] consecutive days without Landlord's written consent.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">8. PETS:</div>
+            No pets shall be allowed on the premises without Landlord's prior written consent. If consent is given, Tenant agrees to pay an additional pet deposit of $[Amount] and to comply with all applicable pet policies.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">9. INSURANCE:</div>
+            Tenant is encouraged to maintain renter's insurance to protect against loss of personal property. Landlord's insurance does not cover Tenant's personal property.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">10. DEFAULT:</div>
+            If Tenant fails to comply with any of the material provisions of this Agreement, Landlord may terminate this Agreement upon providing proper notice as required by law.
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">11. GOVERNING LAW:</div>
+            This Agreement shall be governed by and construed in accordance with the laws of the state of [State].
+        </div>
+
+        <div class="clause">
+            <div class="clause-title">12. ENTIRE AGREEMENT:</div>
+            This Agreement constitutes the entire agreement between the parties and supersedes any prior understanding or representation of any kind preceding the date of this Agreement.
+        </div>
+    </div>
+
+    <div class="signature-area">
+        <div class="signature-box">
+            <p>LANDLORD/PROPERTY MANAGER</p>
+            <p>Signature: _________________________</p>
+            <p>Date: _________________________</p>
+            <p>Name: {{ lease.unit.property.owner_name|default:"[Property Owner Name]" }}</p>
+        </div>
+        
+        <div class="signature-box">
+            <p>TENANT</p>
+            <p>Signature: _________________________</p>
+            <p>Date: _________________________</p>
+            <p>Name: {{ lease.tenant.first_name }} {{ lease.tenant.last_name }}</p>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This lease agreement was executed in duplicate, with each party retaining one original copy.</p>
+    </div>
+</body>
+</html>

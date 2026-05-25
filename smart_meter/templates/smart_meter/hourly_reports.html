@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container">
+  <h2 class="mb-3"><i class="fas fa-clock me-2 text-primary"></i>Hourly Usage & Current</h2>
+
+  <!-- Filters -->
+  <div class="card mb-3">
+    <div class="card-body py-2 px-3">
+      <form id="hourly-filter-form" method="get" class="row row-cols-lg-auto g-2 align-items-end">
+        <div class="col">
+          <label class="form-label mb-1">Property</label>
+          <select name="property" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for p in all_properties %}
+              <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>{{ p.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col">
+          <label class="form-label mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for u in filtered_units %}
+              <option value="{{ u.id }}" {% if current_unit == u.id|stringformat:"s" %}selected{% endif %}>{{ u.unit_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col">
+          <label class="form-label mb-1">Meter</label>
+          <select name="meter" class="form-select form-select-sm">
+            <option value="">All meters</option>
+            {% for m in filtered_meters %}
+              <option value="{{ m.id }}" {% if current_meter == m.id|stringformat:"s" %}selected{% endif %}>
+                {{ m.meter_number }} — {{ m.unit.unit_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col">
+          <label class="form-label mb-1">Day</label>
+          <input type="date" name="day" value="{{ target_day|date:'Y-m-d' }}" class="form-control form-control-sm">
+        </div>
+
+        <div class="col">
+          <button class="btn btn-sm btn-primary" type="submit">
+            Apply
+          </button>
+        </div>
+      </form>
+
+      <script>
+        (function(){
+          const f = document.getElementById('hourly-filter-form');
+          if (!f) return;
+          f.querySelectorAll('select,input[type="date"]').forEach(el=>{
+            el.addEventListener('change', ()=>f.submit());
+          });
+        })();
+      </script>
+    </div>
+  </div>
+
+  {% if usage_series and usage_series|length > 0 %}
+  <!-- Usage chart -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <h6 class="mb-2 text-primary">Per-Hour Usage (kWh)</h6>
+      <canvas id="usageChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- Current chart -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h6 class="mb-2 text-primary">Per-Hour Max Current (A)</h6>
+      <canvas id="currentChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle text-center">
+          <thead>
+            <tr>
+              <th>Hour</th>
+              {% for s in usage_series %}
+                <th class="text-nowrap">{{ s.label }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in table_rows %}
+              <tr>
+                <td class="fw-semibold">{{ row.hour }}</td>
+                {% for col in row.vals %}
+                  <td>
+                    <div><span class="fw-semibold">{{ col.usage|floatformat:2 }}</span> kWh</div>
+                    <div class="text-muted small">{{ col.current|floatformat:2 }} A max</div>
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if table_rows|length == 0 %}
+        <div class="alert alert-info mb-0">No data for this day.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+    <div class="alert alert-info">No data for the chosen filters/day.</div>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script>
+(function(){
+  const labels = {{ labels|default:"[]"|safe }};
+  const usageSeries = {{ usage_series|default:"[]"|safe }};
+  const currentSeries = {{ current_series|default:"[]"|safe }};
+
+  function palette(i) {
+    // simple deterministic color set (avoids specifying exact colors by style—fine for charts)
+    const colors = [
+      'rgba(54,162,235,0.7)','rgba(255,99,132,0.7)','rgba(75,192,192,0.7)',
+      'rgba(255,159,64,0.7)','rgba(153,102,255,0.7)','rgba(255,205,86,0.7)',
+      'rgba(201,203,207,0.7)','rgba(100,181,246,0.7)','rgba(244,143,177,0.7)',
+      'rgba(129,199,132,0.7)','rgba(255,138,101,0.7)','rgba(165,214,167,0.7)'
+    ];
+    return colors[i % colors.length];
+  }
+
+  if (labels.length && usageSeries.length) {
+    const dsets = usageSeries.map((s, i)=>({
+      label: s.label,
+      data: s.data,
+      type: 'line',
+      tension: 0.2,
+      pointRadius: 3,
+      borderWidth: 2,
+      backgroundColor: palette(i),
+      borderColor: palette(i),
+    }));
+
+    new Chart(document.getElementById('usageChart').getContext('2d'), {
+      data: { labels: labels, datasets: dsets },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top' },
+          datalabels: {
+            anchor: 'end',
+            align: 'top',
+            formatter: (v)=> v>0 ? v.toFixed(2) : '',
+            font: { size: 9 },
+            clip: false
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'kWh' } }
+        }
+      },
+      plugins: [ChartDataLabels]
+    });
+  }
+
+  if (labels.length && currentSeries.length) {
+    const dsets2 = currentSeries.map((s, i)=>({
+      label: s.label,
+      data: s.data,
+      type: 'line',
+      tension: 0.2,
+      pointRadius: 3,
+      borderWidth: 2,
+      backgroundColor: palette(i),
+      borderColor: palette(i),
+    }));
+
+    new Chart(document.getElementById('currentChart').getContext('2d'), {
+      data: { labels: labels, datasets: dsets2 },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top' },
+          datalabels: {
+            anchor: 'end',
+            align: 'top',
+            formatter: (v)=> v>0 ? v.toFixed(2) : '',
+            font: { size: 9 },
+            clip: false
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'A' } }
+        }
+      },
+      plugins: [ChartDataLabels]
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Meter Details: {{ meter.meter_number }}</h2>
+        <div>
+            <a href="{% url 'smart_meter:meter_edit' meter.pk %}" class="btn btn-secondary">
+                <i class="fas fa-edit"></i> Edit
+            </a>
+            <a href="{% url 'smart_meter:meter_list' %}" class="btn btn-primary">
+                <i class="fas fa-list"></i> Back to List
+            </a>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Basic Information</h5>
+                    <p><strong>Meter Number:</strong> {{ meter.meter_number }}</p>
+                    <p><strong>Unit:</strong> {{ meter.unit.unit_number }}</p>
+                    <p><strong>Property:</strong> {{ meter.unit.property.property_name }}</p>
+                    <p><strong>Status:</strong> 
+                        {% if meter.is_active %}
+                            <span class="badge bg-success">Online</span>
+                        {% else %}
+                            <span class="badge bg-danger">Offline</span>
+                        {% endif %}
+                    </p>
+                </div>
+                
+                <div class="col-md-6">
+                    <h5>Financial Information</h5>
+                    <p><strong>Balance:</strong> Rs.{{ meter.balance|floatformat:2 }}</p>
+                    <p><strong>Credit Balance:</strong> Rs.{{ meter.credit_balance|floatformat:2 }}</p>
+                    <p><strong>Last Updated:</strong> {{ meter.latest_ts|date:"M d, Y H:i" }}</p>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <h5>Recent Readings</h5>
+                {% if meter.readings.all %}
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Total Energy (kWh)</th>
+                                <th>Peak Hour</th>
+                                <th>Current</th>
+                                <th>Voltage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reading in meter.readings.all|slice:":5" %}
+                            <tr>
+                                <td>{{ reading.ts|date:"M d, Y H:i" }}</td>
+                                <td>{{ reading.total_energy|floatformat:2 }}</td>
+                                <td>{{ reading.peak_hour|yesno:"Yes,No" }}</td>
+                                <td>{{ reading.current|floatformat:2 }}</td>
+                                <td>{{ reading.voltage|floatformat:2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No readings available</p>
+                {% endif %}
+                <a href="{% url 'smart_meter:reading_list' %}?meter={{ meter.pk }}" class="btn btn-sm btn-primary">
+                    View All Readings
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

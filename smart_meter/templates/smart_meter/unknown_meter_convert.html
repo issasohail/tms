@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<h1>Convert unknown meter</h1>
+
+<p><strong>Meter #:</strong> <code>{{ um.meter_number }}</code></p>
+<p><details><summary>Sample raw frame</summary>
+<pre style="white-space:pre-wrap">{{ um.last_raw_hex }}</pre>
+</details></p>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Create meter</button>
+  <a href="{% url 'smart_meter:unknown_meter_list' %}">Cancel</a>
+</form>
+{% endblock %}

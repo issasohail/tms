@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}{{ tenant }}{% endblock %}
+
+{% block content %}
+
+{# -------------------------- HEADING (compact) -------------------------- #}
+<div class="d-flex flex-wrap align-items-center gap-2 gap-lg-3 mb-2">
+  <h2 class="mb-0 fs-5">
+    {{ tenant.first_name|add:" "|add:tenant.last_name|truncatechars:30 }}
+    
+  </h2>
+
+  {% if tenant.pk %}
+    <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-sm btn-primary">Edit Tenant</a>
+  {% endif %}
+
+  <button class="btn btn-sm btn-outline-secondary ms-auto order-lg-2" onclick="history.back()">Go Back</button>
+
+  <div class="order-lg-1">
+    <span class="fw-semibold {% if tenant.current_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+      Balance: Rs. {{ tenant.current_balance|default:0|floatformat:2|intcomma }}
+    </span>
+  </div>
+
+  <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}"
+     class="btn btn-sm btn-success order-lg-3">
+    <i class="fas fa-money-bill-wave"></i> Record Payment
+  </a>
+
+  <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="order-lg-4">
+    {% if tenant.photo %}
+      <img src="{{ tenant.photo.url }}" alt="Tenant Photo" class="rounded-circle" width="48" height="48">
+    {% else %}
+      <div class="bg-secondary d-inline-flex align-items-center justify-content-center rounded-circle" style="width:48px;height:48px;">
+        <i class="fas fa-user text-white"></i>
+      </div>
+    {% endif %}
+  </a>
+</div>
+
+{# -------------------- TWO-COLUMN CANVAS AFTER HEADING ------------------- #}
+<div class="row g-3">
+
+  {# TOP-LEFT: Tenant & Emergency Contact #}
+  {# TOP-LEFT: Tenant & Emergency Contact #}
+    <div class="col-12 col-lg-6 order-1 order-lg-1">
+    <div class="card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">Tenant &amp; Emergency Contact</h6>
+        {# optional header actions could go here #}
+        </div>
+        <div class="card-body py-2">
+        <div class="row row-cols-1 row-cols-md-2 g-2 small">
+            <div>
+            <p class="mb-1"><strong>Name:</strong> {{ tenant.prefix }} {{ tenant.first_name|add:" "|add:tenant.last_name|truncatechars:20 }}</p>
+            <p class="mb-1"><strong>Email:</strong> {{ tenant.email|default:"-" }}</p>
+            <p class="mb-1"><strong>Phone:</strong> {{ tenant.phone|default:"-" }}{% if tenant.phone2 %}, {{ tenant.phone2 }}{% endif %}{% if tenant.phone3 %}, {{ tenant.phone3 }}{% endif %}</p>
+            <p class="mb-1"><strong>CNIC:</strong> {{ tenant.cnic|default:"-" }}</p>
+            <p class="mb-1"><strong>Address:</strong> {{ tenant.address|default:"-" }}</p>
+            </div>
+
+            <div>
+            <p class="mb-1"><strong>Created:</strong> {{ tenant.created_at|date:"M d, Y" }}</p>
+            <p class="mb-1"><strong>Updated:</strong> {{ tenant.updated_at|date:"M d, Y" }}</p>
+            <p class="mb-1"><strong>Status:</strong>
+                <span class="badge bg-{% if tenant.is_active %}success{% else %}secondary{% endif %}">
+                {% if tenant.is_active %}Active{% else %}Inactive{% endif %}
+                </span>
+            </p>
+
+            <p class="mb-1"><strong>Gender / DOB / Family:</strong>
+                {{ tenant.get_gender_display|default:"-" }} /
+                {% if tenant.date_of_birth %}{{ tenant.date_of_birth|date:"M d, Y" }}{% else %}-{% endif %} /
+                {{ tenant.number_of_family_member|default:"-" }}
+            </p>
+
+            <p class="mb-1"><strong>Emergency:</strong>
+                {{ tenant.emergency_contact_name|default:"Not provided" }}
+                {% if tenant.emergency_contact_relation %} ({{ tenant.emergency_contact_relation }}){% endif %}
+            </p>
+            <p class="mb-1"><strong>Emergency Phone:</strong> {{ tenant.emergency_contact_phone|default:"-" }}</p>
+
+            {% if tenant.notes %}
+                <p class="mb-1"><strong>Notes:</strong> {{ tenant.notes }}</p>
+            {% endif %}
+            </div>
+        </div>
+        </div>
+    </div>
+    </div>
+
+
+  {# TOP-RIGHT: Documents #}
+  {# TOP-RIGHT: Documents #}
+    <div class="col-12 col-lg-6 order-2 order-lg-2">
+    <div class="card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">Documents</h6>
+        </div>
+        <div class="card-body py-2">
+        <div class="row text-center small g-2">
+            <div class="col-4">
+            <p class="mb-1"><strong>Photo</strong></p>
+            {% if tenant.photo %}
+                <a href="{{ tenant.photo.url }}" data-fancybox="gallery" data-caption="Tenant Photo">
+                <img src="{{ tenant.photo.url }}" class="img-thumbnail" width="80" />
+                </a>
+            {% else %}<p class="text-muted mb-0">No photo</p>{% endif %}
+            </div>
+            <div class="col-4">
+            <p class="mb-1"><strong>CNIC Front</strong></p>
+            {% if tenant.cnic_front %}
+                <a href="{{ tenant.cnic_front.url }}" data-fancybox="gallery" data-caption="CNIC Front">
+                <img src="{{ tenant.cnic_front.url }}" class="img-thumbnail" width="110" />
+                </a>
+            {% else %}<p class="text-muted mb-0">No CNIC front</p>{% endif %}
+            </div>
+            <div class="col-4">
+            <p class="mb-1"><strong>CNIC Back</strong></p>
+            {% if tenant.cnic_back %}
+                <a href="{{ tenant.cnic_back.url }}" data-fancybox="gallery" data-caption="CNIC Back">
+                <img src="{{ tenant.cnic_back.url }}" class="img-thumbnail" width="110" />
+                </a>
+            {% else %}<p class="text-muted mb-0">No CNIC back</p>{% endif %}
+            </div>
+        </div>
+        </div>
+    </div>
+    </div>
+
+
+  {# BOTTOM-LEFT: Leases #}
+    {# BOTTOM-LEFT: Leases #}
+    <div class="col-12 col-lg-6 order-3 order-lg-3">
+    <div class="card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">Leases</h6>
+        <a class="btn btn-sm btn-primary" href="{% url 'leases:lease_create' %}?tenant={{ tenant.id }}">
+            <i class="fas fa-plus me-1"></i> Add Lease
+        </a>
+        </div>
+        <div class="card-body py-2">
+        {% if leases %}
+            {% with all_leases=leases %}{% include "partials/_tenant_leases_table.html" %}{% endwith %}
+        {% elif tenant.lease_set.all %}
+            {% with all_leases=tenant.lease_set.all %}{% include "partials/_tenant_leases_table.html" %}{% endwith %}
+        {% elif tenant.leases.all %}
+            {% with all_leases=tenant.leases.all %}{% include "partials/_tenant_leases_table.html" %}{% endwith %}
+        {% else %}
+            <p class="text-danger mb-0">No leases found.</p>
+        {% endif %}
+        </div>
+    </div>
+    </div>
+
+
+  {# BOTTOM-RIGHT: Split into two columns: Invoices (left) & Payments (right) #}
+  <div class="col-12 col-lg-6 order-4 order-lg-4">
+    <div class="row g-3">
+      {# Invoices #}
+      <div class="col-12 col-md-6">
+        <div class="card h-100">
+          <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Invoices</h6>
+            {% if tenant.lease %}
+              <a href="{% url 'invoices:invoice_create' %}?tenant={{ tenant.pk }}&property={{ tenant.lease.unit.property.id }}&unit={{ tenant.lease.unit.id }}"
+                 class="btn btn-sm btn-primary">Create</a>
+            {% endif %}
+          </div>
+          <div class="card-body py-2">
+            {% if invoices %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle compact-table">
+                <thead class="small">
+                  <tr>
+                    <th class="text-center sn-col">S.N #</th>
+                    <th>Issue</th>
+                    <th>Property / Unit</th>
+                    <th class="text-end">Amount</th>
+                  </tr>
+                </thead>
+                <tbody class="small">
+                  {% for invoice in invoices %}
+                  <tr>
+                    <td class="text-center">{{ forloop.counter }}</td>
+                    <td>{{ invoice.issue_date|date:"M d, Y" }}</td>
+                    <td>
+                      {% with p=invoice.lease.unit.property.property_name|slice:":8" u=invoice.lease.unit.unit_number %}
+                        <span class="text-muted">{{ p }}</span> / <strong>{{ u }}</strong>
+                      {% endwith %}
+                    </td>
+                    <td class="text-end">
+                      <a href="{% url 'invoices:invoice_detail' invoice.pk %}" class="text-decoration-none">
+                        Rs. {{ invoice.amount|floatformat:2|intcomma }}
+                      </a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="mb-0 small text-muted">No invoices found.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# Payments #}
+      <div class="col-12 col-md-6">
+        <div class="card h-100">
+          <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Payments</h6>
+            <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}"
+               class="btn btn-sm btn-success">
+              <i class="fas fa-money-bill-wave"></i> Record
+            </a>
+          </div>
+          <div class="card-body py-2">
+            {% if payments %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle compact-table">
+                <thead class="small">
+                  <tr>
+                    <th class="text-center sn-col">S.N #</th>
+                    <th>Date</th>
+                    <th>Property / Unit</th>
+                    <th class="text-end">Amount</th>
+                  </tr>
+                </thead>
+                <tbody class="small">
+                  {% for payment in payments %}
+                  <tr>
+                    <td class="text-center">{{ forloop.counter }}</td>
+                    <td>{{ payment.payment_date|date:"M d, Y" }}</td>
+                    <td>
+                      {% with p=payment.lease.unit.property.property_name|slice:":8" u=payment.lease.unit.unit_number %}
+                        <span class="text-muted">{{ p }}</span> / <strong>{{ u }}</strong>
+                      {% endwith %}
+                    </td>
+                    <td class="text-end">
+                      {# Update URL name if your app uses a different detail view #}
+                      <a href="{% url 'payments:payment_detail' payment.pk %}" class="text-decoration-none">
+                        Rs. {{ payment.amount|floatformat:2|intcomma }}
+                      </a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="mb-0 small text-muted">No payments found.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div> {# /row g-3 #}
+
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css" />
+<style>
+  /* Compact tables & cards */
+  .compact-table { font-size: .78rem; }
+  .compact-table th, .compact-table td { padding: .2rem .35rem !important; }
+  .card .card-body { padding: .5rem .75rem; }
+  .card .card-header { padding: .4rem .75rem; }
+  .btn-sm { padding: .2rem .5rem; font-size: .8rem; }
+  h6 { font-size: .95rem; }
+
+  /* Small screens (>=360px) adjustments */
+  @media (max-width: 576px) {
+    .compact-table { font-size: .74rem; }
+  }
+
+  /* Print: force black for balances */
+  @media print {
+    .text-danger, .text-success { color: #000 !important; }
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
+<script>
+  Fancybox.bind("[data-fancybox]", {});
+</script>
+{% endblock %}

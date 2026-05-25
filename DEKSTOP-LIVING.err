@@ -1,0 +1,15 @@
+2025-11-11T18:04:15.231687Z 0 [System] [MY-013169] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe (mysqld 8.0.44) initializing of server in progress as process 4360
+2025-11-11T18:04:15.234640Z 0 [ERROR] [MY-010457] [Server] --initialize specified but the data directory has files in it. Aborting.
+2025-11-11T18:04:15.235533Z 0 [ERROR] [MY-013236] [Server] The designated data directory E:\mysqldata\ is unusable. You can remove all files that the server added to it.
+2025-11-11T18:04:15.247168Z 0 [ERROR] [MY-010119] [Server] Aborting
+2025-11-11T18:04:15.247364Z 0 [System] [MY-010910] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe: Shutdown complete (mysqld 8.0.44)  MySQL Community Server - GPL.
+2025-11-11T18:05:59.277788Z 0 [System] [MY-013169] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe (mysqld 8.0.44) initializing of server in progress as process 7336
+2025-11-11T18:05:59.280528Z 0 [ERROR] [MY-010457] [Server] --initialize specified but the data directory has files in it. Aborting.
+2025-11-11T18:05:59.280979Z 0 [ERROR] [MY-013236] [Server] The designated data directory E:\mysqldata\ is unusable. You can remove all files that the server added to it.
+2025-11-11T18:05:59.283687Z 0 [ERROR] [MY-010119] [Server] Aborting
+2025-11-11T18:05:59.283846Z 0 [System] [MY-010910] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe: Shutdown complete (mysqld 8.0.44)  MySQL Community Server - GPL.
+2025-11-11T18:12:11.681166Z 0 [System] [MY-013169] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe (mysqld 8.0.44) initializing of server in progress as process 15500
+2025-11-11T18:12:11.683672Z 0 [ERROR] [MY-010457] [Server] --initialize specified but the data directory has files in it. Aborting.
+2025-11-11T18:12:11.684100Z 0 [ERROR] [MY-013236] [Server] The designated data directory E:\mysqldata\ is unusable. You can remove all files that the server added to it.
+2025-11-11T18:12:11.686890Z 0 [ERROR] [MY-010119] [Server] Aborting
+2025-11-11T18:12:11.687050Z 0 [System] [MY-010910] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe: Shutdown complete (mysqld 8.0.44)  MySQL Community Server - GPL.

@@ -1,0 +1,103 @@
+{# templates/smart_meter/reading_list.html #}
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+{% block title %}Meter Readings{% endblock %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="fas fa-bolt text-warning me-2"></i>Meter Readings</h2>
+  <div class="text-muted">
+    Total readings: {{ total_count }}
+    {% if page_obj %} — showing {{ page_obj|length }}{% endif %}
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2 px-3">
+    {% include "includes/meter_filters.html" %}
+    {% with qs=request.GET.urlencode %}
+      <div class="btn-group">
+        <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meter_readings_export_csv' %}?{{ qs }}">
+          <i class="fas fa-file-csv me-1"></i> CSV
+        </a>
+        <a class="btn btn-sm btn-outline-success" href="{% url 'smart_meter:meter_readings_export_xlsx' %}?{{ qs }}">
+          <i class="fas fa-file-excel me-1"></i> Excel
+        </a>
+         <a class="btn btn-sm btn-primary"
+          href="{% url 'smart_meter:meter_reading_create' %}?next={{ request.get_full_path|urlencode }}">
+          <i class="fas fa-plus me-1"></i> Add Manual Reading
+        </a>
+        <button class="btn btn-secondary btn-sm" onclick="history.back()">
+        <i class="fas fa-arrow-left me-1"></i> Go Back
+
+     
+        </button>
+
+      </div>
+    {% endwith %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <h6 class="m-0 text-primary">Reading Data</h6>
+    <form method="get" class="d-flex">
+      {% if current_property %}<input type="hidden" name="property" value="{{ current_property }}">{% endif %}
+      {% if current_unit %}<input type="hidden" name="unit" value="{{ current_unit }}">{% endif %}
+      {% if current_meter %}<input type="hidden" name="meter" value="{{ current_meter }}">{% endif %}
+      <input type="text" class="form-control form-control-sm" name="q" value="{{ q|default:'' }}" placeholder="Search...">
+    </form>
+  </div>
+
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 text-center">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th>Timestamp</th>
+            <th>Property</th>
+            <th>Unit</th>
+            <th>Meter #</th>
+            <th>Source IP</th>
+            <th>Port</th>
+
+            <th>Voltage A (V)</th>
+            <th>Current A (A)</th>
+            <th>Total Power (W)</th>
+            <th>Total Energy (kWh)</th>
+            <th>PF Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in readings %}
+          <tr>
+            <td>{{ r.ts|date:"Y-m-d H:i:s" }}</td>
+            <td>{{ r.meter.unit.property.property_name }}</td>
+            <td>{{ r.meter.unit.unit_number }}</td>
+            <td><span class="badge bg-primary">{{ r.meter.meter_number }}</span></td>
+            <td>{{ r.source_ip|default_if_none:"" }}</td>
+            <td>{{ r.source_port|default_if_none:"" }}</td>
+
+            {# Use default_if_none so 0.0 does NOT become "-" #}
+            <td>{{ r.voltage_a|default_if_none:""|floatformat:1 }}</td>
+            <td>{{ r.current_a|default_if_none:""|floatformat:3 }}</td>
+            <td>{{ r.total_power|default_if_none:""|floatformat:3 }}</td>
+            <td class="fw-bold">{{ r.total_energy|default_if_none:""|floatformat:3 }}</td>
+            <td>{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-center py-4">No readings found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Ensure cells line up visually with headers */
+  .table th, .table td { vertical-align: middle; }
+</style>
+{% endblock %}

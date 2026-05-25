@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div>
+    {{ form.clause_number.label_tag }}<br>
+    {{ form.clause_number }}
+    {{ form.clause_number.errors }}
+  </div>
+  <div>
+    {{ form.body.label_tag }}<br>
+    {{ form.body }}
+    <p>
+      <small>
+        You can use variables like {{ "{{ monthly_rent }}" }},
+        {{ "{{ total_monthly }}" }}, {{ "{{ tenant.full_name }}" }}, etc.
+      </small>
+    </p>
+    {{ form.body.errors }}
+  </div>
+  <div>
+    {{ form.is_active.label_tag }} {{ form.is_active }}
+    {{ form.is_active.errors }}
+  </div>
+
+  <button type="submit">Save</button>
+</form>
+{% endblock %}

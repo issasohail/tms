@@ -1,0 +1,133 @@
+<div class="d-flex actions-wrap">
+  {% if view_url %}
+    <a href="{{ view_url }}" class="btn btn-sm btn-info btn-label  action-btn btn-view">
+      <i class="fas fa-eye"></i><span class="btn-text ms-1">View</span>
+    </a>
+  {% endif %}
+
+  {% if edit_url %}
+    <a href="{{ edit_url }}" class="btn btn-sm btn-warning btn-label  action-btn btn-edit">
+      <i class="fas fa-edit"></i><span class="btn-text ms-1">Edit</span>
+    </a>
+  {% endif %}
+
+  {% if delete_url %}
+    <a href="{{ delete_url }}" class="btn btn-sm btn-danger btn-label  action-btn btn-delete">
+      <i class="fas fa-trash"></i><span class="btn-text ms-1">Delete</span>
+    </a>
+  {% endif %}
+
+  {% if receipt_urls %}
+    <button type="button"
+            class="btn btn-secondary btn-sm btn-label action-btn btn-receipt view-receipt"
+            data-urls="{{ receipt_urls|join:'|' }}"
+            title="Receipt" aria-label="Open receipt(s)">
+      <i class="bi bi-receipt"></i><span class="btn-text ms-1">Receipt</span>
+    </button>
+  {% endif %}
+
+  {# components/action_buttons.html #}
+  {% if record and record.lease and record.lease.tenant %}
+    {% if record.lease.tenant.phone %}
+      {% if not is_payment_row %}
+        <a
+          href="#"
+          class="btn btn-success btn-sm action-btn"
+          title="Send WhatsApp"
+          onclick="return window.sendWhatsAppSingleInvoiceFromList(this);"
+          data-phone="{{ record.lease.tenant.phone|default:'' }}"
+          data-fname="{{ record.lease.tenant.first_name|default:'' }}"
+          data-lname="{{ record.lease.tenant.last_name|default:'' }}"
+          data-invno="{{ record.invoice_number|default:'' }}"
+          data-issue="{{ record.issue_date|date:'M d, Y' }}"
+          data-due="{{ record.due_date|date:'M d, Y' }}"
+          data-property="{{ record.lease.unit.property.property_name|default:'' }}"
+          data-unit="{{ record.lease.unit.unit_number|default:'' }}"
+          data-status="{{ record.get_status_display|default:'' }}"
+          data-leasebal="{{ record.lease.get_balance|floatformat:2|intcomma }}"
+          data-total="{{ record.amount|floatformat:2|intcomma }}"
+          data-items='[
+            {% for item in record.items.all %}
+              {"cat":"{{ item.category.name|default:item.category|default_if_none:''|escapejs }}",
+              "desc":"{{ item.description|default:''|escapejs }}",
+              "amount":"{{ item.amount|floatformat:2|intcomma|escapejs }}"}{% if not forloop.last %},{% endif %}
+            {% endfor %}
+          ]'
+        >
+          <i class="fab fa-whatsapp"></i>
+        </a>
+      {% endif %}
+    {% else %}
+      <button type="button" class="btn btn-secondary btn-sm action-btn btn-label" title="No phone number" disabled>
+        <i class="fab fa-whatsapp"></i><span class="btn-text ms-1  action-btn">WhatsApp</span>
+      </button>
+    {% endif %}
+  {% endif %}
+
+
+
+    {% if make_payment_url %}          
+        <a href="{{ make_payment_url }}" class="btn btn-sm btn-success btn-label action-btn" style="flex: 1 1 auto;">
+            <i class="fas fa-money-bill-wave"></i></i><span class="btn-text ms-1 btn-label action-btn"> Pay</span>
+        </a>
+    {% endif %}
+    {% if send_message_url %}
+        <a href="{{ send_message_url }}" class="btn btn-sm btn-primary btn-label  action-btn" style="flex: 1 1 auto;">
+            <i class="fas fa-envelope"></i> </i><span class="btn-label">Message</span>
+        </a>
+    {% endif %}
+      {% if view_ledger_url %}
+        <a href="{{ view_ledger_url }}" class="btn btn-sm btn-secondary btn-label  action-btn" style="flex: 1 1 auto;">
+            <i class="fas fa-file-invoice-dollar"></i> </i><span class="btn-label  action-btn">Ledger</span>
+        </a>
+    {% endif %}
+    {% if send_ledger_url %}
+        <a href="{{ send_ledger_url }}" class="btn btn-sm btn-info  btn-label  action-btn " style="flex: 1 1 auto;">
+            <i class="fas fa-paper-plane"></i></i><span class="btn-label  action-btn"> Send Ledger</span>
+        </a>
+    {% endif %}
+
+    {# Payment Receipt Button (for payments app) #}
+    {# Payment Receipt Button (for payments app) #}
+    
+    {% if is_payment_row %}
+      {% if record.lease.tenant.phone %}
+        <button
+          type="button"
+          class="btn btn-success btn-sm btn-label action-btn btn-wa-receipt"
+          data-wa-url="{% url 'payments:api_payment_receipt_whatsapp' record.pk %}"
+          data-phone="{{ record.lease.tenant.phone|default:'' }}"
+          title="Send WhatsApp Receipt">
+          <i class="fab fa-whatsapp"></i><span class="btn-text ms-1">Receipt</span>
+        </button>
+      {% else %}
+        <button type="button" class="btn btn-secondary btn-sm btn-label action-btn" title="No phone number" disabled>
+          <i class="fab fa-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span>
+    </button>
+      {% endif %}
+    {% endif %}
+
+
+
+
+
+    {# Remind via WhatsApp (for leases) — always visible, disabled if balance is zero or no phone #}
+    {% if is_lease_row %}
+        {% if has_balance and whatsapp_url %}
+            <button onclick="{{ whatsapp_url }}"
+                    class="btn btn-success btn-sm whatsapp-btn"
+                    style="flex: 1 1 auto;"
+                    title="Send WhatsApp Reminder">
+                <i class="fab fa-whatsapp"></i> <span class="btn-label action-btn ">Remind</span>
+            </button>
+        {% else %}
+            <button class="btn btn-secondary btn-sm disabled whatsapp-btn"
+                    style="flex: 1 1 auto;"
+                    title="No balance or phone">
+                <i class="fab fa-whatsapp"></i> <span class="btn-label action-btn ">Remind</span>
+            </button>
+        {% endif %}
+    {% endif %}
+
+    
+</div>

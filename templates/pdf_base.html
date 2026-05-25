@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Document{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/pdf_styles.css' %}">
+</head>
+<body>
+    <div class="pdf-container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

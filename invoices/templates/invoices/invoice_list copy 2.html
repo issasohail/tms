@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+
+{% block title %}Invoices{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h4 mb-0">Invoices</h2>
+  <div class="d-flex gap-2">
+        <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> New Invoice
+        </a>
+        {% include "includes/export_buttons.html" %}
+        <a href="{% url 'invoices:generate_monthly' %}" class="btn btn-success">
+            <i class="fas fa-file-invoice-dollar me-1"></i> Generate Monthly
+        </a>
+        <a href="{% url 'invoices:recurring_wizard' %}" class="btn btn-success">
+            <i class="fas fa-file-invoice-dollar me-1"></i> Recurring Invoice List
+        </a>
+        <a href="{% url 'invoices:waterbill_list' %}" class="btn btn-success">
+            <i class="fas fa-file-invoice-dollar me-1"></i> Water Bill List
+        </a>
+
+        <a href="{% url 'invoices:category_list' %}" class="btn btn-success">
+            <i class="fas fa-file-invoice-dollar me-1"></i> View Category
+        </a>
+    </div>
+    
+  <div class="d-flex gap-2">
+    <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary btn-sm">
+      <i class="fas fa-plus me-1"></i> New
+    </a>
+    {% include "includes/export_buttons.html" %}
+  </div>
+</div>
+
+<form id="invoice-filter-form" method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+
+    <!-- Period -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <label class="form-label small">Period</label>
+      <select name="period" id="id_period" class="form-select form-select-sm">
+        <option value="">All</option>
+        <option value="today">Today</option>
+        <option value="yesterday">Yesterday</option>
+        <option value="this_week">This Week</option>
+        <option value="last_week">Last Week</option>
+        <option value="this_month">This Month</option>
+        <option value="last_month">Last Month</option>
+        <option value="this_year">This Year</option>
+      </select>
+    </div>
+
+    <!-- Property -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <label class="form-label small">Property</label>
+      <select name="property" id="id_property" class="form-select form-select-sm">
+        <option value="">All</option>
+        {% for p in property_options %}
+          <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Unit (empty on load; populated when property changes) -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <label class="form-label small">Unit (Unit — Tenant)</label>
+      <select name="unit" id="id_unit" class="form-select form-select-sm" disabled>
+        <!-- Populated by JS; shows 'All units' when property chosen -->
+      </select>
+    </div>
+
+    <!-- Lease/Tenant with search box -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <label class="form-label small d-flex justify-content-between">
+        <span>Lease (Tenant — Unit)</span>
+        <input id="tenant_search" type="text" class="form-control form-control-sm w-50 ms-2"
+               placeholder="Search tenant..." autocomplete="off">
+      </label>
+      <select name="tenant" id="id_tenant" class="form-select form-select-sm">
+        <option value="">All</option>
+        {% for opt in tenant_options %}
+          <option value="{{ opt.id }}" {% if request.GET.tenant == opt.id|stringformat:'s' %}selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Date From / To (auto-filled by Period) -->
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Date From</label>
+      <input type="date" class="form-control form-control-sm" name="start_date" id="id_start_date" value="{{ request.GET.start_date }}">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Date To</label>
+      <input type="date" class="form-control form-control-sm" name="end_date" id="id_end_date" value="{{ request.GET.end_date }}">
+    </div>
+
+    <div class="col-12 d-flex gap-2 mt-2">
+      <button class="btn btn-secondary btn-sm" type="submit"><i class="fas fa-filter me-1"></i>Apply</button>
+      <a class="btn btn-outline-secondary btn-sm" href="?">Clear</a>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive">
+  {% render_table table %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===== Column widths (adjust here) =====
+   Update nth-child indices if you change the table sequence.
+   Current order:
+   1 S.N# | 2 Serial# | 3 Property–Unit | 4 Tenant | 5 Description | 6 Issue Date | 7 Due Date | 8 Amount | 9 Actions
+*/
+table.table th:nth-child(1), table.table td:nth-child(1) { width: 4rem;  }
+table.table th:nth-child(2), table.table td:nth-child(2) { width: 8rem;  }
+table.table th:nth-child(3), table.table td:nth-child(3) { width: 16rem; }
+table.table th:nth-child(4), table.table td:nth-child(4) { width: 10rem; }
+table.table th:nth-child(5), table.table td:nth-child(5) { max-width: 30ch; }
+table.table th:nth-child(6), table.table td:nth-child(6) { min-width: 9.5rem; white-space: nowrap; }
+table.table th:nth-child(7), table.table td:nth-child(7) { min-width: 9.5rem; white-space: nowrap; }
+table.table th:nth-child(8), table.table td:nth-child(8) { width: 9rem;  }
+table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem;  }
+
+/* Small screens: 360px */
+@media (max-width: 400px) {
+  .btn { padding: .4rem .6rem; }
+  h2.h4 { font-size: 1rem; }
+  #invoice-filter-form .row > [class*='col-'] { flex: 0 0 100%; max-width: 100%; }
+  .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.table { font-size: .82rem; }
+  table.table th, table.table td { white-space: nowrap; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ---------- Period → Dates + autosubmit ---------- */
+(function(){
+  const periodSel = document.getElementById('id_period');
+  const start = document.getElementById('id_start_date');
+  const end = document.getElementById('id_end_date');
+  const form = document.getElementById('invoice-filter-form');
+
+  function fmt(d){ return d.toISOString().slice(0,10); } // yyyy-mm-dd
+  function startOfWeek(d){ const c=new Date(d); const day=(c.getDay()+6)%7; c.setDate(c.getDate()-day); return c; } // Monday
+  function endOfWeek(d){ const s=startOfWeek(d); const e=new Date(s); e.setDate(s.getDate()+6); return e; }
+  function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function endOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+  function startOfYear(d){ return new Date(d.getFullYear(),0,1); }
+  function endOfYear(d){ return new Date(d.getFullYear(),11,31); }
+
+  periodSel.addEventListener('change', () => {
+    const now = new Date();
+    let s='', e='';
+    switch(periodSel.value){
+      case 'today': s=e=fmt(now); break;
+      case 'yesterday': {
+        const y=new Date(); y.setDate(now.getDate()-1); s=e=fmt(y); break;
+      }
+      case 'this_week': s=fmt(startOfWeek(now)); e=fmt(endOfWeek(now)); break;
+      case 'last_week': {
+        const n=new Date(); n.setDate(n.getDate()-7);
+        s=fmt(startOfWeek(n)); e=fmt(endOfWeek(n)); break;
+      }
+      case 'this_month': s=fmt(startOfMonth(now)); e=fmt(endOfMonth(now)); break;
+      case 'last_month': {
+        const d=new Date(now.getFullYear(), now.getMonth()-1, 1);
+        s=fmt(startOfMonth(d)); e=fmt(endOfMonth(d)); break;
+      }
+      case 'this_year': s=fmt(startOfYear(now)); e=fmt(endOfYear(now)); break;
+      default: s=''; e='';
+    }
+    start.value = s; end.value = e;
+    form.submit();
+  });
+})();
+
+/* ---------- Property → Units (empty on load; then "All units" + list) ---------- */
+(function(){
+  const propertySel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit');
+  const form = document.getElementById('invoice-filter-form');
+  // units_by_property provided by the view:
+
+  const unitsByProp = {{ units_by_property|default:'{}'|safe }};
+
+
+  function populateUnits(){
+    const pid = propertySel.value;
+    unitSel.innerHTML = '';
+    if(!pid){
+      unitSel.disabled = true;
+      return;
+    }
+    const opts = unitsByProp[pid] || [];
+    // "All units"
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All units';
+    unitSel.appendChild(allOpt);
+
+    opts.forEach(o => {
+      const el = document.createElement('option');
+      el.value = o.id;
+      el.textContent = o.label; // "Unit — Tenant"
+      unitSel.appendChild(el);
+    });
+    unitSel.disabled = false;
+  }
+
+  // initial state
+  populateUnits();
+
+  propertySel.addEventListener('change', () => { populateUnits(); form.submit(); });
+  unitSel.addEventListener('change', () => form.submit());
+})();
+
+/* ---------- Tenant filter search + autofocus ---------- */
+(function(){
+  const search = document.getElementById('tenant_search');
+  const sel = document.getElementById('id_tenant');
+  function filterOptions(){
+    const q = (search.value || '').toLowerCase();
+    for(const o of sel.options){
+      if(!o.value){ o.hidden = false; continue; } // keep "All"
+      o.hidden = !o.text.toLowerCase().includes(q);
+    }
+  }
+  search.addEventListener('input', filterOptions);
+  // Autofocus the text box when the select gains focus
+  sel.addEventListener('focus', () => search.focus());
+})();
+</script>
+{% endblock %}

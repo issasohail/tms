@@ -1,0 +1,388 @@
+{# templates/smart_meter/reading_list.html #}
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+{% block title %}Meter Readings{% endblock %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="fas fa-bolt text-warning me-2"></i>Meter Readings</h2>
+  <div class="text-muted">
+    Total readings: {{ total_count }}
+    {% if page_obj %} — showing {{ page_obj|length }}{% endif %}
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2 px-2">
+    <form id="filtersForm" method="get" class="container-fluid px-0">
+      <div class="row gx-1 gy-1 align-items-end text-nowrap">
+
+        {# Small screens: Property / Unit / Meter on first line #}
+        <div class="col-4 col-sm-2">
+          <select name="property" class="form-select form-select-sm auto-submit">
+            <option value="">Property</option>
+            {% for p in all_properties %}
+              <option value="{{ p.id }}" {% if current_property|stringformat:'s' == p.id|stringformat:'s' %}selected{% endif %}>{{ p.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-4 col-sm-2">
+          <select name="unit" class="form-select form-select-sm auto-submit">
+            <option value="">Unit</option>
+            {% for u in filtered_units %}
+              <option value="{{ u.id }}" {% if current_unit|stringformat:'s' == u.id|stringformat:'s' %}selected{% endif %}>{{ u.unit_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-4 col-sm-2">
+          <select name="meter" class="form-select form-select-sm auto-submit">
+            <option value="">Meter</option>
+            {% for m in filtered_meters %}
+              <option value="{{ m.id }}" {% if current_meter|stringformat:'s' == m.id|stringformat:'s' %}selected{% endif %}>{{ m.meter_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Second line on small: Date range + From/To (in the same line) #}
+        <div class="col-12 col-sm-6 d-flex flex-wrap gap-1">
+          <select name="range" id="rangeSel" class="form-select form-select-sm auto-submit" style="max-width: 10rem;">
+            <option value="">All time</option>
+            <option value="today"      {% if range == 'today' %}selected{% endif %}>Today</option>
+            <option value="yesterday"  {% if range == 'yesterday' %}selected{% endif %}>Yesterday</option>
+            <option value="this_week"  {% if range == 'this_week' %}selected{% endif %}>This week</option>
+            <option value="last_week"  {% if range == 'last_week' %}selected{% endif %}>Last week</option>
+            <option value="this_month" {% if range == 'this_month' %}selected{% endif %}>This month</option>
+            <option value="last_month" {% if range == 'last_month' %}selected{% endif %}>Last month</option>
+            <option value="custom"     {% if range == 'custom' %}selected{% endif %}>Custom</option>
+          </select>
+
+          <input type="date" name="start" id="startInp" value="{{ start|date:'Y-m-d' }}" class="form-control form-control-sm auto-submit" placeholder="From">
+          <input type="date" name="end"   id="endInp"   value="{{ end|date:'Y-m-d' }}"   class="form-control form-control-sm auto-submit" placeholder="To">
+
+          <button class="btn btn-sm btn-primary ms-auto" type="submit">
+            <i class="fas fa-filter me-1"></i>Apply
+          </button>
+
+          <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meter_readings_export_csv' %}?{{ qs }}"><i class="fas fa-file-csv me-1"></i>CSV</a>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'smart_meter:meter_readings_export_xlsx' %}?{{ qs }}"><i class="fas fa-file-excel me-1"></i>Excel</a>
+          <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_reading_create' %}?next={{ request.get_full_path|urlencode }}"><i class="fas fa-plus me-1"></i>Add</a>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="history.back()"><i class="fas fa-arrow-left me-1"></i>Back</button>
+        </div>
+
+        <div class="d-flex gap-3 align-items-center mb-2">
+  <label class="form-check">
+    <input class="form-check-input" type="checkbox" id="toggleIp" checked>
+    <span class="form-check-label">Show Source IP</span>
+  </label>
+  <label class="form-check">
+    <input class="form-check-input" type="checkbox" id="togglePort" checked>
+    <span class="form-check-label">Show Port</span>
+  </label>
+</div>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<div class="card-header py-2 d-flex justify-content-between align-items-center">
+  <h6 class="m-0 text-primary">Reading Data</h6>
+  <form method="get" class="row row-cols-lg-auto g-2 align-items-end">
+    {% if current_property %}<input type="hidden" name="property" value="{{ current_property }}">{% endif %}
+    {% if current_unit %}<input type="hidden" name="unit" value="{{ current_unit }}">{% endif %}
+    {% if current_meter %}<input type="hidden" name="meter" value="{{ current_meter }}">{% endif %}
+
+    <div class="col">
+      <label class="form-label mb-1">Start</label>
+      <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="form-control form-control-sm">
+    </div>
+    <div class="col">
+      <label class="form-label mb-1">End</label>
+      <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="form-control form-control-sm">
+    </div>
+
+    <div class="col">
+      <label class="form-label mb-1">Search</label>
+      <input type="text" class="form-control form-control-sm" name="q" value="{{ q|default:'' }}" placeholder="Search...">
+    </div>
+
+    <div class="col">
+      <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Apply</button>
+    </div>
+  </form>
+</div>
+
+
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 text-center">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th class="col-ts">Timestamp</th>
+            <th class="col-prop">Property</th>
+            <th class="col-unit">Unit</th>
+            <th class="col-meter">Meter #</th>
+            <th class="col-ip toggleIp">Source IP</th>
+            <th class="col-port togglePort">Port</th>
+            <th class="col-volt">Voltage (V)</th>
+            <th class="col-amp">Current (A)</th>
+            <th class="col-watt">Total Power (W)</th>
+            <th class="col-energy">Total Energy (kWh)</th>
+            <th class="col-pf">PF Total</th>
+          </tr>
+        </thead>
+
+
+          {# inside your <table> after <thead> ... DO NOT wrap this whole loop in a single <tbody> #}
+          <tbody>
+            {% for r, form in rows %}
+              {% include "smart_meter/partials/reading_row_display.html" with r=r %}
+            {% empty %}
+              <tr><td colspan="11" class="text-center py-4">No readings found.</td></tr>
+            {% endfor %}
+          </tbody>
+
+
+
+      </table>
+
+      {% if page_obj and paginator.num_pages > 1 %}
+      <nav aria-label="Readings pages" class="p-2">
+        <ul class="pagination pagination-sm mb-0 justify-content-end">
+
+          {# First #}
+          <li class="page-item {% if page_obj.number == 1 %}disabled{% endif %}">
+            {% if page_obj.number == 1 %}
+              <span class="page-link">&laquo;</span>
+            {% else %}
+              <a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page=1" aria-label="First">&laquo;</a>
+            {% endif %}
+          </li>
+
+          {# Prev (call previous_page_number only if has_previous) #}
+          <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+            {% if page_obj.has_previous %}
+              <a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.previous_page_number }}">Prev</a>
+            {% else %}
+              <span class="page-link">Prev</span>
+            {% endif %}
+          </li>
+
+          {# Number window around current page #}
+          {% for i in paginator.page_range %}
+            {% if i >= page_obj.number|add:'-2' and i <= page_obj.number|add:'2' %}
+              <li class="page-item {% if page_obj.number == i %}active{% endif %}">
+                {% if page_obj.number == i %}
+                  <span class="page-link">{{ i }}</span>
+                {% else %}
+                  <a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ i }}">{{ i }}</a>
+                {% endif %}
+              </li>
+            {% endif %}
+          {% endfor %}
+
+          {# Next (call next_page_number only if has_next) #}
+          <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+            {% if page_obj.has_next %}
+              <a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+            {% else %}
+              <span class="page-link">Next</span>
+            {% endif %}
+          </li>
+
+          {# Last #}
+          <li class="page-item {% if page_obj.number == paginator.num_pages %}disabled{% endif %}">
+            {% if page_obj.number == paginator.num_pages %}
+              <span class="page-link">&raquo;</span>
+            {% else %}
+              <a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ paginator.num_pages }}" aria-label="Last">&raquo;</a>
+            {% endif %}
+          </li>
+
+        </ul>
+      </nav>
+      {% endif %}
+
+
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Ensure cells line up visually with headers */
+  .table th, .table td { vertical-align: middle; }
+
+    /* Keep table layout stable while editing */
+  .table { table-layout: fixed; }
+  .table td, .table th { vertical-align: middle; }
+
+  /* Compact inputs inside table cells */
+  .table input.form-control,
+  .table select.form-select {
+    padding: .125rem .25rem;
+    height: calc(1.5rem + 2px);
+    line-height: 1.2;
+    font-size: .5075rem;
+
+
+  /* Small-screen tune (<= 400px) */
+  @media (max-width: 400px) {
+    html, body { font-size: .52rem; }
+
+    .card-body, .card-header { padding: .25rem .25rem !important; }
+    .btn, .form-control, .form-select { padding: .2rem .3rem !important; }
+    .btn-sm { padding: .2rem .3rem !important; }
+    .row.gx-1 > [class^="col-"], .row.gx-1 > [class*=" col-"] { padding-left: .125rem; padding-right: .125rem; }
+    .row.gy-1 { --bs-gutter-y: .25rem; }
+
+    .table { table-layout: fixed; }
+    .table td, .table th { padding: .25rem .25rem; vertical-align: middle; }
+    .table .badge { font-size: .58rem; }
+    .form-label { margin-bottom: .1rem; font-size: .58rem; }
+
+    /* Make filters compact with no extra whitespace */
+    #filtersForm .btn,
+    #filtersForm .form-control,
+    #filtersForm .form-select { font-size: .58rem; }
+
+    /* Avoid sticky header height explosion */
+    .table-light.sticky-top th { padding-top: .25rem; padding-bottom: .25rem; }
+  }
+
+  <style>
+  /* General tight table */
+  .table { table-layout: fixed; }
+  .table td, .table th { vertical-align: middle; }
+
+  /* ===== Small screens (≤ 400px / ~360) ===== */
+  @media (max-width: 400px) {
+    html, body { font-size: .58rem; }
+
+    .card-body, .card-header { padding: .25rem .25rem !important; }
+    .btn, .form-control, .form-select { padding: .2rem .3rem !important; font-size: .58rem; }
+    .btn-sm { padding: .2rem .3rem !important; }
+    .form-label { margin-bottom: .1rem; font-size: .58rem; }
+    .table td, .table th { padding: .25rem .25rem; }
+
+    /* Hide these columns on small screen */
+    .col-unit, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf { display: none; }
+
+    /* Let Timestamp, Property, Meter#, Energy breathe a bit */
+    .col-ts, .col-prop, .col-meter, .col-energy { width: 25%; }
+  }
+
+  /* ===== Desktop (≥ 992px) — example widths & visibility you can tweak ===== */
+  @media (min-width: 992px) {
+    /* Show everything on large by default (override mobile hide) */
+    .col-unit, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf { display: table-cell; }
+
+    /* Optional width tuning per column */
+    .col-ts     { width: 25%; }
+    .col-prop   { width: 16%; }
+    .col-unit   { width: 12%;  }
+    .col-meter  { width: 10%; }
+    .col-ip     { width: 10%; }
+    .col-port   { width: 4%;  }
+    .col-volt   { width: 4%;  }
+    .col-amp    { width: 4%;  }
+    .col-watt   { width: %;  }
+    .col-energy { width: 5%; }
+    .col-pf     { width: 5%;  }
+  }
+
+  /* ===== TWEAK ZONE =====
+     To show "Current" on small screens, remove .col-amp from the small-screen hide list.
+     To hide "Source IP" on desktop too, add: .col-ip { display:none !important; } below.
+  */
+</style>
+
+
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function toggleInlineEdit(id, show) {
+    const disp = document.getElementById(`r${id}-display`);
+    const edit = document.getElementById(`r${id}-edit`);
+    if (!disp || !edit) return;
+    if (show) {
+      disp.classList.add('d-none');
+      edit.classList.remove('d-none');
+      const firstInput = edit.querySelector('input, select, textarea');
+      if (firstInput) firstInput.focus();
+    } else {
+      edit.classList.add('d-none');
+      disp.classList.remove('d-none');
+    }
+  }
+
+  // ESC to cancel
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('tr[id$="-edit"]:not(.d-none)').forEach(tr => {
+        const id = tr.id.match(/^r(\d+)-edit$/)?.[1];
+        if (id) toggleInlineEdit(id, false);
+      });
+    }
+  });
+</script>
+
+<script>
+  (function(){
+    const form = document.getElementById('filtersForm');
+    if(!form) return;
+    const rangeSel = document.getElementById('rangeSel');
+    const startInp = document.getElementById('startInp');
+    const endInp   = document.getElementById('endInp');
+
+    function updateDateInputs() {
+      const v = rangeSel.value;
+      const disable = (v && v !== 'custom'); // presets disable; all time '' and custom enable
+      [startInp, endInp].forEach(el => el && (el.disabled = disable));
+    }
+    updateDateInputs();
+
+    // Auto-submit for compact UX
+    form.addEventListener('change', (e) => {
+      if (e.target.classList.contains('auto-submit')) {
+        if (e.target === rangeSel) updateDateInputs();
+        clearTimeout(form._t);
+        form._t = setTimeout(() => form.submit(), 50);
+      }
+    });
+  })();
+</script>
+<script>
+  (function () {
+    const toggle = (checkboxId, colClass) => {
+      const cb = document.getElementById(checkboxId);
+      if (!cb) return;
+      const apply = () => {
+        const cells = document.querySelectorAll('.' + colClass);
+        cells.forEach(td => td.classList.toggle('d-none', !cb.checked));
+      };
+      cb.addEventListener('change', apply);
+      apply(); // initial
+    };
+
+    // Run once DOM is ready (simple fallback)
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        toggle('toggleIp', 'toggle-col-ip');
+        toggle('togglePort', 'toggle-col-port');
+      });
+    } else {
+      toggle('toggleIp', 'toggle-col-ip');
+      toggle('togglePort', 'toggle-col-port');
+    }
+  })();
+</script>
+{% endblock %}
+
+
+

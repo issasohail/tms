@@ -1,0 +1,78 @@
+{% load humanize dictutil %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Billing Summary PDF  — {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}</title>
+  <style>
+    @page { size: A4 landscape; margin: 10mm; }
+    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 12px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border:1px solid #ddd; padding:4px 6px; }
+    th { background:#f2f2f2; }
+    .num { text-align:right; }
+    .muted { color:#666; }
+    .prop-row { background:#f8fafc; font-weight:600; }
+    .sub-row  { background:#f9f9f9; font-weight:600; }
+  </style>
+</head>
+<body>
+  <h3>Billing Summary — {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>S.N.</th>
+        <th>Unit</th>
+        <th>Tenant</th>
+        {% for col in header_cols %}
+          <th class="num">{{ labels|dictkey:col|default:col|title }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in groups %}
+        <tr class="prop-row">
+          <td colspan="{{ header_cols|length|add:3 }}">Property: {{ g.property.property_name }}</td>
+
+        </tr>
+
+        {% for r in g.rows %}
+          <tr>
+            <td>{{ r.sn }}</td>
+            <td>{{ r.unit.unit_number }}</td>
+            <td>{{ r.tenant.name|default:r.tenant }}</td>
+
+            {% for col in header_cols %}
+              {% if col == 'electric_kwh' %}
+                <td class="num">{{ r.visible.electric_kwh|default:0|floatformat:3 }}</td>
+              {% elif col == 'other' %}
+                <td class="num">{{ r.other|default_if_none:0|floatformat:0|intcomma }}</td>
+              {% elif col == 'total' or col == 'prev_balance' or col == 'total_balance' %}
+                <td class="num">{{ r|dictkey:col|default:0|floatformat:0|intcomma }}</td>
+              {% else %}
+                <td class="num">{{ r.visible|dictkey:col|default:0|floatformat:0|intcomma }}</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+
+        <tr class="sub-row">
+          <td></td><td>Subtotal</td><td></td>
+          {% for col in header_cols %}
+            <td class="num">{{ g.subtotal|dictkey:col|default:0|floatformat:0|intcomma }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="sub-row">
+        <td></td><td>GRAND TOTAL</td><td></td>
+        {% for col in header_cols %}
+          <td class="num"><strong>{{ grand|dictkey:col|default:0|floatformat:0|intcomma }}</strong></td>
+        {% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>

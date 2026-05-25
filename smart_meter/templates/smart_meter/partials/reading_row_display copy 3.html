@@ -1,0 +1,57 @@
+{# templates/smart_meter/partials/reading_row_display.html #}
+<tr
+  hx-get="{% url 'smart_meter:meter_reading_row_edit' r.pk %}"
+  hx-trigger="dblclick"
+  hx-target="this"
+  hx-swap="outerHTML"
+  title="Double-click to edit"
+  style="cursor:pointer;"
+>
+  <td class="col-idx">{{ sno }}</td>
+
+  {# Timestamp: one line on sm+; stacked on xs #}
+  <td class="col-ts text-nowrap">
+    <div class="d-none d-sm-block">{{ r.ts|date:"Y-m-d H:i:s" }}</div>
+    <div class="d-sm-none">
+      <div>{{ r.ts|date:"Y-m-d" }}</div>
+      <div>{{ r.ts|date:"H:i:s" }}</div>
+    </div>
+  </td>
+
+  {# Property: 8 chars always; small-screen unit UNDER with smaller font and WITHOUT the word "Unit" #}
+  <td class="col-prop" title="{{ r.meter.unit.property.property_name }}">
+    <div>{{ r.meter.unit.property.property_name|slice:":8" }}</div>
+    <div class="text-muted d-sm-none sm-unit-under-prop">{{ r.meter.unit.unit_number }}</div>
+  </td>
+
+  <td class="col-unit">{{ r.meter.unit.unit_number }}</td>
+
+  <td class="col-meter">
+    <div><span class="badge bg-primary">{{ r.meter.meter_number }}</span></div>
+    <div class="text-muted d-sm-none sm-meter-sub">
+      {{ r.voltage_a|default_if_none:""|floatformat:0 }}V,
+      {{ r.current_a|default_if_none:""|floatformat:4 }}A,
+      {{ r.total_power|default_if_none:""|floatformat:3 }}W
+    </div>
+  </td>
+
+  <td class="col-ip toggle-col-ip d-none">{{ r.source_ip|default_if_none:"" }}</td>
+  <td class="col-port toggle-col-port d-none">{{ r.source_port|default_if_none:"" }}</td>
+
+  <td class="col-volt">{{ r.voltage_a|default_if_none:""|floatformat:1 }}</td>
+  <td class="col-amp">{{ r.current_a|default_if_none:""|floatformat:3 }}</td>
+  <td class="col-watt">{{ r.total_power|default_if_none:""|floatformat:3 }}</td>
+
+  <td class="col-energy fw-bold">
+    <div>{{ r.total_energy|default_if_none:""|floatformat:3 }}</div>
+    <div class="text-muted d-sm-none">PF {{ r.pf_total|default_if_none:""|floatformat:3 }}</div>
+  </td>
+  <td class="col-pf">{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>
+</tr>
+<style>
+  /* Tweakable small-screen subtext sizes */
+  @media (max-width: 576px) {
+    .sm-unit-under-prop { font-size: .62rem; } /* adjust as needed */
+    .sm-meter-sub       { font-size: .62rem; } /* adjust as needed */
+  }
+</style>

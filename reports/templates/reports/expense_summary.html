@@ -1,0 +1,33 @@
+<form class="row g-2 align-items-end mb-3">
+  {% csrf_token %}
+  <div class="col-12 col-sm-3">{{ form.property }}</div>
+  <div class="col-6 col-sm-2">{{ form.unit }}</div>
+  <div class="col-6 col-sm-2">{{ form.category }}</div>
+  <div class="col-6 col-sm-2">{{ form.preset }}</div>
+  <div class="col-6 col-sm-1">{{ form.start }}</div>
+  <div class="col-6 col-sm-1">{{ form.end }}</div>
+  <div class="col-6 col-sm-1"><button class="btn btn-primary w-100 btn-sm">Filter</button></div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Property</th>
+        <th>Category</th>
+        <th class="text-end">Amount (Rs)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.property__property_name }}</td>
+          <td>{{ r.category__name|default:"(Uncategorized)" }}</td>
+          <td class="text-end">Rs {{ r.total|floatformat:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

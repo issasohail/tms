@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+<!doctype html><html><head>
+  <meta charset="utf-8">
+  <title>Live Readings</title>
+  <meta http-equiv="refresh" content="15"> <!-- auto-refresh every 15s -->
+  <style>table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px}th{background:#f3f3f3}</style>
+</head><body>
+<h2>Live Readings</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Property</th><th>Unit</th><th>Meter</th><th>Updated</th>
+      <th>V A</th><th>V B</th><th>V C</th>
+      <th>I A</th><th>I B</th><th>I C</th>
+      <th>kW</th><th>PF</th><th>kWh</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.meter.unit.property.property_name }}</td>
+      <td>{{ r.meter.unit.unit_number }}</td>
+      <td>{{ r.meter.meter_number }}</td>
+      <td>{{ r.ts|date:"Y-m-d H:i:s" }}</td>
+      <td>{{ r.voltage_a }}</td><td>{{ r.voltage_b }}</td><td>{{ r.voltage_c }}</td>
+      <td>{{ r.current_a }}</td><td>{{ r.current_b }}</td><td>{{ r.current_c }}</td>
+      <td>{{ r.total_power }}</td>
+      <td>{{ r.pf_total }}</td>
+      <td>{{ r.total_energy }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="13">No live data yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</body></html>

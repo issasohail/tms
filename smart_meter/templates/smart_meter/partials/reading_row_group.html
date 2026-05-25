@@ -1,0 +1,63 @@
+{# templates/smart_meter/partials/reading_row_group.html #}
+<tbody id="row-{{ r.id }}">
+  {# DISPLAY ROW — double-click to reveal editor #}
+  <tr id="r{{ r.id }}-display"
+      ondblclick="toggleInlineEdit({{ r.id }}, true)"
+      title="Double-click to edit"
+      class="{% if show_edit %}d-none{% endif %}"
+      style="cursor: pointer;">
+    <td>{{ r.ts|date:"Y-m-d H:i:s" }}</td>
+    <td>{{ r.meter.unit.property.property_name }}</td>
+    <td>{{ r.meter.unit.unit_number }}</td>
+    <td><span class="badge bg-primary">{{ r.meter.meter_number }}</span></td>
+    <td>{{ r.source_ip|default_if_none:"" }}</td>
+    <td>{{ r.source_port|default_if_none:"" }}</td>
+
+    <td>{{ r.voltage_a|default_if_none:""|floatformat:1 }}</td>
+    <td>{{ r.current_a|default_if_none:""|floatformat:3 }}</td>
+    <td>{{ r.total_power|default_if_none:""|floatformat:3 }}</td>
+    <td class="fw-bold">{{ r.total_energy|default_if_none:""|floatformat:3 }}</td>
+    <td>{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>
+  </tr>
+
+  {# EDIT ROW — pre-rendered but hidden; submit via HTMX to update and swap this entire tbody #}
+  <tr id="r{{ r.id }}-edit" class="{% if not show_edit %}d-none{% endif %}">
+    <form method="post"
+          hx-post="{% url 'smart_meter:meter_reading_row_edit' r.pk %}"
+          hx-target="#row-{{ r.id }}"
+          hx-swap="outerHTML">
+      {% csrf_token %}
+      <td style="min-width: 170px">{{ form.ts }}</td>
+      <td>{{ r.meter.unit.property.property_name }}</td>
+      <td>{{ r.meter.unit.unit_number }}</td>
+      <td>{{ form.meter }}</td>
+      <td>{{ form.source_ip }}</td>
+      <td>{{ form.source_port }}</td>
+
+      <td>{{ form.voltage_a }}</td>
+      <td>{{ form.current_a }}</td>
+      <td>{{ form.total_power }}</td>
+      <td>{{ form.total_energy }}</td>
+      <td>
+        <div class="d-flex gap-1 align-items-center">
+          {{ form.pf_total }}
+          <button type="submit" class="btn btn-sm btn-success" title="Save">
+            <i class="fas fa-check"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" title="Cancel"
+                  onclick="toggleInlineEdit({{ r.id }}, false)">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        {% if form.errors %}
+          <div class="text-danger small mt-1">
+            {% for field, errs in form.errors.items %}
+              {% for e in errs %}{{ field }}: {{ e }}<br>{% endfor %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </td>
+    </form>
+  </tr>
+</tbody>

@@ -1,0 +1,16 @@
+<div class="modal fade" id="splitModal">
+  <div class="modal-dialog">
+    <form id="splitForm">
+      {% csrf_token %}
+      <input type="hidden" name="allocation_id">
+
+      <label>Lease Amount</label>
+      <input type="number" name="lease_amount" class="form-control">
+
+      <label>Security Amount</label>
+      <input type="number" name="security_amount" class="form-control">
+
+      <button class="btn btn-primary mt-2">Save</button>
+    </form>
+  </div>
+</div>

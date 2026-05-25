@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}
+    {% if form.instance.pk %}Update{% else %}Create{% endif %} Expense Distribution
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h4>{% if form.instance.pk %}Update{% else %}Create{% endif %} Expense Distribution</h4>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {{ form|crispy }}
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a href="{% if form.instance.expense %}{% url 'expenses:expense_detail' form.instance.expense.pk %}{% else %}{% url 'expenses:expense_list' %}{% endif %}" 
+               class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

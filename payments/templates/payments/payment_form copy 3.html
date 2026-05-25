@@ -1,0 +1,1272 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+{% load humanize %}
+
+{% block extra_css %}
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+{% endblock %}
+
+{% block title %}{% if form.instance.pk %}Update{% else %}Record{% endif %} Payment{% endblock %}
+
+{% block content %}
+<div class="row" id="payment-viewport">
+  <!-- Payment Form Column (Narrower) -->
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h4 class="mb-0">{% if form.instance.pk %}Update{% else %}Record{% endif %} Payment</h4>
+        <button class="btn btn-secondary btn-sm" onclick="history.back()">
+          <i class="fas fa-arrow-left"></i> Back
+        </button>
+      </div>
+      <div class="card-body p-2">
+        <form method="post" id="paymentForm" class="compact-form">
+          {% csrf_token %}
+
+          <!-- Search Lease (compact) -->
+          <div class="card mb-2" id="search-lease-card">
+            <div class="card-header bg-light py-1 d-flex justify-content-between align-items-center">
+              <h6 class="mb-0">Search Lease</h6>
+              <button type="button" id="resetFilters" class="btn btn-sm btn-secondary p-1">
+                <i class="fas fa-undo"></i> Reset
+              </button>
+            </div>
+            <div class="card-body p-2">
+              <div class="row g-1 align-items-center" id="lease-filter-row">
+                <!-- Tenant -->
+                <div class="col-10 col-md-4 order-1 order-md-1">
+                  <label for="id_tenant_search" class="form-label small mb-1">Tenant</label>
+                  <select name="tenant_search" id="id_tenant_search" class="form-select compact-select one-line form-select-sm">
+                    <option value="">All Tenants</option>
+                    {% for tenant in active_tenants %}
+                      <option value="{{ tenant.id }}" {% if request.GET.tenant_search == tenant.id|stringformat:"s" %}selected{% endif %}>
+                        {{ tenant.get_full_name|truncatechars:20 }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <!-- Include inactive (phones: beside Tenant; md+: last column) -->
+                <div class="col-2 col-md-2 d-flex align-items-center justify-content-end include-compact order-2 order-md-4">
+                  {{ form.include_inactive|as_crispy_field }}
+                </div>
+
+                <!-- Property -->
+                <div class="col-6 col-md-3 order-3 order-md-2">
+                  {{ form.property|as_crispy_field }}
+                </div>
+
+                <!-- Unit -->
+                <div class="col-6 col-md-3 order-4 order-md-3">
+                  {{ form.unit|as_crispy_field }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Payment Details -->
+          <div class="card mb-2" id="payment-details-card">
+            <div class="card-header bg-light py-1">
+              <h6 class="mb-0">Payment Details</h6>
+        
+            </div>
+            <div class="card-body p-2">
+              <div class="row g-1">
+                <div class="col-12">
+                  <label for="id_lease" class="visually-hidden">Lease</label>
+                  {{ form.lease }}
+                </div>
+
+                <!-- Row 1 on phones: Date | Amount -->
+                <div class="col-6 col-md-3">
+                  {{ form.payment_date|as_crispy_field }}
+                </div>
+                <div class="col-6 col-md-3">
+                  {{ form.amount|as_crispy_field }}
+                </div>
+
+                <!-- Payment Allocation (COMPACT) -->
+                <div class="col-12 mt-1">
+                  <h6 class="mb-1">Payment Allocation</h6>
+                  <div class="balances-inline">
+                    <span class="bal-label">Lease:</span>
+                    <span id="lease-balance-display" class="balance-pill">—</span>
+
+                    <span class="bal-label ms-2">Security:</span>
+                    <span id="sec-balance-display" class="balance-pill">—</span>
+                  </div>
+                </div>
+                  <!-- Row 2: Security type + amounts -->
+                <div class="row g-1 align-items-end mt-1">
+                    <div class="col-12 col-md-3">
+                      {{ allocation_form.allocation_mode.label_tag }}
+                      {{ allocation_form.allocation_mode }}
+                    </div>
+                    <div class="col-12 col-md-3">
+                      {{ allocation_form.security_type.label_tag }}
+                      {{ allocation_form.security_type }}
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                      {{ allocation_form.lease_amount.label_tag }}
+                      {{ allocation_form.lease_amount }}
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                      {{ allocation_form.security_amount.label_tag }}
+                      {{ allocation_form.security_amount }}
+                    </div>
+                </div>
+                
+  
+                  <!-- Row 3: Method + Ref + Notes -->
+                <div class="row g-1 align-items-end mt-1">
+                  <div class="col-md-3">{{ form.payment_method|as_crispy_field }}</div>
+                  <div class="col-md-3">{{ form.reference_number|as_crispy_field }}</div>
+                  <div class="col-md-6">{{ form.notes|as_crispy_field }}</div>
+                </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="action-bar d-flex flex-wrap gap-2 justify-content-between mb-2">
+            <div class="d-flex flex-wrap gap-2">
+              <button type="submit" name="save" class="btn btn-primary btn-sm">
+                <i class="fas fa-save"></i><span class="btn-label ms-1">Save</span>
+              </button>
+
+              <button type="submit" name="save_and_new" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i><span class="btn-label ms-1">New</span>
+              </button>
+
+              <button type="submit" name="save_and_print" class="btn btn-secondary btn-sm">
+                <i class="fas fa-print"></i><span class="btn-label ms-1">Print</span>
+              </button>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-secondary btn-sm" onclick="history.back()">
+                <i class="fas fa-arrow-left"></i><span class="btn-label ms-1">Back</span>
+              </button>
+
+              <a href="{% if form.instance.pk %}{{ form.instance.get_absolute_url }}{% else %}{% url 'payments:cash_ledger' %}{% endif %}"
+                class="btn btn-danger btn-sm">
+                <i class="fas fa-times"></i> Cancel
+              </a>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Payments Column (Wider) -->
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h5 class="mb-0">Recent Payments</h5>
+
+        <div class="d-flex align-items-center gap-2">
+          <label for="recentSize" class="mb-0 small text-muted">Rows</label>
+          <select id="recentSize" class="form-select form-select-sm" style="width:auto">
+            {% for opt in recent_size_options %}
+              <option value="{{ opt }}" {% if recent_size == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+          <span class="badge bg-secondary">{{ recent_payments|length }}</span>
+        </div>
+      </div>
+
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 recent-payments-table">
+            <thead class="bg-light">
+              <tr>
+                <th class="col-sn">#</th>
+                <th class="col-tenant">Tenant</th>
+                <th class="col-date">Date</th>
+                <th class="col-amount">Amount</th>
+                <th class="col-pu">Property-Unit</th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for payment in recent_payments %}
+                <tr>
+                  <td class="col-sn">{{ forloop.counter }}</td>
+
+                  <!-- Tenant → clamp to 2 lines on phones -->
+                  <td class="col-tenant">
+                    <span class="tenant-2clamp">
+                      {{ payment.lease.tenant.get_full_name }}
+                    </span>
+                  </td>
+
+                  <!-- Date cell: we’ll inject Amount here on phones -->
+                  <td class="col-date">{{ payment.payment_date|date:"M j, Y " }}</td>
+
+                  <!-- Amount (hidden on phones via CSS below) -->
+                  <td class="col-amount">{{ payment.amount|intcomma }}</td>
+
+                  <!-- Property / Unit -->
+                  <td class="col-pu">
+                    <span class="pu-desktop d-none d-sm-inline">
+                      {{ payment.lease.unit.property.property_name|truncatechars:10 }}-{{ payment.lease.unit.unit_number }}
+                    </span>
+                    <span class="pu-mobile d-inline d-sm-none">
+                      <span class="prop">{{ payment.lease.unit.property.property_name }}</span>
+                      <span class="unit">{{ payment.lease.unit.unit_number }}</span>
+                    </span>
+                  </td>
+
+                  <td class="col-actions text-nowrap">
+                    <div class="btn-group btn-group-sm">
+                      <!-- View -->
+                      <a href="{% url 'payments:payment_detail' payment.id %}"
+                         class="btn btn-dark" title="View">
+                        <i class="fas fa-eye"></i>
+                        <span class="ms-1 d-none d-sm-inline">View</span>
+                      </a>
+
+                      <!-- WhatsApp -->
+                      <button
+                        class="btn btn-success payment-action"
+                        data-action="whatsapp"
+                        data-phone="{{ payment.lease.tenant.phone }}"
+                        data-name="{{ payment.lease.tenant.first_name }}"
+                        data-property="{{ payment.lease.unit.property.property_name }}"
+                        data-unit="{{ payment.lease.unit.unit_number }}"
+                        data-amount="{{ payment.amount }}"
+                        data-date="{{ payment.payment_date|date:'M d, Y' }}"
+                        data-balance="{{ payment.lease.get_balance }}"
+                        data-start-date="{{ payment.lease.start_date|date:'M d, Y' }}"
+                        data-end-date="{{ payment.lease.end_date|date:'M d, Y' }}"
+                        data-security-amount="{{ payment.lease.security_deposit|default:0 }}"
+                        data-security-paid="{{ payment.lease.security_deposit_paid|yesno:'true,false' }}"
+                        title="WhatsApp">
+                        <i class="fab fa-whatsapp"></i>
+                        <span class="ms-1 d-none d-sm-inline">WhatsApp</span>
+                      </button>
+
+                      <!-- SMS -->
+                      <button class="btn btn-info payment-action" data-action="sms" title="SMS">
+                        <i class="fas fa-sms"></i><span class="ms-1 d-none d-sm-inline">SMS</span>
+                      </button>
+
+                      <!-- Email -->
+                      <button class="btn btn-primary payment-action" data-action="email" title="Email">
+                        <i class="fas fa-envelope"></i><span class="ms-1 d-none d-sm-inline">Email</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="6" class="text-center text-muted">No recent payments</td></tr>
+              {% endfor %}
+            </tbody>
+
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* ===== Base compact bits ===== */
+  .compact-form .form-group{margin-bottom:.5rem}
+  .compact-form .form-control,.compact-form .form-select{padding:.25rem .5rem;font-size:.8125rem;height:calc(1.5em + .5rem + 2px)}
+  .compact-form .card{margin-bottom:.75rem;border:1px solid rgba(0,0,0,.1)}
+  .compact-form .card-header{padding:.25rem .75rem}
+  .compact-form .card-body{padding:.5rem}
+  .compact-form label{margin-bottom:.1rem;font-size:.8125rem}
+  .table-sm td,.table-sm th{padding:.25rem;font-size:.7125rem}
+
+  /* Compact native <select> + single-line text */
+  .compact-select { padding:.2rem .4rem; font-size:.85rem; line-height:1.2; }
+  .one-line { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* ===== Ultra-compact Select2 for Tenant & Lease ===== */
+  #id_tenant_search + .select2 .select2-selection--single,
+  #id_lease + .select2 .select2-selection--single{
+    min-height: 26px;
+    height: 26px;
+  }
+  #id_tenant_search + .select2 .select2-selection__rendered,
+  #id_lease + .select2 .select2-selection__rendered{
+    font-size: .72rem;          /* smaller text */
+    line-height: 24px;          /* vertically centered */
+    padding-right: 22px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #id_tenant_search + .select2 .select2-selection__arrow,
+  #id_lease + .select2 .select2-selection__arrow{
+    height: 26px;
+  }
+
+  /* Dropdown: shorter rows & higher viewport so more items fit */
+  .select2-container--default .select2-results > .select2-results__options{
+    max-height: 380px;          /* more rows visible */
+  }
+  .select2-container--default .select2-results__option.compact-row{
+    font-size: .72rem;
+    line-height: 1.05;
+    padding: 2px 6px;           /* very tight */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Search box inside dropdown */
+  .select2-container--default .select2-search--dropdown .select2-search__field{
+    font-size: .72rem;
+    padding: 2px 6px;
+    height: 26px;
+  }
+
+  /* Native <select> fallback also tight */
+  #id_tenant_search.form-select,
+  #id_lease.form-select{
+    padding: .14rem .35rem;
+    font-size: .62rem;
+    height: 26px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .balance-pill{
+      display:inline-block;
+      padding:.1rem .45rem;
+      border:1px solid rgba(0,0,0,.15);
+      border-radius:999px;
+      background:#f8f9fa;
+      font-weight:600;
+      line-height:1.2;
+    }
+    .bal-label{ font-weight:600; }
+
+
+
+  /* ===== Compact Select2 for Tenant & Lease (scoped to this page) ===== */
+  #payment-viewport .select2-dropdown{
+    font-size: .78rem;               /* smaller text in dropdown */
+  }
+
+  /* fits more items in the dropdown list */
+  #payment-viewport .select2-results__options{
+    max-height: 220px;
+  }
+
+  /* tighter list rows, single line, with ellipsis */
+  #payment-viewport .select2-results__option{
+    padding: .18rem .45rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* keep default highlight, just ensure no extra outline noise */
+  #payment-viewport .select2-results__option--highlighted[aria-selected]{
+    outline: none;
+  }
+
+  /* compact search field inside dropdown */
+  #payment-viewport .select2-search--dropdown .select2-search__field{
+    height: 28px;
+    padding: .2rem .4rem;
+    font-size: .8rem;
+  }
+
+  /* ===== Apply compact selection “chip” to BOTH filters ===== */
+  /* Selection height (the closed control) */
+  #id_tenant_search + .select2 .select2-selection--single,
+  #id_lease         + .select2 .select2-selection--single{
+    height: 32px;
+    line-height: 32px;    /* centers text vertically */
+    padding: 0 .5rem;
+    font-size: .85rem;
+  }
+
+  /* Truncate long labels in the closed control to one line */
+  #id_tenant_search + .select2 .select2-selection__rendered,
+  #id_lease         + .select2 .select2-selection__rendered{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Keep the arrow aligned with the compact height */
+  #id_tenant_search + .select2 .select2-selection__arrow,
+  #id_lease         + .select2 .select2-selection__arrow{
+    height: 32px;
+  }
+
+  /* FINAL OVERRIDE: make tenant & lease chips small and tight */
+  #payment-viewport .select2-container .select2-selection--single.compact-sel{
+    height: 26px !important;
+    line-height: 26px !important;
+    font-size: .72rem !important;
+    padding: 0 .35rem !important;
+  }
+
+  /* Keep the arrow aligned with the compact height */
+  #payment-viewport .select2-container .select2-selection--single.compact-sel .select2-selection__arrow{
+    height: 26px !important;
+  }
+
+  /* ===== Recent Payments widths (desktop/tablet) ===== */
+  .recent-payments-table{
+    table-layout:fixed;width:100%;
+    --w-sn:      28px;
+    --w-tenant:  20%;
+    --w-date:    16%;
+    --w-amount:  14%;
+    --w-pu:      34%;
+    --w-actions: 320px;
+  }
+  .recent-payments-table th.col-sn,      .recent-payments-table td.col-sn      { width:var(--w-sn) }
+  .recent-payments-table th.col-tenant,  .recent-payments-table td.col-tenant  { width:var(--w-tenant) }
+  .recent-payments-table th.col-date,    .recent-payments-table td.col-date    { width:var(--w-date) }
+  .recent-payments-table th.col-amount,  .recent-payments-table td.col-amount  { width:var(--w-amount) }
+  .recent-payments-table th.col-pu,      .recent-payments-table td.col-pu      { width:var(--w-pu) }
+  .recent-payments-table th.col-actions, .recent-payments-table td.col-actions { width:var(--w-actions) }
+  .recent-payments-table td, .recent-payments-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* Shrink action buttons + icons and keep a small gap */
+  .recent-payments-table .col-actions .btn-group .btn{
+    padding:.18rem .32rem !important;
+    font-size:.78rem !important;
+    line-height:1.05 !important;
+  }
+  .recent-payments-table .col-actions .btn i{ font-size:.85em; }
+  .recent-payments-table .col-actions .btn-group{ gap:.3rem; }
+
+  /* ≥576px show single-line property-unit */
+  @media (min-width:576px){
+    .pu-desktop{display:inline!important}
+    .pu-mobile{display:none!important}
+  }
+
+  /* Big screens: keep all three filters on one line */
+  @media (min-width:768px){
+    #lease-filter-row { align-items: center !important; }
+  }
+
+  /* Phones: shrink the Include checkbox, compact fields */
+  @media (max-width: 575.98px){
+    #search-lease-card .include-compact .form-check{
+      display:flex; align-items:center; margin:0 !important; padding:0 !important; min-height:0 !important;
+    }
+    #search-lease-card .include-compact .form-check-input{
+      transform: scale(.85); margin:0 .25rem 0 0;
+    }
+    #search-lease-card .include-compact .form-check-label{
+      font-size:.58rem !important; line-height:1 !important; margin:0 !important;
+    }
+    /* keep tenant select short so the row stays compact */
+    #id_tenant_search.form-select{ height:28px; padding:.02rem .04rem; font-size:.78rem; }
+
+    /* allow page to scroll vertically; avoid cut-offs */
+    html,body{height:auto;overflow-y:auto}
+    .table-responsive{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+    /* ---- Search Lease (filters) ---- */
+    #search-lease-card .card-header{padding:.025rem .025rem!important}
+    #search-lease-card .card-body{padding:.035rem .025rem!important}
+    #search-lease-card .row.g-1{ --bs-gutter-x:.05rem; --bs-gutter-y:.25rem; }
+    #search-lease-card .form-label{margin-bottom:.01rem;font-size:.78rem}
+    #search-lease-card .form-check{margin:0!important;padding:0!important;min-height:0!important}
+    #search-lease-card .form-check-input{margin-top:0!important}
+    #search-lease-card .form-check-label{margin:0 0 0 .25rem!important;line-height:1.1;font-size:.8rem}
+
+    /* ---- Payment Details ---- */
+    .compact-form .card:has(> .card-header:contains("Payment Details")){ margin-bottom:.4rem; }
+    .compact-form .card:has(> .card-header:contains("Payment Details")) .card-header{padding:.025rem .05rem!important}
+    .compact-form .card:has(> .card-header:contains("Payment Details")) .card-body{padding:.1rem .05rem!important}
+    .compact-form .card:has(> .card-header:contains("Payment Details")) .row.g-1{ --bs-gutter-x:.035rem; --bs-gutter-y:.025rem; }
+    .compact-form .form-group{margin-bottom:.025rem}
+    .compact-form .form-control,.compact-form .form-select{height:28px;font-size:.78rem;padding:.02rem .04rem}
+    .card-header h4,.card-header h5,.card-header h6{font-size:.95rem;margin:0}
+
+    /* Action bar: icons-only to save width */
+    .action-bar .btn .btn-label{display:none!important}
+    .action-bar{padding:.02rem .04rem;gap:.025rem!important}
+
+    /* ---- Recent payments table ---- */
+    .recent-payments-table th,.recent-payments-table td{font-size:.58rem;padding-top:.2rem;padding-bottom:.2rem}
+    .recent-payments-table{
+      --w-sn:      20px;
+      --w-tenant:  23%;
+      --w-date:    20%;
+      --w-pu:      auto;
+      --w-actions: 80px;
+    }
+    .recent-payments-table th.col-amount,.recent-payments-table td.col-amount{display:none!important}
+
+    /* Amount appended under Date (JS injects .amount-sub) */
+    td.col-date .amount-sub{
+      display:block;margin-top:.15rem;line-height:1.1;font-weight:600;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+
+    /* Tenant: two-line clamp */
+    .tenant-2clamp{
+      display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+      overflow:hidden;text-overflow:ellipsis;white-space:normal;line-height:1.15;
+    }
+
+    /* Property/Unit stacked */
+    .pu-desktop{display:none!important}
+    .pu-mobile{display:inline!important}
+    .pu-mobile .prop,.pu-mobile .unit{
+      display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;
+    }
+
+    /* Form / table buttons tighter */
+    .action-bar{ gap:0 !important; }
+    .action-bar .btn-group{ gap:0 !important; }
+    .action-bar .btn-group .btn{ margin:0 !important; padding:.16rem .22rem !important; font-size:.74rem !important; line-height:1.05 !important; }
+    .action-bar .btn-group .btn + .btn{ margin-left:-1px !important; }
+    .col-actions .btn-group{ gap:.25rem !important; }
+    .col-actions .btn-group .btn{ margin:0 !important; padding:.16rem .20rem !important; line-height:1.05 !important; }
+    .col-actions .btn-group .btn + .btn{ margin-left:-1px !important; }
+    .col-actions .btn .d-sm-inline{ display:none !important; }
+  }
+</style>
+<style>
+
+  /* ===== Force compact Select2 dropdown for Tenant & Lease ===== */
+  /* We tag their dropdowns with `dropdownCssClass: 'compact-dd'` in JS (below). */
+  .select2-dropdown.compact-dd{
+    font-size: .72rem !important;                     /* smaller text in list */
+  }
+  .select2-dropdown.compact-dd .select2-search__field{
+    height: 26px !important;
+    padding: 2px 6px !important;
+    font-size: .72rem !important;
+  }
+  .select2-dropdown.compact-dd .select2-results__options{
+    max-height: 320px !important;                     /* tweak listbox height here */
+  }
+  .select2-dropdown.compact-dd .select2-results__option{
+    padding: 2px 6px !important;                      /* tighter rows */
+    line-height: 1.10 !important;                     /* denser rows */
+    min-height: 22px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* Keep the closed “chip” compact too (you already have similar; keeping here for completeness) */
+  #id_tenant_search + .select2 .select2-selection--single,
+  #id_lease         + .select2 .select2-selection--single{
+    height: 26px !important;
+    line-height: 26px !important;
+    font-size: .72rem !important;
+  }
+  #id_tenant_search + .select2 .select2-selection__rendered,
+  #id_lease         + .select2 .select2-selection__rendered{
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #id_tenant_search + .select2 .select2-selection__arrow,
+  #id_lease         + .select2 .select2-selection__arrow{
+    height: 26px !important;
+  }
+
+  /* Lease status badge in Select2 dropdown */
+  .select2-results__option .lease-badge{
+    display:inline-block;
+    padding: 0 .35rem;
+    margin-left:.4rem;
+    border-radius: 9999px;
+    font-size:.65rem;
+    line-height:1.35;
+    vertical-align:middle;
+    color:#fff;
+  }
+  .select2-results__option .lease-badge.ended,
+  .select2-results__option .lease-badge.terminated{
+    background:#dc3545; /* red */
+  }
+
+  /* (optional) also show in the closed selection chip */
+  #id_lease + .select2 .select2-selection__rendered .lease-badge{
+    margin-left:.35rem;
+  }
+
+
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const IS_EDIT = {{ form.instance.pk|yesno:"true,false" }};
+</script>
+
+<script>
+(function($){
+  /* =========================
+     INIT
+     ========================= */
+  $(function(){
+    initSelect2();
+    wireSelect2AutoFocus();
+    updateAllLists();                // initial filter population
+    setupDelegatedWhatsApp();        // WA handler (works after re-renders)
+    enhanceMobileRows();             // put Amount under Date on phones
+
+    // Require a lease before submit
+    $('#paymentForm').on('submit', function(e){
+      if (!$('#id_lease').val()) { e.preventDefault(); alert('Please select a lease before submitting.'); }
+    });
+
+        // Mark allocation as manually edited → stop auto-defaulting
+    $('#id_lease_amount, #id_security_amount, #id_security_type')
+      .on('input change', function(){ userTouchedAllocation = true; });
+
+    // Re-apply default split when user edits amount (CREATE only)
+    $('#id_amount').on('input', function(){
+      if (($('#id_allocation_mode').val() || 'LEASE').toUpperCase() !== 'SPLIT'){
+        applyDefaultAllocationFromAmount();
+      }
+    });
+
+
+    // Change recent rows (10/20/50)
+    const sel = document.getElementById('recentSize');
+    if (sel){
+      sel.addEventListener('change', function(){
+        const url = new URL(window.location.href);
+        url.searchParams.set('recent_size', this.value);
+        window.location.assign(url.toString());
+      });
+    }
+
+    // Reset Filters
+    $('#resetFilters').on('click', function(){
+      $('#id_tenant_search, #id_property, #id_unit, #id_lease').val(null).trigger('change');
+      $('#id_include_inactive').prop('checked', false);
+      $('#id_amount').val('');
+      updateSelectedLeasePanel(null);
+      updateAllLists();
+    });
+  });
+
+  function initSelect2(){
+
+    // Helpers
+    function escapeMarkup(m){ return m; } // allow our <span> badge to render
+
+    function renderTenantNode(item){
+      if (!item.id) return item.text;
+      const txt   = (item.text || '').trim();
+      const short = txt.length > 20 ? (txt.slice(0,20) + '…') : txt;
+      return $('<span class="one-line"></span>').text(short).attr('title', txt);
+    }
+
+    function renderLeaseNode(item){
+      if (!item.id) return item.text;
+
+      // Try to read status from multiple places:
+      // 1) the <option> element (results view)
+      // 2) lookup by value in the DOM (selection view)
+      // 3) item.status if Select2 ever passes it through
+      let status = '';
+      if (item.element) {
+        status = ($(item.element).data('status') || '').toString().toLowerCase();
+      }
+      if (!status && item.id) {
+        const opt = $('#id_lease').find('option[value="'+ item.id +'"]');
+        if (opt.length) status = (opt.data('status') || '').toString().toLowerCase();
+      }
+      if (!status && item.status) {
+        status = (item.status || '').toString().toLowerCase();
+      }
+
+      const $row = $('<span class="lease-row"></span>').text(item.text || '');
+
+      if (status && status !== 'active'){
+        const label = (status === 'ended' ? 'Ended'
+                  :  status === 'terminated' ? 'Terminated'
+                  :  'Inactive');
+        $row.append($('<span class="lease-badge"/>').addClass(status).text(label));
+      }
+      return $row;
+    }
+
+    // Tenant
+    $('#id_tenant_search').select2({
+      width: '100%',
+      allowClear: true,
+      placeholder: '',
+      dropdownAutoWidth: true,
+      dropdownCssClass: 'compact-dd',
+      selectionCssClass: 'compact-sel',
+      minimumResultsForSearch: 0,      // <-- always show search box
+      escapeMarkup: escapeMarkup,      // <-- let our HTML render if needed
+      templateResult: renderTenantNode,
+      templateSelection: renderTenantNode
+    });
+
+    // Lease (with red badges for inactive)
+    $('#id_lease').select2({
+      width: '100%',
+      allowClear: true,
+      placeholder: '',
+      dropdownAutoWidth: true,
+      dropdownCssClass: 'compact-dd',
+      selectionCssClass: 'compact-sel',
+      minimumResultsForSearch: 0,      // <-- always show search box
+      escapeMarkup: escapeMarkup,      // <-- allow the badge span
+      templateResult: renderLeaseNode,       // <-- use lease renderer
+      templateSelection: renderLeaseNode     // <-- use lease renderer
+    });
+
+    // Property & Unit (optional compact)
+    $('#id_property, #id_unit').select2({
+      width:'100%', allowClear:true, placeholder:'',
+      minimumResultsForSearch: 0
+    });
+  }
+
+  function wireSelect2AutoFocus(){
+    // When any Select2 opens, jump cursor to its search box (saves a click)
+    $(document).on('select2:open', function(){
+      const s = document.querySelector('.select2-container--open .select2-search__field');
+      if (s) { s.focus(); if (s.select) s.select(); }
+    });
+  }
+
+  /* =========================
+     FILTERS: populate selects
+     ========================= */
+  function updateAllLists(){
+    populateTenantFilter();
+    populateUnitFilter();
+    updateLeaseList();
+  }
+
+  // Helpers for robust tenant extraction
+  function getTenantId(obj){
+    const cand = [
+      obj.tenant_id, obj.tenantId, obj.tenant_pk, obj.tenant_id_id, obj.tenant_id__id,
+      (obj.tenant && obj.tenant.id), (obj.tenant && obj.tenant.pk),
+      (typeof obj.tenant === 'number' ? obj.tenant : null)
+    ].find(v => v !== undefined && v !== null);
+    if (cand == null) return null;
+    const s = String(cand).trim();
+    return (/^[0-9a-fA-F-]+$/.test(s) ? s : null);
+  }
+  function getTenantLabel(obj){
+    const cand = [
+      obj.tenant_name, obj.tenantName, obj.tenant_full_name, obj.tenant_fullname,
+      obj.tenant_display, obj.tenant_display_name,
+      obj.tenant, obj.text
+    ].find(v => typeof v === 'string' && v.trim().length);
+    return (cand ? String(cand).trim() : (getTenantId(obj) || 'Tenant'));
+  }
+
+  function populateTenantFilter(){
+    const $sel = $('#id_tenant_search');
+    $.get("{% url 'payments:get_filtered_leases' %}", {
+      property_id: $('#id_property').val() || '',
+      include_inactive: $('#id_include_inactive').is(':checked')
+    }, null, 'json')
+    .done(function(data){
+      const leases = (data && Array.isArray(data.leases)) ? data.leases : [];
+
+      const frag = document.createDocumentFragment();
+      const unique = new Set();
+      let added = 0;
+
+      // Keep a blank "All Tenants" at the top
+      frag.appendChild(new Option('All Tenants', '', false, false));
+
+      leases.forEach(l => {
+        const tid = getTenantId(l);
+        if (!tid || unique.has(tid)) return;
+        unique.add(tid);
+        const label = getTenantLabel(l); // server should already truncate to 20; CSS also ellipsizes
+        frag.appendChild(new Option(label, tid, false, false));
+        added++;
+      });
+
+      if (added > 0) {
+        $sel.empty()[0].appendChild(frag);
+      }
+      $sel.trigger('change.select2');
+      updateLeaseList();
+    })
+    .fail(function(){
+      // On error, keep server-rendered list
+      $('#id_tenant_search').trigger('change.select2');
+    });
+  }
+
+  function populateUnitFilter(){
+    $.get("{% url 'payments:get_filtered_leases' %}", {
+      property_id: $('#id_property').val() || '',
+      include_inactive: $('#id_include_inactive').is(':checked')
+    }, function(data){
+      const $sel = $('#id_unit').empty().append('<option value=""></option>');
+      const seen = new Set();
+      (data.leases || []).forEach(l => {
+        const unitId = l.unit_id || l.unitId || l.unit_id_id;
+        if (!unitId || seen.has(unitId)) return;
+        seen.add(unitId);
+        const label = `${(l.unit||'').trim()} — ${(l.tenant||l.text||'').slice(0,20)}${(l.tenant||l.text||'').length>20?'…':''}`;
+        $('<option>').val(unitId).text(label).appendTo($sel);
+      });
+      $sel.trigger('change.select2');
+      updateLeaseList();
+    });
+  }
+
+  function getLeaseIdFromURL(){
+    const m = new URLSearchParams(window.location.search).get('lease');
+    return m && String(m).trim() ? m : null;
+  }
+
+  let didURLPreselect = false;
+
+  function setBalancesUI(leaseData) {
+    if (!leaseData) {
+      document.getElementById("lease-balance-display").textContent = "—";
+      document.getElementById("sec-balance-display").textContent = "—";
+      return;
+    }
+
+    // Use formatted strings returned by API
+    document.getElementById("lease-balance-display").textContent = "Rs. " + (leaseData.balance || "0.00");
+    document.getElementById("sec-balance-display").textContent = "Rs. " + (leaseData.sec_balance || "0.00");
+  }
+
+    // ========= Allocation defaults (CREATE only) =========
+  let userTouchedAllocation = false;
+
+  function num(v){
+    if (v == null) return 0;
+    return parseFloat(String(v).replace(/,/g,'')) || 0;
+  }
+  function fmt2(v){
+    return (Math.round(v * 100) / 100).toFixed(2);
+  }
+
+  function applyDefaultAllocationFromAmount(){
+    if (IS_EDIT || userTouchedAllocation) return;
+
+    const amount = num($('#id_amount').val());
+    if (!$('#id_lease').val() || amount <= 0) return;
+
+    // Read lease balance from the displayed label "Rs. x,xxx.xx"
+    const leaseBal = num($('#lease-balance-display').text().replace(/rs\.?/i,''));
+
+    const leaseAmt = Math.min(amount, leaseBal);
+    const secAmt   = Math.max(0, amount - leaseBal);
+
+    // Your form has these IDs in template/Meta widgets
+    $('#id_lease_amount').val(fmt2(leaseAmt));
+    $('#id_security_amount').val(fmt2(secAmt));
+
+    // security_type default if overflow goes to security
+    if (secAmt > 0) {
+      $('#id_security_type').val('PAYMENT').trigger('change');
+    }
+  }
+
+  function updateLeaseList(){
+    const $lease = $('#id_lease');
+    const urlLease = getLeaseIdFromURL();
+    const current = $lease.val() || (!didURLPreselect && urlLease);
+
+    $.get("{% url 'payments:get_filtered_leases' %}", {
+      tenant_id: $('#id_tenant_search').val() || '',
+      property_id: $('#id_property').val() || '',
+      unit_id: $('#id_unit').val() || '',
+      include_inactive: $('#id_include_inactive').is(':checked'),
+      // IMPORTANT: send the URL lease id so backend returns it regardless of status
+      lease: urlLease || ''
+    }, function(data){
+      const leases = data.leases || [];
+      $lease.empty().append('<option value=""></option>');
+
+      leases.forEach(l => {
+        const $opt = $('<option>', { value: l.id, text: l.text });
+        $opt.attr({
+          'data-tenant': (l.tenant||''),
+          'data-property': (l.property||''),
+          'data-unit': (l.unit||''),
+          'data-balance': (l.balance||''),
+          'data-sec_balance': (l.sec_balance||''),
+          'data-phone': (l.phone||''),
+          'data-security_amount': (l.security_amount||''),
+          'data-security_paid': (l.security_paid ? 'true' : 'false'),
+          'data-start_date': (l.start_date||''),
+          'data-end_date': (l.end_date||''),
+          'data-status': (l.status||'')      // <<< add this line
+        });
+        $opt.appendTo($lease);
+      });
+
+      let target = null;
+      if (current && leases.some(l => String(l.id) === String(current))) {
+        target = current;
+      } else if (!didURLPreselect && urlLease && leases.some(l => String(l.id) === String(urlLease))) {
+        target = urlLease;
+        didURLPreselect = true;
+      }
+      if (!target && leases.length === 1) target = leases[0].id;
+
+      if (target) {
+        $lease.val(String(target));
+
+        // IMPORTANT: refresh Select2 UI and then fire the normal change handler
+        $lease.trigger('change.select2');
+        $lease.trigger('change');
+      } else {
+        updateSelectedLeasePanel(null);
+        setBalancesUI(null);
+      }
+
+      $lease.trigger('change.select2');
+    });
+  }
+
+
+  // React to filter changes
+  $('#id_tenant_search').on('change', updateLeaseList);
+  $('#id_unit').on('change', updateLeaseList);
+  $('#id_property').on('change', function(){
+    const propId = $(this).val();
+    const $unit = $('#id_unit').empty().append('<option value=""></option>');
+    if (propId){
+      $.get("{% url 'payments:get_units_by_property' %}", { property_id: propId }, function(data){
+        (data.units || []).forEach(u => $('<option>').val(u.id).text(String(u.unit_number || u.text || '')).appendTo($unit));
+        $unit.trigger('change.select2');
+        updateLeaseList();
+      });
+    } else {
+      updateLeaseList();
+    }
+    $('#id_tenant_search').val(null).trigger('change');
+  });
+  $('#id_include_inactive').on('change', updateAllLists);
+
+  // Lease panel fill
+  $('#id_lease').on('change', function(){
+    const $opt = $(this).find(':selected');
+    if (!$opt.val()) {
+      updateSelectedLeasePanel(null);
+      setBalancesUI(null);
+      return;
+    }
+
+    const leaseData = {
+      tenant: $opt.data('tenant'),
+      property: $opt.data('property'),
+      unit: $opt.data('unit'),
+      balance: $opt.data('balance'),
+      phone: $opt.data('phone'),
+      sec_balance: $opt.data('sec_balance') ,  // formatted string
+      security_amount: $opt.data('security_amount'),
+      security_paid: ($opt.data('security_paid') === true || $opt.data('security_paid') === 'true'),
+      start_date: $opt.data('start_date'),
+      end_date: $opt.data('end_date')
+    };
+    updateSelectedLeasePanel(leaseData);
+    setBalancesUI(leaseData);
+
+    if (!IS_EDIT) {
+      const bal = num(leaseData.balance);
+      $('#id_amount').val(fmt2(bal));   // ALWAYS set, even if 0 (optional)
+      userTouchedAllocation = false;
+      applyDefaultAllocationFromAmount();
+    }
+  });
+
+
+
+  function updateSelectedLeasePanel(leaseData){
+    const $card = $('#selected-lease-card');
+    if (!$card.length) return; // safe if panel is not present
+    if (!leaseData) { $card.addClass('d-none'); return; }
+    $('#sl-tenant').text(leaseData.tenant || '—');
+    $('#sl-phone').text(leaseData.phone || '—');
+    $('#sl-security').text(
+      leaseData.security_amount
+        ? `Rs. ${Number(leaseData.security_amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} ${leaseData.security_paid ? '(Paid)' : '(Pending)'}`
+        : '—'
+    );
+    $('#sl-property').text(leaseData.property || '—');
+    $('#sl-unit').text(leaseData.unit || '—');
+    $('#sl-period').text(
+      (leaseData.start_date || leaseData.end_date)
+        ? `${leaseData.start_date || '—'} – ${leaseData.end_date || '—'}`
+        : '—'
+    );
+    $('#sl-balance').text(
+      leaseData.balance != null
+        ? Number(String(leaseData.balance).replace(/,/g,'')||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+        : '—'
+    );
+    $card.removeClass('d-none');
+  }
+
+  /* =========================
+     WhatsApp (delegated)
+     ========================= */
+  function setupDelegatedWhatsApp(){
+    $(document).on('click', '.payment-action[data-action="whatsapp"]', function(e){
+      e.preventDefault();
+      const $b = $(this);
+      const opts = {
+        phone:          $b.data('phone') || '',
+        firstName:      $b.data('name') || '',
+        propertyName:   $b.data('property') || '',
+        unitNumber:     $b.data('unit') || '',
+        amount:         $b.data('amount'),
+        paymentDate:    $b.data('date') || '',
+        balance:        $b.data('balance'),
+        startDate:      $b.data('start-date') || '',
+        endDate:        $b.data('end-date') || '',
+        securityAmount: $b.data('security-amount'),
+        securityPaid:   String($b.data('security-paid')).toLowerCase() === 'true'
+      };
+      sendWhatsAppSingle(opts);
+    });
+  }
+  function sendWhatsAppSingle(opts){
+    const {
+      phone, firstName, propertyName, unitNumber,
+      amount, paymentDate, balance,
+      startDate, endDate, securityAmount, securityPaid
+    } = opts;
+
+    if (!phone) { alert('No phone number available.'); return; }
+
+    let cleaned = String(phone).replace(/[^\d+]/g,'');
+    if (/^0\d+$/.test(cleaned)) cleaned = '+92' + cleaned.slice(1);
+
+    const asNum = v => parseFloat(String(v).replace(/,/g,'')) || 0;
+    const fmt   = v => asNum(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    const message =
+`Dear ${firstName},
+Payment received for 
+Unit: ${propertyName}-${unitNumber}
+Period: ${startDate} – ${endDate}
+Security Deposit: Rs. ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
+Date: ${paymentDate}
+Amount: Rs. ${fmt(amount)}
+Balance: Rs. ${fmt(balance)}
+
+
+Thank you!`;
+
+    window.open(
+      'https://api.whatsapp.com/send?phone=' + encodeURIComponent(cleaned) +
+      '&text=' + encodeURIComponent(message),
+      '_blank'
+    );
+  }
+
+  /* =========================
+     Mobile enhancement: put Amount under Date
+     ========================= */
+  function enhanceMobileRows(){
+    const MQ = window.matchMedia('(max-width: 575.98px)');
+    if (!MQ.matches) return;
+    document.querySelectorAll('.recent-payments-table tbody tr').forEach(tr => {
+      if (tr.dataset.enhancedAmount === '1') return;
+      let tdDate   = tr.querySelector('td.col-date');
+      let tdAmount = tr.querySelector('td.col-amount');
+      if (!tdDate || !tdAmount){
+        const tds = tr.querySelectorAll('td');
+        tdDate   ||= tds[2];
+        tdAmount ||= tds[3];
+      }
+      if (tdDate && tdAmount){
+        const txt = (tdAmount.textContent || '').trim();
+        if (txt && !tdDate.querySelector('.amount-sub')){
+          const el = document.createElement('div');
+          el.className = 'amount-sub';
+          el.textContent = txt;
+          tdDate.appendChild(el);
+        }
+      }
+      tr.dataset.enhancedAmount = '1';
+    });
+  }
+
+  /* =========================
+     Amount input validator
+     ========================= */
+  (function () {
+    const form = document.getElementById('paymentForm');
+    if (!form) return;
+
+    form.addEventListener('submit', function (e) {
+      const el = document.getElementById('id_amount');
+      if (!el) return;
+
+      let raw = (el.value || '').trim();
+
+      // Allow commas in input (1,200.50)
+      raw = raw.replace(/,/g, '');
+
+      // Empty or non-numeric → block
+      const num = Number(raw);
+      if (!raw || isNaN(num)) {
+        e.preventDefault();
+        alert('Please enter a valid numeric amount.');
+        el.focus();
+        return;
+      }
+
+      // Normalize to 2 decimals (NO restriction on input typing)
+      el.value = num.toFixed(2);
+    });
+  })();
+
+})(jQuery);
+</script>
+
+<script>
+(function($){
+  function n(v){ return parseFloat(String(v||"").replace(/,/g,"")) || 0; }
+  function f2(v){ return (Math.round(v*100)/100).toFixed(2); }
+
+  const $form  = $('#paymentForm');
+  const $mode  = $('#id_allocation_mode');
+  const $total = $('#id_amount');
+  const $lease = $('#id_lease_amount');
+  const $sec   = $('#id_security_amount');
+
+  if (!$form.length || !$mode.length || !$total.length || !$lease.length || !$sec.length) return;
+
+  let lock = false;
+
+  function getLeaseBal(){
+    // "Rs. 12,345.00" -> 12345
+    const t = ($('#lease-balance-display').first().text() || '');
+    return n(t.replace(/rs\.?/i,''));
+  }
+
+  function applyModeState(){
+    const mode = ($mode.val() || 'LEASE').toUpperCase();
+
+    if (mode === 'LEASE'){
+      $lease.prop('readonly', true);
+      $sec.prop('readonly', true);
+      const total = n($total.val());
+      $lease.val(f2(total));
+      $sec.val(f2(0));
+    } else if (mode === 'SECURITY'){
+      $lease.prop('readonly', true);
+      $sec.prop('readonly', true);
+      const total = n($total.val());
+      $lease.val(f2(0));
+      $sec.val(f2(total));
+    } else {
+      // SPLIT
+      $lease.prop('readonly', false);
+      $sec.prop('readonly', false);
+
+      // If both empty, default: lease up to balance, overflow to security
+      if (!$lease.val() && !$sec.val()){
+        const total = n($total.val());
+        const lb = getLeaseBal();
+        const leaseAmt = Math.min(total, lb);
+        const secAmt = Math.max(0, total - leaseAmt);
+        $lease.val(f2(leaseAmt));
+        $sec.val(f2(secAmt));
+      } else {
+        // normalize sum once
+        reconcileFrom('lease');
+      }
+    }
+  }
+
+  // Keep sum == total, but do NOT rewrite the field the user is currently typing into
+  function reconcileFrom(changed){
+    if (lock) return;
+    lock = true;
+
+    const mode = ($mode.val() || 'LEASE').toUpperCase();
+    const total = n($total.val());
+
+    if (mode === 'LEASE'){
+      $lease.val(f2(total));
+      $sec.val(f2(0));
+      lock = false;
+      return;
+    }
+    if (mode === 'SECURITY'){
+      $lease.val(f2(0));
+      $sec.val(f2(total));
+      lock = false;
+      return;
+    }
+
+    // SPLIT
+    let leaseAmt = n($lease.val());
+    let secAmt   = n($sec.val());
+
+    // Clamp negatives
+    if (leaseAmt < 0) leaseAmt = 0;
+    if (secAmt < 0) secAmt = 0;
+
+    if (changed === 'lease'){
+      // user is typing lease -> update security only
+      secAmt = Math.max(0, total - leaseAmt);
+      $sec.val(String(secAmt)); // keep raw while typing (format on blur)
+    } else if (changed === 'sec'){
+      leaseAmt = Math.max(0, total - secAmt);
+      $lease.val(String(leaseAmt));
+    } else {
+      // total changed -> keep lease as-is, push remainder to security
+      secAmt = Math.max(0, total - leaseAmt);
+      $sec.val(String(secAmt));
+    }
+
+    lock = false;
+  }
+
+  // --- events ---
+  $mode.on('change', applyModeState);
+
+  // total amount changed
+  $total.on('input', function(){ reconcileFrom('total'); });
+
+  // typing lease/sec only recalculates the opposite field
+  $lease.on('input', function(){ reconcileFrom('lease'); });
+  $sec.on('input', function(){ reconcileFrom('sec'); });
+
+  // format on blur only (so typing works)
+  $lease.on('blur', function(){ $(this).val(f2(n($(this).val()))); });
+  $sec.on('blur', function(){ $(this).val(f2(n($(this).val()))); });
+  $total.on('blur', function(){ $(this).val(f2(n($(this).val()))); });
+
+  // submit validation
+  $form.on('submit', function(e){
+    const total = n($total.val());
+    const sum = n($lease.val()) + n($sec.val());
+    if (Math.abs(total - sum) > 0.009){
+      e.preventDefault();
+      alert(`Allocation mismatch:\nLease + Security = ${sum.toFixed(2)}\nPayment Amount = ${total.toFixed(2)}`);
+    }
+  });
+
+  // init
+  applyModeState();
+})(jQuery);
+</script>
+
+{% endblock %}

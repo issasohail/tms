@@ -1,0 +1,844 @@
+{% extends 'base.html' %}
+{% load static widget_tweaks humanize %}
+
+{% block content %}
+{% if debug_json %}
+  <div class="card border-danger mb-3">
+    <div class="card-header bg-danger text-white py-2">DEBUG • View/Plan State</div>
+    <div class="card-body">
+      <pre class="mb-0" style="white-space:pre-wrap;word-break:break-word;">{{ debug_json }}</pre>
+    </div>
+  </div>
+{% endif %}
+
+<div class="small text-muted mb-2">
+  Mode: {% if form.instance.pk %}UPDATE (pk={{ form.instance.pk }}){% else %}CREATE{% endif %} •
+  Path: {{ request.path }} •
+  {% if form.instance.pk %}
+    Form action: {% url 'leases:lease_update' form.instance.pk %}
+  {% else %}
+    Form action: {% url 'leases:lease_create' %}
+  {% endif %}
+</div>
+
+{% if sql_log %}
+  <div class="card border-info mb-3">
+    <div class="card-header bg-info text-white py-2">DEBUG • SQL Executed ({{ sql_log|length }})</div>
+    <div class="card-body">
+      <ol class="small" style="white-space:pre-wrap;word-break:break-word;">
+        {% for q in sql_log %}
+          <li class="mb-2">
+            <div><code>{{ q.sql }}</code></div>
+            {% if q.params %}<div>Params: {{ q.params }}</div>{% endif %}
+            <div class="text-muted">~{{ q.ms }} ms</div>
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+{% endif %}
+
+<style>
+  /* --- Base desktop sizing --- */
+  html, body { font-size: 16px; }
+  .form-label { white-space: nowrap; }
+  .form-control-sm, .form-select-sm { font-size: .85rem; padding-top: .2rem; padding-bottom: .2rem; }
+  .card-header { font-size: .9rem; line-height: 1.1; padding-top:.35rem; padding-bottom:.35rem; }
+  .table, .btn-sm { font-size: .82rem; }
+  .form-label.text-nowrap { white-space: nowrap; font-size: .6rem; }
+  .form-label { display:flex; align-items:center; min-height:calc(1.5em + .5rem + 2px); margin-bottom:.25rem; }
+  .form-label, .card-header, .btn, .form-control, .form-select { font-size: .85rem; }
+  h2.h5, .card-header { line-height: 1.1; }
+  .card-header { padding-top:.35rem; padding-bottom:.35rem; }
+  .grid-tight .row { --bs-gutter-x: .5rem; --bs-gutter-y: .4rem; }
+  .form-label { margin-bottom: .15rem; font-size: .8rem; }
+  .card, .border { border-radius: .6rem; }
+  .p-2-compact { padding: .5rem !important; }
+  .section-title { font-weight: 600; font-size: .9rem; color: #6c757d; margin-bottom: .25rem; }
+  textarea.form-control { min-height: unset; }
+
+  /* compact controls */
+  .lease-compact .row { --bs-gutter-y: .25rem; }
+  .lease-compact .form-label,
+  .lease-compact .form-control,
+  .lease-compact .form-select { font-size: .875rem; }
+  .lease-compact .form-label { margin-bottom:.2rem; line-height:1.2; }
+  .lease-compact .form-control, .lease-compact .form-select {
+    padding: .35rem .55rem; height: 2.2rem;
+  }
+  .lease-compact .input-group > .form-control,
+  .lease-compact .input-group > .form-select { height: 2.2rem; }
+  .lease-compact .form-control::placeholder { font-size: .875rem; }
+  .lease-compact .mb-3 { margin-bottom: .35rem !important; }
+
+  /* --- Very small screens (<= 400px ~ includes 360px) --- */
+  @media (max-width: 400px) {
+    .lease-compact * { font-size: .58rem !important; }
+    .lease-compact h2 { font-size: .9rem !important; margin-bottom:.25rem; }
+    .lease-compact .card-header { font-size: .7rem !important; padding:.25rem .4rem; }
+    .lease-compact .btn-sm { padding: .15rem .3rem; }
+    .lease-compact .form-control, .lease-compact .form-select { height: 2rem; padding:.25rem .4rem; }
+    .lease-compact .row { --bs-gutter-x: .35rem; --bs-gutter-y: .3rem; }
+  }
+  /* Family table widths & truncation */
+.fam-col-idx { width: 6%; }
+.fam-col-name { width: 40%; }
+.fam-col-actions { width: 15%; white-space: nowrap; }
+
+.fam-name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tiny icon buttons */
+.btn-icon { padding: .15rem .35rem; line-height: 1; }
+
+/* Small screens: keep your .58rem rule, plus tighten table spacing */
+@media (max-width: 400px) {
+  .fam-table td, .fam-table th { padding: .25rem .35rem; }
+}
+
+/* Tweak this value to your liking for big screens */
+@media (min-width: 992px) {
+  .financial-lg { font-size: 0.65rem !important; }
+}
+.select2-container .select2-selection--single {
+    height: 32px !important;
+    padding: 2px 2px;
+    border: 1px solid #ced4da;
+}    
+/* Font size for the Select2 dropdown + selected text */
+.select2-container .select2-selection--single {
+    font-size: 12px;      /* change font size */
+}
+
+/* Dropdown list font size */
+.select2-results__option {
+    font-size: 12px !important;
+}
+.select2-selection__rendered {
+    line-height: 28px !important;
+}
+/* Height + font size of the search bar in the dropdown */
+.select2-container .select2-search--dropdown .select2-search__field {
+    height: 32px !important;
+    font-size: 12px !important;
+    padding: 2px 1px !important;
+}
+
+.select2-selection__arrow {
+    height: 28px !important;
+}
+
+
+</style>
+
+<div class="container-fluid grid-tight control-sm lease-compact">
+
+  <div class="d-flex justify-content-between align-items-center mb-0">
+    <h2>
+      {% if form.instance.pk %}
+        Update Lease for {{ form.instance.tenant }} – {{ form.instance.unit }}
+      {% else %}
+        Create New Lease
+      {% endif %}
+    </h2>
+    
+    {# lease_form.html — top-right toolbar #}
+    {% if form.instance.pk %}
+      <a href="{% url 'leases:photos_page' form.instance.pk %}"
+        class="btn btn-primary btn-sm"
+        target="_blank" rel="noopener">
+        Photos
+      </a>
+    {% else %}
+      <button type="button"
+              class="btn btn-primary btn-sm"
+              onclick="alert('Please save the lease first before adding photos.');">
+        Photos
+      </button>
+    {% endif %}
+
+
+    <div class="d-flex gap-1">
+      <a href="{% url 'leases:lease_list' %}" class="btn btn-secondary btn-sm">Back</a>
+      {% if object and object.pk %}
+        <a class="btn btn-secondary btn-sm" href="{% url 'leases:edit_clauses' object.pk %}">Edit clauses</a>
+      {% endif %}
+      <button class="btn btn-primary btn-sm" type="submit" form="lease-form" name="save" value="1">Save</button>
+      <button class="btn btn-secondary btn-sm" type="submit" form="lease-form" name="print">Save &amp; Print</button>
+    </div>
+  </div>
+
+  {% if form.instance.pk %}
+    <form method="post" id="lease-form" action="{% url 'leases:lease_update' form.instance.pk %}" enctype="multipart/form-data" novalidate>
+  {% else %}
+    <form method="post" id="lease-form" action="{% url 'leases:lease_create' %}" enctype="multipart/form-data" novalidate>
+  {% endif %}
+    {% csrf_token %}
+
+    <div class="row g-2 align-items-center mb-2">
+      <div class="col-auto">
+        <label for="id_signed_agreement" class="form-label mb-0">Upload Lease Agreement</label>
+        <input type="file" name="signed_agreement" id="id_signed_agreement" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0">Status</label>
+        {{ form.status|add_class:"form-select form-select-sm" }}
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0">Agreement File</label>
+        {% if form.instance.signed_agreement %}
+          <div class="d-flex align-items-center">
+            <span class="badge bg-success me-2"><i class="fas fa-check-circle"></i> Uploaded</span>
+            <a href="{{ form.instance.signed_agreement.url }}" target="_blank">{{ form.instance.signed_agreement.name }}</a>
+          </div>
+        {% else %}
+          <span class="badge bg-secondary"><i class="fas fa-times-circle"></i> Not Uploaded</span>
+        {% endif %}
+      </div>
+      {# lease_form.html — wherever the agreement lives #}
+      <div class="mt-2">
+        <label class="form-label mb-0">Signed Condition Photos (PDF)</label>
+        <input type="file" name="condition_photos_signed" class="form-control form-control-sm">
+        {% if form.instance.condition_photos_signed %}
+          <a class="btn btn-success btn-sm mt-1"
+            target="_blank"
+            href="{{ form.instance.condition_photos_signed.url }}">View Photos PDF</a>
+        {% else %}
+          <span class="badge bg-secondary">Not uploaded</span>
+        {% endif %}
+
+        {% if form.instance.pk %}
+          <div class="mt-1 financial-lg ">
+            <strong>Security status:</strong>
+            Required: Rs {{ security_required|intcomma }}
+            • Paid In: Rs {{ security_paid_in|intcomma }}
+            • Refunded: Rs {{ security_refunded|intcomma }}
+            • Damages: Rs {{ security_damages|intcomma }}
+            • To Collect: Rs {{ security_balance_to_collect|intcomma }}
+            • <strong>Held Now: Rs {{ security_currently_held|intcomma }}</strong>
+          </div>
+        {% endif %}
+
+      </div>
+
+    </div>
+
+    <div class="card mb-2">
+      <div class="card-body py-1 px-2">
+        <div class="row">
+          <div class="col-lg-8 border-end">
+            <div class="card-header bg-dark text-white py-2 px-3">Property, Unit, Tenant &amp; Lease Info</div>
+
+            <!-- Tabs -->
+            <ul class="nav nav-tabs small mt-2" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-tenant" data-bs-toggle="tab" data-bs-target="#pane-tenant" type="button" role="tab">Main Tenant</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-family" data-bs-toggle="tab" data-bs-target="#pane-family" type="button" role="tab">
+                  Family Members
+                  {% if family_formset %}<span class="badge text-bg-secondary ms-1">{{ family_formset.total_form_count }}</span>{% endif %}
+                </button>
+              </li>
+            </ul>
+
+            <div class="tab-content border border-top-0 rounded-bottom p-2">
+              <!-- Main Tenant -->
+              <div class="tab-pane fade show active" id="pane-tenant" role="tabpanel" aria-labelledby="tab-tenant">
+                <div class="row row-cols-lg-6 row-cols-md-4 row-cols-2 g-0 align-items-start">
+                  <div class="col g-0 align-items-start">
+                    <label class="form-label">Property</label>
+                    <label class="form-label">Unit</label>
+                    <label class="form-label">Tenant</label>
+                    <label class="form-label text-nowrap">Electricity Meter Reading</label>
+                    <label class="form-label">Rent Increase %</label>
+                    <label class="form-label text-nowrap">Gas Meter Reading</label>
+                  </div>
+                  <div class="col pe-lg-2">
+                    {{ form.property|add_class:"form-select form-select-sm mb-0" }}
+                    {{ form.unit|add_class:"form-select form-select-sm mb-0" }}
+                    <input type="hidden" id="current_unit_id" value="{{ form.instance.unit_id|default_if_none:'' }}">
+                    <script>
+                      document.getElementById('id_unit')?.setAttribute('data-current-unit', document.getElementById('current_unit_id')?.value || '');
+                    </script>
+
+                    {{ form.tenant|add_class:"form-select form-select-sm mb-0" }}
+                    {{ form.electricity_meter_reading|add_class:"form-control form-control-sm mb-0" }}
+                    {{ form.rent_increase_percent|add_class:"form-control form-control-sm mb-0" }}
+                    {{ form.gas_meter_reading|add_class:"form-control form-control-sm mb-0" }}
+                  </div>
+                  <div class="col">
+                    <label class="form-label">Start Date</label>
+                    <label class="form-label">End Date</label>
+                    <label class="form-label">Agreement Date</label>
+                    <label class="form-label text-nowrap">Due Day of the Month</label>
+                    <label class="form-label">Late Fee</label>
+                    <label class="form-label text-nowrap">Min Occupancy (Months)</label>
+                  </div>
+                  <div class="col pe-lg-2">
+                    {{ form.start_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_start_date" }}
+                    {{ form.end_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_end_date" }}
+                    {{ form.agreement_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_agreement_date" }}
+                    {{ form.due_date|add_class:"form-control form-control-sm mb-0" }}
+                    {{ form.late_fee|add_class:"form-control form-control-sm mb-0" }}
+                    {{ form.min_lease_occupancy_months|add_class:"form-control form-control-sm mb-0" }}
+                  </div>
+                  <div class="col">
+                    <label class="form-label">Monthly Rent</label>
+                    <label class="form-label">Society Maintenance</label>
+                    <label class="form-label">Water Charges</label>
+                    <label class="form-label">Internet Charges</label>
+                    <label class="form-label">Total Payment</label>
+                    <label class="form-label">Security Deposit</label>
+                    <label class="form-label">Agreement Charge</label>
+                    
+                  </div>
+                  <div class="col pe-lg-2">
+                    {{ form.monthly_rent|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
+                    {{ form.society_maintenance|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
+                    {{ form.water_charges|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
+                    {{ form.internet_charges|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
+                    <input type="text" readonly id="total_payment" class="form-control form-control-sm mb-0">
+                    {{ form.security_deposit|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
+                    {{ form.agreement_charges|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
+                    
+                  </div>
+                </div>
+              </div>
+
+              {{ family_formset.management_form }}
+              {% if family_formset.non_form_errors %}
+                <div class="alert alert-danger">
+                  {{ family_formset.non_form_errors }}
+                </div>
+              {% endif %}
+
+              <!-- Family Members -->
+              <div class="tab-pane fade" id="pane-family" role="tabpanel" aria-labelledby="tab-family">
+                {% if form.instance.pk %}
+                {{ family_formset.management_form }}
+                {% for f in family_formset %}
+                  {{ f.as_p }}
+                {% endfor %}
+                <!-- Simple Add (tenant + relation) -->
+                <div class="row g-2 align-items-end mb-2">
+                  <div class="col-12 col-md-6">
+                    <label for="family-tenant-input" class="form-label mb-0">Tenant (type to search)</label>
+                    <input id="family-tenant-input"
+                           class="form-control form-control-sm"
+                           list="tenant-options"
+                           placeholder="Type name, phone or CNIC…"
+                           autocomplete="off"
+                           form="family-add-form">
+                    <datalist id="tenant-options">
+                      {% for t in tenants_for_add %}
+                        {% with full=t.first_name|default_if_none:""|add:" "|add:t.last_name|default_if_none:"" %}
+                          {% with name=full|truncatechars:25 %}
+                            {% with phone=t.phone|default:t.phone2|default:t.phone3 %}
+                              {% with last4=t.cnic|slice:"-4:" %}
+                                <option data-id="{{ t.id }}"
+                                        value="{{ name }} — {{ phone|default:'—' }} — CNIC •••• {{ last4|default:'----' }}">
+                                </option>
+                              {% endwith %}
+                            {% endwith %}
+                          {% endwith %}
+                        {% endwith %}
+                      {% endfor %}
+                    </datalist>
+                    <!-- hidden field that actually carries the id -->
+                    <input type="hidden" name="tenant_id" id="family-tenant-id" form="family-add-form">
+                  </div>
+
+                  <div class="col-12 col-md-4">
+                    <label class="form-label mb-0">Relation (optional)</label>
+                    <input name="relation" class="form-control form-control-sm" form="family-add-form">
+                  </div>
+
+                  <div class="col-12 col-md-2">
+                    <label class="form-label mb-0">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary btn-sm w-100" form="family-add-form">Add</button>
+                  </div>
+                </div>
+                {% endif %}
+
+                <hr class="my-2">
+                <div class="fw-bold mb-1">Current Family Members</div>
+
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-2 fam-table">
+                    <thead>
+                      <tr>
+                        <th class="fam-col-idx">#</th>
+                        <th class="fam-col-name">Tenant</th>
+                        <th>Relation</th>
+                        <th class="fam-col-actions text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for f in family_formset %}
+                        {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+                        <tr class="fam-row">
+                          {# 1) Serial number #}
+                          <td class="text-muted small">{{ forloop.counter }}</td>
+
+                          {# 2) Tenant (read-only span + hidden input field) #}
+                          <td>
+                            <span class="fm-read fm-name fam-name">
+                              {{ f.instance.tenant|stringformat:"s"|truncatechars:25 }}
+                            </span>
+                            <div class="fm-editing d-none">
+                              {{ f.tenant|add_class:"form-select form-select-sm" }}
+                            </div>
+                            {% for err in f.tenant.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                          </td>
+
+                          {# 3) Relation (read-only span + input when editing) #}
+                          <td>
+                            <span class="fm-read fam-rel">
+                              {{ f.instance.relation|default:"—" }}
+                            </span>
+                            <div class="fm-editing d-none">
+                              {{ f.relation|add_class:"form-control form-control-sm" }}
+                            </div>
+                            {% for err in f.relation.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                          </td>
+
+                          {# 4) Actions (15%) — WhatsApp + Edit/Save + Delete #}
+                          <td class="text-center">
+                            <div class="d-inline-flex align-items-center gap-1">
+                              {# WhatsApp indicator (read view) #}
+                              <span class="fm-read" title="WhatsApp opt-in">
+                                {% if f.instance.whatsapp_opt_in %}✅{% else %}—{% endif %}
+                              </span>
+
+                              {# WhatsApp input (edit view) #}
+                              <span class="fm-editing d-none" title="WhatsApp opt-in">
+                                {{ f.whatsapp_opt_in }}
+                              </span>
+
+                              {# Edit / Save buttons #}
+                              <button type="button" class="btn btn-secondary btn-icon btn-sm fm-edit" title="Edit">✎</button>
+                              <button type="button" class="btn btn-primary btn-icon btn-sm d-none fm-save" title="Save">✔</button>
+
+                              {# Delete checkbox stays always visible but small #}
+                              <label class="form-check m-0" title="Mark for delete">
+                                {{ f.DELETE|add_class:"form-check-input form-check-input-sm" }}
+                              </label>
+                            </div>
+                          </td>
+                        </tr>
+                      {% empty %}
+                        <tr><td colspan="4" class="text-muted">No family members linked yet.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+
+              </div> <!-- /tab-family -->
+            </div> <!-- /tab-content -->
+          </div>
+
+          <!-- Right column -->
+          <div class="col-lg-4">
+            <div class="card-header bg-dark text-white py-2 px-3">Witness</div>
+            <div class="row row-cols-2 g-2">
+              <div class="col"><label class="form-label">Witness 1 Name</label>{{ form.witness1_name|add_class:"form-control form-control-sm mb-0" }}</div>
+              <div class="col"><label class="form-label">Witness 1 CNIC</label>{{ form.witness1_cnic|add_class:"form-control form-control-sm mb-0" }}</div>
+              <div class="col"><label class="form-label">Witness 2 Name</label>{{ form.witness2_name|add_class:"form-control form-control-sm mb-0" }}</div>
+              <div class="col"><label class="form-label">Witness 2 CNIC</label>{{ form.witness2_cnic|add_class:"form-control form-control-sm mb-0" }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Financial / Inventory -->
+    <div class="card mb-2">
+      <div class="card-body py-1 px-2">
+        <div class="row">
+          <div class="col-lg-8 border-end">
+            <div class="card-header bg-dark text-white py-2 px-3">Financial &amp; Inventory Information</div>
+            <div class="row row-cols-lg-6 row-cols-md-4 row-cols-2 g-0 align-items-start">
+              <div class="col"><label class="form-label text-nowrap">Security Installment 1 Amount</label></div>
+              <div class="col">{{ form.security_installment_1_amount|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}</div>
+
+              <div class="col"><label class="form-label text-nowrap">Security Installment 1 Date</label></div>
+              <div class="col">
+                {{ form.security_installment_1_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_security_installment_1_date" }}
+              </div>
+
+              <div class="col"><label class="form-label text-nowrap">Security Installment 2 Amount</label></div>
+              <div class="col">{{ form.security_installment_2_amount|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}</div>
+
+              <div class="col"><label class="form-label text-nowrap">Security Installment 2 Date</label></div>
+              <div class="col">
+                {{ form.security_installment_2_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_security_installment_2_date" }}
+              </div>
+
+              <div class="col"><label class="form-label text-nowrap">Security Deposit Return Date</label></div>
+              <div class="col">
+                {{ form.security_deposit_return_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_security_deposit_return_date" }}
+              </div>
+
+              <div class="col"><label class="form-label text-nowrap">Security Deposit Return Amt</label></div>
+              <div class="col">{{ form.security_deposit_return_amount|add_class:"form-control form-control-sm mb-0" }}</div>
+
+              <div class="col"><label class="form-label text-nowrap">Early Termination Penalty<br>Per Month</label></div>
+              <div class="col">{{ form.early_termination_penalty|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}</div>
+
+              <div class="col"><label class="form-label text-nowrap">Security Deposit Paid</label></div>
+              <div class="col">{{ form.security_deposit_paid|add_class:"form-check-input mb-0" }}</div>
+            </div>
+
+            <div class="row pt-2">
+              <div class="col-lg-4">
+                <label class="form-label">Terms</label>
+                {{ form.terms|add_class:"form-control form-control-sm mb-0" }}
+              </div>
+              <div class="col-lg-4">
+                <label class="form-label">Notes</label>
+                {{ form.notes|add_class:"form-control form-control-sm mb-0" }}
+              </div>
+              <div class="col-lg-4">
+                <label class="form-label">Return Notes</label>
+                {{ form.security_deposit_return_notes|add_class:"form-control form-control-sm mb-0" }}
+              </div>
+            </div>
+            {% if form.instance.pk %}
+            <div class="mt-1 financial-lg text-muted">
+              <strong>Security status:</strong>
+              Required: Rs {{ security_required|intcomma }}
+              • Paid In: Rs {{ security_paid_in|intcomma }}
+              • Refunded: Rs {{ security_refunded|intcomma }}
+              • Damages: Rs {{ security_damages|intcomma }}
+              • To Collect: Rs {{ security_balance_to_collect|intcomma }}
+              • <strong>Held Now: Rs {{ security_currently_held|intcomma }}</strong>
+            </div>
+          {% endif %}
+
+          </div>
+
+          <div class="col-lg-4">
+            <div class="card-header bg-dark text-white py-2 px-3">Inventory</div>
+            <div class="row row-cols-3 g-2">
+              <div class="col"><label class="form-label">Ceiling Fans</label>{{ form.inventory_ceiling_fans|add_class:"form-control form-control-sm" }}</div>
+              <div class="col"><label class="form-label">Exhaust Fans</label>{{ form.inventory_exhaust_fans|add_class:"form-control form-control-sm" }}</div>
+              <div class="col"><label class="form-label">Ceiling Lights</label>{{ form.inventory_ceiling_lights|add_class:"form-control form-control-sm" }}</div>
+              <div class="col"><label class="form-label">Stove</label>{{ form.inventory_stove|add_class:"form-control form-control-sm" }}</div>
+              <div class="col"><label class="form-label">Wardrobes</label>{{ form.inventory_wardrobes|add_class:"form-control form-control-sm" }}</div>
+              <div class="col"><label class="form-label">Keys</label>{{ form.inventory_keys|add_class:"form-control form-control-sm" }}</div>
+              <div class="col"><label class="form-label">Key Replacement</label>{{ form.key_replacement_cost|add_class:"form-control form-control-sm money"|attr:"type:text" }}</div>
+              <div class="col"><label class="form-label">Electric Unit Rate</label>{{ form.electric_unit_rate|add_class:"form-control form-control-sm" }}</div>
+              <div class="col-8"><label class="form-label">Paint Condition</label>{{ form.paint_condition|add_class:"form-control form-control-sm" }}</div>
+              <button class="btn btn-primary btn-sm" type="submit" form="lease-form" name="save">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% csrf_token %}
+    <input type="hidden" name="confirm_billing" id="confirm_billing_field" value="0">
+    <input type="hidden" name="include_backfill" id="include_backfill_field" value="1">
+    <input type="hidden" name="update_existing" id="update_existing_field" value="0">
+
+  </form>
+
+  {% include "includes/billing_preview_modal.html" %}
+  
+  {% if auto_open_billing_modal %}
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('billingPreviewModal');
+    if (!el) return;
+    // Bootstrap 5
+    var modal = bootstrap.Modal.getOrCreateInstance(el);
+    modal.show();
+  });
+  </script>
+  {% endif %}
+
+  {% if sql_log %}
+    <div class="card mt-3">
+      <div class="card-header bg-info text-white py-2 px-3">SQL executed</div>
+      <div class="card-body">
+        <ol class="small" style="white-space:pre-wrap;word-break:break-word;">
+          {% for q in sql_log %}
+            <li class="mb-2">
+              <div><code>{{ q.sql }}</code></div>
+              {% if q.params %}<div>Params: {{ q.params }}</div>{% endif %}
+              <div class="text-muted">~{{ q.ms }} ms</div>
+            </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  {% endif %}
+
+  {# A separate tiny form for the family add (no billing confirm) #}
+  {% if form.instance.pk %}
+  <form id="family-add-form" method="post" action="{% url 'leases:lease_family_add' form.instance.pk %}" class="d-none">
+    {% csrf_token %}
+  </form>
+  {% endif %}
+
+</div> {# /container #}
+
+<script>
+/* ------- money helpers + total ------- */
+function uncomma(v){ return (v||'').toString().replace(/,/g,''); }
+function intcommaStr(v){
+  if (v === null || v === undefined) return '';
+  v = String(v);
+  if (!v) return '';
+  const neg = v.startsWith('-');
+  if (neg) v = v.slice(1);
+  const parts = uncomma(v).split('.');
+  let int = parts[0].replace(/\D/g,'') || '0';
+  const dec = (parts[1]||'').replace(/\D/g,'');
+  int = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-' : '') + (dec ? int + '.' + dec : int);
+}
+function formatMoneyInputs(){
+  document.querySelectorAll('input.money').forEach(function(inp){
+    inp.value = intcommaStr(inp.value);
+    inp.addEventListener('focus', function(){ this.value = uncomma(this.value); });
+    inp.addEventListener('blur', function(){ this.value = intcommaStr(this.value); });
+  });
+}
+function updateTotal() {
+  var rent = parseFloat(uncomma(document.getElementById('id_monthly_rent')?.value || '')) || 0;
+  var m    = parseFloat(uncomma(document.getElementById('id_society_maintenance')?.value || '')) || 0;
+  var w    = parseFloat(uncomma(document.getElementById('id_water_charges')?.value || '')) || 0;
+  var i    = parseFloat(uncomma(document.getElementById('id_internet_charges')?.value || '')) || 0;
+
+  var total = rent + m + w + i;
+  var out = document.getElementById('total_payment');
+  if (out) out.value = intcommaStr(total.toString());
+}
+
+/* ------- Confirm billing: keep as-is for main lease form only ------- */
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.getElementById('lease-form');
+  if (form) {
+    form.addEventListener('submit', function(){
+      document.querySelectorAll('input.money').forEach(inp => inp.value = uncomma(inp.value));
+    });
+  }
+  document.addEventListener('input', function(e){
+    if ([
+        'id_monthly_rent',
+        'id_society_maintenance',
+        'id_water_charges',
+        'id_internet_charges'
+      ].includes(e.target.id)) {
+      updateTotal();
+    }
+  });
+  formatMoneyInputs();
+  updateTotal();
+
+  /* Dates (flatpickr if present; else native) + auto end date */
+  function addMonthsYmd(ymd, months){
+    if(!ymd) return '';
+    var p = ymd.split('-').map(Number);
+    if (p.length !== 3 || p.some(isNaN)) return '';
+    var d = new Date(p[0], p[1]-1, p[2]);
+    var day = d.getDate();
+    d.setMonth(d.getMonth()+months);
+    if (d.getDate() !== day) d.setDate(0);
+    return d.toISOString().slice(0,10);
+  }
+  function maybeDefaultEnd(){
+    var startIso = document.getElementById('id_start_date')?.value;
+    var endEl = document.getElementById('id_end_date');
+    var agrEl = document.getElementById('id_agreement_date');
+    if (startIso && endEl && (!endEl.value || endEl.dataset.autofilled === '1')){
+      var plus12 = addMonthsYmd(startIso, 12);
+      if (plus12){
+        var d = new Date(plus12); d.setDate(d.getDate()-1);
+        var y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2);
+        endEl.value = `${y}-${m}-${dd}`;
+        endEl.dataset.autofilled = '1';
+        if (endEl._flatpickr) endEl._flatpickr.setDate(endEl.value, true);
+      }
+    }
+    if (startIso && agrEl && (!agrEl.value || agrEl.dataset.autofilled === '1')){
+      agrEl.value = startIso;
+      agrEl.dataset.autofilled = '1';
+      if (agrEl._flatpickr) agrEl._flatpickr.setDate(agrEl.value, true);
+    }
+  }
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.id === 'id_start_date') maybeDefaultEnd();
+  });
+  if (window.flatpickr) {
+    flatpickr(".datepicker", {
+      dateFormat: "Y-m-d",
+      altInput: true,
+      altFormat: "m/d/Y",
+      allowInput: true,
+      onChange: function(_, __, inst){ if (inst?.input?.id === "id_start_date") maybeDefaultEnd(); }
+    });
+  } else {
+    document.querySelectorAll('.datepicker').forEach(el => { if (el && el.type !== 'date') el.type = 'date'; });
+  }
+  maybeDefaultEnd();
+
+  console.log('Lease form DOMContentLoaded');
+
+  /* ---- Units loader (unchanged) ---- */
+(async function(){
+  var $prop = document.getElementById('id_property');
+  var $unit = document.getElementById('id_unit');
+
+  function resetUnits(label){
+    if(!$unit) return;
+    $unit.innerHTML = '';
+    var opt = document.createElement('option');
+    opt.value=''; opt.textContent=label||'---------';
+    $unit.appendChild(opt);
+    $unit.disabled = true;
+  }
+
+  function populate(units){
+    const current  = $unit ? $unit.value : '';
+    const fallback = ($unit && $unit.dataset && $unit.dataset.currentUnit) ? $unit.dataset.currentUnit : '';
+    resetUnits('---------');
+    (units || []).forEach(function(u){
+      var o = document.createElement('option');
+      o.value      = u.id;
+      o.textContent = u.unit_number || u.text || '';
+      $unit.appendChild(o);
+    });
+    $unit.disabled = false;
+    const pick = current || fallback || '';
+    if (pick) {
+      $unit.value = String(pick);
+      try { $unit.dispatchEvent(new Event('change', { bubbles: true })); } catch(e){}
+    }
+  }
+
+  async function load(pid){
+    if(!pid || !$unit) return resetUnits('---------');
+    resetUnits('Loading...');
+    const url = "{% url 'leases:get_units_by_property' %}";
+    try {
+      const r = await fetch(url + '?property_id=' + encodeURIComponent(pid), {
+        headers: {'X-Requested-With':'XMLHttpRequest'}
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      populate((data && (data.units||data)) || []);
+    } catch (e) {
+      console.error('Unit load failed:', e);
+      resetUnits('Failed to load');
+      $unit.disabled = false;
+    }
+  }
+
+  if ($prop) {
+    $prop.addEventListener('change', function(){ load(this.value); });
+    if ($prop.value) load($prop.value); else resetUnits('---------');
+  }
+})();
+
+
+  /* ---- Family Add: map datalist label -> hidden tenant_id ---- */
+  (function(){
+    const input = document.getElementById('family-tenant-input');
+    const list  = document.getElementById('tenant-options');
+    const hid   = document.getElementById('family-tenant-id');
+    const form  = document.getElementById('family-add-form');
+    if (!input || !list || !hid || !form) return;
+
+    function updateHiddenFromInput(){
+      const val = input.value;
+      hid.value = '';
+      // find the matching <option value="...">
+      const opt = Array.from(list.options).find(o => o.value === val);
+      if (opt && opt.dataset.id) {
+        hid.value = opt.dataset.id;
+      }
+    }
+    input.addEventListener('input', updateHiddenFromInput);
+    input.addEventListener('change', updateHiddenFromInput);
+
+    form.addEventListener('submit', function(e){
+      if (!hid.value) {
+        e.preventDefault();
+        alert('Please pick a tenant from the list.');
+        input.focus();
+      }
+    });
+  })();
+
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const leaseForm = document.getElementById('lease-form');
+
+  document.querySelectorAll('.fam-table').forEach(table => {
+    table.addEventListener('click', function (e) {
+      const btnEdit = e.target.closest('.fm-edit');
+      const btnSave = e.target.closest('.fm-save');
+      const row = e.target.closest('tr.fam-row');
+      if (!row) return;
+
+      const readBits = row.querySelectorAll('.fm-read');
+      const editBits = row.querySelectorAll('.fm-editing');
+
+      if (btnEdit) {
+        // enter editing mode
+        readBits.forEach(el => el.classList.add('d-none'));
+        editBits.forEach(el => el.classList.remove('d-none'));
+        row.querySelector('.fm-edit')?.classList.add('d-none');
+        row.querySelector('.fm-save')?.classList.remove('d-none');
+      }
+
+      if (btnSave) {
+        // simply submit the main form (no billing confirm touched)
+        leaseForm?.submit();
+      }
+    });
+  });
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.jQuery && $.fn.select2) {
+    const $tenant = $('#id_tenant');
+
+    $tenant.select2({
+      placeholder: "Select a tenant",
+      allowClear: true,
+      width: '100%'
+    });
+
+    // When Select2 opens (via click or keyboard), focus the search box
+    $tenant.on('select2:open', function (e) {
+      const searchInput = document.querySelector(
+        '.select2-container--open .select2-search__field'
+      );
+      if (searchInput) {
+        searchInput.focus();
+      }
+    });
+  } else {
+    console.warn('Select2 not loaded – check jQuery/Select2 <script> tags.');
+  }
+});
+</script>
+
+
+
+{% endblock %}

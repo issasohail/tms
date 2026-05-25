@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<div class="container" style="max-width:880px">
+  <h2 class="mt-2 mb-3">Electric Bill — Preview & Edit</h2>
+
+  <form method="post" action="{% url 'smart_meter:electric_bill_commit' lease_id=ctx.lease.id meter_id=ctx.meter.id %}" class="card p-3 shadow-sm">
+    {% csrf_token %}
+    <input type="hidden" name="month" value="{{ ctx.period_start|date:'Y-m' }}" />
+
+    <div class="row g-2 small">
+      <div class="col-12 col-md-6">
+        <label class="form-label">Lease / Tenant</label>
+        <div class="form-control-plaintext">#{{ ctx.lease.id }} — {{ ctx.lease.tenant }}</div>
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label">Unit / Meter</label>
+        <div class="form-control-plaintext">{{ ctx.lease.unit.unit_number }} / {{ ctx.meter.meter_number }}</div>
+      </div>
+
+      <div class="col-6 col-md-3">
+        <label class="form-label">Period Start</label>
+        <input class="form-control" name="period_start" value="{{ ctx.period_start|date:'Y-m-d' }}" disabled>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">Period End</label>
+        <input class="form-control" name="period_end" value="{{ ctx.period_end|date:'Y-m-d' }}" disabled>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">Beg kWh</label>
+        <input class="form-control" name="beg_kwh" value="{{ ctx.beg_kwh }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">End kWh</label>
+        <input class="form-control" name="end_kwh" value="{{ ctx.end_kwh }}">
+      </div>
+
+      <div class="col-6 col-md-3">
+        <label class="form-label">Units (auto)</label>
+        <input class="form-control" value="{{ ctx.units }}" disabled>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">Unit Rate</label>
+        <input class="form-control" name="unit_rate" value="{{ ctx.unit_rate }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">Service Charges</label>
+        <input class="form-control" name="service_charges" value="{{ ctx.service_charges }}">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Line Description (read-only)</label>
+        <textarea class="form-control" rows="3" disabled>{{ ctx.description_text }}</textarea>
+      </div>
+
+      <div class="col-12 d-flex gap-2 mt-2">
+        <button class="btn btn-primary">Add / Update on Invoice</button>
+        <a class="btn btn-secondary" href="javascript:history.back()">Cancel</a>
+      </div>
+    </div>
+  </form>
+
+  <div class="mt-3 small text-muted">
+    <strong>Tip:</strong> Drag the sliders below to adjust column widths. Saved per-device in your browser.
+  </div>
+
+  <div class="card p-2 mt-2">
+    <label class="form-label small">Mobile width (≤576px)</label>
+    <input type="range" min="280" max="480" value="360" id="wMobile">
+    <label class="form-label small mt-2">Desktop width (≥768px)</label>
+    <input type="range" min="720" max="1200" value="880" id="wDesktop">
+  </div>
+</div>
+
+<style>
+/***** Mobile-first tweaks for 360px *****/
+.container { max-width: 100%; }
+@media (max-width: 575.98px) { .container { padding-left: .5rem; padding-right: .5rem; } }
+
+/* Compact form controls */
+.form-label { margin-bottom: .25rem; }
+.form-control { padding: .35rem .5rem; font-size: .9rem; }
+
+/* Make grid adapt nicely on tiny screens */
+.row.g-2 > [class^="col-"] { flex: 0 0 auto; }
+</style>
+
+<script>
+(function() {
+  const mobileKey = 'ebill_w_mobile';
+  const desktopKey = 'ebill_w_desktop';
+  const mob = document.getElementById('wMobile');
+  const desk = document.getElementById('wDesktop');
+  const cont = document.querySelector('.container');
+
+  const savedMob = localStorage.getItem(mobileKey);
+  const savedDesk = localStorage.getItem(desktopKey);
+  if (savedMob) mob.value = savedMob;
+  if (savedDesk) desk.value = savedDesk;
+  cont.style.maxWidth = (window.innerWidth < 576 ? (mob.value + 'px') : (desk.value + 'px'));
+
+  mob.addEventListener('input', () => {
+    localStorage.setItem(mobileKey, mob.value);
+    if (window.innerWidth < 576) cont.style.maxWidth = mob.value + 'px';
+  });
+  desk.addEventListener('input', () => {
+    localStorage.setItem(desktopKey, desk.value);
+    if (window.innerWidth >= 576) cont.style.maxWidth = desk.value + 'px';
+  });
+})();
+</script>
+{% endblock %}

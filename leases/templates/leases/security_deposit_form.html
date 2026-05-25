@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">
+      {% if object %}Edit{% else %}Add{% endif %}
+      Security Deposit Entry –
+      Lease #{{ lease.id }} ({{ lease.tenant.get_full_name }})
+    </h4>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-secondary btn-sm">
+        Back to Ledger
+      </a>
+    </div>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="card">
+      <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label">Date</label>
+            {{ form.date }}
+            <div class="text-danger small">{{ form.date.errors }}</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Type</label>
+            {{ form.type }}
+            <div class="text-danger small">{{ form.type.errors }}</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Amount</label>
+            {{ form.amount }}
+            <div class="text-danger small">{{ form.amount.errors }}</div>
+          </div>
+          <div class="col-12 mt-2">
+            <label class="form-label">Notes</label>
+            {{ form.notes }}
+            <div class="text-danger small">{{ form.notes.errors }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-footer d-flex justify-content-between">
+        <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-secondary btn-sm">
+          Cancel
+        </a>
+        <button type="submit" class="btn btn-primary btn-sm">
+          {% if object %}Update Entry{% else %}Save Entry{% endif %}
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

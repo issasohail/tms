@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}Invoice #{{ invoice.invoice_number }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Invoice #{{ invoice.invoice_number }}</h2>
+    <div>
+        <a href="{% url 'payments:invoice_update' invoice.pk %}" class="btn btn-secondary">Edit</a>
+        <a href="{% url 'payments:invoice_delete' invoice.pk %}" class="btn btn-danger">Delete</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Invoice Details</h5>
+                <p><strong>Tenant:</strong> <a href="{% url 'tenants:tenant_detail' invoice.tenant.pk %}">{{ invoice.tenant }}</a></p>
+                <p><strong>Issue Date:</strong> {{ invoice.issue_date }}</p>
+                <p><strong>Due Date:</strong> {{ invoice.due_date }}</p>
+                <p><strong>Amount:</strong> ${{ invoice.amount }}</p>
+                <p><strong>Status:</strong> 
+                    <span class="badge bg-{% if invoice.status == 'paid' %}success{% elif invoice.status == 'partially_paid' %}warning{% else %}danger{% endif %}">
+                        {{ invoice.get_status_display }}
+                    </span>
+                </p>
+                {% if invoice.description %}
+                <p><strong>Description:</strong> {{ invoice.description }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Payments</h5>
+            </div>
+            <div class="card-body">
+                {% if payments %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                                <th>Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for payment in payments %}
+                            <tr>
+                                <td>{{ payment.payment_date }}</td>
+                                <td>${{ payment.amount }}</td>
+                                <td>{{ payment.get_payment_method_display }}</td>
+                                <td>{{ payment.reference_number|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>No payments recorded for this invoice</p>
+                {% endif %}
+                <a href="{% url 'payments:payment_create' %}?invoice={{ invoice.pk }}" class="btn btn-primary mt-3">
+                    Record Payment
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ lease_document.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>{{ lease_document.title }}</h2>
+    <div>
+        <a href="{% url 'documents:lease_document_update' lease_document.pk %}" class="btn btn-secondary">Edit</a>
+        <a href="{% url 'documents:lease_document_delete' lease_document.pk %}" class="btn btn-danger">Delete</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Lease Details</h5>
+                <p><strong>Tenant:</strong> <a href="{% url 'tenants:tenant_detail' lease_document.tenant.pk %}">{{ lease_document.tenant }}</a></p>
+                <p><strong>Start Date:</strong> {{ lease_document.start_date }}</p>
+                <p><strong>End Date:</strong> {{ lease_document.end_date }}</p>
+                <p><strong>Monthly Rent:</strong> ${{ lease_document.monthly_rent }}</p>
+                <p><strong>Deposit Amount:</strong> ${{ lease_document.deposit_amount }}</p>
+                <p><strong>Status:</strong> 
+                    <span class="badge bg-{% if lease_document.is_active %}success{% else %}secondary{% endif %}">
+                        {% if lease_document.is_active %}Active{% else %}Inactive{% endif %}
+                    </span>
+                </p>
+                {% if lease_document.description %}
+                <p><strong>Description:</strong> {{ lease_document.description }}</p>
+                {% endif %}
+                <p><strong>File:</strong> <a href="{{ lease_document.file.url }}" target="_blank">View Document</a></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Lease Terms</h5>
+            </div>
+            <div class="card-body">
+                {% if lease_document.terms %}
+                <div class="terms-content">
+                    {{ lease_document.terms|linebreaks }}
+                </div>
+                {% else %}
+                <p>No specific terms mentioned.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+<!-- templates/leases/lease_list.html -->
+<table class="table">
+    <thead>
+        <tr>
+            <th>Unit</th>
+            <th>Tenant</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Balance</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for lease in leases %}
+        <tr>
+            <td>{{ lease.unit.unit_number }}</td>
+            <td>{{ lease.tenant.name }}</td>
+            <td>{{ lease.start_date }}</td>
+            <td>{{ lease.end_date }}</td>
+            <td>
+                {% if lease.balance > 0 %}
+                <span class="text-danger">{{ lease.balance }}</span>
+                {% else %}
+                <span class="text-success">{{ lease.balance }}</span>
+                {% endif %}
+                <a href="{% url 'leases:api_lease_balance' pk=lease.id %}" 
+                   class="btn btn-sm btn-info ml-2">
+                   Details
+                </a>
+            </td>
+            <td>
+                <!-- Other action buttons -->
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

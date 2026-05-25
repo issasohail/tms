@@ -1,0 +1,83 @@
+{# templates/leases/_photo_card.html #}
+<div id="photo-card-{{ p.id }}" class="photo-card" data-type="{{ p.media_type }}" style="animation:fadeIn .3s ease;">
+
+  {# THUMBNAIL / VIDEO #}
+  {% if p.media_type == "video" %}
+    {% with ver=p.updated_at|date:'U' %}
+      <video class="photo-thumb" controls preload="metadata" style="max-width:100%;height:auto;">
+        <source src="{{ p.file.url }}?v={{ ver }}" type="video/mp4">
+        Your browser does not support video playback.
+      </video>
+    {% endwith %}
+  {% else %}
+    {# Link to the FINAL stamped photo (cache-busted via updated_at) #}
+    {% with ver=p.updated_at|date:'U' %}
+      <a href="{{ p.file.url }}?v={{ ver }}" target="_blank" rel="noopener">
+        <img src="{% if p.thumbnail %}{{ p.thumbnail.url }}?v={{ ver }}{% else %}{{ p.file.url }}?v={{ ver }}{% endif %}"
+            alt="{{ p.title|default:'Photo' }}"
+            loading="lazy"
+            style="max-width:100%;height:auto;display:block;">
+      </a>
+    {% endwith %}
+
+
+  {% endif %}
+
+  <div class="photo-meta">
+    <div class="row-top" style="display:flex;align-items:center;gap:.5rem;">
+      <div class="photo-title" style="font-weight:600;">{{ p.title|default:"(Untitled)" }}</div>
+      <div class="spacer" style="flex:1;"></div>
+
+      {# Inline edit with HTMX (swap only this card) #}
+      <details>
+        <summary class="btn-sm" title="Edit title/description">✎ Edit</summary>
+        <div class="edit-panel" style="margin-top:.5rem;">
+          <form
+            method="post"
+            action="{% url 'leases:photo_update' p.id %}"
+            hx-post="{% url 'leases:photo_update' p.id %}"
+            hx-target="#photo-card-{{ p.id }}"
+            hx-swap="outerHTML"
+            hx-indicator="#media-loading"
+          >
+            {% csrf_token %}
+            <label class="small text-muted d-block mb-1">Title</label>
+            <input class="input-sm" type="text" name="title"
+                   value="{{ p.title|default_if_none:'' }}" maxlength="120" style="width:100%;">
+
+            <label class="small text-muted d-block mt-2 mb-1">Description</label>
+            <textarea class="input-sm" name="description" rows="2" maxlength="300" style="width:100%;">{{ p.description|default_if_none:'' }}</textarea>
+
+            <div class="d-flex gap-2 mt-2">
+              <button class="btn-sm btn-primary" type="submit">Save</button>
+              <button class="btn-sm" type="button" onclick="this.closest('details').open=false">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </details>
+
+      {# Download with friendly filename route #}
+      <a href="{% url 'leases:photo_download' p.id %}"
+         class="btn-sm btn-success"
+         title="Download file">💾</a>
+
+      {# Delete (HTMX posts, JS fades the card, server does soft-delete) #}
+      <form method="post"
+            action="{% url 'leases:photo_delete' p.id %}"
+            hx-post="{% url 'leases:photo_delete' p.id %}"
+            hx-swap="none"
+            onsubmit="fadeDelete(event, {{ p.id }})">
+        {% csrf_token %}
+        <button class="btn-sm btn-danger" title="Delete this media">✕</button>
+      </form>
+    </div>
+
+    <div class="photo-desc" style="margin-top:.25rem;">
+      {% if p.description %}
+        {{ p.description }}
+      {% else %}
+        <em>No description</em>
+      {% endif %}
+    </div>
+  </div>
+</div>

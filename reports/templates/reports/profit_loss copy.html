@@ -1,0 +1,36 @@
+<form class="row g-2 align-items-end mb-3">
+  <!-- reuse the same form controls as summary -->
+  {{ form.as_p }}
+  <button class="btn btn-primary btn-sm">Filter</button>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Property</th>
+        <th>Unit</th>
+        <th>Category</th>
+        <th class="text-end">Revenue (Rs)</th>
+        <th class="text-end">Expense (Rs)</th>
+        <th class="text-end">P/L (Rs)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.property }}</td>
+        <td>{{ r.unit }}</td>
+        <td>{{ r.category }}</td>
+        <td class="text-end">Rs {{ r.revenue|floatformat:2 }}</td>
+        <td class="text-end">Rs {{ r.expense|floatformat:2 }}</td>
+        <td class="text-end fw-semibold {% if r.profit_loss < 0 %}text-danger{% else %}text-success{% endif %}">
+          Rs {{ r.profit_loss|floatformat:2 }}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted">No data</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

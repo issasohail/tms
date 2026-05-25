@@ -1,0 +1,324 @@
+<!-- invoice_form.html -->
+<div class="container mt-3">  <!-- a little tighter -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">{% if invoice.pk %}Edit{% else %}Create{% endif %} Invoice</h5>
+    <button class="btn btn-sm btn-secondary" onclick="history.back()">Back</button>
+  </div>
+
+  <form method="post" id="invoice-form">
+    {% csrf_token %}
+
+    <div class="row g-3">
+      <div class="col-md-7">
+        <div class="card border-0">
+          <div class="card-body p-3">
+
+            <div class="d-flex justify-content-between mb-2">
+              <div>
+                <h6 class="mb-1">INVOICE</h6>
+                <small class="text-muted">#{{ invoice.invoice_number|default:"(pending)" }}</small>
+              </div>
+              <div class="text-end small">
+                <label class="form-label mb-0"><strong>Date</strong></label>
+                {{ form.issue_date }}
+                <label class="form-label mb-0 ms-3"><strong>Due</strong></label>
+                {{ form.due_date }}
+              </div>
+            </div>
+
+            <!-- Filters: one line, compact -->
+            <div class="border p-2 mb-2 small">
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-5">
+                  <label class="form-label mb-0"><strong>Property</strong></label>
+                  <select id="filter-property" class="form-select form-select-sm"></select>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label mb-0"><strong>Unit</strong></label>
+                  <select id="filter-unit" class="form-select form-select-sm" disabled></select>
+                </div>
+                <div class="col-sm-3">
+                  <label class="form-label mb-0"><strong>Lease</strong></label>
+                  <select id="filter-lease" name="lease" class="form-select form-select-sm" disabled></select>
+                </div>
+              </div>
+            </div>
+
+            {{ form.lease }}  <!-- hidden, real field -->
+
+            <div class="mb-2">
+              <label class="form-label mb-1">Description</label>
+              {{ form.description }}
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1">Notes</label>
+              {{ form.notes }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Items -->
+        <div class="card border-0 mt-2">
+          <div class="card-body p-3">
+            <h6 class="mb-2">Invoice Items <small class="text-muted">(Category required)</small></h6>
+
+            {{ items.management_form }}
+
+            <table class="table table-sm align-middle" id="invoice-items">
+              <thead>
+                <tr class="table-light">
+                  <th style="width:6%">#</th>
+                  <th style="width:24%">Category</th>
+                  <th>Description</th>
+                  <th class="text-end" style="width:16%">Amount (Rs.)</th>
+                  <th style="width:8%"></th>
+                </tr>
+              </thead>
+              <tbody id="items-body">
+                {% for f in items %}
+                <tr class="item-form" data-index="{{ forloop.counter0 }}">
+                  <td class="text-muted sn">{{ forloop.counter }}</td>
+                  <td>
+                    <!-- typeable input with datalist; keep the Select hidden for submission -->
+                    <input type="text" class="form-control form-control-sm cat-input" list="cat-suggestions" placeholder="Type or pick…" />
+                    <div style="display:none;">{{ f.category }}</div>
+                  </td>
+                  <td>{{ f.description }}</td>
+                  <td class="text-end">{{ f.amount }}</td>
+                  <td>
+                    {% if f.instance.pk %}
+                      {{ f.DELETE }}
+                    {% else %}
+                      <button type="button" class="btn btn-sm btn-danger remove-row">×</button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+
+            <!-- empty form row -->
+            <template id="item-empty-row">
+              <tr class="item-form" data-index="__prefix__">
+                <td class="text-muted sn"></td>
+                <td>
+                  <input type="text" class="form-control form-control-sm cat-input" list="cat-suggestions" placeholder="Type or pick…"/>
+                  <div style="display:none;">{{ items.empty_form.category }}</div>
+                </td>
+                <td>{{ items.empty_form.description }}</td>
+                <td class="text-end">{{ items.empty_form.amount }}</td>
+                <td><button type="button" class="btn btn-sm btn-danger remove-row">×</button></td>
+              </tr>
+            </template>
+
+            <button type="button" id="add-row" class="btn btn-outline-primary btn-sm">Add Item</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-5">
+        <div class="card border-0">
+          <div class="card-body p-3">
+            <div class="border-top pt-2">
+              <div class="row">
+                <div class="col-6 text-end">
+                  <p class="mb-1"><strong>Subtotal:</strong></p>
+                  <p class="mb-0"><strong>Total:</strong></p>
+                </div>
+                <div class="col-6 text-end">
+                  <p class="mb-1">Rs. <span id="subtotal">0.00</span></p>
+                  <p class="mb-0 fw-bold">Rs. <span id="grandtotal">0.00</span></p>
+                </div>
+              </div>
+              <div class="mt-2 text-muted small">
+                Total updates instantly from line items.
+              </div>
+              <div class="mt-3 d-grid">
+                <button type="submit" class="btn btn-primary btn-sm">Save Invoice</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Category suggestions -->
+<datalist id="cat-suggestions">
+  {% for c in categories %}
+    <option value="{{ c.name }}"></option>
+  {% endfor %}
+</datalist>
+
+{% block extra_js %}
+<script>
+(function(){
+  const csrf = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+
+  // ------- Filters (property, unit, lease) -------
+  const $prop = document.getElementById('filter-property');
+  const $unit = document.getElementById('filter-unit');
+  const $lease = document.getElementById('filter-lease');
+  const $leaseHidden = document.getElementById('id_lease');
+
+  fetch("{% url 'invoices:api_properties' %}")
+    .then(r=>r.json()).then(rows=>{
+      $prop.innerHTML = `<option value="">Property…</option>` + rows.map(p=>`<option value="${p.id}">${p.property_name}</option>`).join('');
+      $prop.disabled = false;
+    });
+
+  $prop.addEventListener('change', ()=>{
+    $unit.innerHTML=''; $unit.disabled = true;
+    $lease.innerHTML=''; $lease.disabled = true;
+    $leaseHidden.value = '';
+    if(!$prop.value) return;
+    fetch(`{% url 'invoices:api_units' %}?property_id=${$prop.value}`).then(r=>r.json()).then(rows=>{
+      $unit.innerHTML = `<option value="">Unit…</option>` + rows.map(u=>`<option value="${u.id}">${u.unit_number}</option>`).join('');
+      $unit.disabled = false;
+    });
+  });
+
+  $unit.addEventListener('change', ()=>{
+    $lease.innerHTML=''; $lease.disabled = true;
+    $leaseHidden.value = '';
+    if(!$unit.value) return;
+    // backend already returns ACTIVE leases + Tenant, Unit, Balance in the label
+    fetch(`{% url 'invoices:api_leases' %}?unit_id=${$unit.value}`).then(r=>r.json()).then(rows=>{
+      $lease.innerHTML = `<option value="">Lease…</option>` + rows.map(l=>`<option value="${l.id}">${l.label}</option>`).join('');
+      $lease.disabled = false;
+    });
+  });
+
+  $lease.addEventListener('change', ()=>{ $leaseHidden.value = $lease.value; });
+
+  // ------- Items: category input (typeable) + auto-desc + instant totals -------
+  const tbody = document.getElementById('items-body');
+  const tmpl = document.getElementById('item-empty-row');
+  const totalFormsInput = document.getElementById('id_items-TOTAL_FORMS');
+
+  function getTotalForms(){ return parseInt(totalFormsInput.value || '0', 10) }
+  function setTotalForms(n){ totalFormsInput.value = String(n) }
+
+  function renumberRows(){
+    let i = 1;
+    tbody.querySelectorAll('tr.item-form').forEach(tr=>{
+      const sn = tr.querySelector('.sn'); if(sn) sn.textContent = i++;
+    });
+  }
+
+  function recalcTotals(){
+    let total = 0;
+    tbody.querySelectorAll('input[name$="-amount"]').forEach(inp=>{
+      const v = parseFloat(inp.value || '0'); if(!isNaN(v)) total += v;
+    });
+    document.getElementById('subtotal').textContent = total.toFixed(2);
+    document.getElementById('grandtotal').textContent = total.toFixed(2);
+  }
+
+  // Turn each row's <select> (hidden) into a text input with datalist
+  function initCategoryRow(tr){
+    const select = tr.querySelector('select[name$="-category"]');
+    const input  = tr.querySelector('.cat-input');
+
+    // Prefill text with current selected option (if any) and hide the select
+    if(select){
+      const txt = select.selectedOptions[0]?.textContent?.trim() || '';
+      if(txt && input && !input.value) input.value = txt;
+      select.closest('div').style.display = 'none';
+    }
+
+    async function ensureCategoryId(name){
+      name = (name || '').trim();
+      if(!name){ if(select) select.value = ''; return; }
+
+      // Option by text?
+      const match = Array.from(select.options).find(o => o.text.trim().toLowerCase() === name.toLowerCase());
+      if(match){ select.value = match.value; return; }
+
+      // Create on the fly
+      const resp = await fetch("{% url 'invoices:category_create_ajax' %}", {
+        method:'POST',
+        headers:{'X-CSRFToken': csrf, 'Content-Type':'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({name})
+      });
+      const j = await resp.json();
+
+      // add to all category selects so future rows see it
+      document.querySelectorAll('select[name$="-category"]').forEach(sel=>{
+        sel.insertAdjacentHTML('beforeend', `<option value="${j.id}">${j.name}</option>`);
+      });
+      select.value = j.id;
+    }
+
+    // When category picked/typed: (1) ensure FK id, (2) copy to description if empty
+    input?.addEventListener('change', async ()=>{
+      await ensureCategoryId(input.value);
+      const desc = tr.querySelector('input[name$="-description"]');
+      if(desc && !desc.value.trim() && input.value.trim()){
+        desc.value = input.value.trim();   // copy category name into description (editable)
+      }
+    });
+  }
+
+  // init existing rows
+  tbody.querySelectorAll('tr.item-form').forEach(initCategoryRow);
+
+  // add row
+  document.getElementById('add-row').addEventListener('click', ()=>{
+    const idx = getTotalForms();
+    const html = tmpl.innerHTML.replace(/__prefix__/g, idx);
+    const wrap = document.createElement('tbody'); wrap.innerHTML = html.trim();
+    const tr = wrap.firstElementChild;
+    tbody.appendChild(tr);
+    setTotalForms(idx + 1);
+    renumberRows();
+    recalcTotals();
+    initCategoryRow(tr);
+  });
+
+  // remove row + live totals
+  tbody.addEventListener('click', (e)=>{
+    if(e.target.classList.contains('remove-row')){
+      e.target.closest('tr.item-form').remove();
+      renumberRows(); recalcTotals();
+    }
+  });
+  tbody.addEventListener('input', (e)=>{
+    if(e.target.name && /items-\d+-amount$/.test(e.target.name)) recalcTotals();
+  });
+
+  // on submit: make sure every typed category has a FK id
+  document.getElementById('invoice-form').addEventListener('submit', async (e)=>{
+    const rows = Array.from(tbody.querySelectorAll('tr.item-form'));
+    for(const tr of rows){
+      const input = tr.querySelector('.cat-input');
+      const select = tr.querySelector('select[name$="-category"]');
+      if(!input || !select) continue;
+      if(!select.value && input.value.trim()){
+        // same ensure as change()
+        const name = input.value.trim();
+        let match = Array.from(select.options).find(o => o.text.trim().toLowerCase() === name.toLowerCase());
+        if(!match){
+          const resp = await fetch("{% url 'invoices:category_create_ajax' %}", {
+            method:'POST',
+            headers:{'X-CSRFToken': csrf, 'Content-Type':'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({name})
+          });
+          const j = await resp.json();
+          document.querySelectorAll('select[name$="-category"]').forEach(sel=>{
+            sel.insertAdjacentHTML('beforeend', `<option value="${j.id}">${j.name}</option>`);
+          });
+          select.value = j.id;
+        }else{
+          select.value = match.value;
+        }
+      }
+    }
+  });
+
+  renumberRows();
+  recalcTotals();
+})();
+</script>
+{% endblock %}

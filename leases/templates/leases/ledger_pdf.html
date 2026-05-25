@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lease Ledger - {{ lease.id }}</title>
+</head>
+<body>
+    <div class="header">
+        <h1>Lease #{{ lease.id }} - Financial Ledger</h1>
+        <div>Generated on: {{ date }}</div>
+    </div>
+
+    <div class="lease-info">
+        <p><strong>Tenant:</strong> {{ tenant.get_full_name }}</p>
+        <p><strong>Unit:</strong> {{ lease.unit.unit_number }}</p>
+        <p><strong>Property:</strong> {{ lease.unit.property.property_name }}</p>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in transactions %}
+            <tr>
+                <td>{{ t.date|date:"Y-m-d" }}</td>
+                <td>{{ t.type }}</td>
+                <td>{{ t.description }}</td>
+                <td class="{% if t.amount > 0 %}positive{% else %}negative{% endif %}">
+                    {{ t.amount|floatformat:2 }}
+                </td>
+                <td>{{ t.balance|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <p>Total Paid: <span class="positive">{{ total_paid|floatformat:2 }}</span></p>
+        <p>Total Owed: <span class="negative">{{ total_owed|floatformat:2 }}</span></p>
+        <p>Current Balance: 
+            <span class="{% if balance >= 0 %}positive{% else %}negative{% endif %}">
+                {{ balance|floatformat:2 }}
+            </span>
+        </p>
+    </div>
+</body>
+</html>

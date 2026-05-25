@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ unit }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Unit: {{ unit.unit_number }}</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
+        {% if unit.pk %}
+            <a href="{% url 'properties:unit_update' unit.pk %}" class="btn btn-secondary me-2">Edit</a>
+            <a href="{% url 'properties:unit_delete' unit.pk %}" class="btn btn-danger">Delete</a>
+        {% else %}
+            <span class="text-muted">No Unit ID</span>
+        {% endif %}
+    </div>
+</div>
+
+
+<div class="row">
+    <!-- Basic Information Column -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Property:</strong><br>
+                        <a href="{% url 'properties:property_detail' unit.property.pk %}">{{ unit.property }}</a></p>
+                        
+                        <p><strong>Status:</strong><br>
+                        <span class="badge bg-{% if unit.status == 'vacant' %}warning{% elif unit.status == 'occupied' %}success{% else %}info{% endif %}">
+                            {{ unit.get_status_display }}
+                        </span></p>
+                        
+                        <p><strong>Monthly Rent:</strong><br>
+                        ${{ unit.monthly_rent }}</p>
+                        
+                        <p><strong>Security Deposit:</strong><br>
+                        {{ unit.security_requires }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Electric Meter:</strong><br>
+                        {{ unit.electric_meter_num }}</p>
+                        
+                        <p><strong>Gas Meter:</strong><br>
+                        {{ unit.gas_meter_num }}</p>
+                        
+                        <p><strong>Society Maintenance:</strong><br>
+                        ${{ unit.society_maintenance }}</p>
+                        
+                        <p><strong>Water Charges:</strong><br>
+                        ${{ unit.water_charges }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Amenities Column -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Amenities & Inventory</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Ceiling Fans:</strong> {{ unit.ceiling_fan }}</p>
+                        <p><strong>Exhaust Fans:</strong> {{ unit.exhaust_fan }}</p>
+                        <p><strong>Ceiling Lights:</strong> {{ unit.ceiling_lights }}</p>
+                        <p><strong>Stove:</strong> {{ unit.stove }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Wardrobes:</strong> {{ unit.wardrobes }}</p>
+                        <p><strong>Keys:</strong> {{ unit.keys }}</p>
+                        <p><strong>Paint Condition:</strong><br>
+                        {{ unit.paint_condition }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tenant Information -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Tenant Information</h5>
+    </div>
+    <div class="card-body">
+        {% if unit.tenants.exists %}
+            <a href="{% url 'tenants:tenant_detail' unit.tenants.first.pk %}" class="btn btn-primary">
+                View Tenant Details
+            </a>
+        {% else %}
+            <p class="text-muted">No current tenant</p>
+            <a href="{% url 'tenants:tenant_create' %}?unit={{ unit.pk }}" class="btn btn-success">
+                Add Tenant
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

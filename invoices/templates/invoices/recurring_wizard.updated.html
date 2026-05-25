@@ -1,0 +1,655 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+
+<style>
+  .rc-compact .form-control, .rc-compact .form-select { height: calc(2rem); padding: .25rem .5rem; font-size: .9rem; }
+  .rc-compact .form-label { margin-bottom: .25rem; font-size: .85rem; }
+  .rc-compact .card { margin-bottom: .75rem; }
+  .rc-compact .btn, .rc-compact .btn-sm { padding: .35rem .6rem; font-size: .85rem; }
+  .rc-sticky { position: sticky; top: 1rem; }
+  table.rc-table th, table.rc-table td { white-space: nowrap; vertical-align: middle; }
+  table.rc-table thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+  /* Two-line clamps (right grid) */
+.line-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}
+
+/* small, subtle description text */
+.desc-small { font-size: .85rem; color: #6c757d; }
+/* clamp helpers */
+.line-2{-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;}
+/* center certain cols */
+.col-center{text-align:center;}
+/* red for ending soon */
+.end-soon{color:#dc3545;font-weight:600;}
+
+
+
+/* === Compact table + truncation tweaks (injected) === */
+table.rc-table { font-size: .85rem; }                 /* smaller font for list */
+table.rc-table th { font-size: .75rem; }              /* smaller TH */
+table.rc-table td { vertical-align: middle; }
+
+/* compact header cells */
+.th-compact { font-size: .75rem; padding-top:.25rem; padding-bottom:.25rem; }
+
+/* single-line ellipsis helper */
+.nowrap-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* merged Category + Description cell */
+.cell-catdesc { max-width: 340px; } /* adjust as needed */
+.cell-catdesc .cat-line  { font-weight: 600; }
+.cell-catdesc .desc-line { font-size: .8rem; color: #6c757d; }
+
+</style>
+<div class="d-flex justify-content-between align-items-center">
+  <h4>Recurring Charges</h4>
+  <div>
+    <button class="btn btn-sm btn-secondary" onclick="history.back()">Go Back</button>
+    <button id="previewBtn" type="button" class="btn btn-primary btn-sm">Preview &amp; Generate (Current)</button>
+
+    <!-- Run billing for next month -->
+    <a href="{% url 'invoices:run_billing' %}" class="btn btn-success btn-sm">Run Next Month</a>
+  </div>
+</div>
+<div class="rc-compact" id="rcRoot"
+     data-url-leases="{% url 'invoices:api_leases_filtered' %}"
+     data-url-list="{% url 'invoices:api_recurring_list' %}"
+     data-url-create="{% url 'invoices:api_recurring_create' %}"
+     data-url-billing-preview="{% url 'invoices:api_billing_preview_current' %}"
+     data-url-billing-generate="{% url 'invoices:api_billing_generate_current' %}">
+
+
+  <!-- Toolbar on one line: Property | Active-only | New -->
+<div class="card mb-2">
+  <div class="card-body d-flex flex-wrap align-items-end" style="gap:.5rem;">
+    <div style="min-width:220px;">
+      <label class="form-label">Property</label>
+      <select id="propFilter" class="form-select form-select-sm">
+        <option value="all">All properties</option>
+        {% for p in properties %}
+          <option value="{{ p.id }}">{{ p.property_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width:240px;">
+      <label class="form-label">Unit (updates with property)</label>
+      <select id="unitFilter" class="form-select form-select-sm">
+        <option value="">All units</option>
+      </select>
+    </div>
+
+    <div class="flex-grow-1" style="min-width:260px;">
+      <label class="form-label">Tenant (type to search)</label>
+      <input id="tenantFilter" list="tenantOptions" class="form-control form-control-sm" placeholder="Tenant — Unit">
+      <datalist id="tenantOptions"></datalist>
+    </div>
+
+    <div>
+      <label class="form-label d-block">Leases</label>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="activeOnly" checked>
+        <label class="form-check-label" for="activeOnly">Active only</label>
+      </div>
+    </div>
+
+    <div class="ms-auto">
+      <button id="newBtn" type="button" class="btn btn-secondary btn-sm">New</button>
+    </div>
+  </div>
+</div>
+
+  <div class="row g-3">
+    <!-- LEFT: Add/Edit form (same width as old left) -->
+    <div class="col-lg-3">
+      <div class="card rc-sticky">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="m-0" id="formTitle">New Recurring</h6>
+            <span id="formModeBadge" class="badge bg-secondary">New</span>
+          </div>
+
+          <!-- Property + Lease pickers for the record itself -->
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Property (record)</label>
+              <select id="propSelect" class="form-select form-select-sm">
+                <option value="">— Select property —</option>
+                {% for p in properties %}
+                  <option value="{{ p.id }}">{{ p.property_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Lease</label>
+              <select id="leaseSelect" class="form-select form-select-sm">
+                <option value="">— Select lease —</option>
+              </select>
+            </div>
+          </div>
+
+          <hr class="my-2">
+
+          <form id="rcForm">
+            {% csrf_token %}
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Category</label>
+                <select id="f_category" class="form-select form-select-sm">
+                  {% for c in categories %}
+                    <option value="{{ c.id }}">{{ c.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Amount</label>
+                <input id="f_amt" type="number" step="0.01" class="form-control form-control-sm" value="0.00">
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea id="f_desc" class="form-control form-control-sm" rows="2" placeholder="Description (2 lines max)"></textarea>
+              </div>
+              
+               <div class="col-6">
+                    <label class="form-label">Start</label>
+                    <input id="f_start" type="date" class="form-control form-control-sm">
+                  </div>
+               <div class="col-6">
+                    <label class="form-label">End</label>
+                    <input id="f_end" type="date" class="form-control form-control-sm">
+                  </div>
+
+
+              <div class="col-8 d-flex align-items-center gap-2 mt-1">
+                <input id="f_active" type="checkbox" class="form-check-input" checked>
+                <label class="form-check-label" for="f_active">Active</label>
+              </div>
+              <div class="col-4">
+                <label class="form-label">Starting Day</label>
+                <input id="f_day" type="number" min="1" max="31" class="form-control form-control-sm" value="1">
+              </div>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button id="saveBtn" type="button" class="btn btn-primary btn-sm">Save</button>
+              <button id="cancelBtn" type="button" class="btn btn-secondary btn-sm">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: one-line list with S.No and actions -->
+    <div class="col-lg-9">
+      <div class="card">
+        <div class="card-body p-0">
+          <div style="max-height:60vh; overflow:auto;">
+            <table class="table table-sm rc-table mb-0" id="rcTable">
+              <thead>
+  <tr>
+    <th class="col-center" style="width:46px;">S.No</th>
+    <th>Unit</th>
+    <th style="width:140px;">Tenant</th>
+    <th class="th-compact" style="width:340px;">Category / Description</th>
+    <th>Amt</th>
+    <th class="col-center"><div>Starting</div><div>Day</div></th>
+    <th class="col-center"><div>Start Date</div><div>End Date</div></th>
+    <th>Active</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+              <tbody id="rcTbody">
+                <tr><td colspan="10" class="text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Preview: Current Month Billing</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="previewSummary" class="mb-2 small text-muted"></div>
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Unit</th>
+                <th>Tenant</th>
+                <th>Items (category – description – amount)</th>
+                <th class="text-end">Lease Total</th>
+              </tr>
+            </thead>
+            <tbody id="previewTbody">
+              <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" class="text-end">Grand Total</th>
+                <th class="text-end" id="previewGrand">0.00</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="small">
+          <span class="badge bg-warning text-dark">Skipped Zero</span> = amount&nbsp;&le;&nbsp;0.00 will not be added. &nbsp;
+          <span class="badge bg-secondary">Duplicate</span> = identical (category, description) already on this month’s invoice.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="confirmGenerateBtn" class="btn btn-primary btn-sm">Confirm Generate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<template id="catOptionsTpl">
+  {% for c in categories %}
+    <option value="{{ c.id }}">{{ c.name }}</option>
+  {% endfor %}
+</template>
+
+<script>
+(function() {
+  // ---- DOM refs / URLs pulled from data-attrs on #rcRoot ----
+  const root = document.getElementById('rcRoot');
+  const urlLeases  = root.dataset.urlLeases;   // {% url 'invoices:api_leases_filtered' %}
+  const urlList    = root.dataset.urlList;     // {% url 'invoices:api_recurring_list' %}
+  const urlCreate  = root.dataset.urlCreate;   // {% url 'invoices:api_recurring_create' %}
+
+  // extra endpoints
+  const urlUpdateTpl   = "{% url 'invoices:api_recurring_update' 0 %}";   // replace /0/
+  const urlDeleteTpl   = "{% url 'invoices:api_recurring_delete' 0 %}";
+  const urlBackfillTpl = "{% url 'invoices:api_recurring_backfill' 0 %}";
+
+  const urlUnits   = "{% url 'invoices:api_units_for_property' %}";
+  const urlTenants = "{% url 'invoices:api_tenants_for_property' %}";
+
+  // ---- Top filters (toolbar) ----
+  const propFilter  = document.getElementById('propFilter');
+  const unitFilter  = document.getElementById('unitFilter');
+  const tenantFilter= document.getElementById('tenantFilter');
+  const tenantOptions = document.getElementById('tenantOptions');
+  const activeOnly  = document.getElementById('activeOnly');
+
+  // ---- Left form (Add/Edit) ----
+  const propSelect  = document.getElementById('propSelect');
+  const leaseSelect = document.getElementById('leaseSelect');
+
+  const formTitle   = document.getElementById('formTitle');
+  const formModeBadge = document.getElementById('formModeBadge');
+  const saveBtn     = document.getElementById('saveBtn');
+  const cancelBtn   = document.getElementById('cancelBtn');
+  const newBtn      = document.getElementById('newBtn');
+
+  const f_category  = document.getElementById('f_category');
+  const f_day       = document.getElementById('f_day');
+
+  const f_desc      = document.getElementById('f_desc');
+  const f_amt       = document.getElementById('f_amt');
+  const f_start     = document.getElementById('f_start');
+  const f_end       = document.getElementById('f_end');
+  const f_active    = document.getElementById('f_active');
+
+    const urlBillingPreview = root.dataset.urlBillingPreview;
+  const urlBillingGenerate = root.dataset.urlBillingGenerate;
+
+  const previewBtn = document.getElementById('previewBtn');
+  const previewTbody = document.getElementById('previewTbody');
+  const previewGrand = document.getElementById('previewGrand');
+  const previewSummary = document.getElementById('previewSummary');
+  const confirmGenerateBtn = document.getElementById('confirmGenerateBtn');
+
+
+  // ---- Right table ----
+  const tbody       = document.getElementById('rcTbody');
+
+  // ---- State ----
+  const tenantMap = new Map(); // label -> tenant_id
+  let editId = null;           // null => NEW
+
+  // ---- Utils ----
+  function csrftoken() {
+    const name = 'csrftoken';
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (let i = 0; i < cookies.length; i++) {
+      const c = cookies[i].split('=');
+      if (c[0] === name) return decodeURIComponent(c[1]);
+    }
+    return '';
+  }
+  function intcomma(val){
+    if (val === null || val === undefined) return '';
+    const s = String(val);
+    const [w,f] = s.split('.');
+    const wc = w.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return f ? wc + '.' + f : wc;
+  }
+  function daysUntil(iso){
+    if(!iso) return Infinity;
+    const d = new Date(iso+'T00:00:00');
+    const today = new Date(); today.setHours(0,0,0,0);
+    const diff = (d - today) / (1000*60*60*24);
+    return Math.floor(diff);
+  }
+
+    function renderPreview(data){
+    previewTbody.innerHTML = '';
+    let rows = data.leases || [];
+    if (!rows.length){
+      previewTbody.innerHTML = '<tr><td colspan="5" class="text-muted">Nothing to bill.</td></tr>';
+      previewGrand.textContent = '0.00';
+      previewSummary.textContent = `Period: ${data.period} • 0 items`;
+      return;
+    }
+    rows.forEach(lease => {
+      const tr = document.createElement('tr');
+      const itemsHtml = (lease.items || []).map(it => {
+        const tags = [];
+        if (it.is_zero) tags.push('<span class="badge bg-warning text-dark">Skipped Zero</span>');
+        if (it.is_duplicate) tags.push('<span class="badge bg-secondary">Duplicate</span>');
+        return `<div class="d-flex justify-content-between gap-2 border-bottom py-1">
+                  <div class="text-truncate" style="max-width:32rem;">
+                    <strong>${it.category || '—'}</strong> — <span class="text-muted">${(it.description || '').replace(/</g,'&lt;')}</span>
+                  </div>
+                  <div>${intcomma(it.amount)}</div>
+                </div>
+                <div>${tags.join(' ')}</div>`;
+      }).join('');
+      tr.innerHTML = `
+        <td class="col-center">${row.sno}</td>
+<td><div class="line-2">${row.unit_name || ''}</div></td>
+<td><div class="line-2">${row.tenant_name || ''}</div></td>
+<td class="cell-catdesc">
+  <div class="cat-line nowrap-ellipsis" title="${(row.category || '—').replace(/"/g,'&quot;')}">${row.category || '—'}</div>
+  <div class="desc-line nowrap-ellipsis" title="${(row.description || '').replace(/"/g,'&quot;')}">${row.description || ''}</div>
+</td>
+<td>${intcomma(row.amount || '0')}</td>
+<td class="col-center">${row.day_of_month}</td>
+<td class="col-center">
+  <div>${row.start_date || '—'}</div>
+  <div class="${daysUntil(row.lease_end_date) <= 40 ? 'end-soon' : ''}">${row.end_date || '—'}</div>
+</td>
+<td>${row.active ? 'Yes' : 'No'}</td>
+<td>
+  <div class="btn-group btn-group-sm">
+    <button class="btn btn-primary rc-edit">Edit</button>
+    <button class="btn btn-danger rc-del">Delete</button>
+  </div>
+</td>
+      `;
+      tr.querySelector('.rc-edit').addEventListener('click', () => setModeEdit(row));
+      tr.querySelector('.rc-del').addEventListener('click', () => onDelete(row));
+      tbody.appendChild(tr);
+    });
+  }  // <-- important: closes renderTable
+
+  // =================== DEPENDENT FILTER DATA ===================
+  async function loadUnits(){
+    unitFilter.innerHTML = '<option value="">All units</option>';
+    const params = new URLSearchParams({
+      property_id: propFilter.value || 'all',
+      active: activeOnly.checked ? '1':'0'
+    });
+    try{
+      const r = await fetch(urlUnits + '?' + params.toString());
+      if(!r.ok) return;
+      const data = await r.json();
+      (data.results||[]).forEach(u=>{
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = u.label; // Unit — Tenant
+        unitFilter.appendChild(opt);
+      });
+    }catch(e){ console.error(e); }
+  }
+
+  async function loadTenants(){
+    tenantOptions.innerHTML = '';
+    tenantMap.clear();
+    const params = new URLSearchParams({
+      property_id: propFilter.value || 'all',
+      active: activeOnly.checked ? '1':'0'
+    });
+    try{
+      const r = await fetch(urlTenants + '?' + params.toString());
+      if(!r.ok) return;
+      const data = await r.json();
+      (data.results||[]).forEach(t=>{
+        const opt = document.createElement('option');
+        opt.value = t.label;          // "Tenant — Unit"
+        tenantMap.set(t.label, t.id); // map label -> id
+        tenantOptions.appendChild(opt);
+      });
+    }catch(e){ console.error(e); }
+  }
+
+  async function loadLeasesForProperty(){
+    // LEFT form leases dropdown (depends on propSelect + activeOnly)
+    leaseSelect.innerHTML = '<option value="">— Select lease —</option>';
+    const pid = propSelect.value || 'all';
+    const params = new URLSearchParams({
+      property_id: pid,
+      show: activeOnly.checked ? 'active' : 'all'
+    });
+    try{
+      const resp = await fetch(urlLeases + '?' + params.toString());
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const data = await resp.json();
+      (data.results||[]).forEach(l=>{
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = l.label;          // Unit — Tenant
+        opt.dataset.startDate = l.start_date || '';
+        opt.dataset.endDate   = l.end_date   || '';
+        leaseSelect.appendChild(opt);
+      });
+    }catch(e){
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Failed to load leases';
+      leaseSelect.appendChild(opt);
+      console.error(e);
+    }
+  }
+
+  // =================== FORM MODES ===================
+  function setModeNew(){
+    editId = null;
+    formTitle.textContent = 'New Recurring';
+    formModeBadge.className = 'badge bg-secondary';
+    formModeBadge.textContent = 'New';
+    f_category.selectedIndex = 0;
+    f_day.value = '1';
+    f_desc.value = '';
+    f_amt.value = '0.00';
+    f_start.value = '';
+    f_end.value = '';
+    f_active.checked = true;
+    // Align LEFT property with top filter, then refresh lease list
+    propSelect.value = (propFilter.value === 'all') ? '' : propFilter.value;
+    loadLeasesForProperty();
+  }
+
+  function setModeEdit(row){
+    editId = row.id;
+    formTitle.textContent = 'Edit Recurring';
+    formModeBadge.className = 'badge bg-primary';
+    formModeBadge.textContent = 'Editing';
+    // sync left property and leases
+    propSelect.value = row.property_id || '';
+    loadLeasesForProperty().then(() => {
+      leaseSelect.value = row.lease_id;
+    });
+    f_category.value = row.category_id || '';
+    f_day.value = row.day_of_month || 1;
+    f_desc.value = row.description || '';
+    f_amt.value = row.amount || '0.00';
+    f_start.value = row.start_date || '';
+    f_end.value = row.end_date || '';
+    f_active.checked = !!row.active;
+  }
+
+  // =================== SAVE / DELETE ===================
+  async function onDelete(row){
+    if(!confirm('Delete this recurring item?')) return;
+    const url = urlDeleteTpl.replace('/0/', '/' + row.id + '/');
+    try{
+      const resp = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrftoken() } });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      await resp.json();
+      loadList();
+      if(editId === row.id) setModeNew();
+    }catch(e){
+      alert('Delete failed.');
+      console.error(e);
+    }
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    const leaseId = leaseSelect.value;
+    if (!leaseId) { alert('Pick a lease first.'); return; }
+
+    const payload = {
+      lease_id: leaseId,
+      category_id: f_category.value || null,
+      description: f_desc.value || '',
+      amount: f_amt.value || '0.00',
+      day_of_month: f_day.value || 1,
+      start_date: f_start.value || '',
+      end_date: f_end.value || '',
+      active: f_active.checked
+    };
+
+    let url, method = 'POST';
+    if (editId) {
+      url = urlUpdateTpl.replace('/0/', '/' + editId + '/');
+    } else {
+      url = urlCreate;
+    }
+
+    try{
+      const resp = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken() },
+        body: JSON.stringify(payload)
+      });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const data = await resp.json();
+
+      // If NEW and start_date is in the past → ask to backfill
+      if(!editId && payload.start_date){
+        const today = new Date();
+        const firstThisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const start = new Date(payload.start_date + 'T00:00:00');
+        if(start < firstThisMonth){
+          if(confirm('Start date is in the past. Add past recurring items into invoices?')){
+            const newId = data.id;
+            const bfUrl = urlBackfillTpl.replace('/0/', '/' + newId + '/');
+            const bf = await fetch(bfUrl, { method: 'POST', headers: { 'X-CSRFToken': csrftoken() } });
+            if(!bf.ok) alert('Backfill failed.');
+          }
+        }
+      }
+
+      await loadList();
+      setModeNew();
+      alert('Saved.');
+    }catch(e){
+      alert('Save failed.');
+      console.error(e);
+    }
+  });
+
+  cancelBtn.addEventListener('click', setModeNew);
+  newBtn.addEventListener('click', setModeNew);
+  previewBtn.addEventListener('click', fetchPreview);
+  confirmGenerateBtn.addEventListener('click', confirmGenerate);
+
+  // =================== D) Lease change auto-fills Start/End ===================
+  leaseSelect.addEventListener('change', () => {
+    const opt = leaseSelect.selectedOptions[0];
+    if (!opt) return;
+    f_start.value = opt.dataset.startDate || '';
+    f_end.value   = opt.dataset.endDate   || '';
+  });
+
+  // =================== 4G) Filters & dependent loads ===================
+  tenantFilter.addEventListener('focus', () => tenantFilter.select());
+  tenantFilter.addEventListener('input', () => {
+    // load whenever a new label is entered/selected (valid or not)
+    loadList();
+  });
+
+  propFilter.addEventListener('change', async () => {
+    await Promise.all([loadUnits(), loadTenants()]);
+    // clear dependent filters
+    unitFilter.value = '';
+    tenantFilter.value = '';
+    // keep LEFT form's property in sync and refresh its leases dropdown
+    propSelect.value = (propFilter.value === 'all') ? '' : propFilter.value;
+    await loadLeasesForProperty();
+    loadList();
+  });
+
+  unitFilter.addEventListener('change', () => {
+    // avoid conflicting tenant filter
+    tenantFilter.value = '';
+    loadList();
+  });
+
+  activeOnly.addEventListener('change', async () => {
+    await Promise.all([loadUnits(), loadTenants()]);
+    await loadLeasesForProperty();
+    loadList();
+  });
+
+  propSelect.addEventListener('change', loadLeasesForProperty);
+
+  // =================== INIT ===================
+  (async function init(){
+    await Promise.all([loadUnits(), loadTenants()]);
+    setModeNew();
+    loadList();
+  })();
+})();
+
+function openPreviewModal(){ 
+    if (window.bootstrap && bootstrap.Modal) {
+      const m = new bootstrap.Modal(document.getElementById('previewModal'));
+      m.show();
+    } else {
+      // Fallback if Bootstrap JS not present
+      document.getElementById('previewModal').classList.add('show','d-block');
+    }
+  }
+function closePreviewModal(){
+    if (window.bootstrap && bootstrap.Modal) {
+      const el = document.getElementById('previewModal');
+      const m = bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el);
+      m.hide();
+    } else {
+      document.getElementById('previewModal').classList.remove('show','d-block');
+    }
+  }
+
+</script>
+
+{% endblock %}

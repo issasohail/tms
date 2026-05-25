@@ -213,6 +213,12 @@ class SecurityDepositTransaction(models.Model):
         ('DAMAGE', 'Damage / Adjustment'),
         ('ADJUST', 'Manual Adjustment'),
     ]
+    REFUND_STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("APPROVED", "Approved"),
+        ("PAID", "Paid"),
+        ("CANCELLED", "Cancelled"),
+    ]
 
     lease = models.ForeignKey(
         'leases.Lease',
@@ -227,6 +233,26 @@ class SecurityDepositTransaction(models.Model):
         default=Decimal('0.00')
     )
     notes = models.TextField(blank=True, null=True)
+    deduction_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+    )
+    deduction_reason = models.TextField(blank=True, null=True)
+    refund_payment_method = models.ForeignKey(
+        'core.PaymentMethod',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='security_refunds',
+    )
+    refund_status = models.CharField(
+        max_length=20,
+        choices=REFUND_STATUS_CHOICES,
+        blank=True,
+        default="PAID",
+    )
+    refund_notes = models.TextField(blank=True, null=True)
 
     # optional links (for traceability)
     payment = models.ForeignKey(

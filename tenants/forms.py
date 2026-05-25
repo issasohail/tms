@@ -1,5 +1,5 @@
 from django import forms
-from .models import Tenant
+from .models import PotentialTenantLead, Tenant, TenantRegistrationSubmission
 from leases.models import Lease
 from properties.models import Property, Unit
 from django.apps import apps
@@ -59,8 +59,11 @@ class TenantForm(forms.ModelForm):
         fields = '__all__'
         widgets = {
             'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
+            'police_verification_date': forms.DateInput(attrs={'type': 'date'}),
+            'police_verification_follow_up_date': forms.DateInput(attrs={'type': 'date'}),
             'notes': forms.Textarea(attrs={'rows': 3}),
             'address': forms.Textarea(attrs={'rows': 2}),
+            'police_verification_remarks': forms.Textarea(attrs={'rows': 2}),
             "phone":  forms.TextInput(attrs={"type": "tel", "maxlength": "20", "placeholder": "+447911123456 or 03123456789"}),
             "phone2": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
             "phone3": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
@@ -141,4 +144,58 @@ class LeaseForm(forms.ModelForm):
             'start_date': forms.DateInput(attrs={'type': 'date'}),
             'end_date': forms.DateInput(attrs={'type': 'date'}),
             'terms': forms.Textarea(attrs={'rows': 5}),
+        }
+
+
+class PotentialTenantLeadForm(forms.ModelForm):
+    class Meta:
+        model = PotentialTenantLead
+        fields = [
+            "name",
+            "phone",
+            "whatsapp_number",
+            "interested_building",
+            "interested_unit",
+            "budget",
+            "family_size",
+            "notes",
+            "status",
+            "source",
+            "next_follow_up_date",
+        ]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "phone": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "whatsapp_number": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "interested_building": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "interested_unit": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "budget": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
+            "family_size": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 4}),
+            "status": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "source": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "next_follow_up_date": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
+        }
+
+
+class TenantPublicRegistrationForm(forms.Form):
+    first_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    last_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
+    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    phone2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}))
+    emergency_contact_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    emergency_contact_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    emergency_contact_relation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    number_of_family_member = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+
+
+class TenantRegistrationSubmissionReviewForm(forms.ModelForm):
+    class Meta:
+        model = TenantRegistrationSubmission
+        fields = ["status", "admin_notes"]
+        widgets = {
+            "status": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "admin_notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }

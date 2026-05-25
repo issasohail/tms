@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Renew Lease #{{ lease.id }}</h2>
+    <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-secondary btn-sm">Cancel</a>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header bg-dark text-white py-2 px-3">Current Master Lease</div>
+    <div class="card-body">
+      <div class="row row-cols-1 row-cols-md-3 g-2 small">
+        <div><strong>Tenant:</strong> {{ lease.tenant.get_full_name }}</div>
+        <div><strong>Unit:</strong> {{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</div>
+        <div><strong>Status:</strong> {{ lease.get_status_display }}</div>
+        <div><strong>Current Period:</strong> {{ lease.start_date|date:"M d, Y" }} to {{ lease.end_date|date:"M d, Y" }}</div>
+        <div><strong>Current Rent:</strong> Rs {{ lease.monthly_rent|floatformat:0|intcomma }}</div>
+        <div><strong>Maintenance:</strong> Rs {{ lease.society_maintenance|default:0|floatformat:0|intcomma }}</div>
+      </div>
+      <div class="alert alert-warning mt-3 mb-0 py-2">
+        This will create a renewal history record and update the same master lease. Invoices and payments will remain linked to Lease #{{ lease.id }}.
+      </div>
+    </div>
+  </div>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <div class="card">
+      <div class="card-header bg-dark text-white py-2 px-3">Renewal Details</div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="row g-3">
+          {% for field in form %}
+            <div class="{% if field.name == 'notes' %}col-12{% else %}col-md-4{% endif %}">
+              <label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-secondary btn-sm">Cancel</a>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="fas fa-sync-alt me-1"></i> Create Renewal
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

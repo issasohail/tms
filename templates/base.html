@@ -35,6 +35,21 @@
   <link rel="stylesheet" href="{% static 'css/tenant_table.css' %}">
   <link rel="stylesheet" href="{% static 'css/styles.css' %}">
 
+  <script>
+    window.TMS_CURRENCY_CODE = "{{ GLOBAL_SETTINGS.currency_code|default:'PKR'|escapejs }}";
+    window.TMS_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|default:'Rs.'|escapejs }}";
+    window.TMS_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+    window.tmsFormatMoney = function (value, options) {
+      const opts = options || {};
+      const decimals = opts.decimals ?? 2;
+      const symbol = opts.symbol || window.TMS_CURRENCY_SYMBOL || "";
+      const number = Number(value || 0);
+      return symbol + " " + number.toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    };
+  </script>
 
   <style>
 
@@ -105,6 +120,51 @@
     .table .actions-wrap{
       min-width: 120px; /* adjust if needed */
     }
+
+    .viewport-bar {
+      position: fixed;
+      left: .75rem;
+      right: .75rem;
+      bottom: .55rem;
+      z-index: 1080;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      padding: .45rem .75rem;
+      border: 1px solid rgba(33, 37, 41, .18);
+      border-radius: .5rem;
+      background: rgba(255, 255, 255, .96);
+      box-shadow: 0 .5rem 1.25rem rgba(0, 0, 0, .18);
+      font-size: .78rem;
+      color: #212529;
+    }
+    body.show-viewport-bar .viewport-bar { display:flex; }
+    .viewport-bar__track {
+      position: relative;
+      flex: 1 1 auto;
+      height: .5rem;
+      min-width: 6rem;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #198754 0 20%, #0d6efd 20% 55%, #ffc107 55% 80%, #dc3545 80% 100%);
+      overflow: hidden;
+    }
+    .viewport-bar__marker {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: .75rem;
+      height: .75rem;
+      border-radius: 50%;
+      background: #212529;
+      border: 2px solid #fff;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.25);
+    }
+    @media (max-width: 420px) {
+      .viewport-bar { left:.4rem; right:.4rem; bottom:.4rem; padding:.38rem .5rem; font-size:.7rem; }
+      .viewport-bar__track { min-width:4.5rem; }
+    }
   </style>
   {% block extra_css %}{% endblock %}
 </head>
@@ -123,6 +183,14 @@
 
   <div class="container mt-0">
     {% block content %}{% endblock %}
+  </div>
+
+  <div class="viewport-bar no-print" aria-live="polite">
+    <strong>Viewport</strong>
+    <div class="viewport-bar__track" aria-hidden="true">
+      <span class="viewport-bar__marker" id="viewportMarker"></span>
+    </div>
+    <span id="viewportSize">0 x 0</span>
   </div>
 
 
@@ -157,6 +225,47 @@
         $('#unit-select').select2({ theme: 'bootstrap-5', placeholder: "Search Unit", allowClear: true });
       }
     });
+  </script>
+
+  <script>
+    (function(){
+      const storageKey = 'tmsViewportBar';
+      const toggles = Array.from(document.querySelectorAll('.js-viewport-toggle'));
+      const sizeEl = document.getElementById('viewportSize');
+      const marker = document.getElementById('viewportMarker');
+
+      function enabled(){
+        return localStorage.getItem(storageKey) === '1';
+      }
+
+      function setEnabled(value){
+        localStorage.setItem(storageKey, value ? '1' : '0');
+        document.body.classList.toggle('show-viewport-bar', value);
+        toggles.forEach(toggle => { toggle.checked = value; });
+        updateViewportBar();
+      }
+
+      function updateViewportBar(){
+        if (!sizeEl || !marker) return;
+        const width = window.innerWidth || document.documentElement.clientWidth || 0;
+        const height = window.innerHeight || document.documentElement.clientHeight || 0;
+        sizeEl.textContent = width + ' x ' + height;
+        const percent = Math.max(0, Math.min(100, (width / 1440) * 100));
+        marker.style.left = percent + '%';
+      }
+
+      document.addEventListener('DOMContentLoaded', function(){
+        toggles.forEach(toggle => {
+          toggle.addEventListener('change', function(){
+            setEnabled(this.checked);
+          });
+        });
+        setEnabled(enabled());
+      });
+
+      window.addEventListener('resize', updateViewportBar);
+      window.addEventListener('orientationchange', updateViewportBar);
+    })();
   </script>
 
   <!-- Reusable receipt viewer modal -->

@@ -75,12 +75,12 @@
                         <p class="mb-1"><strong>Phone:</strong> {{ payment.lease.tenant.phone|default:"—" }}</p>
                         <p class="mb-0">
                             <strong>Security:</strong>
-                            Rs. {{ payment.lease.security_deposit|floatformat:2|intcomma }}
+                            {{ payment.lease.security_deposit|money:2 }}
                             <span class="{% if payment.lease.security_deposit_paid %}text-success{% else %}text-danger{% endif %}">
                             ({% if payment.lease.security_deposit_paid %}Paid{% else %}Pending{% endif %})
                             </span>
                         </p>
-                        <p class="mb-0"><strong>New Bal:</strong> Rs. {{ payment.lease.get_balance|floatformat:2|intcomma }}</p>
+                        <p class="mb-0"><strong>New Bal:</strong> {{ payment.lease.get_balance|money:2 }}</p>
 
                         </div>
 
@@ -109,7 +109,7 @@
                             <tbody>
                                 <tr>
                                     <td>Payment for {{ payment.payment_method.name }}</td>
-                                    <td class="text-end" >Rs. {{ payment.amount|floatformat:2|intcomma }}</td>
+                                    <td class="text-end" >{{ payment.amount|money:2 }}</td>
                                 </tr>
                                 {% if payment.notes %}
                                 <tr>
@@ -132,7 +132,7 @@
                                 {% endif %}
                             </div>
                             <div class="col-6 text-end">
-                                <p class="mb-1 fw-bold">Rs. {{ payment.amount|floatformat:2|intcomma }}</p>
+                                <p class="mb-1 fw-bold">{{ payment.amount|money:2 }}</p>
                                 {% if payment.related_invoice %}
                                 <p class="mb-1">#{{ payment.related_invoice.invoice_number }}</p>
                                 {% endif %}
@@ -449,7 +449,7 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         }
 
         // --- Security deposit info as strings from Django ---
-        const securityRequired = "Rs. {{ sec_totals.required|floatformat:2|intcomma|escapejs }}";
+        const securityRequired = "{{ sec_totals.required|money:2|escapejs }}";
         const securityStatus   = "{% if sec_totals.balance_to_collect > 0 %}Pending{% else %}Paid{% endif %}";
 
         // Lease balance after this payment (string, e.g. "32,200.00")
@@ -481,12 +481,12 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
             `Period: {{ payment.lease.start_date|date:"M d, Y"|escapejs }} – {{ payment.lease.end_date|date:"M d, Y"|escapejs }}`,
             `Security Deposit: ${securityRequired} (${securityStatus})`,
             {% if sec_totals.balance_to_collect > 0 %}
-            `Security Deposit Balance: Rs. ${secBalStr}`,
+            `Security Deposit Balance: {{ CURRENCY_SYMBOL }} ${secBalStr}`,
             {% endif %}
             `Date: {{ payment.payment_date|date:"M d, Y"|escapejs }}`,
-            `*Amount: Rs. {{ payment.amount|floatformat:2|intcomma|escapejs }}*`,
-            `Lease Balance: Rs. ${leaseBalStr}`,
-            `*Total Balance: Rs. ${totalWithSecStr}*`,
+            `*Amount: {{ payment.amount|money:2|escapejs }}*`,
+            `Lease Balance: {{ CURRENCY_SYMBOL }} ${leaseBalStr}`,
+            `*Total Balance: {{ CURRENCY_SYMBOL }} ${totalWithSecStr}*`,
             ``,
             `Thank you!`
         ];
@@ -556,12 +556,12 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
 
         const message = `Dear {{ payment.lease.tenant.first_name }},\n\n` +
             `Payment Receipt #{{ payment.reference|default:payment.id }}\n` +
-            `Amount:Rs. {{ payment.amount|floatformat:2|intcomma }}\n` +
+            `Amount:{{ payment.amount|money:2 }}\n` +
             `Date: {{ payment.payment_date|date:"M d, Y" }}\n` +
             `Method: {{ payment.get_payment_method_display }}\n` +
             `Property: {{ payment.lease.unit.property.property_name }}\n` +
             `Unit: {{ payment.lease.unit.unit_number }}\n` 
-            `Balance:Rs. {{ payment.lease.get_balance|floatformat:2|intcomma }}\n\n` +
+            `Balance:{{ payment.lease.get_balance|money:2 }}\n\n` +
             `Thank you!`;
 
         const phone = rawPhone.replace(/[^\d]/g, '');

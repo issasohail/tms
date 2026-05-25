@@ -1,31 +1,124 @@
 {% extends "base.html" %}
+
 {% block content %}
-<h1>{{ title }}</h1>
-
-<form method="post">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  <div>
-    {{ form.clause_number.label_tag }}<br>
-    {{ form.clause_number }}
-    {{ form.clause_number.errors }}
-  </div>
-  <div>
-    {{ form.body.label_tag }}<br>
-    {{ form.body }}
-    <p>
-      <small>
-        You can use variables like {{ "{{ monthly_rent }}" }},
-        {{ "{{ total_monthly }}" }}, {{ "{{ tenant.full_name }}" }}, etc.
-      </small>
-    </p>
-    {{ form.body.errors }}
-  </div>
-  <div>
-    {{ form.is_active.label_tag }} {{ form.is_active }}
-    {{ form.is_active.errors }}
+<div class="container-fluid px-2 px-md-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">{{ title }}</h3>
+      <div class="text-muted small">Use placeholders like [MONTHLY_RENT] inside the clause text.</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'leases:default_clause_list' %}">Back to Clauses</a>
   </div>
 
-  <button type="submit">Save</button>
-</form>
+  <div class="row g-3">
+    <div class="col-12 col-xl-8">
+      <form method="post" class="card shadow-sm">
+        {% csrf_token %}
+        <div class="card-header py-2">
+          <strong>Clause Details</strong>
+        </div>
+        <div class="card-body">
+          {{ form.non_field_errors }}
+
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label mb-1" for="{{ form.clause_number.id_for_label }}">Clause Number</label>
+              {{ form.clause_number }}
+              {{ form.clause_number.errors }}
+            </div>
+            <div class="col-12 col-md-4">
+              <div class="form-check mt-3">
+                {{ form.is_active }}
+                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label>
+              </div>
+              {{ form.is_active.errors }}
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label mb-1" for="{{ form.body.id_for_label }}">Clause Text</label>
+            {{ form.body }}
+            {{ form.body.errors }}
+          </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'leases:default_clause_list' %}">Cancel</a>
+          <button type="submit" class="btn btn-primary btn-sm">Save Clause</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="col-12 col-xl-4">
+      <div class="card shadow-sm placeholder-card">
+        <div class="card-header py-2">
+          <strong>Placeholders</strong>
+        </div>
+        <div class="card-body">
+          <input type="search" id="placeholderSearch" class="form-control form-control-sm mb-2" placeholder="Search placeholder">
+          <div class="placeholder-list">
+            {% for placeholder in placeholders %}
+              <button type="button" class="btn btn-outline-secondary btn-sm placeholder-token" data-token="[{{ placeholder.key }}]" title="{{ placeholder.label }}">
+                [{{ placeholder.key }}]
+              </button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.clause-body-field {
+  font-family: "Times New Roman", Times, serif;
+  font-size: .92rem;
+  line-height: 1.35;
+}
+.placeholder-card {
+  position: sticky;
+  top: .75rem;
+}
+.placeholder-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  max-height: 68vh;
+  overflow-y: auto;
+}
+.placeholder-token {
+  font-family: Consolas, monospace;
+  font-size: .75rem;
+}
+@media (max-width: 420px) {
+  .container-fluid h3 { font-size: 1.15rem; }
+  .placeholder-card { position: static; }
+}
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const body = document.getElementById("{{ form.body.id_for_label }}");
+  const search = document.getElementById("placeholderSearch");
+  const tokens = Array.from(document.querySelectorAll(".placeholder-token"));
+
+  tokens.forEach(btn => {
+    btn.addEventListener("click", function () {
+      if (!body) return;
+      const token = this.dataset.token;
+      const start = body.selectionStart || 0;
+      const end = body.selectionEnd || 0;
+      body.value = body.value.slice(0, start) + token + body.value.slice(end);
+      body.focus();
+      body.selectionStart = body.selectionEnd = start + token.length;
+    });
+  });
+
+  search?.addEventListener("input", function () {
+    const term = this.value.trim().toLowerCase();
+    tokens.forEach(btn => {
+      btn.classList.toggle("d-none", term && !btn.dataset.token.toLowerCase().includes(term));
+    });
+  });
+});
+</script>
 {% endblock %}

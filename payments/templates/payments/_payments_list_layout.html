@@ -95,7 +95,7 @@
         <div class="d-flex justify-content-between align-items-left">
           <span class="fw-bold small">{% block total_label %}Payments Received:{% endblock %}</span>
           <span class="fw-bold text-success total-amount-display">
-            Rs. {{ total_amount|floatformat:2|intcomma }}
+            {{ total_amount|money:2 }}
           </span>
         </div>
       </div>
@@ -425,7 +425,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!res.ok) return;
       const data = await res.json();
       const amt = Number(data.total_amount || 0);
-      totalEl.textContent = 'Rs. ' + amt.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      totalEl.textContent = '{{ CURRENCY_SYMBOL }} ' + amt.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     } catch(e){
       console.log('Total AJAX failed:', e);
     }
@@ -586,7 +586,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return def ? def + cleaned : cleaned;
   }
 
-  function formatPKR(num) {
+  function formatMoneyValue(num) {
     return (parseFloat(num) || 0).toLocaleString("en-PK", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -629,16 +629,16 @@ document.addEventListener("DOMContentLoaded", function () {
           `${heading} for ${data.propertyName || ""}.`,
           `Unit: ${data.unitNumber || ""}`,
           `Period: ${data.periodStart || ""} – ${data.periodEnd || ""}`,
-          `Security Deposit: Rs. ${formatPKR(data.securityRequired || 0)} (${data.securityStatus || ""})`,
+          `Security Deposit: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(data.securityRequired || 0)} (${data.securityStatus || ""})`,
         ];
 
-        if (secBal > 0) lines.push(`Security Deposit Balance: Rs. ${formatPKR(secBal)}`);
+        if (secBal > 0) lines.push(`Security Deposit Balance: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(secBal)}`);
 
         lines.push(
           `Date: ${data.tranDate || ""}`,
-          `*Security Amount: Rs. ${formatPKR(data.txAmount || 0)}*`,
-          `Lease Balance: Rs. ${formatPKR(leaseBal)}`,
-          `*Total Balance: Rs. ${formatPKR(totalBal)}*`,
+          `*Security Amount: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(data.txAmount || 0)}*`,
+          `Lease Balance: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(leaseBal)}`,
+          `*Total Balance: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(totalBal)}*`,
           ``,
           `Thank you!`
         );

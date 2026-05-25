@@ -1,4 +1,5 @@
-from django.db.models import Exists, OuterRef
+from django.db.models import Case, DecimalField, Exists, OuterRef, When
+from django.db.models.functions import Coalesce
 from django.db.models.functions import Replace
 from django.db.models import F, Value
 import re
@@ -7,7 +8,7 @@ from django.db.models import Q
 from utils.pdf_export import PDFTableExport, TableExport
 from django_tables2 import SingleTableView
 from properties.models import Property, Unit
-from .models import Tenant
+from .models import PotentialTenantLead, Tenant, TenantRegistrationSubmission
 from .tables import TenantTable
 from django.core.mail import EmailMessage
 from django.shortcuts import render, get_object_or_404, redirect
@@ -21,7 +22,7 @@ from django.db.models import Sum
 from .tables import TenantTable
 from django.http import JsonResponse
 from properties.forms import PropertyForm, UnitForm
-from .forms import TenantForm
+from .forms import PotentialTenantLeadForm, TenantForm, TenantPublicRegistrationForm, TenantRegistrationSubmissionReviewForm
 from leases.models import Lease
 from .forms import LeaseForm
 from django.http import HttpResponse
@@ -40,7 +41,7 @@ from django_tables2 import SingleTableView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Subquery, OuterRef
 from django.utils import timezone
-from invoices.models import Invoice  # Add this import
+from invoices.models import Invoice, SecurityDepositTransaction  # Add this import
 from payments.models import Payment
 from decimal import Decimal
 from django.db.models import Q
@@ -97,6 +98,15 @@ from invoices.models import Invoice
 from payments.models import Payment
 from django.db.models import Sum
 from django.shortcuts import redirect
+from core.models import GlobalSettings
+from leases.models import WhatsAppTemplate
+from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
+from django.core import signing
+from django.core.signing import BadSignature, SignatureExpired
+from django.views.decorators.http import require_POST
+
+TENANT_REGISTRATION_MAX_AGE = 60 * 60 * 24 * 7
+TENANT_REGISTRATION_SALT = "tenants.registration-link"
 
 
 class TenantListView(SingleTableView):
@@ -195,6 +205,7 @@ class TenantListView(SingleTableView):
         export_name = "tenants_list"
         return handle_export(request, table, export_name)
 
+
     def create_export(self, export_format):
         queryset = self.get_queryset()
         filename = f'tenants_{timezone.now().strftime("%Y%m%d_%H%M%S")}'
@@ -252,6 +263,100 @@ class TenantListView(SingleTableView):
         return super().get(request, *args, **kwargs)
 
 
+def tenant_registration_token(tenant):
+    return signing.dumps({"tenant_id": tenant.pk}, salt=TENANT_REGISTRATION_SALT)
+
+
+def _tenant_from_registration_token(token):
+    data = signing.loads(
+        token,
+        salt=TENANT_REGISTRATION_SALT,
+        max_age=TENANT_REGISTRATION_MAX_AGE,
+    )
+    return get_object_or_404(Tenant, pk=data["tenant_id"])
+
+
+def tenant_public_registration_update(request, token):
+    try:
+        tenant = _tenant_from_registration_token(token)
+    except SignatureExpired:
+        return render(request, "tenants/public_registration_expired.html", status=410)
+    except BadSignature:
+        raise Http404("Invalid registration link")
+
+    initial = {
+        "first_name": tenant.first_name,
+        "last_name": tenant.last_name,
+        "email": tenant.email,
+        "phone": tenant.phone,
+        "phone2": tenant.phone2,
+        "address": tenant.address,
+        "emergency_contact_name": tenant.emergency_contact_name,
+        "emergency_contact_phone": tenant.emergency_contact_phone,
+        "emergency_contact_relation": tenant.emergency_contact_relation,
+        "number_of_family_member": tenant.number_of_family_member,
+    }
+    if request.method == "POST":
+        form = TenantPublicRegistrationForm(request.POST)
+        if form.is_valid():
+            TenantRegistrationSubmission.objects.create(
+                tenant=tenant,
+                submitted_data=form.cleaned_data,
+            )
+            return render(request, "tenants/public_registration_submitted.html", {"tenant": tenant})
+    else:
+        form = TenantPublicRegistrationForm(initial=initial)
+    return render(request, "tenants/public_registration_form.html", {"tenant": tenant, "form": form})
+
+
+class TenantRegistrationSubmissionListView(LoginRequiredMixin, ListView):
+    model = TenantRegistrationSubmission
+    template_name = "tenants/registration_submission_list.html"
+    context_object_name = "submissions"
+
+
+class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
+    model = TenantRegistrationSubmission
+    template_name = "tenants/registration_submission_detail.html"
+    context_object_name = "submission"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form"] = TenantRegistrationSubmissionReviewForm(instance=self.object)
+        context["registration_link"] = self.request.build_absolute_uri(
+            reverse("tenants:tenant_public_registration", args=[tenant_registration_token(self.object.tenant)])
+        )
+        return context
+
+
+@login_required
+@require_POST
+def tenant_registration_submission_review(request, pk):
+    submission = get_object_or_404(TenantRegistrationSubmission, pk=pk)
+    form = TenantRegistrationSubmissionReviewForm(request.POST, instance=submission)
+    if form.is_valid():
+        obj = form.save(commit=False)
+        obj.reviewed_by = request.user
+        obj.reviewed_at = timezone.now()
+        obj.save()
+        if obj.status == "approved":
+            tenant = obj.tenant
+            allowed = [
+                "first_name", "last_name", "email", "phone", "phone2", "address",
+                "emergency_contact_name", "emergency_contact_phone",
+                "emergency_contact_relation", "number_of_family_member",
+            ]
+            for field in allowed:
+                setattr(tenant, field, obj.submitted_data.get(field, getattr(tenant, field)))
+            tenant.save(update_fields=allowed + ["updated_at"])
+            messages.success(request, "Tenant registration update approved and applied.")
+        else:
+            messages.success(request, "Tenant registration submission updated.")
+    else:
+        messages.error(request, "Could not update registration submission.")
+    return redirect("tenants:registration_submission_detail", pk=submission.pk)
+
+
 def get_units_by_property(request):
     property_id = request.GET.get('property_id')
     units = Unit.objects.filter(
@@ -260,6 +365,86 @@ def get_units_by_property(request):
         'units': [{'id': unit.id, 'unit_number': unit.unit_number} for unit in units]
     }
     return JsonResponse(data)
+
+
+class PotentialTenantLeadListView(LoginRequiredMixin, ListView):
+    model = PotentialTenantLead
+    template_name = "tenants/lead_list.html"
+    context_object_name = "leads"
+    paginate_by = 40
+
+    def get_queryset(self):
+        qs = PotentialTenantLead.objects.select_related(
+            "interested_building", "interested_unit"
+        )
+        status = self.request.GET.get("status")
+        if status:
+            qs = qs.filter(status=status)
+        return qs.order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["status_choices"] = PotentialTenantLead.STATUS_CHOICES
+        context["current_status"] = self.request.GET.get("status", "")
+        return context
+
+
+class PotentialTenantLeadCreateView(LoginRequiredMixin, CreateView):
+    model = PotentialTenantLead
+    form_class = PotentialTenantLeadForm
+    template_name = "tenants/lead_form.html"
+    success_url = reverse_lazy("tenants:lead_list")
+
+    def form_valid(self, form):
+        messages.success(self.request, "Lead added.")
+        return super().form_valid(form)
+
+
+class PotentialTenantLeadUpdateView(LoginRequiredMixin, UpdateView):
+    model = PotentialTenantLead
+    form_class = PotentialTenantLeadForm
+    template_name = "tenants/lead_form.html"
+    success_url = reverse_lazy("tenants:lead_list")
+
+    def form_valid(self, form):
+        messages.success(self.request, "Lead updated.")
+        return super().form_valid(form)
+
+
+class PotentialTenantLeadDetailView(LoginRequiredMixin, DetailView):
+    model = PotentialTenantLead
+    template_name = "tenants/lead_detail.html"
+    context_object_name = "lead"
+
+
+@login_required
+def lead_vacancy_whatsapp(request, pk):
+    lead = get_object_or_404(PotentialTenantLead, pk=pk)
+    unit = lead.interested_unit
+    if not unit:
+        messages.error(request, "Select an interested unit before sending a vacancy message.")
+        return redirect("tenants:lead_detail", pk=lead.pk)
+
+    settings_obj = GlobalSettings.get_solo()
+    template, rendered_message = render_unit_whatsapp_template(
+        WhatsAppTemplate.TEMPLATE_VACANCY,
+        unit,
+        request=request,
+    )
+    phone = lead.whatsapp_number or lead.phone
+    whatsapp_url = build_whatsapp_url(
+        phone,
+        rendered_message,
+        country_code=getattr(settings_obj, "country_code", "+92"),
+    )
+    return render(request, "tenants/lead_vacancy_whatsapp.html", {
+        "lead": lead,
+        "unit": unit,
+        "template": template,
+        "message_text": rendered_message,
+        "phone": phone,
+        "whatsapp_url": whatsapp_url,
+    })
 
 
 class TenantDetailView(LoginRequiredMixin, DetailView):
@@ -356,6 +541,9 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             # <-- expose tenant-wide balance explicitly
             'current_balance': tenant.current_balance
         })
+        context['registration_link'] = self.request.build_absolute_uri(
+            reverse('tenants:tenant_public_registration', args=[tenant_registration_token(tenant)])
+        )
 
         def get_object(self, queryset=None):
             tenant = super().get_object(queryset)
@@ -932,11 +1120,14 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
     export_formats = ['csv', 'xlsx', 'pdf']  # Add this line
 
     def get_queryset(self):
-        queryset = super().get_queryset().prefetch_related(
+        active_leases = Prefetch(
             'leases',
-            'leases__unit',
-            'leases__unit__property'
+            queryset=Lease.objects.filter(status='active')
+            .select_related('unit__property')
+            .order_by('-start_date', '-id'),
+            to_attr='active_leases',
         )
+        queryset = super().get_queryset().prefetch_related(active_leases)
 
         tenant_id = self.request.GET.get('tenant')
         phone = self.request.GET.get('phone')
@@ -970,9 +1161,75 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
         return queryset.order_by('first_name', 'last_name')
 
+    def _attach_lease_totals(self, tenants):
+        leases = []
+        for tenant in tenants:
+            lease = tenant.current_lease
+            if lease:
+                leases.append(lease)
+
+        lease_ids = [lease.id for lease in leases]
+        if not lease_ids:
+            return
+
+        zero = Decimal('0.00')
+        decimal_field = DecimalField(max_digits=12, decimal_places=2)
+        zero_db = Value(zero, output_field=decimal_field)
+
+        invoice_totals = {
+            row['lease_id']: row['total'] or zero
+            for row in (
+                Invoice.objects
+                .filter(lease_id__in=lease_ids)
+                .values('lease_id')
+                .annotate(total=Coalesce(Sum('amount'), zero_db))
+            )
+        }
+
+        payment_totals = {
+            row['lease_id']: row['total'] or zero
+            for row in (
+                Payment.objects
+                .filter(lease_id__in=lease_ids)
+                .values('lease_id')
+                .annotate(
+                    total=Coalesce(
+                        Sum(
+                            Case(
+                                When(allocation__isnull=False, then=F('allocation__lease_amount')),
+                                default=F('amount'),
+                                output_field=decimal_field,
+                            )
+                        ),
+                        zero_db,
+                    )
+                )
+            )
+        }
+
+        security_rows = (
+            SecurityDepositTransaction.objects
+            .filter(lease_id__in=lease_ids, type__in=['PAYMENT', 'ADJUST'])
+            .values('lease_id', 'type')
+            .annotate(total=Coalesce(Sum('amount'), zero_db))
+        )
+        security_totals = {}
+        for row in security_rows:
+            security_totals.setdefault(row['lease_id'], {})[row['type']] = row['total'] or zero
+
+        for lease in leases:
+            balance = invoice_totals.get(lease.id, zero) - payment_totals.get(lease.id, zero)
+            paid_in = security_totals.get(lease.id, {}).get('PAYMENT', zero)
+            adjust = security_totals.get(lease.id, {}).get('ADJUST', zero)
+            security_due = max((lease.security_deposit or zero) - paid_in - adjust, zero)
+            lease._cached_get_balance = balance
+            lease._cached_security_due = security_due
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         property_id = self.request.GET.get('property')
+        page_tenants = list(context.get('object_list') or context.get('tenants') or [])
+        self._attach_lease_totals(page_tenants)
 
         # Add all tenants for the tenant dropdown
         context['all_tenants'] = Tenant.objects.all().order_by(

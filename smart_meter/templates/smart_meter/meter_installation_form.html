@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">{{ title }}</h5>
+            <a href="{{ cancel_url }}" class="btn btn-sm btn-secondary">Back</a>
+        </div>
+        <div class="card-body">
+            <form method="post" novalidate>
+                {% csrf_token %}
+                {{ form.non_field_errors }}
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Meter</label>
+                        {{ form.meter }}
+                        {{ form.meter.errors }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Unit</label>
+                        {{ form.unit }}
+                        {{ form.unit.errors }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Lease</label>
+                        {{ form.lease }}
+                        {{ form.lease.errors }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Start Date</label>
+                        {{ form.start_date }}
+                        {{ form.start_date.errors }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Start Reading</label>
+                        {{ form.start_reading }}
+                        {{ form.start_reading.errors }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Reason</label>
+                        {{ form.reason }}
+                        {{ form.reason.errors }}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notes</label>
+                        {{ form.notes }}
+                        {{ form.notes.errors }}
+                    </div>
+                </div>
+
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+                    <a href="{{ cancel_url }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -133,6 +133,16 @@
     height: 28px !important;
 }
 
+.renewal-history-edit-table {
+  min-width: 1380px;
+}
+.renewal-history-edit-table textarea {
+  min-height: 34px;
+}
+.renewal-history-edit-table .form-control,
+.renewal-history-edit-table .form-select {
+  min-width: 92px;
+}
 
 </style>
 
@@ -243,6 +253,12 @@
                 <button class="nav-link" id="tab-family" data-bs-toggle="tab" data-bs-target="#pane-family" type="button" role="tab">
                   Family Members
                   {% if family_formset %}<span class="badge text-bg-secondary ms-1">{{ family_formset.total_form_count }}</span>{% endif %}
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-renewals" data-bs-toggle="tab" data-bs-target="#pane-renewals" type="button" role="tab">
+                  Renewal History
+                  {% if renewal_formset %}<span class="badge text-bg-secondary ms-1">{{ renewal_formset.initial_form_count }}</span>{% endif %}
                 </button>
               </li>
             </ul>
@@ -440,6 +456,140 @@
                 </div>
 
               </div> <!-- /tab-family -->
+
+              <!-- Renewal History -->
+              <div class="tab-pane fade" id="pane-renewals" role="tabpanel" aria-labelledby="tab-renewals">
+                {% if form.instance.pk %}
+                  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <div>
+                      <div class="fw-bold">Renewal History</div>
+                      <div class="text-muted small">
+                        Add, edit, or mark renewal records for delete. Use Renew Lease when you want to update the master lease terms.
+                      </div>
+                    </div>
+                    <div class="d-flex gap-1">
+                      <a href="{% url 'leases:lease_renew' form.instance.pk %}" class="btn btn-primary btn-sm">Renew Lease</a>
+                      <a href="{% url 'leases:lease_renewals' form.instance.pk %}" class="btn btn-outline-secondary btn-sm">Full History</a>
+                    </div>
+                  </div>
+
+                  {{ renewal_formset.management_form }}
+                  {% if renewal_formset.non_form_errors %}
+                    <div class="alert alert-danger py-2">
+                      {{ renewal_formset.non_form_errors }}
+                    </div>
+                  {% endif %}
+
+                  <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0 renewal-history-edit-table">
+                      <thead class="table-light">
+                        <tr>
+                          <th style="width:70px">#</th>
+                          <th style="width:130px">Start</th>
+                          <th style="width:130px">End</th>
+                          <th style="width:130px">Agreement</th>
+                          <th style="width:120px">Rent</th>
+                          <th style="width:120px">Maint.</th>
+                          <th style="width:110px">Water</th>
+                          <th style="width:110px">Internet</th>
+                          <th style="width:100px">Increase %</th>
+                          <th style="width:80px">Signed</th>
+                          <th style="min-width:180px">Notes</th>
+                          <th style="width:130px">Files</th>
+                          <th style="width:70px">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for renewal_form in renewal_formset %}
+                          <tr>
+                            {% for hidden in renewal_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            <td>
+                              {{ renewal_form.renewal_number }}
+                              {% for error in renewal_form.renewal_number.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.start_date }}
+                              {% for error in renewal_form.start_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.end_date }}
+                              {% for error in renewal_form.end_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.agreement_date }}
+                              {% for error in renewal_form.agreement_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.monthly_rent }}
+                              {% for error in renewal_form.monthly_rent.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.society_maintenance }}
+                              {% for error in renewal_form.society_maintenance.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.water_charges }}
+                              {% for error in renewal_form.water_charges.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.internet_charges }}
+                              {% for error in renewal_form.internet_charges.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.rent_increase_percent }}
+                              {% for error in renewal_form.rent_increase_percent.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td class="text-center">
+                              {{ renewal_form.is_agreement_signed }}
+                              {% for error in renewal_form.is_agreement_signed.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td>
+                              {{ renewal_form.notes }}
+                              {% for error in renewal_form.notes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </td>
+                            <td class="small">
+                              {% if renewal_form.instance.pk %}
+                                <div class="d-flex flex-wrap gap-1">
+                                  <a href="{% url 'leases:renewal_agreement' form.instance.pk renewal_form.instance.pk %}" class="btn btn-outline-primary btn-sm">Generate</a>
+                                  <a href="{% url 'leases:renewal_upload_signed' form.instance.pk renewal_form.instance.pk %}" class="btn btn-outline-secondary btn-sm">Upload</a>
+                                </div>
+                                <div class="mt-1">
+                                  {% if renewal_form.instance.generated_agreement_pdf %}
+                                    <a href="{{ renewal_form.instance.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                                  {% endif %}
+                                  {% if renewal_form.instance.generated_agreement_docx %}
+                                    <a href="{{ renewal_form.instance.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                                  {% endif %}
+                                  {% if renewal_form.instance.signed_copy %}
+                                    <a href="{{ renewal_form.instance.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                                  {% endif %}
+                                </div>
+                              {% else %}
+                                <span class="text-muted">New row</span>
+                              {% endif %}
+                            </td>
+                            <td class="text-center">
+                              {% if renewal_form.instance.pk %}
+                                {{ renewal_form.DELETE }}
+                              {% else %}
+                                <span class="text-muted">-</span>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% empty %}
+                          <tr>
+                            <td colspan="13" class="text-muted text-center py-3">No renewal rows available.</td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% else %}
+                  <div class="text-muted small">
+                    Save the lease first, then renewal history can be managed here.
+                  </div>
+                {% endif %}
+              </div> <!-- /tab-renewals -->
             </div> <!-- /tab-content -->
           </div>
 

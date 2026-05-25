@@ -13,7 +13,7 @@ from smart_meter.models import Meter
 from leases.models import Lease
 from leases.models import Lease
 from smart_meter.models import Meter
-from .services.invoicing import compute_electric_bill, upsert_invoice_with_electric_item, ElectricBillContext
+from .services.invoicing import compute_electric_bill, upsert_invoice_with_electric_item, ElectricBillContext, billing_contexts_for_period
 from invoices.models import Invoice, ItemCategory
 from django.utils import timezone
 from django.contrib import messages
@@ -36,6 +36,9 @@ def electric_bill_preview(request: HttpRequest, lease_id: int, meter_id: int) ->
     """Preview + inline edit for the electric bill line before committing to invoice (single meter)."""
     lease = get_object_or_404(Lease, pk=lease_id)
     meter = get_object_or_404(Meter, pk=meter_id)
+    if meter.billing_mode == "prepaid":
+        messages.error(request, "This meter is marked prepaid, so postpaid invoice generation is skipped.")
+        return redirect(request.META.get("HTTP_REFERER", "/"))
 
     month = request.GET.get("month")  # YYYY-MM
     if not month:
@@ -72,6 +75,9 @@ def electric_bill_commit(request: HttpRequest, lease_id: int, meter_id: int) -> 
 
     lease = get_object_or_404(Lease, pk=lease_id)
     meter = get_object_or_404(Meter, pk=meter_id)
+    if meter.billing_mode == "prepaid":
+        messages.error(request, "This meter is marked prepaid, so postpaid invoice generation is skipped.")
+        return redirect(request.META.get("HTTP_REFERER", "/"))
 
     # Posted fields from the preview form
     y, m = map(int, request.POST.get("month").split("-"))
@@ -167,13 +173,8 @@ def electric_bill_bulk_preview(request: HttpRequest) -> HttpResponse:
 
     # Filter set: property/unit optional; all meters by default
     from properties.models import Property, Unit
-    meters = Meter.objects.select_related("unit", "unit__property").all()
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
-    if prop_id:
-        meters = meters.filter(unit__property_id=prop_id)
-    if unit_id:
-        meters = meters.filter(unit_id=unit_id)
 
     rows = []
     duplicates = []
@@ -183,18 +184,9 @@ def electric_bill_bulk_preview(request: HttpRequest) -> HttpResponse:
     except ItemCategory.DoesNotExist:
         category = None
 
-    for meter in meters:
-        # Find overlapping lease for that unit and month
-        lease = (
-            Lease.objects
-            .filter(unit=meter.unit, start_date__lte=period_end, end_date__gte=period_start)
-            .order_by("-start_date")
-            .first()
-        )
-        if not lease:
-            continue
-
-        ctx = compute_electric_bill(lease, meter, period_start, period_end)
+    for ctx in billing_contexts_for_period(period_start, period_end, property_id=prop_id, unit_id=unit_id):
+        lease = ctx.lease
+        meter = ctx.meter
 
         # Find existing invoice for the month
         posting_month = _next_month_start(period_start)
@@ -266,6 +258,9 @@ def electric_bill_bulk_commit(request: HttpRequest) -> HttpResponse:
 
         lease = get_object_or_404(Lease, pk=lease_id)
         meter = get_object_or_404(Meter, pk=meter_id)
+        if meter.billing_mode == "prepaid":
+            acted["skipped"].append(meter_id)
+            continue
 
         ctx = ElectricBillContext(
             lease=lease,
@@ -321,21 +316,18 @@ def electric_bill_preview_by_meter(request, meter_id: int):
         return redirect(request.META.get("HTTP_REFERER", "/"))
 
     meter = get_object_or_404(Meter, pk=meter_id)
+    if meter.billing_mode == "prepaid":
+        messages.error(
+            request, "This meter is marked prepaid, so postpaid invoice generation is skipped.")
+        return redirect(request.META.get("HTTP_REFERER", "/"))
 
-    # Find a lease overlapping that month for the meter's unit
-    lease = (
-        Lease.objects
-        .filter(
-            unit=meter.unit,
-            start_date__lte=period_end,
-        )
-        .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start))
-        .order_by("-start_date")
-        .first()
-    )
+    lease = None
+    for ctx in billing_contexts_for_period(period_start, period_end, meter_id=meter.pk):
+        lease = ctx.lease
+        break
     if not lease:
         messages.error(
-            request, "No active lease found for this meter/unit in the selected month.")
+            request, "No lease occupancy found for this meter installation in the selected month.")
         return redirect(request.META.get("HTTP_REFERER", "/"))
 
     url = reverse("smart_meter:electric_bill_preview",

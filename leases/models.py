@@ -1,5 +1,6 @@
 from .models_lease_photos import LeaseMedia
 from .storage import OverwriteStorage
+from django.conf import settings
 from django.core.files.base import ContentFile
 import io
 from PIL import Image
@@ -100,6 +101,15 @@ class Lease(models.Model):
     notes = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    is_master = models.BooleanField(default=True)
+    original_start_date = models.DateField(null=True, blank=True)
+    superseded_by = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_leases",
+    )
 
     # leases/models.py - Add to Lease model
     witness1_name = models.CharField(max_length=100, null=True, blank=True)
@@ -111,6 +121,32 @@ class Lease(models.Model):
     gas_meter_reading = models.CharField(max_length=20, null=True, blank=True)
     signed_agreement = models.FileField(
         upload_to="agreements/", blank=True, null=True, verbose_name="Signed Agreement"
+    )
+    police_verification_status = models.CharField(
+        max_length=20,
+        choices=[
+            ("not_started", "Not Started"),
+            ("pending", "Pending"),
+            ("verified", "Verified"),
+            ("rejected", "Rejected"),
+            ("follow_up", "Follow Up"),
+        ],
+        default="not_started",
+    )
+    police_verification_date = models.DateField(null=True, blank=True)
+    police_verification_document = models.FileField(
+        upload_to="leases/police_verification/",
+        blank=True,
+        null=True,
+    )
+    police_verification_remarks = models.TextField(blank=True, default="")
+    police_verification_follow_up_date = models.DateField(null=True, blank=True)
+    police_verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="police_verified_leases",
     )
     security_deposit_paid = models.BooleanField(default=False)
     security_deposit_returned = models.BooleanField(default=False)
@@ -427,6 +463,8 @@ class Lease(models.Model):
         """
         Alias used in tables: 'Sec. Due' column.
         """
+        if hasattr(self, "_cached_security_due"):
+            return self._cached_security_due
         return self.security_balance_to_collect
 
     @property
@@ -440,6 +478,9 @@ class Lease(models.Model):
 
     @property
     def get_balance(self):
+        if hasattr(self, "_cached_get_balance"):
+            return self._cached_get_balance
+
         invoices_total = self.invoices.aggregate(
             t=Coalesce(Sum("amount"), Decimal("0.00"))
         )["t"]
@@ -516,6 +557,16 @@ class Lease(models.Model):
     def __str__(self):
         return f"Lease #{self.id} - {self.tenant}"
 
+    @property
+    def current_unit(self):
+        occupancy = (
+            self.unit_occupancies
+            .filter(move_out_date__isnull=True)
+            .select_related("unit")
+            .first()
+        )
+        return occupancy.unit if occupancy else self.unit
+
     def generate_invoice(self):
         from invoices.models import Invoice
 
@@ -532,6 +583,72 @@ class Lease(models.Model):
 
     def get_print_url(self):
         return reverse("leases:print", args=[self.id])
+
+
+class LeaseUnitOccupancy(models.Model):
+    lease = models.ForeignKey(
+        Lease,
+        on_delete=models.CASCADE,
+        related_name="unit_occupancies",
+    )
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.PROTECT,
+        related_name="lease_occupancies",
+    )
+    move_in_date = models.DateField()
+    move_out_date = models.DateField(null=True, blank=True)
+    active_lease_key = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        editable=False,
+        unique=True,
+        help_text="Internal DB guard: lease id while active, NULL when closed.",
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-move_in_date", "-id"]
+        indexes = [
+            models.Index(fields=["lease", "move_in_date"]),
+            models.Index(fields=["unit", "move_in_date"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(move_out_date__isnull=True) | models.Q(move_out_date__gte=models.F("move_in_date")),
+                name="lease_occupancy_out_after_in",
+            ),
+        ]
+
+    @property
+    def is_active(self):
+        return self.move_out_date is None
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.move_out_date and self.move_out_date < self.move_in_date:
+            raise ValidationError({"move_out_date": "Move-out date cannot be before move-in date."})
+        if self.move_out_date is None:
+            clash = LeaseUnitOccupancy.objects.filter(
+                lease=self.lease,
+                move_out_date__isnull=True,
+            )
+            if self.pk:
+                clash = clash.exclude(pk=self.pk)
+            if clash.exists():
+                raise ValidationError("This lease already has an active unit occupancy.")
+
+    def save(self, *args, **kwargs):
+        self.active_lease_key = self.lease_id if self.move_out_date is None else None
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        end = self.move_out_date or "current"
+        return f"{self.lease_id}: {self.unit} ({self.move_in_date} to {end})"
 
     @property
     def property_info(self):
@@ -1015,3 +1132,86 @@ class DefaultLeaseClause(models.Model):
 
     def __str__(self):
         return f"Default Clause {self.clause_number}"
+
+
+class AgreementPlaceholder(models.Model):
+    SOURCE_SYSTEM = "system"
+    SOURCE_CUSTOM = "custom"
+    SOURCE_MANUAL = "manual"
+    SOURCE_TYPE_CHOICES = [
+        (SOURCE_SYSTEM, "System"),
+        (SOURCE_CUSTOM, "Custom"),
+        (SOURCE_MANUAL, "Manual"),
+    ]
+
+    key = models.CharField(
+        max_length=80,
+        unique=True,
+        help_text="Placeholder key without brackets, e.g. MONTHLY_RENT.",
+    )
+    label = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=80, blank=True, default="General")
+    source_type = models.CharField(
+        max_length=20,
+        choices=SOURCE_TYPE_CHOICES,
+        default=SOURCE_SYSTEM,
+    )
+    resolver_key = models.CharField(max_length=120, blank=True)
+    django_path = models.CharField(max_length=180, blank=True)
+    default_value = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "sort_order", "key"]
+
+    def __str__(self):
+        return f"[{self.key}]"
+
+
+class WhatsAppTemplate(models.Model):
+    TEMPLATE_TENANT_WELCOME = "tenant_welcome"
+    TEMPLATE_VACANCY = "vacancy"
+    TEMPLATE_RENT_REMINDER = "rent_reminder"
+    TEMPLATE_PAYMENT_RECEIVED = "payment_received"
+    TEMPLATE_BALANCE_REMINDER = "balance_reminder"
+    TEMPLATE_REPAIR_REQUEST = "repair_request_reminder"
+    TEMPLATE_POLICE_VERIFICATION = "police_verification_reminder"
+    TEMPLATE_AGREEMENT_SIGNING = "agreement_signing_reminder"
+
+    TEMPLATE_TYPE_CHOICES = [
+        (TEMPLATE_TENANT_WELCOME, "Tenant welcome message"),
+        (TEMPLATE_VACANCY, "Vacancy message"),
+        (TEMPLATE_RENT_REMINDER, "Rent reminder"),
+        (TEMPLATE_PAYMENT_RECEIVED, "Payment received"),
+        (TEMPLATE_BALANCE_REMINDER, "Balance reminder"),
+        (TEMPLATE_REPAIR_REQUEST, "Repair request reminder"),
+        (TEMPLATE_POLICE_VERIFICATION, "Police verification reminder"),
+        (TEMPLATE_AGREEMENT_SIGNING, "Agreement signing reminder"),
+    ]
+
+    template_type = models.CharField(
+        max_length=40,
+        choices=TEMPLATE_TYPE_CHOICES,
+        unique=True,
+    )
+    name = models.CharField(max_length=120)
+    body = models.TextField(
+        blank=True,
+        help_text="Use placeholders like [TENANT_NAME], [UNIT_NUMBER], or custom placeholders."
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["template_type"]
+
+    def __str__(self):
+        return self.name or self.get_template_type_display()
+
+
+from .models_renewal import LeaseRenewal, LeaseRenewalClause  # noqa: E402,F401

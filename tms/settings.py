@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import os
+import importlib.util
 
 LOG_DIR = r"C:\tenant_management_system\logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -51,14 +52,18 @@ ALLOWED_HOSTS = [
     "0.0.0.0",
     "localhost",
     "192.168.100.39",
+    "192.168.100.28",
     "119.156.230.185",
     "desktop-004",
+    "tms.sonazconsultancy.online",
 ]
 
 
 CSRF_TRUSTED_ORIGINS = [
     "http://119.156.230.185",
     "http://192.168.100.39",
+    "http://192.168.100.28",
+    "https://tms.sonazconsultancy.online",
 ]
 
 
@@ -128,6 +133,17 @@ THUMBNAIL_PROCESSORS = (
 ) + thumb_settings.THUMBNAIL_PROCESSORS
 IMAGE_CROPPING_THUMB_SIZE = (300, 300)
 
+DEBUG_TOOLBAR_INSTALLED = importlib.util.find_spec("debug_toolbar") is not None
+ENABLE_LOCAL_DEBUG_TOOLBAR = DEBUG and DEBUG_TOOLBAR_INSTALLED and os.getenv("TMS_DISABLE_DEBUG_TOOLBAR", "").lower() not in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+if ENABLE_LOCAL_DEBUG_TOOLBAR:
+    INSTALLED_APPS += ["debug_toolbar"]
+
 MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -140,6 +156,12 @@ MIDDLEWARE = [
     "notifications.middleware.NotificationRecursionMiddleware",  # Add this line
 ]
 
+if ENABLE_LOCAL_DEBUG_TOOLBAR:
+    MIDDLEWARE.insert(
+        MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware") + 1,
+        "debug_toolbar.middleware.DebugToolbarMiddleware",
+    )
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -147,6 +169,21 @@ CACHES = {
     }
 }
 ROOT_URLCONF = "tms.urls"
+
+INTERNAL_IPS = [
+    "127.0.0.1",
+    "localhost",
+    "::1",
+    "192.168.0.0/16",
+]
+
+DEBUG_TOOLBAR_CONFIG = {
+    "INTERCEPT_REDIRECTS": False,
+    "SHOW_TOOLBAR_CALLBACK": "core.debug_toolbar.show_toolbar",
+    "DISABLE_PANELS": {
+        "debug_toolbar.panels.profiling.ProfilingPanel",
+    },
+}
 
 LEASE_STAMP_SCALE = 0.5  # overall scale
 LEASE_STAMP_PROP_SCALE = 0.52
@@ -199,6 +236,7 @@ SOCKET_SERVER_PORT = 6000
 
 TEMPLATES[0]["OPTIONS"]["builtins"] = [
     "django.contrib.humanize.templatetags.humanize",
+    "core.templatetags.money_tags",
 ]
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"  # "bootstrap4" if on BS4
 CRISPY_TEMPLATE_PACK = "bootstrap5"  # match your Bootstrap version
@@ -249,11 +287,30 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
+# -----------------------------
+# Static / Media (Local + Production Safe)
+# -----------------------------
+
+STATIC_URL = "/static/"
 
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "static"),  # Path to your global static files
+    BASE_DIR / "static",
 ]
+
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+
+# Reverse proxy path support for /tms/.
+# In local DEBUG runserver, leave this off so Django's staticfiles handler
+# serves /static/... correctly on Windows.
+FORCE_SCRIPT_NAME = os.getenv("FORCE_SCRIPT_NAME") or (None if DEBUG else "/tms")
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -284,10 +341,7 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
-# File uploads
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
@@ -299,7 +353,7 @@ REST_FRAMEWORK = {
     ],
 }
 
-LOGIN_URL = "/accounts/login/"
+LOGIN_URL = "/tms/accounts/login/"
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "login"
 
@@ -356,3 +410,9 @@ LOGGING = {
         },
     },
 }
+
+
+# Reverse proxy path support for /tms/
+FORCE_SCRIPT_NAME = os.getenv("FORCE_SCRIPT_NAME") or (None if DEBUG else "/tms")
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

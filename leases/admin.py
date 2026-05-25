@@ -1,5 +1,5 @@
 from .models_pcr import PropertyConditionReport, PCRPhoto
-from .models import Lease, LeaseAgreementClause, LeaseTemplate
+from .models import Lease, LeaseAgreementClause, LeaseTemplate, LeaseUnitOccupancy
 from django.db.models import F
 from django.contrib import admin
 from django.urls import reverse
@@ -18,7 +18,22 @@ from django.http import HttpResponse
 # Define ClauseInline first
 
 from django.contrib import admin
-from .models import Lease, DefaultClause, LeaseAgreementClause
+from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause
+from .models_renewal import LeaseRenewal, LeaseRenewalClause
+
+
+@admin.register(LeaseUnitOccupancy)
+class LeaseUnitOccupancyAdmin(admin.ModelAdmin):
+    list_display = ("lease", "unit", "move_in_date", "move_out_date", "is_active")
+    list_filter = ("move_in_date", "move_out_date", "unit__property__property_name")
+    search_fields = (
+        "lease__tenant__first_name",
+        "lease__tenant__last_name",
+        "unit__unit_number",
+        "unit__property__property_name",
+        "notes",
+    )
+    raw_id_fields = ("lease", "unit")
 
 
 @admin.register(DefaultClause)
@@ -31,6 +46,15 @@ class DefaultClauseAdmin(admin.ModelAdmin):
     def short_body(self, obj):
         return (obj.body[:80] + "...") if len(obj.body) > 80 else obj.body
     short_body.short_description = "Body"
+
+
+@admin.register(AgreementPlaceholder)
+class AgreementPlaceholderAdmin(admin.ModelAdmin):
+    list_display = ("key", "label", "category", "source_type", "is_active", "sort_order")
+    list_editable = ("is_active", "sort_order")
+    list_filter = ("is_active", "source_type", "category")
+    search_fields = ("key", "label", "description", "resolver_key", "django_path")
+    ordering = ("category", "sort_order", "key")
 
 
 class LeaseAgreementClauseInline(admin.TabularInline):
@@ -317,6 +341,37 @@ class LeaseTemplateAdmin(admin.ModelAdmin):
                 is_default=True).update(is_default=False)
             queryset.update(is_default=True)
     set_as_default.short_description = "Set as default template"
+
+
+class LeaseRenewalClauseInline(admin.TabularInline):
+    model = LeaseRenewalClause
+    extra = 0
+    fields = ("clause_number", "template_text", "is_customized")
+    ordering = ("clause_number",)
+
+
+@admin.register(LeaseRenewal)
+class LeaseRenewalAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "lease",
+        "renewal_number",
+        "start_date",
+        "end_date",
+        "monthly_rent",
+        "is_agreement_signed",
+        "created_by",
+        "created_at",
+    )
+    list_filter = ("is_agreement_signed", "start_date", "end_date")
+    search_fields = (
+        "lease__tenant__first_name",
+        "lease__tenant__last_name",
+        "lease__unit__unit_number",
+        "notes",
+    )
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [LeaseRenewalClauseInline]
 
 
 # leases/admin.py

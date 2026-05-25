@@ -213,6 +213,7 @@ from .forms import GlobalSettingsForm
 from django.views.generic import FormView
 from django.urls import reverse_lazy
 from django.contrib import messages
+from django.core.cache import cache
 
 from .models import GlobalSettings, PaymentMethod
 from .forms import GlobalSettingsForm
@@ -233,6 +234,8 @@ class SettingsView(FormView):
 
     def form_valid(self, form):
         form.save()
+        cache.delete("core.global_settings")
+        cache.delete("core.enable_debug_toolbar")
         messages.success(self.request, "Settings saved.")
         return super().form_valid(form)
 
@@ -241,7 +244,249 @@ class SettingsView(FormView):
         Add payment_methods so settings.html can render the list.
         """
         ctx = super().get_context_data(**kwargs)
+        form = ctx.get("form")
+        if form:
+            ctx["settings_field_groups"] = [
+                (title, icon, [form[name] for name in names if name in form.fields])
+                for title, icon, names in form.FIELD_GROUPS
+            ]
         ctx["payment_methods"] = PaymentMethod.objects.order_by(
             "sort_order", "name"
         )
         return ctx
+
+
+from django.views import View
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from .forms import BackupRestoreForm, BackupSettingsForm, BackupUploadForm
+from .backup_utils import (
+    choices_for,
+    create_code_backup,
+    create_db_backup,
+    create_full_backup,
+    create_media_backup,
+    list_backups,
+    load_backup_settings,
+    prune_old_backups,
+    restore_database,
+    restore_full,
+    restore_media,
+    save_backup_settings,
+    save_uploaded_backup,
+)
+
+
+class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
+    template_name = "core/backup_center.html"
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def _context(self, settings_form=None):
+        config = load_backup_settings()
+        backups = list_backups(config)
+        selected_db = self.request.GET.get("selected_db")
+        selected_media = self.request.GET.get("selected_media")
+        selected_full = self.request.GET.get("selected_full")
+        return {
+            "backup_settings_form": settings_form or BackupSettingsForm(initial=config),
+            "db_restore_form": BackupRestoreForm(
+                backup_choices=choices_for(backups, "db"),
+                initial={"backup_id": selected_db},
+            ),
+            "media_restore_form": BackupRestoreForm(
+                backup_choices=choices_for(backups, "media"),
+                initial={"backup_id": selected_media},
+            ),
+            "full_restore_form": BackupRestoreForm(
+                backup_choices=choices_for(backups, "full"),
+                initial={"backup_id": selected_full},
+            ),
+            "backup_upload_form": BackupUploadForm(),
+            "backups": backups,
+            "fresh_reset_scope": {
+                "profile_name": "tms_safe",
+                "profile_description": "Fresh reset is disabled until a TMS-specific reset profile is configured.",
+                "wipe_total_rows": 0,
+                "keep_total_rows": 0,
+            },
+        }
+
+    def get(self, request):
+        return render(request, self.template_name, self._context())
+
+    def post(self, request):
+        action = request.POST.get("action")
+        config = load_backup_settings()
+        try:
+            if action == "save_backup_settings":
+                form = BackupSettingsForm(request.POST)
+                if form.is_valid():
+                    save_backup_settings(form.cleaned_data)
+                    messages.success(request, "Backup settings saved.")
+                    return redirect("core:backup_center")
+                return render(request, self.template_name, self._context(settings_form=form))
+
+            if action == "upload_backup":
+                form = BackupUploadForm(request.POST, request.FILES)
+                if form.is_valid():
+                    uploaded = save_uploaded_backup(
+                        config,
+                        form.cleaned_data["backup_type"],
+                        form.cleaned_data["backup_file"],
+                    )
+                    messages.success(request, f"Backup uploaded: {uploaded.name}")
+                else:
+                    messages.error(request, "Upload failed. Check the selected type and file extension.")
+                return redirect("core:backup_center")
+
+            if action == "backup_db":
+                created = create_db_backup(config)
+                prune_old_backups(config)
+                messages.success(request, f"Database backup created: {created.name}")
+            elif action == "backup_media":
+                created = create_media_backup(config)
+                prune_old_backups(config)
+                messages.success(request, f"Media backup created: {created.name}")
+            elif action == "backup_code":
+                created = create_code_backup(config)
+                prune_old_backups(config)
+                messages.success(request, f"Code backup created: {created.name}")
+            elif action == "backup_full":
+                created = create_full_backup(config)
+                prune_old_backups(config)
+                messages.success(request, f"Full backup created: {created.name}")
+            elif action == "restore_db":
+                form = BackupRestoreForm(request.POST, backup_choices=choices_for(list_backups(config), "db"))
+                if not form.is_valid() or form.cleaned_data["confirm_text"] != "RESTORE DB":
+                    messages.error(request, "Type RESTORE DB exactly before restoring the database.")
+                else:
+                    safety = create_db_backup({**config, "enable_db_backup": True})
+                    restore_database(config, form.cleaned_data["backup_id"])
+                    messages.success(request, f"Database restore completed. Safety backup created first: {safety.name}")
+            elif action == "restore_media":
+                form = BackupRestoreForm(request.POST, backup_choices=choices_for(list_backups(config), "media"))
+                if not form.is_valid() or form.cleaned_data["confirm_text"] != "RESTORE MEDIA":
+                    messages.error(request, "Type RESTORE MEDIA exactly before restoring media.")
+                else:
+                    safety = create_media_backup({**config, "enable_media_backup": True})
+                    restore_media(config, form.cleaned_data["backup_id"])
+                    messages.success(request, f"Media restore completed. Safety backup created first: {safety.name}")
+            elif action == "restore_full":
+                form = BackupRestoreForm(request.POST, backup_choices=choices_for(list_backups(config), "full"))
+                if not form.is_valid() or form.cleaned_data["confirm_text"] != "RESTORE FULL":
+                    messages.error(request, "Type RESTORE FULL exactly before restoring a full backup.")
+                else:
+                    safety = create_full_backup({**config, "enable_full_backup": True})
+                    restore_full(config, form.cleaned_data["backup_id"])
+                    messages.success(request, f"Full restore completed. Safety backup created first: {safety.name}")
+            elif action == "fresh_reset":
+                messages.error(request, "Fresh reset is intentionally disabled until a TMS reset profile is configured.")
+            else:
+                messages.error(request, "Unknown backup action.")
+        except Exception as exc:
+            messages.error(request, f"Backup action failed: {exc}")
+
+        return redirect("core:backup_center")
+
+
+from django.http import FileResponse
+
+
+class BackupDownloadView(LoginRequiredMixin, UserPassesTestMixin, View):
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def get(self, request, backup_id):
+        backup = next((item for item in list_backups(load_backup_settings()) if item.id == backup_id), None)
+        if not backup:
+            raise Http404("Backup not found")
+        return FileResponse(open(backup.display_path, "rb"), as_attachment=True, filename=backup.id)
+
+
+from django.http import Http404, HttpResponseForbidden
+from django.contrib.auth.decorators import login_required
+from .forms import SuggestionReplyForm, SuggestionTicketForm
+from .suggestion_store import (
+    STATUS_CHOICES,
+    TYPE_CHOICES,
+    add_reply,
+    create_ticket,
+    get_ticket,
+    list_tickets,
+    update_status,
+)
+
+
+@login_required
+def suggestion_list(request):
+    selected_status = request.GET.get("status")
+    if selected_status is None:
+        selected_status = "PENDING"
+    selected_type = request.GET.get("type", "")
+    tickets = list_tickets(status=selected_status, ticket_type=selected_type)
+    return render(request, "core/suggestion_list.html", {
+        "tickets": tickets,
+        "status_choices": STATUS_CHOICES,
+        "type_choices": TYPE_CHOICES,
+        "selected_status": selected_status,
+        "selected_type": selected_type,
+    })
+
+
+@login_required
+def suggestion_create(request):
+    if request.method == "POST":
+        form = SuggestionTicketForm(request.POST)
+        if form.is_valid():
+            ticket = create_ticket(
+                form.cleaned_data,
+                request.user,
+                files=request.FILES.getlist("photos"),
+            )
+            messages.success(request, "Suggestion saved.")
+            return redirect("core:suggestion_detail", pk=ticket.id)
+    else:
+        form = SuggestionTicketForm()
+    return render(request, "core/suggestion_form.html", {"form": form})
+
+
+@login_required
+def suggestion_detail(request, pk):
+    ticket = get_ticket(pk)
+    if not ticket:
+        raise Http404("Suggestion not found")
+
+    if request.method == "POST":
+        form = SuggestionReplyForm(request.POST)
+        selected_status = request.POST.get("status") if request.user.is_staff or request.user.is_superuser else None
+        if form.is_valid():
+            message = (form.cleaned_data.get("message") or "").strip()
+            if message or selected_status:
+                add_reply(ticket.id, message, request.user, status=selected_status)
+                messages.success(request, "Reply saved.")
+                return redirect("core:suggestion_detail", pk=ticket.id)
+            messages.error(request, "Reply or status change is required.")
+    else:
+        form = SuggestionReplyForm()
+
+    ticket = get_ticket(pk)
+    return render(request, "core/suggestion_detail.html", {
+        "ticket": ticket,
+        "form": form,
+        "status_choices": STATUS_CHOICES,
+    })
+
+
+@login_required
+@require_POST
+def suggestion_status_update(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return HttpResponseForbidden("Not allowed")
+    new_status = request.POST.get("status")
+    if new_status not in dict(STATUS_CHOICES):
+        return JsonResponse({"ok": False, "error": "Invalid status."}, status=400)
+    ticket = update_status(pk, new_status)
+    if not ticket:
+        return JsonResponse({"ok": False, "error": "Suggestion not found."}, status=404)
+    return JsonResponse({"ok": True, "status": ticket.status})

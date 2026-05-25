@@ -17,6 +17,7 @@
         <li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>
         <li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>
         <li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
+        <li><a class="mlink" href="{% url 'maintenance:request_list' %}">Maint</a></li>
         <li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>
       </ul>
 
@@ -39,6 +40,12 @@
         </div>
 
         {% if user.is_authenticated %}
+          <label class="viewport-toggle form-check form-switch mb-0" title="Toggle viewport bar">
+            <input class="form-check-input js-viewport-toggle" type="checkbox" aria-label="Toggle viewport bar">
+          </label>
+          <a href="{% url 'core:suggestion_list' %}" class="icon-btn suggestion-nav-btn" aria-label="Suggestions / Report Errors" title="Suggestions / Report Errors">
+            <i class="bi bi-lightbulb"></i>
+          </a>
           <!-- Logout icon (SVG), no text -->
           <a href="{% url 'logout' %}" class="icon-btn" aria-label="Logout" title="Logout">
             <!-- Lucide "log-out" style -->
@@ -80,6 +87,7 @@
         <li><a class="dlink" href="{% url 'utilities:utility_list' %}">Utilities</a></li>
         <li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
         <li><a class="dlink" href="{% url 'reports:report_list' %}">Reports</a></li>
+        <li><a class="dlink" href="{% url 'maintenance:request_list' %}">Maintenance</a></li>
         <li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>
         <li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>
         <!-- Fast data entry -->
@@ -89,7 +97,13 @@
       </ul>
 
       <div class="d-flex align-items-center gap-2">
+        <label class="viewport-toggle form-check form-switch mb-0" title="Toggle viewport bar">
+          <input class="form-check-input js-viewport-toggle" type="checkbox" aria-label="Toggle viewport bar">
+        </label>
         {% if user.is_authenticated %}
+          <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">
+            <i class="bi bi-lightbulb"></i> Suggestions
+          </a>
           <a href="{% url 'logout' %}" class="btn btn-sm btn-light">Logout</a>
         {% else %}
           <a href="{% url 'login' %}" class="btn btn-sm btn-light">Login</a>
@@ -143,6 +157,11 @@
 .icon-btn{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:16px;
   border:1px solid rgba(255,255,255,.4); border-radius:.35rem; color:#fff; text-decoration:none; }
 #mobQuickAdd.btn{ padding-left: .3rem; padding-right: .3rem; } /* slimmer "+" button */
+.viewport-toggle { display:inline-flex; align-items:center; min-height:0; padding:0; }
+.viewport-toggle .form-check-input { width:1.75rem; height:.9rem; margin:0; cursor:pointer; }
+.suggestion-nav-btn { background:#ffc107; border-color:#ffc107; color:#111; }
+.suggestion-nav-btn:hover { color:#111; filter:brightness(.95); }
+.suggestion-nav-link { white-space:nowrap; }
 
 /* Desktop links */
 @media (min-width:768px){

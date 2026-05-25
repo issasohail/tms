@@ -24,10 +24,26 @@ urlpatterns = [
     # Unit URLs
     path('units/', UnitListView.as_view(), name='unit_list'),
     path('units/<int:pk>/', UnitDetailView.as_view(), name='unit_detail'),
+    path('units/<int:pk>/media/', views.unit_media_page, name='unit_media'),
+    path('units/<int:pk>/media/share-link/',
+         views.unit_media_share_link, name='unit_media_share_link'),
+    path('units/<int:pk>/whatsapp/vacancy/',
+         views.unit_vacancy_whatsapp, name='unit_vacancy_whatsapp'),
+    path('units/<int:pk>/media/<int:media_id>/delete/',
+         views.unit_media_delete, name='unit_media_delete'),
     path('units/create/', UnitCreateView.as_view(), name='unit_create'),
     path('units/<int:pk>/edit/', UnitUpdateView.as_view(), name='unit_update'),
     path('units/<int:pk>/delete/', UnitDeleteView.as_view(), name='unit_delete'),
 
+    path('<int:pk>/media/', views.property_media_page, name='property_media'),
+    path('<int:pk>/media/<int:media_id>/delete/',
+         views.property_media_delete, name='property_media_delete'),
+
     path('units/inline-update/', views.unit_inline_update,
-         name='unit_inline_update')
+         name='unit_inline_update'),
+
+    path('public/unit-media/<path:token>/<int:media_id>/',
+         views.unit_media_public_file, name='unit_media_public_file'),
+    path('public/unit-media/<path:token>/',
+         views.unit_media_public_share, name='unit_media_public_share'),
 ]

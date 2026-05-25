@@ -114,6 +114,12 @@ import socket
 from django.shortcuts import render, redirect
 from .models import Meter
 from .forms import MeterForm
+from .forms import (
+    CloseMeterInstallationForm,
+    InstallMeterToUnitForm,
+    MoveLeaseUnitForm,
+    SwitchMeterForm,
+)
 from django.shortcuts import get_object_or_404
 from django.shortcuts import get_object_or_404, redirect
 from .models import MeterReading
@@ -121,6 +127,8 @@ from .forms import MeterReadingForm
 from .forms import MeterSettingsForm
 from django.shortcuts import render, get_object_or_404, redirect
 from .models import Meter
+from .models import MeterInstallation
+from leases.models import LeaseUnitOccupancy
 from .tasks import poll_all_meters
 from django.http import JsonResponse
 from datetime import date
@@ -299,12 +307,23 @@ def assign_meter(request):
     return render(request, "smart_meter/assign_meter.html", {"form": form})
 
 
+def _first_active_meter_for_unit(unit):
+    installation = (
+        unit.meter_installations
+        .filter(is_active=True, end_date__isnull=True)
+        .select_related("meter")
+        .order_by("start_date", "id")
+        .first()
+    )
+    return installation.meter if installation else None
+
+
 # views.py (replace daily_report)
 
 
 def daily_report(request, unit_id):
     unit = get_object_or_404(Unit, id=unit_id)
-    meter = getattr(unit, "meter", None)
+    meter = _first_active_meter_for_unit(unit)
     if not meter:
         return render(request, "smart_meter/daily.html", {
             "unit": unit, "rows": [], "chart_labels": [], "chart_data": [],
@@ -388,7 +407,7 @@ def daily_report(request, unit_id):
 
 def monthly_report(request, unit_id):
     unit = get_object_or_404(Unit, id=unit_id)
-    meter = getattr(unit, "meter", None)
+    meter = _first_active_meter_for_unit(unit)
     if not meter:
         return render(request, "smart_meter/monthly.html", {"unit": unit, "rows": []})
 
@@ -768,7 +787,21 @@ def add_meter(request):
     if request.method == "POST":
         form = MeterForm(request.POST)
         if form.is_valid():
-            form.save()
+            meter = form.save()
+            from smart_meter.models import MeterAssignmentHistory
+            MeterAssignmentHistory.objects.create(
+                meter=meter,
+                unit=meter.unit,
+                lease=meter.current_lease,
+                old_meter=None,
+                new_meter=meter,
+                old_unit=None,
+                new_unit=meter.unit,
+                old_lease=None,
+                new_lease=meter.current_lease,
+                changed_by=request.user if request.user.is_authenticated else None,
+                notes="Meter created and assigned.",
+            )
             return redirect("smart_meter:meter_list")
     else:
         form = MeterForm()
@@ -778,10 +811,32 @@ def add_meter(request):
 
 def meter_edit(request, pk):
     meter = get_object_or_404(Meter, pk=pk)
+    old_unit = meter.unit
+    old_lease = meter.current_lease
     if request.method == "POST":
         form = MeterForm(request.POST, instance=meter)
         if form.is_valid():
-            form.save()
+            meter = form.save()
+            if old_unit_id := getattr(old_unit, "id", None):
+                unit_changed = old_unit_id != meter.unit_id
+            else:
+                unit_changed = True
+            if unit_changed:
+                from smart_meter.models import MeterAssignmentHistory
+                MeterAssignmentHistory.objects.create(
+                    meter=meter,
+                    unit=meter.unit,
+                    lease=meter.current_lease,
+                    old_meter=meter,
+                    new_meter=meter,
+                    old_unit=old_unit,
+                    new_unit=meter.unit,
+                    old_lease=old_lease,
+                    new_lease=meter.current_lease,
+                    changed_by=request.user if request.user.is_authenticated else None,
+                    notes=request.POST.get("notes", ""),
+                )
+                messages.success(request, "Meter assignment updated and history recorded.")
             return redirect('smart_meter:meter_detail', pk=meter.pk)
     else:
         form = MeterForm(instance=meter)
@@ -799,6 +854,167 @@ def meter_delete(request, pk):
 def meter_detail(request, pk):
     meter = get_object_or_404(Meter, pk=pk)
     return render(request, 'smart_meter/meter_detail.html', {'meter': meter})
+
+
+def install_meter_to_unit(request, unit_id):
+    unit = get_object_or_404(Unit, pk=unit_id)
+    if request.method == "POST":
+        form = InstallMeterToUnitForm(request.POST, unit=unit, user=request.user)
+        if form.is_valid():
+            installation = form.save()
+            messages.success(
+                request,
+                f"Meter {installation.meter.meter_number} installed on {unit}.",
+            )
+            return redirect("properties:unit_detail", pk=unit.pk)
+    else:
+        form = InstallMeterToUnitForm(unit=unit, user=request.user)
+    return render(
+        request,
+        "smart_meter/meter_installation_form.html",
+        {
+            "form": form,
+            "unit": unit,
+            "title": "Install Meter",
+            "submit_label": "Install Meter",
+            "cancel_url": reverse("properties:unit_detail", args=[unit.pk]),
+        },
+    )
+
+
+def switch_meter(request, unit_id):
+    unit = get_object_or_404(Unit, pk=unit_id)
+    if request.method == "POST":
+        form = SwitchMeterForm(request.POST, unit=unit)
+        if form.is_valid():
+            with transaction.atomic():
+                old_installation = (
+                    MeterInstallation.objects
+                    .select_for_update()
+                    .select_related("meter")
+                    .get(pk=form.cleaned_data["old_installation"].pk)
+                )
+                old_installation.close(
+                    end_date=form.cleaned_data["switch_date"],
+                    end_reading=form.cleaned_data["old_end_reading"],
+                    notes=form.cleaned_data.get("notes", ""),
+                )
+                if old_installation.meter.unit_id == unit.pk:
+                    Meter.objects.filter(pk=old_installation.meter_id).update(unit=None)
+
+                new_installation = MeterInstallation.objects.create(
+                    meter=form.cleaned_data["new_meter"],
+                    unit=unit,
+                    lease=form.cleaned_data.get("lease"),
+                    start_date=form.cleaned_data["switch_date"],
+                    start_reading=form.cleaned_data["new_start_reading"],
+                    installed_by=request.user if request.user.is_authenticated else None,
+                    reason=form.cleaned_data.get("reason") or "Meter switched",
+                    notes=form.cleaned_data.get("notes", ""),
+                )
+
+            messages.success(
+                request,
+                f"Switched {old_installation.meter.meter_number} to {new_installation.meter.meter_number}.",
+            )
+            return redirect("properties:unit_detail", pk=unit.pk)
+    else:
+        form = SwitchMeterForm(unit=unit)
+    return render(
+        request,
+        "smart_meter/meter_switch_form.html",
+        {
+            "form": form,
+            "unit": unit,
+            "cancel_url": reverse("properties:unit_detail", args=[unit.pk]),
+        },
+    )
+
+
+def close_meter_installation(request, installation_id):
+    installation = get_object_or_404(
+        MeterInstallation.objects.select_related("meter", "unit"),
+        pk=installation_id,
+        is_active=True,
+    )
+    if request.method == "POST":
+        form = CloseMeterInstallationForm(request.POST, installation=installation)
+        if form.is_valid():
+            installation.close(
+                end_date=form.cleaned_data["end_date"],
+                end_reading=form.cleaned_data.get("end_reading"),
+                notes=form.cleaned_data.get("notes", ""),
+            )
+            if installation.meter.unit_id == installation.unit_id:
+                Meter.objects.filter(pk=installation.meter_id).update(unit=None)
+            messages.success(request, f"Closed installation for {installation.meter.meter_number}.")
+            return redirect("smart_meter:meter_detail", pk=installation.meter.pk)
+    else:
+        form = CloseMeterInstallationForm(installation=installation)
+    return render(
+        request,
+        "smart_meter/meter_installation_close_form.html",
+        {
+            "form": form,
+            "installation": installation,
+            "cancel_url": reverse("smart_meter:meter_detail", args=[installation.meter.pk]),
+        },
+    )
+
+
+def move_lease_unit(request, lease_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    if request.method == "POST":
+        form = MoveLeaseUnitForm(request.POST, lease=lease)
+        if form.is_valid():
+            move_date = form.cleaned_data["move_date"]
+            new_unit = form.cleaned_data["new_unit"]
+            notes = form.cleaned_data.get("notes", "")
+            with transaction.atomic():
+                active = (
+                    LeaseUnitOccupancy.objects
+                    .select_for_update()
+                    .filter(lease=lease, move_out_date__isnull=True)
+                    .order_by("-move_in_date", "-id")
+                    .first()
+                )
+                if active:
+                    active.move_out_date = move_date - timedelta(days=1) if move_date > active.move_in_date else move_date
+                    if notes:
+                        active.notes = (active.notes + "\n" + notes).strip()
+                    active.save()
+                elif lease.unit_id:
+                    move_out_date = move_date - timedelta(days=1) if move_date > lease.start_date else move_date
+                    LeaseUnitOccupancy.objects.create(
+                        lease=lease,
+                        unit=lease.unit,
+                        move_in_date=lease.start_date,
+                        move_out_date=move_out_date,
+                        notes="Created from existing lease unit during tenant move.",
+                    )
+
+                LeaseUnitOccupancy.objects.create(
+                    lease=lease,
+                    unit=new_unit,
+                    move_in_date=move_date,
+                    notes=notes,
+                )
+                lease.unit = new_unit
+                lease.save(update_fields=["unit"])
+
+            messages.success(request, f"Moved lease #{lease.pk} to {new_unit}.")
+            return redirect("leases:lease_detail", pk=lease.pk)
+    else:
+        form = MoveLeaseUnitForm(lease=lease)
+    return render(
+        request,
+        "smart_meter/lease_unit_move_form.html",
+        {
+            "form": form,
+            "lease": lease,
+            "cancel_url": reverse("leases:lease_detail", args=[lease.pk]),
+        },
+    )
 
 
 def edit_reading(request, pk):

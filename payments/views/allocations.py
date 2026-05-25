@@ -314,12 +314,30 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 from django.views.generic import DeleteView
 from django.urls import reverse_lazy
 from invoices.models import SecurityDepositTransaction
-from payments.models import PaymentAllocation
+from payments.models import Payment, PaymentAllocation
 
 class AllocationDeleteView(LoginRequiredMixin, DeleteView):
     model = PaymentAllocation
     template_name = "payments/allocation_confirm_delete.html"
     context_object_name = "allocation"
+
+    def get_object(self, queryset=None):
+        pk = self.kwargs["pk"]
+
+        allocation = (
+            PaymentAllocation.objects
+            .select_related("payment")
+            .filter(pk=pk)
+            .first()
+        )
+        if allocation:
+            return allocation
+
+        payment = get_object_or_404(
+            Payment.objects.select_related("allocation"),
+            pk=pk,
+        )
+        return get_object_or_404(PaymentAllocation, payment=payment)
 
     def get_success_url(self):
         return reverse_lazy("payments:cash_ledger")  # or wherever you want to land

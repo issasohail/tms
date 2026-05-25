@@ -755,7 +755,7 @@
     if (!phone) { alert('No phone number available.'); return; }
 
     let cleaned = String(phone).replace(/[^\d+]/g,'');
-    if (/^0\d+$/.test(cleaned)) cleaned = '+92' + cleaned.slice(1);
+    if (/^0\d+$/.test(cleaned)) cleaned = (window.TMS_COUNTRY_CODE || '+92') + cleaned.slice(1);
 
     const asNum = v => parseFloat(String(v).replace(/,/g,'')) || 0;
     const fmt   = v => asNum(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -765,10 +765,10 @@
 Payment received for
 Unit: ${propertyName}-${unitNumber}
 Period: ${startDate} – ${endDate}
-Security Deposit: Rs. ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
+Security Deposit: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
 Date: ${paymentDate}
-Amount: Rs. ${fmt(amount)}
-Balance: Rs. ${fmt(balance)}
+Amount: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(amount)}
+Balance: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(balance)}
 
 Thank you!`;
 

@@ -1,5 +1,6 @@
 from django import template
 from leases.utils import PLACEHOLDER_REGISTRY
+from leases.utils import replace_db_placeholders
 from django.contrib.humanize.templatetags.humanize import intcomma
 
 
@@ -34,4 +35,4 @@ def replace_placeholders(text, lease):
             except Exception as e:
                 print(f"Error replacing {placeholder}: {e}")
                 text = text.replace(search_str, f'<strong>[ERROR]</strong>')
-    return text
+    return replace_db_placeholders(text, lease)

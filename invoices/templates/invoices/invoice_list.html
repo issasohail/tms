@@ -19,6 +19,13 @@
       <i class="fas fa-file-invoice-dollar"></i><span class="btn-label"> Generate Billing</span>
     </a>
 
+    <form method="post" action="{% url 'invoices:apply_late_fees' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-warning" onclick="return confirm('Apply configured late fees to overdue unpaid invoices? Paid invoices will not be changed.');">
+        <i class="fas fa-clock"></i><span class="btn-label"> Apply Late Fees</span>
+      </button>
+    </form>
+
     <a href="{% url 'invoices:recurring_wizard' %}" class="btn btn-success">
       <i class="fas fa-redo-alt"></i><span class="btn-label"> Recurring Invoice</span>
     </a>

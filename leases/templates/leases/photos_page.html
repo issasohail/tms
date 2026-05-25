@@ -40,14 +40,14 @@
   <!-- Save PDF to lease (server-side file) -->
   <a id="btn-export-save"
      class="btn btn-primary btn-sm"
-     href="{% url 'leases:photos_export' lease.id %}?layout=4up">
+     href="{% url 'leases:photos_export' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}">
      Export PDF
   </a>
 
   <!-- Download as file -->
   <a id="btn-export-download"
      class="btn btn-secondary btn-sm"
-     href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1"
+     href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1{% if history %}&history={{ history.pk }}{% endif %}"
      target="_blank" rel="noopener">
      Download Photos PDF
   </a>
@@ -55,7 +55,7 @@
   <!-- Open in new tab -->
   <a id="btn-export-open"
      class="btn btn-primary btn-sm"
-     href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up"
+     href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}"
      target="_blank" rel="noopener">
      Export Photos (opens in new tab)
   </a>
@@ -88,7 +88,7 @@
 </script>
 
     <div class="d-flex gap-2">
-      <form method="post" action="{% url 'leases:photos_export' lease.pk %}">
+      <form method="post" action="{% url 'leases:photos_export' lease.pk %}{% if history %}?history={{ history.pk }}{% endif %}">
         {% csrf_token %}
         <button class="btn btn-primary btn-sm">Export PDF</button>
       </form>
@@ -99,8 +99,9 @@
       <form id="lease-photo-add"
             method="post"
             enctype="multipart/form-data"
-            action="{% url 'leases:photo_add' lease.pk %}">
+            action="{% url 'leases:photo_add' lease.pk %}{% if history %}?history={{ history.pk }}{% endif %}">
         {% csrf_token %}
+        {% if history %}<input type="hidden" name="lease_history_id" value="{{ history.pk }}">{% endif %}
         <input type="hidden" name="title" id="hidden-title" value="">
         <input type="hidden" name="description" id="hidden-desc" value="">
         <input type="hidden" name="pdf_layout" id="hidden-pdf-layout" value="">
@@ -110,15 +111,15 @@
               class="d-none"
               type="file"
               name="photos"
-              accept="image/*,video/*"
+              accept="image/*,video/*,.pdf"
               multiple
-              hx-post="{% url 'leases:photo_add' lease.pk %}"
+              hx-post="{% url 'leases:photo_add' lease.pk %}{% if history %}?history={{ history.pk }}{% endif %}"
               hx-encoding="multipart/form-data"
               hx-target="#photos-grid"
               hx-swap="outerHTML"
               hx-indicator="#media-loading"
               hx-trigger="change"
-              hx-include="#lease-photo-add [name=title], #lease-photo-add [name=description], #lease-photo-add [name=pdf_layout], #lease-photo-add [name=csrfmiddlewaretoken]">
+              hx-include="#lease-photo-add [name=title], #lease-photo-add [name=description], #lease-photo-add [name=pdf_layout], #lease-photo-add [name=lease_history_id], #lease-photo-add [name=csrfmiddlewaretoken]">
 
         <button type="button"
                 class="btn btn-primary btn-sm"
@@ -146,10 +147,10 @@
         </a>
       </div>
 
-      <a href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1" target="_blank" class="btn btn-secondary">
+      <a href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1{% if history %}&history={{ history.pk }}{% endif %}" target="_blank" class="btn btn-secondary">
         Download Photos PDF
       </a>
-      <a href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up" target="_blank" class="btn btn-primary">
+      <a href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}" target="_blank" class="btn btn-primary">
         Export Photos (opens in new tab)
       </a>
     </div>
@@ -167,7 +168,7 @@
     </div>
   </div>
 
-  <div id="photos-grid" hx-get="{% url 'leases:photos_grid' lease.pk %}" hx-trigger="load"></div>
+  <div id="photos-grid" hx-get="{% if history %}{% url 'leases:history_media_grid' lease.pk history.pk %}{% else %}{% url 'leases:photos_grid' lease.pk %}{% endif %}" hx-trigger="load"></div>
 </div>
 
 <div id="photo-toast" style="

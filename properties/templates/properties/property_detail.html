@@ -8,6 +8,7 @@
     <div>
         <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
         <a href="{% url 'properties:property_update' property.pk %}" class="btn btn-secondary me-2">Edit</a>
+        <a href="{% url 'properties:property_media' property.pk %}" class="btn btn-outline-primary me-2">Media</a>
         <a href="{% url 'properties:property_delete' property.pk %}" class="btn btn-danger">Delete</a>
     </div>
 </div>
@@ -21,9 +22,68 @@
             {{ property.property_city }},
             {{ property.property_state }} {{ property.property_zipcode }}
         </p>
-        <p class="card-text"><strong>Total Units:</strong> {{ property.total_units }}</p>
+        <div class="row g-2 small mb-2">
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <div class="text-muted">Actual Units</div>
+                    <div class="fw-bold">{{ actual_total_units }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <div class="text-muted">Configured Units</div>
+                    <div class="fw-bold">{{ configured_total_units }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="border rounded p-2 h-100">
+                    <div class="text-muted">Occupied</div>
+                    <div class="fw-bold text-success">{{ occupied_units_count }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="border rounded p-2 h-100">
+                    <div class="text-muted">Vacant</div>
+                    <div class="fw-bold text-warning">{{ vacant_units_count }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="border rounded p-2 h-100">
+                    <div class="text-muted">Maintenance</div>
+                    <div class="fw-bold text-info">{{ maintenance_units_count }}</div>
+                </div>
+            </div>
+        </div>
         {% if property.description %}
         <p class="card-text"><strong>Description:</strong> {{ property.description }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Property / Building Media</h5>
+        <a href="{% url 'properties:property_media' property.pk %}" class="btn btn-sm btn-primary">Manage Media</a>
+    </div>
+    <div class="card-body">
+        {% if media_files %}
+            <div class="row g-2">
+                {% for media in media_files %}
+                    <div class="col-6 col-md-2">
+                        {% if media.file_type == "image" %}
+                            <a href="{{ media.display_url }}" target="_blank" rel="noopener">
+                                <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border" alt="{{ media.description|default:media.original_filename }}" style="height:90px; width:100%; object-fit:cover;">
+                            </a>
+                        {% else %}
+                            <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="d-flex align-items-center justify-content-center border rounded text-decoration-none small" style="height:90px;">
+                                {{ media.get_file_type_display }}
+                            </a>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted mb-0">No media uploaded.</p>
         {% endif %}
     </div>
 </div>
@@ -53,7 +113,7 @@
                         <td>{{ unit.unit_number }}</td>
                         <td>{{ unit.size }}</td>
                         <td>{{ unit.bedrooms }}BR/{{ unit.bathrooms }}BA</td>
-                        <td>${{ unit.monthly_rent }}</td>
+                        <td>{{ unit.monthly_rent|money:2 }}</td>
                         <td>
                             <span class="badge bg-{% if unit.status == 'vacant' %}warning{% elif unit.status == 'occupied' %}success{% else %}info{% endif %}">
                                 {{ unit.get_status_display }}

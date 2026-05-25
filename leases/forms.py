@@ -1,6 +1,6 @@
 from .models import Lease, LeaseFamily
 
-from django.forms import inlineformset_factory
+from django.forms import BaseInlineFormSet, inlineformset_factory
 from .models import LeaseTemplate
 from django import forms
 from .models import Lease
@@ -164,7 +164,8 @@ class CustomRenewForm(forms.Form):
 from django import forms
 from django.forms import inlineformset_factory
 
-from .models import Lease, DefaultClause, LeaseAgreementClause
+from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause, WhatsAppTemplate
+from .models_renewal import LeaseRenewal
 
 
 class DefaultClauseForm(forms.ModelForm):
@@ -172,7 +173,57 @@ class DefaultClauseForm(forms.ModelForm):
         model = DefaultClause
         fields = ["clause_number", "body", "is_active"]
         widgets = {
-            "body": forms.Textarea(attrs={"rows": 4, "class": "form-control"}),
+            "clause_number": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
+            "body": forms.Textarea(attrs={"rows": 8, "class": "form-control clause-body-field"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+
+class AgreementPlaceholderForm(forms.ModelForm):
+    class Meta:
+        model = AgreementPlaceholder
+        fields = [
+            "key",
+            "label",
+            "description",
+            "category",
+            "source_type",
+            "resolver_key",
+            "django_path",
+            "default_value",
+            "is_active",
+            "sort_order",
+        ]
+        widgets = {
+            "key": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "label": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "description": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
+            "category": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "source_type": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "resolver_key": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "django_path": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "default_value": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "sort_order": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
+        }
+
+    def clean_key(self):
+        key = (self.cleaned_data.get("key") or "").strip().upper()
+        key = key.strip("[]")
+        if " " in key:
+            raise forms.ValidationError("Use underscores instead of spaces.")
+        return key
+
+
+class WhatsAppTemplateForm(forms.ModelForm):
+    class Meta:
+        model = WhatsAppTemplate
+        fields = ["template_type", "name", "body", "is_active"]
+        widgets = {
+            "template_type": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "body": forms.Textarea(attrs={"rows": 10, "class": "form-control whatsapp-template-body"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
 
@@ -185,6 +236,97 @@ LeaseClauseFormSet = inlineformset_factory(
     widgets={
         "template_text": forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
     },
+)
+
+
+class LeaseRenewalHistoryForm(forms.ModelForm):
+    class Meta:
+        model = LeaseRenewal
+        fields = [
+            "renewal_number",
+            "start_date",
+            "end_date",
+            "agreement_date",
+            "monthly_rent",
+            "society_maintenance",
+            "water_charges",
+            "internet_charges",
+            "rent_increase_percent",
+            "is_agreement_signed",
+            "notes",
+        ]
+        widgets = {
+            "renewal_number": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1"}),
+            "start_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "end_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "agreement_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "monthly_rent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "society_maintenance": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "water_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "internet_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "rent_increase_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "is_agreement_signed": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}),
+        }
+
+
+class LeaseRenewalHistoryFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        seen_numbers = set()
+        periods = []
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data") or not form.cleaned_data:
+                continue
+            if form.cleaned_data.get("DELETE"):
+                continue
+
+            number = form.cleaned_data.get("renewal_number")
+            start_date = form.cleaned_data.get("start_date")
+            end_date = form.cleaned_data.get("end_date")
+
+            if number in seen_numbers:
+                form.add_error("renewal_number", "Renewal number must be unique for this lease.")
+            if number:
+                seen_numbers.add(number)
+
+            if start_date and end_date and end_date <= start_date:
+                form.add_error("end_date", "End date must be after start date.")
+
+            if start_date and end_date:
+                for other_start, other_end in periods:
+                    if start_date <= other_end and end_date >= other_start:
+                        form.add_error("start_date", "This renewal period overlaps another renewal row.")
+                        break
+                periods.append((start_date, end_date))
+
+    def save_new(self, form, commit=True):
+        obj = form.save(commit=False)
+        obj.lease = self.instance
+        if not obj.renewal_number:
+            used = [
+                f.cleaned_data.get("renewal_number")
+                for f in self.forms
+                if hasattr(f, "cleaned_data")
+                and f.cleaned_data
+                and not f.cleaned_data.get("DELETE")
+                and f.cleaned_data.get("renewal_number")
+            ]
+            obj.renewal_number = max(used or [0]) + 1
+        if commit:
+            obj.save()
+            form.save_m2m()
+        return obj
+
+
+LeaseRenewalInlineFormSet = inlineformset_factory(
+    Lease,
+    LeaseRenewal,
+    form=LeaseRenewalHistoryForm,
+    formset=LeaseRenewalHistoryFormSet,
+    extra=1,
+    can_delete=True,
 )
 
 class RenewLeaseForm(forms.Form):

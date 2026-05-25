@@ -39,6 +39,14 @@ urlpatterns = [
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/edit/', views.meter_edit, name='meter_edit'),
     path('meters/<int:pk>/delete/', views.meter_delete, name='meter_delete'),
+    path("units/<int:unit_id>/meters/install/",
+         views.install_meter_to_unit, name="install_meter_to_unit"),
+    path("units/<int:unit_id>/meters/switch/",
+         views.switch_meter, name="switch_meter"),
+    path("installations/<int:installation_id>/close/",
+         views.close_meter_installation, name="close_meter_installation"),
+    path("leases/<int:lease_id>/move-unit/",
+         views.move_lease_unit, name="move_lease_unit"),
 
 
     path('readings/', views.reading_list, name='reading_list'),

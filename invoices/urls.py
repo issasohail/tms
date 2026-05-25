@@ -46,6 +46,7 @@ urlpatterns = [
 
     # Bulk Operations
     path('generate-monthly/', generate_monthly_invoices, name='generate_monthly'),
+    path('late-fees/apply/', views.apply_late_fees, name='apply_late_fees'),
 
     # Search
     path('search/', search_invoices_by_item_description, name='search'),
@@ -67,6 +68,8 @@ urlpatterns = [
     path("export.csv", views.export_invoices_csv, name="invoice_export_csv"),
     path('items/<int:pk>/inline/', invoice_item_inline_update,
          name='item_inline_update'),
+    path('items/<int:pk>/inline-delete/', views.invoice_item_inline_delete,
+         name='item_inline_delete'),
     path('recurring/', RecurringChargeListView.as_view(), name='recurring_list'),
     path('recurring/add/',  RecurringChargeCreateView.as_view(),
          name='recurring_add'),

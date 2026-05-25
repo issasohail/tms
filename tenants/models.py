@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db.models import Sum
 from PIL import Image
@@ -46,6 +47,14 @@ def cnic_back_upload_to(instance, filename):
 
 
 class Tenant(models.Model):
+    POLICE_STATUS_CHOICES = [
+        ("not_started", "Not Started"),
+        ("pending", "Pending"),
+        ("verified", "Verified"),
+        ("rejected", "Rejected"),
+        ("follow_up", "Follow Up"),
+    ]
+
     GENDER_CHOICES = [
         ('M', 'Male'),
         ('F', 'Female'),
@@ -90,6 +99,26 @@ class Tenant(models.Model):
     cnic_back = models.ImageField(
         upload_to=cnic_back_upload_to, blank=True, null=True)
     cnic_back_crop = ImageRatioField('photo', '300x300', size_warning=True)
+    police_verification_status = models.CharField(
+        max_length=20,
+        choices=POLICE_STATUS_CHOICES,
+        default="not_started",
+    )
+    police_verification_date = models.DateField(null=True, blank=True)
+    police_verification_document = models.FileField(
+        upload_to="tenants/police_verification/",
+        blank=True,
+        null=True,
+    )
+    police_verification_remarks = models.TextField(blank=True, default="")
+    police_verification_follow_up_date = models.DateField(null=True, blank=True)
+    police_verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="police_verified_tenants",
+    )
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
@@ -180,6 +209,9 @@ class Tenant(models.Model):
     def current_lease(self):
         """Get the active lease for this tenant"""
         try:
+            if hasattr(self, 'active_leases'):
+                return self.active_leases[0] if self.active_leases else None
+
             Lease = apps.get_model('leases', 'Lease')
             return self.leases.filter(status='active').latest('start_date')
         except Lease.DoesNotExist:
@@ -266,3 +298,84 @@ class Tenant(models.Model):
 
     class Meta:
         ordering = ['last_name', 'first_name']
+
+
+class TenantRegistrationSubmission(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="registration_submissions",
+    )
+    submitted_data = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_tenant_registration_submissions",
+    )
+    admin_notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"{self.tenant} registration update ({self.status})"
+
+
+class PotentialTenantLead(models.Model):
+    STATUS_NEW = "new"
+    STATUS_CONTACTED = "contacted"
+    STATUS_INTERESTED = "interested"
+    STATUS_VISITED = "visited"
+    STATUS_NOT_INTERESTED = "not_interested"
+    STATUS_CONVERTED = "converted"
+    STATUS_CHOICES = [
+        (STATUS_NEW, "New"),
+        (STATUS_CONTACTED, "Contacted"),
+        (STATUS_INTERESTED, "Interested"),
+        (STATUS_VISITED, "Visited"),
+        (STATUS_NOT_INTERESTED, "Not Interested"),
+        (STATUS_CONVERTED, "Converted"),
+    ]
+
+    name = models.CharField(max_length=120)
+    phone = models.CharField(max_length=30, blank=True)
+    whatsapp_number = models.CharField(max_length=30, blank=True)
+    interested_building = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="potential_tenant_leads",
+    )
+    interested_unit = models.ForeignKey(
+        "properties.Unit",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="potential_tenant_leads",
+    )
+    budget = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    family_size = models.PositiveIntegerField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW)
+    source = models.CharField(max_length=80, blank=True)
+    next_follow_up_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name

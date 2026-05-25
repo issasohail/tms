@@ -8,6 +8,9 @@ from docxtpl import DocxTemplate
 import subprocess
 from num2words import num2words
 import glob
+from django.template.loader import render_to_string
+from weasyprint import HTML
+from leases.services.lease_history import copy_previous_history_clauses, lease_with_history_values
 
 
 def find_template():
@@ -163,3 +166,20 @@ def generate_lease_agreement(lease):
     lease.save()
 
     return lease
+
+
+def generate_renewal_agreement_pdf(lease, renewal, request=None):
+    base_url = request.build_absolute_uri("/") if request else None
+    copy_previous_history_clauses(lease, renewal)
+    lease_for_history = lease_with_history_values(lease, renewal)
+    clauses = renewal.clauses.all().order_by("clause_number")
+    html = render_to_string(
+        "leases/agreement_preview.html",
+        {
+            "lease": lease_for_history,
+            "history": renewal,
+            "clauses": clauses,
+            "agreement_date": renewal.agreement_date or renewal.start_date,
+        },
+    )
+    return HTML(string=html, base_url=base_url).write_pdf()

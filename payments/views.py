@@ -304,6 +304,13 @@ class PaymentDetailView(LoginRequiredMixin, DetailView):
     template_name = 'payments/allocation_detail.html'
     context_object_name = 'payment'
 
+    def get_queryset(self):
+        return super().get_queryset().select_related(
+            "lease__tenant",
+            "lease__unit__property",
+            "payment_method",
+        ).prefetch_related("security_deposit_movements")
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         payment = self.object
@@ -635,13 +642,38 @@ class PaymentDeleteView(LoginRequiredMixin, DeleteView):
     template_name = 'payments/payment_confirm_delete.html'
     success_url = reverse_lazy('payments:cash_ledger')
 
-    def delete(self, request, *args, **kwargs):
-        messages.success(request, 'Payment deleted successfully.')
-        return super().delete(request, *args, **kwargs)
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        payment = self.object
+        allocation = getattr(payment, "allocation", None)
+        context["allocation"] = allocation
+        context["security_movements"] = SecurityDepositTransaction.objects.filter(
+            Q(payment=payment) | Q(allocation=allocation)
+        ).distinct() if allocation else SecurityDepositTransaction.objects.filter(payment=payment)
+        return context
+
+    @transaction.atomic
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        payment = self.object
+        if request.POST.get("confirm_delete") != "yes":
+            messages.error(request, "Please confirm payment deletion before continuing.")
+            return redirect("payments:payment_delete", pk=payment.pk)
+
+        allocation = getattr(payment, "allocation", None)
+        SecurityDepositTransaction.objects.filter(
+            Q(payment=payment) | Q(allocation=allocation)
+        ).delete()
+        payment.delete()
+        messages.success(request, "Payment deleted. Related allocation and security deposit movements were reversed.")
+        return redirect(self.get_success_url())
 
 
 def send_receipt(request, payment_id):
-    payment = get_object_or_404(Payment, id=payment_id)
+    payment = get_object_or_404(
+        Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+        id=payment_id,
+    )
 
     if request.method == 'POST':
         # Generate PDF
@@ -722,7 +754,10 @@ def invoice_list(request):
 def payment_pdf_view1(request, pk):
     try:
         print("=== Starting PDF generation ===")  # Debug
-        payment = get_object_or_404(Payment, pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+            pk=pk,
+        )
         print(f"Payment found: {payment}")  # Debug
 
         # Generate PDF using the new class
@@ -750,7 +785,10 @@ logger = logging.getLogger(__name__)
 
 def payment_pdf_view2(request, pk):
     try:
-        payment = get_object_or_404(Payment, pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+            pk=pk,
+        )
 
         # Render HTML template
         context = {
@@ -800,7 +838,10 @@ logger = logging.getLogger(__name__)
 
 def payment_pdf_view(request, pk):
     try:
-        payment = get_object_or_404(Payment, pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+            pk=pk,
+        )
 
         # Get absolute URL for static files
         static_url = request.build_absolute_uri(static(''))
@@ -856,7 +897,10 @@ def send_payment_email(request, pk):
     if request.method != 'POST':
         return HttpResponseBadRequest("Invalid request")
 
-    payment = get_object_or_404(Payment, pk=pk)
+    payment = get_object_or_404(
+        Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+        pk=pk,
+    )
     tenant = payment.lease.tenant
 
     if not tenant.email:

@@ -105,6 +105,23 @@
                         </a>
                         </small>
                     {% endif %}
+                    {% if row.obj.type == "REFUND" %}
+                        <br><small class="text-muted">
+                        Status: {{ row.obj.get_refund_status_display|default:"Paid" }}
+                        {% if row.obj.refund_payment_method %}
+                            | Method: {{ row.obj.refund_payment_method.name }}
+                        {% endif %}
+                        {% if row.obj.deduction_amount %}
+                            | Deduction: Rs {{ row.obj.deduction_amount|floatformat:0|intcomma }}
+                        {% endif %}
+                        </small>
+                        {% if row.obj.deduction_reason %}
+                            <br><small class="text-muted">Deduction reason: {{ row.obj.deduction_reason }}</small>
+                        {% endif %}
+                        {% if row.obj.refund_notes %}
+                            <br><small class="text-muted">Refund notes: {{ row.obj.refund_notes }}</small>
+                        {% endif %}
+                    {% endif %}
                     </td>
 
                     <td class="text-end {% if row.amount < 0 %}text-danger{% else %}text-success{% endif %}">

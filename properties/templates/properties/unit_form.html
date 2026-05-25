@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load crispy_forms_tags %}
 
-{% block title %}{% if form.instance.pk %}Edit{% else %}Add{% endif %} Unit{% endblock %}
+{% block title %}{% if form.instance.pk %}Edit{% else %}Add{% endif %} Units{% endblock %}
 
 {% block content %}
 <div class="card">
@@ -12,9 +12,39 @@
         <form method="post">
             {% csrf_token %}
             {{ form|crispy }}
+            {{ form.property_bank_account_map|json_script:"property-bank-account-map" }}
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="copyPropertyBankAccount">
+                    Copy Property Bank Account
+                </button>
+                <span class="text-muted small align-self-center">
+                    Copies the selected property's bank account into this unit override.
+                </span>
+            </div>
             <button type="submit" class="btn btn-primary">Save</button>
             <a href="{% url 'properties:unit_list' %}" class="btn btn-secondary">Cancel</a>
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const mapEl = document.getElementById("property-bank-account-map");
+    const bankMap = mapEl ? JSON.parse(mapEl.textContent || "{}") : {};
+    const propertySelect = document.getElementById("id_property");
+    const unitBank = document.querySelector("[data-unit-bank-account='1']");
+    const useProperty = document.querySelector("[data-use-property-bank-account='1']");
+    const copyBtn = document.getElementById("copyPropertyBankAccount");
+
+    copyBtn?.addEventListener("click", function () {
+        if (!propertySelect || !unitBank) return;
+        const value = bankMap[String(propertySelect.value)] || "";
+        unitBank.value = value;
+        if (useProperty) useProperty.checked = false;
+        unitBank.focus();
+    });
+});
+</script>
 {% endblock %}

@@ -121,12 +121,21 @@ class WaterBillForm(forms.ModelForm):
 # invoices/forms.py
 from django import forms
 from .models import SecurityDepositTransaction
+from .services import security_deposit_totals
+from decimal import Decimal
 
 
 class SecurityDepositTransactionForm(forms.ModelForm):
+    def __init__(self, *args, lease=None, **kwargs):
+        self.lease = lease
+        super().__init__(*args, **kwargs)
+
     class Meta:
         model = SecurityDepositTransaction
-        fields = ['date', 'type', 'amount', 'notes']
+        fields = [
+            'date', 'type', 'amount', 'deduction_amount', 'deduction_reason',
+            'refund_payment_method', 'refund_status', 'notes', 'refund_notes'
+        ]
         widgets = {
             'date': forms.DateInput(
                 attrs={'type': 'date', 'class': 'form-control form-control-sm'}
@@ -137,7 +146,40 @@ class SecurityDepositTransactionForm(forms.ModelForm):
             'amount': forms.NumberInput(
                 attrs={'class': 'form-control form-control-sm'}
             ),
+            'deduction_amount': forms.NumberInput(
+                attrs={'class': 'form-control form-control-sm', 'min': '0', 'step': '0.01'}
+            ),
+            'deduction_reason': forms.Textarea(
+                attrs={'rows': 2, 'class': 'form-control form-control-sm'}
+            ),
+            'refund_payment_method': forms.Select(
+                attrs={'class': 'form-select form-select-sm'}
+            ),
+            'refund_status': forms.Select(
+                attrs={'class': 'form-select form-select-sm'}
+            ),
             'notes': forms.Textarea(
                 attrs={'rows': 2, 'class': 'form-control form-control-sm'}
             ),
+            'refund_notes': forms.Textarea(
+                attrs={'rows': 2, 'class': 'form-control form-control-sm'}
+            ),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        tx_type = cleaned.get('type')
+        amount = cleaned.get('amount') or Decimal('0.00')
+        deduction = cleaned.get('deduction_amount') or Decimal('0.00')
+
+        if tx_type == 'REFUND' and self.lease:
+            totals = security_deposit_totals(self.lease)
+            available = totals.get('currently_held') or Decimal('0.00')
+            if self.instance and self.instance.pk and self.instance.type == 'REFUND':
+                available += self.instance.amount or Decimal('0.00')
+                available += self.instance.deduction_amount or Decimal('0.00')
+            if amount + deduction > available:
+                raise forms.ValidationError(
+                    "Refund plus deductions cannot exceed the currently held security deposit."
+                )
+        return cleaned

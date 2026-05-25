@@ -5,6 +5,10 @@ from .models import Tenant
 from .views import (
     TenantListView, TenantDetailView, TenantCreateView,
     TenantUpdateView, TenantDeleteView, TenantLedgerView,
+    PotentialTenantLeadCreateView, PotentialTenantLeadDetailView,
+    PotentialTenantLeadListView, PotentialTenantLeadUpdateView,
+    TenantRegistrationSubmissionDetailView,
+    TenantRegistrationSubmissionListView,
     ledger_pdf, send_ledger, print_tenant_view,
     get_units_by_property, BalanceDetailView
 )
@@ -26,6 +30,18 @@ urlpatterns = [
     # Tenant URLs
     path('', TenantListView.as_view(), name='tenant_list'),
     path('create/', TenantCreateView.as_view(), name='tenant_create'),
+    path('registration/<str:token>/',
+         views.tenant_public_registration_update,
+         name='tenant_public_registration'),
+    path('registration-submissions/',
+         TenantRegistrationSubmissionListView.as_view(),
+         name='registration_submission_list'),
+    path('registration-submissions/<int:pk>/',
+         TenantRegistrationSubmissionDetailView.as_view(),
+         name='registration_submission_detail'),
+    path('registration-submissions/<int:pk>/review/',
+         views.tenant_registration_submission_review,
+         name='registration_submission_review'),
     path('<int:pk>/', TenantDetailView.as_view(), name='tenant_detail'),
     path('<int:pk>/update/', TenantUpdateView.as_view(), name='tenant_update'),
     path('<int:pk>/delete/', TenantDeleteView.as_view(), name='tenant_delete'),
@@ -55,6 +71,13 @@ urlpatterns = [
     path('payments/tenant-search/', views.tenant_search, name='tenant_search'),
 
     path('ajax/update/', tenant_ajax_update, name='tenant_ajax_update'),
+
+    path('leads/', PotentialTenantLeadListView.as_view(), name='lead_list'),
+    path('leads/create/', PotentialTenantLeadCreateView.as_view(), name='lead_create'),
+    path('leads/<int:pk>/', PotentialTenantLeadDetailView.as_view(), name='lead_detail'),
+    path('leads/<int:pk>/edit/', PotentialTenantLeadUpdateView.as_view(), name='lead_update'),
+    path('leads/<int:pk>/whatsapp/vacancy/',
+         views.lead_vacancy_whatsapp, name='lead_vacancy_whatsapp'),
 
 
 ]

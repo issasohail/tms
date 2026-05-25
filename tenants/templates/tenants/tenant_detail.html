@@ -15,6 +15,11 @@
   {% if tenant.pk %}
     <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-sm btn-primary">Edit Tenant</a>
   {% endif %}
+  {% if registration_link %}
+    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#registrationLinkBox">
+      Registration Link
+    </button>
+  {% endif %}
 
   <button class="btn btn-sm btn-outline-secondary ms-auto order-lg-2" onclick="history.back()">Go Back</button>
 
@@ -40,6 +45,17 @@
   </a>
 </div>
 
+{% if registration_link %}
+  <div class="collapse mb-2" id="registrationLinkBox">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text">Tenant Update Link</span>
+      <input type="text" class="form-control" value="{{ registration_link }}" readonly onclick="this.select();">
+      <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-secondary">Submissions</a>
+    </div>
+    <div class="form-text">Public link expires after 7 days. Submitted changes require admin approval.</div>
+  </div>
+{% endif %}
+
 {# -------------------- TWO-COLUMN CANVAS AFTER HEADING ------------------- #}
 <div class="row g-3">
 
@@ -59,6 +75,17 @@
             <p class="mb-1"><strong>Phone:</strong> {{ tenant.phone|default:"-" }}{% if tenant.phone2 %}, {{ tenant.phone2 }}{% endif %}{% if tenant.phone3 %}, {{ tenant.phone3 }}{% endif %}</p>
             <p class="mb-1"><strong>CNIC:</strong> {{ tenant.cnic|default:"-" }}</p>
             <p class="mb-1"><strong>Address:</strong> {{ tenant.address|default:"-" }}</p>
+            <p class="mb-1"><strong>Police Verification:</strong>
+                <span class="badge bg-{% if tenant.police_verification_status == 'verified' %}success{% elif tenant.police_verification_status == 'rejected' %}danger{% elif tenant.police_verification_status == 'pending' or tenant.police_verification_status == 'follow_up' %}warning text-dark{% else %}secondary{% endif %}">
+                {{ tenant.get_police_verification_status_display }}
+                </span>
+            </p>
+            {% if tenant.police_verification_date %}
+                <p class="mb-1"><strong>Verified Date:</strong> {{ tenant.police_verification_date|date:"M d, Y" }}</p>
+            {% endif %}
+            {% if tenant.police_verification_follow_up_date %}
+                <p class="mb-1"><strong>Police Follow-up:</strong> {{ tenant.police_verification_follow_up_date|date:"M d, Y" }}</p>
+            {% endif %}
             </div>
 
             <div>
@@ -84,6 +111,12 @@
 
             {% if tenant.notes %}
                 <p class="mb-1"><strong>Notes:</strong> {{ tenant.notes }}</p>
+            {% endif %}
+            {% if tenant.police_verification_document %}
+                <p class="mb-1"><strong>Police Document:</strong> <a href="{{ tenant.police_verification_document.url }}" target="_blank">View</a></p>
+            {% endif %}
+            {% if tenant.police_verification_remarks %}
+                <p class="mb-1"><strong>Police Remarks:</strong> {{ tenant.police_verification_remarks }}</p>
             {% endif %}
             </div>
         </div>

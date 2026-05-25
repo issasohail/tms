@@ -13,9 +13,12 @@ def _first_last_energy(meter: Meter, start, end):
     return Decimal(first.total_energy), Decimal(last.total_energy)
 
 def generate_bill_for_unit(unit, period_start, period_end, tariff: Tariff = None) -> Bill:
-    meter = unit.meter
+    meter = unit.meter_installations.filter(is_active=True, end_date__isnull=True).select_related("meter").first()
+    meter = meter.meter if meter else None
     if not meter:
         raise ValueError("Unit has no meter")
+    if getattr(meter, "billing_mode", "postpaid") == "prepaid":
+        raise ValueError("Prepaid meters are skipped for postpaid bill generation")
 
     t = tariff or Tariff.objects.filter(active=True).first()
     if not t:

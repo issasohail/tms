@@ -53,6 +53,47 @@ def number_to_words(n):
     return " ".join(parts)
 
 
+def _lease_bank_account(lease):
+    if not lease:
+        return ""
+    unit = getattr(lease, "unit", None)
+    property_obj = getattr(unit, "property", None)
+    unit_bank = (getattr(unit, "bank_account_details", None) or "").strip()
+    use_property = getattr(unit, "use_property_bank_account", True)
+    property_bank = (getattr(property_obj, "bank_account_details", None) or "").strip()
+    if unit_bank and not use_property:
+        return unit_bank
+    return property_bank or unit_bank
+
+
+def replace_db_placeholders(text, lease=None):
+    """
+    Replace UI-managed custom/manual placeholders after system placeholders.
+    Unknown placeholders are intentionally left unchanged.
+    """
+    try:
+        from leases.models import AgreementPlaceholder
+    except Exception:
+        return text
+
+    placeholders = AgreementPlaceholder.objects.filter(
+        is_active=True,
+        source_type__in=[
+            AgreementPlaceholder.SOURCE_CUSTOM,
+            AgreementPlaceholder.SOURCE_MANUAL,
+        ],
+    )
+    for placeholder in placeholders:
+        token = f"[{placeholder.key}]"
+        if token in text:
+            if placeholder.key == "BANK_ACCOUNT":
+                replacement = _lease_bank_account(lease) or placeholder.default_value or ""
+            else:
+                replacement = placeholder.default_value or ""
+            text = text.replace(token, replacement)
+    return text
+
+
 # Lease Agreement PDF Generator
 def generate_lease_agreement(lease_id):
     lease = Lease.objects.get(id=lease_id)
@@ -213,7 +254,8 @@ def resolve_placeholders(lease, clause_text):
             except Exception as e:
                 clause_text = clause_text.replace(search, f'[ERROR: {e}]')
 
-    return clause_text.replace('[GENERATION_TIMESTAMP]', timezone.now().strftime('%d-%m-%Y %H:%M:%S'))
+    clause_text = clause_text.replace('[GENERATION_TIMESTAMP]', timezone.now().strftime('%d-%m-%Y %H:%M:%S'))
+    return replace_db_placeholders(clause_text, lease)
 
 
 # Generate HTML Agreement
@@ -271,7 +313,7 @@ def do_replace_placeholders(text, lease):
                 text = text.replace(search_str, str(replacement))
             except Exception as e:
                 print(f"Error replacing {placeholder}: {e}")
-    return text
+    return replace_db_placeholders(text, lease)
 
 
 # Django template filter

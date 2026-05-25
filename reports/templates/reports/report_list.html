@@ -101,6 +101,28 @@
             class="btn btn-outline-primary btn-sm">
             <i class="fas fa-shield-alt me-1"></i> Security Deposit Report
             </a>
+            <a href="{% url 'reports:maintenance_collection_report' %}"
+            class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-tools me-1"></i> Maintenance Collection
+            </a>
+            <a href="{% url 'reports:rent_collection_report' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-money-bill"></i> Rent Collection
+            </a>
+            <a href="{% url 'reports:tenant_balance_report' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-users"></i> Tenant Balances
+            </a>
+            <a href="{% url 'reports:lease_renewal_due_report' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-calendar"></i> Renewals Due
+            </a>
+            <a href="{% url 'reports:vacant_unit_report' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-door-open"></i> Vacant Units
+            </a>
+            <a href="{% url 'reports:late_fee_report' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-clock"></i> Late Fees
+            </a>
+            <a href="{% url 'reports:meter_report' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-bolt"></i> Meter Report
+            </a>
 
             <!-- Financial report list page -->
             <a href="{% url 'reports:financial_report_list' %}" class="btn btn-sm btn-outline-secondary">

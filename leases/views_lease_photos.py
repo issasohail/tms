@@ -12,6 +12,7 @@ import os
 from urllib.parse import quote as urlquote
 
 from .models import Lease
+from .models_renewal import LeaseRenewal
 from .models_lease_photos import LeaseMedia, _folder_name_for_lease
 import logging
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ from django.template.loader import render_to_string
 # leases/views_lease_photos.py
 import inspect
 
-def _safe_export_call(lease, layout=None):
+def _safe_export_call(lease, layout=None, photos_qs=None):
     """
     Call export_lease_photos_pdf() and pass layout only if supported.
     Returns (name, fileobj) or (None, None).
@@ -38,18 +39,29 @@ def _safe_export_call(lease, layout=None):
 
     try:
         sig = inspect.signature(export_lease_photos_pdf)
+        kwargs = {}
         if "layout" in sig.parameters:
-            return export_lease_photos_pdf(lease, layout=layout)
-        else:
-            return export_lease_photos_pdf(lease)
+            kwargs["layout"] = layout
+        if "photos_qs" in sig.parameters:
+            kwargs["photos_qs"] = photos_qs
+        return export_lease_photos_pdf(lease, **kwargs)
     except TypeError:
         # defensive: some wrappers raise TypeError differently
         try:
+            if photos_qs is not None:
+                return export_lease_photos_pdf(lease, photos_qs=photos_qs)
             return export_lease_photos_pdf(lease)
         except Exception:
             return (None, None)
 
-def _export_pdf_for_lease(lease, layout: str | None = None):
+def _history_from_request(request, lease):
+    renewal_id = request.POST.get("history") or request.GET.get("history")
+    if not renewal_id:
+        return None
+    return get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
+
+
+def _export_pdf_for_lease(lease, layout: str | None = None, history=None):
     try:
         from .services.export_lease_photos_pdf import export_lease_photos_pdf
     except Exception:
@@ -61,9 +73,11 @@ def _export_pdf_for_lease(lease, layout: str | None = None):
 
     # Prefer calling with layout if your service supports it; else ignore
     try:
-        res = export_lease_photos_pdf(lease, layout=layout)
+        photos_qs = _media_queryset(lease, history).filter(media_type="image")
+        res = _safe_export_call(lease, layout=layout, photos_qs=photos_qs)
     except TypeError:
-        res = export_lease_photos_pdf(lease, layout=layout)
+        photos_qs = _media_queryset(lease, history).filter(media_type="image")
+        res = _safe_export_call(lease, photos_qs=photos_qs)
 
     if not res:
         return
@@ -73,7 +87,8 @@ def _export_pdf_for_lease(lease, layout: str | None = None):
 
     folder = _folder_name_for_lease(lease)
     base_dir = f"leases/lease_photos/{folder}"
-    pdf_path = f"{base_dir}/{folder}.pdf"
+    pdf_name = f"history-{history.pk}-{folder}.pdf" if history else f"{folder}.pdf"
+    pdf_path = f"{base_dir}/{pdf_name}"
 
     from django.core.files.storage import default_storage
     from django.core.files.base import ContentFile
@@ -92,7 +107,7 @@ def _export_pdf_for_lease(lease, layout: str | None = None):
         if default_storage.exists(base_dir):
             _, filenames = default_storage.listdir(base_dir)
             for fn in filenames:
-                if fn.lower().endswith(".pdf") and fn != f"{folder}.pdf":
+                if not history and fn.lower().endswith(".pdf") and fn != f"{folder}.pdf":
                     try:
                         default_storage.delete(f"{base_dir}/{fn}")
                     except Exception:
@@ -100,10 +115,19 @@ def _export_pdf_for_lease(lease, layout: str | None = None):
     except Exception:
         pass
 
-def _grid_response(request, lease):
+def _media_queryset(lease, history=None):
+    qs = lease.media.filter(is_active=True)
+    if history is not None:
+        qs = qs.filter(lease_history=history)
+    else:
+        qs = qs.filter(lease_history__isnull=True)
+    return qs.order_by("sort_order", "-created_at")
+
+
+def _grid_response(request, lease, history=None):
     html = render_to_string(
         "leases/_photos_grid.html",
-        {"lease": lease, "media": lease.media.all().order_by("-created_at")},
+        {"lease": lease, "history": history, "media": _media_queryset(lease, history)},
         request=request,
     )
     resp = HttpResponse(html)               # <-- wrap in HttpResponse
@@ -115,6 +139,13 @@ def photos_grid(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
     return _grid_response(request, lease)   # <-- return the HttpResponse
 
+
+@login_required
+def history_media_grid(request, lease_id, renewal_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
+    return _grid_response(request, lease, history)
+
 # --- PAGES ----------------------------------------------------------
 
 
@@ -124,12 +155,23 @@ def photos_page(request, lease_id):
     return render(request, "leases/photos_page.html", {"lease": lease})
 
 
+@login_required
+def history_media_page(request, lease_id, renewal_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
+    return render(request, "leases/photos_page.html", {"lease": lease, "history": history})
+
+
 
 # --- ADD / UPDATE / DELETE -----------------------------------------
 @login_required
 @require_POST
 def photo_add(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
+    renewal_id = request.POST.get("lease_history_id") or request.GET.get("history")
+    history = None
+    if renewal_id:
+        history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
     title = (request.POST.get("title") or "").strip()[:120]
     description = (request.POST.get("description") or "").strip()[:300]
 
@@ -148,7 +190,16 @@ def photo_add(request, lease_id):
         return HttpResponseBadRequest("No files uploaded")
 
     for f in files:
-        lm = LeaseMedia(lease=lease, title=title, description=description)
+        next_order = (_media_queryset(lease, history).count() + 1)
+        lm = LeaseMedia(
+            lease=lease,
+            lease_history=history,
+            title=title,
+            description=description,
+            sort_order=next_order,
+            uploaded_by=request.user if request.user.is_authenticated else None,
+            original_filename=getattr(f, "name", "")[:255],
+        )
         lm.file = f
         lm.save()               # processes -> stamped /photos + /thumbs
         lm.refresh_from_db()
@@ -163,7 +214,7 @@ def photo_add(request, lease_id):
         pass
 
     lease.refresh_from_db()
-    return _grid_response(request, lease)
+    return _grid_response(request, lease, history)
 
 
 
@@ -200,9 +251,10 @@ def photo_update(request, photo_id):
 def photo_delete(request, photo_id):
     p = get_object_or_404(LeaseMedia, pk=photo_id)
     lease = p.lease
+    history = p.lease_history
     p.delete()
     lease.refresh_from_db()
-    return _grid_response(request, lease)
+    return _grid_response(request, lease, history)
 
 # Deleted photos views (unchanged logic)
 
@@ -267,10 +319,11 @@ def _normalize_layout_param(request):
 @login_required
 def photos_export_pdf(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
+    history = _history_from_request(request, lease)
     layout = _normalize_layout_param(request)
 
     # Save/export to the lease (server-side copy)
-    _export_pdf_for_lease(lease, layout=layout)
+    _export_pdf_for_lease(lease, layout=layout, history=history)
 
     messages.success(request, f"Exported photos PDF ({layout}) saved to lease.")
     return redirect(request.META.get("HTTP_REFERER", "/"))
@@ -279,13 +332,15 @@ def photos_export_pdf(request, lease_id):
 @login_required
 def photos_export_pdf_stream(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
+    history = _history_from_request(request, lease)
     layout = _normalize_layout_param(request)
 
     # Call your exporter (layout-aware if supported)
     try:
-        name, fileobj = _safe_export_call(lease, layout=layout)
+        photos_qs = _media_queryset(lease, history).filter(media_type="image")
+        name, fileobj = _safe_export_call(lease, layout=layout, photos_qs=photos_qs)
     except TypeError:
-        name, fileobj = _safe_export_call(lease, layout=layout)  # backward-compatible
+        name, fileobj = _safe_export_call(lease, photos_qs=photos_qs)  # backward-compatible
 
     if not fileobj:
         messages.error(request, "No photos to export.")

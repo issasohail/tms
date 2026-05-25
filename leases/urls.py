@@ -22,12 +22,23 @@ from .views_pcr_export import export_photos_to_pdf_and_attach
 from django.urls import path
 from . import views_lease_photos as lpv  # <- import the file that has the view
 
-from .views_lease_photos import photos_page, photos_grid, photo_add, photo_delete, photo_update, photos_export_pdf, photo_viewer
+from .views_lease_photos import (
+    photos_page, photos_grid, photo_add, photo_delete, photo_update,
+    photos_export_pdf, photo_viewer, history_media_page, history_media_grid
+)
 from .views import (
     SecurityDepositListView,
     SecurityDepositCreateView,
     SecurityDepositUpdateView,
     SecurityDepositDeleteView,
+)
+from .views_renewal import (
+    LeaseHistoryDetailView,
+    LeaseHistoryUpdateView,
+    LeaseRenewalListView,
+    RenewLeaseView,
+    generate_renewal_agreement,
+    upload_renewal_signed_copy,
 )
 app_name = 'leases'
 
@@ -40,6 +51,17 @@ urlpatterns = [
     path('<int:pk>/edit/', LeaseUpdateView.as_view(), name='lease_update'),
     path('<int:pk>/delete/', LeaseDeleteView.as_view(), name='lease_delete'),
     path('<int:pk>/renew/', RenewLeaseView.as_view(), name='lease_renew'),
+    path('<int:pk>/whatsapp/welcome/',
+         views.lease_welcome_whatsapp, name='lease_welcome_whatsapp'),
+    path('<int:pk>/renewals/', LeaseRenewalListView.as_view(), name='lease_renewals'),
+    path('<int:pk>/renewals/<int:renewal_id>/',
+         LeaseHistoryDetailView.as_view(), name='lease_history_detail'),
+    path('<int:pk>/renewals/<int:renewal_id>/edit/',
+         LeaseHistoryUpdateView.as_view(), name='lease_history_edit'),
+    path('<int:pk>/renewals/<int:renewal_id>/agreement/',
+         generate_renewal_agreement, name='renewal_agreement'),
+    path('<int:pk>/renewals/<int:renewal_id>/upload-signed/',
+         upload_renewal_signed_copy, name='renewal_upload_signed'),
 
 
     # Printing and PDF
@@ -130,6 +152,10 @@ urlpatterns = [
 
     path("lease/<int:lease_id>/photos/", photos_page, name="photos_page"),
     path("lease/<int:lease_id>/photos/grid/", photos_grid, name="photos_grid"),
+    path("lease/<int:lease_id>/history/<int:renewal_id>/media/",
+         history_media_page, name="history_media_page"),
+    path("lease/<int:lease_id>/history/<int:renewal_id>/media/grid/",
+         history_media_grid, name="history_media_grid"),
     path("lease/<int:lease_id>/photos/add/", photo_add, name="photo_add"),
     path("photo/<int:photo_id>/delete/", photo_delete, name="photo_delete"),
     path("photo/<int:photo_id>/update/", photo_update, name="photo_update"),
@@ -189,6 +215,36 @@ urlpatterns = [
         "default-clauses/<int:pk>/edit/",
         views.default_clause_edit,
         name="default_clause_edit",
+    ),
+    path(
+        "agreement-placeholders/",
+        views.agreement_placeholder_list,
+        name="agreement_placeholder_list",
+    ),
+    path(
+        "agreement-placeholders/add/",
+        views.agreement_placeholder_create,
+        name="agreement_placeholder_create",
+    ),
+    path(
+        "agreement-placeholders/<int:pk>/edit/",
+        views.agreement_placeholder_edit,
+        name="agreement_placeholder_edit",
+    ),
+    path(
+        "whatsapp-templates/",
+        views.whatsapp_template_list,
+        name="whatsapp_template_list",
+    ),
+    path(
+        "whatsapp-templates/add/",
+        views.whatsapp_template_create,
+        name="whatsapp_template_create",
+    ),
+    path(
+        "whatsapp-templates/<int:pk>/edit/",
+        views.whatsapp_template_edit,
+        name="whatsapp_template_edit",
     ),
 
     # Per-lease clause editor

@@ -59,7 +59,7 @@ def _prepare_base_for_stamp(raw_bytes: bytes) -> Image.Image:
 # -------------------------------------------------------------------
 # config
 # -------------------------------------------------------------------
-MAX_DB_PATH = 115
+MAX_DB_PATH = 240
 STAMP_PROP_SCALE = getattr(settings, "LEASE_STAMP_PROP_SCALE",   0.55)
 STAMP_TS_SCALE = getattr(settings, "LEASE_STAMP_TS_SCALE",     0.50)
 STAMP_DESC_SCALE = getattr(settings, "LEASE_STAMP_DESC_SCALE",   0.50)
@@ -83,19 +83,39 @@ STAMP_MIN_PX = getattr(settings, "LEASE_STAMP_MIN_PX",       12)
 
 def _fs_part(s: str) -> str:
     s = (s or "").strip()
-    s = re.sub(r'[<>:"/\\|#?*]+', "-", s)
-    return s.rstrip(". ")
+    s = re.sub(r'[^A-Za-z0-9._-]+', "-", s)
+    return s.strip(".-_ ") or "item"
 
 
 def _folder_name_for_lease(lease) -> str:
+    prop = "property"
+    try:
+        unit_obj = getattr(lease, "unit", None)
+        prop_obj = getattr(unit_obj, "property", None)
+        prop = _fs_part(getattr(prop_obj, "property_name", "") or "property")
+    except Exception:
+        prop = "property"
     unit = _fs_part(getattr(getattr(lease, "unit", None), "unit_number", "")
                     or getattr(lease, "unit_number", "") or "unit")
     tenant = getattr(lease, "tenant", None)
-    tenant_name = getattr(tenant, "full_name", str(tenant)) or ""
-    tenant10 = _fs_part(tenant_name)[:10] or "tenant"
+    try:
+        tenant_name = tenant.get_full_name()
+    except Exception:
+        tenant_name = getattr(tenant, "full_name", str(tenant)) or ""
+    tenant10 = _fs_part(tenant_name)[:28] or "tenant"
     end = getattr(lease, "end_date", None)
     end_str = end.strftime("%Y-%m-%d") if end else "unknown"
-    return f"{unit}-{tenant10}-{end_str}"
+    return f"{prop}-{unit}-{tenant10}-{end_str}"
+
+
+def _date_for_media(i: "LeaseMedia") -> str:
+    dt = getattr(i, "taken_at", None) or getattr(i, "uploaded_at", None) or timezone.now()
+    return timezone.localtime(dt).strftime("%Y%m%d")
+
+
+def _lease_media_stem(i: "LeaseMedia", token: str | None = None) -> str:
+    suffix = token or (str(i.pk) if i.pk else uuid.uuid4().hex[:8])
+    return f"{_folder_name_for_lease(i.lease)}-{_date_for_media(i)}-{suffix}"
 
 
 def _base_dir(i: "LeaseMedia") -> str:
@@ -105,7 +125,7 @@ def _base_dir(i: "LeaseMedia") -> str:
 def _photo_filename(i: "LeaseMedia", ext: str) -> str:
     if not ext.startswith("."):
         ext = "." + ext
-    return f"{_folder_name_for_lease(i.lease)}-{i.pk or 'new'}{ext.lower()}"
+    return f"{_lease_media_stem(i)}{ext.lower()}"
 
 
 def _cap_path(no_ext: str, ext: str) -> str:
@@ -129,7 +149,7 @@ def _photos_path(i: "LeaseMedia", ext: str) -> str:
 def _photos_path_versioned(i: "LeaseMedia", ext: str) -> str:
     token = uuid.uuid4().hex[:6].upper()
     base = _base_dir(i)
-    name = f"{_folder_name_for_lease(i.lease)}-{i.pk or 'new'}-r{token}"
+    name = _lease_media_stem(i, token=f"{i.pk or 'new'}-r{token}")
     no_ext = f"{base}/photos/{name}"
     return _cap_path(no_ext, ext or ".jpg")
 
@@ -143,14 +163,18 @@ def _thumbs_path(i: "LeaseMedia") -> str:
 def _thumbs_path_versioned(i: "LeaseMedia") -> str:
     token = uuid.uuid4().hex[:6].upper()
     base = _base_dir(i)
-    name = f"{_folder_name_for_lease(i.lease)}-{i.pk or 'new'}-r{token}"
+    name = _lease_media_stem(i, token=f"{i.pk or 'new'}-r{token}")
     no_ext = f"{base}/thumbs/{name}"
     return _cap_path(no_ext, ".jpg")
 
 
 def _upload_tmp(i: "LeaseMedia", filename: str) -> str:
     ext = (os.path.splitext(filename)[1] or ".bin").lower()
-    return f"lm_tmp/{i.lease_id}/{uuid.uuid4().hex}{ext}"
+    try:
+        name = _lease_media_stem(i, token=f"tmp-{uuid.uuid4().hex[:8]}")
+    except Exception:
+        name = f"lease-media-{timezone.now():%Y%m%d}-tmp-{uuid.uuid4().hex[:8]}"
+    return f"lm_tmp/{i.lease_id or 'unknown'}/{name}{ext}"
 
 # -------------------------------------------------------------------
 # filesystem helpers (atomic write)
@@ -212,7 +236,7 @@ def _cleanup_versioned_siblings(i: "LeaseMedia", kind: str) -> None:
     if not default_storage.exists(dir_rel):
         return
     pat = re.compile(
-        rf"^{re.escape(folder)}-{re.escape(str(pid))}-r[A-F0-9]{{6}}\.jpg$", re.IGNORECASE)
+        rf"^{re.escape(folder)}-\d{{8}}-{re.escape(str(pid))}-r[A-F0-9]{{6}}\.jpg$", re.IGNORECASE)
     for fn in _listdir(dir_rel):
         if pat.match(fn):
             try:
@@ -278,12 +302,19 @@ from PIL import ImageOps
 class LeaseMedia(models.Model):
     lease = models.ForeignKey(
         "leases.Lease", on_delete=models.CASCADE, related_name="media")
+    lease_history = models.ForeignKey(
+        "leases.LeaseRenewal",
+        on_delete=models.CASCADE,
+        related_name="media",
+        null=True,
+        blank=True,
+    )
 
     file = models.FileField(
         max_length=255,
         upload_to=_upload_tmp,
         validators=[FileExtensionValidator(
-            ["jpg", "jpeg", "png", "gif", "mp4", "mov", "avi", "mkv"])],
+            ["jpg", "jpeg", "png", "webp", "gif", "pdf", "mp4", "mov", "avi", "mkv"])],
     )
     # single-file strategy: no originals field
     thumbnail = models.ImageField(
@@ -291,9 +322,20 @@ class LeaseMedia(models.Model):
         upload_to=_upload_tmp, blank=True, null=True, editable=False)
 
     media_type = models.CharField(max_length=10, choices=[
-                                  ("image", "Image"), ("video", "Video")])
+                                  ("image", "Image"), ("video", "Video"), ("file", "File")])
     title = models.CharField(max_length=120, blank=True)
     description = models.CharField(max_length=300, blank=True)
+    original_filename = models.CharField(max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lease_media_uploads",
+    )
+    uploaded_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
     taken_at = models.DateTimeField(blank=True, null=True)
 
     # immutable + layout metadata for footer rebuilds
@@ -305,7 +347,7 @@ class LeaseMedia(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["created_at"]
+        ordering = ["sort_order", "created_at"]
 
     def build_friendly_filename(self, force_ext: str | None = None) -> str:
         base = f"{_folder_name_for_lease(self.lease)}-{self.pk or 'new'}"
@@ -568,7 +610,10 @@ class LeaseMedia(models.Model):
         file_name = (self.file.name or "")
         ext = os.path.splitext(file_name)[1].lower() or ".jpg"
         is_video = ext in [".mp4", ".mov", ".avi", ".mkv"]
-        self.media_type = "video" if is_video else "image"
+        is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+        self.media_type = "video" if is_video else ("image" if is_image else "file")
+        if was_adding and not self.original_filename:
+            self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
 
         in_tmp = self._is_tmp_path(file_name)
         need_process = was_adding or in_tmp or (
@@ -617,9 +662,10 @@ class LeaseMedia(models.Model):
                     pass
 
             super().save(update_fields=["file", "media_type", "taken_at",
-                                        "static_footer_text", "footer_height_px", "updated_at"])
+                                        "static_footer_text", "footer_height_px",
+                                        "original_filename", "updated_at"])
 
-        else:
+        elif self.media_type == "video":
             # VIDEO: move into /videos
             video_dir = f"{_base_dir(self)}/videos"
             video_name = _photo_filename(self, ext)
@@ -637,7 +683,25 @@ class LeaseMedia(models.Model):
                     pass
 
             super().save(update_fields=[
-                "file", "media_type", "taken_at", "updated_at"])
+                "file", "media_type", "taken_at", "original_filename", "updated_at"])
+        else:
+            file_dir = f"{_base_dir(self)}/files"
+            file_name_final = _photo_filename(self, ext)
+            path_no_ext = f"{file_dir}/{os.path.splitext(file_name_final)[0]}"
+            file_path = _cap_path(path_no_ext, ext)
+            with default_storage.open(file_name, "rb") as fh:
+                data = fh.read()
+            _write_bytes_exact(file_path, data)
+            self.file.name = file_path
+
+            if in_tmp and default_storage.exists(file_name):
+                try:
+                    default_storage.delete(file_name)
+                except Exception:
+                    pass
+
+            super().save(update_fields=[
+                "file", "media_type", "taken_at", "original_filename", "updated_at"])
 
 # -------------------------------------------------------------------
 # helpers

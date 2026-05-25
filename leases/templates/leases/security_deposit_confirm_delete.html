@@ -17,11 +17,21 @@
         <li><strong>Date:</strong> {{ object.date|date:"M d, Y" }}</li>
         <li><strong>Type:</strong> {{ object.get_type_display }}</li>
         <li><strong>Amount:</strong> Rs {{ object.amount|floatformat:0|intcomma }}</li>
-        <li><strong>Notes:</strong> {{ object.notes|default:"—" }}</li>
+        {% if object.type == "REFUND" %}
+          <li><strong>Deduction:</strong> Rs {{ object.deduction_amount|floatformat:0|intcomma }}</li>
+          <li><strong>Status:</strong> {{ object.get_refund_status_display|default:"Paid" }}</li>
+        {% endif %}
+        <li><strong>Notes:</strong> {{ object.notes|default:"N/A" }}</li>
       </ul>
 
       <form method="post" class="mt-3">
         {% csrf_token %}
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="confirm_delete" value="yes" id="confirmDelete">
+          <label class="form-check-label" for="confirmDelete">
+            I understand this will remove this security deposit ledger entry and recalculate the lease deposit balance.
+          </label>
+        </div>
         <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-secondary btn-sm">
           Cancel
         </a>

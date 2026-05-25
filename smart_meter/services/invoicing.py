@@ -1,14 +1,14 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from calendar import monthrange
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Min, Max
+from django.db.models import Min, Max, Q
 from django.utils import timezone
 
-from smart_meter.models import MeterReading, Meter
+from smart_meter.models import MeterReading, Meter, MeterInstallation
 from invoices.models import Invoice, InvoiceItem, ItemCategory
-from leases.models import Lease
+from leases.models import Lease, LeaseUnitOccupancy
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -67,7 +67,8 @@ class ElectricBillContext:
                  end_kwh: Decimal,
                  units: Decimal,
                  unit_rate: Decimal,
-                 service_charges: Decimal):
+                 service_charges: Decimal,
+                 segments: list | None = None):
         self.lease = lease
         self.meter = meter
         self.period_start = period_start
@@ -77,6 +78,7 @@ class ElectricBillContext:
         self.units = units
         self.unit_rate = unit_rate
         self.service_charges = service_charges
+        self.segments = segments or []
 
     @property
     def usage_amount(self) -> Decimal:
@@ -103,6 +105,14 @@ class ElectricBillContext:
         return _trim_desc(raw)
 
 
+def _overlap(start_a: date, end_a: date | None, start_b: date, end_b: date | None):
+    start = max(start_a, start_b)
+    end = min(end_a or date.max, end_b or date.max)
+    if start > end:
+        return None
+    return start, end
+
+
 def _month_window_local(period_start: date):
     """[start_of_month@00:00 local, start_of_next_month@00:00 local)."""
     tz = timezone.get_current_timezone()
@@ -119,26 +129,107 @@ def _month_window_local(period_start: date):
     return sdt, ndt
 
 
-def compute_electric_bill(lease, meter, period_start: date, period_end: date) -> ElectricBillContext:
-    # Use timezone-aware bounds to avoid dropping edge readings
-    sdt, ndt = _month_window_local(period_start)
+def _reading_bounds(meter: Meter, start: date, end: date):
+    tz = timezone.get_current_timezone()
+    sdt = timezone.make_aware(datetime.combine(start, time.min), tz)
+    edt = timezone.make_aware(datetime.combine(end + timedelta(days=1), time.min), tz)
 
     agg = (
         MeterReading.objects
-        .filter(meter=meter, ts__gte=sdt, ts__lt=ndt)
+        .filter(meter=meter, ts__gte=sdt, ts__lt=edt)
         .aggregate(beg=Min("total_energy"), end=Max("total_energy"))
     )
+    return agg["beg"], agg["end"]
 
-    beg_raw = agg["beg"]
-    end_raw = agg["end"]
 
-    beg = Decimal(str(beg_raw if beg_raw is not None else "0"))
-    end = Decimal(str(end_raw if end_raw is not None else "0"))
+def compute_electric_bill(lease, meter, period_start: date, period_end: date) -> ElectricBillContext:
+    installations = MeterInstallation.objects.filter(
+        meter=meter,
+        start_date__lte=period_end,
+    ).filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start)).select_related("unit")
 
-    units = (
-        end - beg) if (beg_raw is not None and end_raw is not None) else Decimal("0")
-    if units < 0:
-        units = Decimal("0")  # guard against meter reset
+    occupancies = LeaseUnitOccupancy.objects.filter(
+        lease=lease,
+        move_in_date__lte=period_end,
+    ).filter(Q(move_out_date__isnull=True) | Q(move_out_date__gte=period_start)).select_related("unit")
+
+    segments = []
+    total_units = Decimal("0.000")
+    first_beg = None
+    last_end = None
+
+    for installation in installations.order_by("start_date", "id"):
+        for occupancy in occupancies:
+            if occupancy.unit_id != installation.unit_id:
+                continue
+            installation_window = _overlap(
+                installation.start_date,
+                installation.end_date,
+                period_start,
+                period_end,
+            )
+            occupancy_window = _overlap(
+                occupancy.move_in_date,
+                occupancy.move_out_date,
+                period_start,
+                period_end,
+            )
+            if not installation_window or not occupancy_window:
+                continue
+            segment_window = _overlap(
+                installation_window[0],
+                installation_window[1],
+                occupancy_window[0],
+                occupancy_window[1],
+            )
+            if not segment_window:
+                continue
+
+            seg_start, seg_end = segment_window
+            beg_raw, end_raw = _reading_bounds(meter, seg_start, seg_end)
+            if beg_raw is None and seg_start == installation.start_date:
+                beg_raw = installation.start_reading
+            if end_raw is None and installation.end_date and seg_end == installation.end_date:
+                end_raw = installation.end_reading
+
+            beg = Decimal(str(beg_raw if beg_raw is not None else "0"))
+            end = Decimal(str(end_raw if end_raw is not None else "0"))
+            units = (end - beg) if (beg_raw is not None and end_raw is not None) else Decimal("0")
+            if units < 0:
+                units = Decimal("0")
+
+            if first_beg is None:
+                first_beg = beg
+            last_end = end
+            total_units += units
+            segments.append(
+                {
+                    "meter": meter,
+                    "unit": installation.unit,
+                    "installation": installation,
+                    "occupancy": occupancy,
+                    "period_start": seg_start,
+                    "period_end": seg_end,
+                    "beg_kwh": beg,
+                    "end_kwh": end,
+                    "units": units,
+                }
+            )
+
+    if not segments:
+        beg_raw, end_raw = _reading_bounds(meter, period_start, period_end)
+        first_beg = Decimal(str(beg_raw if beg_raw is not None else "0"))
+        last_end = Decimal(str(end_raw if end_raw is not None else "0"))
+        total_units = (
+            last_end - first_beg
+            if (beg_raw is not None and end_raw is not None)
+            else Decimal("0")
+        )
+        if total_units < 0:
+            total_units = Decimal("0")
+
+    beg = first_beg if first_beg is not None else Decimal("0")
+    end = last_end if last_end is not None else Decimal("0")
 
     unit_rate = _detect_unit_rate(meter, lease)
     service_charges = _detect_service_charges(meter)
@@ -150,10 +241,46 @@ def compute_electric_bill(lease, meter, period_start: date, period_end: date) ->
         period_end=period_end,
         beg_kwh=beg,
         end_kwh=end,
-        units=units,
+        units=total_units,
         unit_rate=unit_rate,
         service_charges=service_charges,
+        segments=segments,
     )
+
+
+def billing_contexts_for_period(period_start: date, period_end: date, *, property_id=None, unit_id=None, meter_id=None):
+    installations = MeterInstallation.objects.filter(
+        meter__billing_mode="postpaid",
+        start_date__lte=period_end,
+    ).filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start)).select_related(
+        "meter",
+        "unit",
+        "unit__property",
+    )
+    if property_id:
+        installations = installations.filter(unit__property_id=property_id)
+    if unit_id:
+        installations = installations.filter(unit_id=unit_id)
+    if meter_id:
+        installations = installations.filter(meter_id=meter_id)
+
+    seen = set()
+    contexts = []
+    for installation in installations.order_by("unit__property__property_name", "unit__unit_number", "meter__meter_number"):
+        occupancies = LeaseUnitOccupancy.objects.filter(
+            unit=installation.unit,
+            move_in_date__lte=period_end,
+        ).filter(Q(move_out_date__isnull=True) | Q(move_out_date__gte=period_start)).select_related("lease")
+        for occupancy in occupancies:
+            lease = occupancy.lease
+            key = (lease.pk, installation.meter_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            ctx = compute_electric_bill(lease, installation.meter, period_start, period_end)
+            if ctx.segments:
+                contexts.append(ctx)
+    return contexts
 
 
 def _next_month_start(d: date) -> date:

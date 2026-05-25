@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">{{ title }}</h4>
+    <div class="d-flex gap-2">
+      <a href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&{% endif %}export=csv" class="btn btn-outline-secondary btn-sm">CSV</a>
+      <a href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&{% endif %}export=xlsx" class="btn btn-outline-success btn-sm">Excel</a>
+      <a href="{% url 'reports:report_list' %}" class="btn btn-secondary btn-sm">Reports</a>
+    </div>
+  </div>
+
+  {% if report_type == "rent_collection" or report_type == "late_fees" %}
+    <form method="get" class="card mb-3">
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Date From</label>
+            <input type="date" name="start" value="{{ filters.start }}" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Date To</label>
+            <input type="date" name="end" value="{{ filters.end }}" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2 d-grid">
+            <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  {% elif report_type == "tenant_balance" %}
+    <form method="get" class="card mb-3">
+      <div class="card-body py-2 d-flex gap-2 align-items-end">
+        <div>
+          <label class="form-label small mb-1">Lease Status</label>
+          <select name="status" class="form-select form-select-sm">
+            <option value="active" {% if filters.status == "active" %}selected{% endif %}>Active</option>
+            <option value="ended" {% if filters.status == "ended" %}selected{% endif %}>Ended</option>
+            <option value="terminated" {% if filters.status == "terminated" %}selected{% endif %}>Terminated</option>
+            <option value="all" {% if filters.status == "all" %}selected{% endif %}>All</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+      </div>
+    </form>
+  {% elif report_type == "renewal_due" %}
+    <form method="get" class="card mb-3">
+      <div class="card-body py-2 d-flex gap-2 align-items-end">
+        <div>
+          <label class="form-label small mb-1">Due Within Days</label>
+          <input type="number" name="days" value="{{ filters.days }}" class="form-control form-control-sm" min="1">
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if totals %}
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for key, value in totals.items %}
+        <div class="border rounded p-2 small">
+          <span class="text-muted">{{ key|title }}:</span>
+          <strong>Rs {{ value|floatformat:0|intcomma }}</strong>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              {% for header in headers %}<th>{{ header }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                {% for value in row %}<td>{{ value }}</td>{% endfor %}
+              </tr>
+            {% empty %}
+              <tr><td colspan="{{ headers|length }}" class="text-muted p-3">No rows found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

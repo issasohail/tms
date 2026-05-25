@@ -31,12 +31,30 @@ class GlobalSettings(models.Model):
         max_digits=10, decimal_places=4, default=0)
     service_charge_flat = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
+    late_fee_enabled = models.BooleanField(default=False)
+    late_fee_type = models.CharField(
+        max_length=10,
+        choices=(("fixed", "Fixed amount"), ("percent", "Percentage")),
+        default="fixed",
+    )
+    late_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    late_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    late_fee_grace_days = models.PositiveIntegerField(default=0)
+    billing_cap_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Optional invoice cap. Use 0 for no cap.",
+    )
 
     time_zone = models.CharField(max_length=64, default="Asia/Karachi")  # NEW
 
     # Listener (meter socket)
     listener_host = models.CharField(max_length=100, default="127.0.0.1")
     listener_port = models.PositiveIntegerField(default=6000)
+
+    # Development tools
+    enable_debug_toolbar = models.BooleanField(default=False)
 
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -80,12 +98,30 @@ class GlobalSettings(models.Model):
         max_digits=10, decimal_places=4, default=0)
     service_charge_flat = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
+    late_fee_enabled = models.BooleanField(default=False)
+    late_fee_type = models.CharField(
+        max_length=10,
+        choices=(("fixed", "Fixed amount"), ("percent", "Percentage")),
+        default="fixed",
+    )
+    late_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    late_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    late_fee_grace_days = models.PositiveIntegerField(default=0)
+    billing_cap_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Optional invoice cap. Use 0 for no cap.",
+    )
 
     time_zone = models.CharField(max_length=64, default="Asia/Karachi")  # NEW
 
     # Listener (meter socket)
     listener_host = models.CharField(max_length=100, default="127.0.0.1")
     listener_port = models.PositiveIntegerField(default=6000)
+
+    # Development tools
+    enable_debug_toolbar = models.BooleanField(default=False)
 
     updated_at = models.DateTimeField(auto_now=True)
 

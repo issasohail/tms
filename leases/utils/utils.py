@@ -126,6 +126,47 @@ def generate_agreement_html(lease):
     pass
 
 
+def _lease_bank_account(lease):
+    if not lease:
+        return ""
+    unit = getattr(lease, "unit", None)
+    property_obj = getattr(unit, "property", None)
+    unit_bank = (getattr(unit, "bank_account_details", None) or "").strip()
+    use_property = getattr(unit, "use_property_bank_account", True)
+    property_bank = (getattr(property_obj, "bank_account_details", None) or "").strip()
+    if unit_bank and not use_property:
+        return unit_bank
+    return property_bank or unit_bank
+
+
+def replace_db_placeholders(text, lease=None):
+    """
+    Replace UI-managed custom/manual placeholders after system placeholders.
+    Unknown placeholders are intentionally left unchanged.
+    """
+    try:
+        from leases.models import AgreementPlaceholder
+    except Exception:
+        return text
+
+    placeholders = AgreementPlaceholder.objects.filter(
+        is_active=True,
+        source_type__in=[
+            AgreementPlaceholder.SOURCE_CUSTOM,
+            AgreementPlaceholder.SOURCE_MANUAL,
+        ],
+    )
+    for placeholder in placeholders:
+        token = f"[{placeholder.key}]"
+        if token in text:
+            if placeholder.key == "BANK_ACCOUNT":
+                replacement = _lease_bank_account(lease) or placeholder.default_value or ""
+            else:
+                replacement = placeholder.default_value or ""
+            text = text.replace(token, replacement)
+    return text
+
+
 def do_replace_placeholders(text, lease):
     """Replace placeholders in clause text with actual values.
        Returns HTML (e.g., <strong>...</strong>) for preview/PDF rendering.
@@ -152,4 +193,4 @@ def do_replace_placeholders(text, lease):
             except Exception as e:
                 print(f"Error replacing {placeholder}: {e}")
 
-    return text
+    return replace_db_placeholders(text, lease)

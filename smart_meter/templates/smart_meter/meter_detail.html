@@ -7,6 +7,11 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Meter Details: {{ meter.meter_number }}</h2>
         <div>
+            {% if meter.unit %}
+                <a href="{% url 'smart_meter:switch_meter' meter.unit.pk %}" class="btn btn-warning">
+                    <i class="fas fa-exchange-alt"></i> Replace / Switch
+                </a>
+            {% endif %}
             <a href="{% url 'smart_meter:meter_edit' meter.pk %}" class="btn btn-secondary">
                 <i class="fas fa-edit"></i> Edit
             </a>
@@ -22,8 +27,18 @@
                 <div class="col-md-6">
                     <h5>Basic Information</h5>
                     <p><strong>Meter Number:</strong> {{ meter.meter_number }}</p>
-                    <p><strong>Unit:</strong> {{ meter.unit.unit_number }}</p>
-                    <p><strong>Property:</strong> {{ meter.unit.property.property_name }}</p>
+                    <p><strong>Billing Mode:</strong> {{ meter.get_billing_mode_display }}</p>
+                    <p><strong>Type:</strong> {{ meter.get_meter_type_display }}</p>
+                    <p><strong>Unit:</strong> {{ meter.unit.unit_number|default:"-" }}</p>
+                    <p><strong>Property:</strong> {{ meter.unit.property.property_name|default:"-" }}</p>
+                    <p><strong>Current Tenant:</strong> {{ meter.current_tenant|default:"-" }}</p>
+                    <p><strong>Active Lease:</strong>
+                        {% if meter.current_lease %}
+                            <a href="{% url 'leases:lease_detail' meter.current_lease.id %}">Lease #{{ meter.current_lease.id }}</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </p>
                     <p><strong>Status:</strong> 
                         {% if meter.is_active %}
                             <span class="badge bg-success">Online</span>
@@ -41,6 +56,123 @@
                 </div>
             </div>
             
+            <div class="mt-4">
+                <h5>Assignment History</h5>
+                {% if meter.assignment_history.all %}
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Old Unit</th>
+                                <th>New Unit</th>
+                                <th>Changed By</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for change in meter.assignment_history.all|slice:":8" %}
+                            <tr>
+                                <td>{{ change.change_date|date:"M d, Y H:i" }}</td>
+                                <td>{{ change.old_unit|default:"-" }}</td>
+                                <td>{{ change.new_unit|default:"-" }}</td>
+                                <td>{{ change.changed_by|default:"-" }}</td>
+                                <td>{{ change.notes|default:"" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No assignment changes recorded.</p>
+                {% endif %}
+            </div>
+
+            <div class="mt-4">
+                <h5>Current Installation</h5>
+                {% with current_installation=meter.installations.all|first %}
+                    {% if current_installation and current_installation.is_active %}
+                        <div class="mb-2 d-flex gap-2">
+                            <a href="{% url 'smart_meter:switch_meter' current_installation.unit.pk %}" class="btn btn-sm btn-outline-primary">Replace / Switch Meter</a>
+                            <a href="{% url 'smart_meter:close_meter_installation' current_installation.pk %}" class="btn btn-sm btn-outline-secondary">Close Installation</a>
+                        </div>
+                        <table class="table table-sm table-bordered w-auto">
+                            <tbody>
+                                <tr><th>Unit</th><td><a href="{% url 'properties:unit_detail' current_installation.unit.pk %}">{{ current_installation.unit }}</a></td></tr>
+                                <tr><th>Lease</th><td>{% if current_installation.lease %}<a href="{% url 'leases:lease_detail' current_installation.lease.pk %}">Lease #{{ current_installation.lease.pk }}</a>{% else %}-{% endif %}</td></tr>
+                                <tr><th>Start Date</th><td>{{ current_installation.start_date|date:"M d, Y" }}</td></tr>
+                                <tr><th>Start Reading</th><td>{{ current_installation.start_reading }}</td></tr>
+                                <tr><th>Reason</th><td>{{ current_installation.reason|default:"-" }}</td></tr>
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p class="text-muted">No active installation.</p>
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <div class="mt-4">
+                <h5>Full Installation History</h5>
+                {% if meter.installations.all %}
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th>Lease</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th class="text-end">Start</th>
+                                <th class="text-end">End</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for installation in meter.installations.all %}
+                            <tr>
+                                <td><a href="{% url 'properties:unit_detail' installation.unit.pk %}">{{ installation.unit }}</a></td>
+                                <td>{% if installation.lease %}<a href="{% url 'leases:lease_detail' installation.lease.pk %}">#{{ installation.lease.pk }}</a>{% else %}-{% endif %}</td>
+                                <td>{{ installation.start_date|date:"M d, Y" }}</td>
+                                <td>{{ installation.end_date|date:"M d, Y"|default:"Current" }}</td>
+                                <td class="text-end">{{ installation.start_reading }}</td>
+                                <td class="text-end">{{ installation.end_reading|default:"-" }}</td>
+                                <td>{% if installation.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Closed</span>{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No installation history recorded.</p>
+                {% endif %}
+            </div>
+
+            <div class="mt-4">
+                <h5>Bills Generated From This Meter</h5>
+                {% if meter.bills.all %}
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Unit</th>
+                                <th class="text-end">Units</th>
+                                <th class="text-end">Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for bill in meter.bills.all|slice:":10" %}
+                            <tr>
+                                <td>{{ bill.period_start|date:"M d, Y" }} - {{ bill.period_end|date:"M d, Y" }}</td>
+                                <td>{{ bill.unit }}</td>
+                                <td class="text-end">{{ bill.units_consumed }}</td>
+                                <td class="text-end">{{ bill.amount_due }}</td>
+                                <td>{{ bill.get_status_display }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No bills recorded for this meter.</p>
+                {% endif %}
+            </div>
+
             <div class="mt-4">
                 <h5>Recent Readings</h5>
                 {% if meter.readings.all %}

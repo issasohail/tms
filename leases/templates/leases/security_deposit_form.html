@@ -37,10 +37,35 @@
             {{ form.amount }}
             <div class="text-danger small">{{ form.amount.errors }}</div>
           </div>
+          <div class="col-md-3">
+            <label class="form-label">Deduction Amount</label>
+            {{ form.deduction_amount }}
+            <div class="text-danger small">{{ form.deduction_amount.errors }}</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Refund Status</label>
+            {{ form.refund_status }}
+            <div class="text-danger small">{{ form.refund_status.errors }}</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Refund Method</label>
+            {{ form.refund_payment_method }}
+            <div class="text-danger small">{{ form.refund_payment_method.errors }}</div>
+          </div>
+          <div class="col-12 mt-2">
+            <label class="form-label">Deduction Reason</label>
+            {{ form.deduction_reason }}
+            <div class="text-danger small">{{ form.deduction_reason.errors }}</div>
+          </div>
           <div class="col-12 mt-2">
             <label class="form-label">Notes</label>
             {{ form.notes }}
             <div class="text-danger small">{{ form.notes.errors }}</div>
+          </div>
+          <div class="col-12 mt-2">
+            <label class="form-label">Refund Notes</label>
+            {{ form.refund_notes }}
+            <div class="text-danger small">{{ form.refund_notes.errors }}</div>
           </div>
         </div>
       </div>

@@ -110,6 +110,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from leases.models import Lease
 from .models import SecurityDepositTransaction
 from .services import security_deposit_totals
+from core.models import GlobalSettings
 import logging
 logger = logging.getLogger(__name__)
 # at top if not present
@@ -441,13 +442,21 @@ class InvoiceDetailView(DetailView):
     model = Invoice
     template_name = "invoices/invoice_detail.html"
 
+    def get_queryset(self):
+        return super().get_queryset().select_related(
+            "lease__tenant",
+            "lease__unit__property",
+        ).prefetch_related(
+            Prefetch("items", queryset=InvoiceItem.objects.select_related("category"))
+        )
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
         inv = self.object
 
         # Preload items + category
-        items = inv.items.select_related('category').all()
+        items = list(inv.items.all())
 
         # Combined description = "Category: desc, Category: desc, ..."
         parts = []
@@ -461,7 +470,7 @@ class InvoiceDetailView(DetailView):
         ctx["combined_description"] = ", ".join(parts)
 
         # Compute total from items (don’t trust stale invoice.amount)
-        ctx["computed_total"] = items.aggregate(t=Sum("amount"))["t"] or 0
+        ctx["computed_total"] = sum((item.amount for item in items), Decimal("0.00"))
 
         # For the category list box (datalist suggestions)
         from .models import ItemCategory
@@ -530,10 +539,35 @@ def render_to_pdf(template_name, context):
         raise Exception(f"PDF generation failed: {str(e)}")
 
 
+def _invoice_pdf_context(invoice):
+    items = list(invoice.items.select_related('category').all())
+    parts = []
+    for item in items:
+        category_name = item.category.name if item.category_id else ''
+        description = item.description or ''
+        if category_name and description:
+            parts.append(f"{category_name}: {description}")
+        elif category_name:
+            parts.append(category_name)
+        elif description:
+            parts.append(description)
+
+    return {
+        'invoice': invoice,
+        'items': items,
+        'computed_total': sum((item.amount for item in items), Decimal('0.00')),
+        'combined_description': ', '.join(parts),
+        'date': now().date(),
+    }
+
+
 @login_required
 def send_invoice_email(request, invoice_id):
     try:
-        invoice = get_object_or_404(Invoice, pk=invoice_id)
+        invoice = get_object_or_404(
+            Invoice.objects.select_related('lease__tenant', 'lease__unit__property'),
+            pk=invoice_id
+        )
 
         # Validate recipient email
         try:
@@ -542,11 +576,7 @@ def send_invoice_email(request, invoice_id):
             messages.error(request, 'Invalid recipient email address.')
             return redirect('invoices:invoice_detail', pk=invoice_id)
 
-        context = {
-            'invoice': invoice,
-            'items': invoice.items.all(),
-            'date': now().date()
-        }
+        context = _invoice_pdf_context(invoice)
 
         try:
             pdf_content = render_to_pdf('invoices/invoice_pdf.html', context)
@@ -576,9 +606,12 @@ def send_invoice_email(request, invoice_id):
 class InvoicePDFView(View):
     def get(self, request, pk):
         try:
-            invoice = get_object_or_404(Invoice, pk=pk)
+            invoice = get_object_or_404(
+                Invoice.objects.select_related('lease__tenant', 'lease__unit__property'),
+                pk=pk
+            )
             pdf_content = render_to_pdf(
-                'invoices/invoice_pdf.html', {'invoice': invoice})
+                'invoices/invoice_pdf.html', _invoice_pdf_context(invoice))
 
             response = HttpResponse(
                 pdf_content, content_type='application/pdf')
@@ -977,6 +1010,11 @@ async def export_invoices_csv(request):
 def invoice_item_inline_update(request, pk):
     item = get_object_or_404(
         InvoiceItem.objects.select_related('invoice', 'category'), pk=pk)
+    if item.invoice.status == "paid":
+        return JsonResponse({
+            "ok": False,
+            "error": "Paid invoices cannot be changed. Create an adjustment instead.",
+        }, status=400)
     try:
         payload = json.loads(request.body or '{}')
     except json.JSONDecodeError:
@@ -1016,6 +1054,130 @@ def invoice_item_inline_update(request, pk):
         'amount': str(item.amount),
         'invoice_total': str(total),
     })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def invoice_item_inline_delete(request, pk):
+    item = get_object_or_404(
+        InvoiceItem.objects.select_related("invoice", "category"), pk=pk)
+    invoice = item.invoice
+
+    if request.POST.get("confirm_delete") != "yes":
+        return JsonResponse({
+            "ok": False,
+            "error": "Deletion was not confirmed.",
+        }, status=400)
+
+    if invoice.status == "paid":
+        return JsonResponse({
+            "ok": False,
+            "error": "Paid invoice items cannot be deleted. Create an adjustment instead.",
+        }, status=400)
+
+    if item.security_deposit_movements.exists():
+        return JsonResponse({
+            "ok": False,
+            "error": "This item is linked to a security deposit movement and cannot be deleted safely.",
+        }, status=400)
+
+    if invoice.items.count() <= 1:
+        return JsonResponse({
+            "ok": False,
+            "error": "Cannot delete the last invoice line item. Edit it instead or delete the invoice.",
+        }, status=400)
+
+    deleted_id = item.pk
+    item.delete()
+
+    total = invoice.items.aggregate(t=Sum("amount"))["t"] or Decimal("0.00")
+    parts = []
+    for it in invoice.items.select_related("category"):
+        category_name = getattr(it.category, "name", "") if it.category_id else ""
+        desc = (it.description or "").strip()
+        if category_name and desc:
+            parts.append(f"{category_name}: {desc}")
+        elif category_name:
+            parts.append(category_name)
+        elif desc:
+            parts.append(desc)
+
+    invoice.description = ", ".join(parts)
+    invoice.amount = total
+    invoice.save(update_fields=["description", "amount", "updated_at"])
+
+    return JsonResponse({
+        "ok": True,
+        "deleted_id": deleted_id,
+        "invoice_total": str(total),
+        "combined_description": invoice.description or "",
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def apply_late_fees(request):
+    settings_obj = GlobalSettings.get_solo()
+    if not settings_obj.late_fee_enabled:
+        messages.error(request, "Late fee is disabled in settings.")
+        return redirect("invoices:invoice_list")
+
+    today = timezone.localdate()
+    grace_days = settings_obj.late_fee_grace_days or 0
+    late_fee_category, _ = ItemCategory.objects.get_or_create(
+        name="Late Fee",
+        defaults={"is_active": True},
+    )
+    invoices = (
+        Invoice.objects
+        .exclude(status__in=["paid", "cancelled"])
+        .filter(due_date__lt=today - timedelta(days=grace_days))
+        .prefetch_related("items")
+    )
+
+    applied = skipped_duplicate = skipped_cap = 0
+    cap = settings_obj.billing_cap_amount or Decimal("0.00")
+    for invoice in invoices:
+        if invoice.items.filter(category=late_fee_category).exists():
+            skipped_duplicate += 1
+            continue
+
+        base_amount = invoice.amount or Decimal("0.00")
+        if settings_obj.late_fee_type == "percent":
+            fee = (
+                base_amount
+                * (settings_obj.late_fee_percent or Decimal("0.00"))
+                / Decimal("100.00")
+            ).quantize(Decimal("0.01"))
+        else:
+            fee = settings_obj.late_fee_amount or Decimal("0.00")
+
+        if cap and base_amount >= cap:
+            skipped_cap += 1
+            continue
+        if cap and base_amount + fee > cap:
+            fee = cap - base_amount
+        if fee <= 0:
+            continue
+
+        InvoiceItem.objects.create(
+            invoice=invoice,
+            category=late_fee_category,
+            description=f"Late fee applied on {today:%Y-%m-%d}",
+            amount=fee,
+            is_recurring=False,
+        )
+        invoice.status = "overdue"
+        invoice.save(update_fields=["status", "updated_at"])
+        applied += 1
+
+    messages.success(
+        request,
+        f"Late fees applied: {applied}. Skipped duplicates: {skipped_duplicate}. Skipped by cap: {skipped_cap}.",
+    )
+    return redirect("invoices:invoice_list")
 # invoices/services.py (new file)
 
 

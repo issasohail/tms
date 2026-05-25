@@ -1,0 +1,17 @@
+/* TMS global styles */
+body {
+    background: #f8fafc;
+}
+
+.navbar-brand img,
+.app-logo {
+    max-height: 42px;
+}
+
+.card {
+    border-radius: 12px;
+}
+
+.table th {
+    white-space: nowrap;
+}

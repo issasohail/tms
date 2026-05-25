@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">Maintenance Request #{{ request_obj.id }}</h4>
+    <div class="d-flex gap-2">
+      <a href="{% url 'maintenance:request_list' %}" class="btn btn-secondary btn-sm">List</a>
+      <a href="{% url 'maintenance:request_edit' request_obj.id %}" class="btn btn-primary btn-sm">Edit</a>
+      <a href="{% url 'maintenance:request_delete' request_obj.id %}" class="btn btn-danger btn-sm">Delete</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card mb-3">
+        <div class="card-header py-2 d-flex justify-content-between">
+          <strong>{{ request_obj.title }}</strong>
+          <span class="badge bg-secondary">{{ request_obj.get_status_display }}</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-2 small mb-3">
+            <div class="col-md-4"><span class="text-muted">Building:</span> {{ request_obj.building|default:"-" }}</div>
+            <div class="col-md-4"><span class="text-muted">Unit:</span> {{ request_obj.unit|default:"-" }}</div>
+            <div class="col-md-4"><span class="text-muted">Tenant:</span> {{ request_obj.tenant|default:"-" }}</div>
+            <div class="col-md-4"><span class="text-muted">Category:</span> {{ request_obj.get_category_display }}</div>
+            <div class="col-md-4"><span class="text-muted">Priority:</span> {{ request_obj.get_priority_display }}</div>
+            <div class="col-md-4"><span class="text-muted">Assigned:</span> {{ request_obj.assigned_to|default:"-" }}</div>
+            <div class="col-md-4"><span class="text-muted">Reported:</span> {{ request_obj.reported_date|date:"M d, Y" }}</div>
+            <div class="col-md-4"><span class="text-muted">Resolved:</span> {{ request_obj.resolved_date|date:"M d, Y"|default:"-" }}</div>
+            <div class="col-md-4"><span class="text-muted">Cost:</span> {{ request_obj.cost|money:0 }}</div>
+          </div>
+          <h6>Description</h6>
+          <p class="mb-3">{{ request_obj.description|linebreaksbr }}</p>
+          {% if request_obj.admin_notes %}
+            <h6>Admin Notes</h6>
+            <p class="mb-0">{{ request_obj.admin_notes|linebreaksbr }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header py-2"><strong>Files</strong></div>
+        <div class="card-body">
+          {% if request_obj.media.all %}
+            <div class="row g-2">
+              {% for media in request_obj.media.all %}
+                {% if media.is_active %}
+                  <div class="col-md-4">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small text-truncate mb-2">{{ media.original_filename|default:media.file.name }}</div>
+                      {% if media.is_image %}
+                        <a href="{{ media.file.url }}" target="_blank">
+                          <img src="{{ media.file.url }}" alt="" class="img-fluid rounded border">
+                        </a>
+                      {% else %}
+                        <a href="{{ media.file.url }}" target="_blank" class="btn btn-outline-secondary btn-sm">View File</a>
+                      {% endif %}
+                      {% if media.description %}
+                        <div class="small mt-2">{{ media.description }}</div>
+                      {% endif %}
+                      <div class="d-flex gap-1 mt-2">
+                        <a href="{% url 'maintenance:media_edit' media.id %}" class="btn btn-secondary btn-sm">Edit</a>
+                        <form method="post" action="{% url 'maintenance:media_delete' media.id %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="confirm_delete" value="yes">
+                          <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Remove this file from active view?');">Delete</button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted small">No files uploaded.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header py-2"><strong>Status History</strong></div>
+        <div class="card-body">
+          {% for log in request_obj.status_logs.all %}
+            <div class="border-bottom pb-2 mb-2 small">
+              <div><strong>{{ log.old_status|default:"New" }}</strong> to <strong>{{ log.new_status }}</strong></div>
+              <div class="text-muted">{{ log.changed_at|date:"M d, Y H:i" }} by {{ log.changed_by|default:"System" }}</div>
+              {% if log.notes %}<div>{{ log.notes|linebreaksbr }}</div>{% endif %}
+            </div>
+          {% empty %}
+            <div class="text-muted small">No status history yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

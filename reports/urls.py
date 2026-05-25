@@ -7,6 +7,15 @@ from django.urls import path
 from . import views
 from django.urls import path
 from .views import SecurityDepositReportView
+from .views import (
+    MaintenanceCollectionReportView,
+    RentCollectionReportView,
+    TenantBalanceReportView,
+    LeaseRenewalDueReportView,
+    VacantUnitReportView,
+    LateFeeReportView,
+    MeterReportView,
+)
 
 app_name = 'reports'
 
@@ -33,4 +42,15 @@ urlpatterns = [
         SecurityDepositReportView.as_view(),
         name="security_deposit_report",
     ),
+    path(
+        "maintenance-collection/",
+        MaintenanceCollectionReportView.as_view(),
+        name="maintenance_collection_report",
+    ),
+    path("rent-collection/", RentCollectionReportView.as_view(), name="rent_collection_report"),
+    path("tenant-balances/", TenantBalanceReportView.as_view(), name="tenant_balance_report"),
+    path("lease-renewals-due/", LeaseRenewalDueReportView.as_view(), name="lease_renewal_due_report"),
+    path("vacant-units/", VacantUnitReportView.as_view(), name="vacant_unit_report"),
+    path("late-fees/", LateFeeReportView.as_view(), name="late_fee_report"),
+    path("meters/", MeterReportView.as_view(), name="meter_report"),
 ]

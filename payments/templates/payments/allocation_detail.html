@@ -21,10 +21,10 @@
         </div>
         <div class="btn-group">
             <!-- Management Buttons -->
-            <a href="{% url 'payments:allocation_update' payment.pk %}" class="btn btn-primary btn-sm me-1">
+            <a href="{% url 'payments:allocation_update' allocation.pk %}" class="btn btn-primary btn-sm me-1">
                 <i class="fas fa-edit me-1"></i> Edit
             </a>
-            <a href="{% url 'payments:allocation_delete' payment.pk %}" class="btn btn-danger btn-sm me-1">
+            <a href="{% url 'payments:allocation_delete' allocation.pk %}" class="btn btn-danger btn-sm me-1">
                 <i class="fas fa-trash-alt me-1"></i> Delete
             </a>
             
@@ -78,12 +78,12 @@
                         <p class="mb-1"><strong>Phone:</strong> {{ allocation.payment.lease.tenant.phone|default:"—" }}</p>
                         <p class="mb-0">
                             <strong>Security:</strong>
-                            Rs. {{ allocation.payment.lease.security_deposit|floatformat:2|intcomma }}
+                            {{ allocation.payment.lease.security_deposit|money:2 }}
                             <span class="{% if allocation.payment.lease.security_deposit_paid %}text-success{% else %}text-danger{% endif %}">
                             ({% if allocation.payment.lease.security_deposit_paid %}Paid{% else %}Pending{% endif %})
                             </span>
                         </p>
-                        <p class="mb-0"><strong>New Bal:</strong> Rs. {{ allocation.payment.lease.get_balance|floatformat:2|intcomma }}</p>
+                        <p class="mb-0"><strong>New Bal:</strong> {{ allocation.payment.lease.get_balance|money:2 }}</p>
 
                         </div>
 
@@ -114,12 +114,12 @@
                                 <tr>
                                     <td>Lease Portion </td>
                                     <td>{{ allocation.payment.payment_method.name }}</td>
-                                    <td class="text-end" >Rs. {{ allocation.lease_amount|intcomma  }}</td>
+                                    <td class="text-end" >{{ allocation.lease_amount|money:0 }}</td>
                                  </tr>
                                  <tr>
                                     <td>Security Portion </td>
                                     <td>{{ allocation.payment.payment_method.name }}</td>
-                                    <td class="text-end" >Rs. {{ allocation.security_amount|intcomma }}</td>
+                                    <td class="text-end" >{{ allocation.security_amount|money:0 }}</td>
                                 </tr>
                                 {% if allocation.payment.notes %}
                                 <tr>
@@ -140,7 +140,7 @@
                                 
                             </div>
                             <div class="col-6 text-end">
-                                <p class="mb-1 fw-bold">Rs. {{ allocation.payment.amount|floatformat:2|intcomma }}</p>
+                                <p class="mb-1 fw-bold">{{ allocation.payment.amount|money:2 }}</p>
                                 
                             </div>
                         </div>
@@ -456,7 +456,7 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         }
 
         // --- Security deposit info as strings from Django ---
-        const securityRequired = "Rs. {{ sec_totals.required|floatformat:2|intcomma|escapejs }}";
+        const securityRequired = "{{ sec_totals.required|money:2|escapejs }}";
         const securityStatus   = "{% if sec_totals.balance_to_collect > 0 %}Pending{% else %}Paid{% endif %}";
 
         // Lease balance after this payment (string, e.g. "32,200.00")
@@ -488,14 +488,14 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
             `Period: {{ allocation.payment.lease.start_date|date:"M d, Y"|escapejs }} – {{ allocation.payment.lease.end_date|date:"M d, Y"|escapejs }}`,
             `Security Deposit: ${securityRequired} (${securityStatus})`,
             {% if sec_totals.balance_to_collect > 0 %}
-            `Security Deposit Balance: Rs. ${secBalStr}`,
+            `Security Deposit Balance: {{ CURRENCY_SYMBOL }} ${secBalStr}`,
             {% endif %}
             `Date: {{ allocation.payment.payment_date|date:"M d, Y"|escapejs }}`,
-            `*Total Amount Received: Rs. {{ allocation.payment.amount|floatformat:2|intcomma|escapejs }}*`,
-            'Rs. {{ allocation.lease_amount|intcomma }} applied toward lease balance &',
-            'Rs. {{ allocation.security_amount|intcomma }} applied towards Security balance.',
-            `Lease Balance: Rs. ${leaseBalStr}`,
-            `*Total Balance: Rs. ${totalWithSecStr}*`,
+            `*Total Amount Received: {{ allocation.payment.amount|money:2|escapejs }}*`,
+            '{{ allocation.lease_amount|money:0 }} applied toward lease balance &',
+            '{{ allocation.security_amount|money:0 }} applied towards Security balance.',
+            `Lease Balance: {{ CURRENCY_SYMBOL }} ${leaseBalStr}`,
+            `*Total Balance: {{ CURRENCY_SYMBOL }} ${totalWithSecStr}*`,
             ``,
             `Thank you!`
         ];
@@ -565,12 +565,12 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
 
         const message = `Dear {{ payment.lease.tenant.first_name }},\n\n` +
             `Payment Receipt #{{ payment.reference|default:payment.id }}\n` +
-            `Amount:Rs. {{ payment.amount|floatformat:2|intcomma }}\n` +
+            `Amount:{{ payment.amount|money:2 }}\n` +
             `Date: {{ payment.payment_date|date:"M d, Y" }}\n` +
             `Method: {{ payment.get_payment_method_display }}\n` +
             `Property: {{ payment.lease.unit.property.property_name }}\n` +
             `Unit: {{ payment.lease.unit.unit_number }}\n` +
-            `Balance:Rs. {{ payment.lease.get_balance|floatformat:2|intcomma }}\n\n` +
+            `Balance:{{ payment.lease.get_balance|money:2 }}\n\n` +
             `Thank you!`;
 
         const phone = rawPhone.replace(/[^\d]/g, '');

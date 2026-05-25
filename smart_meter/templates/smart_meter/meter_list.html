@@ -161,6 +161,7 @@
     <th class="col-narrow"><span class="th2">Unit<span class="sub">Rate</span></span></th>
     <th class="col-narrow"><span class="th2">Min<span class="sub">Alert</span></span></th>
     <th class="col-narrow"><span class="th2">Min<span class="sub">Cutoff</span></span></th>
+    <th class="col-narrow"><span class="th2">Mode</span></th>
     <th class="col-narrow"><span class="th2">Is<span class="sub">Active</span></span></th>
 
     <th class="col-date-sm"><span class="th2">Installed<span class="sub">Date</span></span></th>
@@ -229,6 +230,13 @@
             <td class="col-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
             <td class="col-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
             <td class="col-narrow">
+              {% if m.billing_mode == "prepaid" %}
+                <span class="badge bg-info text-dark">Prepaid</span>
+              {% else %}
+                <span class="badge bg-light text-dark border">Postpaid</span>
+              {% endif %}
+            </td>
+            <td class="col-narrow">
               {% if m.is_active %}
                 <span class="badge bg-success">Yes</span>
               {% else %}
@@ -276,7 +284,7 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="18" class="py-4 text-center text-muted">No meters found.</td></tr>
+          <tr><td colspan="19" class="py-4 text-center text-muted">No meters found.</td></tr>
           {% endfor %}
         </tbody>
       </table>

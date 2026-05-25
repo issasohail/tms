@@ -36,7 +36,7 @@ from datetime import datetime, timedelta
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Sum, F, Value, CharField, DecimalField
+from django.db.models import Sum, F, Value, CharField, DecimalField, Q
 from django.db.models.functions import Coalesce
 
 
@@ -962,3 +962,348 @@ class SecurityDepositReportView(LoginRequiredMixin, TemplateView):
             grand_totals=grand_totals,
         )
         return self.render_to_response(context)
+
+
+class MaintenanceCollectionReportView(LoginRequiredMixin, TemplateView):
+    template_name = "reports/maintenance_collection_report.html"
+
+    def _filters(self):
+        today = timezone.localdate()
+        start = self.request.GET.get("start") or today.replace(day=1).isoformat()
+        end = self.request.GET.get("end") or today.isoformat()
+        return {
+            "start": start,
+            "end": end,
+            "building": self.request.GET.get("building") or "",
+            "unit": self.request.GET.get("unit") or "",
+            "tenant_status": self.request.GET.get("tenant_status") or "all",
+        }
+
+    def build_rows(self):
+        filters = self._filters()
+        qs = (
+            InvoiceItem.objects
+            .select_related(
+                "invoice", "invoice__lease", "invoice__lease__tenant",
+                "invoice__lease__unit", "invoice__lease__unit__property", "category",
+            )
+            .filter(invoice__issue_date__gte=filters["start"])
+            .filter(invoice__issue_date__lte=filters["end"])
+            .exclude(invoice__status="cancelled")
+            .filter(Q(category__name__icontains="maintenance") | Q(description__icontains="maintenance"))
+            .order_by("invoice__lease__unit__property__property_name", "invoice__lease__unit__unit_number", "invoice__issue_date")
+        )
+        if filters["building"]:
+            qs = qs.filter(invoice__lease__unit__property_id=filters["building"])
+        if filters["unit"]:
+            qs = qs.filter(invoice__lease__unit_id=filters["unit"])
+        if filters["tenant_status"] == "active":
+            qs = qs.filter(invoice__lease__tenant__is_active=True)
+        elif filters["tenant_status"] == "inactive":
+            qs = qs.filter(invoice__lease__tenant__is_active=False)
+
+        rows = []
+        totals = {
+            "charged": Decimal("0.00"),
+            "paid": Decimal("0.00"),
+            "balance": Decimal("0.00"),
+        }
+        for item in qs:
+            invoice = item.invoice
+            lease = invoice.lease
+            charged = item.amount or Decimal("0.00")
+            paid = charged if invoice.status == "paid" else Decimal("0.00")
+            balance = charged - paid
+            rows.append({
+                "date": invoice.issue_date,
+                "invoice": invoice,
+                "building": lease.unit.property if lease and lease.unit_id else None,
+                "unit": lease.unit if lease else None,
+                "tenant": lease.tenant if lease else None,
+                "tenant_active": lease.tenant.is_active if lease and lease.tenant_id else False,
+                "description": item.description or item.category.name,
+                "charged": charged,
+                "paid": paid,
+                "balance": balance,
+                "status": invoice.get_status_display(),
+            })
+            totals["charged"] += charged
+            totals["paid"] += paid
+            totals["balance"] += balance
+        return rows, totals, filters
+
+    def export_csv(self, rows, totals):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Date", "Building", "Unit", "Tenant", "Tenant Active", "Invoice", "Description", "Charged", "Paid", "Balance", "Status"])
+        for row in rows:
+            writer.writerow([
+                row["date"].isoformat(),
+                row["building"] or "",
+                row["unit"] or "",
+                row["tenant"] or "",
+                "Yes" if row["tenant_active"] else "No",
+                row["invoice"].invoice_number,
+                row["description"],
+                f"{row['charged']:.2f}",
+                f"{row['paid']:.2f}",
+                f"{row['balance']:.2f}",
+                row["status"],
+            ])
+        writer.writerow(["", "", "", "", "", "", "TOTAL", f"{totals['charged']:.2f}", f"{totals['paid']:.2f}", f"{totals['balance']:.2f}", ""])
+        response = HttpResponse(buffer.getvalue(), content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="maintenance_collection.csv"'
+        return response
+
+    def export_xlsx(self, rows, totals):
+        if not openpyxl:
+            return HttpResponse("openpyxl not installed", status=500)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Maintenance Collection"
+        ws.append(["Date", "Building", "Unit", "Tenant", "Tenant Active", "Invoice", "Description", "Charged", "Paid", "Balance", "Status"])
+        for row in rows:
+            ws.append([
+                row["date"].isoformat(),
+                str(row["building"] or ""),
+                str(row["unit"] or ""),
+                str(row["tenant"] or ""),
+                "Yes" if row["tenant_active"] else "No",
+                row["invoice"].invoice_number,
+                row["description"],
+                float(row["charged"]),
+                float(row["paid"]),
+                float(row["balance"]),
+                row["status"],
+            ])
+        ws.append(["", "", "", "", "", "", "TOTAL", float(totals["charged"]), float(totals["paid"]), float(totals["balance"]), ""])
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        response = HttpResponse(
+            output.read(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="maintenance_collection.xlsx"'
+        return response
+
+    def get(self, request, *args, **kwargs):
+        from properties.models import Unit
+
+        rows, totals, filters = self.build_rows()
+        if request.GET.get("export") == "csv":
+            return self.export_csv(rows, totals)
+        if request.GET.get("export") == "xlsx":
+            return self.export_xlsx(rows, totals)
+        return self.render_to_response(self.get_context_data(
+            rows=rows,
+            totals=totals,
+            filters=filters,
+            properties=Property.objects.order_by("property_name"),
+            units=Unit.objects.select_related("property").order_by("property__property_name", "unit_number"),
+        ))
+
+
+class SimpleTmsReportView(LoginRequiredMixin, TemplateView):
+    template_name = "reports/simple_report.html"
+    report_type = ""
+    title = ""
+
+    def money(self, value):
+        return Decimal(value or 0)
+
+    def collection_rows(self, keyword):
+        today = timezone.localdate()
+        start = self.request.GET.get("start") or today.replace(day=1).isoformat()
+        end = self.request.GET.get("end") or today.isoformat()
+        qs = (
+            InvoiceItem.objects
+            .select_related("invoice", "invoice__lease", "invoice__lease__tenant", "invoice__lease__unit", "invoice__lease__unit__property", "category")
+            .filter(invoice__issue_date__gte=start, invoice__issue_date__lte=end)
+            .exclude(invoice__status="cancelled")
+            .filter(Q(category__name__icontains=keyword) | Q(description__icontains=keyword))
+            .order_by("invoice__issue_date")
+        )
+        rows = []
+        totals = {"charged": Decimal("0.00"), "paid": Decimal("0.00"), "balance": Decimal("0.00")}
+        for item in qs:
+            lease = item.invoice.lease
+            charged = self.money(item.amount)
+            paid = charged if item.invoice.status == "paid" else Decimal("0.00")
+            balance = charged - paid
+            rows.append([
+                item.invoice.issue_date,
+                lease.unit.property.property_name,
+                lease.unit.unit_number,
+                lease.tenant.get_full_name(),
+                item.invoice.invoice_number,
+                item.description or item.category.name,
+                charged,
+                paid,
+                balance,
+                item.invoice.get_status_display(),
+            ])
+            totals["charged"] += charged
+            totals["paid"] += paid
+            totals["balance"] += balance
+        return ["Date", "Building", "Unit", "Tenant", "Invoice", "Description", "Charged", "Paid", "Balance", "Status"], rows, totals, {"start": start, "end": end}
+
+    def tenant_balance_rows(self):
+        qs = Lease.objects.select_related("tenant", "unit", "unit__property").order_by("unit__property__property_name", "unit__unit_number")
+        status = self.request.GET.get("status") or "active"
+        if status != "all":
+            qs = qs.filter(status=status)
+        rows = []
+        total = Decimal("0.00")
+        for lease in qs:
+            balance = self.money(lease.get_balance)
+            total += balance
+            rows.append([
+                lease.unit.property.property_name,
+                lease.unit.unit_number,
+                lease.tenant.get_full_name(),
+                lease.get_status_display(),
+                lease.start_date,
+                lease.end_date,
+                balance,
+            ])
+        return ["Building", "Unit", "Tenant", "Lease Status", "Start", "End", "Balance"], rows, {"balance": total}, {"status": status}
+
+    def renewal_due_rows(self):
+        days = int(self.request.GET.get("days") or 60)
+        today = timezone.localdate()
+        due = today + timedelta(days=days)
+        qs = (
+            Lease.objects.select_related("tenant", "unit", "unit__property")
+            .filter(status="active", end_date__gte=today, end_date__lte=due)
+            .order_by("end_date")
+        )
+        rows = [[
+            lease.end_date,
+            lease.unit.property.property_name,
+            lease.unit.unit_number,
+            lease.tenant.get_full_name(),
+            lease.monthly_rent,
+            lease.security_deposit,
+        ] for lease in qs]
+        return ["End Date", "Building", "Unit", "Tenant", "Rent", "Security Deposit"], rows, {}, {"days": days}
+
+    def vacant_unit_rows(self):
+        from properties.models import Unit
+        qs = Unit.objects.select_related("property").filter(status="vacant").order_by("property__property_name", "unit_number")
+        rows = [[
+            unit.property.property_name,
+            unit.unit_number,
+            unit.bedrooms,
+            unit.bathrooms,
+            unit.monthly_rent,
+            unit.society_maintenance,
+            unit.water_charges,
+        ] for unit in qs]
+        return ["Building", "Unit", "Bedrooms", "Bathrooms", "Rent", "Maintenance", "Water"], rows, {}, {}
+
+    def meter_rows(self):
+        from smart_meter.models import Meter
+        qs = Meter.objects.select_related("unit", "unit__property", "live").order_by("unit__property__property_name", "unit__unit_number")
+        rows = []
+        for meter in qs:
+            live = getattr(meter, "live", None)
+            lease = meter.current_lease
+            rows.append([
+                meter.unit.property.property_name,
+                meter.unit.unit_number,
+                lease.tenant.get_full_name() if lease else "",
+                f"Lease #{lease.id}" if lease else "",
+                meter.meter_number,
+                meter.get_billing_mode_display(),
+                live.total_energy if live else "",
+                live.ts if live else "",
+                live.balance if live else "",
+                meter.get_power_status_display(),
+            ])
+        return ["Building", "Unit", "Tenant", "Active Lease", "Meter", "Mode", "Latest Reading", "Reading Date", "Balance", "Power"], rows, {}, {}
+
+    def build_report(self):
+        if self.report_type == "rent_collection":
+            return self.collection_rows("rent")
+        if self.report_type == "tenant_balance":
+            return self.tenant_balance_rows()
+        if self.report_type == "renewal_due":
+            return self.renewal_due_rows()
+        if self.report_type == "vacant_units":
+            return self.vacant_unit_rows()
+        if self.report_type == "late_fees":
+            return self.collection_rows("late fee")
+        if self.report_type == "meter":
+            return self.meter_rows()
+        return [], [], {}, {}
+
+    def export_csv(self, headers, rows):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(headers)
+        writer.writerows(rows)
+        response = HttpResponse(buffer.getvalue(), content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="{self.report_type}.csv"'
+        return response
+
+    def export_xlsx(self, headers, rows):
+        if not openpyxl:
+            return HttpResponse("openpyxl not installed", status=500)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = self.title[:31]
+        ws.append(headers)
+        for row in rows:
+            ws.append(list(row))
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        response = HttpResponse(output.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f'attachment; filename="{self.report_type}.xlsx"'
+        return response
+
+    def get(self, request, *args, **kwargs):
+        headers, rows, totals, filters = self.build_report()
+        if request.GET.get("export") == "csv":
+            return self.export_csv(headers, rows)
+        if request.GET.get("export") == "xlsx":
+            return self.export_xlsx(headers, rows)
+        return self.render_to_response(self.get_context_data(
+            title=self.title,
+            report_type=self.report_type,
+            headers=headers,
+            rows=rows,
+            totals=totals,
+            filters=filters,
+        ))
+
+
+class RentCollectionReportView(SimpleTmsReportView):
+    report_type = "rent_collection"
+    title = "Rent Collection Report"
+
+
+class TenantBalanceReportView(SimpleTmsReportView):
+    report_type = "tenant_balance"
+    title = "Tenant Balance Report"
+
+
+class LeaseRenewalDueReportView(SimpleTmsReportView):
+    report_type = "renewal_due"
+    title = "Lease Renewal Due Report"
+
+
+class VacantUnitReportView(SimpleTmsReportView):
+    report_type = "vacant_units"
+    title = "Vacant Unit Report"
+
+
+class LateFeeReportView(SimpleTmsReportView):
+    report_type = "late_fees"
+    title = "Late Fee Report"
+
+
+class MeterReportView(SimpleTmsReportView):
+    report_type = "meter"
+    title = "Meter Report"

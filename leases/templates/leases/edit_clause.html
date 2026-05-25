@@ -80,6 +80,18 @@
 .clause-editor{
   min-height: calc(1.35em + 16px); /* 1 line + top/bottom padding */
 }
+.placeholder-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.placeholder-token {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+}
 
 </style>
 {% endblock %}
@@ -88,17 +100,27 @@
 <div class="container">
     <!-- Header with buttons -->
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Edit Lease Agreement Clauses</h2>
+        <div>
+            <h2 class="mb-0">Edit Lease Agreement Clauses</h2>
+            <div class="text-muted small">
+                History #{{ history.renewal_number }} -
+                {% if history.is_original %}Original Lease{% else %}Renewal{% endif %}
+                ({{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }})
+            </div>
+        </div>
         <div class="btn-group">
-            <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-secondary">
+            <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Back to Lease
             </a>
-            <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-dark btn-sm">
+            <a href="{% url 'leases:download_preview' master_lease.id %}?history={{ history.pk }}" class="btn btn-dark btn-sm">
                 <i class="fas fa-download me-1"></i> Download Preview PDF
             </a>
 
             <button type="button" id="btnPdf" class="btn btn-danger me-1">
                 <i class="fas fa-file-pdf"></i> Download PDF
+            </button>
+            <button type="button" id="btnGenerateHistoryPdf" class="btn btn-outline-danger me-1">
+                <i class="fas fa-file-pdf"></i> Generate & Save PDF
             </button>
             <button type="button" id="btnDocx" class="btn btn-success me-1" onclick="generateFile('docx')">
             <i class="fas fa-file-word"></i> Download Word
@@ -109,10 +131,11 @@
                 <i class="fas fa-save"></i> Save Changes
             </button>
 
-            <form method="post" action="{% url 'leases:reset_clauses_from_default' lease.pk %}"
+            <form method="post" action="{% url 'leases:reset_clauses_from_default' master_lease.pk %}?history={{ history.pk }}"
                 onsubmit="return confirm('This will overwrite your current clauses. Continue?');"
                 class="d-inline">
             {% csrf_token %}
+            <input type="hidden" name="history_id" value="{{ history.pk }}">
             <button class="btn btn-warning">
                 <i class="fas fa-undo"></i> Load Default Clauses
             </button>
@@ -122,7 +145,7 @@
 
 
 
-            <a href="{% url 'leases:send_agreement_email' lease.pk %}" class="btn btn-info">
+            <a href="{% url 'leases:send_agreement_email' master_lease.pk %}" class="btn btn-info">
                 <i class="fas fa-envelope"></i> Email Agreement
             </a>
         </div>
@@ -150,14 +173,40 @@
                     <h5 class="mb-0">Edit Clauses</h5>
                 </div>
                 <div class="card-body panel-scroll" id="clauseEditorPanel">
-                    <form id="clauseForm" method="post" action="{% url 'leases:edit_clauses' lease.pk %}">
+                    <form id="clauseForm" method="post" action="{% url 'leases:edit_clauses' master_lease.pk %}?history={{ history.pk }}">
 
                         {% csrf_token %}
+                        <input type="hidden" name="history_id" value="{{ history.pk }}">
+                        <div class="mb-3">
+                            <label class="form-label">Lease History</label>
+                            <select class="form-select form-select-sm" onchange="window.location.href='{% url 'leases:edit_clauses' master_lease.pk %}?history=' + this.value;">
+                                {% for row in histories %}
+                                    <option value="{{ row.pk }}" {% if row.pk == history.pk %}selected{% endif %}>
+                                        #{{ row.renewal_number }} - {% if row.is_original %}Original Lease{% else %}Renewal{% endif %}
+                                        ({{ row.start_date|date:'M d, Y' }} to {{ row.end_date|date:'M d, Y' }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label">Agreement Date</label>
                             <input type="date" class="form-control" 
                                    name="agreement_date" 
                                    value="{{ agreement_date|date:'Y-m-d' }}" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                                <label class="form-label mb-0">Placeholders</label>
+                                <input type="search" id="clausePlaceholderSearch" class="form-control form-control-sm" style="max-width: 210px;" placeholder="Search">
+                            </div>
+                            <div class="placeholder-toolbar border rounded p-2 bg-light">
+                                {% for placeholder in placeholders %}
+                                    <button type="button" class="btn btn-outline-secondary btn-sm placeholder-token" data-token="[{{ placeholder.key }}]" title="{{ placeholder.label }}{% if placeholder.category %} - {{ placeholder.category }}{% endif %}">
+                                        [{{ placeholder.key }}]
+                                    </button>
+                                {% endfor %}
+                            </div>
                         </div>
                         
                         {% for clause in clauses %}
@@ -185,6 +234,7 @@
     document.addEventListener('DOMContentLoaded', function() {
     const textareas = document.querySelectorAll('.clause-editor');
     const previewContainer = document.getElementById('agreementPreview');
+    let activeTextarea = null;
 
     function autoResize(el) {
     el.style.height = "auto";
@@ -206,8 +256,8 @@
         setTimeout(() => previewClause.classList.remove("preview-highlight"), 900);
     }
 
-      const GEN_PDF_URL  = "{% url 'leases:download_preview' lease.id %}";
-  const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' lease.id %}";
+      const GEN_PDF_URL  = "{% url 'leases:download_preview' master_lease.id %}?history={{ history.pk }}";
+  const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
 
   function saveThenDownload(url) {
     const form = document.getElementById('clauseForm');
@@ -236,11 +286,14 @@
 
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
+  document.getElementById('btnGenerateHistoryPdf')?.addEventListener('click', () => {
+    saveThenDownload("{% url 'leases:renewal_agreement' master_lease.pk history.pk %}");
+  });
 
 
 
     function generateFile(type) {
-    const leaseId = "{{ lease.pk }}";
+    const leaseId = "{{ master_lease.pk }}";
 
     const url = (type === 'pdf') ? GEN_PDF_URL : GEN_DOCX_URL;
 
@@ -269,7 +322,7 @@
     });
     }
 
-    const PREVIEW_DOCX_URL = "{% url 'leases:download_preview_docx' lease.id %}";
+    const PREVIEW_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
 
     function generateWordAfterSave() {
         const form = document.getElementById('clauseForm');
@@ -294,10 +347,10 @@
     }
 
     function generatePDFUrl() {
-        return "{% url 'leases:generate_agreement_pdf' lease.pk %}";
+        return "{% url 'leases:generate_agreement_pdf' master_lease.pk %}";
     }
     function generateDOCXUrl() {
-        return "{% url 'leases:generate_agreement_docx' lease.pk %}";
+        return "{% url 'leases:generate_agreement_docx' master_lease.pk %}";
     }
     function scrollPreviewToClause(clauseId) {
         const clauseEl = document.querySelector(`.clause[data-clause-id="${clauseId}"]`);
@@ -315,11 +368,40 @@
 
         const clauseId = textarea.id.split('_')[1];
 
-        textarea.addEventListener('focus', () => scrollPreviewToClause(clauseId));
+        textarea.addEventListener('focus', () => {
+        activeTextarea = textarea;
+        scrollPreviewToClause(clauseId);
+        });
 
         textarea.addEventListener('input', function() {
         autoResize(this);
         updatePreview(clauseId, this.value);
+        });
+    });
+
+    const placeholderSearch = document.getElementById('clausePlaceholderSearch');
+    const placeholderButtons = Array.from(document.querySelectorAll('.placeholder-token'));
+
+    placeholderButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+        const textarea = activeTextarea || document.querySelector('.clause-editor');
+        if (!textarea) return;
+
+        const token = this.dataset.token;
+        const start = textarea.selectionStart || 0;
+        const end = textarea.selectionEnd || 0;
+        textarea.value = textarea.value.slice(0, start) + token + textarea.value.slice(end);
+        textarea.focus();
+        textarea.selectionStart = textarea.selectionEnd = start + token.length;
+        autoResize(textarea);
+        updatePreview(textarea.id.split('_')[1], textarea.value);
+        });
+    });
+
+    placeholderSearch?.addEventListener('input', function() {
+        const term = this.value.trim().toLowerCase();
+        placeholderButtons.forEach(btn => {
+        btn.classList.toggle('d-none', term && !btn.dataset.token.toLowerCase().includes(term));
         });
     });
     });

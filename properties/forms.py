@@ -16,6 +16,7 @@ class PropertyForm(forms.ModelForm):
         widgets = {
             'address': forms.Textarea(attrs={'rows': 3}),
             'description': forms.Textarea(attrs={'rows': 3}),
+            'bank_account_details': forms.Textarea(attrs={'rows': 3}),
         }
 
 
@@ -29,6 +30,10 @@ class UnitForm(forms.ModelForm):
         widgets = {
             # your model uses "comments", not "notes"
             'comments': forms.Textarea(attrs={'rows': 3}),
+            'bank_account_details': forms.Textarea(attrs={
+                'rows': 3,
+                'data-unit-bank-account': '1',
+            }),
         }
 
     def __init__(self, *args, **kwargs):
@@ -41,6 +46,9 @@ class UnitForm(forms.ModelForm):
             else:
                 # don't fight crispy; just ensure controls look fine
                 field.widget.attrs.setdefault('class', 'form-control')
+        self.fields['use_property_bank_account'].widget.attrs.update({
+            'data-use-property-bank-account': '1',
+        })
 
         # quick visual proof you're on the right file
         self.fields['unit_number'].label = 'Unit #'
@@ -98,6 +106,18 @@ class UnitForm(forms.ModelForm):
             ),
 
             # Full-width text fields (keep these readable)
+            Div(
+                Div('use_property_bank_account', css_class='col-12 col-md-4'),
+                Div('bank_account_details', css_class='col-12 col-md-8'),
+                css_class='row g-3'
+            ),
             Div(Div('paint_condition', css_class='col-12'), css_class='row g-3'),
             Div(Div('comments',        css_class='col-12'), css_class='row g-3'),
         )
+
+    @property
+    def property_bank_account_map(self):
+        return {
+            str(prop.pk): prop.bank_account_details or ""
+            for prop in Property.objects.order_by("property_name")
+        }

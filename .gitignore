@@ -1,0 +1,31 @@
+# Media
+media/
+tms_media/
+
+# Logs
+logs/
+*.log
+*.lock
+nohup.out
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp Office files
+~$*
+
+# Archives
+*.zip
+*.rar
+*.7z
+
+# Tools
+bfg.jar
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini

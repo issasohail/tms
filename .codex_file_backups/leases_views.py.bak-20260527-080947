@@ -249,9 +249,10 @@ class LeaseListView(SingleTableView):
         "paginator_class": CachedLazyPaginator,
     }
 
-    def _annotate_list_financials(self, queryset):
+    def get_queryset(self):
         money_field = DecimalField(max_digits=12, decimal_places=2)
         zero = Value(Decimal("0.00"), output_field=money_field)
+
         today = timezone.localdate()
 
         active_history_monthly_payment = (
@@ -311,8 +312,11 @@ class LeaseListView(SingleTableView):
                 .values("total")[:1]
             )
 
-        return (
-            queryset.annotate(
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related("tenant", "unit", "unit__property")
+            .annotate(
                 invoice_total=Coalesce(
                     Subquery(invoice_total, output_field=money_field),
                     zero,
@@ -348,36 +352,8 @@ class LeaseListView(SingleTableView):
                     output_field=money_field,
                 ),
             )
-        )
-
-    def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .select_related("tenant", "unit", "unit__property")
-            .only(
-                "id",
-                "tenant_id",
-                "unit_id",
-                "start_date",
-                "end_date",
-                "monthly_rent",
-                "society_maintenance",
-                "water_charges",
-                "internet_charges",
-                "security_deposit",
-                "status",
-                "tenant__id",
-                "tenant__first_name",
-                "tenant__last_name",
-                "tenant__phone",
-                "unit__id",
-                "unit__property_id",
-                "unit__unit_number",
-                "unit__property__id",
-                "unit__property__property_name",
-            )
-        )
+            .order_by("unit__unit_number")
+        )  # Order by unit number
 
         # Get filter parameters
         property_id = self.request.GET.get("property")
@@ -385,8 +361,6 @@ class LeaseListView(SingleTableView):
         tenant_id = self.request.GET.get("tenant")
         include_inactive = self.request.GET.get("include_inactive") == "on"
         nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
-
-        queryset = self._annotate_list_financials(queryset)
 
         # Apply filters
         if property_id:
@@ -400,7 +374,7 @@ class LeaseListView(SingleTableView):
         if nonzero_balance:
             queryset = queryset.filter(list_balance__gt=0)
 
-        return queryset.order_by("unit__unit_number")
+        return queryset
 
     def _attach_list_balances(self, leases):
         lease_ids = [lease.id for lease in leases]
@@ -460,30 +434,19 @@ class LeaseListView(SingleTableView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        table = context.get("table")
-        if table is not None and hasattr(table, "page"):
-            page_leases = [row.record for row in table.page.object_list]
-        else:
-            page_leases = list(context.get("object_list", []))
-
+        page_leases = context.get("object_list", [])
         context["leases"] = page_leases
 
         # Get all properties for dropdown
-        context["all_properties"] = Property.objects.only("id", "property_name")
+        context["all_properties"] = Property.objects.all()
 
         # Get all tenants ordered by first name
-        context["all_tenants"] = Tenant.objects.only(
-            "id",
-            "first_name",
-            "last_name",
-        ).order_by("first_name")
+        context["all_tenants"] = Tenant.objects.all().order_by("first_name")
 
         # Get filtered units based on selected property
         property_id = self.request.GET.get("property")
         if property_id:
-            context["filtered_units"] = Unit.objects.filter(
-                property_id=property_id
-            ).only("id", "property_id", "unit_number")
+            context["filtered_units"] = Unit.objects.filter(property_id=property_id)
         else:
             context["filtered_units"] = Unit.objects.none()
 

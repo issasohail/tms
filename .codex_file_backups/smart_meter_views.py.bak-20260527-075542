@@ -1095,31 +1095,17 @@ def live_custom(request):
     #    selected_meters = the final meter set based on property/unit/meter GET params
     (selected_meters,
      all_properties, filtered_units, filtered_meters,
-     prop_id, unit_id, meter_id) = _filtered_meter_sets(
-        request, include_meter_property=False
-    )
+     prop_id, unit_id, meter_id) = _filtered_meter_sets(request)
 
     # 3) Base queryset: only readings for the selected meters
     qs = (
         LiveReading.objects
         .select_related("meter", "meter__unit", "meter__unit__property")
-        .only(
-            "id", "meter", "ts", "source_ip", "source_port", "balance",
-            "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
-            "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
-            "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
-            "meter__unit__property__id", "meter__unit__property__property_name",
-        )
+        .filter(meter__in=selected_meters)
         .order_by("meter__unit__property__property_name",
                   "meter__unit__unit_number",
                   "meter__meter_number")
     )
-    if meter_id:
-        qs = qs.filter(meter_id=meter_id)
-    elif unit_id:
-        qs = qs.filter(meter__unit_id=unit_id)
-    elif prop_id:
-        qs = qs.filter(meter__unit__property_id=prop_id)
 
     # 4) Optional free-text search across property / unit / meter
     if q:
@@ -1503,32 +1489,20 @@ BILLING_RATE = Decimal("7.50")
 ONLINE_MINUTES = 10
 
 
-def _filtered_meter_sets(request, include_meter_property=True):
+def _filtered_meter_sets(request):
     """Return (meters_qs, all_properties, filtered_units, filtered_meters, current ids) for meter_filters.html."""
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
 
-    all_properties = Property.objects.only("id", "property_name").order_by("property_name")
+    all_properties = Property.objects.all().order_by("property_name")
 
-    units_qs = Unit.objects.only("id", "property_id", "unit_number")
+    units_qs = Unit.objects.all()
     if prop_id:
         units_qs = units_qs.filter(property_id=prop_id)
     filtered_units = units_qs.order_by("unit_number")
 
-    meter_related = ("unit", "unit__property") if include_meter_property else ("unit",)
-    meters_qs = Meter.objects.select_related(*meter_related)
-    if include_meter_property:
-        meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
-            "unit__id", "unit__unit_number", "unit__property",
-            "unit__property__id", "unit__property__property_name",
-        )
-    else:
-        meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
-            "unit__id", "unit__unit_number",
-        )
+    meters_qs = Meter.objects.select_related("unit", "unit__property")
     if unit_id:
         meters_qs = meters_qs.filter(unit_id=unit_id)
     elif prop_id:
@@ -1856,7 +1830,7 @@ def energy_dashboard(request):
     return render(request, "smart_meter/dashboard.html", context)
 
 
-def _filtered_meter_sets(request, include_meter_property=True):
+def _filtered_meter_sets(request):
     """
     Reuse the exact same GET keys your meter filters use: ?property=, ?unit=, ?meter=
     Returns (selected_meters, all_properties, filtered_units,
@@ -1866,26 +1840,14 @@ def _filtered_meter_sets(request, include_meter_property=True):
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
 
-    all_properties = Property.objects.only("id", "property_name").order_by("property_name")
+    all_properties = Property.objects.all().order_by("property_name")
 
-    units_qs = Unit.objects.only("id", "property_id", "unit_number")
+    units_qs = Unit.objects.all()
     if prop_id:
         units_qs = units_qs.filter(property_id=prop_id)
     filtered_units = units_qs.order_by("unit_number")
 
-    meter_related = ("unit", "unit__property") if include_meter_property else ("unit",)
-    meters_qs = Meter.objects.select_related(*meter_related)
-    if include_meter_property:
-        meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
-            "unit__id", "unit__unit_number", "unit__property",
-            "unit__property__id", "unit__property__property_name",
-        )
-    else:
-        meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
-            "unit__id", "unit__unit_number",
-        )
+    meters_qs = Meter.objects.select_related("unit", "unit__property")
     if unit_id:
         meters_qs = meters_qs.filter(unit_id=unit_id)
     elif prop_id:
@@ -3043,30 +3005,16 @@ def live_custom_data(request):
 
     (selected_meters,
      all_properties, filtered_units, filtered_meters,
-     prop_id, unit_id, meter_id) = _filtered_meter_sets(
-        request, include_meter_property=False
-     )
+     prop_id, unit_id, meter_id) = _filtered_meter_sets(request)
 
     qs = (
         LiveReading.objects
         .select_related("meter", "meter__unit", "meter__unit__property")
-        .only(
-            "id", "meter", "ts", "source_ip", "source_port", "balance",
-            "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
-            "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
-            "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
-            "meter__unit__property__id", "meter__unit__property__property_name",
-        )
+        .filter(meter__in=selected_meters)
         .order_by("meter__unit__property__property_name",
                   "meter__unit__unit_number",
                   "meter__meter_number")
     )
-    if meter_id:
-        qs = qs.filter(meter_id=meter_id)
-    elif unit_id:
-        qs = qs.filter(meter__unit_id=unit_id)
-    elif prop_id:
-        qs = qs.filter(meter__unit__property_id=prop_id)
 
     if q:
         qs = qs.filter(

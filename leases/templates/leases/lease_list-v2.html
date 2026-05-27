@@ -365,22 +365,12 @@
   white-space: nowrap;
 }
 
-/* Tenant: hard fixed width + ellipsis — prevents long names from stretching the column */
-.ll-table-wrap th.col-tenant,
-.ll-table-wrap td.col-tenant {
-  width: var(--col-tenant);
-  min-width: var(--col-tenant);
-  max-width: var(--col-tenant);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* Tenant: 1-line ellipsis */
 .ll-table-wrap td.col-tenant .tenant-text {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
 }
 
 /* Status / end-date coloring */
@@ -586,11 +576,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const tdStatus = tr.querySelector('td.col-status');
 
     if (tdTenant && !tdTenant.querySelector('.tenant-text')) {
-      const fullName = (tdTenant.textContent || '').trim();
       const sp = document.createElement('span');
       sp.className = 'tenant-text';
-      sp.textContent = fullName;
-      sp.title = fullName;
+      sp.textContent = (tdTenant.textContent || '').trim();
       tdTenant.innerHTML = '';
       tdTenant.appendChild(sp);
     }

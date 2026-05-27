@@ -484,6 +484,9 @@ def security_deposit_totals(lease):
             "currently_held": ZERO,
         }
 
+    if hasattr(lease, "security_summary"):
+        return lease.security_summary
+
     required = lease.security_deposit or ZERO
 
     qs = SecurityDepositTransaction.objects.filter(lease=lease)

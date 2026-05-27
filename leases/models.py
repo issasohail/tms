@@ -16,6 +16,7 @@ from .models_lease_photos import LeaseMedia
 from invoices.services import security_deposit_balance
 
 from decimal import Decimal
+from collections import defaultdict
 
 from django.db import models
 from django.db.models import Sum
@@ -465,35 +466,82 @@ class Lease(models.Model):
         """Total agreed security deposit (from field)."""
         return self.security_deposit or Decimal("0.00")
 
+    @cached_property
+    def security_transactions_qs(self):
+        # PERF: reuse prefetched security transactions instead of filtering by type repeatedly.
+        if hasattr(self, "_prefetched_objects_cache") and "security_transactions" in self._prefetched_objects_cache:
+            return list(self._prefetched_objects_cache["security_transactions"])
+        from invoices.models import SecurityDepositTransaction
+
+        return list(
+            SecurityDepositTransaction.objects.filter(lease=self).select_related(
+                "payment",
+                "allocation",
+            )
+        )
+
+    @cached_property
+    def security_summary(self):
+        zero = Decimal("0.00")
+        grouped = defaultdict(lambda: zero)
+        refund_deductions = zero
+
+        for tx in self.security_transactions_qs:
+            tx_type = tx.type or ""
+            grouped[tx_type] += tx.amount or zero
+            if tx_type == "REFUND":
+                refund_deductions += tx.deduction_amount or zero
+
+        paid_in = grouped["PAYMENT"]
+        refunded = grouped["REFUND"]
+        damages = grouped["DAMAGE"]
+        adjust = grouped["ADJUST"]
+        effective_paid_in = paid_in + adjust
+        required = self.security_required
+
+        return {
+            "required": required,
+            "paid_in": paid_in,
+            "refunded": refunded,
+            "refund_deductions": refund_deductions,
+            "damages": damages,
+            "adjust": adjust,
+            "balance_to_collect": max(required - effective_paid_in, zero),
+            "currently_held": max(
+                effective_paid_in - refunded - refund_deductions - damages,
+                zero,
+            ),
+        }
+
     @property
     def security_paid_in(self):
         """How much deposit has actually been paid in (via ledger)."""
         # PERF: repeated security_deposit_totals() calls duplicate SecurityDepositTransaction queries.
-        return security_deposit_totals(self)["paid_in"]
+        return self.security_summary["paid_in"]
 
     @property
     def security_refunded(self):
         """Total refunded back to tenant."""
-        return security_deposit_totals(self)["refunded"]
+        return self.security_summary["refunded"]
 
     @property
     def security_damages(self):
         """Total consumed for damages/adjustments."""
-        return security_deposit_totals(self)["damages"]
+        return self.security_summary["damages"]
 
     @property
     def security_balance_to_collect(self):
         """
         How much deposit is still owed by tenant (positive = they owe).
         """
-        return security_deposit_totals(self)["balance_to_collect"]
+        return self.security_summary["balance_to_collect"]
 
     @property
     def security_currently_held(self):
         """
         How much deposit you currently hold (paid - refunded - damages).
         """
-        return security_deposit_totals(self)["currently_held"]
+        return self.security_summary["currently_held"]
 
     @property
     def security_due(self):

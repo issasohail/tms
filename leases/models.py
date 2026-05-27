@@ -22,6 +22,7 @@ from django.db.models import Sum
 from tenants.models import Tenant
 from properties.models import Unit
 from django.urls import reverse
+from django.utils.functional import cached_property
 from datetime import timedelta
 from django.utils import timezone
 from decimal import Decimal
@@ -420,7 +421,42 @@ class Lease(models.Model):
     @property
     def total_rent_due(self):
         """Calculate total rent due from all invoices"""
-        return self.invoices.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        return self.financial_summary["invoice_total"]
+
+    @cached_property
+    def invoices_qs(self):
+        # PERF: reuse prefetched invoices instead of aggregating the same lease repeatedly.
+        if hasattr(self, "_prefetched_objects_cache") and "invoices" in self._prefetched_objects_cache:
+            return list(self._prefetched_objects_cache["invoices"])
+        return list(self.invoices.all())
+
+    @cached_property
+    def payments_qs(self):
+        # PERF: reuse prefetched payments and allocations for balance calculations.
+        if hasattr(self, "_prefetched_objects_cache") and "payments" in self._prefetched_objects_cache:
+            return list(self._prefetched_objects_cache["payments"])
+        from payments.models import Payment
+
+        return list(Payment.objects.filter(lease=self).select_related("allocation"))
+
+    @cached_property
+    def financial_summary(self):
+        zero = Decimal("0.00")
+        invoices_total = sum((invoice.amount or zero for invoice in self.invoices_qs), zero)
+
+        payments_total = zero
+        for payment in self.payments_qs:
+            allocation = getattr(payment, "allocation", None)
+            if allocation:
+                payments_total += allocation.lease_amount or zero
+            else:
+                payments_total += payment.amount or zero
+
+        return {
+            "invoice_total": invoices_total,
+            "payment_total": payments_total,
+            "balance": invoices_total - payments_total,
+        }
 
     # === Security Deposit computed properties ===
 
@@ -471,12 +507,10 @@ class Lease(models.Model):
     @property
     def total_payments(self):
         """Calculate total payments made against this lease"""
-        from payments.models import Payment
-
         # PERF: template/table loops can call this per row; replace with cached financial summary.
-        return Payment.objects.filter(lease=self).aggregate(total=Sum("amount"))[
-            "total"
-        ] or Decimal("0.00")
+        if hasattr(self, "_cached_total_payments"):
+            return self._cached_total_payments
+        return self.financial_summary["payment_total"]
 
     @property
     def get_balance(self):
@@ -484,29 +518,7 @@ class Lease(models.Model):
             return self._cached_get_balance
 
         # PERF: avoids N+1 target; repeated invoice/payment aggregates for same lease should be cached.
-        invoices_total = self.invoices.aggregate(
-            t=Coalesce(Sum("amount"), Decimal("0.00"))
-        )["t"]
-
-        # IMPORTANT: only count the portion allocated to lease
-        payments_total = self.payments.aggregate(
-            t=Coalesce(
-                Sum(
-                    Case(
-                        When(
-                            allocation__isnull=False, then=F("allocation__lease_amount")
-                        ),
-                        default=F(
-                            "amount"
-                        ),  # legacy fallback when allocation row missing
-                        output_field=DecimalField(max_digits=12, decimal_places=2),
-                    )
-                ),
-                Decimal("0.00"),
-            )
-        )["t"]
-
-        return invoices_total - payments_total
+        return self.financial_summary["balance"]
 
     def return_security_deposit(self, return_amount=None, notes=""):
         """

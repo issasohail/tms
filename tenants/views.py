@@ -452,6 +452,19 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
     template_name = 'tenants/tenant_detail.html'
     context_object_name = 'tenant'
 
+    def get_queryset(self):
+        # PERF: tenant detail loops over leases and then touches unit/property/payments/invoices.
+        lease_qs = Lease.objects.select_related(
+            'unit',
+            'unit__property',
+        ).prefetch_related(
+            'payments',
+            'invoices',
+        ).order_by('-start_date', '-id')
+        return super().get_queryset().prefetch_related(
+            Prefetch('leases', queryset=lease_qs)
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         tenant = self.object
@@ -495,11 +508,11 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         if lease:
             invoices = (Invoice.objects
                         .filter(lease=lease)
-                        .select_related('lease')
+                        .select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property')
                         .order_by('issue_date'))
             payments = (Payment.objects
                         .filter(lease=lease)
-                        .select_related('lease')
+                        .select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property')
                         .order_by('-payment_date'))
 
             total_invoices_active = invoices.aggregate(
@@ -520,11 +533,11 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         if lease:
             invoices = Invoice.objects.filter(
                 lease=lease
-            ).select_related('lease').order_by('issue_date')
+            ).select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property').order_by('issue_date')
 
             payments = Payment.objects.filter(
                 lease=lease
-            ).select_related('lease').order_by('-payment_date')
+            ).select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property').order_by('-payment_date')
 
             total_invoices_active = invoices.aggregate(
                 total=Sum('amount'))['total'] or 0

@@ -174,7 +174,9 @@ class PaymentForm(forms.ModelForm):
         if lease:
             lease_qs = lease_qs | Lease.objects.filter(pk=lease.pk)
 
-        self.fields['lease'].queryset = lease_qs
+        self.fields['lease'].queryset = lease_qs.select_related(
+            'tenant', 'unit', 'unit__property'
+        )
 
         # Auto-select and validation
         if lease_qs.count() == 1 and not lease:

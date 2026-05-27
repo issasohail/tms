@@ -40,6 +40,17 @@ class AllocationDetailView(LoginRequiredMixin, DetailView):
     template_name = "payments/allocation_detail.html"
     context_object_name = "allocation"
 
+    def get_queryset(self):
+        # PERF: avoids N+1 on allocation->payment->lease->tenant/unit/property.
+        return super().get_queryset().select_related(
+            "payment",
+            "payment__lease",
+            "payment__lease__tenant",
+            "payment__lease__unit",
+            "payment__lease__unit__property",
+            "payment__payment_method",
+        )
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
@@ -99,12 +110,26 @@ class AllocationUpdateView(UpdateView):
         pk = self.kwargs["pk"]
 
         # 1) Try pk as Allocation ID
-        alloc = PaymentAllocation.objects.select_related("payment", "payment__lease").filter(pk=pk).first()
+        alloc = PaymentAllocation.objects.select_related(
+            "payment",
+            "payment__lease",
+            "payment__lease__tenant",
+            "payment__lease__unit",
+            "payment__lease__unit__property",
+        ).filter(pk=pk).first()
         if alloc:
             return alloc, alloc.payment
 
         # 2) Fallback: pk is actually Payment ID
-        payment = get_object_or_404(Payment.objects.select_related("lease"), pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related(
+                "lease",
+                "lease__tenant",
+                "lease__unit",
+                "lease__unit__property",
+            ),
+            pk=pk,
+        )
 
         # Ensure allocation exists (if missing, create via rebuild)
         existing_alloc = getattr(payment, "allocation", None)
@@ -141,16 +166,22 @@ class AllocationUpdateView(UpdateView):
 
         context["recent_size"] = size
         context["recent_size_options"] = [10, 20, 50]
-        context["recent_payments"] = Payment.objects.all().order_by("-id")[:size]
+        context["recent_payments"] = Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+            "payment_method",
+        ).order_by("-id")[:size]
 
         # ---- tenants/properties (same as create) ----
         include_inactive = self.request.GET.get("include_inactive") == "on"
         if include_inactive:
             context["active_tenants"] = Tenant.objects.all().distinct().order_by("first_name")
-            context["tenants"] = Tenant.objects.all().distinct().order_by("first_name")
+            context["tenants"] = context["active_tenants"]
         else:
             context["active_tenants"] = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
-            context["tenants"] = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
+            context["tenants"] = context["active_tenants"]
 
         context["properties"] = Property.objects.all().order_by("property_name")
         context["today"] = timezone.now().date()
@@ -272,7 +303,13 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
         ctx["recent_size"] = size
         ctx["recent_size_options"] = [10, 20, 50]
-        ctx["recent_payments"] = Payment.objects.all().order_by("-id")[:size]
+        ctx["recent_payments"] = Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+            "payment_method",
+        ).order_by("-id")[:size]
 
         include_inactive = str(self.request.GET.get("include_inactive", "")).lower() in ("on","1","true","yes")
         lease_qs = Lease.objects.all()

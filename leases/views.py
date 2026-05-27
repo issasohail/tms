@@ -34,6 +34,7 @@ from django.db.models import (
     DecimalField,
     F,
     OuterRef,
+    Prefetch,
     Q,
     Subquery,
     Sum,
@@ -1237,7 +1238,34 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             .get_queryset()
             .select_related("tenant", "unit", "unit__property")
             .prefetch_related(
-                "payments", "invoices", "family_members__tenant", "renewals"
+                Prefetch(
+                    "payments",
+                    queryset=Payment.objects.select_related(
+                        "lease",
+                        "lease__tenant",
+                        "lease__unit",
+                        "lease__unit__property",
+                        "payment_method",
+                    ).select_related("allocation"),
+                ),
+                Prefetch(
+                    "invoices",
+                    queryset=Invoice.objects.select_related(
+                        "lease",
+                        "lease__tenant",
+                        "lease__unit",
+                        "lease__unit__property",
+                    ),
+                ),
+                "family_members__tenant",
+                "renewals",
+                Prefetch(
+                    "security_transactions",
+                    queryset=SecurityDepositTransaction.objects.select_related(
+                        "payment",
+                        "allocation",
+                    ).order_by("date", "id"),
+                ),
             )
         )
 

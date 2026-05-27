@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static humanize %}
+{% load static humanize money_tags %}
 
 {% block title %}{{ tenant }}{% endblock %}
 
@@ -25,7 +25,7 @@
 
   <div class="order-lg-1">
     <span class="fw-semibold {% if tenant.current_balance > 0 %}text-danger{% else %}text-success{% endif %}">
-      Balance: Rs. {{ tenant.current_balance|default:0|floatformat:2|intcomma }}
+      Balance: {{ tenant.current_balance|default:0|money:2 }}
     </span>
   </div>
 
@@ -226,7 +226,7 @@
                     </td>
                     <td class="text-end">
                       <a href="{% url 'invoices:invoice_detail' invoice.pk %}" class="text-decoration-none">
-                        Rs. {{ invoice.amount|floatformat:2|intcomma }}
+                        {{ invoice.amount|money:2 }}
                       </a>
                     </td>
                   </tr>
@@ -276,7 +276,7 @@
                     <td class="text-end">
                       {# Update URL name if your app uses a different detail view #}
                       <a href="{% url 'payments:payment_detail' payment.pk %}" class="text-decoration-none">
-                        Rs. {{ payment.amount|floatformat:2|intcomma }}
+                        {{ payment.amount|money:2 }}
                       </a>
                     </td>
                   </tr>

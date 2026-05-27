@@ -1,144 +1,258 @@
-from django.shortcuts import render
-from django.utils import timezone
-from django.db.models import Case, DecimalField, F, Max, Sum, Value, When
-from django.db.models.functions import Coalesce
 from datetime import timedelta
 from decimal import Decimal
-from tenants.models import Tenant
+
+from django.db.models import Case, DecimalField, F, Max, Sum, Value, When
+from django.db.models.functions import Coalesce
+from django.shortcuts import render
+from django.utils import timezone
+
+from expenses.models import Expense
+from invoices.models import Invoice
 from leases.models import Lease
 from payments.models import Payment
-from invoices.models import Invoice
-from properties.models import Unit, Property
-from expenses.models import Expense  # Make sure you have this model
+from properties.models import Property, Unit
+from tenants.models import Tenant
+
+ZERO = Decimal("0.00")
 
 
 def dashboard(request):
     today = timezone.now().date()
-    # Basic counts
+
     total_properties = Property.objects.count()
     total_units = Unit.objects.count()
-    occupied_unit_ids = Lease.objects.filter(
-        status='active',
-        start_date__lte=today,
-        end_date__gte=today
-    ).values_list('unit_id', flat=True).distinct()
-    occupied_units = occupied_unit_ids.count()
-    vacancy_rate = round(((total_units - occupied_units) /
-                         total_units * 100) if total_units > 0 else 0, 1)
-    total_tenants = Tenant.objects.filter(is_active=True).count()
 
-    # Income calculations (last 30 days)
-    thirty_days_ago = timezone.now() - timedelta(days=30)
-    net_income = Payment.objects.filter(
-        payment_date__gte=thirty_days_ago
-    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-    # Recent payments (last 4)
-    recent_payments = Payment.objects.select_related(
-        'lease__tenant', 'lease__unit__property'
-    ).order_by('-payment_date')[:4]
-
-    # Upcoming invoices (due in next 15 days)
-    upcoming_invoices = Invoice.objects.select_related(
-        'lease__tenant', 'lease__unit__property'
-    ).filter(
-        due_date__gte=today,
-        due_date__lte=today + timedelta(days=15),
-        status__in=['unpaid', 'partially_paid']
-    ).order_by('due_date')[:4]
-
-    # Leases ending soon (within 40 days)
-    ending_soon_leases = Lease.objects.select_related(
-        'tenant', 'unit__property'
-    ).filter(
-        end_date__gte=today,
-        end_date__lte=today + timedelta(days=40),
-        status='active'
-    ).order_by('end_date')
-
-    # Vacant units
-    vacant_units = Unit.objects.select_related('property').filter(
-        status='vacant'
-    ).exclude(id__in=occupied_unit_ids).order_by('property__property_name', 'unit_number')
-
-    # Recent expenses (last 10)
-    recent_expenses = Expense.objects.select_related(
-        'property').order_by('-date')[:4]
-
-    # Tenant balances without per-tenant lease/payment lookups.
-    active_leases = list(
-        Lease.objects.select_related('tenant', 'unit__property')
-        .filter(
-            tenant__is_active=True,
-            status='active',
+    occupied_unit_ids = (
+        Lease.objects.filter(
+            status="active",
             start_date__lte=today,
             end_date__gte=today,
         )
-        .order_by('tenant_id', '-start_date', '-id')
+        .values_list("unit_id", flat=True)
+        .distinct()
     )
-    lease_ids = [lease.id for lease in active_leases]
+
+    occupied_units = occupied_unit_ids.count()
+    vacancy_rate = round(
+        ((total_units - occupied_units) / total_units * 100) if total_units > 0 else 0,
+        1,
+    )
+
+    total_tenants = Tenant.objects.filter(is_active=True).count()
+
+    thirty_days_ago = today - timedelta(days=30)
+
+    net_income = (
+        Payment.objects.filter(payment_date__gte=thirty_days_ago)
+        .aggregate(
+            total=Coalesce(Sum("amount"), Value(ZERO), output_field=DecimalField())
+        )
+        .get("total")
+        or ZERO
+    )
+
+    recent_payments = list(
+        Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+        )
+        .select_related("payment_method")
+        .order_by("-payment_date", "-id")[:5]
+    )
+
+    recent_lease_ids = [
+        payment.lease_id for payment in recent_payments if payment.lease_id
+    ]
 
     invoice_totals = {
-        row['lease_id']: row['total'] or Decimal('0.00')
-        for row in Invoice.objects.filter(lease_id__in=lease_ids)
-        .values('lease_id')
-        .annotate(total=Coalesce(Sum('amount'), Value(Decimal('0.00'), output_field=DecimalField())))
+        row["lease_id"]: row["total"] or ZERO
+        for row in (
+            Invoice.objects.filter(lease_id__in=recent_lease_ids)
+            .values("lease_id")
+            .annotate(
+                total=Coalesce(
+                    Sum("amount"),
+                    Value(ZERO),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                )
+            )
+        )
     }
+
     payment_totals = {
-        row['lease_id']: {
-            'total': row['total'] or Decimal('0.00'),
-            'last_payment_date': row['last_payment_date'],
+        row["lease_id"]: row["total"] or ZERO
+        for row in (
+            Payment.objects.filter(lease_id__in=recent_lease_ids)
+            .values("lease_id")
+            .annotate(
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(
+                                allocation__isnull=False,
+                                then=F("allocation__lease_amount"),
+                            ),
+                            default=F("amount"),
+                            output_field=DecimalField(max_digits=12, decimal_places=2),
+                        )
+                    ),
+                    Value(ZERO),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                )
+            )
+        )
+    }
+
+    for payment in recent_payments:
+        lease_id = payment.lease_id
+        payment.dashboard_balance = invoice_totals.get(
+            lease_id, ZERO
+        ) - payment_totals.get(lease_id, ZERO)
+
+    upcoming_invoices = (
+        Invoice.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+        )
+        .filter(
+            due_date__gte=today,
+            due_date__lte=today + timedelta(days=15),
+            status__in=["unpaid", "partially_paid"],
+        )
+        .order_by("due_date", "id")[:5]
+    )
+
+    ending_soon_leases = (
+        Lease.objects.select_related(
+            "tenant",
+            "unit",
+            "unit__property",
+        )
+        .filter(
+            end_date__gte=today,
+            end_date__lte=today + timedelta(days=40),
+            status="active",
+        )
+        .order_by("end_date", "id")
+    )
+
+    vacant_units = (
+        Unit.objects.select_related("property")
+        .filter(status="vacant")
+        .exclude(id__in=occupied_unit_ids)
+        .order_by("property__property_name", "unit_number")
+    )
+
+    recent_expenses = Expense.objects.select_related("property").order_by(
+        "-date", "-id"
+    )[:5]
+
+    active_leases = list(
+        Lease.objects.select_related(
+            "tenant",
+            "unit",
+            "unit__property",
+        )
+        .filter(
+            tenant__is_active=True,
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        .order_by("tenant_id", "-start_date", "-id")
+    )
+
+    lease_ids = [lease.id for lease in active_leases]
+
+    active_invoice_totals = {
+        row["lease_id"]: row["total"] or ZERO
+        for row in (
+            Invoice.objects.filter(lease_id__in=lease_ids)
+            .values("lease_id")
+            .annotate(
+                total=Coalesce(
+                    Sum("amount"),
+                    Value(ZERO),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                )
+            )
+        )
+    }
+
+    active_payment_totals = {
+        row["lease_id"]: {
+            "total": row["total"] or ZERO,
+            "last_payment_date": row["last_payment_date"],
         }
-        for row in Payment.objects.filter(lease_id__in=lease_ids)
-        .values('lease_id')
-        .annotate(
-            total=Coalesce(
-                Sum(
-                    Case(
-                        When(allocation__isnull=False, then=F('allocation__lease_amount')),
-                        default=F('amount'),
-                        output_field=DecimalField(max_digits=12, decimal_places=2),
-                    )
+        for row in (
+            Payment.objects.filter(lease_id__in=lease_ids)
+            .values("lease_id")
+            .annotate(
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(
+                                allocation__isnull=False,
+                                then=F("allocation__lease_amount"),
+                            ),
+                            default=F("amount"),
+                            output_field=DecimalField(max_digits=12, decimal_places=2),
+                        )
+                    ),
+                    Value(ZERO),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
                 ),
-                Value(Decimal('0.00'), output_field=DecimalField()),
-            ),
-            last_payment_date=Max('payment_date'),
+                last_payment_date=Max("payment_date"),
+            )
         )
     }
 
     tenant_balances = []
     seen_tenants = set()
-    for active_lease in active_leases:
-        tenant = active_lease.tenant
+
+    for lease in active_leases:
+        tenant = lease.tenant
+
         if tenant.pk in seen_tenants:
             continue
-        seen_tenants.add(tenant.pk)
-        payments_info = payment_totals.get(active_lease.id, {})
-        balance = invoice_totals.get(active_lease.id, Decimal('0.00')) - payments_info.get('total', Decimal('0.00'))
-        tenant_balances.append({
-            'id': tenant.pk,
-            'full_name': tenant.get_full_name(),
-            'balance': balance,
-            'last_payment_date': payments_info.get('last_payment_date'),
-            'current_lease': active_lease,
-        })
 
-    # Sort by balance descending
-    tenant_balances.sort(key=lambda x: x['balance'], reverse=True)
+        seen_tenants.add(tenant.pk)
+
+        payments_info = active_payment_totals.get(lease.id, {})
+        balance = active_invoice_totals.get(lease.id, ZERO) - payments_info.get(
+            "total",
+            ZERO,
+        )
+
+        tenant_balances.append(
+            {
+                "id": tenant.pk,
+                "full_name": tenant.get_full_name(),
+                "balance": balance,
+                "last_payment_date": payments_info.get("last_payment_date"),
+                "current_lease": lease,
+            }
+        )
+
+    tenant_balances.sort(key=lambda row: row["balance"], reverse=True)
 
     context = {
-        'total_properties': total_properties,
-        'total_units': total_units,
-        'occupied_units': occupied_units,
-        'vacancy_rate': vacancy_rate,
-        'total_tenants': total_tenants,
-        'net_income': net_income,
-        'recent_payments': recent_payments,
-        'upcoming_invoices': upcoming_invoices,
-        'ending_soon_leases': ending_soon_leases,
-        'vacant_units': vacant_units,
-        'recent_expenses': recent_expenses,
-        'tenant_balances': tenant_balances[:10],  # Only show top 10
+        "total_properties": total_properties,
+        "total_units": total_units,
+        "occupied_units": occupied_units,
+        "vacancy_rate": vacancy_rate,
+        "total_tenants": total_tenants,
+        "net_income": net_income,
+        "recent_payments": recent_payments,
+        "upcoming_invoices": upcoming_invoices,
+        "ending_soon_leases": ending_soon_leases,
+        "vacant_units": vacant_units,
+        "recent_expenses": recent_expenses,
+        "tenant_balances": tenant_balances[:10],
     }
 
-    return render(request, 'dashboard/dashboard.html', context)
+    return render(request, "dashboard/dashboard.html", context)

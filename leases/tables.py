@@ -2,6 +2,7 @@
 import json
 from decimal import Decimal
 
+from django.core.cache import cache
 from django.db.models import Sum
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -11,10 +12,20 @@ from django.utils.safestring import mark_safe
 from django_tables2 import SingleTableView, tables
 from django_tables2.columns import DateColumn
 
+from core.currency import format_money
+from core.models import GlobalSettings
 from properties.tables import ExportableTable
 from utils.pdf_export import handle_export
 
 from .models import Lease
+
+
+def _global_settings():
+    settings_obj = cache.get("core.global_settings")
+    if settings_obj is None:
+        settings_obj = GlobalSettings.get_solo()
+        cache.set("core.global_settings", settings_obj, 60)
+    return settings_obj
 
 
 class LeaseTable(ExportableTable):
@@ -87,7 +98,7 @@ class LeaseTable(ExportableTable):
     )
 
     monthly_payments = tables.Column(
-        accessor="get_monthly_payment",
+        accessor="list_monthly_payment",
         verbose_name=mark_safe("Monthly\nPayment"),
         attrs={
             "td": {"class": "col-monthly text-end"},
@@ -107,6 +118,7 @@ class LeaseTable(ExportableTable):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.global_settings = _global_settings()
         # Attach classes to the auto-added 'sn' column so we can style it
         if "sn" in self.columns:
             bc = self.columns["sn"]  # BoundColumn
@@ -125,11 +137,11 @@ class LeaseTable(ExportableTable):
     def render_monthly_payments(self, value):
         """Render total payments using the model's monthly_payments property"""
         # payments = record.total_payments
-        return f"Rs. {int(value):,}" if value else "0.00"
+        return format_money(value, self.global_settings, decimals=0)
 
     def render_balance(self, value, record):
         """Format balance for display and exports"""
-        formatted_value = f"Rs. {int(value):,}" if value else "0.00"
+        formatted_value = format_money(value, self.global_settings, decimals=0)
 
         # For exports, just return the formatted value
         if hasattr(self, "export_formats") and getattr(self, "is_export", False):
@@ -139,7 +151,7 @@ class LeaseTable(ExportableTable):
         return formatted_value
 
     def render_security_due(self, value, record):
-        formatted = f"Rs. {int(value):,}" if value else "0.00"
+        formatted = format_money(value, self.global_settings, decimals=0)
 
         # Exports (CSV/XLSX/PDF)
         if hasattr(self, "export_formats") and getattr(self, "is_export", False):
@@ -220,11 +232,13 @@ class LeaseTable(ExportableTable):
             # --- Security deposit required (agreed) ---
             # You can use required from SDT, but simplest is lease.security_deposit for display
             sec_required_dec = record.security_deposit or Decimal("0.00")
-            security_required = f"Rs. {sec_required_dec:,.2f}"
+            security_required = format_money(sec_required_dec, self.global_settings)
 
             # --- Security deposit balance & status ---
             security_balance = (
-                f"Rs. {sec_balance_dec:,.2f}" if sec_balance_dec > 0 else ""
+                format_money(sec_balance_dec, self.global_settings)
+                if sec_balance_dec > 0
+                else ""
             )
             security_status = "Pending" if sec_balance_dec > 0 else "Paid"
 

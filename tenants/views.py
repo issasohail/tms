@@ -1120,9 +1120,11 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
     export_formats = ['csv', 'xlsx', 'pdf']  # Add this line
 
     def get_queryset(self):
+        show_inactive = self.request.GET.get('show_inactive') == 'on'
+        lease_prefetch_queryset = Lease.objects.all() if show_inactive else Lease.objects.filter(status='active')
         active_leases = Prefetch(
             'leases',
-            queryset=Lease.objects.filter(status='active')
+            queryset=lease_prefetch_queryset
             .select_related('unit__property')
             .order_by('-start_date', '-id'),
             to_attr='active_leases',
@@ -1143,21 +1145,20 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         if phone:
             queryset = queryset.filter(phone__icontains=phone)
 
+        lease_filter = Lease.objects.filter(tenant_id=OuterRef('pk'))
+        if not show_inactive:
+            lease_filter = lease_filter.filter(status='active')
+
         if property_id:
-            queryset = queryset.filter(leases__unit__property_id=property_id).order_by(
-                'first_name', 'last_name')
+            lease_filter = lease_filter.filter(unit__property_id=property_id)
 
         if unit_id:
-            queryset = queryset.filter(leases__unit_id=unit_id).order_by(
-                'first_name', 'last_name')
+            lease_filter = lease_filter.filter(unit_id=unit_id)
 
         # ✅ Default: only tenants who have at least one ACTIVE lease.
         #    When "show_inactive" is checked, show all tenants.
-        show_inactive = self.request.GET.get('show_inactive') == 'on'
-        if not show_inactive:
-            queryset = queryset.filter(leases__status='active').distinct()
-        else:
-            queryset = queryset.distinct()
+        if not show_inactive or property_id or unit_id:
+            queryset = queryset.filter(Exists(lease_filter))
 
         return queryset.order_by('first_name', 'last_name')
 
@@ -1226,25 +1227,38 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             lease._cached_security_due = security_due
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        # This template renders its own HTML table, so skip SingleTableView's
+        # unused table context and avoid a second pagination/count query.
+        context = ListView.get_context_data(self, **kwargs)
         property_id = self.request.GET.get('property')
         page_tenants = list(context.get('object_list') or context.get('tenants') or [])
         self._attach_lease_totals(page_tenants)
 
         # Add all tenants for the tenant dropdown
-        context['all_tenants'] = Tenant.objects.all().order_by(
-            'first_name', 'last_name')
+        context['all_tenants'] = (
+            Tenant.objects
+            .only('id', 'first_name', 'last_name')
+            .order_by('first_name', 'last_name')
+        )
 
         # Add all properties for the property dropdown
-        context['properties'] = Property.objects.all().order_by('property_name')
+        context['properties'] = (
+            Property.objects
+            .only('id', 'property_name')
+            .order_by('property_name')
+        )
 
         # Add all units (for when no property is selected)
-        context['all_units'] = Unit.objects.all().order_by('unit_number')
+        context['all_units'] = (
+            Unit.objects
+            .only('id', 'unit_number')
+            .order_by('unit_number')
+        )
 
         # Add filtered units (for when a property is selected)
         context['filtered_units'] = (
             Unit.objects.filter(
-                property_id=property_id).order_by('unit_number')
+                property_id=property_id).only('id', 'unit_number').order_by('unit_number')
             if property_id else []
         )
 

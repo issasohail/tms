@@ -1182,7 +1182,7 @@
       <div class="d-flex align-items-start flex-wrap gap-2">
         <div class="me-3">
           <h2 class="mb-0 d-flex align-items-center">
-            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings
+            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings 101
             <span id="headingPowerMsg" class="small ms-3 text-muted" aria-live="polite"></span>
           </h2>
           <small class="text-muted d-block lh-1">
@@ -1225,7 +1225,10 @@
         <form method="get" class="filters-inline d-flex align-items-center flex-wrap gap-2 m-0 w-100">
           <!-- Property -->
           <select name="property" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <option value="">All properties</option>
+            {% for p in all_properties %}
             <option value="{{ p.id }}" {% if p.is_selected %} selected{% endif %}>{{ p.property_name }}</option>
+            {% endfor %}
 
 
 
@@ -1235,7 +1238,10 @@
 
           <!-- Unit -->
           <select name="unit" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <option value="">All units</option>
+            {% for u in filtered_units %}
             <option value="{{ u.id }}" {% if u.is_selected %} selected{% endif %}>{{ u.unit_number }}</option>
+            {% endfor %}
 
 
 
@@ -1248,10 +1254,12 @@
           <div class="meter-actions d-flex align-items-center gap-2">
             <select name="meter" class="form-select form-select-sm text-truncate"
               style="min-width:var(--filter-minw);max-width:var(--filter-maxw)" onchange="this.form.submit()">
+              <option value="">All meters</option>
+              {% for m in filtered_meters %}
               <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>{{ m.unit.unit_number }} — {{
                 m.meter_number }}
               </option>
-
+              {% endfor %}
 
 
 

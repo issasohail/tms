@@ -635,8 +635,8 @@
       sb.textContent = "—";
       return;
     }
-    lb.textContent = "Rs. " + (leaseData.balance || "0.00");
-    sb.textContent = "Rs. " + (leaseData.sec_balance || "0.00");
+    lb.textContent = (window.TMS_CURRENCY_SYMBOL || "{{ CURRENCY_SYMBOL|escapejs }}") + " " + (leaseData.balance || "0.00");
+    sb.textContent = (window.TMS_CURRENCY_SYMBOL || "{{ CURRENCY_SYMBOL|escapejs }}") + " " + (leaseData.sec_balance || "0.00");
   }
 
   function updateLeaseList(){
@@ -765,10 +765,10 @@
 Payment received for
 Unit: ${propertyName}-${unitNumber}
 Period: ${startDate} – ${endDate}
-Security Deposit: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
+Security Deposit: ${window.TMS_CURRENCY_SYMBOL || '{{ CURRENCY_SYMBOL|escapejs }}'} ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
 Date: ${paymentDate}
-Amount: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(amount)}
-Balance: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(balance)}
+Amount: ${window.TMS_CURRENCY_SYMBOL || '{{ CURRENCY_SYMBOL|escapejs }}'} ${fmt(amount)}
+Balance: ${window.TMS_CURRENCY_SYMBOL || '{{ CURRENCY_SYMBOL|escapejs }}'} ${fmt(balance)}
 
 Thank you!`;
 

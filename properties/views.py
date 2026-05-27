@@ -39,6 +39,7 @@ from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
 from django.views.generic import CreateView, UpdateView, DetailView, DeleteView
 from django_filters.views import FilterView
 from django_tables2.views import SingleTableMixin
+from django_tables2.paginators import LazyPaginator
 from django.views import View
 from django.db.models import Count
 
@@ -174,6 +175,7 @@ class UnitListView(SingleTableMixin, FilterView):
     table_class = UnitTable
     template_name = "properties/unit_list.html"
     filterset_class = UnitFilter
+    table_pagination = {"per_page": 25, "paginator_class": LazyPaginator}
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related('property')
@@ -196,9 +198,10 @@ class UnitListView(SingleTableMixin, FilterView):
 
     def get(self, request, *args, **kwargs):
         # Handle export requests
-        export_response = self.handle_export(request)
-        if export_response:
-            return export_response
+        if request.GET.get("_export"):
+            export_response = self.handle_export(request)
+            if export_response:
+                return export_response
         return super().get(request, *args, **kwargs)
 
     def handle_export(self, request):

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load money_tags %}
 
 {% block title %}Dashboard{% endblock %}
 
@@ -31,8 +32,8 @@
                                 <td>{{ payment.payment_date|date:"M d" }}</td>
                                 <td>{{ payment.lease.tenant.get_full_name }}</td>
                                 <td>{{ payment.lease.unit.property.property_name }}-{{ payment.lease.unit.unit_number }}</td>
-                                <td>${{ payment.amount }}</td>
-                                <td>${{ payment.lease.get_balance|floatformat:2 }}</td>
+                                <td>{{ payment.amount|money:2 }}</td>
+                                <td>{{ payment.dashboard_balance|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -70,7 +71,7 @@
                                 <td>{{ invoice.due_date|date:"M d" }}</td>
                                 <td>{{ invoice.lease.tenant.get_full_name }}</td>
                                 <td>{{ invoice.lease.unit.property.property_name }}-{{ invoice.lease.unit.unit_number }}</td>
-                                <td>${{ invoice.amount }}</td>
+                                <td>{{ invoice.amount|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -110,8 +111,8 @@
                                 <td>{{ lease.tenant.get_full_name }}</td>
                                 <td>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</td>
                                 <td>{{ lease.end_date|date:"M d, Y" }}</td>
-                                <td>${{ lease.total_payment|floatformat:2 }}</td>
-                                <td>${{ lease.security_deposit|floatformat:2 }}</td>
+                                <td>{{ lease.total_payment|money:2 }}</td>
+                                <td>{{ lease.security_deposit|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -146,8 +147,8 @@
                             {% for unit in vacant_units %}
                             <tr onclick="window.location='{% url 'properties:unit_detail' unit.id %}'" style="cursor: pointer;">
                                 <td>{{ unit.property.property_name }}-{{ unit.unit_number }}</td>
-                                <td>${{ unit.monthly_rent|floatformat:2 }}</td>
-                                <td>${{ unit.society_maintenance|floatformat:2 }}</td>
+                                <td>{{ unit.monthly_rent|money:2 }}</td>
+                                <td>{{ unit.society_maintenance|money:2 }}</td>
                                 <td>{{ unit.property.get_property_type_display }}</td>
                             </tr>
                             {% empty %}
@@ -188,7 +189,7 @@
                                 <td>{{ expense.date|date:"M d" }}</td>
                                 <td>{{ expense.category }}</td>
                                 <td>{{ expense.property.property_name|default:"-" }}</td>
-                                <td>${{ expense.amount|floatformat:2 }}</td>
+                                <td>{{ expense.amount|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -230,7 +231,7 @@
                                         -
                                     {% endif %}
                                 </td>
-                                <td>${{ tenant.balance|floatformat:2 }}</td>
+                                <td>{{ tenant.balance|money:2 }}</td>
                                 <td>
                                     {% if tenant.last_payment_date %}
                                         {{ tenant.last_payment_date|date:"M d" }}

@@ -3,6 +3,8 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from decimal import Decimal, InvalidOperation
 from django.urls import reverse
+from core.currency import format_money
+from core.models import GlobalSettings
 
 def _truncate(s, n):
         s = (s or "").strip()
@@ -62,6 +64,11 @@ class CashLedgerTable(tables.Table):
                             attrs={"td": {"class": "text-nowrap col-actions actions-cell"},
                                 "th": {"class": "col-actions actions-cell"}})
 
+    def get_global_settings(self):
+        if not hasattr(self, "_global_settings"):
+            self._global_settings = GlobalSettings.get_solo()
+        return self._global_settings
+
     def render_sn(self):
         self.row_counter = getattr(self, "row_counter", 0) + 1
         return self.row_counter
@@ -92,18 +99,19 @@ class CashLedgerTable(tables.Table):
         amt = _to_decimal(record.amount)
         css = "text-danger" if amt < 0 else "text-success"
 
-        total_s = f"{amt:,.2f}"
+        settings_obj = self.get_global_settings()
+        total_s = format_money(amt, settings_obj)
 
         if getattr(record, "is_split", False):
             lease_amt = _to_decimal(getattr(record, "lease_amount", 0))
             sec_amt   = _to_decimal(getattr(record, "security_amount", 0))
 
-            lease_s = f"{lease_amt:,.2f}"
-            sec_s   = f"{sec_amt:,.2f}"
+            lease_s = format_money(lease_amt, settings_obj)
+            sec_s   = format_money(sec_amt, settings_obj)
 
             return format_html(
-                '<div class="{} fw-semibold">Rs. {}</div>'
-                '<div class="small text-muted">Lease: Rs. {} | Security: Rs. {}</div>',
+                '<div class="{} fw-semibold">{}</div>'
+                '<div class="small text-muted">Lease: {} | Security: {}</div>',
                 css,
                 total_s,
                 lease_s,
@@ -111,7 +119,7 @@ class CashLedgerTable(tables.Table):
             )
 
         return format_html(
-            '<span class="{} fw-semibold">Rs. {}</span>',
+            '<span class="{} fw-semibold">{}</span>',
             css,
             total_s
         )
@@ -127,14 +135,14 @@ class CashLedgerTable(tables.Table):
         )
 
     def render_lease_balance(self, value, record):
-        return f"Rs. {_to_decimal(record.lease_balance):,.2f}"
+        return format_money(_to_decimal(record.lease_balance), self.get_global_settings())
 
     def render_security_balance(self, value, record):
-        return f"Rs. {_to_decimal(record.security_balance):,.2f}"
+        return format_money(_to_decimal(record.security_balance), self.get_global_settings())
 
     def render_balance(self, value, record):
         total = _to_decimal(record.lease_balance) + _to_decimal(record.security_balance)
-        return f"Rs. {total:,.2f}"
+        return format_money(total, self.get_global_settings())
 
     
     def render_description(self, value, record):

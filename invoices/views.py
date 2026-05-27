@@ -79,7 +79,7 @@ from .models import ItemCategory
 from .forms import InvoiceForm
 import asyncio
 from django.db.models import F, Value
-from django.db.models.functions import Concat
+from django.db.models.functions import Coalesce, Concat
 from .aggregates import GroupConcat
 from django.urls import reverse
 # top of views.py
@@ -99,7 +99,7 @@ from django.views.generic import TemplateView
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.apps import apps
 from django.utils.dateformat import format as dj_format
-from django.db.models import Q
+from django.db.models import Case, DecimalField, ExpressionWrapper, OuterRef, Q, Subquery, When
 from django.db import transaction
 from django.forms import inlineformset_factory
 from .forms import InvoiceForm, InvoiceItemForm
@@ -108,6 +108,7 @@ from django.urls import reverse
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 
 from leases.models import Lease
+from payments.models import Payment
 from .models import SecurityDepositTransaction
 from .services import security_deposit_totals
 from core.models import GlobalSettings
@@ -166,8 +167,54 @@ class InvoiceListView(SingleTableView):
         return None, None
 
     def get_queryset(self):
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        invoice_total_sq = (
+            Invoice.objects.filter(lease_id=OuterRef("lease_id"))
+            .values("lease_id")
+            .annotate(total=Coalesce(Sum("amount"), Value(Decimal("0.00")), output_field=money_field))
+            .values("total")[:1]
+        )
+        payment_total_sq = (
+            Payment.objects.filter(lease_id=OuterRef("lease_id"))
+            .values("lease_id")
+            .annotate(
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                            default=F("amount"),
+                            output_field=money_field,
+                        )
+                    ),
+                    Value(Decimal("0.00")),
+                    output_field=money_field,
+                )
+            )
+            .values("total")[:1]
+        )
         qs = (Invoice.objects
-              .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property"))
+              .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
+              .prefetch_related(
+                  Prefetch("items", queryset=InvoiceItem.objects.select_related("category"))
+              )
+              .annotate(
+                  lease_invoice_total=Coalesce(
+                      Subquery(invoice_total_sq, output_field=money_field),
+                      Value(Decimal("0.00")),
+                      output_field=money_field,
+                  ),
+                  lease_payment_total=Coalesce(
+                      Subquery(payment_total_sq, output_field=money_field),
+                      Value(Decimal("0.00")),
+                      output_field=money_field,
+                  ),
+              )
+              .annotate(
+                  dashboard_lease_balance=ExpressionWrapper(
+                      F("lease_invoice_total") - F("lease_payment_total"),
+                      output_field=money_field,
+                  )
+              ))
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")
@@ -210,7 +257,9 @@ class InvoiceListView(SingleTableView):
         Lease = apps.get_model("leases", "Lease")
         Unit = apps.get_model("properties", "Unit")
 
-        ctx = super().get_context_data(**kwargs)
+        ctx = {"view": self}
+        table = self.get_table(**self.get_table_kwargs())
+        ctx[self.get_context_table_name(table)] = table
         today = timezone.localdate()
 
         # Properties
@@ -232,8 +281,10 @@ class InvoiceListView(SingleTableView):
                 leases_qs = leases_qs.filter(
                     end_date__isnull=True) | leases_qs.filter(end_date__gte=today)
 
+        leases_list = list(leases_qs.order_by("-start_date"))
+
         lease_options = []
-        for L in leases_qs:
+        for L in leases_list:
             t = getattr(L, "tenant", None)
             u = getattr(L, "unit", None)
             p = getattr(u, "property", None) if u else None
@@ -259,18 +310,8 @@ class InvoiceListView(SingleTableView):
         ctx["lease_options"] = lease_options
 
         # Units by property (Unit — Tenant — End — Status)
-        leases_all = Lease.objects.select_related(
-            "tenant", "unit", "unit__property")
-        if not show_inactive:
-            active_filter = {"status": "active"} if hasattr(
-                Lease, "status") else {}
-            leases_all = leases_all.filter(**active_filter)
-            if hasattr(Lease, "end_date"):
-                leases_all = leases_all.filter(
-                    end_date__isnull=True) | leases_all.filter(end_date__gte=today)
-
         latest_by_unit = {}
-        for L in leases_all:
+        for L in leases_list:
             uid = getattr(L, "unit_id", None)
             if uid is None:
                 continue
@@ -473,9 +514,13 @@ class InvoiceDetailView(DetailView):
         ctx["computed_total"] = sum((item.amount for item in items), Decimal("0.00"))
 
         # For the category list box (datalist suggestions)
-        from .models import ItemCategory
-        ctx["categories"] = ItemCategory.objects.filter(
-            is_active=True).order_by("name").values("id", "name")
+        ctx["categories"] = list(
+            ItemCategory.objects.filter(is_active=True)
+            .order_by("name")
+            .values("id", "name")
+        )
+
+        ctx["lease_balance"] = inv.lease.get_balance if inv.lease_id else Decimal("0.00")
         
         # 🔹 NEW: security deposit totals for this invoice's lease
         lease = getattr(inv, "lease", None)

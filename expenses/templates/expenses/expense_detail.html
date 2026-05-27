@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load money_tags %}
 
 {% block title %}Expense #{{ expense.id }}{% endblock %}
 
@@ -24,7 +25,7 @@
                 <p><strong>Category:</strong> {{ expense.category }}</p>
                 {% endif %}
                 <p><strong>Date:</strong> {{ expense.date }}</p>
-                <p><strong>Amount:</strong> Rs. {{ expense.amount }}</p>
+                <p><strong>Amount:</strong> {{ expense.amount|money:2 }}</p>
                 <p><strong>Description:</strong> {{ expense.description }}</p>
                 {% if expense.is_distributed %}
                 <p><strong>Distribution Method:</strong> {{ expense.get_distribution_method_display }}</p>
@@ -113,7 +114,7 @@
                             {% for dist in expense.distributions.all %}
                             <tr>
                                 <td>{{ dist.unit }}</td>
-                                <td>${{ dist.amount }}</td>
+                                <td>{{ dist.amount|money:2 }}</td>
                                 <td>
                                     {% if dist.included_in_invoice %}
                                     <span class="badge bg-success">Yes</span>

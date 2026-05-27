@@ -1,5 +1,5 @@
 {% extends "payments/base_pdf.html" %}
-{% load static humanize %}
+{% load static humanize money_tags %}
 
 {% block content %}
 <div class="receipt-container">
@@ -14,7 +14,7 @@
         <div class="payment-meta">
             <p><strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}</p>
             <p><strong>Method:</strong> {{ payment.get_payment_method_display }}</p>
-            <p><strong>Amount:</strong> ${{ payment.amount|floatformat:2|intcomma }}</p>
+            <p><strong>Amount:</strong> {{ payment.amount|money:2 }}</p>
         </div>
     </div>
 
@@ -40,7 +40,7 @@
             </tr>
             <tr>
                 <td><strong>Balance:</strong></td>
-                <td>${{ payment.lease.get_balance|floatformat:2|intcomma }}</td>
+                <td>{{ payment.lease.get_balance|money:2 }}</td>
             </tr>
         </table>
     </div>
@@ -58,7 +58,7 @@
             <tbody>
                 <tr>
                     <td>Payment for {{ payment.get_payment_method_display }}</td>
-                    <td class="text-right">${{ payment.amount|floatformat:2|intcomma }}</td>
+                    <td class="text-right">{{ payment.amount|money:2 }}</td>
                 </tr>
                 {% if payment.notes %}
                 <tr>

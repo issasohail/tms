@@ -44,6 +44,53 @@ def dashboard(request):
         date__range=[thirty_days_ago, today]
     ).aggregate(total=models.Sum('amount'))['total'] or 0
 
+    recent_payments = list(
+        Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+        )
+        .order_by("-payment_date", "-id")[:5]
+    )
+    recent_lease_ids = [
+        payment.lease_id for payment in recent_payments if payment.lease_id
+    ]
+
+    invoice_totals = {
+        row["lease_id"]: row["total"] or 0
+        for row in (
+            Invoice.objects.filter(lease_id__in=recent_lease_ids)
+            .values("lease_id")
+            .annotate(total=models.Sum("amount"))
+        )
+    }
+    payment_totals = {
+        row["lease_id"]: row["total"] or 0
+        for row in (
+            Payment.objects.filter(lease_id__in=recent_lease_ids)
+            .values("lease_id")
+            .annotate(total=models.Sum("amount"))
+        )
+    }
+
+    for payment in recent_payments:
+        payment.dashboard_balance = (
+            invoice_totals.get(payment.lease_id, 0)
+            - payment_totals.get(payment.lease_id, 0)
+        )
+
+    upcoming_invoices = (
+        Invoice.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+        )
+        .filter(due_date__gte=today, status__in=["unpaid", "partially_paid"])
+        .order_by("due_date", "id")[:5]
+    )
+
     context = {
         'total_properties': total_properties,
         'total_units': total_units,
@@ -54,11 +101,9 @@ def dashboard(request):
         'total_payments': total_payments,
         'total_expenses': total_expenses,
         'net_income': total_payments - total_expenses,
-        'recent_payments': Payment.objects.order_by('-payment_date')[:5],
+        'recent_payments': recent_payments,
         'recent_invoices': Invoice.objects.order_by('-issue_date')[:5],
-        'upcoming_invoices': Invoice.objects.filter(
-            due_date__gte=today, status__in=['unpaid', 'partially_paid']
-        ).order_by('due_date')[:5],
+        'upcoming_invoices': upcoming_invoices,
     }
     return render(request, 'dashboard.html', context)
 

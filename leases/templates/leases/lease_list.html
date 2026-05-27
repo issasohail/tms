@@ -1,10 +1,15 @@
 {% extends 'base.html' %}
 {% load render_table from django_tables2 %}
 {% load static %}
-{% load humanize %}
+{% load humanize money_tags %}
 
 {% block title %}Leases{% endblock %}
-
+<style>
+  .col-end {
+    min-width: 120px !important;
+    white-space: nowrap;
+}
+</style>
 {% block content %}
 <!-- Compact, single-line header: title + filters + actions -->
 <div class="page-header mb-2 leases-header">
@@ -99,10 +104,10 @@
 </div>
 
 <div class="text-end mt-1 fw-bold">
-  Total Balance: {{ total_balance|floatformat:2|intcomma }}
+  Total Balance: {{ total_balance|money:2 }}
 </div>
 <div class="text-end">
-  Security Deposit Due: {{ total_security_due|floatformat:2|intcomma }}
+  Security Deposit Due: {{ total_security_due|money:2 }}
 </div>
 
 <div class="table-responsive">
@@ -110,10 +115,10 @@
 </div>
 
 <div class="text-end mt-1 fw-bold">
-  Total Balance: {{ total_balance|floatformat:2|intcomma }}
+  Total Balance: {{ total_balance|money:2 }}
 </div>
 <div class="text-end">
-  Security Deposit Due: {{ total_security_due|floatformat:2|intcomma }}
+  Security Deposit Due: {{ total_security_due|money:2 }}
 </div>
 {% endblock %}
 
@@ -961,6 +966,7 @@
 <script>
   // This should be filled from Django template (see step 2)
   const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+  const TMS_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|escapejs }}";
 
   function normalizePhone(phone, defaultCountryCodeRaw) {
     if (!phone) return null;
@@ -1043,7 +1049,7 @@ Property: ${propertyName}
 Unit: ${unitNumber}
 Period: ${periodStart} – ${periodEnd}
 Security Deposit: ${securityRequired} (${securityStatus})
-${secBalanceLine}*Total Balance: Rs. ${formattedBalance}*
+${secBalanceLine}*Total Balance: ${TMS_CURRENCY_SYMBOL} ${formattedBalance}*
 
 Please pay at your earliest convenience.`;
 

@@ -2004,11 +2004,11 @@ def reading_list(request):
     if end_dt_excl:
         readings = readings.filter(ts__lt=end_dt_excl)
 
-    total_count = readings.count()
     readings = readings.order_by("-ts")
 
     paginator = Paginator(readings, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
+    total_count = paginator.count
     page_items = page_obj.object_list
     rows = [(r, ReadingManualForm(instance=r, request=request, prefix=f"r{r.pk}"))
             for r in page_items]

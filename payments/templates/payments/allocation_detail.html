@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static humanize %}
+{% load static humanize money_tags %}
 
 {% block title %}Payment for {{ allocation.payment.lease.unit.unit_number }}-{{ allocation.payment.payment_date|date:"M d, Y" }}{% endblock %}
 
@@ -111,16 +111,20 @@
                                 </tr>
                             </thead>
                             <tbody>
+                                {% if allocation.lease_amount > 0 %}
                                 <tr>
                                     <td>Lease Portion </td>
                                     <td>{{ allocation.payment.payment_method.name }}</td>
                                     <td class="text-end" >{{ allocation.lease_amount|money:0 }}</td>
                                  </tr>
+                                {% endif %}
+                                {% if allocation.security_amount > 0 %}
                                  <tr>
                                     <td>Security Portion </td>
                                     <td>{{ allocation.payment.payment_method.name }}</td>
                                     <td class="text-end" >{{ allocation.security_amount|money:0 }}</td>
                                 </tr>
+                                {% endif %}
                                 {% if allocation.payment.notes %}
                                 <tr>
                                     <td colspan="3"><strong>Notes:</strong> {{ allocation.payment.notes }}</td>
@@ -488,14 +492,18 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
             `Period: {{ allocation.payment.lease.start_date|date:"M d, Y"|escapejs }} – {{ allocation.payment.lease.end_date|date:"M d, Y"|escapejs }}`,
             `Security Deposit: ${securityRequired} (${securityStatus})`,
             {% if sec_totals.balance_to_collect > 0 %}
-            `Security Deposit Balance: {{ CURRENCY_SYMBOL }} ${secBalStr}`,
+            `Security Deposit Balance: {{ CURRENCY_SYMBOL|escapejs }} ${secBalStr}`,
             {% endif %}
             `Date: {{ allocation.payment.payment_date|date:"M d, Y"|escapejs }}`,
             `*Total Amount Received: {{ allocation.payment.amount|money:2|escapejs }}*`,
-            '{{ allocation.lease_amount|money:0 }} applied toward lease balance &',
+            {% if allocation.lease_amount > 0 %}
+            '{{ allocation.lease_amount|money:0 }} applied toward lease balance.',
+            {% endif %}
+            {% if allocation.security_amount > 0 %}
             '{{ allocation.security_amount|money:0 }} applied towards Security balance.',
-            `Lease Balance: {{ CURRENCY_SYMBOL }} ${leaseBalStr}`,
-            `*Total Balance: {{ CURRENCY_SYMBOL }} ${totalWithSecStr}*`,
+            {% endif %}
+            `Lease Balance: {{ CURRENCY_SYMBOL|escapejs }} ${leaseBalStr}`,
+            `*Total Balance: {{ CURRENCY_SYMBOL|escapejs }} ${totalWithSecStr}*`,
             ``,
             `Thank you!`
         ];

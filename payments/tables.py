@@ -3,6 +3,8 @@ from .models import Payment
 from django_tables2.utils import A
 from django.utils.html import format_html
 from django.urls import reverse
+from core.currency import format_money
+from core.models import GlobalSettings
 from django.urls import reverse, NoReverseMatch
 from django.template.loader import render_to_string
 from leases.models import Lease
@@ -107,10 +109,10 @@ class PaymentTable(tables.Table):
         )
 
     def render_amount(self, value):
-        return f"Rs. {float(value):,.2f}"
+        return format_money(value, GlobalSettings.get_solo())
 
     def render_balance(self, value):
-        return f"Rs. {float(value):,.2f}" if value else "0.00"
+        return format_money(value, GlobalSettings.get_solo())
 
     def render_sn(self):
         """Auto-incrementing serial number"""

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% load render_table from django_tables2 %}
 {% load static %}
+{% load money_tags %}
 
 {% block title %}Invoices{% endblock %}
 
@@ -1355,11 +1356,12 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
       try {
         items = JSON.parse(el.dataset.items || '[]') || [];
       } catch (_) { items = []; }
+      const currencySymbol = '{{ CURRENCY_SYMBOL|escapejs }}';
       const itemsText = items.length
-        ? items.map((it, i) => `${i+1}. ${it.cat || ''} — ${(it.desc || '').trim() || '—'} — Rs.${it.amount || '0.00'}`).join('\n')
+        ? items.map((it, i) => `${i+1}. ${it.cat || ''} — ${(it.desc || '').trim() || '—'} — ${currencySymbol} ${it.amount || '0.00'}`).join('\n')
         : '—';
 
-      const rs = v => v ? 'Rs.' + v : 'Rs.0.00';
+      const rs = v => v ? `${currencySymbol} ${v}` : `${currencySymbol} 0.00`;
 
       // ---- build the WhatsApp message (identical to your detail page) ----
       const msg = [
@@ -1374,7 +1376,7 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
         itemsText,
         '',
         'Total: *' + rs(totalFmt) + '*',
-        'New Balance: * Rs.' + leaseBalFmt+ '*',
+        'New Balance: * ' + rs(leaseBalFmt) + '*',
         '',
         'Thank you!'
       ].join('\n');

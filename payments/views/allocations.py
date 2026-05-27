@@ -18,6 +18,7 @@ from django.views.generic import DetailView
 from payments.models import PaymentAllocation
 #from leases.utils.billing import security_deposit_totals  # adjust import if different
 from core.models import GlobalSettings  # adjust import if different
+from core.currency import format_money
 from leases.models import Lease
 from invoices.services import security_deposit_totals
 from decimal import Decimal
@@ -216,6 +217,10 @@ def _dec(v, default="0.00"):
         return Decimal(str(v or default))
     except (InvalidOperation, ValueError, TypeError):
         return Decimal(default)
+
+
+def _money(value):
+    return format_money(value, GlobalSettings.get_solo())
 
 class AllocationEditView(LoginRequiredMixin, UpdateView):
     """
@@ -472,20 +477,19 @@ def build_allocation_receipt_message(request, alloc: PaymentAllocation) -> str:
     ]
 
     if sec_required:
-        lines.append(f"Security Deposit: Rs. {float(sec_required):,.2f} ({sec_status})")
+        lines.append(f"Security Deposit: {_money(sec_required)} ({sec_status})")
         if sec_balance > 0:
-            lines.append(f"*Security Deposit Balance: Rs. {float(sec_balance):,.2f}*")
+            lines.append(f"*Security Deposit Balance: {_money(sec_balance)}*")
 
     if getattr(pay, "payment_date", None):
         lines.append(f"Date: {pay.payment_date:%b %d, %Y}")
 
-    lines.extend([
-        f"*Total Amount Received: Rs. {float(pay.amount or 0):,.2f}*",
-        f"Lease Portion: Rs. {float(alloc.lease_amount or 0):,.2f}",
-        f"Security Portion: Rs. {float(alloc.security_amount or 0):,.2f}",
-        "",
-        "Thank you!",
-    ])
+    lines.append(f"*Total Amount Received: {_money(pay.amount)}*")
+    if (alloc.lease_amount or 0) > 0:
+        lines.append(f"Lease Portion: {_money(alloc.lease_amount)}")
+    if (alloc.security_amount or 0) > 0:
+        lines.append(f"Security Portion: {_money(alloc.security_amount)}")
+    lines.extend(["", "Thank you!"])
 
     return "\n".join([l for l in lines if l])
 
@@ -621,11 +625,11 @@ def api_allocation_receipt_whatsapp(request, pk: int):
         f"*Payment received* for {lease.unit.property.property_name if lease and lease.unit and lease.unit.property else ''}.\n"
         f"Unit: {lease.unit.unit_number if lease and lease.unit else ''}\n"
         f"Period: {lease.start_date:%b %d, %Y} – {lease.end_date:%b %d, %Y}\n"
-        f"Security Deposit: Rs. {sec_totals.get('required',0):,.2f} ({sec_status})\n"
+        f"Security Deposit: {_money(sec_totals.get('required', 0))} ({sec_status})\n"
         f"Date: {pay.payment_date:%b %d, %Y}\n"
-        f"*Total Amount Received: Rs. {(pay.amount or 0):,.2f}*\n"
-        f"Lease Portion: Rs. {(alloc.lease_amount or 0):,.2f}\n"
-        f"Security Portion: Rs. {(alloc.security_amount or 0):,.2f}\n"
+        f"*Total Amount Received: {_money(pay.amount)}*\n" +
+        (f"Lease Portion: {_money(alloc.lease_amount)}\n" if (alloc.lease_amount or 0) > 0 else "") +
+        (f"Security Portion: {_money(alloc.security_amount)}\n" if (alloc.security_amount or 0) > 0 else "") +
         f"Thank you!"
     )
 

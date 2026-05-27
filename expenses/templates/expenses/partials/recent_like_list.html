@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize money_tags %}
 
 {# templates/expenses/partials/recent_like_list.html #}
 <div class="card">
@@ -63,7 +63,7 @@
             {# Date (first line) + Amount (second line), right-aligned #}
             <td class="col-when text-end">
               <div class="when-date">{{ e.date }}</div>
-              <div class="when-amt">Rs {{ e.amount|floatformat:2|intcomma }}</div>
+              <div class="when-amt">{{ e.amount|money:2 }}</div>
             </td>
 
             {# Actions (NO receipt button) #}

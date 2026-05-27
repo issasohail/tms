@@ -58,7 +58,7 @@
             if (!card || !out) return;
 
             card.style.display = "";
-            out.textContent = "Rs. " + Number(data.total_amount || 0).toLocaleString('en-PK', {
+            out.textContent = "{{ CURRENCY_SYMBOL|escapejs }} " + Number(data.total_amount || 0).toLocaleString('en-PK', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
             });

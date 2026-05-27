@@ -29,8 +29,18 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection, transaction
 
 # LeaseFamily is needed if you link/create in quick-add
-from django.db.models import Q, Sum, Value
-from django.db.models.functions import Coalesce, Concat, Lower
+from django.db.models import (
+    Case,
+    DecimalField,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, Concat, Greatest, Lower
 from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -52,6 +62,7 @@ from django.views.generic import (
     View,
 )
 from django_tables2 import SingleTableView
+from django_tables2.paginators import LazyPaginator
 from django_tables2.views import SingleTableView
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from reportlab.pdfgen import canvas
@@ -60,9 +71,10 @@ from rest_framework.response import Response
 from weasyprint import HTML
 
 from invoices.models import Invoice, SecurityDepositTransaction
-from invoices.services import security_deposit_balance, security_deposit_totals
+from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm
 from leases.models import Lease
+from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
 from leases.utils import do_replace_placeholders
 from payments.models import Payment
@@ -216,17 +228,129 @@ def prepare_transaction_columns(transactions):
     return columns
 
 
+class CachedLazyPaginator(LazyPaginator):
+    def page(self, number):
+        page_number = self.validate_number(number or 1)
+        if not hasattr(self, "_page_cache"):
+            self._page_cache = {}
+        if page_number not in self._page_cache:
+            self._page_cache[page_number] = super().page(page_number)
+        return self._page_cache[page_number]
+
+
 class LeaseListView(SingleTableView):
     model = Lease
     table_class = LeaseTable
     template_name = "leases/lease_list.html"
-    paginate_by = 40  # Set to show 40 records per page
+    paginate_by = None
+    table_pagination = {
+        "per_page": 40,
+        "paginator_class": CachedLazyPaginator,
+    }
 
     def get_queryset(self):
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        zero = Value(Decimal("0.00"), output_field=money_field)
+
+        today = timezone.localdate()
+
+        active_history_monthly_payment = (
+            LeaseRenewal.objects.filter(
+                lease_id=OuterRef("pk"),
+                start_date__lte=today,
+                end_date__gte=today,
+            )
+            .annotate(
+                total=(
+                    Coalesce(F("monthly_rent"), zero)
+                    + Coalesce(F("society_maintenance"), zero)
+                    + Coalesce(F("water_charges"), zero)
+                    + Coalesce(F("internet_charges"), zero)
+                )
+            )
+            .order_by("-renewal_number", "-id")
+            .values("total")[:1]
+        )
+
+        invoice_total = (
+            Invoice.objects.filter(lease_id=OuterRef("pk"))
+            .values("lease_id")
+            .annotate(total=Coalesce(Sum("amount"), zero))
+            .values("total")[:1]
+        )
+
+        payment_total = (
+            Payment.objects.filter(lease_id=OuterRef("pk"))
+            .values("lease_id")
+            .annotate(
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(
+                                allocation__isnull=False,
+                                then=F("allocation__lease_amount"),
+                            ),
+                            default=F("amount"),
+                            output_field=money_field,
+                        )
+                    ),
+                    zero,
+                )
+            )
+            .values("total")[:1]
+        )
+
+        def security_total(tx_type):
+            return (
+                SecurityDepositTransaction.objects.filter(
+                    lease_id=OuterRef("pk"),
+                    type=tx_type,
+                )
+                .values("lease_id")
+                .annotate(total=Coalesce(Sum("amount"), zero))
+                .values("total")[:1]
+            )
+
         queryset = (
             super()
             .get_queryset()
             .select_related("tenant", "unit", "unit__property")
+            .annotate(
+                invoice_total=Coalesce(
+                    Subquery(invoice_total, output_field=money_field),
+                    zero,
+                ),
+                payment_total=Coalesce(
+                    Subquery(payment_total, output_field=money_field),
+                    zero,
+                ),
+                security_paid_total=Coalesce(
+                    Subquery(security_total("PAYMENT"), output_field=money_field),
+                    zero,
+                ),
+                security_adjust_total=Coalesce(
+                    Subquery(security_total("ADJUST"), output_field=money_field),
+                    zero,
+                ),
+            )
+            .annotate(
+                list_balance=F("invoice_total") - F("payment_total"),
+                list_security_due=Greatest(
+                    Coalesce(F("security_deposit"), zero)
+                    - F("security_paid_total")
+                    - F("security_adjust_total"),
+                    zero,
+                    output_field=money_field,
+                ),
+                list_monthly_payment=Coalesce(
+                    Subquery(active_history_monthly_payment, output_field=money_field),
+                    Coalesce(F("monthly_rent"), zero)
+                    + Coalesce(F("society_maintenance"), zero)
+                    + Coalesce(F("water_charges"), zero)
+                    + Coalesce(F("internet_charges"), zero),
+                    output_field=money_field,
+                ),
+            )
             .order_by("unit__unit_number")
         )  # Order by unit number
 
@@ -247,7 +371,7 @@ class LeaseListView(SingleTableView):
         if not include_inactive:
             queryset = queryset.filter(status="active")
         if nonzero_balance:
-            queryset = [lease for lease in queryset if lease.get_balance > 0]
+            queryset = queryset.filter(list_balance__gt=0)
 
         return queryset
 
@@ -309,9 +433,7 @@ class LeaseListView(SingleTableView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        page_leases = list(context.get("object_list", []))
-        self._attach_list_balances(page_leases)
-        context["object_list"] = page_leases
+        page_leases = context.get("object_list", [])
         context["leases"] = page_leases
 
         # Get all properties for dropdown
@@ -335,15 +457,22 @@ class LeaseListView(SingleTableView):
             self.request.GET.get("include_inactive", "") == "on"
         )
         context["nonzero_balance"] = self.request.GET.get("nonzero_balance", "")
-        leases = self.get_queryset()
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        zero = Value(Decimal("0.00"), output_field=money_field)
+        totals = self.object_list.aggregate(
+            total_balance=Coalesce(Sum("list_balance"), zero, output_field=money_field),
+            total_security_due=Coalesce(
+                Sum("list_security_due"),
+                zero,
+                output_field=money_field,
+            ),
+        )
 
         # 🔹 existing total balance
-        context["total_balance"] = sum(getattr(l, "get_balance", 0) for l in leases)
+        context["total_balance"] = totals["total_balance"] or Decimal("0.00")
 
         # 🔹 NEW: total security deposit still due across all listed leases
-        context["total_security_due"] = sum(
-            security_deposit_balance(lease) for lease in leases
-        )
+        context["total_security_due"] = totals["total_security_due"] or Decimal("0.00")
 
         return context
 
@@ -356,6 +485,8 @@ class LeaseListView(SingleTableView):
 
     def handle_export(self, request):
         """Handle export functionality"""
+        if not request.GET.get("_export"):
+            return None
         self.object_list = self.get_queryset()
         table = self.get_table()
         export_name = "leases_list"
@@ -1130,6 +1261,15 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             user=self.request.user if self.request.user.is_authenticated else None,
         )
         ctx["renewals"] = lease.renewals.all().order_by("renewal_number")
+
+        today = timezone.localdate()
+        ctx["active_history"] = (
+            ctx["renewals"]
+            .filter(start_date__lte=today, end_date__gte=today)
+            .order_by("-renewal_number", "-id")
+            .first()
+            or ctx["renewals"].order_by("-renewal_number", "-id").first()
+        )
         first_renewal = ctx["renewals"].exclude(is_original=True).first()
         ctx["original_period_end"] = (
             first_renewal.start_date - timedelta(days=1)
@@ -2250,7 +2390,6 @@ def generate_lease_agreement(request, lease_id):
 def edit_clauses(request, pk):
     from copy import copy
 
-    from leases.models_renewal import LeaseRenewal
     from leases.services.lease_history import (
         copy_previous_history_clauses,
         ensure_original_history,
@@ -2414,7 +2553,6 @@ from .models import Lease
 def download_preview_pdf(request, lease_id):
     from copy import copy
 
-    from leases.models_renewal import LeaseRenewal
     from leases.services.lease_history import (
         copy_previous_history_clauses,
         ensure_original_history,
@@ -3289,7 +3427,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 def download_preview_docx(request, lease_id):
     from copy import copy
 
-    from leases.models_renewal import LeaseRenewal
     from leases.services.lease_history import (
         copy_previous_history_clauses,
         ensure_original_history,
@@ -3365,7 +3502,7 @@ from django.views.decorators.http import require_POST
 
 @require_POST
 def reset_clauses_from_default(request, pk):
-    from leases.models_renewal import LeaseRenewal, LeaseRenewalClause
+    from leases.models_renewal import LeaseRenewalClause
     from leases.services.lease_history import ensure_original_history, latest_history
 
     lease = get_object_or_404(Lease, pk=pk)

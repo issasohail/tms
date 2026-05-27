@@ -1,3 +1,4 @@
+{% load money_tags %}
 <h3>Payment Receipt (Split)</h3>
 <hr>
 
@@ -16,19 +17,19 @@
   <tr>
     <td>Lease Payment</td>
     <td align="right">
-      Rs. {{ allocation.lease_amount }}
+      {{ allocation.lease_amount|money:2 }}
     </td>
   </tr>
   <tr>
     <td>Security Deposit</td>
     <td align="right">
-      Rs. {{ allocation.security_amount }}
+      {{ allocation.security_amount|money:2 }}
     </td>
   </tr>
   <tr>
     <th>Total</th>
     <th align="right">
-      Rs. {{ allocation.payment.amount }}
+      {{ allocation.payment.amount|money:2 }}
     </th>
   </tr>
 </table>

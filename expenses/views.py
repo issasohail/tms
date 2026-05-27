@@ -1,4 +1,5 @@
 from io import BytesIO
+from functools import partial
 from django.core.files.base import ContentFile
 import fitz  # PyMuPDF
 from django.contrib.auth.decorators import login_required
@@ -31,6 +32,8 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django_tables2 import SingleTableView
+from django.core.paginator import Paginator
+from django.utils.functional import cached_property
 from django.db.models import Sum
 from tenants.models import Tenant
 from properties.models import Property
@@ -63,11 +66,35 @@ from .tables import ExpenseTable  # your existing table
 from invoices.models import ItemCategory  # shared category model
 
 
+class FixedCountPaginator(Paginator):
+    def __init__(self, *args, fixed_count=None, **kwargs):
+        self.fixed_count = fixed_count
+        super().__init__(*args, **kwargs)
+
+    @cached_property
+    def count(self):
+        if self.fixed_count is not None:
+            return self.fixed_count
+        return Paginator.count.func(self)
+
+
 class ExpenseListView(SingleTableView):
     model = Expense
     table_class = ExpenseTable
     template_name = "expenses/expense_list.html"
-    paginate_by = 20
+    paginate_by = None
+    table_pagination = {"per_page": 20}
+
+    def get_table_pagination(self, table):
+        pagination = super().get_table_pagination(table)
+        if isinstance(pagination, dict):
+            if not hasattr(self, "_expense_count"):
+                self._expense_count = self.object_list.count()
+            pagination["paginator_class"] = partial(
+                FixedCountPaginator,
+                fixed_count=self._expense_count,
+            )
+        return pagination
 
     # same helper shape as invoices list
     def _period_to_dates(self, period: str):
@@ -108,7 +135,7 @@ class ExpenseListView(SingleTableView):
 
     def get_queryset(self):
         qs = (Expense.objects
-              .select_related("property", "category")
+              .select_related("property", "unit", "category")
               .prefetch_related("receipts", "distributions__unit"))
 
         r = self.request

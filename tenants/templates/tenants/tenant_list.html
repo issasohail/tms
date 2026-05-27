@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static humanize %}
+{% load static humanize money_tags %}
 {% load payments_url_helpers %}
 {% load tenants_url_helpers %}
 
@@ -246,10 +246,10 @@
                     </span>
                 </span>
 
-                <span>Monthly: {{ lease.total_payment|intcomma }}</span>
+                <span>Monthly: {{ lease.total_payment|money:0 }}</span>
 
                 <span class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                    Balance: {{ lease.get_balance|intcomma }}
+                    Balance: {{ lease.get_balance|money:0 }}
                 </span>
 
                 {# 🔻 NEW: Security Deposit Balance #}
@@ -257,7 +257,7 @@
                     <span class="{% if sec > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
                     Security:
                     {% if sec > 0 %}
-                        {{ sec|intcomma }}
+                        {{ sec|money:0 }}
                     {% else %}
                         Paid
                     {% endif %}
@@ -733,6 +733,9 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
+const TMS_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|escapejs }}";
+const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+
 // Define the function in global scope before DOM ready
 // WhatsApp reminder function - working version from lease template
 // WhatsApp reminder function - extended with security deposit balance
@@ -752,11 +755,12 @@ function sendWhatsAppReminder(
         }
 
         const cleaned = phone.toString().replace(/\D/g, '');
+        const defaultCode = (DEFAULT_COUNTRY_CODE || '').replace(/[^\d]/g, '');
         const formatted = cleaned.startsWith('0')
-            ? '92' + cleaned.slice(1)
-            : cleaned.startsWith('92')
+            ? defaultCode + cleaned.slice(1)
+            : defaultCode && cleaned.startsWith(defaultCode)
                 ? cleaned
-                : '92' + cleaned;
+                : defaultCode + cleaned;
 
         const numericBalance = parseFloat(balance || '0') || 0;
         const numericSec     = parseFloat(secBalance || '0') || 0;
@@ -776,11 +780,11 @@ function sendWhatsAppReminder(
             `Payment Reminder:\n` +
             `Property: ${propertyName}\n` +
             `Unit: ${unitNumber}\n` +
-            `Balance Due: Rs. ${formattedBalance}`;
+            `Balance Due: ${TMS_CURRENCY_SYMBOL} ${formattedBalance}`;
 
         // 🔴 Security line: show balance if > 0, else “Paid”
         if (numericSec > 0) {
-            message += `\nSecurity Deposit Balance: Rs. ${formattedSec}`;
+            message += `\nSecurity Deposit Balance: ${TMS_CURRENCY_SYMBOL} ${formattedSec}`;
         } else {
             message += `\nSecurity Deposit: Paid`;
         }

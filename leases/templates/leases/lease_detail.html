@@ -1,563 +1,985 @@
 {% extends 'base.html' %}
 {% load humanize static %}
 
+{% block extra_css %}
+<style>
+/* ============================================================
+   LEASE DETAIL â€” Option 5 Minimal Clean
+   Responsive: 360px â†’ 414px â†’ 768px â†’ 1024px+
+   ============================================================ */
+
+/* ---- Page scaffold ---- */
+.ld-page {
+  padding: 12px 14px 34px;
+  font-size: 13px;
+}
+
+/* ---- Title zone ---- */
+.ld-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ld-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
+  margin: 0;
+}
+.ld-title span.ld-occ {
+  font-size: 14px;
+  font-weight: 400;
+  color: #6b7280;
+}
+.ld-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- Action buttons ---- */
+.ld-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ---- KPI strip ---- */
+.ld-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+@media (min-width: 480px) {
+  .ld-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 768px) {
+  .ld-kpi-grid { grid-template-columns: repeat(6, 1fr); }
+}
+.ld-kpi {
+  background: #fff;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+.ld-kpi-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+.ld-kpi-value {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+}
+.ld-kpi-sub {
+  font-size: 13px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+.ld-kpi-value.text-danger { color: #dc2626 !important; }
+.ld-kpi-value.text-warning { color: #d97706 !important; }
+
+/* ---- Overview card ---- */
+.ld-overview-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 576px) {
+  .ld-overview-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 992px) {
+  .ld-overview-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (min-width: 1400px) {
+  .ld-overview-grid { grid-template-columns: repeat(8, 1fr); }
+}
+.ld-overview-col { min-width: 0; }
+.ld-overview-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  letter-spacing: 0.3px;
+}
+.ld-overview-item { margin-bottom: 7px; }
+.ld-overview-item:last-child { margin-bottom: 0; }
+.ld-field-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 1px;
+}
+.ld-field-value {
+  font-size: 13px;
+  color: #111827;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+/* ---- Tab nav grid ---- */
+.ld-tab-nav {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-bottom: 0;
+}
+@media (min-width: 480px) {
+  .ld-tab-nav { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 768px) {
+  .ld-tab-nav { grid-template-columns: repeat(5, 1fr); }
+}
+.ld-tab-btn {
+  padding: 8px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+.ld-tab-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+.ld-tab-btn.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  font-weight: 600;
+}
+
+/* ---- Tab content wrapper ---- */
+.ld-tab-content-wrap {
+  background: #fff;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 0 0 8px 8px;
+  border-top: none;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+/* The gap between tab-nav and content - connect them visually */
+.ld-tabs-wrapper {
+  margin-bottom: 0;
+}
+.ld-tab-nav {
+  border-radius: 8px 8px 0 0;
+  /* override individual item top radii on edges */
+}
+/* Connect tab bar visually to content */
+.ld-tab-nav .ld-tab-btn:first-child { border-bottom-left-radius: 0; }
+.ld-tab-nav .ld-tab-btn:last-child { border-bottom-right-radius: 0; }
+
+/* ---- Tab pane visibility ---- */
+.ld-tab-pane { display: none; }
+.ld-tab-pane.active { display: block; }
+
+/* ---- Inner cards (inside tabs) ---- */
+.ld-inner-card {
+  border: 0.5px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.ld-inner-card:last-child { margin-bottom: 0; }
+.ld-inner-header {
+  background: #f8fafc;
+  border-bottom: 0.5px solid #e5e7eb;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ld-inner-body { padding: 8px 11px; }
+
+/* ---- Key-value rows ---- */
+.ld-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 0.5px solid #f9fafb;
+  font-size: 13px;
+  gap: 8px;
+}
+.ld-row:last-child { border-bottom: none; }
+.ld-row-key {
+  color: #6b7280;
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 100px;
+}
+.ld-row-val {
+  color: #111827;
+  font-weight: 500;
+  text-align: right;
+}
+
+/* ---- Two/three col layouts inside tabs ---- */
+.ld-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 576px) {
+  .ld-grid-2 { grid-template-columns: 1fr 1fr; }
+}
+.ld-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 576px) {
+  .ld-grid-3 { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 992px) {
+  .ld-grid-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---- Deposit summary ---- */
+.ld-deposit-wrap {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 576px) {
+  .ld-deposit-wrap { grid-template-columns: 190px 1fr; }
+}
+.ld-dep-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+.ld-dep-row.warn { background: #fef9c3; }
+.ld-dep-row.ok   { background: #f0fdf4; }
+.ld-dep-label { color: #6b7280; }
+.ld-dep-value { font-weight: 600; }
+
+/* ---- Activity rows ---- */
+.ld-act-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 0.5px solid #f3f4f6;
+  font-size: 13px;
+  gap: 6px;
+}
+.ld-act-row:last-child { border-bottom: none; }
+.ld-act-date { font-size: 12px; color: #6b7280; white-space: nowrap; }
+.ld-act-label { color: #111827; }
+.ld-act-amount { font-weight: 600; white-space: nowrap; }
+
+/* ---- Inventory grid ---- */
+.ld-inv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 16px;
+}
+
+/* ---- Responsive tables inside tabs ---- */
+.ld-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ld-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 480px;
+}
+.ld-table th {
+  background: #f8fafc;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 0.5px solid #e5e7eb;
+  text-align: left;
+  white-space: nowrap;
+}
+.ld-table td {
+  padding: 5px 9px;
+  border-bottom: 0.5px solid #f3f4f6;
+  color: #111827;
+}
+.ld-table tr:last-child td { border-bottom: none; }
+
+/* ---- Badges ---- */
+.ld-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.ld-badge-green  { background: #dcfce7; color: #166534; }
+.ld-badge-red    { background: #fee2e2; color: #991b1b; }
+.ld-badge-amber  { background: #fef9c3; color: #854d0e; }
+.ld-badge-blue   { background: #dbeafe; color: #1d4ed8; }
+.ld-badge-gray   { background: #f3f4f6; color: #374151; }
+
+/* ---- Police verification badge helper ---- */
+.ld-police-verified { background: #dcfce7; color: #166534; }
+.ld-police-rejected { background: #fee2e2; color: #991b1b; }
+.ld-police-pending, .ld-police-follow_up { background: #fef9c3; color: #854d0e; }
+.ld-police-not_started { background: #f3f4f6; color: #374151; }
+
+/* ---- Bootstrap card overrides to match style ---- */
+.card.ld-card {
+  border: 0.5px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.card.ld-card .card-header {
+  background: #f8fafc;
+  border-bottom: 0.5px solid #e5e7eb;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  border-radius: 8px 8px 0 0 !important;
+}
+.card.ld-card .card-body {
+  padding: 10px 12px;
+}
+
+/* ---- Witness layout ---- */
+.ld-witness-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+/* ---- Renewal action buttons inside table ---- */
+.ld-renewal-actions { display: flex; flex-wrap: wrap; gap: 3px; }
+
+/* ---- Section title inside tab pane ---- */
+.ld-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* ---- No data placeholder ---- */
+.ld-empty {
+  padding: 10px 0;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+@media print {
+  * {
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body { font-size: 12pt !important; }
+  a {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+  .btn,
+  button,
+  .ld-actions,
+  .ld-tab-nav {
+    display: none !important;
+  }
+  .ld-page { padding: 0 !important; }
+  .ld-kpi,
+  .card.ld-card,
+  .ld-inner-card,
+  .ld-tab-content-wrap {
+    border: 1px solid #000 !important;
+    border-radius: 0 !important;
+  }
+  .ld-tab-content-wrap {
+    border-top: 1px solid #000 !important;
+    padding: 0 !important;
+  }
+  .ld-tab-pane {
+    display: block !important;
+    page-break-inside: avoid;
+    margin-bottom: 12px;
+  }
+  .ld-table-wrap { overflow: visible !important; }
+  .ld-table {
+    min-width: 0 !important;
+    font-size: 10pt !important;
+  }
+  .ld-table th,
+  .ld-table td,
+  .ld-row,
+  .card.ld-card .card-header,
+  .ld-inner-header {
+    border-color: #000 !important;
+  }
+  .ld-badge {
+    border: 1px solid #000 !important;
+    border-radius: 0 !important;
+  }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-3">
-  <!-- Header -->
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h2 class="mb-0">
-      Lease #{{ lease.id }} — {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
-      <small class="text-muted ms-2">(Occupancy: {{ occupancy_count }})</small>
-    </h2>
-    <div class="d-flex flex-wrap gap-2">
-      <a href="{% url 'leases:lease_list' %}" class="btn btn-secondary btn-sm">Back</a>
+<div class="ld-page">
+
+  <!-- ============================================================
+       TITLE + ACTIONS
+  ============================================================ -->
+  <div class="ld-title-row">
+    <div>
+      <h1 class="ld-title">
+        Lease #{{ lease.id }} â€” {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
+        <span class="ld-occ">(Occupancy: {{ occupancy_count }})</span>
+      </h1>
+      <div class="ld-subtitle">
+        <span>{{ lease.tenant.get_full_name }}</span>
+        <span>Â·</span>
+        <span>{{ lease.start_date }} â€“ {{ lease.end_date }}</span>
+        <span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">
+          {{ lease.get_status_display }}
+        </span>
+      </div>
+    </div>
+
+    <div class="ld-actions">
+      <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">â† Back</a>
 
       {% if lease.signed_agreement %}
-        <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-success btn-sm">
-          <i class="fas fa-file-signature me-1"></i> View Signed Agreement
+        <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-sm btn-success">
+          <i class="fas fa-file-signature"></i> Signed Agreement
         </a>
       {% else %}
-        <button class="btn btn-secondary btn-sm" disabled>
-          <i class="fas fa-file-signature me-1"></i> No Signed Agreement
+        <button class="btn btn-sm btn-secondary" disabled>
+          <i class="fas fa-file-signature"></i> No Signed Agreement
         </button>
       {% endif %}
 
-      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-primary btn-sm">
-        <i class="fas fa-edit me-1"></i> Edit
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary">
+        <i class="fas fa-edit"></i> Edit
       </a>
-
-      <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-success btn-sm">
-        <i class="fas fa-sync-alt me-1"></i> Renew Lease
+      <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success">
+        <i class="fas fa-sync-alt"></i> Renew
       </a>
-
-      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-danger btn-sm">
-        <i class="fas fa-trash-alt me-1"></i> Delete
+      <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning">
+        <i class="fas fa-piggy-bank"></i> Deposit Ledger
       </a>
-
-      <a href="{% url 'leases:lease_security_list' lease.id %}"
-        class="btn btn-warning btn-sm">
-        <i class="fas fa-piggy-bank me-1"></i> Security Deposit Ledger
+      <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning">
+        <i class="fas fa-book"></i> Ledger
       </a>
-
-      <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-warning btn-sm">
-        <i class="fas fa-book me-1"></i> Ledger
+      <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success">
+        <i class="fab fa-whatsapp"></i> WA
       </a>
-
-      <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-success btn-sm">
-        <i class="fab fa-whatsapp me-1"></i> Welcome WhatsApp
+      <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary">
+        <i class="fas fa-print"></i> Print
       </a>
-
-      <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-secondary btn-sm">
-        <i class="fas fa-print me-1"></i> Print
-      </a>
-
       {% if lease.generated_agreement_pdf %}
-        <button onclick="sendEmail()" class="btn btn-info btn-sm">
-          <i class="fas fa-envelope me-1"></i> Email
+        <button onclick="sendEmail()" class="btn btn-sm btn-info">
+          <i class="fas fa-envelope"></i> Email
         </button>
-
-        <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-dark btn-sm">
-          <i class="fas fa-download me-1"></i> Download Preview PDF
+        <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-sm btn-dark">
+          <i class="fas fa-download"></i> PDF
         </a>
       {% endif %}
-
-      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-primary btn-sm">
-        <i class="fas fa-eye me-1"></i> View Agreement
+      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm btn-primary">
+        <i class="fas fa-eye"></i> View Agreement
+      </a>
+      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-danger">
+        <i class="fas fa-trash-alt"></i> Delete
       </a>
     </div>
   </div>
 
-  <!-- Overview -->
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Property, Tenant & Lease Overview</div>
+  <!-- ============================================================
+       KPI STRIP
+  ============================================================ -->
+  <div class="ld-kpi-grid">
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Monthly Rent</div>
+      <div class="ld-kpi-value">{{ lease.monthly_rent|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">+ {{ lease.society_maintenance|default:0|money:0 }} maint.</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Balance Due</div>
+      <div class="ld-kpi-value text-danger">{{ balance_due|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">outstanding</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Security Required</div>
+      <div class="ld-kpi-value text-warning">{{ security_required|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">{{ security_currently_held|default:0|money:0 }} held</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Lease Period</div>
+      <div class="ld-kpi-value" style="font-size: 13px;">{{ lease.start_date }} â€“ {{ lease.end_date }}</div>
+      <div class="ld-kpi-sub">Min {{ lease.min_lease_occupancy_months|default:"â€”" }} months</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Police Verification</div>
+      <div class="ld-kpi-value" style="font-size: 13px;">
+        <span class="ld-badge ld-police-{{ lease.police_verification_status|default:'not_started' }}">
+          {{ lease.get_police_verification_status_display }}
+        </span>
+      </div>
+      <div class="ld-kpi-sub">Follow-up: {{ lease.police_verification_follow_up_date|date:"M d, Y"|default:"â€”" }}</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Documents</div>
+      <div class="ld-kpi-value" style="font-size: 13px;">
+        {% if lease.signed_agreement and lease.generated_agreement_pdf %}
+          <span class="ld-badge ld-badge-green">All uploaded</span>
+        {% else %}
+          <span class="ld-badge ld-badge-red">
+            {% if not lease.signed_agreement and not lease.generated_agreement_pdf %}2{% elif not lease.signed_agreement or not lease.generated_agreement_pdf %}1{% endif %} missing
+          </span>
+        {% endif %}
+      </div>
+      <div class="ld-kpi-sub">
+        {% if not lease.signed_agreement %}Signed Â· {% endif %}
+        {% if not lease.generated_agreement_pdf %}Agreement PDF{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       OVERVIEW CARD
+  ============================================================ -->
+  <div class="card ld-card mb-2">
+    <div class="card-header">Property, Tenant &amp; Lease Overview</div>
     <div class="card-body">
-      <div class="row">
-        <div class="col-lg-6">
-          <dl class="row mb-0">
-            <dt class="col-sm-5">Property</dt>
-            <dd class="col-sm-7">{{ lease.unit.property.property_name }}</dd>
-
-            <dt class="col-sm-5">Unit</dt>
-            <dd class="col-sm-7">{{ lease.unit.unit_number }}</dd>
-
-            <dt class="col-sm-5">Tenant</dt>
-            <dd class="col-sm-7">{{ lease.tenant.get_full_name }}</dd>
-
-            <dt class="col-sm-5">Tenant CNIC</dt>
-            <dd class="col-sm-7">{{ lease.tenant.cnic|default:"—" }}</dd>
-
-            <dt class="col-sm-5">Tenant Phone</dt>
-            <dd class="col-sm-7">
-              {% if lease.tenant.phone %}
-                <a href="tel:{{ lease.tenant.phone }}">{{ lease.tenant.phone }}</a>
-              {% else %}—{% endif %}
-            </dd>
-
-            <dt class="col-sm-5">Status</dt>
-            <dd class="col-sm-7">{{ lease.get_status_display }}</dd>
-
-            <dt class="col-sm-5">Rent Increase %</dt>
-            <dd class="col-sm-7">{{ lease.rent_increase_percent|default:0 }}%</dd>
-
-            <dt class="col-sm-5">Rent Due Day</dt>
-            <dd class="col-sm-7">{{ lease.due_date|default:"—" }}</dd>
-
-            <dt class="col-sm-5">Late Fee</dt>
-            <dd class="col-sm-7">{{ lease.late_fee|default:0|money:0 }}</dd>
-
-            <dt class="col-sm-5">Police Verification</dt>
-            <dd class="col-sm-7">
-              <span class="badge bg-{% if lease.police_verification_status == 'verified' %}success{% elif lease.police_verification_status == 'rejected' %}danger{% elif lease.police_verification_status == 'pending' or lease.police_verification_status == 'follow_up' %}warning text-dark{% else %}secondary{% endif %}">
-                {{ lease.get_police_verification_status_display }}
-              </span>
-            </dd>
-
-            <dt class="col-sm-5">Police Follow-up</dt>
-            <dd class="col-sm-7">{{ lease.police_verification_follow_up_date|date:"M d, Y"|default:"-" }}</dd>
-          </dl>
+      <div class="ld-overview-grid">
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Core</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Property</div><div class="ld-field-value">{{ lease.unit.property.property_name }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Unit</div><div class="ld-field-value">{{ lease.unit.unit_number }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Status</div><div class="ld-field-value"><span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">{{ lease.get_status_display }}</span></div></div>
         </div>
-        <div class="col-lg-6">
-          <dl class="row mb-0">
-            <dt class="col-sm-5">Start Date</dt>
-            <dd class="col-sm-7">{{ lease.start_date }}</dd>
-
-            <dt class="col-sm-5">End Date</dt>
-            <dd class="col-sm-7">{{ lease.end_date }}</dd>
-
-            <dt class="col-sm-5">Agreement Date</dt>
-            <dd class="col-sm-7">{{ lease.agreement_date|default:"—" }}</dd>
-
-            <dt class="col-sm-5">Monthly Rent</dt>
-            <dd class="col-sm-7">{{ lease.monthly_rent|default:0|money:0 }}</dd>
-
-            <dt class="col-sm-5">Society Maintenance</dt>
-            <dd class="col-sm-7">{{ lease.society_maintenance|default:0|money:0 }}</dd>
-
-            <dt class="col-sm-5">Total Payment</dt>
-            <dd class="col-sm-7">{{ lease.total_payment|default:0|money:0 }}</dd>
-
-            <dt class="col-sm-5">Security Deposit</dt>
-            <dd class="col-sm-7">{{ lease.security_deposit|default:0|money:0 }}</dd>
-
-            <dt class="col-sm-5">Min Occupancy (Months)</dt>
-            <dd class="col-sm-7">{{ lease.min_lease_occupancy_months|default:"—" }}</dd>
-
-            <dt class="col-sm-5">Meter Reading</dt>
-            <dd class="col-sm-7">{{ lease.electricity_meter_reading|default:"—" }}</dd>
-
-            <dt class="col-sm-5">Balance</dt>
-            <dd class="col-sm-7"><strong>{{ balance_due|default:0|money:0 }}</strong></dd>
-
-            <dt class="col-sm-5">Police Verified Date</dt>
-            <dd class="col-sm-7">{{ lease.police_verification_date|date:"M d, Y"|default:"-" }}</dd>
-
-            <dt class="col-sm-5">Police Document</dt>
-            <dd class="col-sm-7">
-              {% if lease.police_verification_document %}
-                <a href="{{ lease.police_verification_document.url }}" target="_blank">View</a>
-              {% else %}-{% endif %}
-            </dd>
-          </dl>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Lease</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Start Date</div><div class="ld-field-value">{{ lease.start_date }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">End Date</div><div class="ld-field-value">{{ lease.end_date }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Agreement Date</div><div class="ld-field-value">{{ lease.agreement_date|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Min Occupancy</div><div class="ld-field-value">{{ lease.min_lease_occupancy_months|default:"-" }} months</div></div>
+        </div>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Tenant</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Tenant</div><div class="ld-field-value">{{ lease.tenant.get_full_name }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Tenant CNIC</div><div class="ld-field-value">{{ lease.tenant.cnic|default:"-" }}</div></div>
+          <div class="ld-overview-item">
+            <div class="ld-field-label">Tenant Phone</div>
+            <div class="ld-field-value">{% if lease.tenant.phone %}<a href="tel:{{ lease.tenant.phone }}">{{ lease.tenant.phone }}</a>{% else %}-{% endif %}</div>
+          </div>
+          <div class="ld-overview-item"><div class="ld-field-label">Police Verified Date</div><div class="ld-field-value">{{ lease.police_verification_date|date:"M d, Y"|default:"-" }}</div></div>
+        </div>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Rent</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Monthly Rent</div><div class="ld-field-value">{{ lease.monthly_rent|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Society Maintenance</div><div class="ld-field-value">{{ lease.society_maintenance|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Balance</div><div class="ld-field-value" style="color: #dc2626; font-weight: 700;">{{ balance_due|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Rent Due Day</div><div class="ld-field-value">{{ lease.due_date|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Late Fee</div><div class="ld-field-value">{{ lease.late_fee|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Rent Increase %</div><div class="ld-field-value">{{ lease.rent_increase_percent|default:0 }}%</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Total Payment</div><div class="ld-field-value">{{ lease.total_payment|default:0|money:0 }}</div></div>
+        </div>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Installments / Return</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Installment 1</div><div class="ld-field-value">{{ lease.security_installment_1_amount|default:0|money:0 }} / {{ lease.security_installment_1_date|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Installment 2</div><div class="ld-field-value">{{ lease.security_installment_2_amount|default:0|money:0 }} / {{ lease.security_installment_2_date|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Return Date</div><div class="ld-field-value">{{ lease.security_deposit_return_date|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Return Amount</div><div class="ld-field-value">{{ lease.security_deposit_return_amount|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Early Penalty</div><div class="ld-field-value">{{ lease.early_termination_penalty|default:0|money:0 }}</div></div>
+        </div>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Family / Witnesses</div>
+          {% if family_members %}
+            {% for m in family_members|slice:":3" %}
+              <div class="ld-overview-item"><div class="ld-field-label">{{ m.relation|default:"Family" }}</div><div class="ld-field-value">{{ m.tenant.get_full_name }}</div></div>
+            {% endfor %}
+          {% else %}
+            <div class="ld-overview-item"><div class="ld-field-label">Family</div><div class="ld-field-value">-</div></div>
+          {% endif %}
+          <div class="ld-overview-item"><div class="ld-field-label">Witness 1</div><div class="ld-field-value">{{ lease.witness1_name|default:"-" }}{% if lease.witness1_cnic %}<br>{{ lease.witness1_cnic }}{% endif %}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Witness 2</div><div class="ld-field-value">{{ lease.witness2_name|default:"-" }}{% if lease.witness2_cnic %}<br>{{ lease.witness2_cnic }}{% endif %}</div></div>
+        </div>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Inventory</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Ceiling Fans</div><div class="ld-field-value">{{ lease.inventory_ceiling_fans|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Exhaust Fans</div><div class="ld-field-value">{{ lease.inventory_exhaust_fans|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Ceiling Lights</div><div class="ld-field-value">{{ lease.inventory_ceiling_lights|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Stove</div><div class="ld-field-value">{{ lease.inventory_stove|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Wardrobes</div><div class="ld-field-value">{{ lease.inventory_wardrobes|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Keys</div><div class="ld-field-value">{{ lease.inventory_keys|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Paint Condition</div><div class="ld-field-value">{{ lease.paint_condition|default:"-" }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Meter Reading</div><div class="ld-field-value">{{ lease.electricity_meter_reading|default:"-" }}</div></div>
+        </div>
+        <div class="ld-overview-col">
+          <div class="ld-overview-section-title">Security Summary</div>
+          <div class="ld-overview-item"><div class="ld-field-label">Security Deposit</div><div class="ld-field-value">{{ lease.security_deposit|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Required</div><div class="ld-field-value">{{ security_required|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Paid In</div><div class="ld-field-value">{{ security_paid_in|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Refunded</div><div class="ld-field-value">{{ security_refunded|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Damages</div><div class="ld-field-value">{{ security_damages|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">To Collect</div><div class="ld-field-value">{{ security_balance_to_collect|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Currently Held</div><div class="ld-field-value">{{ security_currently_held|default:0|money:0 }}</div></div>
+          <div class="ld-overview-item"><div class="ld-field-label">Deposit Paid</div><div class="ld-field-value">{% if lease.security_deposit_paid %}<span class="ld-badge ld-badge-green">Yes</span>{% else %}<span class="ld-badge ld-badge-red">No</span>{% endif %}</div></div>
         </div>
       </div>
       {% if lease.police_verification_remarks %}
-        <div class="small mt-2"><strong>Police Remarks:</strong> {{ lease.police_verification_remarks|linebreaksbr }}</div>
+        <div class="mt-2" style="font-size: 13px;"><strong>Police Remarks:</strong> {{ lease.police_verification_remarks|linebreaksbr }}</div>
       {% endif %}
     </div>
   </div>
 
-  {% include 'leases/renewal_history_table.html' with lease=lease renewals=renewals %}
-
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
-      <span>Current Unit / Room</span>
-      <a href="{% url 'smart_meter:move_lease_unit' lease.pk %}" class="btn btn-sm btn-light">Move Tenant</a>
+  <!-- ============================================================
+       TAB NAVIGATION (multi-line grid, responsive)
+  ============================================================ -->
+  <div class="ld-tabs-wrapper">
+    <div class="ld-tab-nav" id="ldTabNav">
+      <button class="ld-tab-btn active" data-tab="renewals">Lease Renewals</button>
+      <button class="ld-tab-btn" data-tab="unit">Unit &amp; Meter</button>
+      <button class="ld-tab-btn" data-tab="notes">Terms &amp; Notes</button>
+      <button class="ld-tab-btn" data-tab="activity">Activity</button>
+      <button class="ld-tab-btn" data-tab="docs">Documents</button>
     </div>
-    <div class="card-body">
-      <div class="row g-3">
-        <div class="col-md-4">
-          <div class="small text-muted">Current Unit</div>
-          <div class="fw-bold">
-            <a href="{% url 'properties:unit_detail' lease.current_unit.pk %}">
-              {{ lease.current_unit.property.property_name }} {{ lease.current_unit.unit_number }}
+
+    <!-- Tab content wrapper -->
+    <div class="ld-tab-content-wrap">
+
+      <!-- ======== TAB: LEASE RENEWALS ======== -->
+      <div class="ld-tab-pane active" id="ld-tab-renewals">
+        <div class="card mb-3">
+          <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
+            <span>Lease Renewal History</span>
+            <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-primary btn-sm">
+              <i class="fas fa-sync-alt me-1"></i> Renew Lease
             </a>
           </div>
-        </div>
-        <div class="col-md-4">
-          <div class="small text-muted">Lease Start</div>
-          <div>{{ lease.start_date|date:"M d, Y" }}</div>
-        </div>
-        <div class="col-md-4">
-          <div class="small text-muted">Lease End</div>
-          <div>{{ lease.end_date|date:"M d, Y" }}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Unit Move History</div>
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-sm table-striped mb-0">
-          <thead>
-            <tr>
-              <th>Unit</th>
-              <th>Move In</th>
-              <th>Move Out</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for occupancy in lease.unit_occupancies.all %}
-              <tr>
-                <td><a href="{% url 'properties:unit_detail' occupancy.unit.pk %}">{{ occupancy.unit }}</a></td>
-                <td>{{ occupancy.move_in_date|date:"M d, Y" }}</td>
-                <td>{{ occupancy.move_out_date|date:"M d, Y"|default:"Current" }}</td>
-                <td>{{ occupancy.notes|default:"-" }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="4" class="text-center text-muted py-3">No move history recorded.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Meter Billing History / Usage Breakdown</div>
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-sm table-striped mb-0">
-          <thead>
-            <tr>
-              <th>Meter</th>
-              <th>Unit</th>
-              <th>Installed</th>
-              <th>Removed</th>
-              <th class="text-end">Start Reading</th>
-              <th class="text-end">End Reading</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for installation in lease.meter_installations.all %}
-              <tr>
-                <td><a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}">{{ installation.meter.meter_number }}</a></td>
-                <td>{{ installation.unit }}</td>
-                <td>{{ installation.start_date|date:"M d, Y" }}</td>
-                <td>{{ installation.end_date|date:"M d, Y"|default:"Current" }}</td>
-                <td class="text-end">{{ installation.start_reading }}</td>
-                <td class="text-end">{{ installation.end_reading|default:"-" }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="6" class="text-center text-muted py-3">No meter installation history linked to this lease.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Security Deposit Summary -->
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Security Deposit Summary</div>
-    <div class="card-body">
-      <div class="row">
-        <!-- Summary numbers -->
-        <div class="col-md-4">
-          <table class="table table-sm table-bordered w-auto mb-3">
-            <tbody>
-              <tr>
-                <th>Required</th>
-                <td class="text-end">{{ security_required|default:0|money:0 }}</td>
-              </tr>
-              <tr>
-                <th>Paid In</th>
-                <td class="text-end">{{ security_paid_in|default:0|money:0 }}</td>
-              </tr>
-              <tr>
-                <th>Refunded</th>
-                <td class="text-end">{{ security_refunded|default:0|money:0 }}</td>
-              </tr>
-              <tr>
-                <th>Used for Damages</th>
-                <td class="text-end">{{ security_damages|default:0|money:0 }}</td>
-              </tr>
-              <tr class="table-warning">
-                <th>Balance to Collect</th>
-                <td class="text-end">{{ security_balance_to_collect|default:0|money:0 }}</td>
-              </tr>
-              <tr class="table-success">
-                <th>Currently Held</th>
-                <td class="text-end fw-bold">
-                  {{ security_currently_held|default:0|money:0 }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div class="small text-muted">
-            {% if lease.security_deposit_paid %}
-              Tenant has marked deposit as <strong>paid</strong> on lease.
-            {% else %}
-              Tenant deposit is <strong>not marked as paid</strong> on lease.
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- Ledger -->
-        <div class="col-md-8">
-          <h6 class="mb-2">Security Deposit Ledger</h6>
-          {% if deposit_transactions %}
+          <div class="card-body p-0">
             <div class="table-responsive">
-              <table class="table table-sm table-striped mb-0">
+              <table class="table table-sm table-striped align-middle mb-0">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Description</th>
-                    <th class="text-end">Amount</th>
-                    <th class="text-end">Deposit Balance</th>
+                    <th>Period</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th class="text-end">Rent</th>
+                    <th class="text-end">Total Monthly</th>
+                    <th>Signed</th>
+                    <th>Files</th>
+                    <th class="text-end">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {% for t in deposit_transactions %}
+                  {% for renewal in renewals %}
                     <tr>
-                      <td>{{ t.date|date:"M d, Y" }}</td>
-                      <td>{{ t.type }}</td>
-                      <td>{{ t.description }}</td>
-                      <td class="text-end">
-                        {% if t.amount > 0 %}
-                          <span class="text-success">+{{ t.amount|intcomma }}</span>
+                      <td>
+                        <strong>#{{ renewal.renewal_number }}</strong>
+                        {% if renewal.is_original %}
+                          <span class="badge bg-info text-dark ms-1">Original</span>
                         {% else %}
-                          <span class="text-danger">{{ t.amount|intcomma }}</span>
+                          <span class="badge bg-secondary ms-1">Renewal</span>
                         {% endif %}
                       </td>
-                      <td class="text-end">{{ t.balance|intcomma }}</td>
+                      <td>{{ renewal.start_date|date:"M d, Y" }}</td>
+                      <td>{{ renewal.end_date|date:"M d, Y" }}</td>
+                      <td class="text-end">Rs {{ renewal.monthly_rent|floatformat:0|intcomma }}</td>
+                      <td class="text-end">Rs {{ renewal.total_monthly_amount|floatformat:0|intcomma }}</td>
+                      <td>
+                        {% if renewal.is_agreement_signed %}
+                          <span class="badge bg-success">Signed</span>
+                        {% else %}
+                          <span class="badge bg-secondary">Pending</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        {% if renewal.generated_agreement_pdf %}
+                          <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                        {% endif %}
+                        {% if renewal.generated_agreement_docx %}
+                          <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                        {% endif %}
+                        {% if renewal.signed_copy %}
+                          <a href="{{ renewal.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                        {% endif %}
+                        {% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}
+                          <span class="text-muted">-</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                          <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
+                          <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-secondary">Edit</a>
+                          <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-success">Clauses</a>
+                          <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-primary">Generate PDF</a>
+                          <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-secondary">Upload Signed</a>
+                          <a href="{% url 'leases:history_media_page' lease.pk renewal.pk %}" class="btn btn-outline-dark">Media</a>
+                        </div>
+                      </td>
+                    </tr>
+                  {% empty %}
+                    <tr>
+                      <td colspan="8" class="text-muted p-3">No renewals recorded yet.</td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
-          {% else %}
-            <div class="text-muted small">No security deposit transactions yet.</div>
-          {% endif %}
+          </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Family Members (always visible) -->
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Family Members</div>
-    <div class="card-body p-0">
-      {% if family_members %}
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Relation</th>
-                <th>Phone</th>
-                <th style="width:100px;"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for m in family_members %}
+      <!-- ======== TAB: UNIT & METER ======== -->
+      <div class="ld-tab-pane" id="ld-tab-unit">
+        <div class="ld-grid-2">
+
+          <!-- Current Unit -->
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">
+              Current Unit / Room
+              <a href="{% url 'smart_meter:move_lease_unit' lease.pk %}" class="btn btn-sm btn-primary py-0 px-2" style="font-size: 12px;">Move Tenant</a>
+            </div>
+            <div class="ld-inner-body">
+              <div class="ld-row">
+                <span class="ld-row-key">Current Unit</span>
+                <span class="ld-row-val">
+                  <a href="{% url 'properties:unit_detail' lease.current_unit.pk %}">
+                    {{ lease.current_unit.property.property_name }} {{ lease.current_unit.unit_number }}
+                  </a>
+                </span>
+              </div>
+              <div class="ld-row">
+                <span class="ld-row-key">Lease Start</span>
+                <span class="ld-row-val">{{ lease.start_date|date:"M d, Y" }}</span>
+              </div>
+              <div class="ld-row">
+                <span class="ld-row-key">Lease End</span>
+                <span class="ld-row-val">{{ lease.end_date|date:"M d, Y" }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Unit Move History -->
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Unit Move History</div>
+            <div class="ld-table-wrap">
+              <table class="ld-table" style="min-width: 340px;">
+                <thead>
+                  <tr>
+                    <th>Unit</th>
+                    <th>Move In</th>
+                    <th>Move Out</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for occupancy in lease.unit_occupancies.all %}
+                    <tr>
+                      <td><a href="{% url 'properties:unit_detail' occupancy.unit.pk %}">{{ occupancy.unit }}</a></td>
+                      <td>{{ occupancy.move_in_date|date:"M d, Y" }}</td>
+                      <td>{{ occupancy.move_out_date|date:"M d, Y"|default:"Current" }}</td>
+                      <td style="font-size: 12px; color: #6b7280;">{{ occupancy.notes|default:"â€”" }}</td>
+                    </tr>
+                  {% empty %}
+                    <tr><td colspan="4" class="ld-empty">No move history recorded.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Meter Billing History -->
+        <div class="ld-inner-card">
+          <div class="ld-inner-header">Meter Billing History / Usage Breakdown</div>
+          <div class="ld-table-wrap">
+            <table class="ld-table">
+              <thead>
                 <tr>
-                  <td>{{ m.tenant.get_full_name }}</td>
-                  <td>{{ m.relation|default:"—" }}</td>
-                  <td>
-                    {% if m.tenant.phone %}
-                      <a href="tel:{{ m.tenant.phone }}">{{ m.tenant.phone }}</a>
-                    {% else %}—{% endif %}
-                  </td>
-                  <td class="text-end">
-                    <a class="btn btn-sm btn-secondary" href="{% url 'tenants:tenant_detail' m.tenant.pk %}">Detail</a>
-                  </td>
+                  <th>Meter</th>
+                  <th>Unit</th>
+                  <th>Installed</th>
+                  <th>Removed</th>
+                  <th class="text-end">Start Reading</th>
+                  <th class="text-end">End Reading</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="p-3 text-muted">No family members recorded.</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Witness -->
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Witness</div>
-    <div class="card-body">
-      <div class="row row-cols-1 row-cols-md-2 g-3">
-        <div>
-          <strong>Witness 1 Name:</strong> {{ lease.witness1_name|default:"—" }}<br>
-          <strong>Witness 1 CNIC:</strong> {{ lease.witness1_cnic|default:"—" }}
-        </div>
-        <div>
-          <strong>Witness 2 Name:</strong> {{ lease.witness2_name|default:"—" }}<br>
-          <strong>Witness 2 CNIC:</strong> {{ lease.witness2_cnic|default:"—" }}
+              </thead>
+              <tbody>
+                {% for installation in lease.meter_installations.all %}
+                  <tr>
+                    <td><a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}">{{ installation.meter.meter_number }}</a></td>
+                    <td>{{ installation.unit }}</td>
+                    <td>{{ installation.start_date|date:"M d, Y" }}</td>
+                    <td>{{ installation.end_date|date:"M d, Y"|default:"Current" }}</td>
+                    <td class="text-end">{{ installation.start_reading }}</td>
+                    <td class="text-end">{{ installation.end_reading|default:"â€”" }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="6" class="ld-empty">No meter installations linked to this lease.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Financial details + Inventory -->
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Financial & Inventory Information</div>
-    <div class="card-body">
-      <div class="row">
-        <!-- Financial -->
-        <div class="col-lg-8 border-end">
-          <div class="row row-cols-lg-2 row-cols-1 g-3">
-            <div>
-              <div class="small text-muted">Security Installment 1 Amount</div>
-              <div>{{ lease.security_installment_1_amount|default:0|money:0 }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Security Installment 1 Date</div>
-              <div>{{ lease.security_installment_1_date|default:"—" }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Security Installment 2 Amount</div>
-              <div>{{ lease.security_installment_2_amount|default:0|money:0 }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Security Installment 2 Date</div>
-              <div>{{ lease.security_installment_2_date|default:"—" }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Security Deposit Return Date</div>
-              <div>{{ lease.security_deposit_return_date|default:"—" }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Security Deposit Return Amount</div>
-              <div>{{ lease.security_deposit_return_amount|default:0|money:0 }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Early Termination Penalty</div>
-              <div>{{ lease.early_termination_penalty|default:0|money:0 }}</div>
-            </div>
-            <div>
-              <div class="small text-muted">Security Deposit Paid</div>
-              {% if lease.security_deposit_paid %}
-                <span class="badge bg-success">Yes</span>
+      <!-- ======== TAB: TERMS & NOTES ======== -->
+      <div class="ld-tab-pane" id="ld-tab-notes">
+        <div class="ld-grid-3">
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Terms</div>
+            <div class="ld-inner-body" style="font-size: 13px;">{{ lease.terms|default:"â€”" }}</div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Notes</div>
+            <div class="ld-inner-body" style="font-size: 13px;">{{ lease.notes|default:"â€”" }}</div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Return Notes</div>
+            <div class="ld-inner-body" style="font-size: 13px;">{{ lease.security_deposit_return_notes|default:"â€”" }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== TAB: ACTIVITY ======== -->
+      <div class="ld-tab-pane" id="ld-tab-activity">
+        <div class="ld-grid-2">
+
+          <!-- Recent Payments -->
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Recent Payments</div>
+            <div class="ld-inner-body">
+              {% if recent_payments %}
+                {% for p in recent_payments %}
+                  <div class="ld-act-row">
+                    <div>
+                      <div class="ld-act-date">{{ p.payment_date }}</div>
+                      <div class="ld-act-label">{{ p.reference_number|default:"Payment" }}</div>
+                    </div>
+                    <div class="ld-act-amount" style="color: #166534;">{{ p.amount|money:0 }}</div>
+                  </div>
+                {% endfor %}
               {% else %}
-                <span class="badge bg-secondary">No</span>
+                <div class="ld-empty">No payments yet.</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Invoices -->
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Invoices</div>
+            <div class="ld-inner-body">
+              {% if invoices %}
+                {% for inv in invoices %}
+                  <div class="ld-act-row">
+                    <div>
+                      <div class="ld-act-date">{{ inv.issue_date }}</div>
+                      <div class="ld-act-label">{{ inv.description|default:"Invoice" }}</div>
+                    </div>
+                    <div class="ld-act-amount" style="color: #dc2626;">{{ inv.amount|money:0 }}</div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="ld-empty">No invoices yet.</div>
               {% endif %}
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Inventory -->
-        <div class="col-lg-4 mt-3 mt-lg-0">
-          <div class="row row-cols-2 g-2">
-            <div><label class="form-label mb-0">Ceiling Fans</label><div>{{ lease.inventory_ceiling_fans|default:"—" }}</div></div>
-            <div><label class="form-label mb-0">Exhaust Fans</label><div>{{ lease.inventory_exhaust_fans|default:"—" }}</div></div>
-            <div><label class="form-label mb-0">Ceiling Lights</label><div>{{ lease.inventory_ceiling_lights|default:"—" }}</div></div>
-            <div><label class="form-label mb-0">Stove</label><div>{{ lease.inventory_stove|default:"—" }}</div></div>
-            <div><label class="form-label mb-0">Wardrobes</label><div>{{ lease.inventory_wardrobes|default:"—" }}</div></div>
-            <div><label class="form-label mb-0">Keys</label><div>{{ lease.inventory_keys|default:"—" }}</div></div>
-            <div class="col-12"><label class="form-label mb-0">Paint Condition</label><div>{{ lease.paint_condition|default:"—" }}</div></div>
+      <!-- ======== TAB: DOCUMENTS ======== -->
+      <div class="ld-tab-pane" id="ld-tab-docs">
+        <div class="ld-grid-2">
+
+          <!-- Signed Copy -->
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Signed Copy</div>
+            <div class="ld-inner-body">
+              {% if lease.signed_copy %}
+                <a href="{{ lease.signed_copy.url }}" target="_blank" class="btn btn-sm btn-success">
+                  <i class="fas fa-download"></i> Download Signed Copy
+                </a>
+              {% else %}
+                <span class="ld-badge ld-badge-red"><i class="fas fa-times-circle me-1"></i> Not Uploaded</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Generated Agreement PDF -->
+          <div class="ld-inner-card">
+            <div class="ld-inner-header">Generated Agreement PDF</div>
+            <div class="ld-inner-body d-flex flex-wrap gap-2 align-items-center">
+              <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-sm btn-dark">
+                <i class="fas fa-download"></i> Download Preview PDF
+              </a>
+              {% if lease.generated_agreement_pdf %}
+                <a href="{{ lease.generated_agreement_pdf.url }}" target="_blank" class="btn btn-sm btn-success">
+                  <i class="fas fa-file-pdf"></i> View Generated PDF
+                </a>
+              {% else %}
+                <span class="ld-badge ld-badge-red"><i class="fas fa-times-circle me-1"></i> Not Generated</span>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Terms / Notes -->
-  <div class="row g-3 mb-3">
-    <div class="col-md-4">
-      <div class="card h-100">
-        <div class="card-header bg-dark text-white py-2 px-3">Terms</div>
-        <div class="card-body"><div class="small">{{ lease.terms|default:"—" }}</div></div>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="card h-100">
-        <div class="card-header bg-dark text-white py-2 px-3">Notes</div>
-        <div class="card-body"><div class="small">{{ lease.notes|default:"—" }}</div></div>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="card h-100">
-        <div class="card-header bg-dark text-white py-2 px-3">Return Notes</div>
-        <div class="card-body"><div class="small">{{ lease.security_deposit_return_notes|default:"—" }}</div></div>
-      </div>
-    </div>
-  </div>
+    </div><!-- /ld-tab-content-wrap -->
+  </div><!-- /ld-tabs-wrapper -->
 
-  <!-- Activity -->
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Activity</div>
-    <div class="card-body">
-      <div class="row">
-        <div class="col-lg-6">
-          <h6>Recent Payments</h6>
-          {% if recent_payments %}
-            <ul class="list-group list-group-flush">
-              {% for p in recent_payments %}
-                <li class="list-group-item d-flex justify-content-between">
-                  <span>{{ p.payment_date }} — {{ p.reference_number|default:"Payment" }}</span>
-                  <strong>{{ p.amount|money:0 }}</strong>
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <div class="text-muted">No payments yet.</div>
-          {% endif %}
-        </div>
-        <div class="col-lg-6">
-          <h6>Invoices</h6>
-          {% if invoices %}
-            <ul class="list-group list-group-flush">
-              {% for inv in invoices %}
-                <li class="list-group-item d-flex justify-content-between">
-                  <span>{{ inv.issue_date }} — {{ inv.description|default:"Invoice" }}</span>
-                  <strong>{{ inv.amount|money:0 }}</strong>
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <div class="text-muted">No invoices yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
+</div><!-- /ld-page -->
+{% endblock %}
 
-  <!-- File Upload Status -->
-  <div class="row g-3 mb-4">
-    <div class="col-md-6">
-      <div class="card h-100">
-        <div class="card-header bg-dark text-white py-2 px-3">Signed Copy</div>
-        <div class="card-body">
-          {% if lease.signed_copy %}
-            <a class="d-inline-block" href="{{ lease.signed_copy.url }}" target="_blank">Download</a>
-          {% else %}
-            <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Uploaded</span>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-md-6">
-      <div class="card h-100">
-        <div class="card-header bg-dark text-white py-2 px-3">Generated Agreement PDF</div>
-        <div class="card-body">
-            <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-dark btn-sm">
-                <i class="fas fa-download me-1"></i> Download Preview PDF
-            </a>
-          {% if lease.generated_agreement_pdf %}
-            <a class="d-inline-block" href="{{ lease.generated_agreement_pdf.url }}" target="_blank">Download</a>
-          {% else %}
-            <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Generated</span>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
+{% block extra_js %}
+<script>
+(function () {
+  const nav = document.getElementById('ldTabNav');
+  if (!nav) return;
 
-</div><!-- /container -->
+  nav.addEventListener('click', function (e) {
+    const btn = e.target.closest('.ld-tab-btn');
+    if (!btn) return;
+
+    // deactivate all buttons
+    nav.querySelectorAll('.ld-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // hide all panes
+    document.querySelectorAll('.ld-tab-pane').forEach(p => p.classList.remove('active'));
+
+    // show target pane
+    const target = document.getElementById('ld-tab-' + btn.dataset.tab);
+    if (target) target.classList.add('active');
+  });
+})();
+</script>
 {% endblock %}

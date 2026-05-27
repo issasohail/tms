@@ -1,0 +1,34 @@
+<h3>Payment Receipt (Split)</h3>
+<hr>
+
+<p><strong>Tenant:</strong>
+  {{ allocation.payment.lease.tenant.first_name }}
+  {{ allocation.payment.lease.tenant.last_name }}
+</p>
+
+<p><strong>Date:</strong> {{ allocation.payment.payment_date }}</p>
+
+<table width="100%" border="1" cellpadding="6">
+  <tr>
+    <th>Description</th>
+    <th align="right">Amount</th>
+  </tr>
+  <tr>
+    <td>Lease Payment</td>
+    <td align="right">
+      Rs. {{ allocation.lease_amount }}
+    </td>
+  </tr>
+  <tr>
+    <td>Security Deposit</td>
+    <td align="right">
+      Rs. {{ allocation.security_amount }}
+    </td>
+  </tr>
+  <tr>
+    <th>Total</th>
+    <th align="right">
+      Rs. {{ allocation.payment.amount }}
+    </th>
+  </tr>
+</table>

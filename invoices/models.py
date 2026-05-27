@@ -1,4 +1,5 @@
 from django.dispatch import receiver
+from django.core.cache import cache
 from django.db.models.signals import post_save, post_delete
 from django.db import models
 from django.core.validators import MinValueValidator
@@ -118,6 +119,15 @@ class ItemCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        result = super().save(*args, **kwargs)
+        cache.delete("invoices.active_item_categories")
+        return result
+
+    def delete(self, *args, **kwargs):
+        cache.delete("invoices.active_item_categories")
+        return super().delete(*args, **kwargs)
 
 # models.py
 

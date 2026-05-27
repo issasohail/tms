@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.db import models
 
 
@@ -62,7 +63,11 @@ class GlobalSettings(models.Model):
 
     @classmethod
     def get_solo(cls):
+        obj = cache.get("core.global_settings")
+        if obj is not None:
+            return obj
         obj, _ = cls.objects.get_or_create(pk=1)
+        cache.set("core.global_settings", obj, 60)
         return obj
 # core/models.py
 from django.db import models
@@ -130,8 +135,21 @@ class GlobalSettings(models.Model):
 
     @classmethod
     def get_solo(cls):
+        obj = cache.get("core.global_settings")
+        if obj is not None:
+            return obj
         obj, _ = cls.objects.get_or_create(pk=1)
+        cache.set("core.global_settings", obj, 60)
         return obj
+
+    def save(self, *args, **kwargs):
+        result = super().save(*args, **kwargs)
+        cache.delete("core.global_settings")
+        return result
+
+    def delete(self, *args, **kwargs):
+        cache.delete("core.global_settings")
+        return super().delete(*args, **kwargs)
 
 
 class PaymentMethod(models.Model):

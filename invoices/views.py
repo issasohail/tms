@@ -61,6 +61,7 @@ from django.core.exceptions import ValidationError
 from django.utils.html import escape
 from django_tables2 import SingleTableView
 from django.conf import settings
+from django.core.cache import cache
 from django.views import View
 from .models import Invoice, InvoiceItem
 from .forms import InvoiceForm
@@ -116,6 +117,7 @@ import logging
 logger = logging.getLogger(__name__)
 # at top if not present
 ITEMS_PREFIX = "items"
+CATEGORY_CACHE_KEY = "invoices.active_item_categories"
 
 InvoiceItemFormset = inlineformset_factory(
     Invoice,
@@ -518,11 +520,15 @@ class InvoiceDetailView(DetailView):
         ctx["computed_total"] = sum((item.amount for item in items), Decimal("0.00"))
 
         # For the category list box (datalist suggestions)
-        ctx["categories"] = list(
-            ItemCategory.objects.filter(is_active=True)
-            .order_by("name")
-            .values("id", "name")
-        )
+        categories = cache.get(CATEGORY_CACHE_KEY)
+        if categories is None:
+            categories = list(
+                ItemCategory.objects.filter(is_active=True)
+                .order_by("name")
+                .values("id", "name")
+            )
+            cache.set(CATEGORY_CACHE_KEY, categories, 60)
+        ctx["categories"] = categories
 
         # PERF: lease balance is expensive; cached Lease financial summary avoids repeated aggregates.
         ctx["lease_balance"] = inv.lease.get_balance if inv.lease_id else Decimal("0.00")

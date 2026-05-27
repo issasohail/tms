@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import DetailView, UpdateView
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Case, DecimalField, F, Sum, When
+from django.db.models import Case, DecimalField, F, Prefetch, Sum, When
 from django.db.models.functions import Coalesce
 from django.urls import reverse_lazy
 
@@ -93,6 +93,19 @@ class AllocationDetailView(LoginRequiredMixin, DetailView):
             "payment__lease__unit",
             "payment__lease__unit__property",
             "payment__payment_method",
+        ).prefetch_related(
+            Prefetch(
+                "payment__lease__security_transactions",
+                queryset=SecurityDepositTransaction.objects.select_related(
+                    "payment",
+                    "allocation",
+                ),
+            ),
+            "payment__lease__invoices",
+            Prefetch(
+                "payment__lease__payments",
+                queryset=Payment.objects.select_related("allocation"),
+            ),
         )
 
     def get_context_data(self, **kwargs):

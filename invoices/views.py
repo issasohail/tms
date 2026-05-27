@@ -489,7 +489,10 @@ class InvoiceDetailView(DetailView):
             "lease__tenant",
             "lease__unit__property",
         ).prefetch_related(
-            Prefetch("items", queryset=InvoiceItem.objects.select_related("category"))
+            Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
+            "lease__invoices",
+            Prefetch("lease__payments", queryset=Payment.objects.select_related("allocation")),
+            "lease__security_transactions",
         )
 
     def get_context_data(self, **kwargs):

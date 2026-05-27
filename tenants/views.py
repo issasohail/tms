@@ -458,8 +458,24 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             'unit',
             'unit__property',
         ).prefetch_related(
-            'payments',
-            'invoices',
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.select_related(
+                    'lease',
+                    'lease__tenant',
+                    'lease__unit',
+                    'lease__unit__property',
+                ),
+            ),
+            Prefetch(
+                'invoices',
+                queryset=Invoice.objects.select_related(
+                    'lease',
+                    'lease__tenant',
+                    'lease__unit',
+                    'lease__unit__property',
+                ),
+            ),
         ).order_by('-start_date', '-id')
         return super().get_queryset().prefetch_related(
             Prefetch('leases', queryset=lease_qs)
@@ -470,21 +486,15 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         tenant = self.object
 
         # PERF: this detail page repeats tenant lease/invoice/payment lookups; reuse selected querysets.
+        all_leases = list(tenant.leases.all())
+
         # Get active lease if available
-        lease = tenant.leases.filter(status='active').first()
+        lease = next((item for item in all_leases if item.status == 'active'), None)
         tenant.lease = lease
 
         # Safely initialize all values
         invoices = Invoice.objects.none()
         payments = Payment.objects.none()
-
-        total_invoices = Invoice.objects.filter(
-            lease__tenant=tenant
-        ).aggregate(total=Sum('amount'))['total'] or 0
-
-        total_payments = Payment.objects.filter(
-            lease__tenant=tenant
-        ).aggregate(total=Sum('amount'))['total'] or 0
 
         total_invoices_all = Invoice.objects.filter(
             lease__tenant=tenant
@@ -506,43 +516,20 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         # If there is an active lease, load its items for the table ONLY,
         # but DO NOT override tenant.current_balance anymore.
         if lease:
-            invoices = (Invoice.objects
-                        .filter(lease=lease)
-                        .select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property')
-                        .order_by('issue_date'))
-            payments = (Payment.objects
-                        .filter(lease=lease)
-                        .select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property')
-                        .order_by('-payment_date'))
+            invoices = sorted(list(lease.invoices.all()), key=lambda inv: inv.issue_date)
+            payments = sorted(
+                list(lease.payments.all()),
+                key=lambda payment: payment.payment_date,
+                reverse=True,
+            )
 
-            total_invoices_active = invoices.aggregate(
-                total=Sum('amount'))['total'] or 0
-            total_payments_active = payments.aggregate(
-                total=Sum('amount'))['total'] or 0
+            total_invoices_active = sum((inv.amount or 0 for inv in invoices), 0)
+            total_payments_active = sum((payment.amount or 0 for payment in payments), 0)
 
-        leases_qs = (
-            Lease.objects
-            .filter(tenant=tenant)
-            .select_related('unit__property')
-            .order_by('-start_date', '-id')
-        )
         # After you compute tenant.current_balance in TenantDetailView
-        context['all_leases'] = leases_qs
+        context['all_leases'] = all_leases
+        context['leases'] = all_leases
         context['leases_total_balance'] = tenant.current_balance  # <-- add this
-
-        if lease:
-            invoices = Invoice.objects.filter(
-                lease=lease
-            ).select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property').order_by('issue_date')
-
-            payments = Payment.objects.filter(
-                lease=lease
-            ).select_related('lease', 'lease__tenant', 'lease__unit', 'lease__unit__property').order_by('-payment_date')
-
-            total_invoices_active = invoices.aggregate(
-                total=Sum('amount'))['total'] or 0
-            total_payments_active = payments.aggregate(
-                total=Sum('amount'))['total'] or 0
 
         context.update({
             'invoices': invoices,
@@ -551,7 +538,8 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             'total_invoices': total_invoices_active,
             # active-lease totals for that section
             'total_payments': total_payments_active,
-            'all_leases': leases_qs,                  # for the partial loop
+            'all_leases': all_leases,                  # for the partial loop
+            'leases': all_leases,
             # <-- expose tenant-wide balance explicitly
             'current_balance': tenant.current_balance
         })

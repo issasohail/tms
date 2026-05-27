@@ -432,6 +432,7 @@ class Lease(models.Model):
     @property
     def security_paid_in(self):
         """How much deposit has actually been paid in (via ledger)."""
+        # PERF: repeated security_deposit_totals() calls duplicate SecurityDepositTransaction queries.
         return security_deposit_totals(self)["paid_in"]
 
     @property
@@ -472,6 +473,7 @@ class Lease(models.Model):
         """Calculate total payments made against this lease"""
         from payments.models import Payment
 
+        # PERF: template/table loops can call this per row; replace with cached financial summary.
         return Payment.objects.filter(lease=self).aggregate(total=Sum("amount"))[
             "total"
         ] or Decimal("0.00")
@@ -481,6 +483,7 @@ class Lease(models.Model):
         if hasattr(self, "_cached_get_balance"):
             return self._cached_get_balance
 
+        # PERF: avoids N+1 target; repeated invoice/payment aggregates for same lease should be cached.
         invoices_total = self.invoices.aggregate(
             t=Coalesce(Sum("amount"), Decimal("0.00"))
         )["t"]

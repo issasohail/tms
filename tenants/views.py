@@ -456,6 +456,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         tenant = self.object
 
+        # PERF: this detail page repeats tenant lease/invoice/payment lookups; reuse selected querysets.
         # Get active lease if available
         lease = tenant.leases.filter(status='active').first()
         tenant.lease = lease

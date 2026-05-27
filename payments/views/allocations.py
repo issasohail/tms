@@ -51,6 +51,7 @@ class AllocationDetailView(LoginRequiredMixin, DetailView):
         ctx["payment"] = payment
         ctx["lease"] = lease
 
+        # PERF: security totals currently group via repeated aggregate queries; reuse cached lease summary after Phase 4.
         # Security totals (your template expects sec_totals)
         if lease:
             ctx["sec_totals"] = security_deposit_totals(lease)
@@ -129,6 +130,7 @@ class AllocationUpdateView(UpdateView):
         context = super().get_context_data(**kwargs)
         context["allocation_form"] = PaymentAllocationForm(instance=self.allocation)
 
+        # PERF: recent payments template accesses payment->lease->tenant/unit/property and lease balance.
         # ---- recent payments selector (same behavior as PaymentCreateView) ----
         size = 10
         try:

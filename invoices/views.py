@@ -484,6 +484,7 @@ class InvoiceDetailView(DetailView):
     template_name = "invoices/invoice_detail.html"
 
     def get_queryset(self):
+        # PERF: avoids N+1 on invoice->lease->tenant/unit/property and invoice items/categories.
         return super().get_queryset().select_related(
             "lease__tenant",
             "lease__unit__property",
@@ -520,6 +521,7 @@ class InvoiceDetailView(DetailView):
             .values("id", "name")
         )
 
+        # PERF: lease balance is expensive; cached Lease financial summary avoids repeated aggregates.
         ctx["lease_balance"] = inv.lease.get_balance if inv.lease_id else Decimal("0.00")
         
         # 🔹 NEW: security deposit totals for this invoice's lease

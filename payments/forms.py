@@ -75,6 +75,7 @@ class PaymentForm(forms.ModelForm):
             selected_id = str(instance_lease.pk)
 
         # 2) Build queryset: active + (optionally) the selected (possibly inactive) one
+        # PERF: lease dropdown label renders every option; keep related tenant/unit/property loaded.
         qs = Lease.objects.all()
         if selected_id:
             qs = qs.filter(Q(status='active') | Q(pk=selected_id))
@@ -101,6 +102,7 @@ class PaymentForm(forms.ModelForm):
 
         # 5) Your label logic (kept simple and one-liner)
         def format_lease_label(obj):
+            # PERF: get_balance aggregates invoices/payments per lease option; Phase 5 replaces this with annotated values.
             balance = "{:,.2f}".format(float(obj.get_balance))
             return f"{obj.tenant.get_full_name()} | {obj.unit.property.property_name} - {obj.unit.unit_number} | Balance: {balance}"
         self.fields['lease'].label_from_instance = format_lease_label

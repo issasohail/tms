@@ -622,6 +622,11 @@ class Lease(models.Model):
 
     @property
     def current_unit(self):
+        if hasattr(self, "_prefetched_objects_cache") and "unit_occupancies" in self._prefetched_objects_cache:
+            for occupancy in self._prefetched_objects_cache["unit_occupancies"]:
+                if occupancy.move_out_date is None:
+                    return occupancy.unit
+            return self.unit
         occupancy = (
             self.unit_occupancies
             .filter(move_out_date__isnull=True)

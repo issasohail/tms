@@ -1259,6 +1259,9 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 ),
                 "family_members__tenant",
                 "renewals",
+                "unit_occupancies__unit__property",
+                "meter_installations__meter",
+                "meter_installations__unit__property",
                 Prefetch(
                     "security_transactions",
                     queryset=SecurityDepositTransaction.objects.select_related(
@@ -1272,14 +1275,26 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         lease = self.object
+        renewals = sorted(
+            list(lease.renewals.all()),
+            key=lambda renewal: renewal.renewal_number,
+        )
 
         # existing context
         ctx.update(
             {
                 "family_members": lease.family_members.all(),
-                "recent_payments": lease.payments.all().order_by("-payment_date")[:5],
-                "invoices": lease.invoices.all().order_by("-issue_date"),
-                "renewals": lease.renewals.all().order_by("renewal_number"),
+                "recent_payments": sorted(
+                    list(lease.payments.all()),
+                    key=lambda payment: payment.payment_date,
+                    reverse=True,
+                )[:5],
+                "invoices": sorted(
+                    list(lease.invoices.all()),
+                    key=lambda invoice: invoice.issue_date,
+                    reverse=True,
+                ),
+                "renewals": renewals,
                 "balance_due": lease.get_balance,
                 "occupancy_count": 1 + lease.family_members.count(),
             }
@@ -1288,17 +1303,23 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             lease,
             user=self.request.user if self.request.user.is_authenticated else None,
         )
-        ctx["renewals"] = lease.renewals.all().order_by("renewal_number")
-
         today = timezone.localdate()
+        active_renewals = [
+            renewal
+            for renewal in renewals
+            if renewal.start_date <= today <= renewal.end_date
+        ]
         ctx["active_history"] = (
-            ctx["renewals"]
-            .filter(start_date__lte=today, end_date__gte=today)
-            .order_by("-renewal_number", "-id")
-            .first()
-            or ctx["renewals"].order_by("-renewal_number", "-id").first()
+            sorted(active_renewals, key=lambda renewal: (renewal.renewal_number, renewal.id), reverse=True)[0]
+            if active_renewals
+            else (
+                sorted(renewals, key=lambda renewal: (renewal.renewal_number, renewal.id), reverse=True)[0]
+                if renewals
+                else None
+            )
         )
-        first_renewal = ctx["renewals"].exclude(is_original=True).first()
+        non_original_renewals = [renewal for renewal in renewals if not renewal.is_original]
+        first_renewal = non_original_renewals[0] if non_original_renewals else None
         ctx["original_period_end"] = (
             first_renewal.start_date - timedelta(days=1)
             if first_renewal
@@ -1312,9 +1333,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         dep_balance = ZERO
         deposit_tx = []
 
-        for tx in SecurityDepositTransaction.objects.filter(lease=lease).order_by(
-            "date", "id"
-        ):
+        for tx in sorted(lease.security_transactions_qs, key=lambda item: (item.date, item.id)):
             amt = tx.amount or ZERO
 
             # running balance of what you currently hold

@@ -72,10 +72,12 @@ def attach_cached_lease_balances(payments):
     for payment in payments:
         lease = getattr(payment, "lease", None)
         if lease:
-            lease._cached_get_balance = (
+            cached_balance = (
                 invoice_totals.get(lease.pk, Decimal("0.00"))
                 - payment_totals.get(lease.pk, Decimal("0.00"))
             )
+            lease._cached_get_balance = cached_balance
+            payment.cached_lease_balance = cached_balance
     return payments
 
 

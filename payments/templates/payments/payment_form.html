@@ -250,7 +250,7 @@
                         data-unit="{{ payment.lease.unit.unit_number }}"
                         data-amount="{{ payment.amount }}"
                         data-date="{{ payment.payment_date|date:'M d, Y' }}"
-                        data-balance="{{ payment.lease.get_balance }}"
+                        data-balance="{{ payment.cached_lease_balance|default_if_none:payment.lease.get_balance }}"
                         data-start-date="{{ payment.lease.start_date|date:'M d, Y' }}"
                         data-end-date="{{ payment.lease.end_date|date:'M d, Y' }}"
                         data-security-amount="{{ payment.lease.security_deposit|default:0 }}"

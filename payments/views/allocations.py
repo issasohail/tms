@@ -4,6 +4,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import DetailView, UpdateView
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Case, DecimalField, F, Sum, When
+from django.db.models.functions import Coalesce
 from django.urls import reverse_lazy
 
 from payments.models import PaymentAllocation
@@ -33,7 +35,49 @@ from django.views.generic import DetailView, UpdateView, DeleteView
 from payments.models import PaymentAllocation
 from payments.forms import PaymentAllocationForm
 from payments.services.allocation import rebuild_allocation
-from invoices.models import SecurityDepositTransaction
+from invoices.models import Invoice, SecurityDepositTransaction
+
+
+def attach_cached_lease_balances(payments):
+    payments = list(payments)
+    lease_ids = {payment.lease_id for payment in payments if payment.lease_id}
+    if not lease_ids:
+        return payments
+
+    invoice_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Invoice.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), Decimal("0.00")))
+    }
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    payment_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Payment.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                Decimal("0.00"),
+            )
+        )
+    }
+
+    for payment in payments:
+        lease = getattr(payment, "lease", None)
+        if lease:
+            lease._cached_get_balance = (
+                invoice_totals.get(lease.pk, Decimal("0.00"))
+                - payment_totals.get(lease.pk, Decimal("0.00"))
+            )
+    return payments
+
 
 class AllocationDetailView(LoginRequiredMixin, DetailView):
     model = PaymentAllocation
@@ -166,13 +210,13 @@ class AllocationUpdateView(UpdateView):
 
         context["recent_size"] = size
         context["recent_size_options"] = [10, 20, 50]
-        context["recent_payments"] = Payment.objects.select_related(
+        context["recent_payments"] = attach_cached_lease_balances(Payment.objects.select_related(
             "lease",
             "lease__tenant",
             "lease__unit",
             "lease__unit__property",
             "payment_method",
-        ).order_by("-id")[:size]
+        ).order_by("-id")[:size])
 
         # ---- tenants/properties (same as create) ----
         include_inactive = self.request.GET.get("include_inactive") == "on"
@@ -303,13 +347,13 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
         ctx["recent_size"] = size
         ctx["recent_size_options"] = [10, 20, 50]
-        ctx["recent_payments"] = Payment.objects.select_related(
+        ctx["recent_payments"] = attach_cached_lease_balances(Payment.objects.select_related(
             "lease",
             "lease__tenant",
             "lease__unit",
             "lease__unit__property",
             "payment_method",
-        ).order_by("-id")[:size]
+        ).order_by("-id")[:size])
 
         include_inactive = str(self.request.GET.get("include_inactive", "")).lower() in ("on","1","true","yes")
         lease_qs = Lease.objects.all()

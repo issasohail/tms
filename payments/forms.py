@@ -4,10 +4,56 @@ from django.apps import apps
 from .models import Payment
 from properties.models import Property, Unit
 from tenants.models import Tenant
-from django.db.models import Q
+from django.db.models import Case, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce
 from leases.models import Lease
+from invoices.models import Invoice
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from core.models import PaymentMethod
+
+
+def optimize_lease_dropdown_queryset(qs):
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    zero = Value(Decimal("0.00"), output_field=money_field)
+
+    invoice_total = (
+        Invoice.objects.filter(lease_id=OuterRef("pk"))
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), zero))
+        .values("total")[:1]
+    )
+    payment_total = (
+        Payment.objects.filter(lease_id=OuterRef("pk"))
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                zero,
+            )
+        )
+        .values("total")[:1]
+    )
+
+    return (
+        qs.select_related('tenant', 'unit', 'unit__property')
+        .annotate(
+            _invoice_total=Coalesce(Subquery(invoice_total, output_field=money_field), zero),
+            _payment_total=Coalesce(Subquery(payment_total, output_field=money_field), zero),
+        )
+        .annotate(
+            cached_balance=ExpressionWrapper(
+                F("_invoice_total") - F("_payment_total"),
+                output_field=money_field,
+            )
+        )
+    )
+
 
 class PaymentForm(forms.ModelForm):
     lease = forms.ModelChoiceField(
@@ -82,9 +128,7 @@ class PaymentForm(forms.ModelForm):
         else:
             qs = qs.filter(status='active')
 
-        self.fields['lease'].queryset = qs.select_related(
-            'tenant', 'unit', 'unit__property'
-        ).order_by('tenant__first_name')
+        self.fields['lease'].queryset = optimize_lease_dropdown_queryset(qs).order_by('tenant__first_name')
 
         # 3) Preselect the lease if we have one
         if lease_param:
@@ -103,7 +147,10 @@ class PaymentForm(forms.ModelForm):
         # 5) Your label logic (kept simple and one-liner)
         def format_lease_label(obj):
             # PERF: get_balance aggregates invoices/payments per lease option; Phase 5 replaces this with annotated values.
-            balance = "{:,.2f}".format(float(obj.get_balance))
+            balance_value = getattr(obj, "cached_balance", None)
+            if balance_value is None:
+                balance_value = obj.get_balance
+            balance = "{:,.2f}".format(float(balance_value or Decimal("0.00")))
             return f"{obj.tenant.get_full_name()} | {obj.unit.property.property_name} - {obj.unit.unit_number} | Balance: {balance}"
         self.fields['lease'].label_from_instance = format_lease_label
 
@@ -174,9 +221,7 @@ class PaymentForm(forms.ModelForm):
         if lease:
             lease_qs = lease_qs | Lease.objects.filter(pk=lease.pk)
 
-        self.fields['lease'].queryset = lease_qs.select_related(
-            'tenant', 'unit', 'unit__property'
-        )
+        self.fields['lease'].queryset = optimize_lease_dropdown_queryset(lease_qs)
 
         # Auto-select and validation
         if lease_qs.count() == 1 and not lease:

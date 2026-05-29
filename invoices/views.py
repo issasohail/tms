@@ -169,54 +169,45 @@ class InvoiceListView(SingleTableView):
         return None, None
 
     def get_queryset(self):
-        money_field = DecimalField(max_digits=12, decimal_places=2)
-        invoice_total_sq = (
-            Invoice.objects.filter(lease_id=OuterRef("lease_id"))
-            .values("lease_id")
-            .annotate(total=Coalesce(Sum("amount"), Value(Decimal("0.00")), output_field=money_field))
-            .values("total")[:1]
-        )
-        payment_total_sq = (
-            Payment.objects.filter(lease_id=OuterRef("lease_id"))
-            .values("lease_id")
-            .annotate(
-                total=Coalesce(
-                    Sum(
-                        Case(
-                            When(allocation__isnull=False, then=F("allocation__lease_amount")),
-                            default=F("amount"),
-                            output_field=money_field,
-                        )
-                    ),
-                    Value(Decimal("0.00")),
-                    output_field=money_field,
-                )
-            )
-            .values("total")[:1]
-        )
         qs = (Invoice.objects
               .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
               .prefetch_related(
-                  Prefetch("items", queryset=InvoiceItem.objects.select_related("category"))
-              )
-              .annotate(
-                  lease_invoice_total=Coalesce(
-                      Subquery(invoice_total_sq, output_field=money_field),
-                      Value(Decimal("0.00")),
-                      output_field=money_field,
-                  ),
-                  lease_payment_total=Coalesce(
-                      Subquery(payment_total_sq, output_field=money_field),
-                      Value(Decimal("0.00")),
-                      output_field=money_field,
-                  ),
-              )
-              .annotate(
-                  dashboard_lease_balance=ExpressionWrapper(
-                      F("lease_invoice_total") - F("lease_payment_total"),
-                      output_field=money_field,
+                  Prefetch(
+                      "items",
+                      queryset=InvoiceItem.objects.select_related("category").only(
+                          "id",
+                          "invoice_id",
+                          "category_id",
+                          "description",
+                          "amount",
+                          "category__id",
+                          "category__name",
+                      ),
                   )
-              ))
+              )
+              .only(
+                  "id",
+                  "lease_id",
+                  "invoice_number",
+                  "issue_date",
+                  "due_date",
+                  "amount",
+                  "status",
+                  "description",
+                  "lease__id",
+                  "lease__tenant_id",
+                  "lease__unit_id",
+                  "lease__tenant__id",
+                  "lease__tenant__first_name",
+                  "lease__tenant__last_name",
+                  "lease__tenant__phone",
+                  "lease__unit__id",
+                  "lease__unit__property_id",
+                  "lease__unit__unit_number",
+                  "lease__unit__property__id",
+                  "lease__unit__property__property_name",
+              )
+              )
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")
@@ -246,12 +237,72 @@ class InvoiceListView(SingleTableView):
 
         return qs  # don't force order here; table default covers first load
 
+    def _attach_page_lease_balances(self, table):
+        """
+        The invoice list only needs lease balance for the WhatsApp button rows.
+        Computing it in the main queryset adds correlated subqueries to every
+        invoice before pagination, so calculate it for the displayed page only.
+        """
+        records = []
+        try:
+            records = [row.record for row in table.paginated_rows]
+        except Exception:
+            page = getattr(table, "page", None)
+            if page is not None:
+                records = list(getattr(page, "object_list", []) or [])
+
+        lease_ids = sorted({record.lease_id for record in records if record.lease_id})
+        if not lease_ids:
+            return
+
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        invoice_totals = {
+            row["lease_id"]: row["total"] or Decimal("0.00")
+            for row in (
+                Invoice.objects
+                .filter(lease_id__in=lease_ids)
+                .values("lease_id")
+                .annotate(total=Coalesce(Sum("amount"), Value(Decimal("0.00")), output_field=money_field))
+            )
+        }
+        payment_totals = {
+            row["lease_id"]: row["total"] or Decimal("0.00")
+            for row in (
+                Payment.objects
+                .filter(lease_id__in=lease_ids)
+                .values("lease_id")
+                .annotate(
+                    total=Coalesce(
+                        Sum(
+                            Case(
+                                When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                                default=F("amount"),
+                                output_field=money_field,
+                            )
+                        ),
+                        Value(Decimal("0.00")),
+                        output_field=money_field,
+                    )
+                )
+            )
+        }
+
+        for record in records:
+            balance = (
+                invoice_totals.get(record.lease_id, Decimal("0.00"))
+                - payment_totals.get(record.lease_id, Decimal("0.00"))
+            )
+            record.dashboard_lease_balance = balance
+            if getattr(record, "lease", None) is not None:
+                record.lease._cached_get_balance = balance
+
     def get_table(self, **kwargs):
         table = super().get_table(**kwargs)
         # Only set default when there's no user sort in querystring
         sort_param = table.prefixed_order_by_field  # e.g. 'sort'
         if not self.request.GET.get(sort_param):
             table.order_by = ("invoice_number",)
+        self._attach_page_lease_balances(table)
         return table
 
     def get_context_data(self, **kwargs):
@@ -265,7 +316,7 @@ class InvoiceListView(SingleTableView):
         today = timezone.localdate()
 
         # Properties
-        props = Property.objects.all().order_by("property_name")
+        props = Property.objects.only("id", "property_name").order_by("property_name")
         ctx["property_options"] = [
             {"id": p.id, "name": p.property_name} for p in props]
 
@@ -273,8 +324,26 @@ class InvoiceListView(SingleTableView):
         show_inactive = bool(self.request.GET.get("show_inactive"))
         ctx["show_inactive"] = show_inactive
 
-        leases_qs = Lease.objects.select_related(
-            "tenant", "unit", "unit__property")
+        leases_qs = (
+            Lease.objects
+            .select_related("tenant", "unit", "unit__property")
+            .only(
+                "id",
+                "tenant_id",
+                "unit_id",
+                "start_date",
+                "end_date",
+                "status",
+                "tenant__id",
+                "tenant__first_name",
+                "tenant__last_name",
+                "unit__id",
+                "unit__property_id",
+                "unit__unit_number",
+                "unit__property__id",
+                "unit__property__property_name",
+            )
+        )
         if not show_inactive:
             active_filter = {"status": "active"} if hasattr(
                 Lease, "status") else {}
@@ -324,7 +393,7 @@ class InvoiceListView(SingleTableView):
                 latest_by_unit[uid] = L
 
         by_prop = {}
-        units = Unit.objects.select_related("property").all()
+        units = Unit.objects.only("id", "property_id", "unit_number").all()
         for u in units:
             L = latest_by_unit.get(u.id)
             tname, end_txt, is_active = "", "—", False

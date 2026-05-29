@@ -2,144 +2,526 @@
 {% load humanize %}
 
 {% block content %}
-<div class="container mt-3">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <h2 class="mb-0">Lease History #{{ history.renewal_number }}</h2>
-    <div class="d-flex gap-1">
-      <a href="{% url 'leases:lease_history_edit' lease.pk history.pk %}" class="btn btn-primary btn-sm">Edit</a>
-      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ history.pk }}" class="btn btn-success btn-sm">Edit Clauses</a>
-      <a href="{% url 'leases:renewal_agreement' lease.pk history.pk %}" class="btn btn-outline-primary btn-sm">Generate PDF</a>
-      <a href="{% url 'leases:renewal_upload_signed' lease.pk history.pk %}" class="btn btn-outline-secondary btn-sm">Upload Signed</a>
-      <a href="{% url 'leases:history_media_page' lease.pk history.pk %}" class="btn btn-outline-dark btn-sm">Media</a>
-      <a href="{% url 'leases:lease_renewals' lease.pk %}" class="btn btn-secondary btn-sm">Back</a>
-    </div>
+<style>
+/* =====================================================
+   DESIGN A — LEFT-RAIL NAVIGATION
+   lease_history_detail.html
+   ===================================================== */
+#lh-shell {
+  display: flex;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #eef1f7;
+  font-size: .82rem;
+
+  position: relative;
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  max-width: 100vw;
+  box-sizing: border-box;
+}
+
+/* Rail */
+.lh-rail {
+  width: 48px; flex-shrink: 0; background: #131929;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 10px 0 8px; gap: 2px;
+}
+.lh-rail-logo {
+  width: 32px; height: 32px; background: #2856c8; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 800; color: #fff; margin-bottom: 10px;
+}
+.lh-rail-icon {
+  width: 34px; height: 34px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #5a6e9a; font-size: 16px; cursor: pointer;
+}
+.lh-rail-icon:hover, .lh-rail-icon.on { background: #1e2e52; color: #93b4e8; }
+.lh-rail-sep { width: 22px; height: 1px; background: #1e2e52; margin: 4px 0; }
+
+/* Sidebar */
+.lh-sidebar {
+  width: 185px; flex-shrink: 0; background: #fff;
+  border-right: 1px solid #e2e6f0; display: flex; flex-direction: column;
+}
+.lh-sb-header { padding: 12px; border-bottom: 1px solid #eef0f6; }
+.lh-sb-title  { font-size: .78rem; font-weight: 700; color: #1a1f35; }
+.lh-sb-sub    { font-size: .65rem; color: #8a96b4; }
+
+.lh-history-num {
+  background: #f0f5ff; border: 1px solid #dde6f8;
+  border-radius: 6px; padding: 5px 9px; margin-top: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.lh-history-num-label { font-size: .62rem; font-weight: 700; color: #8a96b4; text-transform: uppercase; letter-spacing: .05em; }
+.lh-history-num-val   { font-size: 1.1rem; font-weight: 700; color: #2856c8; }
+
+.lh-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: .65rem; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+}
+.lh-badge-orig   { background: #dcfce7; color: #166534; }
+.lh-badge-renew  { background: #dbeafe; color: #1e40af; }
+.lh-badge-active { background: #fef9c3; color: #854d0e; }
+
+.lh-nav-item {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 12px; font-size: .78rem; color: #5a6480;
+  border-left: 2px solid transparent; text-decoration: none;
+}
+.lh-nav-item:hover { background: #f6f8ff; color: #2856c8; text-decoration: none; }
+.lh-nav-item.on    { color: #2856c8; background: #f0f5ff; border-color: #2856c8; font-weight: 600; }
+.lh-nav-item i     { font-size: 14px; }
+.lh-nav-badge { margin-left: auto; font-size: .6rem; font-weight: 700; padding: 1px 5px; border-radius: 99px; background: #e8eeff; color: #2856c8; }
+
+/* Main */
+.lh-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.lh-topbar {
+  background: #fff; border-bottom: 1px solid #e2e6f0;
+  padding: 6px 14px; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; flex-shrink: 0; flex-wrap: wrap;
+}
+.lh-breadcrumb { font-size: .72rem; color: #8a96b4; display: flex; align-items: center; gap: 4px; }
+.lh-breadcrumb strong { color: #1a1f35; }
+.lh-tb-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.lh-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; }
+
+/* Alert */
+.lh-alert {
+  background: #fef9c3; border: 1px solid #fde047;
+  border-left: 4px solid #ca8a04; border-radius: 7px;
+  padding: 8px 12px; margin-bottom: 8px;
+  font-size: .78rem; color: #854d0e;
+  display: flex; align-items: center; gap: 7px;
+}
+
+/* Cards */
+.lh-card {
+  background: #fff; border: 1px solid #e2e6f0;
+  border-radius: 10px; overflow: hidden; margin-bottom: 8px;
+}
+.lh-card-head {
+  padding: 6px 12px; display: flex; align-items: center; gap: 7px;
+  border-bottom: 1px solid #eef0f6; background: #1a1f35;
+}
+.lh-card-head i      { font-size: 13px; color: #7eb3f5; }
+.lh-card-title       { font-size: .72rem; font-weight: 700; color: #c8d4f0; text-transform: uppercase; letter-spacing: .06em; }
+.lh-card-sub         { margin-left: auto; font-size: .68rem; color: #7eb3f5; }
+.lh-card-body        { padding: 10px 12px; }
+
+/* Two-col layout for period & charges */
+.lh-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lh-two-col > * { min-width: 0; }
+
+/* KV rows */
+.lh-kv-table { width: 100%; border-collapse: collapse; }
+.lh-kv-table tr { border-bottom: 1px solid #f0f2f6; }
+.lh-kv-table tr:last-child { border-bottom: none; }
+.lh-kv-table th {
+  font-size: .7rem; font-weight: 700; color: #8a96b4;
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 5px 8px; text-align: left; width: 48%; white-space: nowrap;
+  background: #fafbff;
+}
+.lh-kv-table td {
+  font-size: .8rem; color: #1a1f35; padding: 5px 8px; text-align: right; font-weight: 500;
+}
+.lh-kv-table td.lh-left { text-align: left; }
+.lh-kv-table tr.lh-total th,
+.lh-kv-table tr.lh-total td { background: #f0f5ff; font-weight: 700; color: #1e40af; }
+
+/* Police verification status */
+.lh-police-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px;
+}
+.lh-police-verified  { background: #dcfce7; color: #166534; }
+.lh-police-rejected  { background: #fee2e2; color: #991b1b; }
+.lh-police-pending   { background: #fef9c3; color: #854d0e; }
+.lh-police-follow_up { background: #fef9c3; color: #854d0e; }
+.lh-police-none      { background: #f1f5f9; color: #64748b; }
+
+/* Files section */
+.lh-files-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.lh-file-cell { background: #f6f8fc; border: 1px solid #e2e6f0; border-radius: 7px; padding: 8px 10px; }
+.lh-file-label { font-size: .65rem; font-weight: 700; color: #8a96b4; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.lh-file-val   { font-size: .78rem; color: #1a1f35; }
+.lh-file-val a { color: #2856c8; }
+.lh-file-none  { color: #94a3b8; }
+
+/* Media files list */
+.lh-media-list { list-style: none; padding: 0; margin: 0; }
+.lh-media-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid #f0f2f6; font-size: .78rem;
+}
+.lh-media-list li:last-child { border-bottom: none; }
+.lh-media-list li i { font-size: 14px; color: #7eb3f5; flex-shrink: 0; }
+.lh-media-list li a { color: #2856c8; text-decoration: none; }
+.lh-media-list li a:hover { text-decoration: underline; }
+.lh-media-desc { font-size: .7rem; color: #8a96b4; margin-left: 4px; }
+
+/* Notes block */
+.lh-notes-block {
+  background: #f8fafc; border: 1px solid #e2e6f0; border-radius: 6px;
+  padding: 8px 10px; font-size: .78rem; color: #4a5568; line-height: 1.5;
+  margin-top: 6px;
+}
+.lh-notes-label { font-size: .65rem; font-weight: 700; color: #8a96b4; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+
+/* Bottom nav (mobile) */
+.lh-bottom-nav {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #131929; border-top: 1px solid #1e2e52;
+  z-index: 100; height: 52px;
+  justify-content: space-around; align-items: center;
+}
+.lh-bottom-tab {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  color: #5a6e9a; font-size: .58rem; padding: 4px 6px; border-radius: 8px;
+}
+.lh-bottom-tab i { font-size: 18px; }
+.lh-bottom-tab.on { color: #7eb3f5; background: #1e2e52; }
+
+/* ===================== RESPONSIVE ===================== */
+@media (max-width: 991px) {
+  #lh-shell { height: auto; overflow: visible; flex-direction: column; }
+  .lh-rail  { width: 100%; flex-direction: row; height: 44px; padding: 0 8px; gap: 4px; overflow-x: auto; }
+  .lh-rail-logo { margin-bottom: 0; margin-right: 6px; }
+  .lh-rail-sep { display: none; }
+  .lh-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #e2e6f0; }
+  .lh-two-col { grid-template-columns: 1fr; }
+  .lh-files-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .lh-rail { display: none; }
+  .lh-content { padding: 8px; }
+  .lh-two-col { grid-template-columns: 1fr; }
+  .lh-files-grid { grid-template-columns: 1fr; }
+  #lh-shell { padding-bottom: 52px; }
+  .lh-bottom-nav { display: flex !important; }
+}
+</style>
+
+<div id="lh-shell">
+
+  {# Rail #}
+  <div class="lh-rail">
+    <div class="lh-rail-logo">TMS</div>
+    <div class="lh-rail-icon"><i class="ti ti-file-text"></i></div>
+    <div class="lh-rail-icon on"><i class="ti ti-history"></i></div>
+    <div class="lh-rail-sep"></div>
+    <div class="lh-rail-icon"><i class="ti ti-photo"></i></div>
+    <div class="lh-rail-icon"><i class="ti ti-shield-check"></i></div>
   </div>
 
-  {% if is_active_history %}
-    <div class="alert alert-warning py-2">
-      This is the active/current history. Its financial values control the master lease and recurring charges.
-    </div>
-  {% endif %}
-
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Lease, Tenant & Unit</div>
-    <div class="card-body">
-      <div class="row row-cols-1 row-cols-md-3 g-2 small">
-        <div><strong>Lease:</strong> #{{ lease.id }}</div>
-        <div><strong>Status:</strong> {% if history.is_original %}Original Lease{% else %}Renewal{% endif %}</div>
-        <div><strong>History Number:</strong> #{{ history.renewal_number }}</div>
-        <div><strong>Tenant:</strong> {{ lease.tenant.get_full_name }}</div>
-        <div><strong>Building:</strong> {{ lease.unit.property.property_name }}</div>
-        <div><strong>Unit:</strong> {{ lease.unit.unit_number }}</div>
+  {# Sidebar #}
+  <div class="lh-sidebar">
+    <div class="lh-sb-header">
+      <div class="lh-sb-title">{{ lease.tenant.get_full_name }}</div>
+      <div class="lh-sb-sub">{{ lease.unit.property.property_name }} · {{ lease.unit.unit_number }}</div>
+      <div class="lh-history-num">
+        <div>
+          <div class="lh-history-num-label">History</div>
+          <div class="lh-history-num-val">#{{ history.renewal_number }}</div>
+        </div>
+        <div style="margin-left:auto;">
+          {% if history.is_original %}
+            <span class="lh-badge lh-badge-orig">Original</span>
+          {% else %}
+            <span class="lh-badge lh-badge-renew">Renewal</span>
+          {% endif %}
+          {% if is_active_history %}
+            <span class="lh-badge lh-badge-active">Active</span>
+          {% endif %}
+        </div>
       </div>
     </div>
+
+    <a href="{% url 'leases:lease_history_edit' lease.pk history.pk %}" class="lh-nav-item">
+      <i class="ti ti-edit"></i>Edit History
+    </a>
+    <a href="{% url 'leases:lease_renewals' lease.pk %}" class="lh-nav-item on">
+      <i class="ti ti-history"></i>All History
+    </a>
+    <a href="{% url 'leases:renewal_agreement' lease.pk history.pk %}" class="lh-nav-item">
+      <i class="ti ti-file-invoice"></i>Generate PDF
+    </a>
+    <a href="{% url 'leases:renewal_upload_signed' lease.pk history.pk %}" class="lh-nav-item">
+      <i class="ti ti-upload"></i>Upload Signed
+    </a>
+    <a href="{% url 'leases:photos_page' lease.pk %}" class="lh-nav-item">
+      <i class="ti ti-photo"></i>Condition Photos
+    </a>
+    <div style="border-top:1px solid #eef0f6;"></div>
+    <a href="{% url 'leases:lease_update' lease.pk %}" class="lh-nav-item">
+      <i class="ti ti-arrow-left"></i>Back to Lease
+    </a>
   </div>
 
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Period & Charges</div>
-    <div class="card-body">
-      <div class="row">
-        <div class="col-md-6">
-          <table class="table table-sm table-bordered mb-0">
-            <tbody>
-              <tr><th>Start Date</th><td>{{ history.start_date|date:"M d, Y" }}</td></tr>
-              <tr><th>End Date</th><td>{{ history.end_date|date:"M d, Y" }}</td></tr>
-              <tr><th>Agreement Date</th><td>{{ history.agreement_date|date:"M d, Y"|default:"-" }}</td></tr>
-              <tr><th>Monthly Rent</th><td class="text-end">{{ history.monthly_rent|default:0|money:0 }}</td></tr>
-              <tr><th>Society Maintenance</th><td class="text-end">{{ history.society_maintenance|default:0|money:0 }}</td></tr>
-              <tr><th>Water Charges</th><td class="text-end">{{ history.water_charges|default:0|money:0 }}</td></tr>
-              <tr><th>Internet Charges</th><td class="text-end">{{ history.internet_charges|default:0|money:0 }}</td></tr>
-              <tr class="table-light"><th>Total Monthly Charges</th><td class="text-end fw-bold">{{ history.total_monthly_amount|default:0|money:0 }}</td></tr>
-            </tbody>
-          </table>
+  {# Main #}
+  <div class="lh-main">
+
+    <div class="lh-topbar">
+      <div class="lh-breadcrumb">
+        <i class="ti ti-home-2"></i>
+        <strong>TMS</strong> / Leases /
+        <strong>History #{{ history.renewal_number }}</strong>
+      </div>
+      <div class="lh-tb-right">
+        <a href="{% url 'leases:lease_history_edit' lease.pk history.pk %}" class="btn btn-sm btn-primary">
+          <i class="ti ti-edit"></i> Edit
+        </a>
+        <a href="{% url 'leases:renewal_agreement' lease.pk history.pk %}" class="btn btn-sm btn-outline-primary">
+          <i class="ti ti-file-invoice"></i> Generate PDF
+        </a>
+        <a href="{% url 'leases:renewal_upload_signed' lease.pk history.pk %}" class="btn btn-sm btn-outline-secondary">
+          <i class="ti ti-upload"></i> Upload Signed
+        </a>
+        <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-sm btn-outline-dark">
+          <i class="ti ti-photo"></i> Photos
+        </a>
+        <a href="{% url 'leases:lease_renewals' lease.pk %}" class="btn btn-sm btn-secondary">
+          <i class="ti ti-arrow-left"></i> Back
+        </a>
+      </div>
+    </div>
+
+    <div class="lh-content">
+
+      {% if is_active_history %}
+        <div class="lh-alert">
+          <i class="ti ti-alert-triangle" style="font-size:16px;"></i>
+          This is the <strong>active / current history</strong>. Its financial values control the master lease and recurring charges.
         </div>
-        <div class="col-md-6">
-          <table class="table table-sm table-bordered mb-0">
-            <tbody>
-              <tr><th>Agreement Charges</th><td class="text-end">{{ history.agreement_charges|default:0|money:0 }}</td></tr>
-              <tr><th>Security Deposit</th><td class="text-end">{{ history.security_deposit|default:0|money:0 }}</td></tr>
-              <tr><th>Witness 1 Name</th><td>{{ history.witness1_name|default:"-" }}</td></tr>
-              <tr><th>Witness 1 CNIC</th><td>{{ history.witness1_cnic|default:"-" }}</td></tr>
-              <tr><th>Witness 2 Name</th><td>{{ history.witness2_name|default:"-" }}</td></tr>
-              <tr><th>Witness 2 CNIC</th><td>{{ history.witness2_cnic|default:"-" }}</td></tr>
+      {% endif %}
+
+      {# Lease / Tenant / Unit summary #}
+      <div class="lh-card">
+        <div class="lh-card-head">
+          <i class="ti ti-home"></i>
+          <span class="lh-card-title">Lease, Tenant &amp; Unit</span>
+        </div>
+        <div class="lh-card-body">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px 16px;">
+            <div>
+              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Lease</div>
+              <div style="font-size:.85rem;color:#1a1f35;font-weight:600;">#{{ lease.id }}</div>
+            </div>
+            <div>
+              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Status</div>
+              <div>{% if history.is_original %}<span class="lh-badge lh-badge-orig">Original Lease</span>{% else %}<span class="lh-badge lh-badge-renew">Renewal</span>{% endif %}</div>
+            </div>
+            <div>
+              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">History #</div>
+              <div style="font-size:.85rem;color:#2856c8;font-weight:700;">#{{ history.renewal_number }}</div>
+            </div>
+            <div>
+              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Tenant</div>
+              <div style="font-size:.85rem;color:#1a1f35;font-weight:500;">{{ lease.tenant.get_full_name }}</div>
+            </div>
+            <div>
+              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Building</div>
+              <div style="font-size:.85rem;color:#1a1f35;">{{ lease.unit.property.property_name }}</div>
+            </div>
+            <div>
+              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Unit</div>
+              <div style="font-size:.85rem;color:#1a1f35;">{{ lease.unit.unit_number }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Period & Charges #}
+      <div class="lh-card">
+        <div class="lh-card-head">
+          <i class="ti ti-calendar"></i>
+          <span class="lh-card-title">Period &amp; Charges</span>
+        </div>
+        <div class="lh-card-body">
+          <div class="lh-two-col">
+            {# Left: financials #}
+            <table class="lh-kv-table">
+              <tr>
+                <th>Start Date</th>
+                <td>{{ history.start_date|date:"M d, Y" }}</td>
+              </tr>
+              <tr>
+                <th>End Date</th>
+                <td>{{ history.end_date|date:"M d, Y" }}</td>
+              </tr>
+              <tr>
+                <th>Agreement Date</th>
+                <td>{{ history.agreement_date|date:"M d, Y"|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th>Monthly Rent</th>
+                <td>{{ history.monthly_rent|default:0|money:0 }}</td>
+              </tr>
+              <tr>
+                <th>Society Maintenance</th>
+                <td>{{ history.society_maintenance|default:0|money:0 }}</td>
+              </tr>
+              <tr>
+                <th>Water Charges</th>
+                <td>{{ history.water_charges|default:0|money:0 }}</td>
+              </tr>
+              <tr>
+                <th>Internet Charges</th>
+                <td>{{ history.internet_charges|default:0|money:0 }}</td>
+              </tr>
+              <tr class="lh-total">
+                <th>Total Monthly Charges</th>
+                <td>{{ history.total_monthly_amount|default:0|money:0 }}</td>
+              </tr>
+            </table>
+
+            {# Right: misc + police #}
+            <table class="lh-kv-table">
+              <tr>
+                <th>Agreement Charges</th>
+                <td>{{ history.agreement_charges|default:0|money:0 }}</td>
+              </tr>
+              <tr>
+                <th>Security Deposit</th>
+                <td>{{ history.security_deposit|default:0|money:0 }}</td>
+              </tr>
+              <tr>
+                <th>Witness 1 Name</th>
+                <td class="lh-left">{{ history.witness1_name|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th>Witness 1 CNIC</th>
+                <td class="lh-left">{{ history.witness1_cnic|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th>Witness 2 Name</th>
+                <td class="lh-left">{{ history.witness2_name|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th>Witness 2 CNIC</th>
+                <td class="lh-left">{{ history.witness2_cnic|default:"—" }}</td>
+              </tr>
               <tr>
                 <th>Police Verification</th>
-                <td>
-                  <span class="badge bg-{% if history.police_verification_status == 'verified' %}success{% elif history.police_verification_status == 'rejected' %}danger{% elif history.police_verification_status == 'pending' or history.police_verification_status == 'follow_up' %}warning text-dark{% else %}secondary{% endif %}">
+                <td class="lh-left">
+                  <span class="lh-police-badge lh-police-{{ history.police_verification_status|default:'none' }}">
+                    <i class="ti ti-shield-check" style="font-size:11px;"></i>
                     {{ history.get_police_verification_status_display }}
                   </span>
                 </td>
               </tr>
-              <tr><th>Police Verified Date</th><td>{{ history.police_verification_date|date:"M d, Y"|default:"-" }}</td></tr>
-              <tr><th>Police Follow-up</th><td>{{ history.police_verification_follow_up_date|date:"M d, Y"|default:"-" }}</td></tr>
+              <tr>
+                <th>Police Verified Date</th>
+                <td>{{ history.police_verification_date|date:"M d, Y"|default:"—" }}</td>
+              </tr>
+              <tr>
+                <th>Police Follow-up</th>
+                <td>{{ history.police_verification_follow_up_date|date:"M d, Y"|default:"—" }}</td>
+              </tr>
               <tr>
                 <th>Police Document</th>
-                <td>
+                <td class="lh-left">
                   {% if history.police_verification_document %}
                     <a href="{{ history.police_verification_document.url }}" target="_blank">View</a>
-                  {% else %}-{% endif %}
+                  {% else %}—{% endif %}
                 </td>
               </tr>
-              <tr><th>Created</th><td>{{ history.created_at|date:"M d, Y H:i" }}{% if history.created_by %} by {{ history.created_by }}{% endif %}</td></tr>
-              <tr><th>Updated</th><td>{{ history.updated_at|date:"M d, Y H:i" }}{% if history.updated_by %} by {{ history.updated_by }}{% endif %}</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      {% if history.notes %}
-        <div class="mt-3 small"><strong>Notes:</strong> {{ history.notes|linebreaksbr }}</div>
-      {% endif %}
-      {% if history.police_verification_remarks %}
-        <div class="mt-2 small"><strong>Police Remarks:</strong> {{ history.police_verification_remarks|linebreaksbr }}</div>
-      {% endif %}
-    </div>
-  </div>
+              <tr>
+                <th>Created</th>
+                <td>{{ history.created_at|date:"M d, Y H:i" }}{% if history.created_by %} by {{ history.created_by }}{% endif %}</td>
+              </tr>
+              <tr>
+                <th>Updated</th>
+                <td>{{ history.updated_at|date:"M d, Y H:i" }}{% if history.updated_by %} by {{ history.updated_by }}{% endif %}</td>
+              </tr>
+            </table>
+          </div>
 
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Agreement Clauses</div>
-    <div class="card-body p-0">
-      <table class="table table-sm table-striped mb-0">
-        <tbody>
-          {% for clause in history.clauses.all %}
-            <tr>
-              <th style="width:80px">#{{ clause.clause_number }}</th>
-              <td>{{ clause.template_text|linebreaksbr }}</td>
-            </tr>
-          {% empty %}
-            <tr><td class="text-muted p-3">No clauses copied for this history.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+          {% if history.notes %}
+            <div style="margin-top:10px;">
+              <div class="lh-notes-label">Notes</div>
+              <div class="lh-notes-block">{{ history.notes|linebreaksbr }}</div>
+            </div>
+          {% endif %}
+          {% if history.police_verification_remarks %}
+            <div style="margin-top:8px;">
+              <div class="lh-notes-label">Police Remarks</div>
+              <div class="lh-notes-block">{{ history.police_verification_remarks|linebreaksbr }}</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
 
-  <div class="card mb-3">
-    <div class="card-header bg-dark text-white py-2 px-3">Files & PDFs</div>
-    <div class="card-body small">
-      <div class="row row-cols-1 row-cols-md-3 g-2">
-        <div><strong>Generated Agreement PDF:</strong>
-          {% if history.generated_agreement_pdf %}<a href="{{ history.generated_agreement_pdf.url }}" target="_blank">View</a>{% else %}<span class="text-muted">None</span>{% endif %}
+      {# Files & PDFs #}
+      <div class="lh-card">
+        <div class="lh-card-head">
+          <i class="ti ti-files"></i>
+          <span class="lh-card-title">Files &amp; PDFs</span>
+          <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-sm btn-primary" style="margin-left:auto;font-size:.72rem;padding:2px 10px;">
+            <i class="ti ti-photo"></i> Manage Photos
+          </a>
         </div>
-        <div><strong>Tenant Signed PDF:</strong>
-          {% if history.signed_copy %}<a href="{{ history.signed_copy.url }}" target="_blank">View</a>{% else %}<span class="text-muted">None</span>{% endif %}
+        <div class="lh-card-body">
+          <div class="lh-files-grid">
+            <div class="lh-file-cell">
+              <div class="lh-file-label">Generated Agreement PDF</div>
+              <div class="lh-file-val">
+                {% if history.generated_agreement_pdf %}
+                  <a href="{{ history.generated_agreement_pdf.url }}" target="_blank"><i class="ti ti-file-type-pdf" style="color:#dc2626;"></i> View PDF</a>
+                {% else %}<span class="lh-file-none">None</span>{% endif %}
+              </div>
+            </div>
+            <div class="lh-file-cell">
+              <div class="lh-file-label">Tenant Signed PDF</div>
+              <div class="lh-file-val">
+                {% if history.signed_copy %}
+                  <a href="{{ history.signed_copy.url }}" target="_blank"><i class="ti ti-file-check" style="color:#16a34a;"></i> View Signed</a>
+                {% else %}<span class="lh-file-none">None</span>{% endif %}
+              </div>
+            </div>
+            <div class="lh-file-cell">
+              <div class="lh-file-label">Condition PDF</div>
+              <div class="lh-file-val lh-file-none">Phase 3 file link pending</div>
+            </div>
+          </div>
+
+          {# Media files list #}
+          <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+            Condition Photos / Uploaded Files
+          </div>
+          {% if media_files %}
+            <ul class="lh-media-list">
+              {% for media in media_files %}
+                <li>
+                  <i class="ti ti-file"></i>
+                  <a href="{{ media.file.url }}" target="_blank">{{ media.title|default:media.file.name }}</a>
+                  {% if media.description %}<span class="lh-media-desc">— {{ media.description }}</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div style="font-size:.78rem;color:#94a3b8;padding:6px 0;">
+              No uploaded files found for this lease yet.
+            </div>
+          {% endif %}
         </div>
-        <div><strong>Condition PDF:</strong> <span class="text-muted">Phase 3 file link pending</span></div>
       </div>
-      <hr>
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <div class="fw-bold">Condition Photos / Uploaded Files</div>
-        <a href="{% url 'leases:history_media_page' lease.pk history.pk %}" class="btn btn-primary btn-sm">Manage Media</a>
-      </div>
-      {% if media_files %}
-        <ul class="mb-0">
-          {% for media in media_files %}
-            <li><a href="{{ media.file.url }}" target="_blank">{{ media.title|default:media.file.name }}</a>{% if media.description %} - {{ media.description }}{% endif %}</li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <div class="text-muted">No uploaded files found for this lease yet.</div>
-      {% endif %}
+
+    </div>{# /lh-content #}
+
+    <div class="lh-bottom-nav">
+      <div class="lh-bottom-tab"><i class="ti ti-file-text"></i>Lease</div>
+      <div class="lh-bottom-tab on"><i class="ti ti-history"></i>History</div>
+      <div class="lh-bottom-tab"><i class="ti ti-photo"></i>Photos</div>
+      <div class="lh-bottom-tab"><i class="ti ti-file-invoice"></i>PDF</div>
+      <div class="lh-bottom-tab"><i class="ti ti-shield-check"></i>Police</div>
     </div>
-  </div>
-</div>
+
+  </div>{# /lh-main #}
+</div>{# /lh-shell #}
 {% endblock %}

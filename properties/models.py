@@ -1,5 +1,4 @@
 import os
-import uuid
 import builtins
 
 from django.conf import settings
@@ -169,22 +168,36 @@ def _media_date(instance):
     return timezone.localtime(dt).strftime("%Y%m%d")
 
 
-def _media_suffix():
-    return uuid.uuid4().hex[:8]
+def _media_serial(instance):
+    serial = getattr(instance, "_media_serial", None)
+    if serial:
+        return int(serial)
+    if isinstance(instance, PropertyMedia):
+        return instance.property.media_files.count() + 1
+    if isinstance(instance, UnitMedia):
+        return instance.unit.media_files.count() + 1
+    return 1
 
 
 def _media_base_filename(instance):
+    cached_name = getattr(instance, "_formatted_base_filename", "")
+    if cached_name:
+        return cached_name
+
     date_part = _media_date(instance)
     if isinstance(instance, PropertyMedia):
-        return f"{_name_part(instance.property.property_name, 'property')}_{date_part}_{_media_suffix()}"
+        return (
+            f"{_name_part(instance.property.property_name, 'property')}_"
+            f"{date_part}_{_media_serial(instance):04d}"
+        )
     if isinstance(instance, UnitMedia):
         unit = instance.unit
         return (
-            f"{_name_part(unit.property.property_name, 'property')}_"
+            f"{_name_part(unit.property.property_name, 'property')}-"
             f"{_name_part(unit.unit_number, 'unit')}_"
-            f"{date_part}_{_media_suffix()}"
+            f"{date_part}_{_media_serial(instance):04d}"
         )
-    return f"media_{date_part}_{_media_suffix()}"
+    return f"media_{date_part}_{_media_serial(instance):04d}"
 
 
 def _media_upload_path(instance, filename):
@@ -254,6 +267,10 @@ class BasePropertyMedia(models.Model):
         return self.file.url
 
     @property
+    def display_filename(self):
+        return os.path.basename(self.file.name or self.original_filename or "file")
+
+    @property
     def storage_folder(self):
         raise NotImplementedError
 
@@ -291,15 +308,16 @@ class BasePropertyMedia(models.Model):
             buffer = io.BytesIO()
             stamped.save(buffer, format="JPEG", quality=90)
             stamped_buffer = ContentFile(buffer.getvalue())
+            base_filename = _media_base_filename(self)
             self.stamped_file.save(
-                f"{_media_base_filename(self)}-stamped.jpg", stamped_buffer, save=False)
+                f"{base_filename}-stamped.jpg", stamped_buffer, save=False)
 
             thumb = stamped.copy()
             thumb.thumbnail((360, 260))
             thumb_buffer = io.BytesIO()
             thumb.save(thumb_buffer, format="JPEG", quality=85)
             self.thumbnail.save(
-                f"{_media_base_filename(self)}-thumb.jpg", ContentFile(thumb_buffer.getvalue()), save=False)
+                f"{base_filename}-thumb.jpg", ContentFile(thumb_buffer.getvalue()), save=False)
 
     @property
     def footer_text(self):
@@ -315,6 +333,15 @@ class BasePropertyMedia(models.Model):
             self._build_image_derivatives()
             super().save(update_fields=["stamped_file", "thumbnail", "file_type", "updated_at"])
 
+    def refresh_image_derivatives(self):
+        if self.file_type != "image":
+            return
+        self.stamped_file = None
+        self.thumbnail = None
+        self._formatted_base_filename = os.path.splitext(self.display_filename)[0]
+        self._build_image_derivatives()
+        self.save(update_fields=["stamped_file", "thumbnail", "updated_at"])
+
 
 class PropertyMedia(BasePropertyMedia):
     property = models.ForeignKey(
@@ -325,7 +352,7 @@ class PropertyMedia(BasePropertyMedia):
 
     @builtins.property
     def storage_folder(self):
-        return f"property-{self.property_id}"
+        return _name_part(self.property.property_name, f"property-{self.property_id}")
 
     @builtins.property
     def footer_text(self):
@@ -344,7 +371,10 @@ class UnitMedia(BasePropertyMedia):
 
     @property
     def storage_folder(self):
-        return f"unit-{self.unit_id}"
+        return (
+            f"{_name_part(self.unit.property.property_name, 'property')}-"
+            f"{_name_part(self.unit.unit_number, f'unit-{self.unit_id}')}"
+        )
 
     @property
     def footer_text(self):

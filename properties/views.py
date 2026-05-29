@@ -42,6 +42,21 @@ from django_tables2.views import SingleTableMixin
 from django_tables2.paginators import LazyPaginator
 from django.views import View
 from django.db.models import Count
+from io import BytesIO
+import os
+
+from docx import Document
+from docx.enum.text import WD_TAB_ALIGNMENT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches
+import fitz
+
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
+from django.views.decorators.http import require_POST
 
 from .models import PropertyMedia, Unit, UnitMedia, Property
 from .filters import UnitFilter
@@ -291,6 +306,7 @@ def _upload_media_files(request, owner, media_model, owner_field):
 
     created = 0
     active_qs = owner.media_files.filter(is_active=True)
+    serial_start = owner.media_files.count() + 1
     for file_obj in files:
         media = media_model(
             **{owner_field: owner},
@@ -300,6 +316,7 @@ def _upload_media_files(request, owner, media_model, owner_field):
             uploaded_by=request.user if request.user.is_authenticated else None,
             original_filename=getattr(file_obj, "name", "")[:255],
         )
+        media._media_serial = serial_start + created
         try:
             media.full_clean()
             media.save()
@@ -311,21 +328,279 @@ def _upload_media_files(request, owner, media_model, owner_field):
     return created
 
 
+def _media_export_filename(owner_label, extension):
+    safe_label = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in owner_label).strip("-")
+    return f"{safe_label or 'photos'}-{timezone.now():%Y%m%d}.{extension}"
+
+
+def _image_path(media):
+    image_file = media.stamped_file or media.file
+    try:
+        return image_file.path
+    except (NotImplementedError, ValueError):
+        return None
+
+
+def _draw_wrapped_text(pdf, text, x, y, max_chars=95, line_height=5 * mm):
+    text = text or ""
+    lines = [text[i:i + max_chars] for i in range(0, len(text), max_chars)] or [""]
+    for line in lines[:3]:
+        pdf.drawString(x, y, line)
+        y -= line_height
+    return y
+
+
+def _public_media_url(request, owner_kind, owner_pk, media_id):
+    token = _sign_media_token(owner_kind, owner_pk)
+    return request.build_absolute_uri(
+        reverse("properties:media_public_file", args=[token, media_id])
+    )
+
+
+def _media_link_rows(request, owner_kind, owner_pk, media_files):
+    rows = []
+    for index, media in enumerate(media_files, start=1):
+        if media.file_type != "image":
+            rows.append((index, media.display_filename, _public_media_url(request, owner_kind, owner_pk, media.pk)))
+    return rows
+
+
+def _pdf_footer(pdf, title, page_num, total_pages, width):
+    pdf.setFont("Helvetica", 8)
+    y = 10 * mm
+    pdf.drawCentredString(width / 2, y, title)
+    pdf.drawRightString(width - 12 * mm, y, f"Page {page_num} of {total_pages}  {timezone.localtime():%Y-%m-%d %H:%M}")
+
+
+def _draw_photo_page(pdf, media_items, title, page_num, total_pages, pagesize):
+    width, height = pagesize
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawCentredString(width / 2, height - 14 * mm, title)
+    cols = 2 if len(media_items) > 1 else 1
+    rows = 2 if len(media_items) > 2 else len(media_items)
+    if len(media_items) == 2:
+        rows = 2
+        cols = 1
+    margin = 14 * mm
+    top = height - 24 * mm
+    bottom = 18 * mm
+    gap = 6 * mm
+    cell_w = (width - (2 * margin) - ((cols - 1) * gap)) / cols
+    cell_h = (top - bottom - ((rows - 1) * gap)) / rows if rows else top - bottom
+
+    for idx, media in enumerate(media_items):
+        col = idx % cols
+        row = idx // cols
+        x = margin + col * (cell_w + gap)
+        y_top = top - row * (cell_h + gap)
+        caption_h = 14 * mm
+        img_h = cell_h - caption_h
+        path = _image_path(media)
+        if path and os.path.exists(path):
+            image = ImageReader(path)
+            iw, ih = image.getSize()
+            scale = min(cell_w / iw, img_h / ih)
+            draw_w = iw * scale
+            draw_h = ih * scale
+            pdf.drawImage(image, x + (cell_w - draw_w) / 2, y_top - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True)
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawString(x, y_top - img_h - 4 * mm, media.display_filename[:55])
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(x, y_top - img_h - 8 * mm, (media.description or "No description")[:70])
+
+    _pdf_footer(pdf, title, page_num, total_pages, width)
+    pdf.showPage()
+
+
+def _draw_pdf_file_pages(pdf, media, title, page_start, total_pages, pagesize):
+    width, height = pagesize
+    current_page = page_start
+    path = _image_path(media)
+    if not path or not os.path.exists(path):
+        return current_page
+    doc = fitz.open(path)
+    try:
+        for page in doc:
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.6, 1.6), alpha=False)
+            image = ImageReader(BytesIO(pix.tobytes("png")))
+            margin = 12 * mm
+            top = height - 16 * mm
+            bottom = 18 * mm
+            max_w = width - 2 * margin
+            max_h = top - bottom
+            scale = min(max_w / pix.width, max_h / pix.height)
+            draw_w = pix.width * scale
+            draw_h = pix.height * scale
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(margin, height - 10 * mm, media.display_filename[:85])
+            pdf.drawImage(image, margin + (max_w - draw_w) / 2, bottom + (max_h - draw_h) / 2, width=draw_w, height=draw_h)
+            _pdf_footer(pdf, title, current_page, total_pages, width)
+            pdf.showPage()
+            current_page += 1
+    finally:
+        doc.close()
+    return current_page
+
+
+def _pdf_page_count_for_media(media_files, photos_per_page, export_pdf_files, link_count=0):
+    image_count = sum(1 for media in media_files if media.file_type == "image")
+    pages = (image_count + photos_per_page - 1) // photos_per_page
+    if export_pdf_files:
+        for media in media_files:
+            if media.file_type == "file" and media.display_filename.lower().endswith(".pdf"):
+                path = _image_path(media)
+                if path and os.path.exists(path):
+                    doc = fitz.open(path)
+                    try:
+                        pages += doc.page_count
+                    finally:
+                        doc.close()
+    if link_count:
+        pages += (link_count + 11) // 12
+    return max(pages, 1)
+
+
+def _export_media_pdf(owner_label, parent_label, media_files, request=None, owner_kind="", owner_pk=None, photos_per_page=1, export_pdf_files=False):
+    buffer = BytesIO()
+    photos_per_page = int(photos_per_page or 1)
+    photos_per_page = photos_per_page if photos_per_page in {1, 2, 4} else 1
+    pagesize = landscape(A4) if photos_per_page == 4 else A4
+    pdf = canvas.Canvas(buffer, pagesize=pagesize)
+    title = f"{owner_label} Photos"
+    link_rows = _media_link_rows(request, owner_kind, owner_pk, media_files) if request and owner_kind and owner_pk else []
+    total_pages = _pdf_page_count_for_media(media_files, photos_per_page, export_pdf_files, len(link_rows))
+    images = [media for media in media_files if media.file_type == "image"]
+    page_num = 1
+
+    if images:
+        for start in range(0, len(images), photos_per_page):
+            _draw_photo_page(pdf, images[start:start + photos_per_page], title, page_num, total_pages, pagesize)
+            page_num += 1
+
+    for media in media_files:
+        if export_pdf_files and media.file_type == "file" and media.display_filename.lower().endswith(".pdf"):
+            page_num = _draw_pdf_file_pages(pdf, media, title, page_num, total_pages, pagesize)
+
+    if link_rows:
+        width, height = pagesize
+        link_page_num = page_num
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawCentredString(width / 2, height - 16 * mm, "48-hour file and video links")
+        y = height - 28 * mm
+        pdf.setFont("Helvetica", 9)
+        for serial, filename, url in link_rows:
+            pdf.drawString(14 * mm, y, f"{serial:02d}. {filename[:70]}")
+            y -= 5 * mm
+            pdf.setFillColorRGB(0, 0, 0.75)
+            pdf.drawString(18 * mm, y, url[:130])
+            pdf.setFillColorRGB(0, 0, 0)
+            y -= 8 * mm
+            if y < 24 * mm:
+                _pdf_footer(pdf, title, page_num, total_pages, width)
+                pdf.showPage()
+                page_num += 1
+                y = height - 20 * mm
+                pdf.setFont("Helvetica-Bold", 12)
+                pdf.drawCentredString(width / 2, height - 16 * mm, "48-hour file and video links")
+                pdf.setFont("Helvetica", 9)
+        if page_num == link_page_num or y < height - 28 * mm:
+            _pdf_footer(pdf, title, page_num, total_pages, width)
+
+    if not images and not export_pdf_files and not link_rows:
+        width, height = pagesize
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(18 * mm, height - 20 * mm, title)
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(18 * mm, height - 30 * mm, "No photos uploaded.")
+        _pdf_footer(pdf, title, 1, 1, width)
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer
+
+
+def _add_docx_page_field(paragraph, field_name):
+    run = paragraph.add_run()
+    fld_char = OxmlElement("w:fldChar")
+    fld_char.set(qn("w:fldCharType"), "begin")
+    run._r.append(fld_char)
+
+    instr_run = paragraph.add_run()
+    instr_text = OxmlElement("w:instrText")
+    instr_text.set(qn("xml:space"), "preserve")
+    instr_text.text = field_name
+    instr_run._r.append(instr_text)
+
+    end_run = paragraph.add_run()
+    fld_char = OxmlElement("w:fldChar")
+    fld_char.set(qn("w:fldCharType"), "end")
+    end_run._r.append(fld_char)
+
+
+def _set_docx_footer(document, title):
+    footer = document.sections[0].footer
+    paragraph = footer.paragraphs[0]
+    paragraph.text = ""
+    paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(3.1), WD_TAB_ALIGNMENT.CENTER)
+    paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(6.2), WD_TAB_ALIGNMENT.RIGHT)
+    paragraph.add_run("\t")
+    paragraph.add_run(title)
+    paragraph.add_run("\t")
+    paragraph.add_run(f"{timezone.localtime():%Y-%m-%d %H:%M}  Page ")
+    _add_docx_page_field(paragraph, "PAGE")
+    paragraph.add_run(" of ")
+    _add_docx_page_field(paragraph, "NUMPAGES")
+
+
+def _export_media_docx(owner_label, parent_label, media_files, request=None, owner_kind="", owner_pk=None):
+    document = Document()
+    title = f"{owner_label} Photos"
+    _set_docx_footer(document, title)
+    document.add_heading(title, level=1)
+    if parent_label:
+        document.add_paragraph(parent_label)
+
+    for index, media in enumerate(media_files, start=1):
+        document.add_heading(f"{index:02d}. {media.display_filename}", level=2)
+        document.add_paragraph(timezone.localtime(media.uploaded_at).strftime("%Y-%m-%d %H:%M"))
+        document.add_paragraph(media.description or "No description")
+        if media.file_type == "image":
+            path = _image_path(media)
+            if path and os.path.exists(path):
+                document.add_picture(path, width=Inches(5.8))
+        else:
+            link = _public_media_url(request, owner_kind, owner_pk, media.pk) if request and owner_kind and owner_pk else media.display_url
+            document.add_paragraph(f"48-hour link: {link}")
+
+    if not media_files:
+        document.add_paragraph("No photos uploaded.")
+
+    buffer = BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
 @login_required
 def unit_media_page(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
     if request.method == "POST":
         _upload_media_files(request, unit, UnitMedia, "unit")
         return redirect("properties:unit_media", pk=unit.pk)
-    media_files = unit.media_files.filter(is_active=True)
+    media_files = unit.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk")
     return render(request, "properties/media_page.html", {
         "owner": unit,
         "owner_label": f"Unit {unit.unit_number}",
         "parent_label": unit.property.property_name,
         "media_files": media_files,
+        "public_token": _sign_media_token("unit", unit.pk),
         "upload_url": reverse("properties:unit_media", args=[unit.pk]),
         "back_url": reverse("properties:unit_detail", args=[unit.pk]),
         "delete_url_name": "properties:unit_media_delete",
+        "update_url_name": "properties:unit_media_update",
+        "sort_url": reverse("properties:unit_media_sort", args=[unit.pk]),
+        "pdf_export_url": reverse("properties:unit_media_export_pdf", args=[unit.pk]),
+        "docx_export_url": reverse("properties:unit_media_export_docx", args=[unit.pk]),
         "share_link_url": reverse("properties:unit_media_share_link", args=[unit.pk]),
     })
 
@@ -336,16 +611,164 @@ def property_media_page(request, pk):
     if request.method == "POST":
         _upload_media_files(request, property_obj, PropertyMedia, "property")
         return redirect("properties:property_media", pk=property_obj.pk)
-    media_files = property_obj.media_files.filter(is_active=True)
+    media_files = property_obj.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk")
     return render(request, "properties/media_page.html", {
         "owner": property_obj,
         "owner_label": property_obj.property_name,
         "parent_label": "Property / Building",
         "media_files": media_files,
+        "public_token": _sign_media_token("property", property_obj.pk),
         "upload_url": reverse("properties:property_media", args=[property_obj.pk]),
         "back_url": reverse("properties:property_detail", args=[property_obj.pk]),
         "delete_url_name": "properties:property_media_delete",
+        "update_url_name": "properties:property_media_update",
+        "sort_url": reverse("properties:property_media_sort", args=[property_obj.pk]),
+        "pdf_export_url": reverse("properties:property_media_export_pdf", args=[property_obj.pk]),
+        "docx_export_url": reverse("properties:property_media_export_docx", args=[property_obj.pk]),
+        "share_link_url": reverse("properties:property_media_share_link", args=[property_obj.pk]),
     })
+
+
+@login_required
+@require_POST
+def unit_media_update(request, pk, media_id):
+    unit = get_object_or_404(Unit, pk=pk)
+    media = get_object_or_404(UnitMedia, pk=media_id, unit=unit, is_active=True)
+    media.description = (request.POST.get("description") or "").strip()[:300]
+    media.save(update_fields=["description", "updated_at"])
+    media.refresh_image_derivatives()
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"success": True, "description": media.description or "No description"})
+    messages.success(request, "Photo description updated.")
+    return redirect("properties:unit_media", pk=unit.pk)
+
+
+@login_required
+@require_POST
+def property_media_update(request, pk, media_id):
+    property_obj = get_object_or_404(Property, pk=pk)
+    media = get_object_or_404(PropertyMedia, pk=media_id, property=property_obj, is_active=True)
+    media.description = (request.POST.get("description") or "").strip()[:300]
+    media.save(update_fields=["description", "updated_at"])
+    media.refresh_image_derivatives()
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"success": True, "description": media.description or "No description"})
+    messages.success(request, "Photo description updated.")
+    return redirect("properties:property_media", pk=property_obj.pk)
+
+
+@login_required
+@require_POST
+def unit_media_sort(request, pk):
+    unit = get_object_or_404(Unit, pk=pk)
+    data = json.loads(request.body.decode("utf-8") or "{}")
+    order = data.get("order") or []
+    sort_value = data.get("sort_order")
+    media_id = data.get("media_id")
+    if media_id and sort_value:
+        media = get_object_or_404(UnitMedia, pk=media_id, unit=unit, is_active=True)
+        media.sort_order = int(sort_value)
+        media.save(update_fields=["sort_order", "updated_at"])
+    else:
+        for index, media_pk in enumerate(order, start=1):
+            UnitMedia.objects.filter(pk=media_pk, unit=unit, is_active=True).update(sort_order=index)
+    return JsonResponse({"success": True})
+
+
+@login_required
+@require_POST
+def property_media_sort(request, pk):
+    property_obj = get_object_or_404(Property, pk=pk)
+    data = json.loads(request.body.decode("utf-8") or "{}")
+    order = data.get("order") or []
+    sort_value = data.get("sort_order")
+    media_id = data.get("media_id")
+    if media_id and sort_value:
+        media = get_object_or_404(PropertyMedia, pk=media_id, property=property_obj, is_active=True)
+        media.sort_order = int(sort_value)
+        media.save(update_fields=["sort_order", "updated_at"])
+    else:
+        for index, media_pk in enumerate(order, start=1):
+            PropertyMedia.objects.filter(pk=media_pk, property=property_obj, is_active=True).update(sort_order=index)
+    return JsonResponse({"success": True})
+
+
+@login_required
+def unit_media_export_pdf(request, pk):
+    unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
+    media_files = list(unit.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    photos_per_page = int(request.GET.get("photos_per_page") or 1)
+    export_pdf_files = request.GET.get("export_pdf_files") == "1"
+    buffer = _export_media_pdf(
+        f"Unit {unit.unit_number}",
+        unit.property.property_name,
+        media_files,
+        request=request,
+        owner_kind="unit",
+        owner_pk=unit.pk,
+        photos_per_page=photos_per_page,
+        export_pdf_files=export_pdf_files,
+    )
+    return FileResponse(buffer, as_attachment=True, filename=_media_export_filename(str(unit), "pdf"))
+
+
+@login_required
+def unit_media_export_docx(request, pk):
+    unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
+    media_files = list(unit.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    buffer = _export_media_docx(
+        f"Unit {unit.unit_number}",
+        unit.property.property_name,
+        media_files,
+        request=request,
+        owner_kind="unit",
+        owner_pk=unit.pk,
+    )
+    return FileResponse(
+        buffer,
+        as_attachment=True,
+        filename=_media_export_filename(str(unit), "docx"),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
+@login_required
+def property_media_export_pdf(request, pk):
+    property_obj = get_object_or_404(Property, pk=pk)
+    media_files = list(property_obj.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    photos_per_page = int(request.GET.get("photos_per_page") or 1)
+    export_pdf_files = request.GET.get("export_pdf_files") == "1"
+    buffer = _export_media_pdf(
+        property_obj.property_name,
+        "",
+        media_files,
+        request=request,
+        owner_kind="property",
+        owner_pk=property_obj.pk,
+        photos_per_page=photos_per_page,
+        export_pdf_files=export_pdf_files,
+    )
+    return FileResponse(buffer, as_attachment=True, filename=_media_export_filename(property_obj.property_name, "pdf"))
+
+
+@login_required
+def property_media_export_docx(request, pk):
+    property_obj = get_object_or_404(Property, pk=pk)
+    media_files = list(property_obj.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    buffer = _export_media_docx(
+        property_obj.property_name,
+        "",
+        media_files,
+        request=request,
+        owner_kind="property",
+        owner_pk=property_obj.pk,
+    )
+    return FileResponse(
+        buffer,
+        as_attachment=True,
+        filename=_media_export_filename(property_obj.property_name, "docx"),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 @login_required
@@ -376,13 +799,17 @@ def property_media_delete(request, pk, media_id):
     return redirect("properties:property_media", pk=property_obj.pk)
 
 
+def _sign_media_token(owner_kind, owner_id):
+    return signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).sign(f"{owner_kind}:{owner_id}")
+
+
 def _sign_unit_media_token(unit_id):
-    return signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).sign(str(unit_id))
+    return _sign_media_token("unit", unit_id)
 
 
-def _unit_from_share_token(token):
+def _owner_from_share_token(token):
     try:
-        unit_id = signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).unsign(
+        signed_value = signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).unsign(
             token,
             max_age=UNIT_MEDIA_SHARE_MAX_AGE,
         )
@@ -390,7 +817,22 @@ def _unit_from_share_token(token):
         raise Http404("This photo link has expired.")
     except signing.BadSignature:
         raise Http404("Invalid photo link.")
-    return get_object_or_404(Unit.objects.select_related("property"), pk=unit_id)
+    try:
+        owner_kind, owner_id = signed_value.split(":", 1)
+    except ValueError:
+        owner_kind, owner_id = "unit", signed_value
+    if owner_kind == "unit":
+        return owner_kind, get_object_or_404(Unit.objects.select_related("property"), pk=owner_id)
+    if owner_kind == "property":
+        return owner_kind, get_object_or_404(Property, pk=owner_id)
+    raise Http404("Invalid photo link.")
+
+
+def _unit_from_share_token(token):
+    owner_kind, owner = _owner_from_share_token(token)
+    if owner_kind != "unit":
+        raise Http404("Invalid unit photo link.")
+    return owner
 
 
 @login_required
@@ -401,7 +843,7 @@ def unit_media_share_link(request, pk):
         reverse("properties:unit_media_public_share", args=[token])
     )
     return render(request, "properties/unit_media_share_link.html", {
-        "unit": unit,
+        "owner_label": f"{unit.property.property_name} - Unit {unit.unit_number}",
         "token": token,
         "share_url": share_url,
         "expires_hours": 48,
@@ -409,30 +851,46 @@ def unit_media_share_link(request, pk):
     })
 
 
+@login_required
+def property_media_share_link(request, pk):
+    property_obj = get_object_or_404(Property, pk=pk)
+    token = _sign_media_token("property", property_obj.pk)
+    share_url = request.build_absolute_uri(
+        reverse("properties:media_public_share", args=[token])
+    )
+    return render(request, "properties/unit_media_share_link.html", {
+        "owner_label": property_obj.property_name,
+        "token": token,
+        "share_url": share_url,
+        "expires_hours": 48,
+        "back_url": reverse("properties:property_media", args=[property_obj.pk]),
+    })
+
+
 def unit_media_public_share(request, token):
-    unit = _unit_from_share_token(token)
-    media_files = unit.media_files.filter(is_active=True, file_type="image")
+    owner_kind, owner = _owner_from_share_token(token)
+    media_files = owner.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk")
+    if owner_kind == "unit":
+        owner_label = f"{owner.property.property_name} - Unit {owner.unit_number}"
+    else:
+        owner_label = owner.property_name
     return render(request, "properties/unit_media_public_share.html", {
-        "unit": unit,
+        "owner_label": owner_label,
         "token": token,
         "media_files": media_files,
     })
 
 
 def unit_media_public_file(request, token, media_id):
-    unit = _unit_from_share_token(token)
-    media = get_object_or_404(
-        UnitMedia,
-        pk=media_id,
-        unit=unit,
-        is_active=True,
-        file_type="image",
-    )
-    image_file = media.stamped_file or media.file
-    if not image_file:
+    owner_kind, owner = _owner_from_share_token(token)
+    model = UnitMedia if owner_kind == "unit" else PropertyMedia
+    lookup = {"unit": owner} if owner_kind == "unit" else {"property": owner}
+    media = get_object_or_404(model, pk=media_id, is_active=True, **lookup)
+    media_file = media.stamped_file if media.file_type == "image" and media.stamped_file else media.file
+    if not media_file:
         raise Http404("File not found.")
-    image_file.open("rb")
-    return FileResponse(image_file, content_type="image/jpeg")
+    media_file.open("rb")
+    return FileResponse(media_file)
 
 
 @login_required

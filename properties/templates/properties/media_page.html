@@ -1,14 +1,58 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ owner_label }} Media{% endblock %}
+{% block title %}{{ owner_label }} Photos{% endblock %}
 
 {% block content %}
+<style>
+  .photo-dropzone {
+    border: 1px dashed #9aa6b2;
+    border-radius: .5rem;
+    background: #f8fafc;
+    padding: .85rem;
+    cursor: pointer;
+  }
+  .photo-dropzone.drag-over {
+    border-color: #0d6efd;
+    background: #eef5ff;
+  }
+  .media-card[draggable="true"] {
+    cursor: grab;
+  }
+  .media-card.dragging {
+    opacity: .55;
+  }
+  .media-drag-handle {
+    cursor: grab;
+    user-select: none;
+  }
+  .description-view {
+    min-height: 2.2rem;
+  }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2 class="mb-1">{{ owner_label }} Media</h2>
+        <h2 class="mb-1">{{ owner_label }} Photos</h2>
         <div class="text-muted small">{{ parent_label }}</div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+        {% if pdf_export_url %}
+            <form method="get" action="{{ pdf_export_url }}" class="d-flex gap-2 align-items-center">
+                <select name="photos_per_page" class="form-select form-select-sm" style="width:auto" aria-label="Photos per page">
+                    <option value="1">1 photo/page</option>
+                    <option value="2">2 photos/page</option>
+                    <option value="4">4 landscape</option>
+                </select>
+                <div class="form-check small mb-0">
+                    <input class="form-check-input" type="checkbox" name="export_pdf_files" value="1" id="export-pdf-files">
+                    <label class="form-check-label" for="export-pdf-files">Export PDF</label>
+                </div>
+                <button type="submit" class="btn btn-outline-danger btn-sm">PDF</button>
+            </form>
+        {% endif %}
+        {% if docx_export_url %}
+            <a href="{{ docx_export_url }}" class="btn btn-outline-success btn-sm">Word</a>
+        {% endif %}
         {% if share_link_url %}
             <a href="{{ share_link_url }}" class="btn btn-outline-primary btn-sm">48h Share Link</a>
         {% endif %}
@@ -21,15 +65,17 @@
         <h5 class="mb-0">Upload Photos / Videos / Files</h5>
     </div>
     <div class="card-body">
-        <form method="post" action="{{ upload_url }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+        <form method="post" action="{{ upload_url }}" enctype="multipart/form-data" class="row g-2 align-items-end" id="photo-upload-form">
             {% csrf_token %}
             <div class="col-md-5">
                 <label class="form-label">Files</label>
-                <input type="file" name="files" class="form-control" accept="image/*,video/*,.pdf" multiple required>
+                <div class="photo-dropzone" id="photo-dropzone">
+                    <input type="file" name="files" class="form-control" id="photo-files" accept="image/*,video/*,.pdf" multiple required>
+                    <div class="small text-muted mt-2">Drag files here or choose files.</div>
+                </div>
             </div>
             <div class="col-md-5">
-                <label class="form-label">Description</label>
-                <input type="text" name="description" class="form-control" maxlength="300">
+                <input type="text" name="description" class="form-control" maxlength="300" placeholder="Description">
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-primary w-100">Upload</button>
@@ -38,35 +84,58 @@
     </div>
 </div>
 
-<div class="row g-3">
+<div class="row g-3" id="media-grid" data-sort-url="{{ sort_url }}">
     {% for media in media_files %}
-    <div class="col-md-4 col-lg-3">
-        <div class="card h-100">
+    <div class="col-md-4 col-lg-3 media-item" data-media-id="{{ media.pk }}">
+        <div class="card h-100 media-card" draggable="true">
             {% if media.file_type == "image" %}
                 <a href="{{ media.display_url }}" target="_blank" rel="noopener">
-                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="card-img-top" alt="{{ media.description|default:media.original_filename }}" style="height:180px; object-fit:cover;">
+                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="card-img-top" alt="{{ media.description|default:media.display_filename }}" style="height:180px; object-fit:cover;">
                 </a>
             {% elif media.file_type == "video" %}
                 <video class="card-img-top" controls style="height:180px; object-fit:cover;">
-                    <source src="{{ media.file.url }}">
+                    <source src="{% url 'properties:media_public_file' public_token media.pk %}">
                 </video>
             {% else %}
                 <div class="d-flex align-items-center justify-content-center bg-light" style="height:180px;">
-                    <div class="text-center">
-                        <div class="fw-semibold">File</div>
-                        <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-primary mt-2">View</a>
+                    <div class="text-center px-2">
+                        <div class="fw-semibold">{{ media.get_file_type_display }}</div>
+                        <a href="{% url 'properties:media_public_file' public_token media.pk %}" target="_blank" rel="noopener" class="btn btn-sm btn-primary mt-2">48h Link</a>
                     </div>
                 </div>
             {% endif %}
             <div class="card-body p-3">
-                <div class="small fw-semibold text-truncate">{{ media.original_filename|default:media.file.name }}</div>
-                {% if media.description %}
-                    <div class="small text-muted">{{ media.description }}</div>
+                <div class="small fw-semibold text-truncate" title="{{ media.display_filename }}">{{ forloop.counter|stringformat:"02d" }}. {{ media.display_filename }}</div>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                    <div class="small text-muted flex-grow-1">{{ media.uploaded_at|date:"Y-m-d H:i" }}</div>
+                    <span class="small text-muted media-drag-handle" title="Drag to sort">Sort</span>
+                    <input type="number" class="form-control form-control-sm sort-input" value="{{ media.sort_order }}" min="1" inputmode="numeric" style="width:4.5rem;">
+                </div>
+                {% if update_url_name %}
+                    <div class="mt-2 description-box" data-update-url="{% url update_url_name owner.pk media.pk %}">
+                        <div class="d-flex justify-content-end mb-1">
+                            <button type="button" class="btn btn-link btn-sm p-0 edit-description">Edit</button>
+                        </div>
+                        <div class="small description-view">{{ media.description }}</div>
+                        <form method="post" action="{% url update_url_name owner.pk media.pk %}" class="description-form mt-2 d-none">
+                            {% csrf_token %}
+                            <textarea name="description" class="form-control form-control-sm" rows="2" maxlength="300" placeholder="Description">{{ media.description }}</textarea>
+                            <div class="d-flex gap-2 mt-2">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Save</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm cancel-description">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                {% else %}
+                    <div class="small text-muted mt-2">{{ media.description }}</div>
                 {% endif %}
-                <div class="small text-muted mt-1">{{ media.uploaded_at|date:"Y-m-d H:i" }}</div>
             </div>
             <div class="card-footer bg-white d-flex justify-content-between gap-2">
-                <a href="{{ media.file.url }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">Download</a>
+                {% if media.file_type == "image" %}
+                    <a href="{{ media.file.url }}" class="btn btn-outline-secondary btn-sm" download>Download</a>
+                {% else %}
+                    <a href="{% url 'properties:media_public_file' public_token media.pk %}" class="btn btn-outline-secondary btn-sm" download>Download</a>
+                {% endif %}
                 <form method="post" action="{% url delete_url_name owner.pk media.pk %}" onsubmit="return confirm('Delete this media from the active list?');">
                     {% csrf_token %}
                     <input type="hidden" name="confirm_delete" value="yes">
@@ -77,8 +146,151 @@
     </div>
     {% empty %}
     <div class="col-12">
-        <div class="alert alert-light border mb-0">No media uploaded yet.</div>
+        <div class="alert alert-light border mb-0">No photos uploaded yet.</div>
     </div>
     {% endfor %}
 </div>
+
+<script>
+(() => {
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const grid = document.getElementById('media-grid');
+  const sortUrl = grid?.dataset.sortUrl;
+
+  const postJson = (url, payload) => fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify(payload)
+  });
+
+  if (grid && sortUrl) {
+    let dragged = null;
+    const syncSortInputs = () => {
+      grid.querySelectorAll('.media-item').forEach((item, index) => {
+        const input = item.querySelector('.sort-input');
+        if (input) input.value = index + 1;
+      });
+    };
+    grid.querySelectorAll('.media-card').forEach(card => {
+      card.addEventListener('dragstart', () => {
+        dragged = card.closest('.media-item');
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        dragged = null;
+        const order = [...grid.querySelectorAll('.media-item')].map(item => item.dataset.mediaId);
+        syncSortInputs();
+        postJson(sortUrl, {order}).catch(() => {});
+      });
+    });
+    grid.addEventListener('dragover', event => {
+      event.preventDefault();
+      const target = event.target.closest('.media-item');
+      if (!target || !dragged || target === dragged) return;
+      const rect = target.getBoundingClientRect();
+      const after = event.clientY > rect.top + rect.height / 2;
+      grid.insertBefore(dragged, after ? target.nextSibling : target);
+    });
+    grid.querySelectorAll('.sort-input').forEach(input => {
+      input.addEventListener('change', () => {
+        const item = input.closest('.media-item');
+        postJson(sortUrl, {media_id: item.dataset.mediaId, sort_order: input.value}).catch(() => {});
+      });
+    });
+  }
+
+  document.querySelectorAll('.description-box').forEach(box => {
+    const view = box.querySelector('.description-view');
+    const form = box.querySelector('.description-form');
+    box.querySelector('.edit-description')?.addEventListener('click', () => {
+      form.classList.remove('d-none');
+      view.classList.add('d-none');
+      form.querySelector('textarea')?.focus();
+    });
+    box.querySelector('.cancel-description')?.addEventListener('click', () => {
+      form.classList.add('d-none');
+      view.classList.remove('d-none');
+    });
+    form?.addEventListener('submit', event => {
+      event.preventDefault();
+      const data = new FormData(form);
+      fetch(form.action, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}, body: data})
+        .then(response => response.json())
+        .then(data => {
+          if (!data.success) return;
+          view.textContent = data.description || '';
+          form.classList.add('d-none');
+          view.classList.remove('d-none');
+        })
+        .catch(() => form.submit());
+    });
+  });
+
+  const dropzone = document.getElementById('photo-dropzone');
+  const fileInput = document.getElementById('photo-files');
+  const uploadForm = document.getElementById('photo-upload-form');
+
+  const compressImageFile = file => new Promise(resolve => {
+    if (!file.type.startsWith('image/') || file.type === 'image/gif') {
+      resolve(file);
+      return;
+    }
+
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const maxSide = 1800;
+      const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => {
+        if (!blob) {
+          resolve(file);
+          return;
+        }
+        const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
+        resolve(new File([blob], `${baseName}.jpg`, {type: 'image/jpeg', lastModified: Date.now()}));
+      }, 'image/jpeg', 0.82);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+    image.src = objectUrl;
+  });
+
+  if (uploadForm && fileInput) {
+    uploadForm.addEventListener('submit', async event => {
+      if (uploadForm.dataset.compressed === '1' || !fileInput.files.length) return;
+      event.preventDefault();
+      const compressedFiles = await Promise.all([...fileInput.files].map(compressImageFile));
+      const transfer = new DataTransfer();
+      compressedFiles.forEach(file => transfer.items.add(file));
+      fileInput.files = transfer.files;
+      uploadForm.dataset.compressed = '1';
+      uploadForm.submit();
+    });
+  }
+
+  if (dropzone && fileInput) {
+    ['dragenter', 'dragover'].forEach(name => dropzone.addEventListener(name, event => {
+      event.preventDefault();
+      dropzone.classList.add('drag-over');
+    }));
+    ['dragleave', 'drop'].forEach(name => dropzone.addEventListener(name, event => {
+      event.preventDefault();
+      dropzone.classList.remove('drag-over');
+    }));
+    dropzone.addEventListener('drop', event => {
+      if (event.dataTransfer?.files?.length) {
+        fileInput.files = event.dataTransfer.files;
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

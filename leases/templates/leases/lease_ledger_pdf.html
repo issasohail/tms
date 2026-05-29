@@ -151,8 +151,8 @@
     </div>
 
     <div class="transaction-container {% if transactions|length > 25 %}multi-column{% endif %}">
-        {% for column in transaction_columns %}
-            {% if forloop.counter0 > 0 and forloop.counter0|divisibleby:2 %}<div class="page-break"></div>{% endif %}
+        <div class="transaction-columns">
+            {% for column in transaction_columns %}
             <div class="transaction-column">
                 <table>
                     <thead>
@@ -173,16 +173,16 @@
                             <td>{{ t.type }}</td>
                             <td>{{ t.description }}</td>
                             <td class="amount-column {% if t.amount > 0 %}positive{% else %}negative{% endif %}">
-                                ${{ t.amount|floatformat:0|intcomma }}
+                                Rs. {{ t.amount|floatformat:0|intcomma }}
                             </td>
-                            <td class="balance-column">${{ t.balance|floatformat:0|intcomma }}</td>
+                            <td class="balance-column">Rs. {{ t.balance|floatformat:0|intcomma }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            {% if not forloop.last and not forloop.counter|divisibleby:2 %}</div><div class="transaction-container multi-column">{% endif %}
-        {% endfor %}
+            {% endfor %}
+        </div>
     </div>
 
     <div class="footer">

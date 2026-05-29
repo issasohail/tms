@@ -66,6 +66,25 @@ def _lease_bank_account(lease):
     return property_bank or unit_bank
 
 
+def _db_placeholders_for_lease(AgreementPlaceholder, lease=None):
+    cache_attr = "_active_db_agreement_placeholders"
+    if lease is not None and hasattr(lease, cache_attr):
+        return getattr(lease, cache_attr)
+
+    placeholders = list(
+        AgreementPlaceholder.objects.filter(
+            is_active=True,
+            source_type__in=[
+                AgreementPlaceholder.SOURCE_CUSTOM,
+                AgreementPlaceholder.SOURCE_MANUAL,
+            ],
+        )
+    )
+    if lease is not None:
+        setattr(lease, cache_attr, placeholders)
+    return placeholders
+
+
 def replace_db_placeholders(text, lease=None):
     """
     Replace UI-managed custom/manual placeholders after system placeholders.
@@ -76,13 +95,7 @@ def replace_db_placeholders(text, lease=None):
     except Exception:
         return text
 
-    placeholders = AgreementPlaceholder.objects.filter(
-        is_active=True,
-        source_type__in=[
-            AgreementPlaceholder.SOURCE_CUSTOM,
-            AgreementPlaceholder.SOURCE_MANUAL,
-        ],
-    )
+    placeholders = _db_placeholders_for_lease(AgreementPlaceholder, lease)
     for placeholder in placeholders:
         token = f"[{placeholder.key}]"
         if token in text:

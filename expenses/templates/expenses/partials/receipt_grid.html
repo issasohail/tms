@@ -17,9 +17,10 @@
     </div>
   </form>
 
-  {% if expense.receipts.all %}
+  {% with receipts=expense.receipts.all %}
+  {% if receipts %}
   <div class="receipt-grid mb-2">
-    {% for r in expense.receipts.all %}
+    {% for r in receipts %}
     <div class="receipt-card p-1 border-0">
       <div class="thumb mb-1">
         <img src="{{ r.image.url }}" alt="Receipt {{ forloop.counter }}">
@@ -76,4 +77,5 @@
   {% else %}
     <div class="text-muted">No receipts yet.</div>
   {% endif %}
+  {% endwith %}
 </div>

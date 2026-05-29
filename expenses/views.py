@@ -216,9 +216,18 @@ class ExpenseDetailView(LoginRequiredMixin, DetailView):
     template_name = 'expenses/expense_detail.html'
     context_object_name = 'expense'
 
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("property", "unit", "category")
+            .prefetch_related("receipts", "distributions__unit")
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['distributions'] = self.object.distributions.all()
+        context['receipts'] = list(self.object.receipts.all())
+        context['distributions'] = list(self.object.distributions.all())
         return context
 
 
@@ -345,6 +354,15 @@ def _save_receipts(request, expense):
         ExpenseReceipt.objects.create(expense=expense, image=f)
 
 
+def _recent_expenses_queryset():
+    return (
+        Expense.objects
+        .select_related("property", "unit", "category")
+        .prefetch_related("distributions__unit")
+        .order_by("-date", "-pk")[:10]
+    )
+
+
 class ExpenseCreateView(LoginRequiredMixin, CreateView):
     model = Expense
     form_class = ExpenseForm
@@ -366,7 +384,7 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
                 "label": getattr(u, "unit_number", "") or str(u.id)
             })
         ctx["units_by_property_json"] = json.dumps(by_prop)
-        ctx["recent_expenses"] = Expense.objects.order_by("-date", "-pk")[:10]
+        ctx["recent_expenses"] = _recent_expenses_queryset()
         return ctx
 
     @transaction.atomic
@@ -380,8 +398,7 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
             return render(
                 self.request,
                 "expenses/partials/recent_expenses.html",
-                {"recent_expenses": Expense.objects.order_by(
-                    "-date", "-pk")[:10]},
+                {"recent_expenses": _recent_expenses_queryset()},
             )
         return redirect(self.get_success_url())
 
@@ -397,6 +414,14 @@ class ExpenseUpdateView(LoginRequiredMixin, UpdateView):
     model = Expense
     form_class = ExpenseForm
     template_name = "expenses/expense_form.html"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("property", "unit", "category")
+            .prefetch_related("receipts")
+        )
 
     def post(self, request, *args, **kwargs):
         print("UpdateView POST hit", request.POST.dict().keys(),
@@ -414,7 +439,7 @@ class ExpenseUpdateView(LoginRequiredMixin, UpdateView):
                 "label": getattr(u, "unit_number", "") or str(u.id)
             })
         ctx["units_by_property_json"] = json.dumps(by_prop)
-        ctx["recent_expenses"] = Expense.objects.order_by("-date", "-pk")[:10]
+        ctx["recent_expenses"] = _recent_expenses_queryset()
         return ctx
 
     @transaction.atomic
@@ -436,8 +461,7 @@ class ExpenseUpdateView(LoginRequiredMixin, UpdateView):
             return render(
                 self.request,
                 "expenses/partials/recent_expenses.html",
-                {"recent_expenses": Expense.objects.order_by(
-                    "-date", "-pk")[:10]},
+                {"recent_expenses": _recent_expenses_queryset()},
             )
         return redirect(self.get_success_url())
 

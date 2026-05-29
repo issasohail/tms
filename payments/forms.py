@@ -158,12 +158,12 @@ class PaymentForm(forms.ModelForm):
         if 'property' in self.data:
             try:
                 property_id = int(self.data.get('property'))
-                self.fields['unit'].queryset = Unit.objects.filter(
+                self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                     property_id=property_id)
             except (ValueError, TypeError):
                 pass
         elif instance_lease:
-            self.fields['unit'].queryset = Unit.objects.filter(
+            self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                 property=instance_lease.unit.property)
             
         # 7) Dynamic payment methods (NEW)

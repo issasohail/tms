@@ -102,7 +102,7 @@ class LeaseForm(forms.ModelForm):
         pid = self.data.get('property') or self.initial.get('property')
         if pid:
             try:
-                self.fields['unit'].queryset = Unit.objects.filter(
+                self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                     property_id=int(pid)
                 ).order_by('unit_number')
             except (TypeError, ValueError):
@@ -110,7 +110,7 @@ class LeaseForm(forms.ModelForm):
         # Editing existing lease: keep units for that lease's property
         elif self.instance.pk and self.instance.unit:
             self.fields['property'].initial = self.instance.unit.property
-            self.fields['unit'].queryset = Unit.objects.filter(
+            self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                 property=self.instance.unit.property
             )
 

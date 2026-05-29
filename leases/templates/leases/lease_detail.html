@@ -25,6 +25,25 @@
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
 }
 .ld-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.ld-tenant-doc-strip {
+  display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;
+}
+.ld-doc-tile {
+  width:96px; background:#eff6ff; border:2px solid #2563eb; border-radius:7px;
+  padding:5px; text-align:center;
+}
+.ld-doc-tile a { display:block; text-decoration:none; }
+.ld-doc-img {
+  width:100%; height:64px; object-fit:cover; border-radius:4px; background:#fff;
+}
+.ld-doc-label {
+  display:block; margin-top:4px; font-size:10px; font-weight:700; color:#1d4ed8;
+  text-transform:uppercase; letter-spacing:.3px;
+}
+.ld-doc-empty {
+  height:64px; display:flex; align-items:center; justify-content:center;
+  background:#fff; border-radius:4px; color:#94a3b8; font-size:10px;
+}
 
 /* ---- KPI strip ---- */
 .ld-kpi-grid {
@@ -260,6 +279,41 @@
           {{ lease.get_status_display }}
         </span>
       </div>
+      <div class="ld-tenant-doc-strip">
+        <div class="ld-doc-tile">
+          {% if lease.tenant.photo %}
+            <a href="{{ lease.tenant.photo.url }}" target="_blank">
+              <img src="{{ lease.tenant.photo.url }}" alt="Tenant Photo" class="ld-doc-img">
+              <span class="ld-doc-label">Photo</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No photo</div>
+            <span class="ld-doc-label">Photo</span>
+          {% endif %}
+        </div>
+        <div class="ld-doc-tile">
+          {% if lease.tenant.cnic_front %}
+            <a href="{{ lease.tenant.cnic_front.url }}" target="_blank">
+              <img src="{{ lease.tenant.cnic_front.url }}" alt="CNIC Front" class="ld-doc-img">
+              <span class="ld-doc-label">CNIC Front</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No file</div>
+            <span class="ld-doc-label">CNIC Front</span>
+          {% endif %}
+        </div>
+        <div class="ld-doc-tile">
+          {% if lease.tenant.cnic_back %}
+            <a href="{{ lease.tenant.cnic_back.url }}" target="_blank">
+              <img src="{{ lease.tenant.cnic_back.url }}" alt="CNIC Back" class="ld-doc-img">
+              <span class="ld-doc-label">CNIC Back</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No file</div>
+            <span class="ld-doc-label">CNIC Back</span>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
     <div class="ld-actions no-print">
@@ -471,7 +525,7 @@
         </div>
         <div class="ld-f">
           <div class="ld-f-label">Total Payment</div>
-          <div class="ld-f-value">{{ lease.total_payment|default:0|money:0 }}</div>
+          <div class="ld-f-value">{{ lease_total_payment|default:0|money:0 }}</div>
         </div>
       </div>
 
@@ -509,7 +563,7 @@
         <div class="ld-f">
           <div class="ld-f-label">Deposit Paid</div>
           <div class="ld-f-value">
-            {% if lease.security_deposit_paid %}
+            {% if deposit_is_paid %}
               <span class="ld-badge ld-badge-green">Yes</span>
             {% else %}
               <span class="ld-badge ld-badge-red">No</span>
@@ -518,9 +572,9 @@
         </div>
       </div>
 
-      <!-- COL 6: Family & Witnesses -->
+      <!-- COL 6: Family -->
       <div class="ld-ov-col">
-        <div class="ld-ov-head">Family / Witnesses</div>
+        <div class="ld-ov-head">Family</div>
         {% if family_members %}
           <div class="ld-f-label" style="font-size:10px;color:#9ca3af;margin-bottom:6px;">FAMILY</div>
           {% for m in family_members %}
@@ -538,29 +592,6 @@
             <div class="ld-f-value" style="color:#9ca3af;">None recorded</div>
           </div>
         {% endif %}
-        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;">
-          <div class="ld-f-label" style="font-size:10px;color:#9ca3af;margin-bottom:6px;">WITNESSES</div>
-          <div class="ld-f">
-            <div class="ld-f-label">Witness 1</div>
-            <div class="ld-f-value">{{ lease.witness1_name|default:"&mdash;" }}</div>
-          </div>
-          {% if lease.witness1_cnic %}
-          <div class="ld-f">
-            <div class="ld-f-label">W1 CNIC</div>
-            <div class="ld-f-value">{{ lease.witness1_cnic }}</div>
-          </div>
-          {% endif %}
-          <div class="ld-f">
-            <div class="ld-f-label">Witness 2</div>
-            <div class="ld-f-value">{{ lease.witness2_name|default:"&mdash;" }}</div>
-          </div>
-          {% if lease.witness2_cnic %}
-          <div class="ld-f">
-            <div class="ld-f-label">W2 CNIC</div>
-            <div class="ld-f-value">{{ lease.witness2_cnic }}</div>
-          </div>
-          {% endif %}
-        </div>
       </div>
 
       <!-- COL 7: Inventory -->
@@ -597,7 +628,7 @@
           </div>
         </div>
         <div style="margin-top:8px;font-size:11px;color:#6b7280;">
-          Deposit {% if lease.security_deposit_paid %}<strong style="color:#15803d;">paid</strong>{% else %}<strong style="color:#b91c1c;">not paid</strong>{% endif %}.
+          Deposit {% if deposit_is_paid %}<strong style="color:#15803d;">paid</strong>{% else %}<strong style="color:#b91c1c;">Not Paid</strong>{% endif %}.
         </div>
         {% if lease.police_verification_remarks %}
         <div class="ld-f" style="margin-top:8px;">
@@ -660,42 +691,37 @@
                   </td>
                   <td>{{ renewal.start_date|date:"M d, Y" }}</td>
                   <td>{{ renewal.end_date|date:"M d, Y" }}</td>
-                  <td>{{ renewal.rent|money:0 }}</td>
-                  <td>{{ renewal.total_monthly|money:0 }}</td>
+                  <td>{{ renewal.monthly_rent|default:0|money:0 }}</td>
+                  <td>{{ renewal.total_monthly_amount|default:0|money:0 }}</td>
                   <td>
-                    {% if renewal.is_signed %}
+                    {% if renewal.is_agreement_signed %}
                       <span class="ld-badge ld-badge-green">Signed</span>
                     {% else %}
                       <span class="ld-badge ld-badge-amber">Pending</span>
                     {% endif %}
                   </td>
                   <td>
-                    {% if renewal.signed_file %}
-                      <a href="{{ renewal.signed_file.url }}" target="_blank">PDF</a>
-                    {% else %}&mdash;{% endif %}
+                    {% if renewal.generated_agreement_pdf %}
+                      <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                    {% endif %}
+                    {% if renewal.generated_agreement_docx %}
+                      <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                    {% endif %}
+                    {% if renewal.signed_copy %}
+                      <a href="{{ renewal.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                    {% endif %}
+                    {% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}
+                      &mdash;
+                    {% endif %}
                   </td>
                   <td class="no-print">
                     <div style="display:flex;flex-wrap:wrap;gap:4px;">
                       <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
-                      <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:11px;">View</a>
-                      <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}"  class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:11px;">Edit</a>
-                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:11px;">Clauses</a>
-                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-sm btn-outline-dark py-0 px-2" style="font-size:11px;">Generate PDF</a>
-                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}"class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:11px;">Upload Signed</a>
-                      <a href="{% url 'leases:history_media_page' lease.pk renewal.pk %}" class="btn btn-outline-dark  py-0 px-2" style="font-size:11px;">Photos</a>
-                      {% if renewal.media_files.exists %}
-                        <button type="button"
-                          class="btn btn-sm btn-outline-info py-0 px-2"
-                          style="font-size:11px;"
-                          data-urls="{% for mf in renewal.media_files.all %}{{ mf.file.url }}{% if not forloop.last %}|{% endif %}{% endfor %}"
-                          onclick="openRenewalMedia(this)">
-                          <i class="fas fa-images"></i> Media
-                        </button>
-                      {% else %}
-                        <a href="{% url 'leases:history_media_page' lease.pk renewal.pk %}" class="btn btn-sm btn-outline-info py-0 px-2" style="font-size:11px;">
-                          <i class="fas fa-images"></i> Media
-                        </a>
-                      {% endif %}
+                      <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-primary">Edit</a>
+                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-secondary">Clauses</a>
+                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-dark">Generate PDF</a>
+                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-success">Upload Signed</a>
+                      <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-outline-dark">Photos</a>
                     </div>
                   </td>
                 </tr>

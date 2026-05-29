@@ -1,0 +1,72 @@
+import ipaddress
+
+from django.conf import settings
+from django.core.cache import cache
+from django.db import OperationalError, ProgrammingError
+
+
+PRODUCTION_HOSTS = {
+    "tms.sonazconsultancy.online",
+}
+
+
+def _is_excluded_path(request):
+    path = getattr(request, "path_info", "") or getattr(request, "path", "")
+    return "/leases/lease/" in path and path.endswith("/edit-clauses/")
+
+
+def _host_without_port(request):
+    return request.get_host().split(":", 1)[0].strip("[]").lower()
+
+
+def _is_local_host(host):
+    if host in {"localhost", "127.0.0.1", "::1", "desktop-004"}:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private
+
+
+def _debug_toolbar_enabled_in_db():
+    cached = cache.get("core.enable_debug_toolbar")
+    if cached is not None:
+        return bool(cached)
+
+    try:
+        from core.models import GlobalSettings
+
+        enabled = bool(
+            GlobalSettings.objects.filter(pk=1)
+            .values_list("enable_debug_toolbar", flat=True)
+            .first()
+        )
+    except (OperationalError, ProgrammingError):
+        enabled = False
+
+    cache.set("core.enable_debug_toolbar", enabled, 60)
+    return enabled
+
+
+def show_toolbar(request):
+    if not settings.DEBUG:
+        return False
+
+    if _is_excluded_path(request):
+        return False
+
+    host = _host_without_port(request)
+    if host in PRODUCTION_HOSTS or host.endswith(".sonazconsultancy.online"):
+        return False
+
+    if not _is_local_host(host):
+        return False
+
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return False
+    if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+        return False
+
+    return _debug_toolbar_enabled_in_db()

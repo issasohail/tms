@@ -92,6 +92,16 @@
   font-size: 11px;
   padding: 2px 6px;
 }
+.clause-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.clause-save-status {
+  min-height: 18px;
+  font-size: 12px;
+}
 
 </style>
 {% endblock %}
@@ -108,13 +118,13 @@
                 ({{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }})
             </div>
         </div>
-        <div class="btn-group">
+        <div class="clause-action-bar">
             <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Back to Lease
             </a>
-            <a href="{% url 'leases:download_preview' master_lease.id %}?history={{ history.pk }}" class="btn btn-dark btn-sm">
+            <button type="button" id="btnPreviewPdf" class="btn btn-dark btn-sm">
                 <i class="fas fa-download me-1"></i> Download Preview PDF
-            </a>
+            </button>
 
             <button type="button" id="btnPdf" class="btn btn-danger me-1">
                 <i class="fas fa-file-pdf"></i> Download PDF
@@ -122,12 +132,12 @@
             <button type="button" id="btnGenerateHistoryPdf" class="btn btn-outline-danger me-1">
                 <i class="fas fa-file-pdf"></i> Generate & Save PDF
             </button>
-            <button type="button" id="btnDocx" class="btn btn-success me-1" onclick="generateFile('docx')">
+            <button type="button" id="btnDocx" class="btn btn-success me-1">
             <i class="fas fa-file-word"></i> Download Word
             </button>
 
 
-            <button type="button" class="btn btn-primary" onclick="saveClauses()">
+            <button type="button" id="btnSaveClauses" class="btn btn-primary">
                 <i class="fas fa-save"></i> Save Changes
             </button>
 
@@ -148,6 +158,7 @@
             <a href="{% url 'leases:send_agreement_email' master_lease.pk %}" class="btn btn-info">
                 <i class="fas fa-envelope"></i> Email Agreement
             </a>
+            <div id="clauseSaveStatus" class="clause-save-status text-muted w-100 text-end"></div>
         </div>
     </div>
 
@@ -202,9 +213,11 @@
                             </div>
                             <div class="placeholder-toolbar border rounded p-2 bg-light">
                                 {% for placeholder in placeholders %}
-                                    <button type="button" class="btn btn-outline-secondary btn-sm placeholder-token" data-token="[{{ placeholder.key }}]" title="{{ placeholder.label }}{% if placeholder.category %} - {{ placeholder.category }}{% endif %}">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm placeholder-token" data-token="[{{ placeholder.key }}]" data-search="{{ placeholder.key }} {{ placeholder.label }} {{ placeholder.category }}" title="{{ placeholder.label }}{% if placeholder.category %} - {{ placeholder.category }}{% endif %}">
                                         [{{ placeholder.key }}]
                                     </button>
+                                {% empty %}
+                                    <span class="text-muted small">No active placeholders found.</span>
                                 {% endfor %}
                             </div>
                         </div>
@@ -259,11 +272,21 @@
       const GEN_PDF_URL  = "{% url 'leases:download_preview' master_lease.id %}?history={{ history.pk }}";
   const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
 
-  function saveThenDownload(url) {
+  function setSaveStatus(message, isError) {
+    const status = document.getElementById('clauseSaveStatus');
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('text-danger', Boolean(isError));
+    status.classList.toggle('text-success', Boolean(message && !isError));
+    status.classList.toggle('text-muted', !message);
+  }
+
+  function saveClausesRequest() {
     const form = document.getElementById('clauseForm');
     const formData = new FormData(form);
+    setSaveStatus('Saving...', false);
 
-    fetch(form.action, {
+    return fetch(form.action, {
       method: 'POST',
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
@@ -275,6 +298,28 @@
       if (!r.ok) throw new Error("Failed to save clauses");
       return r.json();
     })
+    .then(data => {
+      setSaveStatus(data.message || 'Clauses saved.', false);
+      return data;
+    })
+    .catch(err => {
+      setSaveStatus(err.message, true);
+      console.error(err);
+      throw err;
+    });
+  }
+
+  function saveClauses() {
+    saveClausesRequest()
+    .catch(err => {
+      alert("Error: " + err.message);
+    });
+  }
+
+  window.saveClauses = saveClauses;
+
+  function saveThenDownload(url) {
+    saveClausesRequest()
     .then(() => {
       window.location.href = url;   // triggers download
     })
@@ -284,6 +329,8 @@
     });
   }
 
+  document.getElementById('btnSaveClauses')?.addEventListener('click', saveClauses);
+  document.getElementById('btnPreviewPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
   document.getElementById('btnGenerateHistoryPdf')?.addEventListener('click', () => {
@@ -401,7 +448,8 @@
     placeholderSearch?.addEventListener('input', function() {
         const term = this.value.trim().toLowerCase();
         placeholderButtons.forEach(btn => {
-        btn.classList.toggle('d-none', term && !btn.dataset.token.toLowerCase().includes(term));
+        const searchableText = (btn.dataset.search || btn.dataset.token || '').toLowerCase();
+        btn.classList.toggle('d-none', term && !searchableText.includes(term));
         });
     });
     });

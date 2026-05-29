@@ -20,7 +20,7 @@
                 <h5 class="card-title">Expense Details</h5>
                 <p><strong>Property:</strong> {{ expense.property.property_name }}</p>
 
-                <p><strong>Unit:</strong> {{ expense.property.unit.name }}</p>
+                <p><strong>Unit:</strong> {{ expense.unit_label }}</p>
                 {% if expense.category %}
                 <p><strong>Category:</strong> {{ expense.category }}</p>
                 {% endif %}
@@ -38,9 +38,9 @@
 <div class="card mb-4">
   <div class="card-body">
     <h5 class="card-title">Receipts</h5>
-    {% if expense.receipts.all %}
+    {% if receipts %}
       <div class="row g-3">
-        {% for r in expense.receipts.all %}
+        {% for r in receipts %}
         <div class="col-6 col-md-4 col-lg-3">
           <a href="{{ r.image.url }}" class="receipt-link" data-full="{{ r.image.url }}">
             <img src="{{ r.image.url }}" class="img-fluid rounded shadow-sm" alt="Receipt {{ forloop.counter }}">
@@ -93,7 +93,7 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5>Distributions</h5>
-                {% if expense.is_distributed and not expense.distributions.first.included_in_invoice %}
+                {% if expense.is_distributed and distributions and not distributions.0.included_in_invoice %}
                 <a href="{% url 'expenses:add_to_invoices' expense.pk %}" class="btn btn-success btn-sm">
                     Add to Invoices
                 </a>
@@ -111,7 +111,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for dist in expense.distributions.all %}
+                            {% for dist in distributions %}
                             <tr>
                                 <td>{{ dist.unit }}</td>
                                 <td>{{ dist.amount|money:2 }}</td>

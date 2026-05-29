@@ -9,7 +9,7 @@
         <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
         {% if unit.pk %}
             <a href="{% url 'properties:unit_update' unit.pk %}" class="btn btn-secondary me-2">Edit</a>
-            <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-outline-primary me-2">Media</a>
+            <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-outline-primary me-2">Photos</a>
             <a href="{% url 'properties:unit_vacancy_whatsapp' unit.pk %}" class="btn btn-success me-2">Vacancy WhatsApp</a>
             <a href="{% url 'properties:unit_delete' unit.pk %}" class="btn btn-danger">Delete</a>
         {% else %}
@@ -169,8 +169,8 @@
 
 <div class="card mb-4">
     <div class="card-header bg-light d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Unit Media</h5>
-        <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-sm btn-primary">Manage Media</a>
+        <h5 class="mb-0">Unit Photos</h5>
+        <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-sm btn-primary">Manage Photos</a>
     </div>
     <div class="card-body">
         {% if media_files %}
@@ -190,7 +190,7 @@
                 {% endfor %}
             </div>
         {% else %}
-            <p class="text-muted mb-0">No media uploaded.</p>
+            <p class="text-muted mb-0">No photos uploaded.</p>
         {% endif %}
     </div>
 </div>

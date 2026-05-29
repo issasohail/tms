@@ -79,7 +79,26 @@ class CashLedgerView(SingleTableView):
         request = self.request
 
         # ---------- Lease base filters ----------
-        leases = Lease.objects.select_related("tenant", "unit", "unit__property")
+        leases = (
+            Lease.objects
+            .select_related("tenant", "unit", "unit__property")
+            .only(
+                "id",
+                "tenant_id",
+                "unit_id",
+                "security_deposit",
+                "status",
+                "start_date",
+                "tenant__id",
+                "tenant__first_name",
+                "tenant__last_name",
+                "unit__id",
+                "unit__property_id",
+                "unit__unit_number",
+                "unit__property__id",
+                "unit__property__property_name",
+            )
+        )
 
         property_id = request.GET.get("property")
         tenant_id = request.GET.get("tenant")
@@ -97,19 +116,42 @@ class CashLedgerView(SingleTableView):
 
         leases_list = list(leases)
         lease_ids = [lease.id for lease in leases_list]
+        lease_map = {lease.id: lease for lease in leases_list}
         lease_balance_map = _bulk_lease_balances(lease_ids)
 
         # ---------- Querysets ----------
         payments = (
             Payment.objects.filter(lease_id__in=lease_ids)
-            .select_related("lease__tenant", "lease__unit", "lease__unit__property", "payment_method")
-            .select_related("allocation")
+            .select_related("payment_method", "allocation")
+            .only(
+                "id",
+                "lease_id",
+                "payment_date",
+                "amount",
+                "description",
+                "notes",
+                "payment_method_id",
+                "payment_method__id",
+                "payment_method__name",
+                "allocation__id",
+                "allocation__payment_id",
+                "allocation__lease_amount",
+                "allocation__security_amount",
+            )
         )
 
         sec_qs = (
             SecurityDepositTransaction.objects.filter(lease_id__in=lease_ids)
             .exclude(type="REQUIRED")
-            .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
+            .only(
+                "id",
+                "lease_id",
+                "allocation_id",
+                "date",
+                "type",
+                "amount",
+                "notes",
+            )
         )
 
         # ---------- Date filters ----------
@@ -206,7 +248,7 @@ class CashLedgerView(SingleTableView):
                 source="PAYMENT",
                 source_type="PAYMENT",
                 source_id=p.id,
-                lease=p.lease,
+                lease=lease_map[p.lease_id],
                 date=p.payment_date,
                 description=description,
                 amount=Decimal(p.amount or 0),
@@ -245,7 +287,7 @@ class CashLedgerView(SingleTableView):
                     source="SECURITY",
                     source_type=tx.type,
                     source_id=tx.id,
-                    lease=tx.lease,
+                    lease=lease_map[tx.lease_id],
                     date=tx.date,
                     amount=amt,
                     method="Security Deposit",
@@ -266,11 +308,15 @@ class CashLedgerView(SingleTableView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        ctx["all_properties"] = Property.objects.all()
-        ctx["tenant_list"] = Tenant.objects.all().order_by("first_name", "last_name")
+        ctx["all_properties"] = Property.objects.only("id", "property_name")
+        ctx["tenant_list"] = Tenant.objects.only("id", "first_name", "last_name").order_by("first_name", "last_name")
 
         property_id = self.request.GET.get("property")
-        ctx["filtered_units"] = Unit.objects.filter(property_id=property_id) if property_id else Unit.objects.none()
+        ctx["filtered_units"] = (
+            Unit.objects.only("id", "property_id", "unit_number").filter(property_id=property_id)
+            if property_id
+            else Unit.objects.none()
+        )
 
         ctx["current_property"] = self.request.GET.get("property", "")
         ctx["current_unit"] = self.request.GET.get("unit", "")

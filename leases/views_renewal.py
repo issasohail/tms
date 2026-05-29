@@ -218,7 +218,7 @@ class LeaseHistoryDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["lease"] = self.object.lease
         context["is_active_history"] = is_active_history(self.object)
-        context["media_files"] = self.object.media.filter(is_active=True).order_by("sort_order", "-created_at")
+        context["media_files"] = self.object.lease.media.filter(is_active=True).order_by("sort_order", "-created_at")
         return context
 
 

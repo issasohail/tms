@@ -11,16 +11,6 @@
   </div>
 {% endif %}
 
-<div class="small text-muted mb-2">
-  Mode: {% if form.instance.pk %}UPDATE (pk={{ form.instance.pk }}){% else %}CREATE{% endif %} •
-  Path: {{ request.path }} •
-  {% if form.instance.pk %}
-    Form action: {% url 'leases:lease_update' form.instance.pk %}
-  {% else %}
-    Form action: {% url 'leases:lease_create' %}
-  {% endif %}
-</div>
-
 {% if sql_log %}
   <div class="card border-info mb-3">
     <div class="card-header bg-info text-white py-2">DEBUG • SQL Executed ({{ sql_log|length }})</div>
@@ -39,52 +29,447 @@
 {% endif %}
 
 <style>
-  /* --- Base desktop sizing --- */
-  html, body { font-size: 16px; }
-  .form-label { white-space: nowrap; }
-  .form-control-sm, .form-select-sm { font-size: .85rem; padding-top: .2rem; padding-bottom: .2rem; }
-  .card-header { font-size: .9rem; line-height: 1.1; padding-top:.35rem; padding-bottom:.35rem; }
-  .table, .btn-sm { font-size: .82rem; }
-  .form-label.text-nowrap { white-space: nowrap; font-size: .6rem; }
-  .form-label { display:flex; align-items:center; min-height:calc(1.5em + .5rem + 2px); margin-bottom:.25rem; }
-  .form-label, .card-header, .btn, .form-control, .form-select { font-size: .85rem; }
-  h2.h5, .card-header { line-height: 1.1; }
-  .card-header { padding-top:.35rem; padding-bottom:.35rem; }
-  .grid-tight .row { --bs-gutter-x: .5rem; --bs-gutter-y: .4rem; }
-  .form-label { margin-bottom: .15rem; font-size: .8rem; }
-  .card, .border { border-radius: .6rem; }
-  .p-2-compact { padding: .5rem !important; }
-  .section-title { font-weight: 600; font-size: .9rem; color: #6c757d; margin-bottom: .25rem; }
-  textarea.form-control { min-height: unset; }
+/* =====================================================
+   DESIGN A — LEFT-RAIL NAVIGATION
+   lease_form.html
+   ===================================================== */
 
-  /* compact controls */
-  .lease-compact .row { --bs-gutter-y: .25rem; }
-  .lease-compact .form-label,
-  .lease-compact .form-control,
-  .lease-compact .form-select { font-size: .875rem; }
-  .lease-compact .form-label { margin-bottom:.2rem; line-height:1.2; }
-  .lease-compact .form-control, .lease-compact .form-select {
-    padding: .35rem .55rem; height: 2.2rem;
-  }
-  .lease-compact .input-group > .form-control,
-  .lease-compact .input-group > .form-select { height: 2.2rem; }
-  .lease-compact .form-control::placeholder { font-size: .875rem; }
-  .lease-compact .mb-3 { margin-bottom: .35rem !important; }
+/* Reset page padding injected by base.html */
+#lf-shell {
+  display: flex;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  background: #eef1f7;
+  font-size: .82rem;
 
-  /* --- Very small screens (<= 400px ~ includes 360px) --- */
-  @media (max-width: 400px) {
-    .lease-compact * { font-size: .58rem !important; }
-    .lease-compact h2 { font-size: .9rem !important; margin-bottom:.25rem; }
-    .lease-compact .card-header { font-size: .7rem !important; padding:.25rem .4rem; }
-    .lease-compact .btn-sm { padding: .15rem .3rem; }
-    .lease-compact .form-control, .lease-compact .form-select { height: 2rem; padding:.25rem .4rem; }
-    .lease-compact .row { --bs-gutter-x: .35rem; --bs-gutter-y: .3rem; }
-  }
-  /* Family table widths & truncation */
+  /* Break out of base container, but keep the form centered and content-width */
+  position: relative;
+  width: calc(100vw - 40px);
+  max-width: 1720px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+}
+
+/* ---- Icon Rail ---- */
+.lf-rail {
+  width: 48px;
+  flex-shrink: 0;
+  background: #131929;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0 8px;
+  gap: 2px;
+  z-index: 10;
+}
+.lf-rail-logo {
+  width: 32px;
+  height: 32px;
+  background: #2856c8;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -.02em;
+  flex-shrink: 0;
+}
+.lf-rail-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5a6e9a;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  flex-shrink: 0;
+}
+.lf-rail-icon:hover { background: #1e2e52; color: #93b4e8; }
+.lf-rail-sep { width: 22px; height: 1px; background: #1e2e52; margin: 4px 0; }
+
+/* ---- Sidebar ---- */
+.lf-sidebar {
+  width: 185px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e2e6f0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.lf-sb-header {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid #eef0f6;
+  flex-shrink: 0;
+}
+.lf-prop-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.lf-prop-icon {
+  width: 24px;
+  height: 24px;
+  background: #eef2ff;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #2856c8;
+  font-size: 12px;
+}
+.lf-prop-name { font-size: .78rem; font-weight: 700; color: #1a1f35; line-height: 1.2; }
+.lf-prop-sub  { font-size: .68rem; color: #8a96b4; }
+.lf-tenant-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.lf-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #dce6fb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .6rem;
+  font-weight: 700;
+  color: #2856c8;
+  flex-shrink: 0;
+}
+.lf-tenant-name { font-size: .78rem; font-weight: 600; color: #1a1f35; line-height: 1.2; }
+.lf-tenant-sub  { font-size: .65rem; color: #8a96b4; }
+.lf-status-dot  { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; margin-right: 3px; }
+
+.lf-nav-scroll { flex: 1; overflow-y: auto; }
+.lf-nav-section { padding: 6px 0; }
+.lf-nav-section + .lf-nav-section { border-top: 1px solid #eef0f6; }
+.lf-nav-grp-label {
+  font-size: .62rem;
+  font-weight: 700;
+  color: #b0bcd8;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 4px 12px 2px;
+}
+.lf-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: .78rem;
+  color: #5a6480;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.lf-nav-item:hover { background: #f6f8ff; color: #2856c8; text-decoration: none; }
+.lf-nav-item.active {
+  color: #2856c8;
+  background: #f0f5ff;
+  border-color: #2856c8;
+  font-weight: 600;
+}
+.lf-nav-item i { font-size: 14px; color: inherit; flex-shrink: 0; }
+.lf-nav-badge {
+  margin-left: auto;
+  font-size: .6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: #e8eeff;
+  color: #2856c8;
+  flex-shrink: 0;
+}
+.lf-nav-badge.warn { background: #fef3c7; color: #92400e; }
+
+/* ---- Main Area ---- */
+.lf-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.lf-topbar {
+  background: #fff;
+  border-bottom: 1px solid #e2e6f0;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.lf-breadcrumb {
+  font-size: .72rem;
+  color: #8a96b4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.lf-breadcrumb i { font-size: 11px; }
+.lf-breadcrumb strong { color: #1a1f35; }
+.lf-tb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lf-pill {
+  font-size: .68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.lf-pill-green { background: #dcfce7; color: #166534; }
+.lf-pill-blue  { background: #dbeafe; color: #1e40af; }
+.lf-pill-amber { background: #fef9c3; color: #854d0e; }
+
+/* Debug info line */
+.lf-debug-bar {
+  font-size: .65rem;
+  color: #8a96b4;
+  padding: 2px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #eef0f6;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lf-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px;
+}
+
+/* ---- Cards ---- */
+.lf-card {
+  background: #fff;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.lf-card-head {
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid #eef0f6;
+  background: #fafbff;
+}
+.lf-card-head i      { font-size: 13px; color: #2856c8; flex-shrink: 0; }
+.lf-card-title       { font-size: .72rem; font-weight: 700; color: #1a1f35; text-transform: uppercase; letter-spacing: .06em; }
+.lf-card-sub         { margin-left: auto; font-size: .68rem; color: #8a96b4; }
+.lf-card-dark .lf-card-head { background: #1a1f35; }
+.lf-card-dark .lf-card-title { color: #c8d4f0; }
+.lf-card-dark .lf-card-head i { color: #7eb3f5; }
+
+/* ---- Field Grids ---- */
+.lf-fg {
+  padding: 8px 12px;
+  display: grid;
+  gap: 4px 10px;
+}
+.lf-fg-2  { grid-template-columns: repeat(2, 1fr); }
+.lf-fg-3  { grid-template-columns: repeat(3, 1fr); }
+.lf-fg-4  { grid-template-columns: repeat(4, 1fr); }
+.lf-fg-6  { grid-template-columns: repeat(6, 1fr); }
+
+.lf-f { display: flex; flex-direction: column; gap: 1px; }
+.lf-fl {
+  font-size: .65rem;
+  font-weight: 700;
+  color: #9aa4c0;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+.lf-fv {
+  font-size: .8rem;
+  color: #1a1f35;
+  background: #f6f8fc;
+  border: 1px solid #e2e6f0;
+  border-radius: 5px;
+  padding: 3px 7px;
+}
+/* actual form inputs inherit look */
+.lf-content .form-control,
+.lf-content .form-select {
+  font-size: .8rem;
+  padding: .28rem .55rem;
+  height: 2rem;
+  background: #f6f8fc;
+  border-color: #e2e6f0;
+  border-radius: 5px;
+  color: #1a1f35;
+}
+.lf-content .form-control:focus,
+.lf-content .form-select:focus {
+  border-color: #2856c8;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(40,86,200,.12);
+}
+.lf-content textarea.form-control { height: auto; min-height: 52px; }
+.lf-content .form-label {
+  font-size: .65rem;
+  font-weight: 700;
+  color: #9aa4c0;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+.lf-content .input-group > .form-control { height: 2rem; }
+
+/* Readonly / money highlight */
+.lf-money  { color: #1e40af !important; font-weight: 700 !important; }
+.lf-total  { color: #166534 !important; font-weight: 700 !important; }
+
+/* ---- Security status bar ---- */
+.lf-sec-bar {
+  background: #f0f5ff;
+  border: 1px solid #dde6f8;
+  border-radius: 7px;
+  padding: 7px 10px;
+  margin: 0 12px 8px;
+}
+.lf-sec-label {
+  font-size: .62rem;
+  font-weight: 700;
+  color: #6b7fa8;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 4px;
+}
+.lf-sec-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+.lf-sec-item { text-align: center; }
+.lf-sec-val  { font-size: .78rem; font-weight: 700; color: #1e40af; }
+.lf-sec-lbl  { font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
+
+/* ---- Inventory cells ---- */
+.lf-inv-grid {
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.lf-inv-cell {
+  background: #f0f5ff;
+  border-radius: 7px;
+  padding: 6px 4px;
+  text-align: center;
+}
+.lf-inv-n { font-size: 1rem; font-weight: 700; color: #2856c8; }
+.lf-inv-l { font-size: .62rem; color: #6b7fa8; text-transform: uppercase; letter-spacing: .04em; }
+
+/* ---- Tenant doc box ---- */
+.lf-doc-box {
+  background: #eff6ff;
+  border: 2px solid #2563eb;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 8px 12px;
+}
+.lf-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.lf-doc-item {
+  background: #fff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 6px;
+  text-align: center;
+}
+.lf-doc-img {
+  width: 100%;
+  height: 110px;
+  object-fit: contain;
+  background: #f0f4f8;
+  border-radius: 4px;
+}
+.lf-doc-empty {
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: .7rem;
+  background: #f8fafc;
+  border-radius: 4px;
+}
+.lf-doc-label {
+  display: block;
+  margin-top: 3px;
+  font-size: .62rem;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-transform: uppercase;
+}
+.lf-doc-item input[type="file"] { margin-top: 3px; font-size: .65rem; }
+
+/* ---- Tab content panes ---- */
+.lf-tab-content { padding: 8px 0 0; }
+
+/* ---- Renewal table: scrolls inside its pane only ---- */
+.lf-renewal-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.renewal-history-edit-table { min-width: 1100px; }
+.renewal-history-edit-table textarea { min-height: 32px; }
+.renewal-history-edit-table .form-control,
+.renewal-history-edit-table .form-select { min-width: 88px; font-size: .75rem; }
+
+/* Renewal row click-to-edit (preserved) */
+.renewal-display-row .renewal-edit-field,
+.renewal-display-row .renewal-delete-field,
+.renewal-display-row .renewal-file-actions { display: none; }
+.renewal-display-row.is-editing .renewal-edit-field,
+.renewal-display-row.is-editing .renewal-delete-field,
+.renewal-display-row.is-editing .renewal-file-actions { display: block; }
+.renewal-display-row.is-editing .renewal-read-field { display: none; }
+.renewal-read-field {
+  min-height: 30px;
+  padding: .28rem .45rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.renewal-display-row:hover .renewal-read-field {
+  background: #f8fafc;
+  border-color: #e5e7eb;
+  border-radius: .25rem;
+}
+
+/* ---- Family table (preserved) ---- */
 .fam-col-idx { width: 6%; }
 .fam-col-name { width: 40%; }
 .fam-col-actions { width: 15%; white-space: nowrap; }
-
 .fam-name {
   display: inline-block;
   max-width: 100%;
@@ -92,903 +477,1006 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.btn-icon { padding: .12rem .3rem; line-height: 1; }
 
-/* Tiny icon buttons */
-.btn-icon { padding: .15rem .35rem; line-height: 1; }
-
-/* Small screens: keep your .58rem rule, plus tighten table spacing */
-@media (max-width: 400px) {
-  .fam-table td, .fam-table th { padding: .25rem .35rem; }
-}
-
-/* Tweak this value to your liking for big screens */
-@media (min-width: 992px) {
-  .financial-lg { font-size: 0.65rem !important; }
-}
+/* ---- Select2 sizing ---- */
 .select2-container .select2-selection--single {
-    height: 32px !important;
-    padding: 2px 2px;
-    border: 1px solid #ced4da;
-}    
-/* Font size for the Select2 dropdown + selected text */
-.select2-container .select2-selection--single {
-    font-size: 12px;      /* change font size */
+  height: 32px !important;
+  font-size: .8rem;
+  border-color: #e2e6f0;
 }
-
-/* Dropdown list font size */
-.select2-results__option {
-    font-size: 12px !important;
-}
-.select2-selection__rendered {
-    line-height: 28px !important;
-}
-/* Height + font size of the search bar in the dropdown */
+.select2-selection__rendered { line-height: 28px !important; }
+.select2-selection__arrow { height: 28px !important; }
+.select2-results__option { font-size: .8rem !important; }
 .select2-container .select2-search--dropdown .select2-search__field {
-    height: 32px !important;
-    font-size: 12px !important;
-    padding: 2px 1px !important;
+  height: 32px !important;
+  font-size: .8rem !important;
 }
 
-.select2-selection__arrow {
-    height: 28px !important;
+/* ---- Two-column main layout ---- */
+.lf-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 8px;
+  align-items: start;
+}
+/* prevent right column from pushing layout wide */
+.lf-two-col > * { min-width: 0; }
+
+/* Compact row gutter */
+.row { --bs-gutter-x: .5rem; --bs-gutter-y: .35rem; }
+.mb-3 { margin-bottom: .35rem !important; }
+
+/* =====================================================
+   RESPONSIVE
+   ===================================================== */
+
+/* iPad (< 992px): icon rail only, sidebar hidden, sidebar slides via toggle */
+@media (max-width: 991px) {
+  #lf-shell { height: auto; overflow: visible; flex-direction: column; }
+  .lf-rail  { width: 100%; flex-direction: row; height: 44px; padding: 0 8px; gap: 4px; overflow-x: auto; }
+  .lf-rail-logo { margin-bottom: 0; margin-right: 6px; }
+  .lf-rail-sep  { display: none; }
+  .lf-sidebar   { width: 100%; border-right: none; border-bottom: 1px solid #e2e6f0; flex-direction: column; }
+  .lf-sidebar.collapsed { display: none; }
+  .lf-nav-section { display: flex; flex-wrap: wrap; padding: 4px 8px; gap: 2px; }
+  .lf-nav-section + .lf-nav-section { border-top: none; }
+  .lf-nav-grp-label { display: none; }
+  .lf-nav-item { padding: 4px 10px; border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; }
+  .lf-nav-item.active { border-bottom-color: #2856c8; border-radius: 0; }
+  .lf-two-col { grid-template-columns: 1fr; }
+  .lf-sec-grid { grid-template-columns: repeat(3, 1fr); }
+  .lf-fg-6 { grid-template-columns: repeat(3, 1fr); }
+  .lf-fg-4 { grid-template-columns: repeat(2, 1fr); }
 }
 
-.renewal-history-edit-table {
-  min-width: 1380px;
-}
-.renewal-history-edit-table textarea {
-  min-height: 34px;
-}
-.renewal-history-edit-table .form-control,
-.renewal-history-edit-table .form-select {
-  min-width: 92px;
-}
+/* Mobile 360px */
+@media (max-width: 480px) {
+  .lf-rail { display: none; }
+  .lf-topbar { padding: 5px 10px; }
+  .lf-breadcrumb { font-size: .65rem; }
+  .lf-content { padding: 8px; }
+  .lf-two-col { grid-template-columns: 1fr; }
+  .lf-fg-3 { grid-template-columns: 1fr 1fr; }
+  .lf-fg-4, .lf-fg-6 { grid-template-columns: 1fr 1fr; }
+  .lf-sec-grid { grid-template-columns: repeat(3, 1fr); }
+  .lf-inv-grid { grid-template-columns: repeat(3, 1fr); }
+  .lf-doc-grid { grid-template-columns: repeat(3, 1fr); }
+  .lf-nav-section { padding: 4px 6px; }
 
+  /* Bottom nav bar on mobile */
+  #lf-shell { padding-bottom: 52px; }
+  .lf-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #131929;
+    border-top: 1px solid #1e2e52;
+    z-index: 100;
+    height: 52px;
+    justify-content: space-around;
+    align-items: center;
+  }
+}
+@media (min-width: 481px) {
+  .lf-bottom-nav { display: none !important; }
+}
+.lf-bottom-nav {
+  display: none;
+}
+.lf-bottom-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: #5a6e9a;
+  font-size: .58rem;
+  min-width: 40px;
+  text-align: center;
+}
+.lf-bottom-tab i { font-size: 18px; }
+.lf-bottom-tab.active { color: #7eb3f5; background: #1e2e52; border-radius: 8px; }
 </style>
 
-<div class="container-fluid grid-tight control-sm lease-compact">
 
-  <div class="d-flex justify-content-between align-items-center mb-0">
-    <h2>
+<div id="lf-shell">
+
+  {# ---- Icon Rail ---- #}
+  <div class="lf-rail">
+    <div class="lf-rail-logo">TMS</div>
+    <div class="lf-rail-icon" title="Leases"><i class="ti ti-file-text"></i></div>
+    <div class="lf-rail-icon" title="Properties"><i class="ti ti-building"></i></div>
+    <div class="lf-rail-icon" title="Tenants"><i class="ti ti-users"></i></div>
+    <div class="lf-rail-sep"></div>
+    <div class="lf-rail-icon" title="Payments"><i class="ti ti-cash"></i></div>
+    <div class="lf-rail-icon" title="Reports"><i class="ti ti-chart-bar"></i></div>
+    <div style="flex:1;"></div>
+    <div class="lf-rail-icon" title="Settings"><i class="ti ti-settings"></i></div>
+  </div>
+
+  {# ---- Sidebar ---- #}
+  <div class="lf-sidebar" id="lf-sidebar">
+    <div class="lf-sb-header">
+      <div class="lf-prop-row">
+        <div class="lf-prop-icon"><i class="ti ti-building"></i></div>
+        <div>
+          <div class="lf-prop-name">
+            {% if form.instance.pk %}{{ form.instance.unit.property.property_name|default:"—" }}{% else %}New Lease{% endif %}
+          </div>
+          <div class="lf-prop-sub">
+            {% if form.instance.pk %}{{ form.instance.unit.unit_number|default:"—" }} · #{{ form.instance.pk }}{% else %}Create Mode{% endif %}
+          </div>
+        </div>
+      </div>
       {% if form.instance.pk %}
-        Update Lease for {{ form.instance.tenant }} – {{ form.instance.unit }}
-      {% else %}
-        Create New Lease
+      <div class="lf-tenant-row">
+        <div class="lf-avatar">
+          {% with name=form.instance.tenant.get_full_name %}{{ name|slice:":2"|upper }}{% endwith %}
+        </div>
+        <div>
+          <div class="lf-tenant-name">
+            <span class="lf-status-dot"></span>{{ form.instance.tenant }}
+          </div>
+          <div class="lf-tenant-sub">Main Tenant</div>
+        </div>
+      </div>
       {% endif %}
-    </h2>
-    
-    {# lease_form.html — top-right toolbar #}
-    {% if form.instance.pk %}
-      <a href="{% url 'leases:photos_page' form.instance.pk %}"
-        class="btn btn-primary btn-sm"
-        target="_blank" rel="noopener">
-        Photos
-      </a>
-    {% else %}
-      <button type="button"
-              class="btn btn-primary btn-sm"
-              onclick="alert('Please save the lease first before adding photos.');">
-        Photos
-      </button>
-    {% endif %}
+    </div>
 
-
-    <div class="d-flex gap-1">
-      <a href="{% url 'leases:lease_list' %}" class="btn btn-secondary btn-sm">Back</a>
-      {% if object and object.pk %}
-        <a class="btn btn-secondary btn-sm" href="{% url 'leases:edit_clauses' object.pk %}">Edit clauses</a>
+    <div class="lf-nav-scroll">
+      <div class="lf-nav-section">
+        <div class="lf-nav-grp-label">Lease</div>
+        <a href="#pane-tenant" class="lf-nav-item active" data-lf-tab="pane-tenant">
+          <i class="ti ti-file-description"></i>Details
+          <span class="lf-nav-badge lf-pill-green">
+            {% if form.instance.status %}{{ form.instance.status|title }}{% else %}New{% endif %}
+          </span>
+        </a>
+        <a href="#pane-family" class="lf-nav-item" data-lf-tab="pane-family">
+          <i class="ti ti-users"></i>Family
+          {% if family_formset %}<span class="lf-nav-badge">{{ family_formset.total_form_count }}</span>{% endif %}
+        </a>
+        <a href="#pane-renewals" class="lf-nav-item" data-lf-tab="pane-renewals">
+          <i class="ti ti-rotate-clockwise"></i>Renewals
+          {% if renewal_formset %}<span class="lf-nav-badge warn">{{ renewal_formset.initial_form_count }}</span>{% endif %}
+        </a>
+      </div>
+      <div class="lf-nav-section">
+        <div class="lf-nav-grp-label">Files</div>
+        {% if form.instance.pk %}
+        <a href="{% url 'leases:photos_page' form.instance.pk %}" class="lf-nav-item" target="_blank" rel="noopener">
+          <i class="ti ti-photo"></i>Photos
+        </a>
+        {% else %}
+        <span class="lf-nav-item" style="opacity:.5;cursor:default;">
+          <i class="ti ti-photo"></i>Photos
+        </span>
+        {% endif %}
+        <a href="#pane-files" class="lf-nav-item" data-lf-tab="pane-files">
+          <i class="ti ti-file-invoice"></i>Agreement
+        </a>
+      </div>
+      <div class="lf-nav-section">
+        <div class="lf-nav-grp-label">Finance</div>
+        <a href="#pane-financial" class="lf-nav-item" data-lf-tab="pane-financial">
+          <i class="ti ti-cash"></i>Security &amp; Finance
+        </a>
+        <a href="#pane-inventory" class="lf-nav-item" data-lf-tab="pane-inventory">
+          <i class="ti ti-packages"></i>Inventory
+        </a>
+      </div>
+      {% if form.instance.pk %}
+      <div class="lf-nav-section">
+        <div class="lf-nav-grp-label">Actions</div>
+        <a href="{% url 'leases:lease_renew' form.instance.pk %}" class="lf-nav-item">
+          <i class="ti ti-refresh"></i>Renew Lease
+        </a>
+        {% if object and object.pk %}
+        <a href="{% url 'leases:edit_clauses' object.pk %}" class="lf-nav-item">
+          <i class="ti ti-edit"></i>Edit Clauses
+        </a>
+        {% endif %}
+      </div>
       {% endif %}
-      <button class="btn btn-primary btn-sm" type="submit" form="lease-form" name="save" value="1">Save</button>
-      <button class="btn btn-secondary btn-sm" type="submit" form="lease-form" name="print">Save &amp; Print</button>
     </div>
   </div>
 
-  {% if form.instance.pk %}
-    <form method="post" id="lease-form" action="{% url 'leases:lease_update' form.instance.pk %}" enctype="multipart/form-data" novalidate>
-  {% else %}
-    <form method="post" id="lease-form" action="{% url 'leases:lease_create' %}" enctype="multipart/form-data" novalidate>
-  {% endif %}
-    {% csrf_token %}
+  {# ---- Main Canvas ---- #}
+  <div class="lf-main">
 
-    <div class="row g-2 align-items-center mb-2">
-      <div class="col-auto">
-        <label for="id_signed_agreement" class="form-label mb-0">Upload Lease Agreement</label>
-        <input type="file" name="signed_agreement" id="id_signed_agreement" class="form-control form-control-sm">
+    {# Top bar #}
+    <div class="lf-topbar">
+      <div class="lf-breadcrumb">
+        <i class="ti ti-home-2"></i>
+        <span>TMS</span> / Leases /
+        <strong>
+          {% if form.instance.pk %}Update #{{ form.instance.pk }}{% else %}Create Lease{% endif %}
+        </strong>
       </div>
-      <div class="col-auto">
-        <label class="form-label mb-0">Status</label>
-        {{ form.status|add_class:"form-select form-select-sm" }}
-      </div>
-      <div class="col-auto">
-        <label class="form-label mb-0">Agreement File</label>
-        {% if form.instance.signed_agreement %}
-          <div class="d-flex align-items-center">
-            <span class="badge bg-success me-2"><i class="fas fa-check-circle"></i> Uploaded</span>
-            <a href="{{ form.instance.signed_agreement.url }}" target="_blank">{{ form.instance.signed_agreement.name }}</a>
-          </div>
-        {% else %}
-          <span class="badge bg-secondary"><i class="fas fa-times-circle"></i> Not Uploaded</span>
-        {% endif %}
-      </div>
-      {# lease_form.html — wherever the agreement lives #}
-      <div class="mt-2">
-        <label class="form-label mb-0">Signed Condition Photos (PDF)</label>
-        <input type="file" name="condition_photos_signed" class="form-control form-control-sm">
-        {% if form.instance.condition_photos_signed %}
-          <a class="btn btn-success btn-sm mt-1"
-            target="_blank"
-            href="{{ form.instance.condition_photos_signed.url }}">View Photos PDF</a>
-        {% else %}
-          <span class="badge bg-secondary">Not uploaded</span>
-        {% endif %}
-
+      <div class="lf-tb-right">
         {% if form.instance.pk %}
-          <div class="mt-1 financial-lg ">
-            <strong>Security status:</strong>
-            Required: Rs {{ security_required|intcomma }}
-            • Paid In: Rs {{ security_paid_in|intcomma }}
-            • Refunded: Rs {{ security_refunded|intcomma }}
-            • Damages: Rs {{ security_damages|intcomma }}
-            • To Collect: Rs {{ security_balance_to_collect|intcomma }}
-            • <strong>Held Now: Rs {{ security_currently_held|intcomma }}</strong>
-          </div>
+          <span class="lf-pill lf-pill-blue">{{ form.instance.start_date }} → {{ form.instance.end_date }}</span>
         {% endif %}
-
+        {# Toolbar buttons #}
+        <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">
+          <i class="ti ti-arrow-left"></i> Back
+        </a>
+        <button class="btn btn-sm btn-primary" type="submit" form="lease-form" name="save" value="1">
+          <i class="ti ti-device-floppy"></i> Save
+        </button>
+        <button class="btn btn-sm btn-secondary" type="submit" form="lease-form" name="print">
+          Save &amp; Print
+        </button>
       </div>
-
     </div>
 
-    <div class="card mb-2">
-      <div class="card-body py-1 px-2">
-        <div class="row">
-          <div class="col-lg-8 border-end">
-            <div class="card-header bg-dark text-white py-2 px-3">Property, Unit, Tenant &amp; Lease Info</div>
+    {# Debug bar #}
+    <div class="lf-debug-bar">
+      Mode: {% if form.instance.pk %}UPDATE (pk={{ form.instance.pk }}){% else %}CREATE{% endif %} •
+      Path: {{ request.path }} •
+      {% if form.instance.pk %}Form action: {% url 'leases:lease_update' form.instance.pk %}{% else %}Form action: {% url 'leases:lease_create' %}{% endif %}
+    </div>
 
-            <!-- Tabs -->
-            <ul class="nav nav-tabs small mt-2" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="tab-tenant" data-bs-toggle="tab" data-bs-target="#pane-tenant" type="button" role="tab">Main Tenant</button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" id="tab-family" data-bs-toggle="tab" data-bs-target="#pane-family" type="button" role="tab">
-                  Family Members
-                  {% if family_formset %}<span class="badge text-bg-secondary ms-1">{{ family_formset.total_form_count }}</span>{% endif %}
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" id="tab-renewals" data-bs-toggle="tab" data-bs-target="#pane-renewals" type="button" role="tab">
-                  Renewal History
-                  {% if renewal_formset %}<span class="badge text-bg-secondary ms-1">{{ renewal_formset.initial_form_count }}</span>{% endif %}
-                </button>
-              </li>
-            </ul>
+    {# Content #}
+    <div class="lf-content">
 
-            <div class="tab-content border border-top-0 rounded-bottom p-2">
-              <!-- Main Tenant -->
-              <div class="tab-pane fade show active" id="pane-tenant" role="tabpanel" aria-labelledby="tab-tenant">
-                <div class="row row-cols-lg-6 row-cols-md-4 row-cols-2 g-0 align-items-start">
-                  <div class="col g-0 align-items-start">
+      {% if form.instance.pk %}
+        <form method="post" id="lease-form" action="{% url 'leases:lease_update' form.instance.pk %}" enctype="multipart/form-data" novalidate>
+      {% else %}
+        <form method="post" id="lease-form" action="{% url 'leases:lease_create' %}" enctype="multipart/form-data" novalidate>
+      {% endif %}
+        {% csrf_token %}
+
+        {# ======= PANE: Details (Main Tenant) ======= #}
+        <div id="pane-tenant" class="lf-pane">
+
+          {# Security status — top of form for quick reference #}
+          {% if form.instance.pk %}
+          <div class="lf-sec-bar">
+            <div class="lf-sec-label">Security Deposit Status</div>
+            <div class="lf-sec-grid">
+              <div class="lf-sec-item"><div class="lf-sec-val">{{ security_required|intcomma }}</div><div class="lf-sec-lbl">Required</div></div>
+              <div class="lf-sec-item"><div class="lf-sec-val">{{ security_paid_in|intcomma }}</div><div class="lf-sec-lbl">Paid In</div></div>
+              <div class="lf-sec-item"><div class="lf-sec-val">{{ security_refunded|intcomma }}</div><div class="lf-sec-lbl">Refunded</div></div>
+              <div class="lf-sec-item"><div class="lf-sec-val">{{ security_damages|intcomma }}</div><div class="lf-sec-lbl">Damages</div></div>
+              <div class="lf-sec-item"><div class="lf-sec-val lf-total">{{ security_currently_held|intcomma }}</div><div class="lf-sec-lbl">Held Now</div></div>
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="lf-two-col">
+            {# Left: lease fields #}
+            <div>
+              <div class="lf-card">
+                <div class="lf-card-head lf-card-dark">
+                  <i class="ti ti-home"></i>
+                  <span class="lf-card-title">Property, Unit &amp; Tenant</span>
+                </div>
+                <div class="lf-fg lf-fg-3">
+                  <div class="lf-f">
                     <label class="form-label">Property</label>
+                    {{ form.property|add_class:"form-select form-select-sm" }}
+                  </div>
+                  <div class="lf-f">
                     <label class="form-label">Unit</label>
-                    <label class="form-label">Tenant</label>
-                    <label class="form-label text-nowrap">Electricity Meter Reading</label>
-                    <label class="form-label">Rent Increase %</label>
-                    <label class="form-label text-nowrap">Gas Meter Reading</label>
-                  </div>
-                  <div class="col pe-lg-2">
-                    {{ form.property|add_class:"form-select form-select-sm mb-0" }}
-                    {{ form.unit|add_class:"form-select form-select-sm mb-0" }}
+                    {{ form.unit|add_class:"form-select form-select-sm" }}
                     <input type="hidden" id="current_unit_id" value="{{ form.instance.unit_id|default_if_none:'' }}">
-                    <script>
-                      document.getElementById('id_unit')?.setAttribute('data-current-unit', document.getElementById('current_unit_id')?.value || '');
-                    </script>
-
-                    {{ form.tenant|add_class:"form-select form-select-sm mb-0" }}
-                    {{ form.electricity_meter_reading|add_class:"form-control form-control-sm mb-0" }}
-                    {{ form.rent_increase_percent|add_class:"form-control form-control-sm mb-0" }}
-                    {{ form.gas_meter_reading|add_class:"form-control form-control-sm mb-0" }}
+                    <script>document.getElementById('id_unit')?.setAttribute('data-current-unit', document.getElementById('current_unit_id')?.value||'');</script>
                   </div>
-                  <div class="col">
-                    <label class="form-label">Start Date</label>
-                    <label class="form-label">End Date</label>
-                    <label class="form-label">Agreement Date</label>
-                    <label class="form-label text-nowrap">Due Day of the Month</label>
-                    <label class="form-label">Late Fee</label>
-                    <label class="form-label text-nowrap">Min Occupancy (Months)</label>
+                  <div class="lf-f">
+                    <label class="form-label">Status</label>
+                    {{ form.status|add_class:"form-select form-select-sm" }}
                   </div>
-                  <div class="col pe-lg-2">
-                    {{ form.start_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_start_date" }}
-                    {{ form.end_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_end_date" }}
-                    {{ form.agreement_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_agreement_date" }}
-                    {{ form.due_date|add_class:"form-control form-control-sm mb-0" }}
-                    {{ form.late_fee|add_class:"form-control form-control-sm mb-0" }}
-                    {{ form.min_lease_occupancy_months|add_class:"form-control form-control-sm mb-0" }}
-                  </div>
-                  <div class="col">
-                    <label class="form-label">Monthly Rent</label>
-                    <label class="form-label">Society Maintenance</label>
-                    <label class="form-label">Water Charges</label>
-                    <label class="form-label">Internet Charges</label>
-                    <label class="form-label">Total Payment</label>
-                    <label class="form-label">Security Deposit</label>
-                    <label class="form-label">Agreement Charge</label>
-                    
-                  </div>
-                  <div class="col pe-lg-2">
-                    {{ form.monthly_rent|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
-                    {{ form.society_maintenance|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
-                    {{ form.water_charges|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
-                    {{ form.internet_charges|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
-                    <input type="text" readonly id="total_payment" class="form-control form-control-sm mb-0">
-                    {{ form.security_deposit|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
-                    {{ form.agreement_charges|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}
-                    
+                  <div class="lf-f" style="grid-column: span 3;">
+                    <label class="form-label">Tenant</label>
+                    {{ form.tenant|add_class:"form-select form-select-sm" }}
                   </div>
                 </div>
               </div>
 
+              <div class="lf-card">
+                <div class="lf-card-head lf-card-dark">
+                  <i class="ti ti-calendar"></i>
+                  <span class="lf-card-title">Period &amp; Charges</span>
+                </div>
+                <div class="lf-fg lf-fg-3">
+                  <div class="lf-f">
+                    <label class="form-label">Start Date</label>
+                    {{ form.start_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_start_date" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">End Date</label>
+                    {{ form.end_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_end_date" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Agreement Date</label>
+                    {{ form.agreement_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_agreement_date" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Monthly Rent</label>
+                    {{ form.monthly_rent|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Society Maintenance</label>
+                    {{ form.society_maintenance|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Water Charges</label>
+                    {{ form.water_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Internet Charges</label>
+                    {{ form.internet_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Total Payment</label>
+                    <input type="text" readonly id="total_payment" class="form-control form-control-sm lf-total">
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Security Deposit</label>
+                    {{ form.security_deposit|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Agreement Charge</label>
+                    {{ form.agreement_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Due Day of Month</label>
+                    {{ form.due_date|add_class:"form-control form-control-sm" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Late Fee</label>
+                    {{ form.late_fee|add_class:"form-control form-control-sm" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Min Occupancy (Months)</label>
+                    {{ form.min_lease_occupancy_months|add_class:"form-control form-control-sm" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Rent Increase %</label>
+                    {{ form.rent_increase_percent|add_class:"form-control form-control-sm" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Electricity Reading</label>
+                    {{ form.electricity_meter_reading|add_class:"form-control form-control-sm" }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Gas Reading</label>
+                    {{ form.gas_meter_reading|add_class:"form-control form-control-sm" }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# Right: tenant docs #}
+            <div>
+              {{ form.witness1_name.as_hidden }}
+              {{ form.witness1_cnic.as_hidden }}
+              {{ form.witness2_name.as_hidden }}
+              {{ form.witness2_cnic.as_hidden }}
+
+              <div class="lf-card">
+                <div class="lf-card-head" style="background:#1d3461;">
+                  <i class="ti ti-id-badge-2" style="color:#7eb3f5;"></i>
+                  <span class="lf-card-title" style="color:#c8d4f0;">Tenant Documents</span>
+                </div>
+                <div class="lf-doc-box" style="margin:8px;">
+                  <div class="lf-doc-grid">
+                    <div class="lf-doc-item">
+                      {% if form.instance.tenant_id and form.instance.tenant.photo %}
+                        <a href="{{ form.instance.tenant.photo.url }}" target="_blank">
+                          <img src="{{ form.instance.tenant.photo.url }}" alt="Photo" class="lf-doc-img">
+                        </a>
+                      {% else %}
+                        <div class="lf-doc-empty">No photo</div>
+                      {% endif %}
+                      <span class="lf-doc-label">Photo</span>
+                      <input type="file" name="tenant_photo" class="form-control form-control-sm" accept="image/*">
+                    </div>
+                    <div class="lf-doc-item">
+                      {% if form.instance.tenant_id and form.instance.tenant.cnic_front %}
+                        <a href="{{ form.instance.tenant.cnic_front.url }}" target="_blank">
+                          <img src="{{ form.instance.tenant.cnic_front.url }}" alt="CNIC Front" class="lf-doc-img">
+                        </a>
+                      {% else %}
+                        <div class="lf-doc-empty">No file</div>
+                      {% endif %}
+                      <span class="lf-doc-label">CNIC Front</span>
+                      <input type="file" name="tenant_cnic_front" class="form-control form-control-sm" accept="image/*">
+                    </div>
+                    <div class="lf-doc-item">
+                      {% if form.instance.tenant_id and form.instance.tenant.cnic_back %}
+                        <a href="{{ form.instance.tenant.cnic_back.url }}" target="_blank">
+                          <img src="{{ form.instance.tenant.cnic_back.url }}" alt="CNIC Back" class="lf-doc-img">
+                        </a>
+                      {% else %}
+                        <div class="lf-doc-empty">No file</div>
+                      {% endif %}
+                      <span class="lf-doc-label">CNIC Back</span>
+                      <input type="file" name="tenant_cnic_back" class="form-control form-control-sm" accept="image/*">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {# Agreement upload (condensed into right column) #}
+              <div class="lf-card">
+                <div class="lf-card-head lf-card-dark">
+                  <i class="ti ti-file-invoice"></i>
+                  <span class="lf-card-title">Agreement File</span>
+                </div>
+                <div class="lf-fg" style="padding:8px 12px;">
+                  <div class="lf-f">
+                    <label class="form-label">Upload Lease Agreement</label>
+                    <input type="file" name="signed_agreement" id="id_signed_agreement" class="form-control form-control-sm">
+                  </div>
+                  <div class="lf-f mt-1">
+                    {% if form.instance.signed_agreement %}
+                      <span class="badge bg-success"><i class="fas fa-check-circle"></i> Uploaded</span>
+                      <a href="{{ form.instance.signed_agreement.url }}" target="_blank" class="small ms-1">View</a>
+                    {% else %}
+                      <span class="badge bg-secondary">Not Uploaded</span>
+                    {% endif %}
+                  </div>
+                  <div class="lf-f mt-2">
+                    <label class="form-label">Signed Condition Photos (PDF)</label>
+                    <input type="file" name="condition_photos_signed" class="form-control form-control-sm">
+                    {% if form.instance.condition_photos_signed %}
+                      <a class="btn btn-success btn-sm mt-1" target="_blank" href="{{ form.instance.condition_photos_signed.url }}">View Photos PDF</a>
+                    {% else %}
+                      <span class="badge bg-secondary mt-1">Not uploaded</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>{# /pane-tenant #}
+
+        {# ======= PANE: Family ======= #}
+        <div id="pane-family" class="lf-pane d-none">
+          <div class="lf-card">
+            <div class="lf-card-head lf-card-dark">
+              <i class="ti ti-users"></i>
+              <span class="lf-card-title">Family Members</span>
+            </div>
+            <div style="padding:8px 12px;">
               {{ family_formset.management_form }}
               {% if family_formset.non_form_errors %}
-                <div class="alert alert-danger">
-                  {{ family_formset.non_form_errors }}
-                </div>
+                <div class="alert alert-danger">{{ family_formset.non_form_errors }}</div>
               {% endif %}
-
-              <!-- Family Members -->
-              <div class="tab-pane fade" id="pane-family" role="tabpanel" aria-labelledby="tab-family">
-                {% if form.instance.pk %}
-                {{ family_formset.management_form }}
-                {% for f in family_formset %}
-                  {{ f.as_p }}
-                {% endfor %}
-                <!-- Simple Add (tenant + relation) -->
+              {% if form.instance.pk %}
+                {% for f in family_formset %}{{ f.as_p }}{% endfor %}
                 <div class="row g-2 align-items-end mb-2">
                   <div class="col-12 col-md-6">
-                    <label for="family-tenant-input" class="form-label mb-0">Tenant (type to search)</label>
-                    <input id="family-tenant-input"
-                           class="form-control form-control-sm"
-                           list="tenant-options"
-                           placeholder="Type name, phone or CNIC…"
-                           autocomplete="off"
-                           form="family-add-form">
-                    <datalist id="tenant-options">
+                    <label class="form-label">Tenant</label>
+                    <select id="family-tenant-select" name="tenant_id" class="form-select form-select-sm select2"
+                            form="family-add-form"
+                            data-placeholder="Search tenant name, age, phone or CNIC">
+                      <option value=""></option>
                       {% for t in tenants_for_add %}
-                        {% with full=t.first_name|default_if_none:""|add:" "|add:t.last_name|default_if_none:"" %}
-                          {% with name=full|truncatechars:25 %}
-                            {% with phone=t.phone|default:t.phone2|default:t.phone3 %}
-                              {% with last4=t.cnic|slice:"-4:" %}
-                                <option data-id="{{ t.id }}"
-                                        value="{{ name }} — {{ phone|default:'—' }} — CNIC •••• {{ last4|default:'----' }}">
-                                </option>
-                              {% endwith %}
-                            {% endwith %}
-                          {% endwith %}
-                        {% endwith %}
+                        <option value="{{ t.id }}" data-search="{{ t.search }}">{{ t.label }}</option>
                       {% endfor %}
-                    </datalist>
-                    <!-- hidden field that actually carries the id -->
-                    <input type="hidden" name="tenant_id" id="family-tenant-id" form="family-add-form">
+                    </select>
                   </div>
-
                   <div class="col-12 col-md-4">
-                    <label class="form-label mb-0">Relation (optional)</label>
+                    <label class="form-label">Relation (optional)</label>
                     <input name="relation" class="form-control form-control-sm" form="family-add-form">
                   </div>
-
                   <div class="col-12 col-md-2">
-                    <label class="form-label mb-0">&nbsp;</label>
+                    <label class="form-label">&nbsp;</label>
                     <button type="submit" class="btn btn-primary btn-sm w-100" form="family-add-form">Add</button>
                   </div>
                 </div>
+              {% endif %}
+              <hr class="my-2">
+              <div class="fw-bold mb-1 small">Current Family Members</div>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-2 fam-table">
+                  <thead>
+                    <tr>
+                      <th class="fam-col-idx">#</th>
+                      <th class="fam-col-name">Tenant</th>
+                      <th>Relation</th>
+                      <th class="fam-col-actions text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for f in family_formset %}
+                      {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+                      <tr class="fam-row">
+                        <td class="text-muted small">{{ forloop.counter }}</td>
+                        <td>
+                          <span class="fm-read fm-name fam-name">{{ f.instance.tenant|stringformat:"s"|truncatechars:25 }}</span>
+                          <div class="fm-editing d-none">{{ f.tenant|add_class:"form-select form-select-sm" }}</div>
+                          {% for err in f.tenant.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                        </td>
+                        <td>
+                          <span class="fm-read fam-rel">{{ f.instance.relation|default:"—" }}</span>
+                          <div class="fm-editing d-none">{{ f.relation|add_class:"form-control form-control-sm" }}</div>
+                          {% for err in f.relation.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                        </td>
+                        <td class="text-center">
+                          <div class="d-inline-flex align-items-center gap-1">
+                            <span class="fm-read" title="WhatsApp opt-in">{% if f.instance.whatsapp_opt_in %}✅{% else %}—{% endif %}</span>
+                            <span class="fm-editing d-none" title="WhatsApp opt-in">{{ f.whatsapp_opt_in }}</span>
+                            <button type="button" class="btn btn-secondary btn-icon btn-sm fm-edit" title="Edit">✎</button>
+                            <button type="button" class="btn btn-primary btn-icon btn-sm d-none fm-save" title="Save">✔</button>
+                            <label class="form-check m-0" title="Mark for delete">{{ f.DELETE|add_class:"form-check-input form-check-input-sm" }}</label>
+                          </div>
+                        </td>
+                      </tr>
+                    {% empty %}
+                      <tr><td colspan="4" class="text-muted">No family members linked yet.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>{# /pane-family #}
+
+        {# ======= PANE: Renewals ======= #}
+        <div id="pane-renewals" class="lf-pane d-none">
+          <div class="lf-card">
+            <div class="lf-card-head lf-card-dark">
+              <i class="ti ti-rotate-clockwise"></i>
+              <span class="lf-card-title">Renewal History</span>
+              {% if form.instance.pk %}
+              <div style="margin-left:auto;display:flex;gap:6px;">
+                <a href="{% url 'leases:lease_renew' form.instance.pk %}" class="btn btn-primary btn-sm">Renew Lease</a>
+                <a href="{% url 'leases:lease_renewals' form.instance.pk %}" class="btn btn-outline-secondary btn-sm">Full History</a>
+              </div>
+              {% endif %}
+            </div>
+            <div style="padding:8px 12px;">
+              {% if form.instance.pk %}
+                <div class="text-muted small mb-2">Add, edit, or mark renewal records for delete. Click a row to edit.</div>
+                {{ renewal_formset.management_form }}
+                {% if renewal_formset.non_form_errors %}
+                  <div class="alert alert-danger py-2">{{ renewal_formset.non_form_errors }}</div>
                 {% endif %}
-
-                <hr class="my-2">
-                <div class="fw-bold mb-1">Current Family Members</div>
-
-                <div class="table-responsive">
-                  <table class="table table-sm align-middle mb-2 fam-table">
-                    <thead>
+                <div class="lf-renewal-scroll">
+                  <table class="table table-sm table-bordered align-middle mb-0 renewal-history-edit-table">
+                    <thead class="table-light">
                       <tr>
-                        <th class="fam-col-idx">#</th>
-                        <th class="fam-col-name">Tenant</th>
-                        <th>Relation</th>
-                        <th class="fam-col-actions text-center">Actions</th>
+                        <th style="width:50px">#</th>
+                        <th style="width:120px">Start</th>
+                        <th style="width:120px">End</th>
+                        <th style="width:120px">Agreement</th>
+                        <th style="width:110px">Rent</th>
+                        <th style="width:110px">Maint.</th>
+                        <th style="width:100px">Water</th>
+                        <th style="width:100px">Internet</th>
+                        <th style="width:90px">Inc. %</th>
+                        <th style="width:70px">Signed</th>
+                        <th style="min-width:160px">Notes</th>
+                        <th style="width:120px">Files</th>
+                        <th style="width:60px">Del</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {% for f in family_formset %}
-                        {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
-                        <tr class="fam-row">
-                          {# 1) Serial number #}
-                          <td class="text-muted small">{{ forloop.counter }}</td>
-
-                          {# 2) Tenant (read-only span + hidden input field) #}
+                      {% for renewal_form in renewal_formset %}
+                        <tr class="renewal-display-row{% if not renewal_form.instance.pk %} is-editing{% endif %}" tabindex="0">
+                          {% for hidden in renewal_form.hidden_fields %}{{ hidden }}{% endfor %}
                           <td>
-                            <span class="fm-read fm-name fam-name">
-                              {{ f.instance.tenant|stringformat:"s"|truncatechars:25 }}
-                            </span>
-                            <div class="fm-editing d-none">
-                              {{ f.tenant|add_class:"form-select form-select-sm" }}
-                            </div>
-                            {% for err in f.tenant.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                            <div class="renewal-read-field">{{ renewal_form.instance.renewal_number|default:"New" }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.renewal_number }}</div>
                           </td>
-
-                          {# 3) Relation (read-only span + input when editing) #}
                           <td>
-                            <span class="fm-read fam-rel">
-                              {{ f.instance.relation|default:"—" }}
-                            </span>
-                            <div class="fm-editing d-none">
-                              {{ f.relation|add_class:"form-control form-control-sm" }}
-                            </div>
-                            {% for err in f.relation.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                            <div class="renewal-read-field">{{ renewal_form.instance.start_date|date:"M d, Y"|default:"-" }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.start_date }}</div>
                           </td>
-
-                          {# 4) Actions (15%) — WhatsApp + Edit/Save + Delete #}
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.end_date|date:"M d, Y"|default:"-" }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.end_date }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.agreement_date|date:"M d, Y"|default:"-" }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.agreement_date }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.monthly_rent|default:0|floatformat:0|intcomma }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.monthly_rent }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.society_maintenance|default:0|floatformat:0|intcomma }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.society_maintenance }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.water_charges|default:0|floatformat:0|intcomma }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.water_charges }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.internet_charges|default:0|floatformat:0|intcomma }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.internet_charges }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.rent_increase_percent|default:0 }}%</div>
+                            <div class="renewal-edit-field">{{ renewal_form.rent_increase_percent }}</div>
+                          </td>
                           <td class="text-center">
-                            <div class="d-inline-flex align-items-center gap-1">
-                              {# WhatsApp indicator (read view) #}
-                              <span class="fm-read" title="WhatsApp opt-in">
-                                {% if f.instance.whatsapp_opt_in %}✅{% else %}—{% endif %}
-                              </span>
-
-                              {# WhatsApp input (edit view) #}
-                              <span class="fm-editing d-none" title="WhatsApp opt-in">
-                                {{ f.whatsapp_opt_in }}
-                              </span>
-
-                              {# Edit / Save buttons #}
-                              <button type="button" class="btn btn-secondary btn-icon btn-sm fm-edit" title="Edit">✎</button>
-                              <button type="button" class="btn btn-primary btn-icon btn-sm d-none fm-save" title="Save">✔</button>
-
-                              {# Delete checkbox stays always visible but small #}
-                              <label class="form-check m-0" title="Mark for delete">
-                                {{ f.DELETE|add_class:"form-check-input form-check-input-sm" }}
-                              </label>
+                            <div class="renewal-read-field">
+                              {% if renewal_form.instance.is_agreement_signed %}
+                                <span class="badge bg-success">Signed</span>
+                              {% else %}
+                                <span class="badge bg-warning text-dark">Pending</span>
+                              {% endif %}
+                            </div>
+                            <div class="renewal-edit-field">{{ renewal_form.is_agreement_signed }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.notes|default:"-"|truncatechars:40 }}</div>
+                            <div class="renewal-edit-field">{{ renewal_form.notes }}</div>
+                          </td>
+                          <td class="small">
+                            {% if renewal_form.instance.pk %}
+                              <div class="renewal-file-actions d-flex flex-wrap gap-1">
+                                <a href="{% url 'leases:renewal_agreement' form.instance.pk renewal_form.instance.pk %}" class="btn btn-outline-primary btn-sm">Generate</a>
+                                <a href="{% url 'leases:renewal_upload_signed' form.instance.pk renewal_form.instance.pk %}" class="btn btn-outline-secondary btn-sm">Upload</a>
+                              </div>
+                              <div class="mt-1">
+                                {% if renewal_form.instance.generated_agreement_pdf %}<a href="{{ renewal_form.instance.generated_agreement_pdf.url }}" target="_blank">PDF</a>{% endif %}
+                                {% if renewal_form.instance.generated_agreement_docx %}<a href="{{ renewal_form.instance.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>{% endif %}
+                                {% if renewal_form.instance.signed_copy %}<a href="{{ renewal_form.instance.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>{% endif %}
+                              </div>
+                            {% else %}<span class="text-muted">New row</span>{% endif %}
+                          </td>
+                          <td class="text-center">
+                            <div class="renewal-delete-field">
+                              {% if renewal_form.instance.pk %}{{ renewal_form.DELETE }}{% else %}<span class="text-muted">-</span>{% endif %}
                             </div>
                           </td>
                         </tr>
                       {% empty %}
-                        <tr><td colspan="4" class="text-muted">No family members linked yet.</td></tr>
+                        <tr><td colspan="13" class="text-muted text-center py-3">No renewal rows.</td></tr>
                       {% endfor %}
                     </tbody>
                   </table>
                 </div>
-
-              </div> <!-- /tab-family -->
-
-              <!-- Renewal History -->
-              <div class="tab-pane fade" id="pane-renewals" role="tabpanel" aria-labelledby="tab-renewals">
-                {% if form.instance.pk %}
-                  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                    <div>
-                      <div class="fw-bold">Renewal History</div>
-                      <div class="text-muted small">
-                        Add, edit, or mark renewal records for delete. Use Renew Lease when you want to update the master lease terms.
-                      </div>
-                    </div>
-                    <div class="d-flex gap-1">
-                      <a href="{% url 'leases:lease_renew' form.instance.pk %}" class="btn btn-primary btn-sm">Renew Lease</a>
-                      <a href="{% url 'leases:lease_renewals' form.instance.pk %}" class="btn btn-outline-secondary btn-sm">Full History</a>
-                    </div>
-                  </div>
-
-                  {{ renewal_formset.management_form }}
-                  {% if renewal_formset.non_form_errors %}
-                    <div class="alert alert-danger py-2">
-                      {{ renewal_formset.non_form_errors }}
-                    </div>
-                  {% endif %}
-
-                  <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0 renewal-history-edit-table">
-                      <thead class="table-light">
-                        <tr>
-                          <th style="width:70px">#</th>
-                          <th style="width:130px">Start</th>
-                          <th style="width:130px">End</th>
-                          <th style="width:130px">Agreement</th>
-                          <th style="width:120px">Rent</th>
-                          <th style="width:120px">Maint.</th>
-                          <th style="width:110px">Water</th>
-                          <th style="width:110px">Internet</th>
-                          <th style="width:100px">Increase %</th>
-                          <th style="width:80px">Signed</th>
-                          <th style="min-width:180px">Notes</th>
-                          <th style="width:130px">Files</th>
-                          <th style="width:70px">Delete</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for renewal_form in renewal_formset %}
-                          <tr>
-                            {% for hidden in renewal_form.hidden_fields %}{{ hidden }}{% endfor %}
-                            <td>
-                              {{ renewal_form.renewal_number }}
-                              {% for error in renewal_form.renewal_number.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.start_date }}
-                              {% for error in renewal_form.start_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.end_date }}
-                              {% for error in renewal_form.end_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.agreement_date }}
-                              {% for error in renewal_form.agreement_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.monthly_rent }}
-                              {% for error in renewal_form.monthly_rent.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.society_maintenance }}
-                              {% for error in renewal_form.society_maintenance.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.water_charges }}
-                              {% for error in renewal_form.water_charges.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.internet_charges }}
-                              {% for error in renewal_form.internet_charges.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.rent_increase_percent }}
-                              {% for error in renewal_form.rent_increase_percent.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td class="text-center">
-                              {{ renewal_form.is_agreement_signed }}
-                              {% for error in renewal_form.is_agreement_signed.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td>
-                              {{ renewal_form.notes }}
-                              {% for error in renewal_form.notes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </td>
-                            <td class="small">
-                              {% if renewal_form.instance.pk %}
-                                <div class="d-flex flex-wrap gap-1">
-                                  <a href="{% url 'leases:renewal_agreement' form.instance.pk renewal_form.instance.pk %}" class="btn btn-outline-primary btn-sm">Generate</a>
-                                  <a href="{% url 'leases:renewal_upload_signed' form.instance.pk renewal_form.instance.pk %}" class="btn btn-outline-secondary btn-sm">Upload</a>
-                                </div>
-                                <div class="mt-1">
-                                  {% if renewal_form.instance.generated_agreement_pdf %}
-                                    <a href="{{ renewal_form.instance.generated_agreement_pdf.url }}" target="_blank">PDF</a>
-                                  {% endif %}
-                                  {% if renewal_form.instance.generated_agreement_docx %}
-                                    <a href="{{ renewal_form.instance.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
-                                  {% endif %}
-                                  {% if renewal_form.instance.signed_copy %}
-                                    <a href="{{ renewal_form.instance.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
-                                  {% endif %}
-                                </div>
-                              {% else %}
-                                <span class="text-muted">New row</span>
-                              {% endif %}
-                            </td>
-                            <td class="text-center">
-                              {% if renewal_form.instance.pk %}
-                                {{ renewal_form.DELETE }}
-                              {% else %}
-                                <span class="text-muted">-</span>
-                              {% endif %}
-                            </td>
-                          </tr>
-                        {% empty %}
-                          <tr>
-                            <td colspan="13" class="text-muted text-center py-3">No renewal rows available.</td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                {% else %}
-                  <div class="text-muted small">
-                    Save the lease first, then renewal history can be managed here.
-                  </div>
-                {% endif %}
-              </div> <!-- /tab-renewals -->
-            </div> <!-- /tab-content -->
-          </div>
-
-          <!-- Right column -->
-          <div class="col-lg-4">
-            <div class="card-header bg-dark text-white py-2 px-3">Witness</div>
-            <div class="row row-cols-2 g-2">
-              <div class="col"><label class="form-label">Witness 1 Name</label>{{ form.witness1_name|add_class:"form-control form-control-sm mb-0" }}</div>
-              <div class="col"><label class="form-label">Witness 1 CNIC</label>{{ form.witness1_cnic|add_class:"form-control form-control-sm mb-0" }}</div>
-              <div class="col"><label class="form-label">Witness 2 Name</label>{{ form.witness2_name|add_class:"form-control form-control-sm mb-0" }}</div>
-              <div class="col"><label class="form-label">Witness 2 CNIC</label>{{ form.witness2_cnic|add_class:"form-control form-control-sm mb-0" }}</div>
+              {% else %}
+                <div class="text-muted small">Save the lease first, then manage renewal history here.</div>
+              {% endif %}
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </div>{# /pane-renewals #}
 
-
-    <!-- Financial / Inventory -->
-    <div class="card mb-2">
-      <div class="card-body py-1 px-2">
-        <div class="row">
-          <div class="col-lg-8 border-end">
-            <div class="card-header bg-dark text-white py-2 px-3">Financial &amp; Inventory Information</div>
-            <div class="row row-cols-lg-6 row-cols-md-4 row-cols-2 g-0 align-items-start">
-              <div class="col"><label class="form-label text-nowrap">Security Installment 1 Amount</label></div>
-              <div class="col">{{ form.security_installment_1_amount|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}</div>
-
-              <div class="col"><label class="form-label text-nowrap">Security Installment 1 Date</label></div>
-              <div class="col">
-                {{ form.security_installment_1_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_security_installment_1_date" }}
-              </div>
-
-              <div class="col"><label class="form-label text-nowrap">Security Installment 2 Amount</label></div>
-              <div class="col">{{ form.security_installment_2_amount|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}</div>
-
-              <div class="col"><label class="form-label text-nowrap">Security Installment 2 Date</label></div>
-              <div class="col">
-                {{ form.security_installment_2_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_security_installment_2_date" }}
-              </div>
-
-              <div class="col"><label class="form-label text-nowrap">Security Deposit Return Date</label></div>
-              <div class="col">
-                {{ form.security_deposit_return_date|add_class:"form-control form-control-sm datepicker mb-0"|attr:"id:id_security_deposit_return_date" }}
-              </div>
-
-              <div class="col"><label class="form-label text-nowrap">Security Deposit Return Amt</label></div>
-              <div class="col">{{ form.security_deposit_return_amount|add_class:"form-control form-control-sm mb-0" }}</div>
-
-              <div class="col"><label class="form-label text-nowrap">Early Termination Penalty<br>Per Month</label></div>
-              <div class="col">{{ form.early_termination_penalty|add_class:"form-control form-control-sm mb-0 money"|attr:"type:text" }}</div>
-
-              <div class="col"><label class="form-label text-nowrap">Security Deposit Paid</label></div>
-              <div class="col">{{ form.security_deposit_paid|add_class:"form-check-input mb-0" }}</div>
+        {# ======= PANE: Financial ======= #}
+        <div id="pane-financial" class="lf-pane d-none">
+          <div class="lf-card">
+            <div class="lf-card-head lf-card-dark">
+              <i class="ti ti-cash"></i>
+              <span class="lf-card-title">Financial &amp; Security Information</span>
             </div>
-
-            <div class="row pt-2">
-              <div class="col-lg-4">
+            <div class="lf-fg lf-fg-3" style="padding:8px 12px;">
+              <div class="lf-f">
+                <label class="form-label">Security Installment 1 Amount</label>
+                {{ form.security_installment_1_amount|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Security Installment 1 Date</label>
+                {{ form.security_installment_1_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_security_installment_1_date" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Security Installment 2 Amount</label>
+                {{ form.security_installment_2_amount|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Security Installment 2 Date</label>
+                {{ form.security_installment_2_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_security_installment_2_date" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Security Deposit Return Date</label>
+                {{ form.security_deposit_return_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_security_deposit_return_date" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Security Deposit Return Amt</label>
+                {{ form.security_deposit_return_amount|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Early Termination Penalty / Month</label>
+                {{ form.early_termination_penalty|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+              </div>
+              <div class="lf-f" style="align-self:end;">
+                <label class="form-label">Security Deposit Paid</label>
+                <div class="d-flex align-items-center" style="height:2rem;">
+                  {{ form.security_deposit_paid|add_class:"form-check-input" }}
+                </div>
+              </div>
+            </div>
+            <div class="lf-fg lf-fg-3" style="padding:0 12px 8px;">
+              <div class="lf-f">
                 <label class="form-label">Terms</label>
-                {{ form.terms|add_class:"form-control form-control-sm mb-0" }}
+                {{ form.terms|add_class:"form-control form-control-sm" }}
               </div>
-              <div class="col-lg-4">
+              <div class="lf-f">
                 <label class="form-label">Notes</label>
-                {{ form.notes|add_class:"form-control form-control-sm mb-0" }}
+                {{ form.notes|add_class:"form-control form-control-sm" }}
               </div>
-              <div class="col-lg-4">
+              <div class="lf-f">
                 <label class="form-label">Return Notes</label>
-                {{ form.security_deposit_return_notes|add_class:"form-control form-control-sm mb-0" }}
+                {{ form.security_deposit_return_notes|add_class:"form-control form-control-sm" }}
               </div>
             </div>
             {% if form.instance.pk %}
-            <div class="mt-1 financial-lg text-muted">
-              <strong>Security status:</strong>
-              Required: Rs {{ security_required|intcomma }}
-              • Paid In: Rs {{ security_paid_in|intcomma }}
-              • Refunded: Rs {{ security_refunded|intcomma }}
-              • Damages: Rs {{ security_damages|intcomma }}
-              • To Collect: Rs {{ security_balance_to_collect|intcomma }}
-              • <strong>Held Now: Rs {{ security_currently_held|intcomma }}</strong>
+            <div class="lf-sec-bar">
+              <div class="lf-sec-label">Security Deposit Status</div>
+              <div class="lf-sec-grid">
+                <div class="lf-sec-item"><div class="lf-sec-val">{{ security_required|intcomma }}</div><div class="lf-sec-lbl">Required</div></div>
+                <div class="lf-sec-item"><div class="lf-sec-val">{{ security_paid_in|intcomma }}</div><div class="lf-sec-lbl">Paid In</div></div>
+                <div class="lf-sec-item"><div class="lf-sec-val">{{ security_refunded|intcomma }}</div><div class="lf-sec-lbl">Refunded</div></div>
+                <div class="lf-sec-item"><div class="lf-sec-val">{{ security_damages|intcomma }}</div><div class="lf-sec-lbl">Damages</div></div>
+                <div class="lf-sec-item"><div class="lf-sec-val lf-total">{{ security_currently_held|intcomma }}</div><div class="lf-sec-lbl">Held Now</div></div>
+              </div>
             </div>
-          {% endif %}
-
+            {% endif %}
           </div>
+        </div>{# /pane-financial #}
 
-          <div class="col-lg-4">
-            <div class="card-header bg-dark text-white py-2 px-3">Inventory</div>
-            <div class="row row-cols-3 g-2">
-              <div class="col"><label class="form-label">Ceiling Fans</label>{{ form.inventory_ceiling_fans|add_class:"form-control form-control-sm" }}</div>
-              <div class="col"><label class="form-label">Exhaust Fans</label>{{ form.inventory_exhaust_fans|add_class:"form-control form-control-sm" }}</div>
-              <div class="col"><label class="form-label">Ceiling Lights</label>{{ form.inventory_ceiling_lights|add_class:"form-control form-control-sm" }}</div>
-              <div class="col"><label class="form-label">Stove</label>{{ form.inventory_stove|add_class:"form-control form-control-sm" }}</div>
-              <div class="col"><label class="form-label">Wardrobes</label>{{ form.inventory_wardrobes|add_class:"form-control form-control-sm" }}</div>
-              <div class="col"><label class="form-label">Keys</label>{{ form.inventory_keys|add_class:"form-control form-control-sm" }}</div>
-              <div class="col"><label class="form-label">Key Replacement</label>{{ form.key_replacement_cost|add_class:"form-control form-control-sm money"|attr:"type:text" }}</div>
-              <div class="col"><label class="form-label">Electric Unit Rate</label>{{ form.electric_unit_rate|add_class:"form-control form-control-sm" }}</div>
-              <div class="col-8"><label class="form-label">Paint Condition</label>{{ form.paint_condition|add_class:"form-control form-control-sm" }}</div>
-              <button class="btn btn-primary btn-sm" type="submit" form="lease-form" name="save">Save</button>
+        {# ======= PANE: Inventory ======= #}
+        <div id="pane-inventory" class="lf-pane d-none">
+          <div class="lf-card">
+            <div class="lf-card-head lf-card-dark">
+              <i class="ti ti-packages"></i>
+              <span class="lf-card-title">Inventory</span>
+            </div>
+            <div class="lf-fg lf-fg-3" style="padding:8px 12px;">
+              <div class="lf-f">
+                <label class="form-label">Ceiling Fans</label>
+                {{ form.inventory_ceiling_fans|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Exhaust Fans</label>
+                {{ form.inventory_exhaust_fans|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Ceiling Lights</label>
+                {{ form.inventory_ceiling_lights|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Stove</label>
+                {{ form.inventory_stove|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Wardrobes</label>
+                {{ form.inventory_wardrobes|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Keys</label>
+                {{ form.inventory_keys|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Key Replacement Cost</label>
+                {{ form.key_replacement_cost|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+              </div>
+              <div class="lf-f">
+                <label class="form-label">Electric Unit Rate</label>
+                {{ form.electric_unit_rate|add_class:"form-control form-control-sm" }}
+              </div>
+              <div class="lf-f" style="grid-column:span 1;">
+                <label class="form-label">Paint Condition</label>
+                {{ form.paint_condition|add_class:"form-control form-control-sm" }}
+              </div>
+            </div>
+            <div style="padding:0 12px 10px;">
+              <button class="btn btn-primary btn-sm" type="submit" form="lease-form" name="save">
+                <i class="ti ti-device-floppy"></i> Save
+              </button>
             </div>
           </div>
-        </div>
-      </div>
+        </div>{# /pane-inventory #}
+
+        {% csrf_token %}
+        <input type="hidden" name="confirm_billing" id="confirm_billing_field" value="0">
+        <input type="hidden" name="include_backfill" id="include_backfill_field" value="1">
+        <input type="hidden" name="update_existing" id="update_existing_field" value="0">
+
+      </form>
+    </div>{# /lf-content #}
+
+    {# Bottom nav (mobile only) #}
+    <div class="lf-bottom-nav">
+      <div class="lf-bottom-tab active" data-lf-tab="pane-tenant"><i class="ti ti-file-text"></i>Details</div>
+      <div class="lf-bottom-tab" data-lf-tab="pane-family"><i class="ti ti-users"></i>Family</div>
+      <div class="lf-bottom-tab" data-lf-tab="pane-renewals"><i class="ti ti-rotate-clockwise"></i>Renew</div>
+      <div class="lf-bottom-tab" data-lf-tab="pane-financial"><i class="ti ti-cash"></i>Finance</div>
+      <div class="lf-bottom-tab" data-lf-tab="pane-inventory"><i class="ti ti-packages"></i>Inventory</div>
     </div>
 
-    {% csrf_token %}
-    <input type="hidden" name="confirm_billing" id="confirm_billing_field" value="0">
-    <input type="hidden" name="include_backfill" id="include_backfill_field" value="1">
-    <input type="hidden" name="update_existing" id="update_existing_field" value="0">
+  </div>{# /lf-main #}
+</div>{# /lf-shell #}
 
-  </form>
+{% include "includes/billing_preview_modal.html" %}
 
-  {% include "includes/billing_preview_modal.html" %}
-  
-  {% if auto_open_billing_modal %}
-  <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    var el = document.getElementById('billingPreviewModal');
-    if (!el) return;
-    // Bootstrap 5
-    var modal = bootstrap.Modal.getOrCreateInstance(el);
-    modal.show();
-  });
-  </script>
-  {% endif %}
+{% if auto_open_billing_modal %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var el = document.getElementById('billingPreviewModal');
+  if (!el) return;
+  var modal = bootstrap.Modal.getOrCreateInstance(el);
+  modal.show();
+});
+</script>
+{% endif %}
 
-  {% if sql_log %}
-    <div class="card mt-3">
-      <div class="card-header bg-info text-white py-2 px-3">SQL executed</div>
-      <div class="card-body">
-        <ol class="small" style="white-space:pre-wrap;word-break:break-word;">
-          {% for q in sql_log %}
-            <li class="mb-2">
-              <div><code>{{ q.sql }}</code></div>
-              {% if q.params %}<div>Params: {{ q.params }}</div>{% endif %}
-              <div class="text-muted">~{{ q.ms }} ms</div>
-            </li>
-          {% endfor %}
-        </ol>
-      </div>
-    </div>
-  {% endif %}
-
-  {# A separate tiny form for the family add (no billing confirm) #}
-  {% if form.instance.pk %}
-  <form id="family-add-form" method="post" action="{% url 'leases:lease_family_add' form.instance.pk %}" class="d-none">
-    {% csrf_token %}
-  </form>
-  {% endif %}
-
-</div> {# /container #}
+{% if form.instance.pk %}
+<form id="family-add-form" method="post" action="{% url 'leases:lease_family_add' form.instance.pk %}" class="d-none">
+  {% csrf_token %}
+</form>
+{% endif %}
 
 <script>
-/* ------- money helpers + total ------- */
+/* ===================== money helpers (unchanged) ===================== */
 function uncomma(v){ return (v||'').toString().replace(/,/g,''); }
 function intcommaStr(v){
   if (v === null || v === undefined) return '';
-  v = String(v);
-  if (!v) return '';
-  const neg = v.startsWith('-');
-  if (neg) v = v.slice(1);
+  v = String(v); if (!v) return '';
+  const neg = v.startsWith('-'); if (neg) v = v.slice(1);
   const parts = uncomma(v).split('.');
-  let int = parts[0].replace(/\D/g,'') || '0';
+  let int = parts[0].replace(/\D/g,'')||'0';
   const dec = (parts[1]||'').replace(/\D/g,'');
-  int = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return (neg ? '-' : '') + (dec ? int + '.' + dec : int);
+  int = int.replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  return (neg?'-':'')+(dec?int+'.'+dec:int);
 }
 function formatMoneyInputs(){
   document.querySelectorAll('input.money').forEach(function(inp){
     inp.value = intcommaStr(inp.value);
     inp.addEventListener('focus', function(){ this.value = uncomma(this.value); });
-    inp.addEventListener('blur', function(){ this.value = intcommaStr(this.value); });
+    inp.addEventListener('blur',  function(){ this.value = intcommaStr(this.value); });
   });
 }
-function updateTotal() {
-  var rent = parseFloat(uncomma(document.getElementById('id_monthly_rent')?.value || '')) || 0;
-  var m    = parseFloat(uncomma(document.getElementById('id_society_maintenance')?.value || '')) || 0;
-  var w    = parseFloat(uncomma(document.getElementById('id_water_charges')?.value || '')) || 0;
-  var i    = parseFloat(uncomma(document.getElementById('id_internet_charges')?.value || '')) || 0;
-
-  var total = rent + m + w + i;
-  var out = document.getElementById('total_payment');
-  if (out) out.value = intcommaStr(total.toString());
+function updateTotal(){
+  var rent = parseFloat(uncomma(document.getElementById('id_monthly_rent')?.value||''))||0;
+  var m    = parseFloat(uncomma(document.getElementById('id_society_maintenance')?.value||''))||0;
+  var w    = parseFloat(uncomma(document.getElementById('id_water_charges')?.value||''))||0;
+  var i    = parseFloat(uncomma(document.getElementById('id_internet_charges')?.value||''))||0;
+  var out  = document.getElementById('total_payment');
+  if (out) out.value = intcommaStr((rent+m+w+i).toString());
 }
 
-/* ------- Confirm billing: keep as-is for main lease form only ------- */
+/* ===================== pane switching ===================== */
+function switchPane(targetId) {
+  document.querySelectorAll('.lf-pane').forEach(p => p.classList.add('d-none'));
+  const target = document.getElementById(targetId);
+  if (target) target.classList.remove('d-none');
+
+  document.querySelectorAll('.lf-nav-item[data-lf-tab]').forEach(a => {
+    a.classList.toggle('active', a.dataset.lfTab === targetId);
+  });
+  document.querySelectorAll('.lf-bottom-tab[data-lf-tab]').forEach(t => {
+    t.classList.toggle('active', t.dataset.lfTab === targetId);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-  const form = document.getElementById('lease-form');
-  if (form) {
-    form.addEventListener('submit', function(){
-      document.querySelectorAll('input.money').forEach(inp => inp.value = uncomma(inp.value));
+  /* nav items */
+  document.querySelectorAll('[data-lf-tab]').forEach(el => {
+    el.addEventListener('click', function(e) {
+      e.preventDefault();
+      switchPane(this.dataset.lfTab);
     });
-  }
+  });
+
+  /* money */
+  document.getElementById('lease-form')?.addEventListener('submit', function(){
+    document.querySelectorAll('input.money').forEach(inp => inp.value = uncomma(inp.value));
+  });
   document.addEventListener('input', function(e){
-    if ([
-        'id_monthly_rent',
-        'id_society_maintenance',
-        'id_water_charges',
-        'id_internet_charges'
-      ].includes(e.target.id)) {
-      updateTotal();
-    }
+    if (['id_monthly_rent','id_society_maintenance','id_water_charges','id_internet_charges'].includes(e.target.id)) updateTotal();
   });
   formatMoneyInputs();
   updateTotal();
 
-  /* Dates (flatpickr if present; else native) + auto end date */
+  /* dates */
   function addMonthsYmd(ymd, months){
     if(!ymd) return '';
     var p = ymd.split('-').map(Number);
-    if (p.length !== 3 || p.some(isNaN)) return '';
-    var d = new Date(p[0], p[1]-1, p[2]);
-    var day = d.getDate();
+    if(p.length!==3||p.some(isNaN)) return '';
+    var d = new Date(p[0],p[1]-1,p[2]); var day = d.getDate();
     d.setMonth(d.getMonth()+months);
-    if (d.getDate() !== day) d.setDate(0);
+    if(d.getDate()!==day) d.setDate(0);
     return d.toISOString().slice(0,10);
   }
   function maybeDefaultEnd(){
     var startIso = document.getElementById('id_start_date')?.value;
-    var endEl = document.getElementById('id_end_date');
-    var agrEl = document.getElementById('id_agreement_date');
-    if (startIso && endEl && (!endEl.value || endEl.dataset.autofilled === '1')){
-      var plus12 = addMonthsYmd(startIso, 12);
-      if (plus12){
-        var d = new Date(plus12); d.setDate(d.getDate()-1);
-        var y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2);
-        endEl.value = `${y}-${m}-${dd}`;
-        endEl.dataset.autofilled = '1';
-        if (endEl._flatpickr) endEl._flatpickr.setDate(endEl.value, true);
-      }
+    var endEl    = document.getElementById('id_end_date');
+    var agrEl    = document.getElementById('id_agreement_date');
+    if(startIso&&endEl&&(!endEl.value||endEl.dataset.autofilled==='1')){
+      var plus12 = addMonthsYmd(startIso,12);
+      if(plus12){ var d=new Date(plus12); d.setDate(d.getDate()-1);
+        var y=d.getFullYear(),m=('0'+(d.getMonth()+1)).slice(-2),dd=('0'+d.getDate()).slice(-2);
+        endEl.value=`${y}-${m}-${dd}`; endEl.dataset.autofilled='1';
+        if(endEl._flatpickr) endEl._flatpickr.setDate(endEl.value,true); }
     }
-    if (startIso && agrEl && (!agrEl.value || agrEl.dataset.autofilled === '1')){
-      agrEl.value = startIso;
-      agrEl.dataset.autofilled = '1';
-      if (agrEl._flatpickr) agrEl._flatpickr.setDate(agrEl.value, true);
+    if(startIso&&agrEl&&(!agrEl.value||agrEl.dataset.autofilled==='1')){
+      agrEl.value=startIso; agrEl.dataset.autofilled='1';
+      if(agrEl._flatpickr) agrEl._flatpickr.setDate(agrEl.value,true);
     }
   }
-  document.addEventListener('change', function(e){
-    if (e.target && e.target.id === 'id_start_date') maybeDefaultEnd();
-  });
-  if (window.flatpickr) {
-    flatpickr(".datepicker", {
-      dateFormat: "Y-m-d",
-      altInput: true,
-      altFormat: "m/d/Y",
-      allowInput: true,
-      onChange: function(_, __, inst){ if (inst?.input?.id === "id_start_date") maybeDefaultEnd(); }
-    });
+  document.addEventListener('change',function(e){ if(e.target&&e.target.id==='id_start_date') maybeDefaultEnd(); });
+  if(window.flatpickr){
+    flatpickr(".datepicker",{dateFormat:"Y-m-d",altInput:true,altFormat:"m/d/Y",allowInput:true,
+      onChange:function(_,__,inst){ if(inst?.input?.id==="id_start_date") maybeDefaultEnd(); }});
   } else {
-    document.querySelectorAll('.datepicker').forEach(el => { if (el && el.type !== 'date') el.type = 'date'; });
+    document.querySelectorAll('.datepicker').forEach(el=>{ if(el&&el.type!=='date') el.type='date'; });
   }
   maybeDefaultEnd();
 
-  console.log('Lease form DOMContentLoaded');
-
-  /* ---- Units loader (unchanged) ---- */
-(async function(){
-  var $prop = document.getElementById('id_property');
-  var $unit = document.getElementById('id_unit');
-
-  function resetUnits(label){
-    if(!$unit) return;
-    $unit.innerHTML = '';
-    var opt = document.createElement('option');
-    opt.value=''; opt.textContent=label||'---------';
-    $unit.appendChild(opt);
-    $unit.disabled = true;
-  }
-
-  function populate(units){
-    const current  = $unit ? $unit.value : '';
-    const fallback = ($unit && $unit.dataset && $unit.dataset.currentUnit) ? $unit.dataset.currentUnit : '';
-    resetUnits('---------');
-    (units || []).forEach(function(u){
-      var o = document.createElement('option');
-      o.value      = u.id;
-      o.textContent = u.unit_number || u.text || '';
-      $unit.appendChild(o);
-    });
-    $unit.disabled = false;
-    const pick = current || fallback || '';
-    if (pick) {
-      $unit.value = String(pick);
-      try { $unit.dispatchEvent(new Event('change', { bubbles: true })); } catch(e){}
+  /* units loader (unchanged) */
+  (async function(){
+    var $prop = document.getElementById('id_property');
+    var $unit = document.getElementById('id_unit');
+    function resetUnits(label){
+      if(!$unit) return;
+      $unit.innerHTML='';
+      var opt=document.createElement('option'); opt.value=''; opt.textContent=label||'---------';
+      $unit.appendChild(opt); $unit.disabled=true;
     }
-  }
-
-  async function load(pid){
-    if(!pid || !$unit) return resetUnits('---------');
-    resetUnits('Loading...');
-    const url = "{% url 'leases:get_units_by_property' %}";
-    try {
-      const r = await fetch(url + '?property_id=' + encodeURIComponent(pid), {
-        headers: {'X-Requested-With':'XMLHttpRequest'}
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const data = await r.json();
-      populate((data && (data.units||data)) || []);
-    } catch (e) {
-      console.error('Unit load failed:', e);
-      resetUnits('Failed to load');
-      $unit.disabled = false;
+    function populate(units){
+      const current=($unit?$unit.value:''), fallback=($unit&&$unit.dataset&&$unit.dataset.currentUnit)?$unit.dataset.currentUnit:'';
+      resetUnits('---------');
+      (units||[]).forEach(function(u){ var o=document.createElement('option'); o.value=u.id; o.textContent=u.unit_number||u.text||''; $unit.appendChild(o); });
+      $unit.disabled=false;
+      const pick=current||fallback||'';
+      if(pick){ $unit.value=String(pick); try{$unit.dispatchEvent(new Event('change',{bubbles:true}));}catch(e){} }
     }
-  }
-
-  if ($prop) {
-    $prop.addEventListener('change', function(){ load(this.value); });
-    if ($prop.value) load($prop.value); else resetUnits('---------');
-  }
-})();
-
-
-  /* ---- Family Add: map datalist label -> hidden tenant_id ---- */
-  (function(){
-    const input = document.getElementById('family-tenant-input');
-    const list  = document.getElementById('tenant-options');
-    const hid   = document.getElementById('family-tenant-id');
-    const form  = document.getElementById('family-add-form');
-    if (!input || !list || !hid || !form) return;
-
-    function updateHiddenFromInput(){
-      const val = input.value;
-      hid.value = '';
-      // find the matching <option value="...">
-      const opt = Array.from(list.options).find(o => o.value === val);
-      if (opt && opt.dataset.id) {
-        hid.value = opt.dataset.id;
-      }
+    async function load(pid){
+      if(!pid||!$unit) return resetUnits('---------');
+      resetUnits('Loading...');
+      const url="{% url 'leases:get_units_by_property' %}";
+      try{ const r=await fetch(url+'?property_id='+encodeURIComponent(pid),{headers:{'X-Requested-With':'XMLHttpRequest'}}); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); populate((data&&(data.units||data))||[]); }
+      catch(e){ console.error('Unit load failed:',e); resetUnits('Failed'); $unit.disabled=false; }
     }
-    input.addEventListener('input', updateHiddenFromInput);
-    input.addEventListener('change', updateHiddenFromInput);
-
-    form.addEventListener('submit', function(e){
-      if (!hid.value) {
-        e.preventDefault();
-        alert('Please pick a tenant from the list.');
-        input.focus();
-      }
-    });
+    if($prop){ $prop.addEventListener('change',function(){ load(this.value); }); if($prop.value) load($prop.value); else resetUnits('---------'); }
   })();
 
-});
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const leaseForm = document.getElementById('lease-form');
-
+  /* family table edit/save (unchanged) */
   document.querySelectorAll('.fam-table').forEach(table => {
-    table.addEventListener('click', function (e) {
-      const btnEdit = e.target.closest('.fm-edit');
-      const btnSave = e.target.closest('.fm-save');
-      const row = e.target.closest('tr.fam-row');
-      if (!row) return;
-
-      const readBits = row.querySelectorAll('.fm-read');
-      const editBits = row.querySelectorAll('.fm-editing');
-
-      if (btnEdit) {
-        // enter editing mode
-        readBits.forEach(el => el.classList.add('d-none'));
-        editBits.forEach(el => el.classList.remove('d-none'));
-        row.querySelector('.fm-edit')?.classList.add('d-none');
-        row.querySelector('.fm-save')?.classList.remove('d-none');
-      }
-
-      if (btnSave) {
-        // simply submit the main form (no billing confirm touched)
-        leaseForm?.submit();
-      }
+    table.addEventListener('click', function(e){
+      const btnEdit=e.target.closest('.fm-edit'), btnSave=e.target.closest('.fm-save');
+      const row=e.target.closest('tr.fam-row'); if(!row) return;
+      const readBits=row.querySelectorAll('.fm-read'), editBits=row.querySelectorAll('.fm-editing');
+      if(btnEdit){ readBits.forEach(el=>el.classList.add('d-none')); editBits.forEach(el=>el.classList.remove('d-none')); row.querySelector('.fm-edit')?.classList.add('d-none'); row.querySelector('.fm-save')?.classList.remove('d-none'); }
+      if(btnSave){ document.getElementById('lease-form')?.submit(); }
     });
   });
-});
-</script>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  if (window.jQuery && $.fn.select2) {
-    const $tenant = $('#id_tenant');
-
-    $tenant.select2({
-      placeholder: "Select a tenant",
-      allowClear: true,
-      width: '100%'
+  /* renewal row click-to-edit (unchanged) */
+  document.querySelectorAll('.renewal-display-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('a, button, input, textarea, select, label')) return;
+      row.classList.add('is-editing');
+      const first=row.querySelector('.renewal-edit-field input,.renewal-edit-field textarea,.renewal-edit-field select');
+      if(first) first.focus();
     });
-
-    // When Select2 opens (via click or keyboard), focus the search box
-    $tenant.on('select2:open', function (e) {
-      const searchInput = document.querySelector(
-        '.select2-container--open .select2-search__field'
-      );
-      if (searchInput) {
-        searchInput.focus();
-      }
+    row.addEventListener('keydown', function(e){
+      if(e.key==='Enter'||e.key===' '){ if(e.target.closest('input,textarea,select')) return; e.preventDefault(); row.classList.add('is-editing'); }
     });
-  } else {
-    console.warn('Select2 not loaded – check jQuery/Select2 <script> tags.');
+  });
+
+  /* Select2 (unchanged) */
+  if(window.jQuery && $.fn.select2){
+    const $tenant=$('#id_tenant'), $fam=$('#family-tenant-select');
+    $tenant.select2({placeholder:"Select a tenant",allowClear:true,width:'100%'});
+    if($fam.length){
+      $fam.select2({placeholder:$fam.data('placeholder')||"Select a tenant",allowClear:true,width:'100%',
+        matcher:function(params,data){
+          if($.trim(params.term)==='') return data;
+          if(typeof data.text==='undefined') return null;
+          const term=params.term.toLowerCase();
+          const search=((data.text||'')+' '+($(data.element).data('search')||'')).toLowerCase();
+          return search.indexOf(term)>-1?data:null;
+        }
+      });
+    }
+    $tenant.add($fam).on('select2:open',function(){
+      const s=document.querySelector('.select2-container--open .select2-search__field'); if(s) s.focus();
+    });
   }
 });
 </script>
-
-
 
 {% endblock %}

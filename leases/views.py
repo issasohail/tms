@@ -95,7 +95,6 @@ from .forms import (
 from .models import (  # adjust import paths if needed
     DefaultClause,
     Lease,
-    LeaseFamily,
     LeaseFamilyMember,
     LeaseRelationshipType,
     LeaseTemplate,
@@ -126,7 +125,9 @@ def _relationship_type_from_value(value):
     if not value:
         return None
     try:
-        return LeaseRelationshipType.objects.filter(pk=int(value), is_active=True).first()
+        return LeaseRelationshipType.objects.filter(
+            pk=int(value), is_active=True
+        ).first()
     except (TypeError, ValueError):
         return LeaseRelationshipType.objects.filter(code=value, is_active=True).first()
 
@@ -134,7 +135,10 @@ def _relationship_type_from_value(value):
 def _family_relationship_defaults(value):
     relationship_type = _relationship_type_from_value(value)
     if relationship_type:
-        return {"relationship_type": relationship_type, "relationship": relationship_type.code[:30]}
+        return {
+            "relationship_type": relationship_type,
+            "relationship": relationship_type.code[:30],
+        }
     return {"relationship": value or "other"}
 
 
@@ -263,7 +267,7 @@ class LeaseListView(SingleTableView):
     template_name = "leases/lease_list.html"
     paginate_by = None
     table_pagination = {
-        "per_page": 40,
+        "per_page": 45,
         "paginator_class": CachedLazyPaginator,
     }
 
@@ -329,43 +333,40 @@ class LeaseListView(SingleTableView):
                 .values("total")[:1]
             )
 
-        return (
-            queryset.annotate(
-                invoice_total=Coalesce(
-                    Subquery(invoice_total, output_field=money_field),
-                    zero,
-                ),
-                payment_total=Coalesce(
-                    Subquery(payment_total, output_field=money_field),
-                    zero,
-                ),
-                security_paid_total=Coalesce(
-                    Subquery(security_total("PAYMENT"), output_field=money_field),
-                    zero,
-                ),
-                security_adjust_total=Coalesce(
-                    Subquery(security_total("ADJUST"), output_field=money_field),
-                    zero,
-                ),
-            )
-            .annotate(
-                list_balance=F("invoice_total") - F("payment_total"),
-                list_security_due=Greatest(
-                    Coalesce(F("security_deposit"), zero)
-                    - F("security_paid_total")
-                    - F("security_adjust_total"),
-                    zero,
-                    output_field=money_field,
-                ),
-                list_monthly_payment=Coalesce(
-                    Subquery(active_history_monthly_payment, output_field=money_field),
-                    Coalesce(F("monthly_rent"), zero)
-                    + Coalesce(F("society_maintenance"), zero)
-                    + Coalesce(F("water_charges"), zero)
-                    + Coalesce(F("internet_charges"), zero),
-                    output_field=money_field,
-                ),
-            )
+        return queryset.annotate(
+            invoice_total=Coalesce(
+                Subquery(invoice_total, output_field=money_field),
+                zero,
+            ),
+            payment_total=Coalesce(
+                Subquery(payment_total, output_field=money_field),
+                zero,
+            ),
+            security_paid_total=Coalesce(
+                Subquery(security_total("PAYMENT"), output_field=money_field),
+                zero,
+            ),
+            security_adjust_total=Coalesce(
+                Subquery(security_total("ADJUST"), output_field=money_field),
+                zero,
+            ),
+        ).annotate(
+            list_balance=F("invoice_total") - F("payment_total"),
+            list_security_due=Greatest(
+                Coalesce(F("security_deposit"), zero)
+                - F("security_paid_total")
+                - F("security_adjust_total"),
+                zero,
+                output_field=money_field,
+            ),
+            list_monthly_payment=Coalesce(
+                Subquery(active_history_monthly_payment, output_field=money_field),
+                Coalesce(F("monthly_rent"), zero)
+                + Coalesce(F("society_maintenance"), zero)
+                + Coalesce(F("water_charges"), zero)
+                + Coalesce(F("internet_charges"), zero),
+                output_field=money_field,
+            ),
         )
 
     def get_queryset(self):
@@ -697,7 +698,9 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             form.fields["property"].initial = prop_id
 
         form.fields["unit"].queryset = (
-            Unit.objects.select_related("property").filter(property_id=prop_id).order_by("unit_number")
+            Unit.objects.select_related("property")
+            .filter(property_id=prop_id)
+            .order_by("unit_number")
             if prop_id
             else Unit.objects.none()
         )
@@ -722,7 +725,9 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         )
         ctx.setdefault(
             "relationship_types",
-            LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+            LeaseRelationshipType.objects.filter(is_active=True).order_by(
+                "sort_order", "name"
+            ),
         )
         return ctx
 
@@ -857,7 +862,10 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             if not created:
                 # Optional: update relation/whatsapp if changed
                 relationship_type = _relationship_type_from_value(relation)
-                if relationship_type and link.relationship_type_id != relationship_type.pk:
+                if (
+                    relationship_type
+                    and link.relationship_type_id != relationship_type.pk
+                ):
                     link.relationship_type = relationship_type
                     link.relationship = relationship_type.code[:30]
                     link.save(update_fields=["relationship_type", "relationship"])
@@ -1099,7 +1107,9 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         )
         ctx.setdefault(
             "relationship_types",
-            LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+            LeaseRelationshipType.objects.filter(is_active=True).order_by(
+                "sort_order", "name"
+            ),
         )
         return ctx
 
@@ -1127,7 +1137,10 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             if not created:
                 # Optional: update relation/whatsapp if changed
                 relationship_type = _relationship_type_from_value(relation)
-                if relationship_type and link.relationship_type_id != relationship_type.pk:
+                if (
+                    relationship_type
+                    and link.relationship_type_id != relationship_type.pk
+                ):
                     link.relationship_type = relationship_type
                     link.relationship = relationship_type.code[:30]
                     link.save(update_fields=["relationship_type", "relationship"])
@@ -1363,7 +1376,9 @@ def generate_lease_pdf(request, pk):
 @login_required
 def police_verification_summary_pdf(request, pk):
     lease = get_object_or_404(
-        Lease.objects.select_related("tenant", "unit", "unit__property").prefetch_related("family_members__family_member"),
+        Lease.objects.select_related(
+            "tenant", "unit", "unit__property"
+        ).prefetch_related("family_members__family_member"),
         pk=pk,
     )
     html = render_to_string(
@@ -1380,7 +1395,9 @@ def police_verification_summary_pdf(request, pk):
     )
     pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
     response = HttpResponse(pdf, content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="police-verification-lease-{lease.pk}.pdf"'
+    response["Content-Disposition"] = (
+        f'attachment; filename="police-verification-lease-{lease.pk}.pdf"'
+    )
     return response
 
 
@@ -1421,7 +1438,9 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "meter_installations__unit__property",
                 Prefetch(
                     "documents",
-                    queryset=apps.get_model("leases", "LeaseDocument").objects.filter(is_active=True).select_related(
+                    queryset=apps.get_model("leases", "LeaseDocument")
+                    .objects.filter(is_active=True)
+                    .select_related(
                         "uploaded_by",
                         "lease_history",
                     ),
@@ -1471,7 +1490,9 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "occupancy_count": 1 + lease.family_members.count(),
                 "lease_documents": list(lease.documents.all()),
                 "lease_document_categories": list(
-                    apps.get_model("leases", "LeaseDocumentCategory").objects.filter(is_active=True)
+                    apps.get_model("leases", "LeaseDocumentCategory").objects.filter(
+                        is_active=True
+                    )
                 ),
             }
         )
@@ -1486,15 +1507,25 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             if renewal.start_date <= today <= renewal.end_date
         ]
         ctx["active_history"] = (
-            sorted(active_renewals, key=lambda renewal: (renewal.renewal_number, renewal.id), reverse=True)[0]
+            sorted(
+                active_renewals,
+                key=lambda renewal: (renewal.renewal_number, renewal.id),
+                reverse=True,
+            )[0]
             if active_renewals
             else (
-                sorted(renewals, key=lambda renewal: (renewal.renewal_number, renewal.id), reverse=True)[0]
+                sorted(
+                    renewals,
+                    key=lambda renewal: (renewal.renewal_number, renewal.id),
+                    reverse=True,
+                )[0]
                 if renewals
                 else None
             )
         )
-        non_original_renewals = [renewal for renewal in renewals if not renewal.is_original]
+        non_original_renewals = [
+            renewal for renewal in renewals if not renewal.is_original
+        ]
         first_renewal = non_original_renewals[0] if non_original_renewals else None
         ctx["original_period_end"] = (
             first_renewal.start_date - timedelta(days=1)
@@ -1508,7 +1539,9 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         dep_balance = ZERO
         deposit_tx = []
 
-        for tx in sorted(lease.security_transactions_qs, key=lambda item: (item.date, item.id)):
+        for tx in sorted(
+            lease.security_transactions_qs, key=lambda item: (item.date, item.id)
+        ):
             amt = tx.amount or ZERO
 
             # running balance of what you currently hold
@@ -1904,8 +1937,13 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
         """
         if fc["current_lease"]:
             return get_object_or_404(
-                Lease.objects.select_related("tenant", "unit", "unit__property").prefetch_related(
-                    Prefetch("invoices", queryset=Invoice.objects.order_by("issue_date", "id")),
+                Lease.objects.select_related(
+                    "tenant", "unit", "unit__property"
+                ).prefetch_related(
+                    Prefetch(
+                        "invoices",
+                        queryset=Invoice.objects.order_by("issue_date", "id"),
+                    ),
                     Prefetch(
                         "payments",
                         queryset=Payment.objects.select_related("allocation").order_by(
@@ -2126,8 +2164,12 @@ def lease_ledger_pdf(request, lease_id):
     """Generate PDF ledger with proper formatting and filename"""
     try:
         lease = get_object_or_404(
-            Lease.objects.select_related("tenant", "unit", "unit__property").prefetch_related(
-                Prefetch("invoices", queryset=Invoice.objects.order_by("issue_date", "id")),
+            Lease.objects.select_related(
+                "tenant", "unit", "unit__property"
+            ).prefetch_related(
+                Prefetch(
+                    "invoices", queryset=Invoice.objects.order_by("issue_date", "id")
+                ),
                 Prefetch(
                     "payments",
                     queryset=Payment.objects.select_related("allocation").order_by(

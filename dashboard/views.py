@@ -1,14 +1,15 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Case, DecimalField, F, Max, Sum, Value, When
+from django.db.models import Case, DecimalField, Exists, F, Max, OuterRef, Sum, Value, When
 from django.db.models.functions import Coalesce
+from django.urls import reverse
 from django.shortcuts import render
 from django.utils import timezone
 
 from expenses.models import Expense
 from invoices.models import Invoice
-from leases.models import Lease
+from leases.models import Lease, LeaseRenewal
 from payments.models import Payment
 from properties.models import Property, Unit
 from tenants.models import Tenant
@@ -22,17 +23,25 @@ def dashboard(request):
     total_properties = Property.objects.count()
     total_units = Unit.objects.count()
 
-    occupied_unit_ids = (
+    current_lease_unit_ids = set(
         Lease.objects.filter(
-            status="active",
             start_date__lte=today,
             end_date__gte=today,
         )
+        .exclude(status__in=["ended", "terminated"])
         .values_list("unit_id", flat=True)
         .distinct()
     )
-
-    occupied_units = occupied_unit_ids.count()
+    current_history_unit_ids = set(
+        LeaseRenewal.objects.filter(
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        .values_list("lease__unit_id", flat=True)
+        .distinct()
+    )
+    occupied_unit_ids = current_lease_unit_ids | current_history_unit_ids
+    occupied_units = len(occupied_unit_ids)
     vacancy_rate = round(
         ((total_units - occupied_units) / total_units * 100) if total_units > 0 else 0,
         1,
@@ -126,7 +135,36 @@ def dashboard(request):
         .order_by("due_date", "id")[:5]
     )
 
-    ending_soon_leases = (
+    ending_soon_histories = list(
+        LeaseRenewal.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+        )
+        .filter(
+            end_date__gte=today,
+            end_date__lte=today + timedelta(days=40),
+        )
+        .order_by("end_date", "id")
+    )
+
+    history_lease_ids = {history.lease_id for history in ending_soon_histories}
+    ending_soon_leases = [
+        {
+            "lease": history.lease,
+            "tenant": history.lease.tenant,
+            "unit": history.lease.unit,
+            "end_date": history.end_date,
+            "total_payment": history.total_monthly_amount,
+            "security_deposit": history.security_deposit,
+            "url": reverse("leases:lease_detail", args=[history.lease.pk]),
+            "source": history.history_label,
+        }
+        for history in ending_soon_histories
+    ]
+
+    fallback_ending_leases = (
         Lease.objects.select_related(
             "tenant",
             "unit",
@@ -135,15 +173,44 @@ def dashboard(request):
         .filter(
             end_date__gte=today,
             end_date__lte=today + timedelta(days=40),
-            status="active",
         )
+        .exclude(status__in=["ended", "terminated"])
+        .exclude(id__in=history_lease_ids)
         .order_by("end_date", "id")
     )
+    ending_soon_leases.extend(
+        {
+            "lease": lease,
+            "tenant": lease.tenant,
+            "unit": lease.unit,
+            "end_date": lease.end_date,
+            "total_payment": lease.total_payment,
+            "security_deposit": lease.security_deposit,
+            "url": reverse("leases:lease_detail", args=[lease.pk]),
+            "source": "Lease",
+        }
+        for lease in fallback_ending_leases
+    )
+    ending_soon_leases.sort(key=lambda row: (row["end_date"], row["lease"].pk))
 
+    current_lease = Lease.objects.filter(
+        unit_id=OuterRef("pk"),
+        start_date__lte=today,
+        end_date__gte=today,
+    ).exclude(status__in=["ended", "terminated"])
+    current_history = LeaseRenewal.objects.filter(
+        lease__unit_id=OuterRef("pk"),
+        start_date__lte=today,
+        end_date__gte=today,
+    )
     vacant_units = (
         Unit.objects.select_related("property")
-        .filter(status="vacant")
-        .exclude(id__in=occupied_unit_ids)
+        .annotate(
+            has_current_lease=Exists(current_lease),
+            has_current_history=Exists(current_history),
+        )
+        .filter(has_current_lease=False, has_current_history=False)
+        .exclude(status="maintenance")
         .order_by("property__property_name", "unit_number")
     )
 
@@ -151,6 +218,15 @@ def dashboard(request):
         "-date", "-id"
     )[:5]
 
+    current_history_lease_ids = set(
+        LeaseRenewal.objects.filter(
+            start_date__lte=today,
+            end_date__gte=today,
+            lease__tenant__is_active=True,
+        )
+        .values_list("lease_id", flat=True)
+        .distinct()
+    )
     active_leases = list(
         Lease.objects.select_related(
             "tenant",
@@ -159,12 +235,27 @@ def dashboard(request):
         )
         .filter(
             tenant__is_active=True,
-            status="active",
-            start_date__lte=today,
-            end_date__gte=today,
+            id__in=current_history_lease_ids,
         )
         .order_by("tenant_id", "-start_date", "-id")
     )
+    active_lease_ids = {lease.id for lease in active_leases}
+    fallback_active_leases = list(
+        Lease.objects.select_related(
+            "tenant",
+            "unit",
+            "unit__property",
+        )
+        .filter(
+            tenant__is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        .exclude(status__in=["ended", "terminated"])
+        .exclude(id__in=active_lease_ids)
+        .order_by("tenant_id", "-start_date", "-id")
+    )
+    active_leases.extend(fallback_active_leases)
 
     lease_ids = [lease.id for lease in active_leases]
 

@@ -371,7 +371,7 @@
       </div>
     </div>
 
-    {% if form.interested_in or form.notify_vacant_flat or form.notify_vacant_room %}
+    {% if form.interested_in %}
     <div class="reg-card">
       <div class="reg-card-header"><div class="section-icon"><i class="fas fa-home"></i></div><h6>Preferences</h6></div>
       <div class="reg-card-body dense-body">
@@ -384,10 +384,6 @@
           {% for error in form.interested_in.errors %}<div class="text-error">{{ error }}</div>{% endfor %}
         </div>
         {% endif %}
-        <div class="notify-row">
-          {% if form.notify_vacant_flat %}<label class="notify-item">{{ form.notify_vacant_flat }} {{ form.notify_vacant_flat.label }}</label>{% endif %}
-          {% if form.notify_vacant_room %}<label class="notify-item">{{ form.notify_vacant_room }} {{ form.notify_vacant_room.label }}</label>{% endif %}
-        </div>
       </div>
     </div>
     {% endif %}

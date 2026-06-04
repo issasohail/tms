@@ -32,10 +32,13 @@
                         <p><strong>Property:</strong><br>
                         <a href="{% url 'properties:property_detail' unit.property.pk %}">{{ unit.property }}</a></p>
                         
-                        <p><strong>Status:</strong><br>
-                        <span class="badge bg-{% if unit.status == 'vacant' %}warning{% elif unit.status == 'occupied' %}success{% else %}info{% endif %}">
-                            {{ unit.get_status_display }}
+                        <p><strong>Occupancy:</strong><br>
+                        <span class="badge bg-{% if unit.is_currently_occupied %}success{% elif unit.status == 'maintenance' %}info{% else %}warning text-dark{% endif %}">
+                            {% if unit.is_currently_occupied %}Occupied{% elif unit.status == 'maintenance' %}Maintenance{% else %}Vacant{% endif %}
                         </span></p>
+
+                        <p><strong>Unit State:</strong><br>
+                        {{ unit.get_status_display }}</p>
                         
                         <p><strong>Monthly Rent:</strong><br>
                         ${{ unit.monthly_rent }}</p>

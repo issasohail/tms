@@ -142,7 +142,7 @@
                         </thead>
                         <tbody>
                             {% for lease in ending_soon_leases %}
-                            <tr onclick="window.location='{{ lease.get_absolute_url }}'" style="cursor: pointer;">
+                            <tr onclick="window.location='{{ lease.url }}'" style="cursor: pointer;">
                                 <td>{{ lease.tenant.get_full_name }}</td>
                                 <td>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</td>
                                 <td>{{ lease.end_date|date:"M d, Y" }}</td>
@@ -258,7 +258,7 @@
                         <tbody>
                             {% for tenant in tenant_balances %}
                             <tr onclick="window.location='{% url 'tenants:tenant_detail' tenant.id %}'" style="cursor: pointer;">
-                                <td>{{ tenant.get_full_name }}</td>
+                                <td>{{ tenant.full_name }}</td>
                                 <td>
                                     {% if tenant.current_lease %}
                                         {{ tenant.current_lease.unit.property.property_name }}-{{ tenant.current_lease.unit.unit_number }}

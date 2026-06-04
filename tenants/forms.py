@@ -160,8 +160,6 @@ class TenantForm(forms.ModelForm):
         self.fields['reference_name_2'].label = "Reference Name 2"
         self.fields['reference_phone_2'].label = "Reference Phone 2"
         self.fields['reference_relation_2'].label = "Reference Relation 2"
-        self.fields['notify_vacant_flat'].label = "Wants Vacant Flat Notifications"
-        self.fields['notify_vacant_room'].label = "Wants Vacant Room Notifications"
         if "interested_in" in self.fields:
             self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
 
@@ -210,8 +208,6 @@ class TenantPublicRegistrationForm(forms.Form):
     emergency_contact_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     emergency_contact_relation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     number_of_family_member = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
-    notify_vacant_flat = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "form-check-input"}))
-    notify_vacant_room = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "form-check-input"}))
     interested_in = forms.ModelMultipleChoiceField(
         required=False,
         queryset=TenantInterestType.objects.none(),

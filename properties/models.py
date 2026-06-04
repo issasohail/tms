@@ -97,6 +97,14 @@ class Unit(models.Model):
 
     property = models.ForeignKey(
         'Property', on_delete=models.CASCADE, related_name='units')
+    interest_type = models.ForeignKey(
+        "tenants.TenantInterestType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="units",
+        help_text="Used to match vacant units with interested tenants.",
+    )
     unit_number = models.CharField(max_length=20)
     electric_meter_num = models.CharField(max_length=20,
                                           null=True, blank=True, default="0000000000")

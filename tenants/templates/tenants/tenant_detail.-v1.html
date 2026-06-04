@@ -92,7 +92,6 @@
                 <p class="mb-1"><strong>Phone:</strong> {% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone label=tenant.phone name=tenant.get_full_name only %}</p>
                 <p class="mb-1"><strong>Phone 2:</strong> {% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone2 label=tenant.phone2 name=tenant.get_full_name only %}</p>
                 <p class="mb-1"><strong>Phone 3:</strong> {% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone3 label=tenant.phone3 name=tenant.get_full_name only %}</p>
-                <p class="mb-1"><strong>Notifications:</strong> Flat {% if tenant.notify_vacant_flat %}Yes{% else %}No{% endif %}, Room {% if tenant.notify_vacant_room %}Yes{% else %}No{% endif %}</p>
                 <p class="mb-1"><strong>Lead Interest:</strong>
                     {% for item in tenant.interested_in.all %}
                         <span class="badge bg-info text-dark">{{ item.name }}</span>

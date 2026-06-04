@@ -52,6 +52,8 @@ class UnitForm(forms.ModelForm):
 
         # quick visual proof you're on the right file
         self.fields['unit_number'].label = 'Unit #'
+        self.fields['status'].label = 'Unit State'
+        self.fields['status'].help_text = 'Occupancy is calculated from current lease history dates.'
 
         self.helper = FormHelper()
         self.helper.form_tag = False  # <form> tag lives in the template
@@ -64,6 +66,10 @@ class UnitForm(forms.ModelForm):
             Div(
                 Div('property',    css_class='col-12 col-md-6'),
                 Div('unit_number', css_class='col-12 col-md-6'),
+                css_class='row g-3'
+            ),
+            Div(
+                Div('interest_type', css_class='col-12 col-md-6'),
                 css_class='row g-3'
             ),
 

@@ -4,18 +4,18 @@ from .models import Property
 from django.utils.timezone import now
 from django.http import HttpResponse
 from django.views.generic import ListView
-from leases.models import Lease
+from leases.models import Lease, LeaseRenewal
 from utils.pdf_export import handle_export
 from utils.pdf_export import PDFTableExport
 from .tables import PropertyTable, UnitTable
 from .forms import PropertyForm, UnitForm
 from .models import Property, Unit
-from datetime import datetime
+from datetime import datetime, timedelta
+from urllib.parse import quote
 import logging
 from django_tables2.export.export import TableExport
 from django_tables2.export.views import ExportMixin
 from django_tables2 import SingleTableView
-from django.db.models import Prefetch
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse
@@ -36,12 +36,13 @@ from django.views.decorators.http import require_POST
 from core.models import GlobalSettings
 from leases.models import WhatsAppTemplate
 from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
+from tenants.models import Tenant, TenantInterestType
 from django.views.generic import CreateView, UpdateView, DetailView, DeleteView
 from django_filters.views import FilterView
 from django_tables2.views import SingleTableMixin
 from django_tables2.paginators import LazyPaginator
 from django.views import View
-from django.db.models import Count
+from django.db.models import Count, DateField, Exists, OuterRef, Q, Subquery
 from io import BytesIO
 import os
 
@@ -96,15 +97,10 @@ class PropertyListView(SingleTableView):
     template_name = 'properties/property_list.html'
     ordering = ['-created_at']
     context_object_name = 'properties'
+    table_pagination = {"per_page": 5, "paginator_class": LazyPaginator}
 
     def get_queryset(self):
-        active_leases = Lease.objects.filter(
-            status='active').select_related('tenant')
-        return Property.objects.all().prefetch_related(
-            'units',
-            Prefetch('units__leases', queryset=active_leases,
-                     to_attr='active_leases')
-        )
+        return Property.objects.all()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -193,10 +189,55 @@ class UnitListView(SingleTableMixin, FilterView):
     table_pagination = {"per_page": 25, "paginator_class": LazyPaginator}
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related('property')
+        today = timezone.now().date()
+        ending_date = today + timedelta(days=40)
+        active_lease = Lease.objects.filter(
+            unit_id=OuterRef("pk"),
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exclude(status__in=["ended", "terminated"])
+        active_lease_history = LeaseRenewal.objects.filter(
+            lease__unit_id=OuterRef("pk"),
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        active_lease_end = active_lease.order_by("end_date", "id").values("end_date")[:1]
+        active_lease_history_end = (
+            active_lease_history.order_by("end_date", "id").values("end_date")[:1]
+        )
+        ending_soon_lease = active_lease.filter(end_date__lte=ending_date)
+        ending_soon_lease_history = active_lease_history.filter(end_date__lte=ending_date)
+        queryset = (
+            super().get_queryset()
+            .select_related('property', 'interest_type')
+            .annotate(
+                has_active_lease=Exists(active_lease),
+                has_active_lease_history=Exists(active_lease_history),
+                has_ending_soon_lease=Exists(ending_soon_lease),
+                has_ending_soon_lease_history=Exists(ending_soon_lease_history),
+                active_lease_end_date=Subquery(active_lease_end, output_field=DateField()),
+                active_lease_history_end_date=Subquery(active_lease_history_end, output_field=DateField()),
+            )
+        )
         property_id = self.request.GET.get('property')
         if property_id:
             queryset = queryset.filter(property_id=property_id)
+        status = self.request.GET.get("status")
+        if status == "vacant":
+            queryset = queryset.filter(
+                has_active_lease=False,
+                has_active_lease_history=False,
+            ).exclude(status="maintenance")
+        elif status == "occupied":
+            queryset = queryset.filter(
+                Q(has_active_lease=True) | Q(has_active_lease_history=True)
+            )
+        elif status == "ending_soon":
+            queryset = queryset.filter(
+                Q(has_ending_soon_lease=True) | Q(has_ending_soon_lease_history=True)
+            )
+        elif status == "maintenance":
+            queryset = queryset.filter(status="maintenance")
         return queryset
 
     def get_table_data(self):
@@ -209,6 +250,7 @@ class UnitListView(SingleTableMixin, FilterView):
             .annotate(unit_count=Count('units'))
             .order_by('property_name')
         )
+        context["current_status"] = self.request.GET.get("status", "")
         return context
 
     def get(self, request, *args, **kwargs):
@@ -227,6 +269,261 @@ class UnitListView(SingleTableMixin, FilterView):
         return handle_export(request, table, export_name)
 
 
+def _unit_has_current_lease(unit, today=None):
+    today = today or timezone.now().date()
+    return (
+        LeaseRenewal.objects.filter(
+            lease__unit=unit,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+        or Lease.objects.filter(
+            unit=unit,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exclude(status__in=["ended", "terminated"]).exists()
+    )
+
+
+def _attach_unit_occupancy(unit):
+    unit.has_active_lease_history = LeaseRenewal.objects.filter(
+        lease__unit=unit,
+        start_date__lte=timezone.now().date(),
+        end_date__gte=timezone.now().date(),
+    ).exists()
+    unit.has_active_lease = Lease.objects.filter(
+        unit=unit,
+        start_date__lte=timezone.now().date(),
+        end_date__gte=timezone.now().date(),
+    ).exclude(status__in=["ended", "terminated"]).exists()
+    unit.is_currently_occupied = unit.has_active_lease_history or unit.has_active_lease
+    return unit
+
+
+def _lead_money(value):
+    if value in (None, ""):
+        return "-"
+    try:
+        return f"{value:,.0f}"
+    except Exception:
+        return str(value)
+
+
+def _vacant_notice_message(request, unit, tenant, photos_link=""):
+    detail_link = request.build_absolute_uri(
+        reverse("properties:unit_detail", args=[unit.pk])
+    )
+    lines = [
+        f"Dear {tenant.get_full_name()},",
+        "",
+        "A unit is now available:",
+        "",
+        f"Property: {unit.property.property_name}",
+        f"Unit: {unit.unit_number}",
+        f"Rent: {_lead_money(unit.monthly_rent)}",
+        f"Maintenance: {_lead_money(unit.society_maintenance)}",
+        f"Water: {_lead_money(unit.water_charges)}",
+        f"Security Deposit: {unit.security_requires or '-'}",
+        f"Agreement Fee: {getattr(unit, 'agreement_fee', None) or getattr(unit, 'agreement_charges', None) or '-'}",
+        f"Notes: {unit.comments or '-'}",
+        "",
+        "Photos/Details:",
+        detail_link,
+    ]
+    if photos_link:
+        lines.append(photos_link)
+    lines.extend(["", "Please contact us if interested."])
+    return "\n".join(lines)
+
+
+@login_required
+def unit_vacant_notice_leads(request, pk):
+    today = timezone.now().date()
+    unit = get_object_or_404(
+        Unit.objects.select_related("property", "interest_type"),
+        pk=pk,
+    )
+    has_active_lease = Lease.objects.filter(
+        unit=unit,
+        start_date__lte=today,
+        end_date__gte=today,
+    ).exclude(status__in=["ended", "terminated"]).exists()
+    has_active_lease_history = LeaseRenewal.objects.filter(
+        lease__unit=unit,
+        start_date__lte=today,
+        end_date__gte=today,
+    ).exists()
+    if not unit.interest_type_id:
+        return JsonResponse({
+            "success": True,
+            "unit": {
+                "id": unit.pk,
+                "title": f"{unit.property.property_name} - {unit.unit_number} Vacant Notice",
+                "interest_type": None,
+            },
+            "interest_types": list(
+                TenantInterestType.objects.filter(is_active=True)
+                .order_by("sort_order", "name")
+                .values("id", "name")
+            ),
+            "tenants": [],
+        })
+
+    settings_obj = GlobalSettings.get_solo()
+    country_code = getattr(settings_obj, "country_code", "+92")
+    has_photos = unit.media_files.filter(is_active=True).exists()
+    photos_link = ""
+    if has_photos:
+        photos_link = request.build_absolute_uri(
+            reverse("properties:unit_media_public_share", args=[_sign_unit_media_token(unit.pk)])
+        )
+
+    tenants = (
+        Tenant.objects
+        .prefetch_related("interested_in")
+        .filter(interested_in=unit.interest_type)
+        .distinct()
+        .order_by("first_name", "last_name")
+    )
+    interest_types = list(
+        TenantInterestType.objects.filter(is_active=True)
+        .order_by("sort_order", "name")
+        .values("id", "name")
+    )
+    rows = []
+    for tenant in tenants:
+        interests = [{"id": item.pk, "name": item.name} for item in tenant.interested_in.all()]
+        message = _vacant_notice_message(request, unit, tenant, photos_link=photos_link)
+        rows.append({
+            "id": tenant.pk,
+            "full_name": tenant.get_full_name(),
+            "phone": tenant.phone or "",
+            "photo_url": tenant.photo.url if tenant.photo else None,
+            "interested_in": interests,
+            "tenant_detail_url": reverse("tenants:tenant_detail", args=[tenant.pk]),
+            "tenant_edit_url": reverse("tenants:tenant_update", args=[tenant.pk]),
+            "tenant_inline_update_url": reverse("tenants:tenant_lead_inline_update", args=[tenant.pk]),
+            "whatsapp_message": message,
+            "whatsapp_url": build_whatsapp_url(tenant.phone, message, country_code=country_code),
+        })
+
+    return JsonResponse({
+        "success": True,
+        "unit": {
+            "id": unit.pk,
+            "title": f"{unit.property.property_name} - {unit.unit_number} Vacant Notice",
+            "interest_type": {"id": unit.interest_type_id, "name": unit.interest_type.name},
+            "detail_url": request.build_absolute_uri(reverse("properties:unit_detail", args=[unit.pk])),
+            "photos_url": photos_link or None,
+            "has_active_lease": has_active_lease,
+            "has_active_lease_history": has_active_lease_history,
+        },
+        "interest_types": interest_types,
+        "tenants": rows,
+    })
+
+
+@login_required
+def unit_vacant_summary_message(request):
+    today = timezone.now().date()
+    ending_date = today + timedelta(days=40)
+    property_id = request.GET.get("property")
+
+    active_lease = Lease.objects.filter(
+        unit_id=OuterRef("pk"),
+        start_date__lte=today,
+        end_date__gte=today,
+    ).exclude(status__in=["ended", "terminated"])
+    active_lease_history = LeaseRenewal.objects.filter(
+        lease__unit_id=OuterRef("pk"),
+        start_date__lte=today,
+        end_date__gte=today,
+    )
+    vacant_units = (
+        Unit.objects.select_related("property")
+        .annotate(
+            has_active_lease=Exists(active_lease),
+            has_active_lease_history=Exists(active_lease_history),
+        )
+        .filter(has_active_lease=False, has_active_lease_history=False)
+        .exclude(status="maintenance")
+        .order_by("property__property_name", "unit_number")
+    )
+    if property_id:
+        vacant_units = vacant_units.filter(property_id=property_id)
+
+    ending_histories = (
+        LeaseRenewal.objects.select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
+        .filter(start_date__lte=today, end_date__gte=today, end_date__lte=ending_date)
+        .order_by("end_date", "lease__unit__property__property_name", "lease__unit__unit_number")
+    )
+    if property_id:
+        ending_histories = ending_histories.filter(lease__unit__property_id=property_id)
+
+    history_lease_ids = set(ending_histories.values_list("lease_id", flat=True))
+    ending_leases = (
+        Lease.objects.select_related("tenant", "unit", "unit__property")
+        .filter(start_date__lte=today, end_date__gte=today, end_date__lte=ending_date)
+        .exclude(status__in=["ended", "terminated"])
+        .exclude(id__in=history_lease_ids)
+        .order_by("end_date", "unit__property__property_name", "unit__unit_number")
+    )
+    if property_id:
+        ending_leases = ending_leases.filter(unit__property_id=property_id)
+
+    lines = [
+        "Vacant and Ending Soon Unit Summary",
+        f"Date: {today:%Y-%m-%d}",
+        "",
+        "Vacant units:",
+    ]
+    vacant_list = list(vacant_units)
+    if vacant_list:
+        for unit in vacant_list:
+            lines.append(
+                f"- {unit.property.property_name} - {unit.unit_number} | Status: Vacant | Rent: {_lead_money(unit.monthly_rent)} | Maintenance: {_lead_money(unit.society_maintenance)}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "Leases ending within 40 days:"])
+    ending_rows = []
+    for history in ending_histories:
+        lease = history.lease
+        ending_rows.append((
+            history.end_date,
+            lease.unit.property.property_name,
+            lease.unit.unit_number,
+            lease.tenant.get_full_name(),
+            history.history_label,
+        ))
+    for lease in ending_leases:
+        ending_rows.append((
+            lease.end_date,
+            lease.unit.property.property_name,
+            lease.unit.unit_number,
+            lease.tenant.get_full_name(),
+            "Lease",
+        ))
+    ending_rows.sort(key=lambda row: (row[0], row[1], row[2]))
+    if ending_rows:
+        for end_date, property_name, unit_number, tenant_name, source in ending_rows:
+            lines.append(
+                f"- {property_name} - {unit_number} | Status: Lease ending soon ({end_date:%Y-%m-%d}) | Tenant: {tenant_name} | {source}"
+            )
+    else:
+        lines.append("- None")
+
+    message = "\n".join(lines)
+    return JsonResponse({
+        "success": True,
+        "message": message,
+        "whatsapp_url": f"https://wa.me/?text={quote(message)}",
+        "vacant_count": len(vacant_list),
+        "ending_soon_count": len(ending_rows),
+    })
+
+
 class UnitDetailView(LoginRequiredMixin, DetailView):
     model = Unit
     template_name = 'properties/unit_detail.html'
@@ -237,6 +534,7 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        _attach_unit_occupancy(self.object)
         context['units'] = self.object
         context['media_files'] = self.object.media_files.filter(is_active=True)[:6]
         return context
@@ -244,6 +542,7 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
 
 def unit_detail(request, pk):
     unit = get_object_or_404(Unit.objects.select_related('property'), pk=pk)
+    _attach_unit_occupancy(unit)
     media_files = unit.media_files.filter(is_active=True)[:6]
     return render(request, 'properties/unit_detail.html', {'unit': unit, 'media_files': media_files})
 
@@ -286,6 +585,20 @@ def unit_inline_update(request):
         value = data.get('value')
 
         unit = get_object_or_404(Unit, pk=unit_id)
+        if field == "interest_type":
+            if value:
+                interest_type = get_object_or_404(TenantInterestType, pk=value, is_active=True)
+                unit.interest_type = interest_type
+                new_value = interest_type.name
+            else:
+                unit.interest_type = None
+                new_value = ""
+            unit.save(update_fields=["interest_type"])
+            return JsonResponse({
+                'success': True,
+                'new_value': new_value,
+                'interest_type_id': unit.interest_type_id or "",
+            })
         setattr(unit, field, value)
         unit.save()
         return JsonResponse({'success': True, 'new_value': value})

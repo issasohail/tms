@@ -124,7 +124,6 @@
             <div><span>Province</span><strong>{{ tenant.province|default:"-" }}</strong></div>
 
             <div><span>Country</span><strong>{{ tenant.country|default:"-" }}</strong></div>
-            <div><span>Notifications</span><strong>Flat: {% if tenant.notify_vacant_flat %}Yes{% else %}No{% endif %}, Room: {% if tenant.notify_vacant_room %}Yes{% else %}No{% endif %}</strong></div>
             <div class="td-span-2"><span>Lead Interest</span><strong>{% for item in tenant.interested_in.all %}<span class="badge bg-info text-dark me-1 mb-1">{{ item.name }}</span>{% empty %}-{% endfor %}</strong></div>
             <div><span>Created</span><strong>{{ tenant.created_at|date:"M d, Y" }}</strong></div>
             <div><span>Updated</span><strong>{{ tenant.updated_at|date:"M d, Y" }}</strong></div>

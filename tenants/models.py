@@ -124,8 +124,6 @@ class Tenant(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
-    notify_vacant_flat = models.BooleanField(default=False)
-    notify_vacant_room = models.BooleanField(default=False)
     interested_in = models.ManyToManyField(TenantInterestType, blank=True, related_name="tenants")
     notes = models.TextField(blank=True, null=True, default="")
     photo = models.ImageField(

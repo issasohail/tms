@@ -65,6 +65,7 @@ from django.db.models import Subquery, OuterRef, CharField, Value
 from django.db.models.functions import Concat
 import logging
 import uuid
+import json
 from django.conf import settings
 from django.urls import reverse_lazy
 from django.urls import NoReverseMatch  # Add this import
@@ -470,8 +471,6 @@ def tenant_public_registration_update(request, token):
         "emergency_contact_phone": tenant.emergency_contact_phone,
         "emergency_contact_relation": tenant.emergency_contact_relation,
         "number_of_family_member": tenant.number_of_family_member,
-        "notify_vacant_flat": tenant.notify_vacant_flat,
-        "notify_vacant_room": tenant.notify_vacant_room,
         "interested_in": tenant.interested_in.all(),
         "notes": tenant.notes,
     }
@@ -574,7 +573,7 @@ def tenant_registration_submission_review(request, pk):
                 "permanent_address", "working_address",
                 "emergency_contact_name", "emergency_contact_phone",
                 "emergency_contact_relation", "number_of_family_member",
-                "notify_vacant_flat", "notify_vacant_room", "notes",
+                "notes",
             ]
             for field in allowed:
                 value = obj.submitted_data.get(field, getattr(tenant, field))
@@ -1331,8 +1330,6 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         phone = self.request.GET.get('phone')
         property_id = self.request.GET.get('property')
         unit_id = self.request.GET.get('unit')
-        notify_flat = self.request.GET.get('notify_vacant_flat')
-        notify_room = self.request.GET.get('notify_vacant_room')
         interest_ids = [value for value in self.request.GET.getlist('interested_in') if value]
 
         # If a specific tenant is chosen, short-circuit
@@ -1343,12 +1340,6 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
         if phone:
             queryset = queryset.filter(phone__icontains=phone)
-
-        if notify_flat in ("yes", "no"):
-            queryset = queryset.filter(notify_vacant_flat=(notify_flat == "yes"))
-
-        if notify_room in ("yes", "no"):
-            queryset = queryset.filter(notify_vacant_room=(notify_room == "yes"))
 
         if interest_ids:
             queryset = queryset.filter(interested_in__id__in=interest_ids).distinct()
@@ -1481,8 +1472,6 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         context['show_inactive'] = bool(self.request.GET.get('show_inactive'))
         context['interest_types'] = apps.get_model("tenants", "TenantInterestType").objects.filter(is_active=True).order_by("sort_order", "name")
         context['current_interested_in'] = self.request.GET.getlist('interested_in')
-        context['current_notify_vacant_flat'] = self.request.GET.get('notify_vacant_flat', '')
-        context['current_notify_vacant_room'] = self.request.GET.get('notify_vacant_room', '')
         context['pre_registration_form'] = TenantPreRegistrationLinkForm()
         context['registration_link_days'] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
         context['pending_registration_count'] = TenantRegistrationSubmission.objects.filter(status="pending").count()
@@ -1769,3 +1758,43 @@ def tenant_ajax_update(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
+
+
+@login_required
+@require_POST
+def tenant_lead_inline_update(request, pk):
+    tenant = get_object_or_404(Tenant.objects.prefetch_related("interested_in"), pk=pk)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON."}, status=400)
+
+    field = data.get("field")
+    if field not in {"phone", "interested_in"}:
+        return JsonResponse({"success": False, "error": "Field is not editable."}, status=400)
+
+    if field == "phone":
+        tenant.phone = (data.get("value") or "").strip()[:20]
+        tenant.save(update_fields=["phone"])
+    else:
+        raw_ids = data.get("value") or []
+        try:
+            interest_ids = [int(value) for value in raw_ids if str(value).strip()]
+        except (TypeError, ValueError):
+            return JsonResponse({"success": False, "error": "Invalid interest type."}, status=400)
+        TenantInterestType = apps.get_model("tenants", "TenantInterestType")
+        interests = TenantInterestType.objects.filter(pk__in=interest_ids, is_active=True)
+        tenant.interested_in.set(interests)
+
+    tenant = Tenant.objects.prefetch_related("interested_in").get(pk=tenant.pk)
+    return JsonResponse({
+        "success": True,
+        "tenant": {
+            "id": tenant.pk,
+            "phone": tenant.phone or "",
+            "interested_in": [
+                {"id": item.pk, "name": item.name}
+                for item in tenant.interested_in.all()
+            ],
+        },
+    })

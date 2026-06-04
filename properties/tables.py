@@ -3,6 +3,9 @@ from .models import Unit, Property
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.contrib.humanize.templatetags.humanize import intcomma
+from django.utils.html import conditional_escape, format_html
+from django.utils.safestring import mark_safe
+from tenants.models import TenantInterestType
 from utils.pdf_export import handle_export
 
 
@@ -52,6 +55,7 @@ class UnitTable(ExportableTable):
     )
 
     property = tables.Column(verbose_name='Property')
+    interest_type = tables.Column(verbose_name='Lead Type', empty_values=())
 
     monthly_rent = tables.Column(verbose_name='Rent')
     electric_meter_num = tables.Column(verbose_name='Electric Meter#')
@@ -65,9 +69,15 @@ class UnitTable(ExportableTable):
     actions = tables.TemplateColumn(
         verbose_name='Actions',
         orderable=False,
-        template_name='components/action_buttons.html',
+        template_name='properties/unit_actions.html',
 
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lead_interest_types = list(
+            TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+        )
 
     def _format_decimal(self, value):
         if value is None:
@@ -80,15 +90,38 @@ class UnitTable(ExportableTable):
     def render_society_maintenance(
         self, value): return self._format_decimal(value)
 
-    def render_actions(self, record):
-        return render_to_string('components/action_buttons.html', {
-            'view_url': reverse('properties:unit_detail', args=[record.pk]),
-            'edit_url': reverse('properties:unit_update', args=[record.pk]),
-            'delete_url': reverse('properties:unit_delete', args=[record.pk]),
-            'extra_action_label': 'Custom',
-            'extra_action_icon': 'fas fa-cog',
-            'extra_action_color': 'primary'
-        })
+    def render_interest_type(self, value, record):
+        options = ['<option value="">-</option>']
+        for interest_type in self.lead_interest_types:
+            selected = " selected" if record.interest_type_id == interest_type.pk else ""
+            options.append(
+                f'<option value="{interest_type.pk}"{selected}>{conditional_escape(interest_type.name)}</option>'
+            )
+        return format_html(
+            '<select class="form-select form-select-sm unit-lead-type-select" '
+            'data-unit-id="{}" data-current-value="{}">{}</select>',
+            record.pk,
+            record.interest_type_id or "",
+            mark_safe("".join(options)),
+        )
+
+    def value_interest_type(self, value, record):
+        return record.interest_type.name if record.interest_type else ''
+
+    def render_status(self, value, record):
+        if getattr(record, "has_ending_soon_lease_history", False) or getattr(record, "has_ending_soon_lease", False):
+            end_date = (
+                getattr(record, "active_lease_history_end_date", None)
+                or getattr(record, "active_lease_end_date", None)
+            )
+            if end_date:
+                return f"Lease ending soon ({end_date:%b %d, %Y})"
+            return "Lease ending soon"
+        if getattr(record, "has_active_lease_history", False) or getattr(record, "has_active_lease", False):
+            return "Occupied"
+        if record.status == "maintenance":
+            return "Maintenance"
+        return "Vacant"
 
     # Add PDF-specific column widths
     pdf_export_attrs = {
@@ -98,6 +131,7 @@ class UnitTable(ExportableTable):
             'sn': 40,  # Slightly wider for better visibility
             'unit_number': 70,
             'property': 70,  # More space for property names
+            'interest_type': 60,
             'monthly_rent': 60,
             'electric_meter_num': 80,
             'gas_meter_num': 80,
@@ -113,7 +147,7 @@ class UnitTable(ExportableTable):
     class Meta(ExportableTable.Meta):
         model = Unit
         fields = (
-            'sn', 'unit_number', 'property', 'monthly_rent',
+            'sn', 'unit_number', 'property', 'interest_type', 'monthly_rent',
             'electric_meter_num', 'gas_meter_num', 'society_maintenance',
             'water_charges', 'security_requires', 'status', 'actions'
         )

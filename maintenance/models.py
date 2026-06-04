@@ -6,10 +6,11 @@ from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
+from core.upload_utils import compress_instance_file_field
 
 
 MAINTENANCE_FILE_EXTENSIONS = [
-    "jpg", "jpeg", "png", "webp", "pdf", "mp4", "mov", "avi", "mkv"
+    "jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "mp4", "mov", "avi", "mkv"
 ]
 
 
@@ -150,8 +151,12 @@ class MaintenanceRequestMedia(models.Model):
     @property
     def is_image(self):
         return os.path.splitext(self.file.name or "")[1].lower() in {
-            ".jpg", ".jpeg", ".png", ".webp"
+            ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"
         }
+
+    def save(self, *args, **kwargs):
+        compress_instance_file_field(self, "file")
+        super().save(*args, **kwargs)
 
 
 class MaintenanceRequestStatusLog(models.Model):

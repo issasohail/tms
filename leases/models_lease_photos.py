@@ -25,6 +25,7 @@ try:
     from core.models import GlobalSettings
 except Exception:
     GlobalSettings = None
+from core.upload_utils import IMAGE_UPLOAD_EXTENSIONS
 from PIL import Image, ImageDraw, ImageFont, ExifTags, ImageOps
 
 from PIL import Image, ImageDraw, ImageFont, ExifTags, ImageOps
@@ -33,7 +34,7 @@ from PIL import Image, ImageDraw, ImageFont, ExifTags, ImageOps
 PIL_SIDE_LIMIT = 65500
 
 # Your safety caps (tunable via settings if you like)
-MAX_STAMP_SIDE   = getattr(settings, "LEASE_MAX_STAMP_SIDE", 12000)       # max width/height before stamping
+MAX_STAMP_SIDE   = getattr(settings, "LEASE_MAX_STAMP_SIDE", 1600)       # max width/height before stamping
 MAX_STAMP_PIXELS = getattr(settings, "LEASE_MAX_STAMP_PIXELS", 80_000_000)  # 80 MP guard
 MAX_THUMB_SIDE   = getattr(settings, "LEASE_MAX_THUMB_SIDE", 512)
 
@@ -314,7 +315,7 @@ class LeaseMedia(models.Model):
         max_length=255,
         upload_to=_upload_tmp,
         validators=[FileExtensionValidator(
-            ["jpg", "jpeg", "png", "webp", "gif", "pdf", "mp4", "mov", "avi", "mkv"])],
+            ["jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "pdf", "mp4", "mov", "avi", "mkv"])],
     )
     # single-file strategy: no originals field
     thumbnail = models.ImageField(
@@ -652,7 +653,7 @@ class LeaseMedia(models.Model):
         file_name = (self.file.name or "")
         ext = os.path.splitext(file_name)[1].lower() or ".jpg"
         is_video = ext in [".mp4", ".mov", ".avi", ".mkv"]
-        is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+        is_image = ext in IMAGE_UPLOAD_EXTENSIONS or ext == ".gif"
         self.media_type = "video" if is_video else ("image" if is_image else "file")
         if was_adding and not self.original_filename:
             self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
@@ -676,10 +677,6 @@ class LeaseMedia(models.Model):
             with default_storage.open(file_name, "rb") as fh:
                 raw = fh.read()
             base_img = _prepare_base_for_stamp(raw)
-
-            
-            base_img = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
-
 
             # immutable footer & compose stamped bytes
             static_line = self._compose_static_footer_text()

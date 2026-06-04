@@ -8,6 +8,7 @@ from django.db import models
 from django.utils import timezone
 
 from PIL import Image, ImageDraw, ImageFont
+from core.upload_utils import compress_instance_file_field
 
 
 class ExpenseDistribution(models.Model):
@@ -152,9 +153,9 @@ class Unit(models.Model):
 
 
 MEDIA_FILE_EXTENSIONS = [
-    "jpg", "jpeg", "png", "webp", "pdf", "mp4", "mov", "avi", "mkv"
+    "jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "mp4", "mov", "avi", "mkv"
 ]
-IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
@@ -335,6 +336,7 @@ class BasePropertyMedia(models.Model):
         adding = self._state.adding
         if adding and not self.original_filename:
             self.original_filename = _safe_filename(getattr(self.file, "name", ""))
+        compress_instance_file_field(self, "file")
         self._set_file_type()
         super().save(*args, **kwargs)
         if self.file_type == "image" and (adding or not self.stamped_file or not self.thumbnail):

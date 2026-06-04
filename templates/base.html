@@ -11,8 +11,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/favicon-32x32.png' %}">
   <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/favicon-16x16.png' %}">
   <link rel="apple-touch-icon" href="{% static 'images/apple-touch-icon.png' %}">
-<!-- look for something like this -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
 
@@ -40,10 +42,10 @@
     window.TMS_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|default:'Rs.'|escapejs }}";
     window.TMS_COUNTRY_CODE    = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
     window.tmsFormatMoney = function (value, options) {
-      const opts    = options || {};
+      const opts     = options || {};
       const decimals = opts.decimals ?? 2;
-      const symbol  = opts.symbol || window.TMS_CURRENCY_SYMBOL || "";
-      const number  = Number(value || 0);
+      const symbol   = opts.symbol || window.TMS_CURRENCY_SYMBOL || "";
+      const number   = Number(value || 0);
       return symbol + " " + number.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals
@@ -53,17 +55,32 @@
 
   <style>
     /* ============================================================
-       BASE — Global responsive + action-button system
+       DESIGN TOKENS
        ============================================================ */
-
-    /* Very small screens */
-    @media (max-width: 360px) {
-      nav.navbar { padding-top: .2rem !important; padding-bottom: .2rem !important; }
-      body, .btn, .form-select, .form-control, table { font-size: .72rem; }
-    }
-
-    /* ---- Action-button variables ---- */
     :root {
+      /* Brand */
+      --tms-nav-bg:        #0f1117;
+      --tms-nav-border:    rgba(255,255,255,.07);
+      --tms-accent:        #3b82f6;
+      --tms-accent-hover:  #2563eb;
+
+      /* Surface */
+      --tms-body-bg:       #f4f6f9;
+      --tms-card-bg:       #ffffff;
+      --tms-card-border:   rgba(0,0,0,.07);
+      --tms-card-shadow:   0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+      --tms-card-radius:   10px;
+
+      /* Typography */
+      --tms-text:          #1a1d23;
+      --tms-text-muted:    #6b7280;
+      --tms-font-base:     13.5px;
+
+      /* Footer */
+      --tms-footer-bg:     #f0f2f5;
+      --tms-footer-border: #e2e5ea;
+
+      /* Action buttons */
       --action-btn-px:   .35rem;
       --action-btn-py:   .28rem;
       --action-btn-minw: 2rem;
@@ -73,6 +90,112 @@
       --action-group-mb: 0;
       --action-group-ml: 0;
     }
+
+    /* ============================================================
+       RESET & BASE
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      background-color: var(--tms-body-bg);
+      color: var(--tms-text);
+      font-size: var(--tms-font-base);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    main, .tms-main { flex: 1 0 auto; }
+
+    /* Very small screens — scale down uniformly */
+    @media (max-width: 360px) {
+      body, .btn, .form-select, .form-control, table { font-size: .72rem; }
+    }
+
+    /* ============================================================
+       CARDS
+       ============================================================ */
+    .card {
+      background: var(--tms-card-bg);
+      border: 1px solid var(--tms-card-border);
+      border-radius: var(--tms-card-radius);
+      box-shadow: var(--tms-card-shadow);
+    }
+    .card-header {
+      background: #fff;
+      border-bottom: 1px solid var(--tms-card-border);
+      border-radius: var(--tms-card-radius) var(--tms-card-radius) 0 0 !important;
+      padding: .65rem 1rem;
+      font-weight: 600;
+      font-size: .82rem;
+      letter-spacing: .01em;
+      color: var(--tms-text);
+    }
+    .card-body { padding: 1rem; }
+
+    /* Subtle hover lift for clickable cards */
+    a.card, .card.card-link {
+      transition: box-shadow .15s, transform .15s;
+      text-decoration: none;
+    }
+    a.card:hover, .card.card-link:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,.10);
+      transform: translateY(-1px);
+    }
+
+    /* ============================================================
+       TABLES
+       ============================================================ */
+    .table {
+      font-size: .82rem;
+      --bs-table-striped-bg: #fafbfc;
+      --bs-table-hover-bg:   #f0f4ff;
+    }
+    .table thead th {
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--tms-text-muted);
+      border-bottom: 2px solid #e9ecef;
+      white-space: nowrap;
+      padding: .5rem .6rem;
+    }
+    .table td { padding: .42rem .6rem; vertical-align: middle; }
+    .table-responsive { -webkit-overflow-scrolling: touch; }
+
+    /* ============================================================
+       ALERTS
+       ============================================================ */
+    .alert {
+      font-size: .82rem;
+      border-radius: 8px;
+      border-left-width: 4px;
+      padding: .6rem .9rem;
+    }
+    .alert-success  { border-left-color: #198754; }
+    .alert-danger   { border-left-color: #dc3545; }
+    .alert-warning  { border-left-color: #ffc107; }
+    .alert-info     { border-left-color: #0dcaf0; }
+
+    /* ============================================================
+       BADGES
+       ============================================================ */
+    .badge { font-weight: 500; letter-spacing: .02em; }
+
+    /* ============================================================
+       BUTTONS — tighter, crisper
+       ============================================================ */
+    .btn { letter-spacing: .01em; }
+    .btn-sm { font-size: .78rem; }
+
+    /* ============================================================
+       ACTION BUTTONS (table row actions)
+       ============================================================ */
     .actions-wrap {
       display: inline-flex;
       flex-wrap: wrap;
@@ -94,27 +217,62 @@
     }
     .table .actions-wrap { min-width: 110px; }
 
-    /* ---- Navbar mobile drawer ---- */
-    /*
-      The navbar uses Bootstrap's built-in collapse toggler.
-      On mobile the hamburger shows; on md+ all links are visible.
-      No extra JS needed beyond Bootstrap.
-    */
-    .navbar-dark .navbar-nav .nav-link { font-size: 12px; padding: .35rem .6rem; }
-    .navbar-dark .navbar-nav .nav-link:hover { color: #fff; }
-
-    /* ---- Global card defaults ---- */
-    .card { border: 0.5px solid #e5e7eb; border-radius: 8px; }
-    .card .card-header { border-radius: 8px 8px 0 0 !important; }
-
-    /* ---- Responsive table wrapper ---- */
-    .table-responsive { -webkit-overflow-scrolling: touch; }
-
-    /* ---- Alerts ---- */
-    .alert { font-size: 13px; }
+    /* ============================================================
+       FORMS
+       ============================================================ */
+    .form-control, .form-select {
+      border-color: #d1d5db;
+      border-radius: 6px;
+      font-size: .82rem;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: var(--tms-accent);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    }
+    .form-label { font-size: .78rem; font-weight: 600; color: var(--tms-text-muted); margin-bottom: .3rem; }
 
     /* ============================================================
-       VIEWPORT DEBUGGER BAR  (toggle in settings)
+       PAGE HEADER UTILITY
+       ============================================================ */
+    .tms-page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-bottom: 1rem;
+    }
+    .tms-page-header h1,
+    .tms-page-header h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      color: var(--tms-text);
+    }
+    @media (max-width: 576px) {
+      .tms-page-header h1,
+      .tms-page-header h2 { font-size: 1rem; }
+    }
+
+    /* ============================================================
+       FOOTER
+       ============================================================ */
+    footer.tms-footer {
+      flex-shrink: 0;
+      margin-top: auto;
+      padding: .6rem 0;
+      background: var(--tms-footer-bg);
+      border-top: 1px solid var(--tms-footer-border);
+    }
+    footer.tms-footer p {
+      margin: 0;
+      font-size: .72rem;
+      color: var(--tms-text-muted);
+    }
+
+    /* ============================================================
+       VIEWPORT DEBUGGER BAR
        ============================================================ */
     .viewport-bar {
       position: fixed;
@@ -125,18 +283,20 @@
       justify-content: space-between;
       gap: .75rem;
       padding: .45rem .75rem;
-      border: 1px solid rgba(33,37,41,.18);
+      border: 1px solid rgba(33,37,41,.14);
       border-radius: .5rem;
-      background: rgba(255,255,255,.96);
-      box-shadow: 0 .5rem 1.25rem rgba(0,0,0,.18);
-      font-size: .78rem;
+      background: rgba(255,255,255,.97);
+      box-shadow: 0 4px 20px rgba(0,0,0,.14);
+      font-size: .76rem;
       color: #212529;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
     }
     body.show-viewport-bar .viewport-bar { display: flex; }
     .viewport-bar__track {
       position: relative;
       flex: 1 1 auto;
-      height: .5rem;
+      height: .45rem;
       min-width: 6rem;
       border-radius: 999px;
       background: linear-gradient(90deg,#198754 0 20%,#0d6efd 20% 55%,#ffc107 55% 80%,#dc3545 80% 100%);
@@ -145,7 +305,7 @@
     .viewport-bar__marker {
       position: absolute;
       top: 50%; left: 0;
-      width: .75rem; height: .75rem;
+      width: .7rem; height: .7rem;
       border-radius: 50%;
       background: #212529;
       border: 2px solid #fff;
@@ -153,8 +313,25 @@
       box-shadow: 0 0 0 1px rgba(0,0,0,.25);
     }
     @media (max-width: 420px) {
-      .viewport-bar { left: .4rem; right: .4rem; bottom: .4rem; padding: .38rem .5rem; font-size: .7rem; }
+      .viewport-bar { left: .4rem; right: .4rem; bottom: .4rem; padding: .35rem .5rem; font-size: .68rem; }
       .viewport-bar__track { min-width: 4.5rem; }
+    }
+
+    /* ============================================================
+       SCROLLBAR — subtle on Webkit
+       ============================================================ */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.28); }
+
+    /* ============================================================
+       PRINT
+       ============================================================ */
+    @media print {
+      .no-print, footer.tms-footer, .viewport-bar { display: none !important; }
+      body { background: #fff; font-size: 11px; }
+      .card { box-shadow: none; border: 1px solid #ddd; }
     }
   </style>
 
@@ -163,37 +340,11 @@
 <body>
 
   <!-- ============================================================
-       NAVBAR  — Bootstrap 5 responsive collapse
+       NAVBAR — partials/navbar.html owns all nav content
        ============================================================ -->
-  <nav class="navbar navbar-expand-md navbar-dark bg-dark">
-    <div class="container">
+  {% include 'partials/navbar.html' %}
 
-      <a class="navbar-brand fw-semibold" href="/">TMS</a>
-
-      <!-- Hamburger toggler — mobile only -->
-      <button class="navbar-toggler border-0 ms-auto" type="button"
-              data-bs-toggle="collapse" data-bs-target="#tmsNav"
-              aria-controls="tmsNav" aria-expanded="false" aria-label="Toggle navigation">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-
-      <!-- Collapsible nav — partials/navbar.html owns ALL links + right-side buttons -->
-      <div class="collapse navbar-collapse" id="tmsNav">
-        {% include 'partials/navbar.html' %}
-
-        <!-- Viewport debugger toggle — appended after navbar links -->
-        <div class="ms-md-2 d-flex align-items-center mt-2 mt-md-0">
-          <div class="form-check form-switch mb-0">
-            <input class="form-check-input js-viewport-toggle" type="checkbox" id="viewportToggle" role="switch">
-            <label class="form-check-label text-secondary" for="viewportToggle" style="font-size: 11px;">Viewport</label>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </nav>
-
-  <!-- Django messages — constrained to same container width as content -->
+  <!-- Django flash messages -->
   {% if messages %}
     <div class="container mt-2">
       {% for message in messages %}
@@ -205,25 +356,56 @@
     </div>
   {% endif %}
 
-  <!-- Main container -->
-  <div class="{% block main_container_class %}container{% endblock %} mt-3">
-    {% block content %}{% endblock %}
-  </div>
+  <!-- ============================================================
+       MAIN CONTENT
+       ============================================================ -->
+  <main class="tms-main">
+    <div class="{% block main_container_class %}container{% endblock %} mt-3 mb-4">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <footer class="tms-footer no-print">
+    <div class="container text-center">
+      <p>Tenant Management System &copy; {% now "Y" %}</p>
+    </div>
+  </footer>
 
   <!-- Viewport debug bar -->
   <div class="viewport-bar no-print" aria-live="polite">
-    <strong>Viewport</strong>
+    <strong style="white-space:nowrap;">Viewport</strong>
     <div class="viewport-bar__track" aria-hidden="true">
       <span class="viewport-bar__marker" id="viewportMarker"></span>
     </div>
     <span id="viewportSize">0 × 0</span>
   </div>
 
-  <footer class="mt-5 py-3 bg-light border-top">
-    <div class="container text-center">
-      <p class="mb-0 text-muted small">Tenant Management System &copy; {% now "Y" %}</p>
+  <!-- Receipt viewer modal (reusable) -->
+  <div class="modal fade" id="receiptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content">
+        <div class="modal-body p-3">
+          <div class="row g-3">
+            <div class="col-12 col-md-9">
+              <img id="receiptMain" src="" alt="Receipt"
+                   class="img-fluid w-100 rounded border"
+                   style="max-height:75vh;object-fit:contain;">
+            </div>
+            <div class="col-12 col-md-3">
+              <div id="receiptThumbs" class="d-flex flex-wrap gap-2"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer justify-content-between py-2">
+          <small class="text-muted">Tap thumbnail to switch</small>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
     </div>
-  </footer>
+  </div>
 
   <!-- ============================================================
        SCRIPTS
@@ -237,31 +419,34 @@
   {% block extra_js %}{% endblock %}
 
   <script>
-    /* Auto-dismiss alerts after 5s + init Select2 */
     document.addEventListener('DOMContentLoaded', function () {
+
+      /* Auto-dismiss alerts after 5s */
       setTimeout(function () {
         document.querySelectorAll('.alert').forEach(function (el) {
           if (window.bootstrap?.Alert) new bootstrap.Alert(el).close();
         });
       }, 5000);
 
+      /* Init Select2 */
       if (window.$?.fn?.select2) {
         $('#tenant-select').select2({ theme: 'bootstrap-5', placeholder: "Search Tenant", allowClear: true });
-        $('#unit-select').select2({ theme: 'bootstrap-5', placeholder: "Search Unit",   allowClear: true });
+        $('#unit-select').select2({ theme: 'bootstrap-5', placeholder: "Search Unit", allowClear: true });
       }
     });
 
-    document.addEventListener('error', function (event) {
-      const img = event.target;
+    /* Missing image fallback */
+    document.addEventListener('error', function (e) {
+      const img = e.target;
       if (!img || img.tagName !== 'IMG' || img.dataset.missingHandled === '1') return;
       img.dataset.missingHandled = '1';
       img.style.display = 'none';
-      const fallback = document.createElement('div');
-      fallback.className = 'd-inline-flex align-items-center justify-content-center bg-light text-muted border rounded small';
-      fallback.style.minWidth = img.getAttribute('width') ? img.getAttribute('width') + 'px' : '80px';
-      fallback.style.minHeight = img.getAttribute('height') ? img.getAttribute('height') + 'px' : '60px';
-      fallback.textContent = img.alt || 'File missing';
-      img.insertAdjacentElement('afterend', fallback);
+      const fb = document.createElement('div');
+      fb.className = 'd-inline-flex align-items-center justify-content-center bg-light text-muted border rounded small';
+      fb.style.minWidth  = (img.getAttribute('width')  || '80')  + 'px';
+      fb.style.minHeight = (img.getAttribute('height') || '60')  + 'px';
+      fb.textContent = img.alt || 'File missing';
+      img.insertAdjacentElement('afterend', fb);
     }, true);
   </script>
 
@@ -269,15 +454,14 @@
   <script>
     (function () {
       const KEY     = 'tmsViewportBar';
-      const toggles = Array.from(document.querySelectorAll('.js-viewport-toggle'));
       const sizeEl  = document.getElementById('viewportSize');
       const marker  = document.getElementById('viewportMarker');
 
-      function enabled()          { return localStorage.getItem(KEY) === '1'; }
-      function setEnabled(value) {
-        localStorage.setItem(KEY, value ? '1' : '0');
-        document.body.classList.toggle('show-viewport-bar', value);
-        toggles.forEach(t => { t.checked = value; });
+      function enabled()         { return localStorage.getItem(KEY) === '1'; }
+      function setEnabled(val) {
+        localStorage.setItem(KEY, val ? '1' : '0');
+        document.body.classList.toggle('show-viewport-bar', val);
+        document.querySelectorAll('.js-viewport-toggle').forEach(t => { t.checked = val; });
         update();
       }
       function update() {
@@ -289,7 +473,9 @@
       }
 
       document.addEventListener('DOMContentLoaded', function () {
-        toggles.forEach(t => t.addEventListener('change', function () { setEnabled(this.checked); }));
+        document.querySelectorAll('.js-viewport-toggle').forEach(t =>
+          t.addEventListener('change', function () { setEnabled(this.checked); })
+        );
         setEnabled(enabled());
       });
       window.addEventListener('resize', update);
@@ -297,34 +483,13 @@
     })();
   </script>
 
-  <!-- Receipt viewer modal (reusable) -->
-  <div class="modal fade" id="receiptModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
-      <div class="modal-content">
-        <div class="modal-body">
-          <div class="row g-3">
-            <div class="col-12 col-md-9">
-              <img id="receiptMain" src="" alt="Receipt" class="img-fluid w-100 rounded border" style="max-height:75vh;object-fit:contain;">
-            </div>
-            <div class="col-12 col-md-3">
-              <div id="receiptThumbs" class="d-flex flex-wrap gap-2"></div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer justify-content-between">
-          <small class="text-muted">Click a thumbnail to switch</small>
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
+  <!-- Receipt gallery -->
   <script>
     (function () {
       function openGallery(urls) {
         const main   = document.getElementById('receiptMain');
         const thumbs = document.getElementById('receiptThumbs');
-        if (!urls || !urls.length || !main || !thumbs) return;
+        if (!urls?.length || !main || !thumbs) return;
         main.src = urls[0];
         thumbs.innerHTML = '';
         urls.forEach(u => {
@@ -332,7 +497,7 @@
           img.src = u;
           img.className = 'img-thumbnail';
           img.style.cssText = 'width:80px;height:80px;object-fit:cover;cursor:pointer;';
-          img.addEventListener('click', () => main.src = u);
+          img.addEventListener('click', () => { main.src = u; });
           thumbs.appendChild(img);
         });
         if (window.bootstrap?.Modal)

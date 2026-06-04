@@ -19,6 +19,7 @@ class ExpenseForm(forms.ModelForm):
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}),
             'description': forms.Textarea(attrs={'rows': 3}),
+            'receipt': forms.ClearableFileInput(attrs={'accept': 'image/*,.pdf,.heic,.heif'}),
         }
 
     def __init__(self, *args, **kwargs):

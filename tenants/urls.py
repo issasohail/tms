@@ -12,7 +12,6 @@ from .views import (
 )
 from .views import TenantListView, tenant_ajax_update
 from .api import TenantLeasesAPI
-from django.views.decorators.csrf import csrf_exempt
 
 # Import notification views directly from notifications app
 from notifications.views import (

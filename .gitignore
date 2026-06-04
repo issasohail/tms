@@ -80,8 +80,10 @@ htmlcov/
 *.sql
 *.sqlite3
 *.bak
+*.bak*
 *.backup
 *.old
+*.zip
 
 # ==========================================================
 # TEMP FILES

@@ -47,7 +47,6 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django_tables2.export.views import ExportMixin
 from django.http import JsonResponse
 from .models import ExpenseCategory
-from django.views.decorators.csrf import csrf_exempt
 import json
 from datetime import timedelta
 
@@ -239,8 +238,11 @@ def category_list_api(request):
     })
 
 
-@csrf_exempt
+@login_required
+@require_POST
 def category_add_api(request):
+    if not request.user.has_perm("expenses.add_expensecategory"):
+        return JsonResponse({"error": "Permission denied"}, status=403)
     data = json.loads(request.body)
     category, created = ExpenseCategory.objects.get_or_create(
         name=data['name'])

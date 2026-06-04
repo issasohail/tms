@@ -54,6 +54,22 @@ PK_PHONE_RE = re.compile(r'^(0\d{10}|\+92\d{10})$')
 
 
 class TenantForm(forms.ModelForm):
+    photo = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
+        "class": "form-control-file",
+        "accept": "image/*,.heic,.heif",
+        "capture": "environment",
+    }))
+    cnic_front = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
+        "class": "form-control-file",
+        "accept": "image/*,.heic,.heif",
+        "capture": "environment",
+    }))
+    cnic_back = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
+        "class": "form-control-file",
+        "accept": "image/*,.heic,.heif",
+        "capture": "environment",
+    }))
+
     class Meta:
         model = Tenant
         fields = '__all__'
@@ -214,9 +230,21 @@ class TenantPublicRegistrationForm(forms.Form):
         widget=forms.CheckboxSelectMultiple(),
     )
     notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 4}))
-    photo = forms.ImageField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}))
-    cnic_front = forms.ImageField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}))
-    cnic_back = forms.ImageField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}))
+    photo = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
+        "class": "form-control form-control-sm",
+        "accept": "image/*,.heic,.heif",
+        "capture": "environment",
+    }))
+    cnic_front = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
+        "class": "form-control form-control-sm",
+        "accept": "image/*,.heic,.heif",
+        "capture": "environment",
+    }))
+    cnic_back = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
+        "class": "form-control form-control-sm",
+        "accept": "image/*,.heic,.heif",
+        "capture": "environment",
+    }))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

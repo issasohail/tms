@@ -1,91 +1,78 @@
-from utils.pdf_export import PDFTableExport, TableExport
-from .tables import PropertyTable
-from .models import Property
-from django.utils.timezone import now
-from django.http import HttpResponse
-from django.views.generic import ListView
-from leases.models import Lease, LeaseRenewal
-from utils.pdf_export import handle_export
-from utils.pdf_export import PDFTableExport
-from .tables import PropertyTable, UnitTable
-from .forms import PropertyForm, UnitForm
-from .models import Property, Unit
-from datetime import datetime, timedelta
-from urllib.parse import quote
+import json
 import logging
-from django_tables2.export.export import TableExport
-from django_tables2.export.views import ExportMixin
-from django_tables2 import SingleTableView
-from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.messages.views import SuccessMessageMixin
-from django.views.generic import ListView, CreateView, DetailView, UpdateView, DeleteView
-from django.urls import reverse_lazy
-from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse
+import os
+from datetime import datetime, timedelta
+from io import BytesIO
+from urllib.parse import quote
+
+import fitz
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.messages.views import SuccessMessageMixin
 from django.core import signing
-from django.http import JsonResponse, HttpResponseRedirect
 from django.core.exceptions import ValidationError
-from django.http import FileResponse, Http404
+from django.db.models import Count, DateField, Exists, IntegerField, OuterRef, Q, Subquery
+from django.http import FileResponse, Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.views.decorators.http import require_POST
-from core.models import GlobalSettings
-from leases.models import WhatsAppTemplate
-from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
-from tenants.models import Tenant, TenantInterestType
-from django.views.generic import CreateView, UpdateView, DetailView, DeleteView
+from django.views.generic import CreateView, DeleteView, DetailView, UpdateView
 from django_filters.views import FilterView
-from django_tables2.views import SingleTableMixin
+from django_tables2 import SingleTableView
 from django_tables2.paginators import LazyPaginator
-from django.views import View
-from django.db.models import Count, DateField, Exists, OuterRef, Q, Subquery
-from io import BytesIO
-import os
-
+from django_tables2.views import SingleTableMixin
 from docx import Document
 from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches
-import fitz
-
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
-from django.views.decorators.http import require_POST
 
-from .models import PropertyMedia, Unit, UnitMedia, Property
+from core.models import GlobalSettings
+from leases.models import Lease, LeaseRenewal, WhatsAppTemplate
+from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
+from tenants.models import Tenant, TenantInterestType
+from utils.pdf_export import handle_export
+
 from .filters import UnitFilter
-from .tables import UnitTable
-from .forms import UnitForm
-
-import json
+from .forms import PropertyForm, UnitForm
+from .models import Property, PropertyMedia, Unit, UnitMedia
+from .tables import PropertyTable, UnitTable
 
 logger = logging.getLogger(__name__)
 UNIT_MEDIA_SHARE_MAX_AGE = 60 * 60 * 48
 UNIT_MEDIA_SHARE_SALT = "properties.unit-media-share"
 
 
-@csrf_exempt
+@login_required
+@require_POST
 def unit_inline_update(request):
-    if request.method == "POST":
+    if not request.user.has_perm("properties.change_unit"):
+        return JsonResponse({"success": False, "error": "Permission denied"}, status=403)
+    allowed_fields = {
+        "unit_number", "electric_meter_num", "gas_meter_num", "society_maintenance",
+        "water_charges", "monthly_rent", "security_requires", "status", "comments",
+        "bedrooms", "bathrooms", "kitchens", "hall", "square_footage", "interest_type_id",
+    }
+    try:
         data = json.loads(request.body)
         unit_id = data.get("id")
         field = data.get("field")
         value = data.get("value")
+        if field not in allowed_fields:
+            return JsonResponse({"success": False, "error": "Invalid field"}, status=400)
 
-        try:
-            unit = Unit.objects.get(pk=unit_id)
-            setattr(unit, field, value)
-            unit.save()
-            return JsonResponse({"success": True, "new_value": getattr(unit, field)})
-        except Exception as e:
-            return JsonResponse({"success": False, "error": str(e)}, status=400)
+        unit = Unit.objects.get(pk=unit_id)
+        setattr(unit, field, value)
+        unit.save(update_fields=[field])
+        return JsonResponse({"success": True, "new_value": getattr(unit, field)})
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
 
 
 logger = logging.getLogger(__name__)
@@ -94,9 +81,9 @@ logger = logging.getLogger(__name__)
 class PropertyListView(SingleTableView):
     model = Property
     table_class = PropertyTable
-    template_name = 'properties/property_list.html'
-    ordering = ['-created_at']
-    context_object_name = 'properties'
+    template_name = "properties/property_list.html"
+    ordering = ["-created_at"]
+    context_object_name = "properties"
     table_pagination = {"per_page": 5, "paginator_class": LazyPaginator}
 
     def get_queryset(self):
@@ -108,8 +95,8 @@ class PropertyListView(SingleTableView):
         return context
 
     def get(self, request, *args, **kwargs):
-       # Handle export requests first
-        if request.GET.get('_export'):
+        # Handle export requests first
+        if request.GET.get("_export"):
             table = self.get_table()
             export_name = f"properties_{datetime.now().strftime('%Y%m%d')}"
             return handle_export(request, table, export_name)
@@ -121,63 +108,67 @@ class PropertyListView(SingleTableView):
 class PropertyCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
     model = Property
     form_class = PropertyForm
-    template_name = 'properties/property_form.html'
+    template_name = "properties/property_form.html"
     success_message = "Property created successfully"
-    success_url = reverse_lazy('properties:property_list')
+    success_url = reverse_lazy("properties:property_list")
 
     def form_valid(self, form):
-        messages.success(self.request, 'Property created successfully.')
+        messages.success(self.request, "Property created successfully.")
         return super().form_valid(form)
 
 
 class PropertyDetailView(LoginRequiredMixin, DetailView):
     model = Property
-    template_name = 'properties/property_detail.html'
-    context_object_name = 'property'
-    success_url = reverse_lazy('properties:property_list')
+    template_name = "properties/property_detail.html"
+    context_object_name = "property"
+    success_url = reverse_lazy("properties:property_list")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         today = timezone.now().date()
-        units = self.object.units.all().order_by('unit_number')
-        active_unit_ids = Lease.objects.filter(
-            unit__property=self.object,
-            status='active',
-            start_date__lte=today,
-            end_date__gte=today,
-        ).values_list('unit_id', flat=True).distinct()
+        units = self.object.units.all().order_by("unit_number")
+        active_unit_ids = (
+            Lease.objects.filter(
+                unit__property=self.object,
+                status="active",
+                start_date__lte=today,
+                end_date__gte=today,
+            )
+            .values_list("unit_id", flat=True)
+            .distinct()
+        )
 
-        context['units'] = units
-        context['actual_total_units'] = units.count()
-        context['configured_total_units'] = self.object.total_units
-        context['occupied_units_count'] = units.filter(id__in=active_unit_ids).count()
-        context['vacant_units_count'] = units.filter(
-            status='vacant'
-        ).exclude(id__in=active_unit_ids).count()
-        context['maintenance_units_count'] = units.filter(status='maintenance').count()
-        context['media_files'] = self.object.media_files.filter(is_active=True)[:6]
+        context["units"] = units
+        context["actual_total_units"] = units.count()
+        context["configured_total_units"] = self.object.total_units
+        context["occupied_units_count"] = units.filter(id__in=active_unit_ids).count()
+        context["vacant_units_count"] = (
+            units.filter(status="vacant").exclude(id__in=active_unit_ids).count()
+        )
+        context["maintenance_units_count"] = units.filter(status="maintenance").count()
+        context["media_files"] = self.object.media_files.filter(is_active=True)[:6]
         return context
 
 
 class PropertyUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     model = Property
     form_class = PropertyForm
-    template_name = 'properties/property_form.html'
+    template_name = "properties/property_form.html"
     success_message = "Property updated successfully"
-    success_url = reverse_lazy('properties:property_list')
+    success_url = reverse_lazy("properties:property_list")
 
     def form_valid(self, form):
-        messages.success(self.request, 'Property updated successfully.')
+        messages.success(self.request, "Property updated successfully.")
         return super().form_valid(form)
 
 
 class PropertyDeleteView(LoginRequiredMixin, DeleteView):
     model = Property
-    template_name = 'properties/property_confirm_delete.html'
-    success_url = reverse_lazy('properties:property_list')
+    template_name = "properties/property_confirm_delete.html"
+    success_url = reverse_lazy("properties:property_list")
 
     def delete(self, request, *args, **kwargs):
-        messages.success(self.request, 'Property deleted successfully.')
+        messages.success(self.request, "Property deleted successfully.")
         return super().delete(request, *args, **kwargs)
 
 
@@ -187,6 +178,15 @@ class UnitListView(SingleTableMixin, FilterView):
     template_name = "properties/unit_list.html"
     filterset_class = UnitFilter
     table_pagination = {"per_page": 25, "paginator_class": LazyPaginator}
+
+    def _get_interest_types(self):
+        if not hasattr(self, "_interest_types_cache"):
+            self._interest_types_cache = list(
+                TenantInterestType.objects.filter(is_active=True).order_by(
+                    "sort_order", "name"
+                )
+            )
+        return self._interest_types_cache
 
     def get_queryset(self):
         today = timezone.now().date()
@@ -201,25 +201,64 @@ class UnitListView(SingleTableMixin, FilterView):
             start_date__lte=today,
             end_date__gte=today,
         )
-        active_lease_end = active_lease.order_by("end_date", "id").values("end_date")[:1]
-        active_lease_history_end = (
-            active_lease_history.order_by("end_date", "id").values("end_date")[:1]
-        )
+        active_lease_end = active_lease.order_by("end_date", "id").values("end_date")[
+            :1
+        ]
+        active_lease_id = active_lease.order_by("end_date", "id").values("id")[:1]
+        active_lease_history_end = active_lease_history.order_by(
+            "end_date", "id"
+        ).values("end_date")[:1]
+        active_lease_history_lease_id = active_lease_history.order_by(
+            "end_date", "id"
+        ).values("lease_id")[:1]
         ending_soon_lease = active_lease.filter(end_date__lte=ending_date)
-        ending_soon_lease_history = active_lease_history.filter(end_date__lte=ending_date)
+        ending_soon_lease_history = active_lease_history.filter(
+            end_date__lte=ending_date
+        )
         queryset = (
-            super().get_queryset()
-            .select_related('property', 'interest_type')
+            super()
+            .get_queryset()
+            .select_related("property", "interest_type")
+            .only(
+                "id",
+                "property_id",
+                "interest_type_id",
+                "unit_number",
+                "monthly_rent",
+                "electric_meter_num",
+                "gas_meter_num",
+                "society_maintenance",
+                "water_charges",
+                "security_requires",
+                "status",
+                "property__id",
+                "property__property_name",
+                "interest_type__id",
+                "interest_type__name",
+                "interest_type__code",
+                "interest_type__is_active",
+                "interest_type__sort_order",
+            )
             .annotate(
                 has_active_lease=Exists(active_lease),
                 has_active_lease_history=Exists(active_lease_history),
                 has_ending_soon_lease=Exists(ending_soon_lease),
                 has_ending_soon_lease_history=Exists(ending_soon_lease_history),
-                active_lease_end_date=Subquery(active_lease_end, output_field=DateField()),
-                active_lease_history_end_date=Subquery(active_lease_history_end, output_field=DateField()),
+                active_lease_end_date=Subquery(
+                    active_lease_end, output_field=DateField()
+                ),
+                active_lease_id=Subquery(
+                    active_lease_id, output_field=IntegerField()
+                ),
+                active_lease_history_end_date=Subquery(
+                    active_lease_history_end, output_field=DateField()
+                ),
+                active_lease_history_lease_id=Subquery(
+                    active_lease_history_lease_id, output_field=IntegerField()
+                ),
             )
         )
-        property_id = self.request.GET.get('property')
+        property_id = self.request.GET.get("property")
         if property_id:
             queryset = queryset.filter(property_id=property_id)
         status = self.request.GET.get("status")
@@ -243,14 +282,23 @@ class UnitListView(SingleTableMixin, FilterView):
     def get_table_data(self):
         return self.object_list
 
+    def get_table_kwargs(self):
+        kwargs = super().get_table_kwargs()
+        kwargs["lead_interest_types"] = self._get_interest_types()
+        return kwargs
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['all_properties'] = (
-            Property.objects
-            .annotate(unit_count=Count('units'))
-            .order_by('property_name')
+        context["all_properties"] = (
+            Property.objects.only("id", "property_name")
+            .annotate(unit_count=Count("units"))
+            .order_by("property_name")
         )
         context["current_status"] = self.request.GET.get("status", "")
+        context["building_type_options"] = [
+            {"id": interest_type.pk, "name": interest_type.name}
+            for interest_type in self._get_interest_types()
+        ]
         return context
 
     def get(self, request, *args, **kwargs):
@@ -281,7 +329,9 @@ def _unit_has_current_lease(unit, today=None):
             unit=unit,
             start_date__lte=today,
             end_date__gte=today,
-        ).exclude(status__in=["ended", "terminated"]).exists()
+        )
+        .exclude(status__in=["ended", "terminated"])
+        .exists()
     )
 
 
@@ -291,11 +341,15 @@ def _attach_unit_occupancy(unit):
         start_date__lte=timezone.now().date(),
         end_date__gte=timezone.now().date(),
     ).exists()
-    unit.has_active_lease = Lease.objects.filter(
-        unit=unit,
-        start_date__lte=timezone.now().date(),
-        end_date__gte=timezone.now().date(),
-    ).exclude(status__in=["ended", "terminated"]).exists()
+    unit.has_active_lease = (
+        Lease.objects.filter(
+            unit=unit,
+            start_date__lte=timezone.now().date(),
+            end_date__gte=timezone.now().date(),
+        )
+        .exclude(status__in=["ended", "terminated"])
+        .exists()
+    )
     unit.is_currently_occupied = unit.has_active_lease_history or unit.has_active_lease
     return unit
 
@@ -309,17 +363,26 @@ def _lead_money(value):
         return str(value)
 
 
+def _default_unit_interest_type(unit):
+    property_name = (unit.property.property_name if unit.property else "").lower()
+    code = (
+        "single_room_attached_bath_kitchen"
+        if "f56" in property_name and "basement" in property_name
+        else "two_room_flat"
+    )
+    return TenantInterestType.objects.filter(code=code, is_active=True).first()
+
+
 def _vacant_notice_message(request, unit, tenant, photos_link=""):
-    detail_link = request.build_absolute_uri(
+    details_link = photos_link or request.build_absolute_uri(
         reverse("properties:unit_detail", args=[unit.pk])
     )
     lines = [
         f"Dear {tenant.get_full_name()},",
         "",
-        "A unit is now available:",
+        "A unit is now available for rent:",
         "",
-        f"Property: {unit.property.property_name}",
-        f"Unit: {unit.unit_number}",
+        f"Property: {unit.property.property_name}- {unit.unit_number}",
         f"Rent: {_lead_money(unit.monthly_rent)}",
         f"Maintenance: {_lead_money(unit.society_maintenance)}",
         f"Water: {_lead_money(unit.water_charges)}",
@@ -328,10 +391,8 @@ def _vacant_notice_message(request, unit, tenant, photos_link=""):
         f"Notes: {unit.comments or '-'}",
         "",
         "Photos/Details:",
-        detail_link,
+        details_link,
     ]
-    if photos_link:
-        lines.append(photos_link)
     lines.extend(["", "Please contact us if interested."])
     return "\n".join(lines)
 
@@ -343,31 +404,38 @@ def unit_vacant_notice_leads(request, pk):
         Unit.objects.select_related("property", "interest_type"),
         pk=pk,
     )
-    has_active_lease = Lease.objects.filter(
-        unit=unit,
-        start_date__lte=today,
-        end_date__gte=today,
-    ).exclude(status__in=["ended", "terminated"]).exists()
+    has_active_lease = (
+        Lease.objects.filter(
+            unit=unit,
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        .exclude(status__in=["ended", "terminated"])
+        .exists()
+    )
     has_active_lease_history = LeaseRenewal.objects.filter(
         lease__unit=unit,
         start_date__lte=today,
         end_date__gte=today,
     ).exists()
-    if not unit.interest_type_id:
-        return JsonResponse({
-            "success": True,
-            "unit": {
-                "id": unit.pk,
-                "title": f"{unit.property.property_name} - {unit.unit_number} Vacant Notice",
-                "interest_type": None,
-            },
-            "interest_types": list(
-                TenantInterestType.objects.filter(is_active=True)
-                .order_by("sort_order", "name")
-                .values("id", "name")
-            ),
-            "tenants": [],
-        })
+    unit_interest_type = unit.interest_type or _default_unit_interest_type(unit)
+    if not unit_interest_type:
+        return JsonResponse(
+            {
+                "success": True,
+                "unit": {
+                    "id": unit.pk,
+                    "title": f"{unit.property.property_name} - {unit.unit_number} Vacant Notice",
+                    "interest_type": None,
+                },
+                "interest_types": list(
+                    TenantInterestType.objects.filter(is_active=True)
+                    .order_by("sort_order", "name")
+                    .values("id", "name")
+                ),
+                "tenants": [],
+            }
+        )
 
     settings_obj = GlobalSettings.get_solo()
     country_code = getattr(settings_obj, "country_code", "+92")
@@ -375,13 +443,15 @@ def unit_vacant_notice_leads(request, pk):
     photos_link = ""
     if has_photos:
         photos_link = request.build_absolute_uri(
-            reverse("properties:unit_media_public_share", args=[_sign_unit_media_token(unit.pk)])
+            reverse(
+                "properties:unit_media_public_share",
+                args=[_sign_unit_media_token(unit.pk)],
+            )
         )
 
     tenants = (
-        Tenant.objects
-        .prefetch_related("interested_in")
-        .filter(interested_in=unit.interest_type)
+        Tenant.objects.prefetch_related("interested_in")
+        .filter(interested_in=unit_interest_type)
         .distinct()
         .order_by("first_name", "last_name")
     )
@@ -392,35 +462,50 @@ def unit_vacant_notice_leads(request, pk):
     )
     rows = []
     for tenant in tenants:
-        interests = [{"id": item.pk, "name": item.name} for item in tenant.interested_in.all()]
+        interests = [
+            {"id": item.pk, "name": item.name} for item in tenant.interested_in.all()
+        ]
         message = _vacant_notice_message(request, unit, tenant, photos_link=photos_link)
-        rows.append({
-            "id": tenant.pk,
-            "full_name": tenant.get_full_name(),
-            "phone": tenant.phone or "",
-            "photo_url": tenant.photo.url if tenant.photo else None,
-            "interested_in": interests,
-            "tenant_detail_url": reverse("tenants:tenant_detail", args=[tenant.pk]),
-            "tenant_edit_url": reverse("tenants:tenant_update", args=[tenant.pk]),
-            "tenant_inline_update_url": reverse("tenants:tenant_lead_inline_update", args=[tenant.pk]),
-            "whatsapp_message": message,
-            "whatsapp_url": build_whatsapp_url(tenant.phone, message, country_code=country_code),
-        })
+        rows.append(
+            {
+                "id": tenant.pk,
+                "full_name": tenant.get_full_name(),
+                "phone": tenant.phone or "",
+                "photo_url": tenant.photo.url if tenant.photo else None,
+                "interested_in": interests,
+                "tenant_detail_url": reverse("tenants:tenant_detail", args=[tenant.pk]),
+                "tenant_edit_url": reverse("tenants:tenant_update", args=[tenant.pk]),
+                "tenant_inline_update_url": reverse(
+                    "tenants:tenant_lead_inline_update", args=[tenant.pk]
+                ),
+                "whatsapp_message": message,
+                "whatsapp_url": build_whatsapp_url(
+                    tenant.phone, message, country_code=country_code
+                ),
+            }
+        )
 
-    return JsonResponse({
-        "success": True,
-        "unit": {
-            "id": unit.pk,
-            "title": f"{unit.property.property_name} - {unit.unit_number} Vacant Notice",
-            "interest_type": {"id": unit.interest_type_id, "name": unit.interest_type.name},
-            "detail_url": request.build_absolute_uri(reverse("properties:unit_detail", args=[unit.pk])),
-            "photos_url": photos_link or None,
-            "has_active_lease": has_active_lease,
-            "has_active_lease_history": has_active_lease_history,
-        },
-        "interest_types": interest_types,
-        "tenants": rows,
-    })
+    return JsonResponse(
+        {
+            "success": True,
+            "unit": {
+                "id": unit.pk,
+                "title": f"{unit.property.property_name} - {unit.unit_number} Vacant Notice",
+                "interest_type": {
+                    "id": unit_interest_type.pk,
+                    "name": unit_interest_type.name,
+                },
+                "detail_url": request.build_absolute_uri(
+                    reverse("properties:unit_detail", args=[unit.pk])
+                ),
+                "photos_url": photos_link or None,
+                "has_active_lease": has_active_lease,
+                "has_active_lease_history": has_active_lease_history,
+            },
+            "interest_types": interest_types,
+            "tenants": rows,
+        }
+    )
 
 
 @login_required
@@ -453,9 +538,15 @@ def unit_vacant_summary_message(request):
         vacant_units = vacant_units.filter(property_id=property_id)
 
     ending_histories = (
-        LeaseRenewal.objects.select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
+        LeaseRenewal.objects.select_related(
+            "lease", "lease__tenant", "lease__unit", "lease__unit__property"
+        )
         .filter(start_date__lte=today, end_date__gte=today, end_date__lte=ending_date)
-        .order_by("end_date", "lease__unit__property__property_name", "lease__unit__unit_number")
+        .order_by(
+            "end_date",
+            "lease__unit__property__property_name",
+            "lease__unit__unit_number",
+        )
     )
     if property_id:
         ending_histories = ending_histories.filter(lease__unit__property_id=property_id)
@@ -471,6 +562,12 @@ def unit_vacant_summary_message(request):
     if property_id:
         ending_leases = ending_leases.filter(unit__property_id=property_id)
 
+    settings_obj = GlobalSettings.get_solo()
+    country_code = getattr(settings_obj, "country_code", "+92")
+    user_phone = getattr(request.user, "whatsapp_number", "") or getattr(
+        settings_obj, "whatsapp_number", ""
+    )
+
     lines = [
         "Vacant and Ending Soon Unit Summary",
         f"Date: {today:%Y-%m-%d}",
@@ -479,131 +576,162 @@ def unit_vacant_summary_message(request):
     ]
     vacant_list = list(vacant_units)
     if vacant_list:
-        for unit in vacant_list:
+        for index, unit in enumerate(vacant_list, start=1):
             lines.append(
-                f"- {unit.property.property_name} - {unit.unit_number} | Status: Vacant | Rent: {_lead_money(unit.monthly_rent)} | Maintenance: {_lead_money(unit.society_maintenance)}"
+                f"{index}. Property: {unit.property.property_name} | Unit: {unit.unit_number} | Status: Vacant | Rent: {_lead_money(unit.monthly_rent)} | Maintenance: {_lead_money(unit.society_maintenance)}"
             )
     else:
-        lines.append("- None")
+        lines.append("1. None")
 
     lines.extend(["", "Leases ending within 40 days:"])
     ending_rows = []
     for history in ending_histories:
         lease = history.lease
-        ending_rows.append((
-            history.end_date,
-            lease.unit.property.property_name,
-            lease.unit.unit_number,
-            lease.tenant.get_full_name(),
-            history.history_label,
-        ))
+        ending_rows.append(
+            (
+                history.end_date,
+                lease.unit.property.property_name,
+                lease.unit.unit_number,
+                _lead_money(lease.unit.monthly_rent),
+                _lead_money(lease.unit.society_maintenance),
+            )
+        )
     for lease in ending_leases:
-        ending_rows.append((
-            lease.end_date,
-            lease.unit.property.property_name,
-            lease.unit.unit_number,
-            lease.tenant.get_full_name(),
-            "Lease",
-        ))
+        ending_rows.append(
+            (
+                lease.end_date,
+                lease.unit.property.property_name,
+                lease.unit.unit_number,
+                _lead_money(lease.unit.monthly_rent),
+                _lead_money(lease.unit.society_maintenance),
+            )
+        )
     ending_rows.sort(key=lambda row: (row[0], row[1], row[2]))
     if ending_rows:
-        for end_date, property_name, unit_number, tenant_name, source in ending_rows:
+        for index, (end_date, property_name, unit_number, rent, maintenance) in enumerate(ending_rows, start=1):
             lines.append(
-                f"- {property_name} - {unit_number} | Status: Lease ending soon ({end_date:%Y-%m-%d}) | Tenant: {tenant_name} | {source}"
+                f"{index}. Property: {property_name} | Unit: {unit_number} | Status: Lease ending soon ({end_date:%Y-%m-%d}) | Rent: {rent} | Maintenance: {maintenance}"
             )
     else:
-        lines.append("- None")
+        lines.append("1. None")
 
     message = "\n".join(lines)
-    return JsonResponse({
-        "success": True,
-        "message": message,
-        "whatsapp_url": f"https://wa.me/?text={quote(message)}",
-        "vacant_count": len(vacant_list),
-        "ending_soon_count": len(ending_rows),
-    })
+    whatsapp_url = build_whatsapp_url(
+        user_phone, message, country_code=country_code
+    ) if user_phone else f"https://wa.me/?text={quote(message)}"
+    return JsonResponse(
+        {
+            "success": True,
+            "message": message,
+            "whatsapp_url": whatsapp_url,
+            "vacant_count": len(vacant_list),
+            "ending_soon_count": len(ending_rows),
+        }
+    )
 
 
 class UnitDetailView(LoginRequiredMixin, DetailView):
     model = Unit
-    template_name = 'properties/unit_detail.html'
-    context_object_name = 'unit'
+    template_name = "properties/unit_detail.html"
+    context_object_name = "unit"
 
     def get_queryset(self):
-        return super().get_queryset().select_related('property')
+        return super().get_queryset().select_related("property")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         _attach_unit_occupancy(self.object)
-        context['units'] = self.object
-        context['media_files'] = self.object.media_files.filter(is_active=True)[:6]
+        context["units"] = self.object
+        context["media_files"] = self.object.media_files.filter(is_active=True)[:6]
         return context
 
 
 def unit_detail(request, pk):
-    unit = get_object_or_404(Unit.objects.select_related('property'), pk=pk)
+    unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
     _attach_unit_occupancy(unit)
     media_files = unit.media_files.filter(is_active=True)[:6]
-    return render(request, 'properties/unit_detail.html', {'unit': unit, 'media_files': media_files})
+    return render(
+        request,
+        "properties/unit_detail.html",
+        {"unit": unit, "media_files": media_files},
+    )
 
 
 class UnitCreateView(CreateView):
     model = Unit
     form_class = UnitForm
-    template_name = 'properties/unit_form.html'
+    template_name = "properties/unit_form.html"
 
     def get_success_url(self):
         messages.success(self.request, "Unit created successfully.")
-        return reverse('properties:unit_list')
+        return reverse("properties:unit_list")
 
 
 class UnitUpdateView(UpdateView):
     model = Unit
     form_class = UnitForm
-    template_name = 'properties/unit_form.html'
+    template_name = "properties/unit_form.html"
 
     def get_success_url(self):
         messages.success(self.request, "Unit updated successfully.")
-        return reverse('properties:unit_list')
+        return reverse("properties:unit_list")
 
 
 class UnitDeleteView(DeleteView):
     model = Unit
-    template_name = 'properties/unit_confirm_delete.html'
+    template_name = "properties/unit_confirm_delete.html"
 
     def get_success_url(self):
         messages.success(self.request, "Unit deleted successfully.")
-        return reverse('properties:unit_list')
+        return reverse("properties:unit_list")
 
 
 @require_POST
 def unit_inline_update(request):
     try:
         data = json.loads(request.body)
-        unit_id = data.get('id')
-        field = data.get('field')
-        value = data.get('value')
+        unit_id = data.get("id")
+        field = data.get("field")
+        value = data.get("value")
 
         unit = get_object_or_404(Unit, pk=unit_id)
         if field == "interest_type":
             if value:
-                interest_type = get_object_or_404(TenantInterestType, pk=value, is_active=True)
+                interest_type = get_object_or_404(
+                    TenantInterestType, pk=value, is_active=True
+                )
                 unit.interest_type = interest_type
                 new_value = interest_type.name
             else:
                 unit.interest_type = None
                 new_value = ""
             unit.save(update_fields=["interest_type"])
-            return JsonResponse({
-                'success': True,
-                'new_value': new_value,
-                'interest_type_id': unit.interest_type_id or "",
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "new_value": new_value,
+                    "interest_type_id": unit.interest_type_id or "",
+                }
+            )
+        if field in {
+            "monthly_rent",
+            "society_maintenance",
+            "water_charges",
+            "security_requires",
+        }:
+            setattr(unit, field, value)
+            unit.save(update_fields=[field])
+            new_value = (
+                _lead_money(getattr(unit, field))
+                if field != "security_requires"
+                else getattr(unit, field)
+            )
+            return JsonResponse({"success": True, "new_value": new_value or ""})
         setattr(unit, field, value)
         unit.save()
-        return JsonResponse({'success': True, 'new_value': value})
+        return JsonResponse({"success": True, "new_value": value})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
 
 
 def _next_media_sort(qs):
@@ -635,14 +763,18 @@ def _upload_media_files(request, owner, media_model, owner_field):
             media.save()
             created += 1
         except ValidationError as exc:
-            messages.error(request, f"{getattr(file_obj, 'name', 'File')}: {exc.messages[0]}")
+            messages.error(
+                request, f"{getattr(file_obj, 'name', 'File')}: {exc.messages[0]}"
+            )
     if created:
         messages.success(request, f"Uploaded {created} file(s).")
     return created
 
 
 def _media_export_filename(owner_label, extension):
-    safe_label = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in owner_label).strip("-")
+    safe_label = "".join(
+        ch if ch.isalnum() or ch in "-_" else "-" for ch in owner_label
+    ).strip("-")
     return f"{safe_label or 'photos'}-{timezone.now():%Y%m%d}.{extension}"
 
 
@@ -656,7 +788,7 @@ def _image_path(media):
 
 def _draw_wrapped_text(pdf, text, x, y, max_chars=95, line_height=5 * mm):
     text = text or ""
-    lines = [text[i:i + max_chars] for i in range(0, len(text), max_chars)] or [""]
+    lines = [text[i : i + max_chars] for i in range(0, len(text), max_chars)] or [""]
     for line in lines[:3]:
         pdf.drawString(x, y, line)
         y -= line_height
@@ -674,7 +806,13 @@ def _media_link_rows(request, owner_kind, owner_pk, media_files):
     rows = []
     for index, media in enumerate(media_files, start=1):
         if media.file_type != "image":
-            rows.append((index, media.display_filename, _public_media_url(request, owner_kind, owner_pk, media.pk)))
+            rows.append(
+                (
+                    index,
+                    media.display_filename,
+                    _public_media_url(request, owner_kind, owner_pk, media.pk),
+                )
+            )
     return rows
 
 
@@ -682,7 +820,11 @@ def _pdf_footer(pdf, title, page_num, total_pages, width):
     pdf.setFont("Helvetica", 8)
     y = 10 * mm
     pdf.drawCentredString(width / 2, y, title)
-    pdf.drawRightString(width - 12 * mm, y, f"Page {page_num} of {total_pages}  {timezone.localtime():%Y-%m-%d %H:%M}")
+    pdf.drawRightString(
+        width - 12 * mm,
+        y,
+        f"Page {page_num} of {total_pages}  {timezone.localtime():%Y-%m-%d %H:%M}",
+    )
 
 
 def _draw_photo_page(pdf, media_items, title, page_num, total_pages, pagesize):
@@ -715,11 +857,20 @@ def _draw_photo_page(pdf, media_items, title, page_num, total_pages, pagesize):
             scale = min(cell_w / iw, img_h / ih)
             draw_w = iw * scale
             draw_h = ih * scale
-            pdf.drawImage(image, x + (cell_w - draw_w) / 2, y_top - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True)
+            pdf.drawImage(
+                image,
+                x + (cell_w - draw_w) / 2,
+                y_top - draw_h,
+                width=draw_w,
+                height=draw_h,
+                preserveAspectRatio=True,
+            )
         pdf.setFont("Helvetica-Bold", 8)
         pdf.drawString(x, y_top - img_h - 4 * mm, media.display_filename[:55])
         pdf.setFont("Helvetica", 8)
-        pdf.drawString(x, y_top - img_h - 8 * mm, (media.description or "No description")[:70])
+        pdf.drawString(
+            x, y_top - img_h - 8 * mm, (media.description or "No description")[:70]
+        )
 
     _pdf_footer(pdf, title, page_num, total_pages, width)
     pdf.showPage()
@@ -746,7 +897,13 @@ def _draw_pdf_file_pages(pdf, media, title, page_start, total_pages, pagesize):
             draw_h = pix.height * scale
             pdf.setFont("Helvetica-Bold", 9)
             pdf.drawString(margin, height - 10 * mm, media.display_filename[:85])
-            pdf.drawImage(image, margin + (max_w - draw_w) / 2, bottom + (max_h - draw_h) / 2, width=draw_w, height=draw_h)
+            pdf.drawImage(
+                image,
+                margin + (max_w - draw_w) / 2,
+                bottom + (max_h - draw_h) / 2,
+                width=draw_w,
+                height=draw_h,
+            )
             _pdf_footer(pdf, title, current_page, total_pages, width)
             pdf.showPage()
             current_page += 1
@@ -755,12 +912,16 @@ def _draw_pdf_file_pages(pdf, media, title, page_start, total_pages, pagesize):
     return current_page
 
 
-def _pdf_page_count_for_media(media_files, photos_per_page, export_pdf_files, link_count=0):
+def _pdf_page_count_for_media(
+    media_files, photos_per_page, export_pdf_files, link_count=0
+):
     image_count = sum(1 for media in media_files if media.file_type == "image")
     pages = (image_count + photos_per_page - 1) // photos_per_page
     if export_pdf_files:
         for media in media_files:
-            if media.file_type == "file" and media.display_filename.lower().endswith(".pdf"):
+            if media.file_type == "file" and media.display_filename.lower().endswith(
+                ".pdf"
+            ):
                 path = _image_path(media)
                 if path and os.path.exists(path):
                     doc = fitz.open(path)
@@ -773,32 +934,62 @@ def _pdf_page_count_for_media(media_files, photos_per_page, export_pdf_files, li
     return max(pages, 1)
 
 
-def _export_media_pdf(owner_label, parent_label, media_files, request=None, owner_kind="", owner_pk=None, photos_per_page=1, export_pdf_files=False):
+def _export_media_pdf(
+    owner_label,
+    parent_label,
+    media_files,
+    request=None,
+    owner_kind="",
+    owner_pk=None,
+    photos_per_page=1,
+    export_pdf_files=False,
+):
     buffer = BytesIO()
     photos_per_page = int(photos_per_page or 1)
     photos_per_page = photos_per_page if photos_per_page in {1, 2, 4} else 1
     pagesize = landscape(A4) if photos_per_page == 4 else A4
     pdf = canvas.Canvas(buffer, pagesize=pagesize)
     title = f"{owner_label} Photos"
-    link_rows = _media_link_rows(request, owner_kind, owner_pk, media_files) if request and owner_kind and owner_pk else []
-    total_pages = _pdf_page_count_for_media(media_files, photos_per_page, export_pdf_files, len(link_rows))
+    link_rows = (
+        _media_link_rows(request, owner_kind, owner_pk, media_files)
+        if request and owner_kind and owner_pk
+        else []
+    )
+    total_pages = _pdf_page_count_for_media(
+        media_files, photos_per_page, export_pdf_files, len(link_rows)
+    )
     images = [media for media in media_files if media.file_type == "image"]
     page_num = 1
 
     if images:
         for start in range(0, len(images), photos_per_page):
-            _draw_photo_page(pdf, images[start:start + photos_per_page], title, page_num, total_pages, pagesize)
+            _draw_photo_page(
+                pdf,
+                images[start : start + photos_per_page],
+                title,
+                page_num,
+                total_pages,
+                pagesize,
+            )
             page_num += 1
 
     for media in media_files:
-        if export_pdf_files and media.file_type == "file" and media.display_filename.lower().endswith(".pdf"):
-            page_num = _draw_pdf_file_pages(pdf, media, title, page_num, total_pages, pagesize)
+        if (
+            export_pdf_files
+            and media.file_type == "file"
+            and media.display_filename.lower().endswith(".pdf")
+        ):
+            page_num = _draw_pdf_file_pages(
+                pdf, media, title, page_num, total_pages, pagesize
+            )
 
     if link_rows:
         width, height = pagesize
         link_page_num = page_num
         pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawCentredString(width / 2, height - 16 * mm, "48-hour file and video links")
+        pdf.drawCentredString(
+            width / 2, height - 16 * mm, "48-hour file and video links"
+        )
         y = height - 28 * mm
         pdf.setFont("Helvetica", 9)
         for serial, filename, url in link_rows:
@@ -814,7 +1005,9 @@ def _export_media_pdf(owner_label, parent_label, media_files, request=None, owne
                 page_num += 1
                 y = height - 20 * mm
                 pdf.setFont("Helvetica-Bold", 12)
-                pdf.drawCentredString(width / 2, height - 16 * mm, "48-hour file and video links")
+                pdf.drawCentredString(
+                    width / 2, height - 16 * mm, "48-hour file and video links"
+                )
                 pdf.setFont("Helvetica", 9)
         if page_num == link_page_num or y < height - 28 * mm:
             _pdf_footer(pdf, title, page_num, total_pages, width)
@@ -854,8 +1047,12 @@ def _set_docx_footer(document, title):
     footer = document.sections[0].footer
     paragraph = footer.paragraphs[0]
     paragraph.text = ""
-    paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(3.1), WD_TAB_ALIGNMENT.CENTER)
-    paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(6.2), WD_TAB_ALIGNMENT.RIGHT)
+    paragraph.paragraph_format.tab_stops.add_tab_stop(
+        Inches(3.1), WD_TAB_ALIGNMENT.CENTER
+    )
+    paragraph.paragraph_format.tab_stops.add_tab_stop(
+        Inches(6.2), WD_TAB_ALIGNMENT.RIGHT
+    )
     paragraph.add_run("\t")
     paragraph.add_run(title)
     paragraph.add_run("\t")
@@ -865,7 +1062,9 @@ def _set_docx_footer(document, title):
     _add_docx_page_field(paragraph, "NUMPAGES")
 
 
-def _export_media_docx(owner_label, parent_label, media_files, request=None, owner_kind="", owner_pk=None):
+def _export_media_docx(
+    owner_label, parent_label, media_files, request=None, owner_kind="", owner_pk=None
+):
     document = Document()
     title = f"{owner_label} Photos"
     _set_docx_footer(document, title)
@@ -875,14 +1074,20 @@ def _export_media_docx(owner_label, parent_label, media_files, request=None, own
 
     for index, media in enumerate(media_files, start=1):
         document.add_heading(f"{index:02d}. {media.display_filename}", level=2)
-        document.add_paragraph(timezone.localtime(media.uploaded_at).strftime("%Y-%m-%d %H:%M"))
+        document.add_paragraph(
+            timezone.localtime(media.uploaded_at).strftime("%Y-%m-%d %H:%M")
+        )
         document.add_paragraph(media.description or "No description")
         if media.file_type == "image":
             path = _image_path(media)
             if path and os.path.exists(path):
                 document.add_picture(path, width=Inches(5.8))
         else:
-            link = _public_media_url(request, owner_kind, owner_pk, media.pk) if request and owner_kind and owner_pk else media.display_url
+            link = (
+                _public_media_url(request, owner_kind, owner_pk, media.pk)
+                if request and owner_kind and owner_pk
+                else media.display_url
+            )
             document.add_paragraph(f"48-hour link: {link}")
 
     if not media_files:
@@ -900,22 +1105,34 @@ def unit_media_page(request, pk):
     if request.method == "POST":
         _upload_media_files(request, unit, UnitMedia, "unit")
         return redirect("properties:unit_media", pk=unit.pk)
-    media_files = unit.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk")
-    return render(request, "properties/media_page.html", {
-        "owner": unit,
-        "owner_label": f"Unit {unit.unit_number}",
-        "parent_label": unit.property.property_name,
-        "media_files": media_files,
-        "public_token": _sign_media_token("unit", unit.pk),
-        "upload_url": reverse("properties:unit_media", args=[unit.pk]),
-        "back_url": reverse("properties:unit_detail", args=[unit.pk]),
-        "delete_url_name": "properties:unit_media_delete",
-        "update_url_name": "properties:unit_media_update",
-        "sort_url": reverse("properties:unit_media_sort", args=[unit.pk]),
-        "pdf_export_url": reverse("properties:unit_media_export_pdf", args=[unit.pk]),
-        "docx_export_url": reverse("properties:unit_media_export_docx", args=[unit.pk]),
-        "share_link_url": reverse("properties:unit_media_share_link", args=[unit.pk]),
-    })
+    media_files = unit.media_files.filter(is_active=True).order_by(
+        "sort_order", "uploaded_at", "pk"
+    )
+    return render(
+        request,
+        "properties/media_page.html",
+        {
+            "owner": unit,
+            "owner_label": f"Unit {unit.unit_number}",
+            "parent_label": unit.property.property_name,
+            "media_files": media_files,
+            "public_token": _sign_media_token("unit", unit.pk),
+            "upload_url": reverse("properties:unit_media", args=[unit.pk]),
+            "back_url": reverse("properties:unit_detail", args=[unit.pk]),
+            "delete_url_name": "properties:unit_media_delete",
+            "update_url_name": "properties:unit_media_update",
+            "sort_url": reverse("properties:unit_media_sort", args=[unit.pk]),
+            "pdf_export_url": reverse(
+                "properties:unit_media_export_pdf", args=[unit.pk]
+            ),
+            "docx_export_url": reverse(
+                "properties:unit_media_export_docx", args=[unit.pk]
+            ),
+            "share_link_url": reverse(
+                "properties:unit_media_share_link", args=[unit.pk]
+            ),
+        },
+    )
 
 
 @login_required
@@ -924,22 +1141,36 @@ def property_media_page(request, pk):
     if request.method == "POST":
         _upload_media_files(request, property_obj, PropertyMedia, "property")
         return redirect("properties:property_media", pk=property_obj.pk)
-    media_files = property_obj.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk")
-    return render(request, "properties/media_page.html", {
-        "owner": property_obj,
-        "owner_label": property_obj.property_name,
-        "parent_label": "Property / Building",
-        "media_files": media_files,
-        "public_token": _sign_media_token("property", property_obj.pk),
-        "upload_url": reverse("properties:property_media", args=[property_obj.pk]),
-        "back_url": reverse("properties:property_detail", args=[property_obj.pk]),
-        "delete_url_name": "properties:property_media_delete",
-        "update_url_name": "properties:property_media_update",
-        "sort_url": reverse("properties:property_media_sort", args=[property_obj.pk]),
-        "pdf_export_url": reverse("properties:property_media_export_pdf", args=[property_obj.pk]),
-        "docx_export_url": reverse("properties:property_media_export_docx", args=[property_obj.pk]),
-        "share_link_url": reverse("properties:property_media_share_link", args=[property_obj.pk]),
-    })
+    media_files = property_obj.media_files.filter(is_active=True).order_by(
+        "sort_order", "uploaded_at", "pk"
+    )
+    return render(
+        request,
+        "properties/media_page.html",
+        {
+            "owner": property_obj,
+            "owner_label": property_obj.property_name,
+            "parent_label": "Property / Building",
+            "media_files": media_files,
+            "public_token": _sign_media_token("property", property_obj.pk),
+            "upload_url": reverse("properties:property_media", args=[property_obj.pk]),
+            "back_url": reverse("properties:property_detail", args=[property_obj.pk]),
+            "delete_url_name": "properties:property_media_delete",
+            "update_url_name": "properties:property_media_update",
+            "sort_url": reverse(
+                "properties:property_media_sort", args=[property_obj.pk]
+            ),
+            "pdf_export_url": reverse(
+                "properties:property_media_export_pdf", args=[property_obj.pk]
+            ),
+            "docx_export_url": reverse(
+                "properties:property_media_export_docx", args=[property_obj.pk]
+            ),
+            "share_link_url": reverse(
+                "properties:property_media_share_link", args=[property_obj.pk]
+            ),
+        },
+    )
 
 
 @login_required
@@ -951,7 +1182,9 @@ def unit_media_update(request, pk, media_id):
     media.save(update_fields=["description", "updated_at"])
     media.refresh_image_derivatives()
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"success": True, "description": media.description or "No description"})
+        return JsonResponse(
+            {"success": True, "description": media.description or "No description"}
+        )
     messages.success(request, "Photo description updated.")
     return redirect("properties:unit_media", pk=unit.pk)
 
@@ -960,12 +1193,16 @@ def unit_media_update(request, pk, media_id):
 @require_POST
 def property_media_update(request, pk, media_id):
     property_obj = get_object_or_404(Property, pk=pk)
-    media = get_object_or_404(PropertyMedia, pk=media_id, property=property_obj, is_active=True)
+    media = get_object_or_404(
+        PropertyMedia, pk=media_id, property=property_obj, is_active=True
+    )
     media.description = (request.POST.get("description") or "").strip()[:300]
     media.save(update_fields=["description", "updated_at"])
     media.refresh_image_derivatives()
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"success": True, "description": media.description or "No description"})
+        return JsonResponse(
+            {"success": True, "description": media.description or "No description"}
+        )
     messages.success(request, "Photo description updated.")
     return redirect("properties:property_media", pk=property_obj.pk)
 
@@ -984,7 +1221,9 @@ def unit_media_sort(request, pk):
         media.save(update_fields=["sort_order", "updated_at"])
     else:
         for index, media_pk in enumerate(order, start=1):
-            UnitMedia.objects.filter(pk=media_pk, unit=unit, is_active=True).update(sort_order=index)
+            UnitMedia.objects.filter(pk=media_pk, unit=unit, is_active=True).update(
+                sort_order=index
+            )
     return JsonResponse({"success": True})
 
 
@@ -997,19 +1236,27 @@ def property_media_sort(request, pk):
     sort_value = data.get("sort_order")
     media_id = data.get("media_id")
     if media_id and sort_value:
-        media = get_object_or_404(PropertyMedia, pk=media_id, property=property_obj, is_active=True)
+        media = get_object_or_404(
+            PropertyMedia, pk=media_id, property=property_obj, is_active=True
+        )
         media.sort_order = int(sort_value)
         media.save(update_fields=["sort_order", "updated_at"])
     else:
         for index, media_pk in enumerate(order, start=1):
-            PropertyMedia.objects.filter(pk=media_pk, property=property_obj, is_active=True).update(sort_order=index)
+            PropertyMedia.objects.filter(
+                pk=media_pk, property=property_obj, is_active=True
+            ).update(sort_order=index)
     return JsonResponse({"success": True})
 
 
 @login_required
 def unit_media_export_pdf(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
-    media_files = list(unit.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    media_files = list(
+        unit.media_files.filter(is_active=True).order_by(
+            "sort_order", "uploaded_at", "pk"
+        )
+    )
     photos_per_page = int(request.GET.get("photos_per_page") or 1)
     export_pdf_files = request.GET.get("export_pdf_files") == "1"
     buffer = _export_media_pdf(
@@ -1022,13 +1269,19 @@ def unit_media_export_pdf(request, pk):
         photos_per_page=photos_per_page,
         export_pdf_files=export_pdf_files,
     )
-    return FileResponse(buffer, as_attachment=True, filename=_media_export_filename(str(unit), "pdf"))
+    return FileResponse(
+        buffer, as_attachment=True, filename=_media_export_filename(str(unit), "pdf")
+    )
 
 
 @login_required
 def unit_media_export_docx(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
-    media_files = list(unit.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    media_files = list(
+        unit.media_files.filter(is_active=True).order_by(
+            "sort_order", "uploaded_at", "pk"
+        )
+    )
     buffer = _export_media_docx(
         f"Unit {unit.unit_number}",
         unit.property.property_name,
@@ -1048,7 +1301,11 @@ def unit_media_export_docx(request, pk):
 @login_required
 def property_media_export_pdf(request, pk):
     property_obj = get_object_or_404(Property, pk=pk)
-    media_files = list(property_obj.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    media_files = list(
+        property_obj.media_files.filter(is_active=True).order_by(
+            "sort_order", "uploaded_at", "pk"
+        )
+    )
     photos_per_page = int(request.GET.get("photos_per_page") or 1)
     export_pdf_files = request.GET.get("export_pdf_files") == "1"
     buffer = _export_media_pdf(
@@ -1061,13 +1318,21 @@ def property_media_export_pdf(request, pk):
         photos_per_page=photos_per_page,
         export_pdf_files=export_pdf_files,
     )
-    return FileResponse(buffer, as_attachment=True, filename=_media_export_filename(property_obj.property_name, "pdf"))
+    return FileResponse(
+        buffer,
+        as_attachment=True,
+        filename=_media_export_filename(property_obj.property_name, "pdf"),
+    )
 
 
 @login_required
 def property_media_export_docx(request, pk):
     property_obj = get_object_or_404(Property, pk=pk)
-    media_files = list(property_obj.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk"))
+    media_files = list(
+        property_obj.media_files.filter(is_active=True).order_by(
+            "sort_order", "uploaded_at", "pk"
+        )
+    )
     buffer = _export_media_docx(
         property_obj.property_name,
         "",
@@ -1102,7 +1367,9 @@ def unit_media_delete(request, pk, media_id):
 @require_POST
 def property_media_delete(request, pk, media_id):
     property_obj = get_object_or_404(Property, pk=pk)
-    media = get_object_or_404(PropertyMedia, pk=media_id, property=property_obj, is_active=True)
+    media = get_object_or_404(
+        PropertyMedia, pk=media_id, property=property_obj, is_active=True
+    )
     if request.POST.get("confirm_delete") != "yes":
         messages.error(request, "Media delete was not confirmed.")
     else:
@@ -1113,7 +1380,9 @@ def property_media_delete(request, pk, media_id):
 
 
 def _sign_media_token(owner_kind, owner_id):
-    return signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).sign(f"{owner_kind}:{owner_id}")
+    return signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).sign(
+        f"{owner_kind}:{owner_id}"
+    )
 
 
 def _sign_unit_media_token(unit_id):
@@ -1135,7 +1404,9 @@ def _owner_from_share_token(token):
     except ValueError:
         owner_kind, owner_id = "unit", signed_value
     if owner_kind == "unit":
-        return owner_kind, get_object_or_404(Unit.objects.select_related("property"), pk=owner_id)
+        return owner_kind, get_object_or_404(
+            Unit.objects.select_related("property"), pk=owner_id
+        )
     if owner_kind == "property":
         return owner_kind, get_object_or_404(Property, pk=owner_id)
     raise Http404("Invalid photo link.")
@@ -1155,13 +1426,17 @@ def unit_media_share_link(request, pk):
     share_url = request.build_absolute_uri(
         reverse("properties:unit_media_public_share", args=[token])
     )
-    return render(request, "properties/unit_media_share_link.html", {
-        "owner_label": f"{unit.property.property_name} - Unit {unit.unit_number}",
-        "token": token,
-        "share_url": share_url,
-        "expires_hours": 48,
-        "back_url": reverse("properties:unit_media", args=[unit.pk]),
-    })
+    return render(
+        request,
+        "properties/unit_media_share_link.html",
+        {
+            "owner_label": f"{unit.property.property_name} - Unit {unit.unit_number}",
+            "token": token,
+            "share_url": share_url,
+            "expires_hours": 48,
+            "back_url": reverse("properties:unit_media", args=[unit.pk]),
+        },
+    )
 
 
 @login_required
@@ -1171,27 +1446,37 @@ def property_media_share_link(request, pk):
     share_url = request.build_absolute_uri(
         reverse("properties:media_public_share", args=[token])
     )
-    return render(request, "properties/unit_media_share_link.html", {
-        "owner_label": property_obj.property_name,
-        "token": token,
-        "share_url": share_url,
-        "expires_hours": 48,
-        "back_url": reverse("properties:property_media", args=[property_obj.pk]),
-    })
+    return render(
+        request,
+        "properties/unit_media_share_link.html",
+        {
+            "owner_label": property_obj.property_name,
+            "token": token,
+            "share_url": share_url,
+            "expires_hours": 48,
+            "back_url": reverse("properties:property_media", args=[property_obj.pk]),
+        },
+    )
 
 
 def unit_media_public_share(request, token):
     owner_kind, owner = _owner_from_share_token(token)
-    media_files = owner.media_files.filter(is_active=True).order_by("sort_order", "uploaded_at", "pk")
+    media_files = owner.media_files.filter(is_active=True).order_by(
+        "sort_order", "uploaded_at", "pk"
+    )
     if owner_kind == "unit":
         owner_label = f"{owner.property.property_name} - Unit {owner.unit_number}"
     else:
         owner_label = owner.property_name
-    return render(request, "properties/unit_media_public_share.html", {
-        "owner_label": owner_label,
-        "token": token,
-        "media_files": media_files,
-    })
+    return render(
+        request,
+        "properties/unit_media_public_share.html",
+        {
+            "owner_label": owner_label,
+            "token": token,
+            "media_files": media_files,
+        },
+    )
 
 
 def unit_media_public_file(request, token, media_id):
@@ -1199,7 +1484,11 @@ def unit_media_public_file(request, token, media_id):
     model = UnitMedia if owner_kind == "unit" else PropertyMedia
     lookup = {"unit": owner} if owner_kind == "unit" else {"property": owner}
     media = get_object_or_404(model, pk=media_id, is_active=True, **lookup)
-    media_file = media.stamped_file if media.file_type == "image" and media.stamped_file else media.file
+    media_file = (
+        media.stamped_file
+        if media.file_type == "image" and media.stamped_file
+        else media.file
+    )
     if not media_file:
         raise Http404("File not found.")
     media_file.open("rb")
@@ -1221,10 +1510,14 @@ def unit_vacancy_whatsapp(request, pk):
         rendered_message,
         country_code=getattr(settings_obj, "country_code", "+92"),
     )
-    return render(request, "properties/unit_vacancy_whatsapp.html", {
-        "unit": unit,
-        "template": template,
-        "phone": phone,
-        "message_text": rendered_message,
-        "whatsapp_url": whatsapp_url,
-    })
+    return render(
+        request,
+        "properties/unit_vacancy_whatsapp.html",
+        {
+            "unit": unit,
+            "template": template,
+            "phone": phone,
+            "message_text": rendered_message,
+            "whatsapp_url": whatsapp_url,
+        },
+    )

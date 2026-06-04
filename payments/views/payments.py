@@ -193,57 +193,13 @@ class PaymentListView(SingleTableView):
 
         queryset = queryset.order_by('-payment_date')
 
-        # Efficient balance annotation
-        lease_ids = queryset.values_list('lease_id', flat=True).distinct()
-
-        DECIMAL = DecimalField(max_digits=12, decimal_places=2)
-        ZERO = Value(Decimal("0.00"), output_field=DECIMAL)
-
-        invoice_totals = (
-            Invoice.objects
-            .filter(lease_id__in=lease_ids)
-            .values("lease_id")
-            .annotate(
-                total=Coalesce(Sum("amount", output_field=DECIMAL), ZERO)
-            )
-        )
-
-
-        payment_totals = (
-            Payment.objects
-            .filter(lease_id__in=lease_ids)
-            .values("lease_id")
-            .annotate(
-                total=Coalesce(
-                    Sum(
-                        Case(
-                            When(allocation__isnull=False, then=F("allocation__lease_amount")),
-                            default=F("amount"),
-                            output_field=DECIMAL,
-                        ),
-                        output_field=DECIMAL,   # IMPORTANT: force Sum output type
-                    ),
-                    ZERO,  # IMPORTANT: Decimal default, not 0
-                )
-            )
-        )
-
-
-
-        invoice_map = {row["lease_id"]: row["total"] for row in invoice_totals}
-        payment_map = {row["lease_id"]: row["total"] for row in payment_totals}
-
-
-        for payment in queryset:
-            lease_id = payment.lease_id
-            total_invoiced = invoice_map.get(lease_id, Decimal("0.00"))
-            total_paid = payment_map.get(lease_id, Decimal("0.00"))
-            payment.lease_balance = (total_invoiced - total_paid)
-
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        page_obj = context.get("page_obj")
+        page_payments = getattr(page_obj, "object_list", None) or context.get("object_list", [])
+        _attach_cached_lease_balances(page_payments)
         # Get all properties for dropdown
         context['all_properties'] = Property.objects.all()
 

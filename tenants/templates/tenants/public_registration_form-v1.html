@@ -41,7 +41,15 @@
       background: #fff;
     }
     .tenant-interest-options input[type="checkbox"] { margin-right: .25rem; }
-    .image-upload-container input[type="file"] { display: none; }
+    .image-upload-container input[type="file"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 2;
+    }
     @media (max-width: 768px) {
       .pe-2, .ps-2 {
         padding-right: .5rem !important;

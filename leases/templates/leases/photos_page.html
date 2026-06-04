@@ -106,6 +106,7 @@
 .pp-card-sub { margin-left: auto; font-size: .68rem; color: #7eb3f5; }
 
 .pp-upload-body { padding: 10px 12px; }
+.safari-safe-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .pp-upload-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; align-items: end; flex-wrap: wrap; }
 
 .pp-dropzone {
@@ -306,10 +307,10 @@
                 <input type="hidden" name="description" id="hidden-desc"  value="">
                 <input type="hidden" name="pdf_layout"  id="hidden-pdf-layout" value="">
                 <input id="add-photos-input"
-                       class="d-none"
+                       class="safari-safe-file-input"
                        type="file"
                        name="photos"
-                       accept="image/*,video/*,.pdf"
+                       accept="image/*,video/*,.pdf,.heic,.heif"
                        multiple
                        hx-post="{% url 'leases:photo_add' lease.pk %}{% if history %}?history={{ history.pk }}{% endif %}"
                        hx-encoding="multipart/form-data"

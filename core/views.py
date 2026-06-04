@@ -135,7 +135,6 @@ class SettingsView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
 from django.utils.text import slugify
-from django.views.decorators.csrf import csrf_exempt  # if you prefer manual CSRF handling
 from .models import PaymentMethod
 
 

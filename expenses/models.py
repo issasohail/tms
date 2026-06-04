@@ -13,6 +13,7 @@ from django.core.validators import MinValueValidator
 from properties.models import Property, Unit
 from django.utils import timezone
 from invoices.models import ItemCategory
+from core.upload_utils import compress_uploaded_image
 
 
 class ExpenseCategory(models.Model):
@@ -249,7 +250,8 @@ class ExpenseReceipt(models.Model):
             except Exception:
                 pass
 
-            img = Image.open(self.image)
+            compressed = compress_uploaded_image(self.image, quality=82)
+            img = Image.open(compressed)
             img = ImageOps.exif_transpose(img)  # fix orientation
             img = img.convert("RGB")
 
@@ -258,7 +260,7 @@ class ExpenseReceipt(models.Model):
                 img = _stamp_timestamp(img, stamp_text)
 
             buf = BytesIO()
-            img.save(buf, format="JPEG", quality=92, optimize=True)
+            img.save(buf, format="JPEG", quality=82, optimize=True, progressive=True)
             buf.seek(0)
             # Replace uploaded content; final path/name resolved by upload_to
             self.image.save(self.image.name, ContentFile(

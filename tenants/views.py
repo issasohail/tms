@@ -76,7 +76,6 @@ from django.contrib import messages
 import django_tables2 as tables
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 # tenants/views.py
 from django.views.generic import ListView
 from .models import Tenant
@@ -462,7 +461,7 @@ def tenant_public_registration_update(request, token):
         "province": tenant.province,
         "country": tenant.country,
         "gender": tenant.gender,
-        "date_of_birth": tenant.date_of_birth.date() if tenant.date_of_birth else None,
+        "date_of_birth": tenant.date_of_birth if tenant.date_of_birth else None,
         "address": tenant.address,
         "temporary_address": tenant.temporary_address,
         "permanent_address": tenant.permanent_address,
@@ -1271,10 +1270,12 @@ def get_units_by_property(request):
 CNIC_DIGITS = re.compile(r'\D+')
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def update_tenant_field(request, tenant_id):
     try:
+        if not request.user.has_perm("tenants.change_tenant"):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
         tenant = Tenant.objects.get(pk=tenant_id)
         field = request.POST.get('field')
         value = (request.POST.get('value') or '').strip()

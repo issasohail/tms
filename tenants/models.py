@@ -13,6 +13,7 @@ from django.apps import apps
 import re
 from django.core.exceptions import ValidationError
 from django.db import models
+from core.upload_utils import compress_instance_file_field
 
 CNIC_DIGITS = re.compile(r'\D+')
 
@@ -113,7 +114,7 @@ class Tenant(models.Model):
     working_address = models.TextField(blank=True, default="")
     gender = models.CharField(
         max_length=1, choices=GENDER_CHOICES, default='M', blank=True, null=True)
-    date_of_birth = models.DateTimeField(blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
     emergency_contact_name = models.CharField(
         max_length=100, null=True, blank=True)
     emergency_contact_phone = models.CharField(
@@ -217,6 +218,9 @@ class Tenant(models.Model):
         return (self.monthly_rent or 0) + (self.society_maintenance or 0)
 
     def save(self, *args, **kwargs):
+        for field_name in ("photo", "cnic_front", "cnic_back", "police_verification_document"):
+            compress_instance_file_field(self, field_name)
+
         # Get the current instance from database (if it exists)
         if self.pk:
             old_instance = Tenant.objects.get(pk=self.pk)
@@ -377,5 +381,10 @@ class TenantRegistrationSubmission(models.Model):
 
     def __str__(self):
         return f"{self.tenant} registration update ({self.status})"
+
+    def save(self, *args, **kwargs):
+        for field_name in ("photo", "cnic_front", "cnic_back"):
+            compress_instance_file_field(self, field_name)
+        super().save(*args, **kwargs)
 
 

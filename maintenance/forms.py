@@ -12,6 +12,7 @@ class MultipleFileField(forms.FileField):
         kwargs.setdefault("widget", MultipleFileInput(attrs={
             "class": "form-control form-control-sm",
             "multiple": True,
+            "accept": "image/*,video/*,.pdf,.heic,.heif",
         }))
         super().__init__(*args, **kwargs)
 

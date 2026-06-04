@@ -3,8 +3,7 @@ from .models import Unit, Property
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.utils.html import conditional_escape, format_html
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from tenants.models import TenantInterestType
 from utils.pdf_export import handle_export
 
@@ -55,7 +54,7 @@ class UnitTable(ExportableTable):
     )
 
     property = tables.Column(verbose_name='Property')
-    interest_type = tables.Column(verbose_name='Lead Type', empty_values=())
+    interest_type = tables.Column(verbose_name='Building Type', empty_values=())
 
     monthly_rent = tables.Column(verbose_name='Rent')
     electric_meter_num = tables.Column(verbose_name='Electric Meter#')
@@ -70,43 +69,94 @@ class UnitTable(ExportableTable):
         verbose_name='Actions',
         orderable=False,
         template_name='properties/unit_actions.html',
+        attrs={
+            "td": {"class": "text-center unit-actions-cell"},
+            "th": {"class": "text-center unit-actions-cell"},
+        },
 
     )
 
     def __init__(self, *args, **kwargs):
+        lead_interest_types = kwargs.pop("lead_interest_types", None)
         super().__init__(*args, **kwargs)
-        self.lead_interest_types = list(
+        self.lead_interest_types = list(lead_interest_types) if lead_interest_types is not None else list(
             TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         )
+        self.default_interest_types = {
+            item.code: item
+            for item in self.lead_interest_types
+            if item.code in {"single_room_attached_bath_kitchen", "two_room_flat"}
+        }
 
     def _format_decimal(self, value):
         if value is None:
             return ''
         return intcomma(int(value)) if value == int(value) else intcomma(value)
 
-    def render_monthly_rent(self, value): return self._format_decimal(value)
-    def render_water_charges(self, value): return self._format_decimal(value)
+    def _inline_text(self, record, field, display_value):
+        return format_html(
+            '<span class="unit-inline-edit" data-unit-id="{}" data-field="{}" '
+            'data-value="{}" tabindex="0">{}</span>',
+            record.pk,
+            field,
+            "" if display_value is None else display_value,
+            display_value or "-",
+        )
 
-    def render_society_maintenance(
-        self, value): return self._format_decimal(value)
+    def render_monthly_rent(self, value, record):
+        return self._inline_text(record, "monthly_rent", self._format_decimal(value))
+
+    def render_water_charges(self, value, record):
+        return self._inline_text(record, "water_charges", self._format_decimal(value))
+
+    def render_society_maintenance(self, value, record):
+        return self._inline_text(record, "society_maintenance", self._format_decimal(value))
+
+    def render_security_requires(self, value, record):
+        return self._inline_text(record, "security_requires", value or "")
+
+    def value_monthly_rent(self, value, record):
+        return self._format_decimal(value)
+
+    def value_water_charges(self, value, record):
+        return self._format_decimal(value)
+
+    def value_society_maintenance(self, value, record):
+        return self._format_decimal(value)
+
+    def value_security_requires(self, value, record):
+        return value or ""
 
     def render_interest_type(self, value, record):
-        options = ['<option value="">-</option>']
+        selected_id = record.interest_type_id or self._default_interest_type_id(record)
+        selected_name = ""
         for interest_type in self.lead_interest_types:
-            selected = " selected" if record.interest_type_id == interest_type.pk else ""
-            options.append(
-                f'<option value="{interest_type.pk}"{selected}>{conditional_escape(interest_type.name)}</option>'
-            )
+            if selected_id == interest_type.pk:
+                selected_name = interest_type.name
+                break
         return format_html(
-            '<select class="form-select form-select-sm unit-lead-type-select" '
-            'data-unit-id="{}" data-current-value="{}">{}</select>',
+            '<span class="unit-building-type-edit" data-unit-id="{}" '
+            'data-current-value="{}" tabindex="0">{}</span>',
             record.pk,
-            record.interest_type_id or "",
-            mark_safe("".join(options)),
+            selected_id or "",
+            selected_name or "-",
         )
 
     def value_interest_type(self, value, record):
-        return record.interest_type.name if record.interest_type else ''
+        if record.interest_type:
+            return record.interest_type.name
+        default_interest_type = self._default_interest_type(record)
+        return default_interest_type.name if default_interest_type else ''
+
+    def _default_interest_type(self, record):
+        property_name = (record.property.property_name if record.property else "").lower()
+        if "f56" in property_name and "basement" in property_name:
+            return self.default_interest_types.get("single_room_attached_bath_kitchen")
+        return self.default_interest_types.get("two_room_flat")
+
+    def _default_interest_type_id(self, record):
+        default_interest_type = self._default_interest_type(record)
+        return default_interest_type.pk if default_interest_type else None
 
     def render_status(self, value, record):
         if getattr(record, "has_ending_soon_lease_history", False) or getattr(record, "has_ending_soon_lease", False):
@@ -115,9 +165,23 @@ class UnitTable(ExportableTable):
                 or getattr(record, "active_lease_end_date", None)
             )
             if end_date:
-                return f"Lease ending soon ({end_date:%b %d, %Y})"
-            return "Lease ending soon"
+                label = f"Lease ending soon ({end_date:%b %d, %Y})"
+            else:
+                label = "Lease ending soon"
+            lease_id = (
+                getattr(record, "active_lease_history_lease_id", None)
+                or getattr(record, "active_lease_id", None)
+            )
+            if lease_id:
+                return format_html('<a href="{}">{}</a>', reverse("leases:lease_detail", args=[lease_id]), label)
+            return label
         if getattr(record, "has_active_lease_history", False) or getattr(record, "has_active_lease", False):
+            lease_id = (
+                getattr(record, "active_lease_history_lease_id", None)
+                or getattr(record, "active_lease_id", None)
+            )
+            if lease_id:
+                return format_html('<a href="{}">Occupied</a>', reverse("leases:lease_detail", args=[lease_id]))
             return "Occupied"
         if record.status == "maintenance":
             return "Maintenance"

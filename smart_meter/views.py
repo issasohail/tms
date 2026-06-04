@@ -91,11 +91,9 @@ from smart_meter.models import MeterReading, MeterBalance
 from properties.models import Unit
 from django.utils.timezone import now
 from datetime import timedelta
-from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 # You will write these
 from smart_meter.utils import send_cutoff_command, send_restore_command
-from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 # You will write these
 from smart_meter.utils import send_cutoff_command, send_restore_command
@@ -103,7 +101,6 @@ from properties.models import Property
 from smart_meter.models import MeterBalance
 from django.contrib import messages
 from decimal import Decimal
-from django.views.decorators.csrf import csrf_exempt
 from smart_meter.models import Meter, MeterEvent
 from smart_meter.utils import send_cutoff_command, send_restore_command
 from django.shortcuts import render
@@ -1918,28 +1915,24 @@ def _parse_meter_param(meter_param: str):
     return Q(meter_number=meter_param)
 
 
-@csrf_exempt
+@login_required
+@require_POST
 def fetch_meter_data(request):
-    if request.method == "POST":
-        try:
-            # Simulate data fetching - in real app, this would call your API
-            # Update last_updated timestamp for all meters
-            from .models import Meter
-            Meter.objects.update(last_updated=timezone.now())
+    try:
+        # Simulate data fetching - in real app, this would call your API
+        # Update last_updated timestamp for all meters
+        from .models import Meter
+        Meter.objects.update(last_updated=timezone.now())
 
-            return JsonResponse({
-                "status": "success",
-                "message": "Meter data refreshed successfully"
-            })
-        except Exception as e:
-            return JsonResponse({
-                "status": "error",
-                "message": f"Failed to fetch data: {str(e)}"
-            }, status=500)
-    return JsonResponse({
-        "status": "error",
-        "message": "Invalid request method"
-    }, status=400)
+        return JsonResponse({
+            "status": "success",
+            "message": "Meter data refreshed successfully"
+        })
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "message": f"Failed to fetch data: {str(e)}"
+        }, status=500)
 
 
 # views.py

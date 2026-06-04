@@ -533,9 +533,6 @@ class TenantRegistrationSubmissionListView(LoginRequiredMixin, ListView):
     template_name = "tenants/registration_submission_list.html"
     context_object_name = "submissions"
 
-    def get_queryset(self):
-        return super().get_queryset().select_related("tenant")
-
 
 class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
     model = TenantRegistrationSubmission
@@ -1325,7 +1322,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             .order_by('-start_date', '-id'),
             to_attr='active_leases',
         )
-        queryset = super().get_queryset().prefetch_related(active_leases, "interested_in")
+        queryset = super().get_queryset().prefetch_related(active_leases)
 
         tenant_id = self.request.GET.get('tenant')
         phone = self.request.GET.get('phone')

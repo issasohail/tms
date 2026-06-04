@@ -533,9 +533,6 @@ class TenantRegistrationSubmissionListView(LoginRequiredMixin, ListView):
     template_name = "tenants/registration_submission_list.html"
     context_object_name = "submissions"
 
-    def get_queryset(self):
-        return super().get_queryset().select_related("tenant")
-
 
 class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
     model = TenantRegistrationSubmission

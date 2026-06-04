@@ -6,26 +6,152 @@ from django.views.generic import FormView
 from django.shortcuts import render
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
+
 from django.db import models
+from django.db.models import Case, DecimalField, F, OuterRef, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, Greatest
 
 from .forms import GlobalSettingsForm
 from .models import GlobalSettings
 from tenants.models import Tenant, TenantInterestType
 from payments.models import Payment
 from invoices.models import Invoice
+from invoices.models import SecurityDepositTransaction
 from expenses.models import Expense
 from properties.models import Property, Unit
+from leases.models import Lease, LeaseRenewal
 from django.contrib.auth.decorators import login_required
+
+
+def _annotate_dashboard_lease_financials(queryset):
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    zero = Value(Decimal("0.00"), output_field=money_field)
+    today = timezone.localdate()
+
+    active_history_monthly_payment = (
+        LeaseRenewal.objects.filter(
+            lease_id=OuterRef("pk"),
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        .annotate(
+            total=(
+                Coalesce(F("monthly_rent"), zero)
+                + Coalesce(F("society_maintenance"), zero)
+                + Coalesce(F("water_charges"), zero)
+                + Coalesce(F("internet_charges"), zero)
+            )
+        )
+        .order_by("-renewal_number", "-id")
+        .values("total")[:1]
+    )
+
+    invoice_total = (
+        Invoice.objects.filter(lease_id=OuterRef("pk"))
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), zero))
+        .values("total")[:1]
+    )
+
+    payment_total = (
+        Payment.objects.filter(lease_id=OuterRef("pk"))
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(
+                            allocation__isnull=False,
+                            then=F("allocation__lease_amount"),
+                        ),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                zero,
+            )
+        )
+        .values("total")[:1]
+    )
+
+    def security_total(tx_type):
+        return (
+            SecurityDepositTransaction.objects.filter(
+                lease_id=OuterRef("pk"),
+                type=tx_type,
+            )
+            .values("lease_id")
+            .annotate(total=Coalesce(Sum("amount"), zero))
+            .values("total")[:1]
+        )
+
+    return (
+        queryset.annotate(
+            invoice_total=Coalesce(Subquery(invoice_total, output_field=money_field), zero),
+            payment_total=Coalesce(Subquery(payment_total, output_field=money_field), zero),
+            security_paid_total=Coalesce(
+                Subquery(security_total("PAYMENT"), output_field=money_field),
+                zero,
+            ),
+            security_adjust_total=Coalesce(
+                Subquery(security_total("ADJUST"), output_field=money_field),
+                zero,
+            ),
+        )
+        .annotate(
+            list_balance=F("invoice_total") - F("payment_total"),
+            list_security_due=Greatest(
+                Coalesce(F("security_deposit"), zero)
+                - F("security_paid_total")
+                - F("security_adjust_total"),
+                zero,
+                output_field=money_field,
+            ),
+            list_monthly_payment=Coalesce(
+                Subquery(active_history_monthly_payment, output_field=money_field),
+                Coalesce(F("monthly_rent"), zero)
+                + Coalesce(F("society_maintenance"), zero)
+                + Coalesce(F("water_charges"), zero)
+                + Coalesce(F("internet_charges"), zero),
+                output_field=money_field,
+            ),
+        )
+    )
 
 
 @login_required
 def dashboard(request):
     today = timezone.now().date()
     thirty_days_ago = today - timedelta(days=30)
+    lease_ending_cutoff = today + timedelta(days=40)
+    recently_ended_cutoff = today - timedelta(days=40)
 
     total_properties = Property.objects.count()
     total_units = Unit.objects.count()
-    occupied_units = Unit.objects.filter(status='occupied').count()
+    active_lease = Lease.objects.filter(
+        unit_id=models.OuterRef("pk"),
+        start_date__lte=today,
+        end_date__gte=today,
+    ).exclude(status__in=["ended", "terminated"])
+    active_lease_history = LeaseRenewal.objects.filter(
+        lease__unit_id=models.OuterRef("pk"),
+        start_date__lte=today,
+        end_date__gte=today,
+    )
+    units_with_occupancy = Unit.objects.annotate(
+        has_active_lease=models.Exists(active_lease),
+        has_active_lease_history=models.Exists(active_lease_history),
+    )
+    occupied_units = units_with_occupancy.filter(
+        models.Q(has_active_lease=True) | models.Q(has_active_lease_history=True)
+    ).count()
+    vacant_units = (
+        units_with_occupancy.select_related("property", "interest_type")
+        .filter(has_active_lease=False, has_active_lease_history=False)
+        .exclude(status="maintenance")
+        .order_by("property__property_name", "unit_number")[:10]
+    )
     vacancy_rate = ((total_units - occupied_units) /
                     total_units * 100) if total_units > 0 else 0
 
@@ -91,11 +217,60 @@ def dashboard(request):
         .order_by("due_date", "id")[:5]
     )
 
+    dashboard_lease_base = Lease.objects.select_related(
+        "tenant",
+        "unit",
+        "unit__property",
+    ).only(
+        "id",
+        "tenant_id",
+        "unit_id",
+        "start_date",
+        "end_date",
+        "monthly_rent",
+        "society_maintenance",
+        "water_charges",
+        "internet_charges",
+        "security_deposit",
+        "status",
+        "tenant__id",
+        "tenant__first_name",
+        "tenant__last_name",
+        "tenant__phone",
+        "unit__id",
+        "unit__property_id",
+        "unit__unit_number",
+        "unit__property__id",
+        "unit__property__property_name",
+    )
+    dashboard_leases = _annotate_dashboard_lease_financials(dashboard_lease_base)
+
+    ending_soon_leases = (
+        dashboard_leases.filter(
+            models.Q(status="active", end_date__lte=lease_ending_cutoff)
+            | models.Q(status__in=["ended", "inactive"], end_date__gte=recently_ended_cutoff)
+        )
+        .order_by("end_date", "unit__property__property_name", "unit__unit_number")[:10]
+    )
+
+    lease_balances = (
+        dashboard_leases.filter(list_balance__gt=0)
+        .order_by("-list_balance", "unit__property__property_name", "unit__unit_number")[:10]
+    )
+
+    recent_expenses = (
+        Expense.objects.select_related("property", "unit", "category")
+        .prefetch_related("receipts", "distributions__unit")
+        .order_by("-date", "-pk")[:10]
+    )
+
     context = {
         'total_properties': total_properties,
+        'TODAY': today,
         'total_units': total_units,
         'occupied_units': occupied_units,
         'vacancy_rate': round(vacancy_rate, 2),
+        'vacant_units': vacant_units,
         'total_tenants': total_tenants,
         'total_rent': total_rent,
         'total_payments': total_payments,
@@ -104,6 +279,9 @@ def dashboard(request):
         'recent_payments': recent_payments,
         'recent_invoices': Invoice.objects.order_by('-issue_date')[:5],
         'upcoming_invoices': upcoming_invoices,
+        'ending_soon_leases': ending_soon_leases,
+        'recent_expenses': recent_expenses,
+        'lease_balances': lease_balances,
     }
     return render(request, 'dashboard.html', context)
 

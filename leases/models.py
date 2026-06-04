@@ -38,7 +38,6 @@ from django.template import Template, Context
 from decimal import Decimal
 from django.db.models import Sum, Case, When, F, DecimalField
 from django.db.models.functions import Coalesce
-from core.upload_utils import compress_instance_file_field
 
 
 def default_lease_terms():
@@ -320,11 +319,12 @@ class Lease(models.Model):
         ]
 
     class Meta:
+        ordering = ["-start_date"]
         indexes = [
-            models.Index(fields=["tenant", "is_active", "start_date"]),
+            models.Index(fields=["tenant", "status", "start_date"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["unit"]),
         ]
-
-    # leases/models.py
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
@@ -601,9 +601,6 @@ class Lease(models.Model):
 
         # Here you would add actual payment/refund logic & notifications
         return True
-
-    class Meta:
-        ordering = ["-start_date"]
 
     def get_lease_duration(self):
         """Calculate lease duration in months"""
@@ -1400,7 +1397,7 @@ class LeaseDocument(models.Model):
         ("reference_letter", "Reference Letter"),
         ("other", "Other"),
     ]
-    SAFE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "heic", "heif", "xls", "xlsx", "doc", "docx"]
+    SAFE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "xls", "xlsx", "doc", "docx"]
 
     lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="documents")
     lease_history = models.ForeignKey(
@@ -1470,7 +1467,6 @@ class LeaseDocument(models.Model):
             self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
         if not self.display_name:
             self.display_name = self.original_filename or os.path.basename(getattr(self.file, "name", "") or "Lease file")
-        compress_instance_file_field(self, "file")
         super().save(*args, **kwargs)
 
 

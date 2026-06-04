@@ -334,361 +334,67 @@
         }
     }
     @media (max-width: 575.98px) {
-        /*
-           Small-screen layout only.
-           Desktop/tablet styles and all JavaScript are unchanged.
-
-           Visible mobile table columns are:
-           1 = SN
-           2 = Unit
-           5 = Rent
-           11 = Status
-           12 = Actions
-
-           Tweak these values for 360px/iPhone only.
-        */
-        :root {
-            --unit-mobile-font-size: 0.68rem;
-
-            /* Fixed mobile column widths */
-            --unit-mobile-sn-width: 22px;
-            --unit-mobile-rent-width: 48px;
-            --unit-mobile-status-width: 58px;
-            --unit-mobile-actions-width: 96px;
-
-            /* Unit column uses the remaining space automatically */
-            --unit-mobile-cell-pad-y: 3px;
-            --unit-mobile-cell-pad-x: 2px;
-
-            /* Action button controls */
-            --unit-mobile-action-btn-size: 18px;
-            --unit-mobile-action-icon-size: 9px;
-            --unit-mobile-action-gap: 1px;
-        }
-
-        .unit-page-header {
-            gap: 7px;
-            margin-bottom: 8px !important;
-        }
         .unit-page-header h2 {
-            font-size: 1.25rem;
-            line-height: 1.1;
+            font-size: 24px;
         }
-
-        /* Keep Add Unit, Vacant Summary and Export in one line */
         .unit-page-actions {
             display: grid !important;
-            grid-template-columns: 30fr 43fr 27fr;
-            gap: 4px !important;
-            width: 100%;
+            grid-template-columns: 1fr 1fr;
         }
         .unit-page-actions .btn,
         .unit-page-actions .dropdown,
         .unit-page-actions .dropdown-toggle {
             width: 100%;
-            min-width: 0;
         }
-        .unit-page-actions .btn,
-        .unit-page-actions .dropdown-toggle {
-            min-height: 29px;
-            padding: 4px 3px;
-            font-size: 0.65rem;
-            line-height: 1.1;
-        }
-        .unit-page-actions .btn i,
-        .unit-page-actions .dropdown-toggle i {
-            margin-right: 2px !important;
-            font-size: 0.68rem;
-        }
-
-        /* Keep Property, Status and Filter icon in one line */
         .unit-filter-card {
             margin-left: -4px;
             margin-right: -4px;
-            margin-bottom: 9px !important;
-        }
-        .unit-filter-card .card-body {
-            padding: 7px !important;
-        }
-        .unit-filter-card .form-label {
-            display: none;
         }
         .unit-filter-row {
-            display: grid;
-            grid-template-columns: minmax(0, 42fr) minmax(0, 42fr) 38px;
-            gap: 5px;
-            overflow: hidden;
-            padding-bottom: 0;
-            width: 100%;
+            gap: 8px;
         }
-        .unit-filter-field,
-        .unit-filter-property,
-        .unit-filter-status,
-        .unit-filter-buttons {
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
+        .unit-filter-property {
+            width: 230px;
+            min-width: 230px;
         }
-        .unit-filter-buttons {
-            display: block;
+        .unit-filter-status {
+            width: 170px;
+            min-width: 170px;
         }
-        .unit-filter-card .form-select {
-            min-height: 31px;
-            height: 31px;
-            padding: 4px 22px 4px 6px;
-            font-size: 0.66rem;
-            line-height: 1.05;
-        }
-        .unit-filter-buttons .btn[type="submit"] {
-            width: 100%;
-            min-width: 0;
-            min-height: 31px;
-            height: 31px;
+        .unit-filter-buttons .btn {
+            width: auto;
+            min-width: 72px;
             margin-top: 0;
-            padding: 0;
-            font-size: 0;
-            line-height: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
+            padding-left: 12px;
+            padding-right: 12px;
         }
-        .unit-filter-buttons .btn[type="submit"]::before {
-            content: "\f0b0";
-            font-family: "Font Awesome 6 Free";
-            font-weight: 900;
-            font-size: 0.78rem;
-        }
-        .unit-filter-buttons .btn-outline-secondary {
-            display: none;
-        }
-
-        /* No horizontal scrolling on 360px */
         .unit-table-wrap {
             margin-left: -8px;
             margin-right: -8px;
             border-left: 0;
             border-right: 0;
             border-radius: 0;
-            overflow-x: hidden;
         }
         .unit-table-wrap table {
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: 100% !important;
-            table-layout: fixed !important;
-            font-size: var(--unit-mobile-font-size) !important;
+            min-width: 900px;
+            font-size: 12px !important;
         }
         .unit-table-wrap th,
         .unit-table-wrap td {
-            padding: var(--unit-mobile-cell-pad-y) var(--unit-mobile-cell-pad-x) !important;
-            white-space: normal;
-            overflow-wrap: normal;
-            word-break: normal;
-            line-height: 1.1;
-            vertical-align: middle;
+            padding: 6px 7px;
         }
-        .unit-table-wrap th {
-            font-size: 0.58rem;
-            letter-spacing: 0;
-            text-transform: uppercase;
-            text-align: center;
-        }
-
-        /* Hide desktop-only columns on mobile. Keep only: SN, Unit, Rent, Status, Actions. */
-        .unit-table-wrap th:nth-child(3),
-        .unit-table-wrap td:nth-child(3),
-        .unit-table-wrap th:nth-child(4),
-        .unit-table-wrap td:nth-child(4),
-        .unit-table-wrap th:nth-child(6),
-        .unit-table-wrap td:nth-child(6),
-        .unit-table-wrap th:nth-child(7),
-        .unit-table-wrap td:nth-child(7),
-        .unit-table-wrap th:nth-child(8),
-        .unit-table-wrap td:nth-child(8),
-        .unit-table-wrap th:nth-child(9),
-        .unit-table-wrap td:nth-child(9),
-        .unit-table-wrap th:nth-child(10),
-        .unit-table-wrap td:nth-child(10) {
-            display: none !important;
-        }
-
-        /* Fixed-width mobile columns */
-        .unit-table-wrap th:nth-child(1),
-        .unit-table-wrap td:nth-child(1) {
-            width: var(--unit-mobile-sn-width) !important;
-            min-width: var(--unit-mobile-sn-width) !important;
-            max-width: var(--unit-mobile-sn-width) !important;
-            text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-        }
-
-        .unit-table-wrap th:nth-child(2),
-        .unit-table-wrap td:nth-child(2) {
-            position: static !important;
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-            box-shadow: none !important;
-            background: inherit;
-        }
-
-        .unit-table-wrap th:nth-child(5),
-        .unit-table-wrap td:nth-child(5) {
-            width: var(--unit-mobile-rent-width) !important;
-            min-width: var(--unit-mobile-rent-width) !important;
-            max-width: var(--unit-mobile-rent-width) !important;
-            text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: clip;
-        }
-
-        .unit-table-wrap th:nth-child(11),
-        .unit-table-wrap td:nth-child(11) {
-            width: var(--unit-mobile-status-width) !important;
-            min-width: var(--unit-mobile-status-width) !important;
-            max-width: var(--unit-mobile-status-width) !important;
-            text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: clip;
-        }
-
-        /* Action column: force fixed width so Django Tables2 / Bootstrap cannot shrink it */
-        .unit-table-wrap th:nth-child(12),
-        .unit-table-wrap td:nth-child(12),
-        .table th.unit-actions-cell,
-        .table td.unit-actions-cell {
-            position: static !important;
-            width: var(--unit-mobile-actions-width) !important;
-            min-width: var(--unit-mobile-actions-width) !important;
-            max-width: var(--unit-mobile-actions-width) !important;
-            box-shadow: none !important;
-            background: inherit;
-            overflow: visible !important;
-            white-space: nowrap !important;
-            text-align: center;
-        }
-
-        /* Cleaner mobile headers */
-        .unit-table-wrap th:nth-child(1),
-        .unit-table-wrap th:nth-child(2),
-        .unit-table-wrap th:nth-child(5),
-        .unit-table-wrap th:nth-child(11),
-        .unit-table-wrap th:nth-child(12) {
-            font-size: 0 !important;
-            white-space: nowrap !important;
-        }
-        .unit-table-wrap th:nth-child(1)::after {
-            content: "SN";
-            font-size: 0.58rem;
-        }
-        .unit-table-wrap th:nth-child(2)::after {
-            content: "UNIT";
-            font-size: 0.58rem;
-        }
-        .unit-table-wrap th:nth-child(5)::after {
-            content: "RENT";
-            font-size: 0.58rem;
-        }
-        .unit-table-wrap th:nth-child(11)::after {
-            content: "STATUS";
-            font-size: 0.52rem;
-        }
-        .unit-table-wrap th:nth-child(12)::after {
-            content: "ACTION";
-            font-size: 0.52rem;
-        }
-
-        /* Unit text: compact wrapping */
-        .unit-table-wrap td:nth-child(2) {
-            font-size: 0.65rem;
-            line-height: 1.08;
-            overflow-wrap: anywhere;
-        }
-        .unit-table-wrap td:nth-child(2) a {
-            display: inline-block;
-            max-width: 100%;
-            overflow-wrap: anywhere;
-            line-height: 1.08;
-        }
-
-        /* Status stays compact */
-        .unit-table-wrap td:nth-child(11),
-        .unit-table-wrap td:nth-child(11) a,
-        .unit-table-wrap td:nth-child(11) span,
-        .unit-table-wrap td:nth-child(11) .badge {
-            font-size: 0.58rem !important;
-            line-height: 1.05;
-            white-space: nowrap !important;
-        }
-
-        /* Four filled action buttons on one line */
-        .unit-actions-cell .actions-wrap,
-        .actions-wrap {
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            justify-content: center;
-            align-items: center;
-            gap: var(--unit-mobile-action-gap) !important;
-            white-space: nowrap !important;
-        }
-        .unit-actions-cell .action-btn,
-        .actions-wrap .action-btn {
-            width: var(--unit-mobile-action-btn-size) !important;
-            min-width: var(--unit-mobile-action-btn-size) !important;
-            max-width: var(--unit-mobile-action-btn-size) !important;
-            height: var(--unit-mobile-action-btn-size) !important;
-            min-height: var(--unit-mobile-action-btn-size) !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            border-radius: 4px;
-            display: inline-flex !important;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 var(--unit-mobile-action-btn-size) !important;
-        }
-        .unit-actions-cell .action-btn i,
-        .actions-wrap .action-btn i {
-            font-size: var(--unit-mobile-action-icon-size) !important;
-            line-height: 1;
-            margin: 0 !important;
-        }
-        .unit-actions-cell .action-btn .btn-text,
-        .actions-wrap .action-btn .btn-text {
-            display: none !important;
-        }
-
-        /* Pagination also uses small-screen font size */
-        .pagination,
-        .pagination .page-link,
-        .page-link,
-        .page-item {
-            font-size: var(--unit-mobile-font-size) !important;
-        }
-        .pagination .page-link {
-            padding: 0.25rem 0.45rem !important;
-            min-height: 28px;
+        .unit-actions-cell .action-btn {
+            width: 30px;
+            min-width: 30px;
+            height: 28px;
         }
     }
     @media (max-width: 380px) {
-        :root {
-            --unit-mobile-font-size: 0.66rem;
-            --unit-mobile-sn-width: 22px;
-            --unit-mobile-rent-width: 48px;
-            --unit-mobile-status-width: 56px;
-            --unit-mobile-actions-width: 96px;
-            --unit-mobile-action-btn-size: 18px;
-            --unit-mobile-action-icon-size: 9px;
-            --unit-mobile-action-gap: 1px;
-        }
         .unit-page-actions {
-            grid-template-columns: 30fr 43fr 27fr;
+            grid-template-columns: 1fr;
         }
-        .unit-page-actions .btn,
-        .unit-page-actions .dropdown-toggle {
-            font-size: 0.64rem;
+        .unit-table-wrap table {
+            font-size: 11px !important;
         }
     }
 </style>

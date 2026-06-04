@@ -336,7 +336,8 @@
     @media (max-width: 575.98px) {
         /*
            Small-screen layout only.
-           Desktop/tablet styles and all JavaScript are unchanged.
+           Desktop/tablet CSS above is unchanged.
+           JS is unchanged.
 
            Visible mobile table columns are:
            1 = SN
@@ -345,23 +346,24 @@
            11 = Status
            12 = Actions
 
-           Tweak these values for 360px/iPhone only.
+           Tweak only these variables for 360px/iPhone.
         */
         :root {
             --unit-mobile-font-size: 0.68rem;
 
             /* Fixed mobile column widths */
-            --unit-mobile-sn-width: 22px;
-            --unit-mobile-rent-width: 48px;
-            --unit-mobile-status-width: 58px;
-            --unit-mobile-actions-width: 96px;
+            --unit-mobile-sn-width: 24px;
+            --unit-mobile-rent-width: 50px;
+            --unit-mobile-status-width: 54px;
+            --unit-mobile-actions-width: 120px;
 
-            /* Unit column uses the remaining space automatically */
+            /* Unit column uses remaining width automatically */
+
             --unit-mobile-cell-pad-y: 3px;
-            --unit-mobile-cell-pad-x: 2px;
+            --unit-mobile-cell-pad-x: 3px;
 
-            /* Action button controls */
             --unit-mobile-action-btn-size: 18px;
+            --unit-mobile-action-btn-padding: 0;
             --unit-mobile-action-icon-size: 9px;
             --unit-mobile-action-gap: 1px;
         }
@@ -478,6 +480,7 @@
             table-layout: fixed !important;
             font-size: var(--unit-mobile-font-size) !important;
         }
+
         .unit-table-wrap th,
         .unit-table-wrap td {
             padding: var(--unit-mobile-cell-pad-y) var(--unit-mobile-cell-pad-x) !important;
@@ -494,7 +497,10 @@
             text-align: center;
         }
 
-        /* Hide desktop-only columns on mobile. Keep only: SN, Unit, Rent, Status, Actions. */
+        /*
+           Hide desktop-only columns on mobile.
+           Keep only: SN, Unit, Rent, Status, Actions.
+        */
         .unit-table-wrap th:nth-child(3),
         .unit-table-wrap td:nth-child(3),
         .unit-table-wrap th:nth-child(4),
@@ -519,8 +525,6 @@
             min-width: var(--unit-mobile-sn-width) !important;
             max-width: var(--unit-mobile-sn-width) !important;
             text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
         }
 
         .unit-table-wrap th:nth-child(2),
@@ -539,8 +543,8 @@
             min-width: var(--unit-mobile-rent-width) !important;
             max-width: var(--unit-mobile-rent-width) !important;
             text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
+            white-space: nowrap;
+            overflow: hidden;
             text-overflow: clip;
         }
 
@@ -550,24 +554,22 @@
             min-width: var(--unit-mobile-status-width) !important;
             max-width: var(--unit-mobile-status-width) !important;
             text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
+            white-space: nowrap;
+            overflow: hidden;
             text-overflow: clip;
         }
 
-        /* Action column: force fixed width so Django Tables2 / Bootstrap cannot shrink it */
         .unit-table-wrap th:nth-child(12),
         .unit-table-wrap td:nth-child(12),
-        .table th.unit-actions-cell,
-        .table td.unit-actions-cell {
+        .table td.unit-actions-cell,
+        .table th.unit-actions-cell {
             position: static !important;
             width: var(--unit-mobile-actions-width) !important;
             min-width: var(--unit-mobile-actions-width) !important;
             max-width: var(--unit-mobile-actions-width) !important;
             box-shadow: none !important;
             background: inherit;
-            overflow: visible !important;
-            white-space: nowrap !important;
+            overflow: visible;
             text-align: center;
         }
 
@@ -578,7 +580,7 @@
         .unit-table-wrap th:nth-child(11),
         .unit-table-wrap th:nth-child(12) {
             font-size: 0 !important;
-            white-space: nowrap !important;
+            white-space: nowrap;
         }
         .unit-table-wrap th:nth-child(1)::after {
             content: "SN";
@@ -601,7 +603,7 @@
             font-size: 0.52rem;
         }
 
-        /* Unit text: compact wrapping */
+        /* Unit text: no property name column, compact wrapping */
         .unit-table-wrap td:nth-child(2) {
             font-size: 0.65rem;
             line-height: 1.08;
@@ -614,7 +616,7 @@
             line-height: 1.08;
         }
 
-        /* Status stays compact */
+        /* Status stays on one line where possible */
         .unit-table-wrap td:nth-child(11),
         .unit-table-wrap td:nth-child(11) a,
         .unit-table-wrap td:nth-child(11) span,
@@ -641,8 +643,7 @@
             max-width: var(--unit-mobile-action-btn-size) !important;
             height: var(--unit-mobile-action-btn-size) !important;
             min-height: var(--unit-mobile-action-btn-size) !important;
-            padding: 0 !important;
-            margin: 0 !important;
+            padding: var(--unit-mobile-action-btn-padding) !important;
             border-radius: 4px;
             display: inline-flex !important;
             align-items: center;
@@ -659,28 +660,16 @@
         .actions-wrap .action-btn .btn-text {
             display: none !important;
         }
-
-        /* Pagination also uses small-screen font size */
-        .pagination,
-        .pagination .page-link,
-        .page-link,
-        .page-item {
-            font-size: var(--unit-mobile-font-size) !important;
-        }
-        .pagination .page-link {
-            padding: 0.25rem 0.45rem !important;
-            min-height: 28px;
-        }
     }
     @media (max-width: 380px) {
         :root {
             --unit-mobile-font-size: 0.66rem;
             --unit-mobile-sn-width: 22px;
             --unit-mobile-rent-width: 48px;
-            --unit-mobile-status-width: 56px;
-            --unit-mobile-actions-width: 96px;
-            --unit-mobile-action-btn-size: 18px;
-            --unit-mobile-action-icon-size: 9px;
+            --unit-mobile-status-width: 52px;
+            --unit-mobile-actions-width: 82px;
+            --unit-mobile-action-btn-size: 17px;
+            --unit-mobile-action-icon-size: 8px;
             --unit-mobile-action-gap: 1px;
         }
         .unit-page-actions {
@@ -688,7 +677,10 @@
         }
         .unit-page-actions .btn,
         .unit-page-actions .dropdown-toggle {
-            font-size: 0.64rem;
+            font-size: 0.62rem;
+        }
+        .unit-filter-row {
+            grid-template-columns: minmax(0, 42fr) minmax(0, 42fr) 36px;
         }
     }
 </style>

@@ -27,7 +27,7 @@ class GlobalSettingsForm(forms.ModelForm):
                   ]
     FIELD_GROUPS = [
         ("Branding", "fas fa-building", ["site_name", "logo", "favicon"]),
-        ("Billing & Locale", "fas fa-coins", [
+        ("Billing Scale & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
         ]),

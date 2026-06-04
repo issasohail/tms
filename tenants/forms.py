@@ -1,5 +1,5 @@
 from django import forms
-from .models import PotentialTenantLead, Tenant, TenantRegistrationSubmission
+from .models import Tenant, TenantInterestType, TenantRegistrationSubmission
 from leases.models import Lease
 from properties.models import Property, Unit
 from django.apps import apps
@@ -61,12 +61,19 @@ class TenantForm(forms.ModelForm):
             'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
             'police_verification_date': forms.DateInput(attrs={'type': 'date'}),
             'police_verification_follow_up_date': forms.DateInput(attrs={'type': 'date'}),
-            'notes': forms.Textarea(attrs={'rows': 3}),
-            'address': forms.Textarea(attrs={'rows': 2}),
+            'notes': forms.Textarea(attrs={'rows': 4}),
+            'address': forms.Textarea(attrs={'rows': 4}),
+            'temporary_address': forms.Textarea(attrs={'rows': 2}),
+            'permanent_address': forms.Textarea(attrs={'rows': 2}),
+            'working_address': forms.Textarea(attrs={'rows': 2}),
             'police_verification_remarks': forms.Textarea(attrs={'rows': 2}),
+            'interested_in': forms.CheckboxSelectMultiple(),
             "phone":  forms.TextInput(attrs={"type": "tel", "maxlength": "20", "placeholder": "+447911123456 or 03123456789"}),
             "phone2": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
             "phone3": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
+            "employer_phone": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
+            "reference_phone_1": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
+            "reference_phone_2": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
             "emergency_contact_phone": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
         }
 
@@ -93,6 +100,15 @@ class TenantForm(forms.ModelForm):
 
     def clean_phone3(self):
         return self._clean_pk_phone(self.cleaned_data.get("phone3"), "Phone 3")
+
+    def clean_employer_phone(self):
+        return self._clean_pk_phone(self.cleaned_data.get("employer_phone"), "Employer phone")
+
+    def clean_reference_phone_1(self):
+        return self._clean_pk_phone(self.cleaned_data.get("reference_phone_1"), "Reference 1 phone")
+
+    def clean_reference_phone_2(self):
+        return self._clean_pk_phone(self.cleaned_data.get("reference_phone_2"), "Reference 2 phone")
 
     def clean_emergency_contact_phone(self):
         return self._clean_pk_phone(self.cleaned_data.get("emergency_contact_phone"), "Emergency phone")
@@ -125,6 +141,8 @@ class TenantForm(forms.ModelForm):
                 field.widget.attrs.update({'class': 'form-control-file'})
             elif isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.update({'class': 'form-check-input'})
+            elif isinstance(field.widget, forms.CheckboxSelectMultiple):
+                field.widget.attrs.update({'class': 'tenant-interest-checks'})
             else:
                 field.widget.attrs.update(
                     {'class': 'form-control form-control-sm'})
@@ -134,6 +152,18 @@ class TenantForm(forms.ModelForm):
         self.fields['emergency_contact_phone'].label = "Emergency Phone"
         self.fields['emergency_contact_relation'].label = "Relation"
         self.fields['number_of_family_member'].label = "Family Members"
+        self.fields['employer_name'].label = "Employer Name"
+        self.fields['employer_phone'].label = "Employer Phone"
+        self.fields['reference_name_1'].label = "Reference Name 1"
+        self.fields['reference_phone_1'].label = "Reference Phone 1"
+        self.fields['reference_relation_1'].label = "Reference Relation 1"
+        self.fields['reference_name_2'].label = "Reference Name 2"
+        self.fields['reference_phone_2'].label = "Reference Phone 2"
+        self.fields['reference_relation_2'].label = "Reference Relation 2"
+        self.fields['notify_vacant_flat'].label = "Wants Vacant Flat Notifications"
+        self.fields['notify_vacant_room'].label = "Wants Vacant Room Notifications"
+        if "interested_in" in self.fields:
+            self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
 
 
 class LeaseForm(forms.ModelForm):
@@ -147,48 +177,61 @@ class LeaseForm(forms.ModelForm):
         }
 
 
-class PotentialTenantLeadForm(forms.ModelForm):
-    class Meta:
-        model = PotentialTenantLead
-        fields = [
-            "name",
-            "phone",
-            "whatsapp_number",
-            "interested_building",
-            "interested_unit",
-            "budget",
-            "family_size",
-            "notes",
-            "status",
-            "source",
-            "next_follow_up_date",
-        ]
-        widgets = {
-            "name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "phone": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "whatsapp_number": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "interested_building": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "interested_unit": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "budget": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
-            "family_size": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
-            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 4}),
-            "status": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "source": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "next_follow_up_date": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
-        }
-
-
 class TenantPublicRegistrationForm(forms.Form):
+    prefix = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     first_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    relation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     last_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
     phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     phone2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    phone3 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    cnic = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    occupation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    employer_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    employer_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    reference_name_1 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    reference_phone_1 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    reference_relation_1 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    reference_name_2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    reference_phone_2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    reference_relation_2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    nationality = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    city = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    province = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    country = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    gender = forms.ChoiceField(required=False, choices=Tenant.GENDER_CHOICES, widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
+    date_of_birth = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}))
     address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}))
+    temporary_address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
+    permanent_address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
+    working_address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
     emergency_contact_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     emergency_contact_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     emergency_contact_relation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     number_of_family_member = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    notify_vacant_flat = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "form-check-input"}))
+    notify_vacant_room = forms.BooleanField(required=False, widget=forms.CheckboxInput(attrs={"class": "form-check-input"}))
+    interested_in = forms.ModelMultipleChoiceField(
+        required=False,
+        queryset=TenantInterestType.objects.none(),
+        widget=forms.CheckboxSelectMultiple(),
+    )
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 4}))
+    photo = forms.ImageField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}))
+    cnic_front = forms.ImageField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}))
+    cnic_back = forms.ImageField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+
+
+class TenantPreRegistrationLinkForm(forms.Form):
+    name = forms.CharField(max_length=120, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
 
 
 class TenantRegistrationSubmissionReviewForm(forms.ModelForm):

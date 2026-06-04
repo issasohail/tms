@@ -48,8 +48,14 @@
             <a href="{% url 'tenants:tenant_create' %}" class="btn btn-primary btn-sm me-2">
                 <i class="fas fa-plus"></i> Add Tenants
             </a>
-            <a href="{% url 'tenants:lead_list' %}" class="btn btn-outline-primary btn-sm me-2">
-                Leads
+            <button class="btn btn-outline-success btn-sm me-2" type="button" id="btnNewRegistrationLink" data-url="{% url 'tenants:tenant_pre_registration_link_create' %}">
+                New Registration
+            </button>
+            <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-dark btn-sm me-2">
+                Registrations
+                {% if pending_registration_count %}
+                    <span class="badge bg-danger ms-1">{{ pending_registration_count }}</span>
+                {% endif %}
             </a>
         </div>    
         <div class="btn-group me-2">
@@ -73,6 +79,22 @@
            
             
             
+        </div>
+    </div>
+
+    <div class="mb-2 {% if not new_registration_payload %}d-none{% endif %}" id="registrationLinkPanel">
+        <div class="border rounded p-2 bg-light d-flex flex-wrap align-items-center gap-2">
+            {% csrf_token %}
+            <strong class="small" id="registrationLinkStatus">
+                {% if new_registration_payload %}{{ new_registration_payload.masked_link }}{% else %}Registration link ready{% endif %}
+            </strong>
+            <input type="hidden" id="newRegistrationLink" value="{% if new_registration_payload %}{{ new_registration_payload.link }}{% endif %}">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="copyRegistrationLink">Copy Link</button>
+            <a class="btn btn-sm btn-outline-dark {% if not new_registration_payload %}disabled{% endif %}" id="openRegistrationLink" href="{% if new_registration_payload %}{{ new_registration_payload.link }}{% else %}#{% endif %}" target="_blank" rel="noopener">Open</a>
+            <a class="btn btn-sm btn-success {% if not new_registration_payload or not new_registration_payload.whatsapp_url %}disabled{% endif %}" id="whatsappRegistrationLink" href="{% if new_registration_payload and new_registration_payload.whatsapp_url %}{{ new_registration_payload.whatsapp_url }}{% else %}#{% endif %}" target="_blank" rel="noopener">
+                <i class="fab fa-whatsapp"></i> WhatsApp
+            </a>
+            <span class="form-text mb-0">Valid for {{ registration_link_days }} days. The URL is hidden here; use Copy or WhatsApp.</span>
         </div>
     </div>
 
@@ -129,6 +151,17 @@
             </div>
             </div>
         </div>
+        {% if interest_types %}
+        <div class="d-flex flex-wrap gap-2 small mt-2">
+            <span class="fw-semibold">Interested In:</span>
+            {% for item in interest_types %}
+                <label class="form-check-label">
+                    <input type="checkbox" class="form-check-input" name="interested_in" value="{{ item.id }}" {% if item.id|stringformat:"s" in current_interested_in %}checked{% endif %}>
+                    {{ item.name }}
+                </label>
+            {% endfor %}
+        </div>
+        {% endif %}
         </form>
 
 
@@ -169,18 +202,6 @@
                     </div>
                     {% endif %}
                 </div>
-                <div class="photo-cnic">
-                    {% if tenant.cnic_front %}
-                    <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" class="d-block">
-                        <img src="{{ tenant.cnic_front.url }}" class="img-cnic" alt="CNIC Front">
-                    </a>
-                    {% endif %}
-                    {% if tenant.cnic_back %}
-                    <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" class="d-block">
-                        <img src="{{ tenant.cnic_back.url }}" class="img-cnic" alt="CNIC Back">
-                    </a>
-                    {% endif %}
-                </div>
                 </div>
 
 
@@ -194,6 +215,11 @@
                 <span class="text-muted xsmall d-block">
                 {{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}
                 </span>
+                <div class="mt-1">
+                    {% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{{ item.name }}</span>{% endfor %}
+                    {% if tenant.notify_vacant_flat %}<span class="badge bg-info text-dark">Vacant Flat</span>{% endif %}
+                    {% if tenant.notify_vacant_room %}<span class="badge bg-success">Vacant Room</span>{% endif %}
+                </div>
 
                 {# Contact/Email lives here (always), but original column is hidden on small #}
                 <div class="tenant-contact-inline">
@@ -290,7 +316,7 @@
                         </a>
                         <button
                             type="button"
-                            class="btn btn-sm btn-success"
+                            class="btn btn-sm btn-success tenant-wa-btn"
                             onclick="sendWhatsAppReminder(
                                 '{{ tenant.phone|default_if_none:""|escapejs }}',
                                 '{{ tenant.first_name|default_if_none:""|escapejs }}',
@@ -300,7 +326,7 @@
                                 '{{ lease.get_balance|default_if_none:0 }}',
                                 '{{ lease.security_due|default_if_none:0 }}'
                             )">
-                            WhatsApp
+                            <i class="fab fa-whatsapp"></i><span class="tenant-wa-text"> WhatsApp</span>
                             </button>
 
                     {% endif %}
@@ -329,7 +355,7 @@
 
                         <button
                             type="button"
-                            class="btn btn-sm btn-success"
+                            class="btn btn-sm btn-success tenant-wa-btn"
                             onclick="sendWhatsAppReminder(
                                 '{{ tenant.phone|default_if_none:""|escapejs }}',
                                 '{{ tenant.first_name|default_if_none:""|escapejs }}',
@@ -339,12 +365,11 @@
                                 '{{ lease.get_balance|default_if_none:0 }}',
                                 '{{ lease.security_due|default_if_none:0 }}'
                             )">
-                            WhatsApp
+                            <i class="fab fa-whatsapp"></i><span class="tenant-wa-text"> WhatsApp</span>
                             </button>
 
 
                     {% endif %}
-
                     <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="icon-btn text-danger" title="Delete" data-bs-toggle="tooltip" aria-label="Delete">
                         <i class="fas fa-trash"></i>
                     </a>
@@ -726,6 +751,144 @@
 }
 }
 
+/* Final tenant-list layout overrides */
+@media (min-width: 992px) {
+  #filter-form .filters-grid {
+    grid-template-columns: minmax(180px, 1.2fr) 150px minmax(180px, 1fr) 130px auto;
+    grid-template-areas: "name phone property unit actions";
+    align-items: center;
+  }
+  #filter-form .fg.actions .d-flex {
+    justify-content: flex-end;
+  }
+}
+
+.photo-stack .photo-main,
+.photo-stack .img-main {
+  width: 54px;
+  height: 54px;
+}
+.photo-stack .img-main {
+  object-fit: cover;
+}
+
+@media (max-width: 767.98px) {
+  .container {
+    max-width: 100%;
+    padding-left: .45rem;
+    padding-right: .45rem;
+  }
+  .d-flex.justify-content-between.align-items-center.mb-2 {
+    align-items: flex-start !important;
+    gap: .4rem;
+  }
+  .d-flex.justify-content-between.align-items-center.mb-2 > .d-flex {
+    flex-wrap: wrap;
+    gap: .25rem;
+  }
+  .d-flex.justify-content-between.align-items-center.mb-2 .btn-sm {
+    margin-right: 0 !important;
+    padding: .25rem .4rem;
+    font-size: .72rem;
+  }
+  .filters-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "name phone"
+      "property unit"
+      "actions actions";
+  }
+  #filter-form .fg.actions .d-flex {
+    flex-wrap: nowrap;
+    gap: .25rem !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #filter-form .fg.actions .form-check {
+    white-space: nowrap;
+    margin-right: .15rem !important;
+  }
+  #filter-form .fg.actions .btn {
+    flex: 0 0 auto;
+  }
+  table.table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 0;
+  }
+  th.col-sn, td.col-sn { width: 24px !important; }
+  th.col-photo, td.col-photo { width: 54px !important; }
+  th.col-tenant, td.col-tenant { width: 33% !important; }
+  th.col-lease, td.col-lease { width: 34% !important; }
+  th.col-actions, td.col-actions { width: 52px !important; }
+  th.col-contact, td.col-contact,
+  th.col-emergency, td.col-emergency,
+  th.col-cnic-front, td.col-cnic-front,
+  th.col-cnic-back, td.col-cnic-back,
+  th.col-notes, td.col-notes,
+  th.col-address, td.col-address {
+    display: none !important;
+  }
+  .table-sm td,
+  .table-sm th {
+    padding: .2rem .18rem !important;
+    font-size: .68rem !important;
+    word-break: break-word;
+  }
+  .photo-stack {
+    padding: 2px;
+  }
+  .photo-stack .photo-main,
+  .photo-stack .img-main {
+    width: 42px;
+    height: 42px;
+  }
+  .photo-stack .bg-secondary.img-main {
+    display: flex;
+  }
+  .actions-grid {
+    grid-template-columns: 1fr !important;
+    gap: .25rem !important;
+  }
+  .actions-grid .icon-btn,
+  .actions-grid .tenant-wa-btn {
+    width: 28px !important;
+    min-width: 28px;
+    height: 24px;
+    padding: .15rem !important;
+    margin: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tenant-wa-text {
+    display: none;
+  }
+  .tenant-contact-inline {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 380px) {
+  .table-responsive {
+    overflow-x: hidden;
+  }
+  .filters-grid .select2-container,
+  .filters-grid .form-control,
+  .filters-grid .form-select {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: .75rem;
+  }
+  th.col-photo, td.col-photo { width: 48px !important; }
+  th.col-actions, td.col-actions { width: 46px !important; }
+  .photo-stack .photo-main,
+  .photo-stack .img-main {
+    width: 38px;
+    height: 38px;
+  }
+}
+
 </style>
 
 {% endblock %}
@@ -804,6 +967,20 @@ function sendWhatsAppReminder(
 // Make it globally available
 window.sendWhatsAppReminder = sendWhatsAppReminder;
 
+function getTenantListCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 
 document.addEventListener('DOMContentLoaded', function () {
   const $form      = $('#filter-form');
@@ -811,6 +988,70 @@ document.addEventListener('DOMContentLoaded', function () {
   const $propSel   = $('#property-select');
   const $unitSel   = $('#unit-select');
   const $inactive  = $('#show_inactive');
+  const $leadOnly  = $();
+  const registrationButton = document.getElementById("btnNewRegistrationLink");
+  const registrationPanel = document.getElementById("registrationLinkPanel");
+  const registrationInput = document.getElementById("newRegistrationLink");
+  const registrationStatus = document.getElementById("registrationLinkStatus");
+  const copyRegistrationLink = document.getElementById("copyRegistrationLink");
+  const openRegistrationLink = document.getElementById("openRegistrationLink");
+  const whatsappRegistrationLink = document.getElementById("whatsappRegistrationLink");
+
+  if (registrationButton && registrationPanel && registrationInput) {
+    registrationButton.addEventListener("click", function () {
+      registrationButton.disabled = true;
+      registrationButton.textContent = "Creating...";
+      fetch(registrationButton.dataset.url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": getTenantListCookie("csrftoken"),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+      .then(function (response) {
+        if (!response.ok) throw new Error("Could not create registration link.");
+        return response.json();
+      })
+      .then(function (data) {
+        registrationPanel.classList.remove("d-none");
+        registrationInput.value = data.link || "";
+        registrationStatus.textContent = data.masked_link || "Registration link ready";
+        if (openRegistrationLink) {
+          openRegistrationLink.href = data.link || "#";
+          openRegistrationLink.classList.toggle("disabled", !data.link);
+        }
+        if (whatsappRegistrationLink) {
+          whatsappRegistrationLink.href = data.whatsapp_url || "#";
+          whatsappRegistrationLink.classList.toggle("disabled", !data.whatsapp_url);
+        }
+      })
+      .catch(function (error) {
+        alert(error.message);
+      })
+      .finally(function () {
+        registrationButton.disabled = false;
+        registrationButton.textContent = "New Registration";
+      });
+    });
+  }
+
+  if (copyRegistrationLink && registrationInput) {
+    copyRegistrationLink.addEventListener("click", function () {
+      const link = registrationInput.value || "";
+      if (!link) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(function () {
+          copyRegistrationLink.textContent = "Copied";
+          setTimeout(function () { copyRegistrationLink.textContent = "Copy Link"; }, 1200);
+        });
+      } else {
+        registrationInput.type = "text";
+        registrationInput.select();
+        document.execCommand("copy");
+        registrationInput.type = "hidden";
+      }
+    });
+  }
 
   // --- Select2 tenant (type to search) + UX niceties ---
   $tenantSel.select2({
@@ -833,6 +1074,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // --- Mirror lease_list behavior: auto-submit on change --------------------
   // Checkboxes submit immediately
   $inactive.on('change', function () {
+    $form.submit();
+  });
+  $leadOnly.on('change', function () {
+    $form.submit();
+  });
+  $('input[name="interested_in"]').on('change', function () {
     $form.submit();
   });
 

@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    h2 { font-size: 13px; margin: 14px 0 6px; border-bottom: 1px solid #999; padding-bottom: 3px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th, td { border: 1px solid #bbb; padding: 5px; vertical-align: top; }
+    th { background: #f1f1f1; text-align: left; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Police Verification Summary</h1>
+  <div class="muted">Lease #{{ lease.pk }} | Generated {{ generated_at|date:"Y-m-d H:i" }}</div>
+
+  <h2>Tenant Information</h2>
+  <table>
+    <tr><th>Name</th><td>{{ tenant.get_full_name }}</td><th>Father/Husband</th><td>{{ tenant.last_name|default:"-" }}</td></tr>
+    <tr><th>CNIC</th><td>{{ tenant.cnic|default:"-" }}</td><th>Mobile</th><td>{{ tenant.phone|default:"-" }}</td></tr>
+    <tr><th>Occupation</th><td>{{ tenant.occupation|default:"-" }}</td><th>Nationality</th><td>{{ tenant.nationality|default:"-" }}</td></tr>
+    <tr><th>Address</th><td colspan="3">{{ tenant.address|default:"-" }}</td></tr>
+    <tr><th>Temporary Address</th><td colspan="3">{{ tenant.temporary_address|default:"-" }}</td></tr>
+    <tr><th>Permanent Address</th><td colspan="3">{{ tenant.permanent_address|default:"-" }}</td></tr>
+    <tr><th>Working Address</th><td colspan="3">{{ tenant.working_address|default:"-" }}</td></tr>
+  </table>
+
+  <h2>Family Members</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Relationship</th><th>CNIC</th><th>DOB</th><th>Phone</th></tr></thead>
+    <tbody>
+      {% for member in family_members %}
+        <tr>
+          <td>{{ member.family_member.get_full_name }}</td>
+          <td>{{ member.relation }}</td>
+          <td>{{ member.family_member.cnic|default:"-" }}</td>
+          <td>{{ member.family_member.date_of_birth|date:"Y-m-d"|default:"-" }}</td>
+          <td>{{ member.family_member.phone|default:"-" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No family members recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Property Information</h2>
+  <table>
+    <tr><th>Property</th><td>{{ property.property_name }}</td><th>Unit</th><td>{{ unit.unit_number }}</td></tr>
+    <tr><th>Address</th><td colspan="3">{{ property.full_address|default:"-" }}</td></tr>
+    <tr><th>Police Station</th><td>-</td><th>District</th><td>{{ property.property_city|default:"-" }}</td></tr>
+    <tr><th>Division</th><td>-</td><th>Circle</th><td>-</td></tr>
+  </table>
+</body>
+</html>

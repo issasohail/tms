@@ -2,9 +2,12 @@ from .models_lease_photos import LeaseMedia
 from .storage import OverwriteStorage
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.core.validators import FileExtensionValidator
 import io
 from PIL import Image
 import os
+import uuid
 from django.utils.text import slugify
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -1075,7 +1078,7 @@ Generated at: {{ now_string }}
 
 class LeaseFamily(models.Model):
     lease = models.ForeignKey(
-        "Lease", on_delete=models.CASCADE, related_name="family_members"
+        "Lease", on_delete=models.CASCADE, related_name="legacy_family_members"
     )
     tenant = models.ForeignKey(
         Tenant, on_delete=models.CASCADE, related_name="lease_families"
@@ -1090,6 +1093,73 @@ class LeaseFamily(models.Model):
 
     def __str__(self):
         return f"{self.tenant} ({self.relation or 'family'})"
+
+
+class LeaseRelationshipType(models.Model):
+    name = models.CharField(max_length=80)
+    code = models.SlugField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class LeaseFamilyMember(models.Model):
+    lease = models.ForeignKey(
+        "Lease",
+        on_delete=models.CASCADE,
+        related_name="family_members",
+    )
+    primary_tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="primary_family_relationships",
+    )
+    family_member = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="family_member_relationships",
+    )
+    relationship = models.CharField(max_length=30, default="other")
+    relationship_type = models.ForeignKey(
+        LeaseRelationshipType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="family_members",
+    )
+    is_adult = models.BooleanField(default=True)
+    lives_with_tenant = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "family_member__first_name", "family_member__last_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lease", "primary_tenant", "family_member"],
+                name="uniq_lease_primary_family_member",
+            )
+        ]
+
+    @property
+    def tenant(self):
+        return self.family_member
+
+    @property
+    def relation(self):
+        if self.relationship_type:
+            return self.relationship_type.name
+        return (self.relationship or "Other").replace("_", " ").replace("-", " ").title()
+
+    def __str__(self):
+        return f"{self.family_member} ({self.relation})"
 
 
 class DefaultClause(models.Model):
@@ -1280,6 +1350,161 @@ class WhatsAppTemplate(models.Model):
 
     def __str__(self):
         return self.name or self.get_template_type_display()
+
+
+def lease_document_upload_to(instance, filename):
+    ext = os.path.splitext(filename or "")[1].lower() or ".bin"
+    tenant = getattr(getattr(instance, "lease", None), "tenant", None)
+    unit = getattr(getattr(instance, "lease", None), "unit", None)
+    prop = getattr(unit, "property", None)
+    tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else str(tenant or "tenant")
+    tenant_part = slugify(tenant_name)[:40] or "tenant"
+    property_part = slugify(getattr(prop, "property_name", "") or "property")[:35] or "property"
+    unit_part = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
+    category_part = slugify(getattr(instance, "category", "") or "other") or "other"
+    date_part = timezone.localdate().strftime("%Y%m%d")
+    token = uuid.uuid4().hex[:8]
+    return f"leases/files/{instance.lease_id or 'new'}/{tenant_part}-{property_part}-{unit_part}-{category_part}-{date_part}-{token}{ext}"
+
+
+def lease_file_share_token():
+    return uuid.uuid4().hex + uuid.uuid4().hex
+
+
+class LeaseDocumentCategory(models.Model):
+    code = models.SlugField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class LeaseDocument(models.Model):
+    CATEGORY_CHOICES = [
+        ("tenant_photo", "Tenant Photo"),
+        ("cnic_front", "CNIC Front"),
+        ("cnic_back", "CNIC Back"),
+        ("lease_agreement", "Lease Agreement"),
+        ("lease_renewal_agreement", "Lease Renewal Agreement"),
+        ("police_verification", "Police Verification"),
+        ("property_condition_report", "Property Condition Report"),
+        ("utility_bill", "Utility Bill"),
+        ("income_proof", "Income Proof"),
+        ("employment_letter", "Employment Letter"),
+        ("reference_letter", "Reference Letter"),
+        ("other", "Other"),
+    ]
+    SAFE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "xls", "xlsx", "doc", "docx"]
+
+    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="documents")
+    lease_history = models.ForeignKey(
+        "leases.LeaseRenewal",
+        on_delete=models.SET_NULL,
+        related_name="documents",
+        null=True,
+        blank=True,
+    )
+    file = models.FileField(
+        upload_to=lease_document_upload_to,
+        max_length=255,
+        validators=[FileExtensionValidator(SAFE_EXTENSIONS)],
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
+    display_name = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default="other")
+    description = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lease_documents_uploaded",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    share_token = models.CharField(max_length=64, blank=True, db_index=True)
+    share_expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-uploaded_at", "-id"]
+        indexes = [
+            models.Index(fields=["lease", "is_active", "uploaded_at"]),
+            models.Index(fields=["category"]),
+        ]
+
+    def __str__(self):
+        return self.display_name or self.original_filename or os.path.basename(self.file.name)
+
+    @property
+    def file_exists(self):
+        return bool(self.file and self.file.name and default_storage.exists(self.file.name))
+
+    @property
+    def file_url(self):
+        if not self.file_exists:
+            return ""
+        try:
+            return self.file.url
+        except Exception:
+            return ""
+
+    @property
+    def extension(self):
+        return os.path.splitext(self.file.name or self.original_filename or "")[1].lower().lstrip(".")
+
+    @property
+    def category_label(self):
+        category = LeaseDocumentCategory.objects.filter(code=self.category).first()
+        if category:
+            return category.name
+        return dict(self.CATEGORY_CHOICES).get(self.category, self.category.replace("_", " ").title())
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_filename:
+            self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
+        if not self.display_name:
+            self.display_name = self.original_filename or os.path.basename(getattr(self.file, "name", "") or "Lease file")
+        super().save(*args, **kwargs)
+
+
+class LeaseFileShareLink(models.Model):
+    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="file_share_links")
+    document = models.ForeignKey(
+        LeaseDocument,
+        on_delete=models.CASCADE,
+        related_name="share_links",
+        null=True,
+        blank=True,
+    )
+    token = models.CharField(max_length=64, unique=True, default=lease_file_share_token)
+    expires_at = models.DateTimeField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lease_file_share_links_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["token", "expires_at", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"Lease #{self.lease_id} share {self.document_id or 'all files'}"
+
+    @property
+    def is_valid(self):
+        return self.is_active and self.expires_at >= timezone.now()
 
 
 from .models_renewal import LeaseRenewal, LeaseRenewalClause  # noqa: E402,F401

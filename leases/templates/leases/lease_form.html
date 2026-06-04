@@ -963,8 +963,13 @@
                     </select>
                   </div>
                   <div class="col-12 col-md-4">
-                    <label class="form-label">Relation (optional)</label>
-                    <input name="relation" class="form-control form-control-sm" form="family-add-form">
+                    <label class="form-label">Relationship</label>
+                    <select name="relation" class="form-select form-select-sm" form="family-add-form">
+                      <option value="">Select relationship</option>
+                      {% for item in relationship_types %}
+                        <option value="{{ item.id }}">{{ item.name }}</option>
+                      {% endfor %}
+                    </select>
                   </div>
                   <div class="col-12 col-md-2">
                     <label class="form-label">&nbsp;</label>
@@ -991,13 +996,13 @@
                         <td class="text-muted small">{{ forloop.counter }}</td>
                         <td>
                           <span class="fm-read fm-name fam-name">{{ f.instance.tenant|stringformat:"s"|truncatechars:25 }}</span>
-                          <div class="fm-editing d-none">{{ f.tenant|add_class:"form-select form-select-sm" }}</div>
-                          {% for err in f.tenant.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                          <div class="fm-editing d-none">{{ f.family_member|add_class:"form-select form-select-sm" }}</div>
+                          {% for err in f.family_member.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                         </td>
                         <td>
                           <span class="fm-read fam-rel">{{ f.instance.relation|default:"—" }}</span>
-                          <div class="fm-editing d-none">{{ f.relation|add_class:"form-control form-control-sm" }}</div>
-                          {% for err in f.relation.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                          <div class="fm-editing d-none">{{ f.relationship_type|add_class:"form-select form-select-sm" }}</div>
+                          {% for err in f.relationship_type.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                         </td>
                         <td class="text-center">
                           <div class="d-inline-flex align-items-center gap-1">

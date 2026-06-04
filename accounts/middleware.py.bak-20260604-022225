@@ -1,0 +1,33 @@
+from django.contrib.auth import get_user_model
+from django.utils.functional import SimpleLazyObject
+
+
+def _impersonated_user(request):
+    original_user = getattr(request, "user", None)
+    impersonate_id = request.session.get("impersonate_user_id")
+    impersonator_id = request.session.get("impersonator_user_id")
+    if not impersonate_id or not impersonator_id:
+        return original_user
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=impersonate_id, is_active=True)
+    except User.DoesNotExist:
+        request.session.pop("impersonate_user_id", None)
+        request.session.pop("impersonator_user_id", None)
+        return original_user
+
+    user.is_impersonated = True
+    user.impersonator_id = impersonator_id
+    return user
+
+
+class ImpersonationMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if hasattr(request, "user"):
+            request.real_user = request.user
+            request.user = SimpleLazyObject(lambda: _impersonated_user(request))
+        return self.get_response(request)

@@ -20,6 +20,7 @@ class GlobalSettingsForm(forms.ModelForm):
                   "currency_code","country_code",  "unit_rate_per_kwh", "service_charge_flat",
                   "late_fee_enabled", "late_fee_type", "late_fee_amount",
                   "late_fee_percent", "late_fee_grace_days", "billing_cap_amount",
+                  "lease_file_share_valid_days",
                   "listener_host", "listener_port",
                   "time_zone",  # ← NEW
                   "enable_debug_toolbar",
@@ -28,7 +29,7 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Branding", "fas fa-building", ["site_name", "logo", "favicon"]),
         ("Billing & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
-            "service_charge_flat", "billing_cap_amount",
+            "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
         ]),
         ("Late Fees", "fas fa-clock", [
             "late_fee_enabled", "late_fee_type", "late_fee_amount",
@@ -61,6 +62,7 @@ class GlobalSettingsForm(forms.ModelForm):
 
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
+        self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
         self.fields["enable_debug_toolbar"].label = "Enable Django Debug Toolbar (local development only)"
         self.fields["enable_debug_toolbar"].help_text = "Only works when DEBUG=True and host is local. It will not show in production."
 

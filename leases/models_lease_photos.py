@@ -83,7 +83,7 @@ STAMP_MIN_PX = getattr(settings, "LEASE_STAMP_MIN_PX",       12)
 
 def _fs_part(s: str) -> str:
     s = (s or "").strip()
-    s = re.sub(r'[^A-Za-z0-9._-]+', "-", s)
+    s = re.sub(r'[^A-Za-z0-9._-]+', "_", s)
     return s.strip(".-_ ") or "item"
 
 
@@ -105,7 +105,7 @@ def _folder_name_for_lease(lease) -> str:
     tenant10 = _fs_part(tenant_name)[:28] or "tenant"
     end = getattr(lease, "end_date", None)
     end_str = end.strftime("%Y-%m-%d") if end else "unknown"
-    return f"{prop}-{unit}-{tenant10}-{end_str}"
+    return f"{prop}_{unit}_{tenant10}_{end_str}"
 
 
 def _date_for_media(i: "LeaseMedia") -> str:
@@ -119,7 +119,7 @@ def _lease_media_stem(i: "LeaseMedia", token: str | None = None) -> str:
 
 
 def _base_dir(i: "LeaseMedia") -> str:
-    return f"leases/lease_photos/{_folder_name_for_lease(i.lease)}"
+    return f"lease/{_folder_name_for_lease(i.lease)}"
 
 
 def _photo_filename(i: "LeaseMedia", ext: str) -> str:
@@ -349,6 +349,32 @@ class LeaseMedia(models.Model):
     class Meta:
         ordering = ["sort_order", "created_at"]
 
+    @property
+    def file_exists(self):
+        return bool(self.file and self.file.name and default_storage.exists(self.file.name))
+
+    @property
+    def thumbnail_exists(self):
+        return bool(self.thumbnail and self.thumbnail.name and default_storage.exists(self.thumbnail.name))
+
+    @property
+    def display_file_url(self):
+        if not self.file_exists:
+            return ""
+        try:
+            return self.file.url
+        except Exception:
+            return ""
+
+    @property
+    def display_thumbnail_url(self):
+        try:
+            if self.thumbnail_exists:
+                return self.thumbnail.url
+            return self.display_file_url
+        except Exception:
+            return ""
+
     def build_friendly_filename(self, force_ext: str | None = None) -> str:
         base = f"{_folder_name_for_lease(self.lease)}-{self.pk or 'new'}"
         ext = (force_ext or os.path.splitext(self.file.name)[1] or ".jpg")
@@ -358,7 +384,12 @@ class LeaseMedia(models.Model):
 
     def delete(self, *args, **kwargs):
         def _move(src_path: str, suffix: str):
-            if not src_path or not default_storage.exists(src_path):
+            if not src_path:
+                return
+            try:
+                if not default_storage.exists(src_path):
+                    return
+            except (FileNotFoundError, OSError):
                 return
             base_dir = f"{_base_dir(self)}/deleted_photos"
             base = os.path.splitext(os.path.basename(src_path))[0]
@@ -371,16 +402,24 @@ class LeaseMedia(models.Model):
                         default_storage.path(dst)), exist_ok=True)
                 except Exception:
                     pass
-                src_abs = default_storage.path(src_path)
-                dst_abs = default_storage.path(dst)
+                try:
+                    src_abs = default_storage.path(src_path)
+                    dst_abs = default_storage.path(dst)
+                except (FileNotFoundError, OSError):
+                    return
                 for i in range(5):
                     try:
                         os.replace(src_abs, dst_abs)
                         return
+                    except FileNotFoundError:
+                        return
                     except PermissionError:
                         if i == 4:
-                            with default_storage.open(src_path, "rb") as fh:
-                                _write_bytes_exact(dst, fh.read())
+                            try:
+                                with default_storage.open(src_path, "rb") as fh:
+                                    _write_bytes_exact(dst, fh.read())
+                            except (FileNotFoundError, OSError):
+                                return
                             try:
                                 default_storage.delete(src_path)
                             except Exception:
@@ -388,8 +427,11 @@ class LeaseMedia(models.Model):
                             return
                         time.sleep(0.25)
             else:
-                with default_storage.open(src_path, "rb") as fh:
-                    _write_bytes_exact(dst, fh.read())
+                try:
+                    with default_storage.open(src_path, "rb") as fh:
+                        _write_bytes_exact(dst, fh.read())
+                except (FileNotFoundError, OSError):
+                    return
                 try:
                     default_storage.delete(src_path)
                 except Exception:
@@ -782,7 +824,7 @@ def _auto_export_pdf(sender, instance, **kwargs):
         return
 
     folder = _folder_name_for_lease(lease)
-    base_dir = f"leases/lease_photos/{folder}"
+    base_dir = f"lease/{folder}"
     pdf_path = f"{base_dir}/{folder}.pdf"
 
     try:

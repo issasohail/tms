@@ -1,0 +1,375 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Registration Update</title>
+  <link rel="icon" href="{% static 'images/favicon.ico' %}">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <style>
+    body { background: #f8fafc; }
+    .public-registration-page {
+      max-width: 1180px;
+      margin: 1rem auto;
+    }
+    .grid-tight .row { --bs-gutter-x: .5rem; --bs-gutter-y: .4rem; }
+    .form-label, .public-registration-page label {
+      margin-bottom: .15rem;
+      font-size: .8rem;
+    }
+    .public-registration-page .form-control,
+    .public-registration-page .form-select {
+      padding: .3rem .5rem;
+      font-size: .85rem;
+      height: calc(1.8em + .6rem + 2px);
+    }
+    .public-registration-page textarea.form-control {
+      height: auto;
+      min-height: 6.5rem;
+      resize: vertical;
+      line-height: 1.35;
+    }
+    .tenant-interest-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .25rem .75rem;
+      border: 1px solid #dee2e6;
+      border-radius: .35rem;
+      padding: .35rem .5rem;
+      background: #fff;
+    }
+    .tenant-interest-options input[type="checkbox"] { margin-right: .25rem; }
+    .image-upload-container input[type="file"] { display: none; }
+    @media (max-width: 768px) {
+      .pe-2, .ps-2 {
+        padding-right: .5rem !important;
+        padding-left: .5rem !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container-fluid grid-tight control-sm public-registration-page">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <div>
+        <h5 class="mb-0">Confirm Tenant Details</h5>
+        <div class="small text-muted">Submitted changes require admin approval before they are saved.</div>
+      </div>
+      <button type="submit" form="tenantRegistrationForm" class="btn btn-primary btn-sm">Submit for Review</button>
+    </div>
+
+    <div class="card-body p-2">
+      <form method="post" enctype="multipart/form-data" id="tenantRegistrationForm" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="row">
+          <div class="col-lg-7 col-md-6 pe-2">
+            <div class="row gx-1 mb-1">
+              <div class="col-sm-3 col-6">{{ form.prefix.label_tag }}{{ form.prefix }}</div>
+              <div class="col-sm-3 col-6">{{ form.first_name.label_tag }}{{ form.first_name }}</div>
+              <div class="col-sm-3 col-6">{{ form.relation.label_tag }}{{ form.relation }}</div>
+              <div class="col-sm-3 col-6">{{ form.last_name.label_tag }}{{ form.last_name }}</div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-sm-3 col-6">{{ form.cnic.label_tag }}{{ form.cnic }}</div>
+              <div class="col-sm-3 col-6">{{ form.phone.label_tag }}{{ form.phone }}</div>
+              <div class="col-sm-3 col-6">{{ form.phone2.label_tag }}{{ form.phone2 }}</div>
+              <div class="col-sm-3 col-6">{{ form.phone3.label_tag }}{{ form.phone3 }}</div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-sm-4 col-6">{{ form.email.label_tag }}{{ form.email }}</div>
+              <div class="col-sm-2 col-6">{{ form.gender.label_tag }}{{ form.gender }}</div>
+              <div class="col-sm-3 col-6">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}</div>
+              <div class="col-sm-3 col-6">{{ form.number_of_family_member.label_tag }}{{ form.number_of_family_member }}</div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-sm-4 col-6">{{ form.occupation.label_tag }}{{ form.occupation }}</div>
+              <div class="col-sm-4 col-6">{{ form.employer_name.label_tag }}{{ form.employer_name }}</div>
+              <div class="col-sm-4 col-6">{{ form.employer_phone.label_tag }}{{ form.employer_phone }}</div>
+              <div class="col-sm-4 col-6">{{ form.nationality.label_tag }}{{ form.nationality }}</div>
+              <div class="col-sm-4 col-6">{{ form.city.label_tag }}{{ form.city }}</div>
+              <div class="col-sm-4 col-6">{{ form.province.label_tag }}{{ form.province }}</div>
+              <div class="col-sm-4 col-6">{{ form.country.label_tag }}{{ form.country }}</div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-12"><div class="small fw-semibold text-muted">References</div></div>
+              <div class="col-sm-4 col-6">{{ form.reference_name_1.label_tag }}{{ form.reference_name_1 }}</div>
+              <div class="col-sm-4 col-6">{{ form.reference_phone_1.label_tag }}{{ form.reference_phone_1 }}</div>
+              <div class="col-sm-4 col-6">{{ form.reference_relation_1.label_tag }}{{ form.reference_relation_1 }}</div>
+              <div class="col-sm-4 col-6">{{ form.reference_name_2.label_tag }}{{ form.reference_name_2 }}</div>
+              <div class="col-sm-4 col-6">{{ form.reference_phone_2.label_tag }}{{ form.reference_phone_2 }}</div>
+              <div class="col-sm-4 col-6">{{ form.reference_relation_2.label_tag }}{{ form.reference_relation_2 }}</div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-12">
+                <label class="form-label">Interested in</label>
+                <div class="tenant-interest-options">
+                  {% for choice in form.interested_in %}
+                    <label class="form-check-label me-3 mb-1">{{ choice.tag }} {{ choice.choice_label }}</label>
+                  {% empty %}
+                    <span class="text-muted small">No lead interest options configured.</span>
+                  {% endfor %}
+                </div>
+                {% for error in form.interested_in.errors %}
+                  <div class="text-danger small">{{ error }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-sm-4 col-6">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}</div>
+              <div class="col-sm-3 col-6">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}</div>
+              <div class="col-sm-3 col-6">{{ form.emergency_contact_relation.label_tag }}{{ form.emergency_contact_relation }}</div>
+            </div>
+
+            <div class="row gx-1">
+              <div class="col-md-6">
+                <label class="form-label" for="{{ form.address.id_for_label }}">{{ form.address.label }}</label>
+                {{ form.address }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                {{ form.notes }}
+              </div>
+            </div>
+
+            <div class="row gx-1 mt-1">
+              <div class="col-md-4">{{ form.temporary_address.label_tag }}{{ form.temporary_address }}</div>
+              <div class="col-md-4">{{ form.permanent_address.label_tag }}{{ form.permanent_address }}</div>
+              <div class="col-md-4">{{ form.working_address.label_tag }}{{ form.working_address }}</div>
+            </div>
+
+            <div class="row gx-1 mb-1">
+              <div class="col-sm-6 col-12">
+                <div class="form-check mt-2">{{ form.notify_vacant_flat }} <label class="form-check-label" for="{{ form.notify_vacant_flat.id_for_label }}">{{ form.notify_vacant_flat.label }}</label></div>
+              </div>
+              <div class="col-sm-6 col-12">
+                <div class="form-check mt-2">{{ form.notify_vacant_room }} <label class="form-check-label" for="{{ form.notify_vacant_room.id_for_label }}">{{ form.notify_vacant_room.label }}</label></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-5 col-md-6 ps-2">
+            <div class="card border-0 bg-light h-100">
+              <div class="card-body p-2 d-flex flex-column">
+                <div class="row gx-1 mb-2 flex-grow-1">
+                  <div class="col-4 d-flex flex-column">
+                    <label class="small text-muted text-center mb-1" for="{{ form.photo.id_for_label }}">Photo</label>
+                    <div class="image-upload-container flex-grow-1 d-flex flex-column">
+                      {% if tenant.photo %}
+                        <img src="{{ tenant.photo.url }}" class="img-thumbnail w-100 mb-1 public-file-preview" data-preview-for="{{ form.photo.id_for_label }}" style="height:100px;object-fit:cover;">
+                      {% else %}
+                        <div class="bg-light d-flex justify-content-center align-items-center public-file-placeholder" data-placeholder-for="{{ form.photo.id_for_label }}" style="height:100px;">
+                          <i class="fas fa-user-slash text-muted"></i>
+                        </div>
+                      {% endif %}
+                      <label class="btn btn-sm btn-outline-primary w-100">
+                        {{ form.photo }}
+                        Upload
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="col-4 d-flex flex-column">
+                    <label class="small text-muted text-center mb-1" for="{{ form.cnic_front.id_for_label }}">CNIC Front</label>
+                    <div class="image-upload-container flex-grow-1 d-flex flex-column">
+                      {% if tenant.cnic_front %}
+                        <img src="{{ tenant.cnic_front.url }}" class="img-thumbnail w-100 mb-1 public-file-preview" data-preview-for="{{ form.cnic_front.id_for_label }}" style="height:100px;object-fit:cover;">
+                      {% else %}
+                        <div class="bg-light d-flex justify-content-center align-items-center public-file-placeholder" data-placeholder-for="{{ form.cnic_front.id_for_label }}" style="height:100px;">
+                          <i class="fas fa-id-card text-muted"></i>
+                        </div>
+                      {% endif %}
+                      <label class="btn btn-sm btn-outline-primary w-100">
+                        {{ form.cnic_front }}
+                        Upload
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="col-4 d-flex flex-column">
+                    <label class="small text-muted text-center mb-1" for="{{ form.cnic_back.id_for_label }}">CNIC Back</label>
+                    <div class="image-upload-container flex-grow-1 d-flex flex-column">
+                      {% if tenant.cnic_back %}
+                        <img src="{{ tenant.cnic_back.url }}" class="img-thumbnail w-100 mb-1 public-file-preview" data-preview-for="{{ form.cnic_back.id_for_label }}" style="height:100px;object-fit:cover;">
+                      {% else %}
+                        <div class="bg-light d-flex justify-content-center align-items-center public-file-placeholder" data-placeholder-for="{{ form.cnic_back.id_for_label }}" style="height:100px;">
+                          <i class="fas fa-id-card text-muted"></i>
+                        </div>
+                      {% endif %}
+                      <label class="btn btn-sm btn-outline-primary w-100">
+                        {{ form.cnic_back }}
+                        Upload
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <h6 class="mb-0">Family Members</h6>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="addFamilyMember">Add Family Member</button>
+        </div>
+
+        {% if existing_family %}
+          <div class="table-responsive mb-2">
+            <table class="table table-sm table-bordered align-middle small mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Relationship</th>
+                  <th>CNIC</th>
+                  <th>Phone</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for member in existing_family %}
+                  <tr>
+                    <td>{{ member.family_member.get_full_name }}</td>
+                    <td>{{ member.relation }}</td>
+                    <td>{{ member.family_member.cnic|default:"-" }}</td>
+                    <td>{{ member.family_member.phone|default:"-" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        <div id="familyMemberRows" class="d-grid gap-2"></div>
+
+        <template id="familyMemberTemplate">
+          <div class="border rounded p-2 family-member-card">
+            <div class="row gx-1">
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Name</label>
+                <input type="text" class="form-control form-control-sm" data-field="name">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Father/Husband Name</label>
+                <input type="text" class="form-control form-control-sm" data-field="father_husband_name">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">CNIC</label>
+                <input type="text" class="form-control form-control-sm" data-field="cnic">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">DOB</label>
+                <input type="date" class="form-control form-control-sm" data-field="dob">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Phone</label>
+                <input type="text" class="form-control form-control-sm" data-field="phone">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Occupation</label>
+                <input type="text" class="form-control form-control-sm" data-field="occupation">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Nationality</label>
+                <input type="text" class="form-control form-control-sm" data-field="nationality">
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Relationship</label>
+                <select class="form-select form-select-sm" data-field="relationship_type">
+                  <option value="">Select</option>
+                  {% for item in relationship_types %}
+                    <option value="{{ item.id }}">{{ item.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-sm-3 col-6">
+                <label class="form-label small mb-1">Email</label>
+                <input type="email" class="form-control form-control-sm" data-field="email">
+              </div>
+              <div class="col-sm-7 col-10">
+                <label class="form-label small mb-1">Notes</label>
+                <input type="text" class="form-control form-control-sm" data-field="notes">
+              </div>
+              <div class="col-sm-2 col-2 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-danger btn-sm w-100 remove-family-member">Remove</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div class="d-flex justify-content-end mt-3">
+          <button type="submit" class="btn btn-primary btn-sm">Submit for Review</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const rows = document.getElementById("familyMemberRows");
+  const template = document.getElementById("familyMemberTemplate");
+  const addButton = document.getElementById("addFamilyMember");
+
+  function renumber() {
+    rows.querySelectorAll(".family-member-card").forEach(function (card, index) {
+      card.querySelectorAll("[data-field]").forEach(function (field) {
+        field.name = "family-" + index + "-" + field.dataset.field;
+      });
+    });
+  }
+
+  if (rows && template && addButton) {
+    addButton.addEventListener("click", function () {
+      rows.appendChild(template.content.cloneNode(true));
+      renumber();
+    });
+
+    rows.addEventListener("click", function (event) {
+      const remove = event.target.closest(".remove-family-member");
+      if (!remove) return;
+      remove.closest(".family-member-card").remove();
+      renumber();
+    });
+  }
+
+  document.querySelectorAll(".image-upload-container input[type='file']").forEach(function (input) {
+    input.addEventListener("change", function () {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const container = input.closest(".image-upload-container");
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        let preview = container.querySelector("img.public-file-preview");
+        const placeholder = container.querySelector(".public-file-placeholder");
+        if (!preview) {
+          preview = document.createElement("img");
+          preview.className = "img-thumbnail w-100 mb-1 public-file-preview";
+          preview.style.height = "100px";
+          preview.style.objectFit = "cover";
+          if (placeholder) {
+            placeholder.replaceWith(preview);
+          } else {
+            container.insertBefore(preview, container.firstChild);
+          }
+        }
+        preview.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+})();
+</script>
+</body>
+</html>

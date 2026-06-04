@@ -47,6 +47,10 @@ class GlobalSettings(models.Model):
         default=0,
         help_text="Optional invoice cap. Use 0 for no cap.",
     )
+    lease_file_share_valid_days = models.PositiveIntegerField(
+        default=7,
+        help_text="Default number of days public lease file share links remain valid.",
+    )
 
     time_zone = models.CharField(max_length=64, default="Asia/Karachi")  # NEW
 
@@ -117,6 +121,10 @@ class GlobalSettings(models.Model):
         decimal_places=2,
         default=0,
         help_text="Optional invoice cap. Use 0 for no cap.",
+    )
+    lease_file_share_valid_days = models.PositiveIntegerField(
+        default=7,
+        help_text="Default number of days public lease file share links remain valid.",
     )
 
     time_zone = models.CharField(max_length=64, default="Asia/Karachi")  # NEW

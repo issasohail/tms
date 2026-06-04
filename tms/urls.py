@@ -11,6 +11,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from leases.views import UnitAutocomplete
+from leases import views_lease_files
 from core.views import SettingsView
 
 
@@ -197,6 +198,27 @@ urlpatterns = [
 
     # Root URLs (existing)
     *root_app_patterns,
+
+    path(
+        "public/files/<str:token>/",
+        views_lease_files.public_lease_file_share,
+        name="public_file_share_root",
+    ),
+    path(
+        "public/files/<str:token>/download/",
+        views_lease_files.public_lease_file_download,
+        name="public_file_share_download_root",
+    ),
+    path(
+        "public/lease-files/<str:token>/",
+        views_lease_files.public_lease_files_share,
+        name="public_lease_files_share_root",
+    ),
+    path(
+        "public/lease-files/<str:token>/<int:document_id>/download/",
+        views_lease_files.public_lease_shared_document_download,
+        name="public_lease_files_download_root",
+    ),
 
     # Production-compatible URLs
     path('tms/', include(app_patterns)),

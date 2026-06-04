@@ -1,4 +1,4 @@
-from .models import Lease, LeaseFamily
+from .models import Lease, LeaseFamily, LeaseFamilyMember, LeaseRelationshipType
 
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from .models import LeaseTemplate
@@ -359,18 +359,23 @@ class LeaseTemplateForm(forms.ModelForm):
 
 class LeaseFamilyForm(forms.ModelForm):
     class Meta:
-        model = LeaseFamily
-        fields = ['tenant', 'relation', 'whatsapp_opt_in']
+        model = LeaseFamilyMember
+        fields = ['family_member', 'relationship_type', 'lives_with_tenant', 'notes']
         widgets = {
-            'tenant': forms.Select(attrs={'class': 'form-select form-select-sm'}),
-            'relation': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
-            'whatsapp_opt_in': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'family_member': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'relationship_type': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'lives_with_tenant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'notes': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["relationship_type"].queryset = LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
 
 
 LeaseFamilyFormSet = inlineformset_factory(
     Lease,
-    LeaseFamily,
+    LeaseFamilyMember,
     form=LeaseFamilyForm,
     extra=0,            # existing links only; quick-add handles new rows
     can_delete=True

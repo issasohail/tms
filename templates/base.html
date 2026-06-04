@@ -206,7 +206,7 @@
   {% endif %}
 
   <!-- Main container -->
-  <div class="container mt-3">
+  <div class="{% block main_container_class %}container{% endblock %} mt-3">
     {% block content %}{% endblock %}
   </div>
 
@@ -250,6 +250,19 @@
         $('#unit-select').select2({ theme: 'bootstrap-5', placeholder: "Search Unit",   allowClear: true });
       }
     });
+
+    document.addEventListener('error', function (event) {
+      const img = event.target;
+      if (!img || img.tagName !== 'IMG' || img.dataset.missingHandled === '1') return;
+      img.dataset.missingHandled = '1';
+      img.style.display = 'none';
+      const fallback = document.createElement('div');
+      fallback.className = 'd-inline-flex align-items-center justify-content-center bg-light text-muted border rounded small';
+      fallback.style.minWidth = img.getAttribute('width') ? img.getAttribute('width') + 'px' : '80px';
+      fallback.style.minHeight = img.getAttribute('height') ? img.getAttribute('height') + 'px' : '60px';
+      fallback.textContent = img.alt || 'File missing';
+      img.insertAdjacentElement('afterend', fallback);
+    }, true);
   </script>
 
   <!-- Viewport debugger -->

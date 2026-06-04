@@ -1,0 +1,1019 @@
+{% extends 'base.html' %}
+{% load humanize static %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   LEASE DETAIL  v3  —  clean, spacious, readable
+   ============================================================ */
+
+.ld-page { padding: 16px 0 48px; font-size: 14px; }
+
+/* ---- title zone ---- */
+.ld-title-row {
+  display: flex; flex-wrap: wrap;
+  justify-content: space-between; align-items: flex-start;
+  gap: 10px; margin-bottom: 14px;
+}
+.ld-title {
+  font-size: 20px; font-weight: 700; color: #111827;
+  line-height: 1.3; margin: 0;
+}
+.ld-title .ld-occ { font-size: 14px; font-weight: 400; color: #6b7280; }
+.ld-subtitle {
+  font-size: 13px; color: #6b7280; margin-top: 4px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.ld-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.ld-tenant-doc-strip {
+  display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;
+}
+.ld-doc-tile {
+  width:96px; background:#eff6ff; border:2px solid #2563eb; border-radius:7px;
+  padding:5px; text-align:center;
+}
+.ld-doc-tile a { display:block; text-decoration:none; }
+.ld-doc-img {
+  width:100%; height:64px; object-fit:cover; border-radius:4px; background:#fff;
+}
+.ld-doc-label {
+  display:block; margin-top:4px; font-size:10px; font-weight:700; color:#1d4ed8;
+  text-transform:uppercase; letter-spacing:.3px;
+}
+.ld-doc-empty {
+  height:64px; display:flex; align-items:center; justify-content:center;
+  background:#fff; border-radius:4px; color:#94a3b8; font-size:10px;
+}
+
+/* ---- KPI strip ---- */
+.ld-kpi-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;
+}
+@media (min-width: 480px) { .ld-kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media (min-width: 860px) { .ld-kpi-grid { grid-template-columns: repeat(6,1fr); } }
+.ld-kpi {
+  background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:11px 13px;
+}
+.ld-kpi-label  { font-size:11px; color:#6b7280; font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:.4px; }
+.ld-kpi-value  { font-size:16px; font-weight:700; color:#111827; line-height:1.2; }
+.ld-kpi-sub    { font-size:10px; color:#9ca3af; margin-top:3px; }
+.kv-danger  { color:#dc2626 !important; }
+.kv-warning { color:#d97706 !important; }
+
+/* ---- Badges ---- */
+.ld-badge {
+  display:inline-block; padding:2px 9px; border-radius:20px;
+  font-size:11px; font-weight:600; letter-spacing:.2px;
+}
+.ld-badge-green  { background:#dcfce7; color:#15803d; }
+.ld-badge-red    { background:#fee2e2; color:#b91c1c; }
+.ld-badge-amber  { background:#fef9c3; color:#92400e; }
+.ld-badge-blue   { background:#dbeafe; color:#1d4ed8; }
+.ld-badge-gray   { background:#f3f4f6; color:#374151; }
+.ld-badge-purple { background:#ede9fe; color:#6d28d9; }
+.ld-police-verified    { background:#dcfce7; color:#15803d; }
+.ld-police-rejected    { background:#fee2e2; color:#b91c1c; }
+.ld-police-pending,
+.ld-police-follow_up   { background:#fef9c3; color:#92400e; }
+.ld-police-not_started { background:#f3f4f6; color:#6b7280; }
+
+/* ---- Overview card ---- */
+.ld-overview-card {
+  background:#fff; border:1px solid #e5e7eb; border-radius:10px;
+  margin-bottom:14px; overflow:hidden;
+}
+.ld-overview-card-header {
+  background:#f8fafc; border-bottom:1px solid #e5e7eb;
+  padding:9px 16px; font-size:13px; font-weight:700; color:#374151;
+}
+
+/* 8-col grid */
+.ld-ov-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+@media (min-width:640px)  { .ld-ov-grid { grid-template-columns: repeat(4,1fr); } }
+@media (min-width:900px)  { .ld-ov-grid { grid-template-columns: repeat(6,1fr); } }
+@media (min-width:1200px) { .ld-ov-grid { grid-template-columns: repeat(8,1fr); } }
+
+.ld-ov-col {
+  padding: 14px 14px 14px 16px;
+  border-right: 1px solid #f1f5f9;
+}
+.ld-ov-col:last-child { border-right: none; }
+
+.ld-ov-head {
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .6px;
+  padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* field rows inside each column */
+.ld-f {
+  margin-bottom: 9px;
+}
+.ld-f:last-child { margin-bottom: 0; }
+.ld-f-label {
+  font-size: 10px; color: #9ca3af; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .3px;
+  margin-bottom: 2px;
+}
+.ld-f-value {
+  font-size: 13px; color: #111827; font-weight: 500; line-height: 1.35;
+}
+.ld-f-value a { color: #2563eb; text-decoration: none; }
+.ld-f-value a:hover { text-decoration: underline; }
+.ld-f-value.val-danger  { color: #dc2626; font-weight: 700; }
+.ld-f-value.val-success { color: #15803d; }
+
+/* security deposit rows inside col 8 */
+.dep-row {
+  display:flex; justify-content:space-between;
+  font-size:12px; padding:4px 7px; border-radius:4px; margin-bottom:2px;
+}
+.dep-row.dep-warn { background:#fef9c3; }
+.dep-row.dep-ok   { background:#f0fdf4; }
+.dep-k { color:#6b7280; }
+.dep-v { font-weight:600; }
+
+/* ---- Tab nav ---- */
+.ld-tab-nav {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 5px;
+  margin-bottom: 0;
+}
+@media (min-width:480px) { .ld-tab-nav { grid-template-columns: repeat(3,1fr); } }
+@media (min-width:768px) { .ld-tab-nav { grid-template-columns: repeat(5,1fr); } }
+
+.ld-tab-btn {
+  padding: 10px 8px;
+  font-size: 13px; font-weight: 500; color: #6b7280;
+  background: #f3f4f6; border: 1px solid #e5e7eb;
+  border-bottom: none; border-radius: 7px 7px 0 0;
+  cursor: pointer; text-align: center;
+  transition: background .12s, color .12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: none;
+}
+.ld-tab-btn:hover  { background: #e5e7eb; color: #374151; }
+.ld-tab-btn.active {
+  background: #fff; color: #1d4ed8; font-weight: 700;
+  border-color: #e5e7eb; border-bottom-color: #fff;
+  position: relative; z-index: 1;
+}
+.ld-tab-content-wrap {
+  background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 0 0 10px 10px; padding: 16px;
+  margin-top: -1px; margin-bottom: 16px;
+}
+.ld-tab-pane        { display: none; }
+.ld-tab-pane.active { display: block; }
+
+/* ---- Inner cards (inside tabs) ---- */
+.ld-inner-card {
+  border: 1px solid #e5e7eb; border-radius: 7px;
+  overflow: hidden; margin-bottom: 12px;
+}
+.ld-inner-card:last-child { margin-bottom: 0; }
+.ld-inner-head {
+  background: #f8fafc; border-bottom: 1px solid #e5e7eb;
+  padding: 8px 13px; font-size: 12px; font-weight: 700; color: #374151;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.ld-inner-body { padding: 11px 13px; }
+
+/* ---- kv rows inside tabs ---- */
+.ld-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:4px 0; border-bottom:.5px solid #f1f5f9; font-size:13px; gap:8px;
+}
+.ld-row:last-child { border-bottom:none; }
+.ld-rk { color:#6b7280; font-weight:500; flex-shrink:0; min-width:130px; }
+.ld-rv { color:#111827; font-weight:500; text-align:right; }
+
+/* ---- layout helpers ---- */
+.ld-g2 { display:grid; grid-template-columns:1fr; gap:12px; }
+@media (min-width:576px) { .ld-g2 { grid-template-columns:1fr 1fr; } }
+.ld-g3 { display:grid; grid-template-columns:1fr; gap:12px; }
+@media (min-width:576px) { .ld-g3 { grid-template-columns:1fr 1fr; } }
+@media (min-width:992px) { .ld-g3 { grid-template-columns:repeat(3,1fr); } }
+
+/* ---- activity rows ---- */
+.ld-act {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:6px 0; border-bottom:.5px solid #f3f4f6; font-size:13px; gap:8px;
+}
+.ld-act:last-child { border-bottom:none; }
+.ld-act-d  { font-size:11px; color:#6b7280; }
+.ld-act-l  { color:#111827; }
+.ld-act-a  { font-weight:600; white-space:nowrap; }
+
+/* ---- tables ---- */
+.ld-tw { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.ld-tbl {
+  width:100%; border-collapse:collapse; font-size:13px; min-width:480px;
+}
+.ld-tbl th {
+  background:#f8fafc; padding:7px 10px; font-size:11px; font-weight:700;
+  color:#6b7280; border-bottom:1px solid #e5e7eb; text-align:left; white-space:nowrap;
+}
+.ld-tbl td { padding:7px 10px; border-bottom:.5px solid #f3f4f6; color:#111827; }
+.ld-tbl tr:last-child td { border-bottom:none; }
+
+.ld-empty { padding:14px 0; font-size:13px; color:#9ca3af; }
+.ld-sec-title {
+  font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;
+  text-transform:uppercase; letter-spacing:.4px;
+}
+.ld-file-form { display:grid; grid-template-columns:1fr; gap:8px; }
+@media (min-width:768px) { .ld-file-form { grid-template-columns:1.5fr .8fr 1.2fr auto; align-items:end; } }
+.ld-file-list { display:grid; gap:8px; }
+.ld-file-row {
+  display:grid; grid-template-columns:1fr; gap:8px;
+  border:1px solid #e5e7eb; border-radius:7px; padding:9px; background:#fff;
+}
+@media (min-width:860px) { .ld-file-row { grid-template-columns:minmax(220px, 1.5fr) 110px minmax(120px, .9fr) 115px auto; align-items:center; } }
+.ld-file-name { font-size:13px; font-weight:700; overflow-wrap:anywhere; }
+.ld-file-sub { font-size:11px; color:#6b7280; overflow-wrap:anywhere; }
+.ld-file-actions { display:flex; flex-wrap:nowrap; gap:3px; justify-content:flex-end; white-space:nowrap; }
+.ld-file-actions form { display:inline-flex; margin:0; }
+.ld-file-action-btn { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; padding:0; }
+.ld-file-missing { font-size:10px; }
+
+/* ============================================================
+   PRINT
+   ============================================================ */
+@media print {
+  nav, footer, .ld-actions, .ld-tab-nav,
+  .viewport-bar, .no-print, .btn, button {
+    display: none !important;
+  }
+  * {
+    color: #000 !important;
+    background: #fff !important;
+    border-color: #bbb !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+  }
+  .ld-badge, .badge {
+    background: #eee !important; color: #000 !important;
+    border: 1px solid #999 !important;
+  }
+  .ld-tab-pane { display: block !important; }
+  .ld-tab-content-wrap { border: 1px solid #bbb !important; }
+  .ld-page { padding: 0 !important; }
+  a { color: #000 !important; }
+  a[href]:after { content: none; }
+  .ld-inner-card, .ld-overview-card { page-break-inside: avoid; }
+  .kv-danger, .kv-warning, .val-danger, .val-success { color: #000 !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ld-page">
+
+  <!-- ============================================================
+       TITLE + ACTIONS
+  ============================================================ -->
+  <div class="ld-title-row">
+    <div>
+      <h1 class="ld-title">
+        Lease #{{ lease.id }} &mdash; {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
+        <span class="ld-occ">(Occupancy: {{ occupancy_count }})</span>
+      </h1>
+      <div class="ld-subtitle">
+        <span>{{ lease.tenant.get_full_name }}</span>
+        <span>&middot;</span>
+        <span>{{ lease.start_date }} &ndash; {{ lease.end_date }}</span>
+        <span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">
+          {{ lease.get_status_display }}
+        </span>
+      </div>
+      <div class="ld-tenant-doc-strip">
+        <div class="ld-doc-tile">
+          {% if lease.tenant.photo %}
+            <a href="{{ lease.tenant.photo.url }}" target="_blank">
+              <img src="{{ lease.tenant.photo.url }}" alt="Tenant Photo" class="ld-doc-img">
+              <span class="ld-doc-label">Photo</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No photo</div>
+            <span class="ld-doc-label">Photo</span>
+          {% endif %}
+        </div>
+        <div class="ld-doc-tile">
+          {% if lease.tenant.cnic_front %}
+            <a href="{{ lease.tenant.cnic_front.url }}" target="_blank">
+              <img src="{{ lease.tenant.cnic_front.url }}" alt="CNIC Front" class="ld-doc-img">
+              <span class="ld-doc-label">CNIC Front</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No file</div>
+            <span class="ld-doc-label">CNIC Front</span>
+          {% endif %}
+        </div>
+        <div class="ld-doc-tile">
+          {% if lease.tenant.cnic_back %}
+            <a href="{{ lease.tenant.cnic_back.url }}" target="_blank">
+              <img src="{{ lease.tenant.cnic_back.url }}" alt="CNIC Back" class="ld-doc-img">
+              <span class="ld-doc-label">CNIC Back</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No file</div>
+            <span class="ld-doc-label">CNIC Back</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="ld-actions no-print">
+      <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">&#8592; Back To Lease</a>
+
+      {% if lease.signed_agreement %}
+        <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-sm btn-success">
+          <i class="fas fa-file-signature"></i> Signed Agreement
+        </a>
+      {% else %}
+        <button class="btn btn-sm btn-secondary" disabled>
+          <i class="fas fa-file-signature"></i> No Signed Agreement
+        </button>
+      {% endif %}
+
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</a>
+      <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success"><i class="fas fa-sync-alt"></i> Renew</a>
+      <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
+      <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
+      <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
+      <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i> Print</a>
+      {% if lease.generated_agreement_pdf %}
+        <button onclick="sendEmail()" class="btn btn-sm btn-info"><i class="fas fa-envelope"></i> Email</button>
+        <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-sm btn-dark"><i class="fas fa-download"></i> PDF</a>
+      {% endif %}
+      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-eye"></i> View Agreement</a>
+      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete</a>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       KPI STRIP
+  ============================================================ -->
+  <div class="ld-kpi-grid">
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Monthly Rent</div>
+      <div class="ld-kpi-value">{{ lease.monthly_rent|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">+ {{ lease.society_maintenance|default:0|money:0 }} maint.</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Balance Due</div>
+      <div class="ld-kpi-value kv-danger">{{ balance_due|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">outstanding</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Security Required</div>
+      <div class="ld-kpi-value kv-warning">{{ security_required|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">{{ security_currently_held|default:0|money:0 }} held</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Lease Period</div>
+      <div class="ld-kpi-value" style="font-size:13px;">{{ lease.start_date }} &ndash; {{ lease.end_date }}</div>
+      <div class="ld-kpi-sub">Min {{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Police Verification</div>
+      <div class="ld-kpi-value" style="font-size:13px;">
+        <span class="ld-badge ld-police-{{ lease.police_verification_status|default:'not_started' }}">
+          {{ lease.get_police_verification_status_display }}
+        </span>
+      </div>
+      <div class="ld-kpi-sub">Follow-up: {{ lease.police_verification_follow_up_date|date:"M d, Y"|default:"&mdash;" }}</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Documents</div>
+      <div class="ld-kpi-value" style="font-size:13px;">
+        {% if lease.signed_agreement and lease.generated_agreement_pdf %}
+          <span class="ld-badge ld-badge-green">All uploaded</span>
+        {% else %}
+          <span class="ld-badge ld-badge-red">
+            {% if not lease.signed_agreement and not lease.generated_agreement_pdf %}2{% else %}1{% endif %} missing
+          </span>
+        {% endif %}
+      </div>
+      <div class="ld-kpi-sub">
+        {% if not lease.signed_agreement %}Signed &middot; {% endif %}{% if not lease.generated_agreement_pdf %}Agreement PDF{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       OVERVIEW — 8 columns
+  ============================================================ -->
+  <div class="ld-overview-card">
+    <div class="ld-overview-card-header">Property, Tenant &amp; Lease Overview</div>
+    <div class="ld-ov-grid">
+
+      <!-- COL 1: Core / Property -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Core</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Property</div>
+          <div class="ld-f-value">{{ lease.unit.property.property_name }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Unit</div>
+          <div class="ld-f-value">{{ lease.unit.unit_number }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Status</div>
+          <div class="ld-f-value">
+            <span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">
+              {{ lease.get_status_display }}
+            </span>
+          </div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Min Occupancy</div>
+          <div class="ld-f-value">{{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Meter Reading</div>
+          <div class="ld-f-value">{{ lease.electricity_meter_reading|default:"&mdash;" }}</div>
+        </div>
+      </div>
+
+      <!-- COL 2: Lease Dates -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Lease</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Start Date</div>
+          <div class="ld-f-value">{{ lease.start_date }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">End Date</div>
+          <div class="ld-f-value">{{ lease.end_date }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Agreement Date</div>
+          <div class="ld-f-value">{{ lease.agreement_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Min Occupancy</div>
+          <div class="ld-f-value">{{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Police Follow-up</div>
+          <div class="ld-f-value">{{ lease.police_verification_follow_up_date|date:"M d, Y"|default:"&mdash;" }}</div>
+        </div>
+      </div>
+
+      <!-- COL 3: Tenant -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Tenant</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Full Name</div>
+          <div class="ld-f-value">{{ lease.tenant.get_full_name }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">CNIC</div>
+          <div class="ld-f-value">{{ lease.tenant.cnic|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Phone</div>
+          <div class="ld-f-value">
+            {% if lease.tenant.phone %}<a href="tel:{{ lease.tenant.phone }}">{{ lease.tenant.phone }}</a>{% else %}&mdash;{% endif %}
+          </div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Police Verification</div>
+          <div class="ld-f-value">
+            <span class="ld-badge ld-police-{{ lease.police_verification_status|default:'not_started' }}">
+              {{ lease.get_police_verification_status_display }}
+            </span>
+          </div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Police Verified Date</div>
+          <div class="ld-f-value">{{ lease.police_verification_date|date:"M d, Y"|default:"&mdash;" }}</div>
+        </div>
+        {% if lease.police_verification_document %}
+        <div class="ld-f">
+          <div class="ld-f-label">Police Document</div>
+          <div class="ld-f-value"><a href="{{ lease.police_verification_document.url }}" target="_blank">View</a></div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- COL 4: Rent & Financials -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Rent</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Monthly Rent</div>
+          <div class="ld-f-value">{{ lease.monthly_rent|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Society Maintenance</div>
+          <div class="ld-f-value">{{ lease.society_maintenance|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Security Deposit</div>
+          <div class="ld-f-value">{{ lease.security_deposit|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Balance</div>
+          <div class="ld-f-value val-danger">{{ balance_due|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Rent Due Day</div>
+          <div class="ld-f-value">{{ lease.due_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Late Fee</div>
+          <div class="ld-f-value">{{ lease.late_fee|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Rent Increase %</div>
+          <div class="ld-f-value">{{ lease.rent_increase_percent|default:0 }}%</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Total Payment</div>
+          <div class="ld-f-value">{{ lease_total_payment|default:0|money:0 }}</div>
+        </div>
+      </div>
+
+      <!-- COL 5: Installments & Return -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Installments / Return</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 1 Amount</div>
+          <div class="ld-f-value">{{ lease.security_installment_1_amount|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 1 Date</div>
+          <div class="ld-f-value">{{ lease.security_installment_1_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 2 Amount</div>
+          <div class="ld-f-value">{{ lease.security_installment_2_amount|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 2 Date</div>
+          <div class="ld-f-value">{{ lease.security_installment_2_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Return Date</div>
+          <div class="ld-f-value">{{ lease.security_deposit_return_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Return Amount</div>
+          <div class="ld-f-value">{{ lease.security_deposit_return_amount|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Early Penalty</div>
+          <div class="ld-f-value">{{ lease.early_termination_penalty|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Deposit Paid</div>
+          <div class="ld-f-value">
+            {% if deposit_is_paid %}
+              <span class="ld-badge ld-badge-green">Yes</span>
+            {% else %}
+              <span class="ld-badge ld-badge-red">No</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- COL 6: Family -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Family</div>
+        {% if family_members %}
+          <div class="ld-f-label" style="font-size:10px;color:#9ca3af;margin-bottom:6px;">FAMILY</div>
+          {% for m in family_members %}
+            <div class="ld-f">
+              <div class="ld-f-label">{{ m.relation|default:"Member" }}</div>
+              <div class="ld-f-value">
+                <a href="{% url 'tenants:tenant_detail' m.tenant.pk %}">{{ m.tenant.get_full_name }}</a>
+                {% if m.tenant.phone %}<br><span style="font-size:11px;color:#6b7280;">{{ m.tenant.phone }}</span>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="ld-f">
+            <div class="ld-f-label">Family</div>
+            <div class="ld-f-value" style="color:#9ca3af;">None recorded</div>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- COL 7: Inventory -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Inventory</div>
+        <div class="ld-f"><div class="ld-f-label">Ceiling Fans</div><div class="ld-f-value">{{ lease.inventory_ceiling_fans|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Exhaust Fans</div><div class="ld-f-value">{{ lease.inventory_exhaust_fans|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Ceiling Lights</div><div class="ld-f-value">{{ lease.inventory_ceiling_lights|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Stove</div><div class="ld-f-value">{{ lease.inventory_stove|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Wardrobes</div><div class="ld-f-value">{{ lease.inventory_wardrobes|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Keys</div><div class="ld-f-value">{{ lease.inventory_keys|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Paint Condition</div><div class="ld-f-value">{{ lease.paint_condition|default:"&mdash;" }}</div></div>
+      </div>
+
+      <!-- COL 8: Security Deposit Summary -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Security Summary</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Security Deposit</div>
+          <div class="ld-f-value">{{ lease.security_deposit|default:0|money:0 }}</div>
+        </div>
+        <div style="margin-top:8px;">
+          <div class="dep-row"><span class="dep-k">Required</span><span class="dep-v">{{ security_required|default:0|money:0 }}</span></div>
+          <div class="dep-row"><span class="dep-k">Paid In</span><span class="dep-v">{{ security_paid_in|default:0|money:0 }}</span></div>
+          <div class="dep-row"><span class="dep-k">Refunded</span><span class="dep-v">{{ security_refunded|default:0|money:0 }}</span></div>
+          <div class="dep-row"><span class="dep-k">Damages</span><span class="dep-v">{{ security_damages|default:0|money:0 }}</span></div>
+          <div class="dep-row dep-warn">
+            <span class="dep-k" style="color:#92400e;font-weight:600;">To Collect</span>
+            <span class="dep-v" style="color:#92400e;">{{ security_balance_to_collect|default:0|money:0 }}</span>
+          </div>
+          <div class="dep-row dep-ok">
+            <span class="dep-k" style="color:#15803d;font-weight:600;">Currently Held</span>
+            <span class="dep-v" style="color:#15803d;">{{ security_currently_held|default:0|money:0 }}</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#6b7280;">
+          Deposit {% if deposit_is_paid %}<strong style="color:#15803d;">paid</strong>{% else %}<strong style="color:#b91c1c;">Not Paid</strong>{% endif %}.
+        </div>
+        {% if lease.police_verification_remarks %}
+        <div class="ld-f" style="margin-top:8px;">
+          <div class="ld-f-label">Police Remarks</div>
+          <div class="ld-f-value" style="font-size:12px;">{{ lease.police_verification_remarks }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+    </div><!-- /ld-ov-grid -->
+  </div><!-- /ld-overview-card -->
+
+  <!-- ============================================================
+       TABS  (5: Renewals · Unit & Meter · Terms & Notes · Activity · Documents)
+  ============================================================ -->
+  <div class="ld-tabs-wrapper">
+
+    <div class="ld-tab-nav no-print" id="ldTabNav">
+      <button class="ld-tab-btn active" data-tab="renewals">Lease Renewals</button>
+      <button class="ld-tab-btn" data-tab="unit">Unit &amp; Meter</button>
+      <button class="ld-tab-btn" data-tab="notes">Terms &amp; Notes</button>
+      <button class="ld-tab-btn" data-tab="activity">Activity</button>
+      <button class="ld-tab-btn" data-tab="docs">Documents</button>
+    </div>
+
+    <div class="ld-tab-content-wrap">
+
+      <!-- ======== RENEWALS ======== -->
+      <div class="ld-tab-pane active" id="ld-tab-renewals">
+        <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+          <span class="ld-sec-title mb-0">Lease Renewal History</span>
+          <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-primary">
+            <i class="fas fa-sync-alt me-1"></i> Renew Lease
+          </a>
+        </div>
+        <div class="ld-tw">
+          <table class="ld-tbl">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Rent</th>
+                <th>Total Monthly</th>
+                <th>Signed</th>
+                <th>Files</th>
+                <th class="no-print">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for renewal in renewals %}
+                <tr>
+                  <td>
+                    #{{ forloop.counter }}
+                    {% if forloop.first %}
+                      <span class="ld-badge ld-badge-blue ms-1">Original</span>
+                    {% else %}
+                      <span class="ld-badge ld-badge-purple ms-1">Renewal</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ renewal.start_date|date:"M d, Y" }}</td>
+                  <td>{{ renewal.end_date|date:"M d, Y" }}</td>
+                  <td>{{ renewal.monthly_rent|default:0|money:0 }}</td>
+                  <td>{{ renewal.total_monthly_amount|default:0|money:0 }}</td>
+                  <td>
+                    {% if renewal.is_agreement_signed %}
+                      <span class="ld-badge ld-badge-green">Signed</span>
+                    {% else %}
+                      <span class="ld-badge ld-badge-amber">Pending</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if renewal.generated_agreement_pdf %}
+                      <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                    {% endif %}
+                    {% if renewal.generated_agreement_docx %}
+                      <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                    {% endif %}
+                    {% if renewal.signed_copy %}
+                      <a href="{{ renewal.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                    {% endif %}
+                    {% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}
+                      &mdash;
+                    {% endif %}
+                  </td>
+                  <td class="no-print">
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                      <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
+                      <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-primary">Edit</a>
+                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-secondary">Clauses</a>
+                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-dark">Generate PDF</a>
+                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-success">Upload Signed</a>
+                      <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-outline-dark">Photos</a>
+                    </div>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="8" class="ld-empty">No renewal history recorded.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ======== UNIT & METER ======== -->
+      <div class="ld-tab-pane" id="ld-tab-unit">
+        <div class="ld-g2">
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">
+              Current Unit / Room
+              <a href="{% url 'smart_meter:move_lease_unit' lease.pk %}" class="btn btn-sm btn-primary py-0 px-2 no-print" style="font-size:11px;">Move Tenant</a>
+            </div>
+            <div class="ld-inner-body">
+              <div class="ld-row"><span class="ld-rk">Current Unit</span><span class="ld-rv"><a href="{% url 'properties:unit_detail' lease.current_unit.pk %}">{{ lease.current_unit.property.property_name }} {{ lease.current_unit.unit_number }}</a></span></div>
+              <div class="ld-row"><span class="ld-rk">Lease Start</span><span class="ld-rv">{{ lease.start_date|date:"M d, Y" }}</span></div>
+              <div class="ld-row"><span class="ld-rk">Lease End</span><span class="ld-rv">{{ lease.end_date|date:"M d, Y" }}</span></div>
+            </div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Unit Move History</div>
+            <div class="ld-tw">
+              <table class="ld-tbl" style="min-width:340px;">
+                <thead><tr><th>Unit</th><th>Move In</th><th>Move Out</th><th>Notes</th></tr></thead>
+                <tbody>
+                  {% for occ in lease.unit_occupancies.all %}
+                    <tr>
+                      <td><a href="{% url 'properties:unit_detail' occ.unit.pk %}">{{ occ.unit }}</a></td>
+                      <td>{{ occ.move_in_date|date:"M d, Y" }}</td>
+                      <td>{{ occ.move_out_date|date:"M d, Y"|default:"Current" }}</td>
+                      <td style="color:#6b7280;font-size:11px;">{{ occ.notes|default:"&mdash;" }}</td>
+                    </tr>
+                  {% empty %}
+                    <tr><td colspan="4" class="ld-empty">No move history.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="ld-inner-card" style="margin-top:12px;">
+          <div class="ld-inner-head">Meter Billing History / Usage Breakdown</div>
+          <div class="ld-tw">
+            <table class="ld-tbl">
+              <thead><tr><th>Meter</th><th>Unit</th><th>Installed</th><th>Removed</th><th class="text-end">Start Reading</th><th class="text-end">End Reading</th></tr></thead>
+              <tbody>
+                {% for inst in lease.meter_installations.all %}
+                  <tr>
+                    <td><a href="{% url 'smart_meter:meter_detail' inst.meter.pk %}">{{ inst.meter.meter_number }}</a></td>
+                    <td>{{ inst.unit }}</td>
+                    <td>{{ inst.start_date|date:"M d, Y" }}</td>
+                    <td>{{ inst.end_date|date:"M d, Y"|default:"Current" }}</td>
+                    <td class="text-end">{{ inst.start_reading }}</td>
+                    <td class="text-end">{{ inst.end_reading|default:"&mdash;" }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="6" class="ld-empty">No meter installations linked.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== TERMS & NOTES ======== -->
+      <div class="ld-tab-pane" id="ld-tab-notes">
+        <div class="ld-g3">
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Terms</div>
+            <div class="ld-inner-body" style="font-size:13px;">{{ lease.terms|default:"&mdash;" }}</div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Notes</div>
+            <div class="ld-inner-body" style="font-size:13px;">{{ lease.notes|default:"&mdash;" }}</div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Return Notes</div>
+            <div class="ld-inner-body" style="font-size:13px;">{{ lease.security_deposit_return_notes|default:"&mdash;" }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== ACTIVITY ======== -->
+      <div class="ld-tab-pane" id="ld-tab-activity">
+        <div class="ld-g2">
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Recent Payments</div>
+            <div class="ld-inner-body">
+              {% if recent_payments %}
+                {% for p in recent_payments %}
+                  <div class="ld-act">
+                    <div><div class="ld-act-d">{{ p.payment_date }}</div><div class="ld-act-l">{{ p.reference_number|default:"Payment" }}</div></div>
+                    <div class="ld-act-a" style="color:#15803d;">{{ p.amount|money:0 }}</div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="ld-empty">No payments yet.</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Invoices</div>
+            <div class="ld-inner-body">
+              {% if invoices %}
+                {% for inv in invoices %}
+                  <div class="ld-act">
+                    <div><div class="ld-act-d">{{ inv.issue_date }}</div><div class="ld-act-l">{{ inv.description|default:"Invoice" }}</div></div>
+                    <div class="ld-act-a" style="color:#dc2626;">{{ inv.amount|money:0 }}</div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="ld-empty">No invoices yet.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== DOCUMENTS ======== -->
+      <div class="ld-tab-pane" id="ld-tab-docs">
+        <div class="ld-inner-card">
+          <div class="ld-inner-head">Lease Files</div>
+          <div class="ld-inner-body">
+            <form method="post" enctype="multipart/form-data" action="{% url 'leases:lease_file_upload' lease.pk %}" class="ld-file-form no-print mb-3">
+              {% csrf_token %}
+              <div>
+                <label class="form-label small fw-semibold mb-1">Files</label>
+                <input type="file" name="files" multiple class="form-control form-control-sm">
+              </div>
+              <div>
+                <label class="form-label small fw-semibold mb-1">Category</label>
+                <select name="category" class="form-select form-select-sm">
+                  {% for category in lease_document_categories %}
+                    <option value="{{ category.code }}">{{ category.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label small fw-semibold mb-1">Description</label>
+                <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
+              </div>
+              <div>
+                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+              </div>
+            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3 no-print">
+              <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-primary" title="Share all active files on WhatsApp">
+                  <i class="fab fa-whatsapp"></i>
+                </button>
+              </form>
+            </div>
+
+            <div class="ld-file-list">
+              {% for doc in lease_documents %}
+                <div class="ld-file-row">
+                  <div>
+                    <div class="ld-file-name">
+                      <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
+                      {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
+                    </div>
+                    <div class="ld-file-sub">{{ doc.original_filename }}</div>
+                  </div>
+                  <div>
+                      <span class="ld-badge ld-badge-gray">{{ doc.category_label }}</span>
+                    {% if doc.lease_history %}<div class="ld-file-sub">{{ doc.lease_history.history_label }}</div>{% endif %}
+                  </div>
+                  <div class="ld-file-sub">{{ doc.description|default:"No description" }}</div>
+                  <div class="ld-file-sub">
+                    {{ doc.uploaded_at|date:"M d, Y H:i" }}<br>
+                    {{ doc.uploaded_by|default:"System" }}
+                  </div>
+                  <div class="ld-file-actions no-print">
+                    {% if doc.file_exists %}
+                      <a class="btn btn-sm btn-outline-secondary ld-file-action-btn" target="_blank" rel="noopener" href="{% url 'leases:lease_file_view' doc.pk %}" title="View">
+                        <i class="fas fa-eye"></i>
+                      </a>
+                      <a class="btn btn-sm btn-outline-success ld-file-action-btn" href="{% url 'leases:lease_file_download' doc.pk %}" title="Download">
+                        <i class="fas fa-download"></i>
+                      </a>
+                    {% else %}
+                      <button class="btn btn-sm btn-outline-secondary ld-file-action-btn" type="button" disabled title="File missing">
+                        <i class="fas fa-exclamation-triangle"></i>
+                      </button>
+                    {% endif %}
+                    <form method="post" action="{% url 'leases:lease_file_share_one' doc.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-primary ld-file-action-btn" title="Share on WhatsApp">
+                        <i class="fab fa-whatsapp"></i>
+                      </button>
+                    </form>
+                    <form method="post" action="{% url 'leases:lease_file_deactivate' doc.pk %}" onsubmit="return confirm('Delete this file from the active list?');">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger ld-file-action-btn" title="Delete">
+                        <i class="fas fa-trash-alt"></i>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% empty %}
+                <div class="ld-empty">No lease files uploaded yet.</div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- /ld-tab-content-wrap -->
+  </div><!-- /ld-tabs-wrapper -->
+
+</div><!-- /ld-page -->
+
+<!-- Renewal media modal -->
+<div class="modal fade" id="renewalMediaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-9">
+            <img id="renewalMediaMain" src="" alt="Media" class="img-fluid w-100 rounded border" style="max-height:75vh;object-fit:contain;">
+          </div>
+          <div class="col-12 col-md-3">
+            <div id="renewalMediaThumbs" class="d-flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <small class="text-muted">Click thumbnail to switch</small>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const nav = document.getElementById('ldTabNav');
+  if (!nav) return;
+  nav.addEventListener('click', function (e) {
+    const btn = e.target.closest('.ld-tab-btn');
+    if (!btn) return;
+    nav.querySelectorAll('.ld-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.ld-tab-pane').forEach(p => p.classList.remove('active'));
+    const t = document.getElementById('ld-tab-' + btn.dataset.tab);
+    if (t) t.classList.add('active');
+  });
+})();
+
+function openRenewalMedia(btn) {
+  const urls = (btn.dataset.urls || '').split('|').filter(Boolean);
+  if (!urls.length) return;
+  const main   = document.getElementById('renewalMediaMain');
+  const thumbs = document.getElementById('renewalMediaThumbs');
+  main.src = urls[0];
+  thumbs.innerHTML = '';
+  urls.forEach(function(u) {
+    const img = document.createElement('img');
+    img.src = u;
+    img.className = 'img-thumbnail';
+    img.style.cssText = 'width:80px;height:80px;object-fit:cover;cursor:pointer;';
+    img.addEventListener('click', function() { main.src = u; });
+    thumbs.appendChild(img);
+  });
+  if (window.bootstrap && bootstrap.Modal)
+    new bootstrap.Modal(document.getElementById('renewalMediaModal')).show();
+}
+
+</script>
+{% endblock %}

@@ -146,7 +146,7 @@
   margin-bottom: 0;
 }
 @media (min-width:480px) { .ld-tab-nav { grid-template-columns: repeat(3,1fr); } }
-@media (min-width:768px) { .ld-tab-nav { grid-template-columns: repeat(5,1fr); } }
+@media (min-width:768px) { .ld-tab-nav { grid-template-columns: repeat(6,1fr); } }
 
 .ld-tab-btn {
   padding: 10px 8px;
@@ -228,6 +228,23 @@
   font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;
   text-transform:uppercase; letter-spacing:.4px;
 }
+.ld-file-form { display:grid; grid-template-columns:1fr; gap:8px; }
+@media (min-width:768px) { .ld-file-form { grid-template-columns:1.5fr .8fr 1.2fr auto; align-items:end; } }
+.ld-file-list { display:grid; gap:8px; }
+.ld-file-row {
+  display:grid; grid-template-columns:1fr; gap:8px;
+  border:1px solid #e5e7eb; border-radius:7px; padding:9px; background:#fff;
+}
+.ld-file-serial { font-size:12px; font-weight:700; color:#6b7280; }
+@media (min-width:860px) { .ld-file-row { grid-template-columns:34px minmax(220px, 1.5fr) 110px minmax(120px, .9fr) 115px auto; align-items:center; } }
+.ld-file-name { font-size:13px; font-weight:700; overflow-wrap:anywhere; }
+.ld-file-sub { font-size:11px; color:#6b7280; overflow-wrap:anywhere; }
+.ld-file-actions { display:flex; flex-wrap:nowrap; gap:3px; justify-content:flex-end; white-space:nowrap; }
+.ld-file-actions form { display:inline-flex; margin:0; }
+.ld-file-action-btn { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; padding:0; }
+.ld-file-icon-download { color:#0d6efd; }
+.ld-file-icon-whatsapp { color:#198754; }
+.ld-file-missing { font-size:10px; }
 
 /* ============================================================
    PRINT
@@ -317,7 +334,7 @@
     </div>
 
     <div class="ld-actions no-print">
-      <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">&#8592; Back</a>
+      <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">&#8592; Back To Lease</a>
 
       {% if lease.signed_agreement %}
         <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-sm btn-success">
@@ -334,6 +351,7 @@
       <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
       <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
+      <a href="{% url 'leases:police_verification_summary_pdf' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-file-pdf"></i> Police PDF</a>
       <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i> Print</a>
       {% if lease.generated_agreement_pdf %}
         <button onclick="sendEmail()" class="btn btn-sm btn-info"><i class="fas fa-envelope"></i> Email</button>
@@ -649,6 +667,7 @@
     <div class="ld-tab-nav no-print" id="ldTabNav">
       <button class="ld-tab-btn active" data-tab="renewals">Lease Renewals</button>
       <button class="ld-tab-btn" data-tab="unit">Unit &amp; Meter</button>
+      <button class="ld-tab-btn" data-tab="family">Family</button>
       <button class="ld-tab-btn" data-tab="notes">Terms &amp; Notes</button>
       <button class="ld-tab-btn" data-tab="activity">Activity</button>
       <button class="ld-tab-btn" data-tab="docs">Documents</button>
@@ -792,6 +811,52 @@
         </div>
       </div>
 
+      <!-- ======== FAMILY ======== -->
+      <div class="ld-tab-pane" id="ld-tab-family">
+        <div class="ld-inner-card">
+          <div class="ld-inner-head">Family Members</div>
+          <div class="ld-tw">
+            <table class="ld-tbl">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Relationship</th>
+                  <th>CNIC</th>
+                  <th>DOB</th>
+                  <th>Phone</th>
+                  <th>Age</th>
+                  <th class="no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for member in family_members %}
+                  <tr>
+                    <td><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
+                    <td>{{ member.relation }}</td>
+                    <td>{{ member.family_member.cnic|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.phone|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.age|default:"&mdash;" }}</td>
+                    <td class="no-print">
+                      <div class="d-flex flex-wrap gap-1">
+                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">View</a>
+                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <form method="post" action="{% url 'leases:lease_family_remove' lease.pk member.pk %}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="7" class="ld-empty">No family members linked to this lease.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- ======== TERMS & NOTES ======== -->
       <div class="ld-tab-pane" id="ld-tab-notes">
         <div class="ld-g3">
@@ -848,29 +913,95 @@
 
       <!-- ======== DOCUMENTS ======== -->
       <div class="ld-tab-pane" id="ld-tab-docs">
-        <div class="ld-g2">
-          <div class="ld-inner-card">
-            <div class="ld-inner-head">Signed Copy</div>
-            <div class="ld-inner-body">
-              {% if lease.signed_copy %}
-                <a href="{{ lease.signed_copy.url }}" target="_blank" class="btn btn-sm btn-success no-print"><i class="fas fa-download"></i> Download Signed Copy</a>
-              {% else %}
-                <span class="ld-badge ld-badge-red"><i class="fas fa-times-circle me-1"></i> Not Uploaded</span>
-              {% endif %}
+        <div class="ld-inner-card">
+          <div class="ld-inner-head">Lease Files</div>
+          <div class="ld-inner-body">
+            <form method="post" enctype="multipart/form-data" action="{% url 'leases:lease_file_upload' lease.pk %}" class="ld-file-form no-print mb-3">
+              {% csrf_token %}
+              <div>
+                <label class="form-label small fw-semibold mb-1">Files</label>
+                <input type="file" name="files" multiple class="form-control form-control-sm">
+              </div>
+              <div>
+                <label class="form-label small fw-semibold mb-1">Category</label>
+                <select name="category" class="form-select form-select-sm">
+                  {% for category in lease_document_categories %}
+                    <option value="{{ category.code }}">{{ category.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label small fw-semibold mb-1">Description</label>
+                <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
+              </div>
+              <div>
+                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+              </div>
+            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3 no-print">
+              <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-primary" title="Share all active files on WhatsApp">
+                  <i class="fab fa-whatsapp"> Share All files</i>
+                </button>
+              </form>
             </div>
-          </div>
-          <div class="ld-inner-card">
-            <div class="ld-inner-head">Generated Agreement PDF</div>
-            <div class="ld-inner-body d-flex flex-wrap gap-2 align-items-center">
-              <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-sm btn-dark no-print"><i class="fas fa-download"></i> Download Preview PDF</a>
-              {% if lease.generated_agreement_pdf %}
-                <a href="{{ lease.generated_agreement_pdf.url }}" target="_blank" class="btn btn-sm btn-success no-print"><i class="fas fa-file-pdf"></i> View Generated PDF</a>
-              {% else %}
-                <span class="ld-badge ld-badge-red"><i class="fas fa-times-circle me-1"></i> Not Generated</span>
-              {% endif %}
+
+            <div class="ld-file-list">
+              {% for doc in lease_documents %}
+                <div class="ld-file-row">
+                  <div class="ld-file-serial">#{{ forloop.counter }}</div>
+                  <div>
+                    <div class="ld-file-name">
+                      <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
+                      {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
+                    </div>
+                    <div class="ld-file-sub">{{ doc.original_filename }}</div>
+                  </div>
+                  <div>
+                      <span class="ld-badge ld-badge-gray">{{ doc.category_label }}</span>
+                    {% if doc.lease_history %}<div class="ld-file-sub">{{ doc.lease_history.history_label }}</div>{% endif %}
+                  </div>
+                  <div class="ld-file-sub">{{ doc.description|default:"No description" }}</div>
+                  <div class="ld-file-sub">
+                    {{ doc.uploaded_at|date:"M d, Y H:i" }}<br>
+                    {{ doc.uploaded_by|default:"System" }}
+                  </div>
+                  <div class="ld-file-actions no-print">
+                    {% if doc.file_exists %}
+                      <a class="btn btn-sm btn-outline-secondary ld-file-action-btn" target="_blank" rel="noopener" href="{% url 'leases:lease_file_view' doc.pk %}" title="View">
+                        <i class="fas fa-eye"></i>
+                      </a>
+                      <a class="btn btn-sm btn-outline-success ld-file-action-btn" href="{% url 'leases:lease_file_download' doc.pk %}" title="Download">
+                        <i class="fas fa-download ld-file-icon-download"></i>
+                      </a>
+                    {% else %}
+                      <button class="btn btn-sm btn-outline-secondary ld-file-action-btn" type="button" disabled title="File missing">
+                        <i class="fas fa-exclamation-triangle"></i>
+                      </button>
+                    {% endif %}
+                    <form method="post" action="{% url 'leases:lease_file_share_one' doc.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-primary ld-file-action-btn" title="Share on WhatsApp">
+                        <i class="fab fa-whatsapp ld-file-icon-whatsapp"></i>
+                      </button>
+                    </form>
+                    <form method="post" action="{% url 'leases:lease_file_deactivate' doc.pk %}" onsubmit="return confirm('Delete this file from the active list?');">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger ld-file-action-btn" title="Delete">
+                        <i class="fas fa-trash-alt"></i>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% empty %}
+                <div class="ld-empty">No lease files uploaded yet.</div>
+              {% endfor %}
             </div>
           </div>
         </div>
+
       </div>
 
     </div><!-- /ld-tab-content-wrap -->
@@ -935,5 +1066,6 @@ function openRenewalMedia(btn) {
   if (window.bootstrap && bootstrap.Modal)
     new bootstrap.Modal(document.getElementById('renewalMediaModal')).show();
 }
+
 </script>
 {% endblock %}

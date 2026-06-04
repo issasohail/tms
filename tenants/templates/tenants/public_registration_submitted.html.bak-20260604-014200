@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+{% block title %}Registration Submitted{% endblock %}
+
+{% block content %}
+<div class="container mt-3" style="max-width: 640px;">
+  <div class="alert alert-success">
+    Your details for {{ tenant.get_full_name }} were submitted for admin review.
+  </div>
+</div>
+{% endblock %}

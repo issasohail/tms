@@ -40,5 +40,50 @@ urlpatterns = [
         views.payment_method_save,
         name="payment_method_save",
     ),
+    path(
+        "lease-document-categories/get/<int:pk>/",
+        views.lease_document_category_get,
+        name="lease_document_category_get",
+    ),
+    path(
+        "lease-document-categories/toggle/<int:pk>/",
+        views.lease_document_category_toggle,
+        name="lease_document_category_toggle",
+    ),
+    path(
+        "lease-document-categories/save/",
+        views.lease_document_category_save,
+        name="lease_document_category_save",
+    ),
+    path(
+        "tenant-interest-types/get/<int:pk>/",
+        views.tenant_interest_type_get,
+        name="tenant_interest_type_get",
+    ),
+    path(
+        "tenant-interest-types/toggle/<int:pk>/",
+        views.tenant_interest_type_toggle,
+        name="tenant_interest_type_toggle",
+    ),
+    path(
+        "tenant-interest-types/save/",
+        views.tenant_interest_type_save,
+        name="tenant_interest_type_save",
+    ),
+    path(
+        "lease-relationship-types/get/<int:pk>/",
+        views.lease_relationship_type_get,
+        name="lease_relationship_type_get",
+    ),
+    path(
+        "lease-relationship-types/toggle/<int:pk>/",
+        views.lease_relationship_type_toggle,
+        name="lease_relationship_type_toggle",
+    ),
+    path(
+        "lease-relationship-types/save/",
+        views.lease_relationship_type_save,
+        name="lease_relationship_type_save",
+    ),
 
 ]

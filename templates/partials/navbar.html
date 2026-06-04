@@ -13,12 +13,12 @@
 
       <!-- Center: single-line links (scrollable) -->
       <ul class="nav-center list-unstyled mb-0">
-        <li><a class="mlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>
-        <li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>
-        <li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>
-        <li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
-        <li><a class="mlink" href="{% url 'maintenance:request_list' %}">Maint</a></li>
-        <li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>
+        {% if perms.payments.view_payment %}<li><a class="mlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>{% endif %}
+        {% if perms.tenants.view_tenant %}<li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
+        {% if perms.leases.view_lease %}<li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
+        {% if perms.invoices.view_invoice %}<li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
+        {% if perms.maintenance.view_maintenancerequest %}<li><a class="mlink" href="{% url 'maintenance:request_list' %}">Maint</a></li>{% endif %}
+        {% if perms.smart_meter.view_meter %}<li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>{% endif %}
       </ul>
 
       <!-- Right: + dropdown (mobile only) + Logout icon -->
@@ -26,16 +26,18 @@
         <div class="dropdown">
           <button class="btn btn-primary btn-sm px-2 py-0" id="mobQuickAdd" data-bs-toggle="dropdown" aria-expanded="false">+</button>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="mobQuickAdd">
-            <li><a class="dropdown-item" href="{% url 'payments:payment_create' %}">Add Payment</a></li>
-            <li><a class="dropdown-item" href="{% url 'leases:lease_create' %}">Add Lease</a></li>
-            <li><a class="dropdown-item" href="{% url 'invoices:invoice_create' %}">Add Invoice</a></li>
+            {% if perms.payments.add_payment %}<li><a class="dropdown-item" href="{% url 'payments:payment_create' %}">Add Payment</a></li>{% endif %}
+            {% if perms.leases.add_lease %}<li><a class="dropdown-item" href="{% url 'leases:lease_create' %}">Add Lease</a></li>{% endif %}
+            {% if perms.invoices.add_invoice %}<li><a class="dropdown-item" href="{% url 'invoices:invoice_create' %}">Add Invoice</a></li>{% endif %}
             <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{% url 'properties:property_list' %}">Properties</a></li>
-            <li><a class="dropdown-item" href="{% url 'properties:unit_list' %}">Units</a></li>
-            <li><a class="dropdown-item" href="{% url 'expenses:expense_list' %}">Expenses</a></li>
-            <li><a class="dropdown-item" href="{% url 'utilities:utility_list' %}">Utilitys</a></li>
-            <li><a class="dropdown-item" href="{% url 'reports:report_list' %}">Reports</a></li>
-            <li><a class="dropdown-item" href="{% url 'core:settings' %}">Settings</a></li>
+            {% if perms.properties.view_property %}<li><a class="dropdown-item" href="{% url 'properties:property_list' %}">Properties</a></li>{% endif %}
+            {% if perms.properties.view_unit %}<li><a class="dropdown-item" href="{% url 'properties:unit_list' %}">Units</a></li>{% endif %}
+            {% if perms.expenses.view_expense %}<li><a class="dropdown-item" href="{% url 'expenses:expense_list' %}">Expenses</a></li>{% endif %}
+            {% if perms.utilities.view_utility %}<li><a class="dropdown-item" href="{% url 'utilities:utility_list' %}">Utilities</a></li>{% endif %}
+            {% if perms.reports.view_report %}<li><a class="dropdown-item" href="{% url 'reports:report_list' %}">Reports</a></li>{% endif %}
+            {% if perms.core.view_globalsettings %}<li><a class="dropdown-item" href="{% url 'core:settings' %}">Settings</a></li>{% endif %}
+            <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">My Profile</a></li>
+            {% if user.is_staff %}<li><a class="dropdown-item" href="{% url 'accounts:user_access_list' %}">User Access</a></li>{% endif %}
           </ul>
         </div>
 
@@ -46,6 +48,11 @@
           <a href="{% url 'core:suggestion_list' %}" class="icon-btn suggestion-nav-btn" aria-label="Suggestions / Report Errors" title="Suggestions / Report Errors">
             <i class="bi bi-lightbulb"></i>
           </a>
+          {% if user.is_impersonated %}
+            <a href="{% url 'accounts:impersonate_stop' %}" class="icon-btn bg-warning text-dark" aria-label="Stop impersonating" title="Stop impersonating">
+              <i class="bi bi-person-x"></i>
+            </a>
+          {% endif %}
           <!-- Logout icon (SVG), no text -->
           <a href="{% url 'logout' %}" class="icon-btn" aria-label="Logout" title="Logout">
             <!-- Lucide "log-out" style -->
@@ -78,22 +85,23 @@
       </a>
 
       <ul class="d-flex gap-2 mb-0 list-unstyled">
-        <li><a class="dlink" href="{% url 'properties:property_list' %}">Properties</a></li>
-        <li><a class="dlink" href="{% url 'properties:unit_list' %}">Units</a></li>
-        <li><a class="dlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>
-        <li><a class="dlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>
-        <li><a class="dlink" href="{% url 'leases:lease_list' %}">Leases</a></li>
-        <li><a class="dlink" href="{% url 'expenses:expense_list' %}">Expenses</a></li>
-        <li><a class="dlink" href="{% url 'utilities:utility_list' %}">Utilities</a></li>
-        <li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>
-        <li><a class="dlink" href="{% url 'reports:report_list' %}">Reports</a></li>
-        <li><a class="dlink" href="{% url 'maintenance:request_list' %}">Maintenance</a></li>
-        <li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>
-        <li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>
+        {% if perms.properties.view_property %}<li><a class="dlink" href="{% url 'properties:property_list' %}">Properties</a></li>{% endif %}
+        {% if perms.properties.view_unit %}<li><a class="dlink" href="{% url 'properties:unit_list' %}">Units</a></li>{% endif %}
+        {% if perms.payments.view_payment %}<li><a class="dlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>{% endif %}
+        {% if perms.tenants.view_tenant %}<li><a class="dlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
+        {% if perms.leases.view_lease %}<li><a class="dlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
+        {% if perms.expenses.view_expense %}<li><a class="dlink" href="{% url 'expenses:expense_list' %}">Expenses</a></li>{% endif %}
+        {% if perms.utilities.view_utility %}<li><a class="dlink" href="{% url 'utilities:utility_list' %}">Utilities</a></li>{% endif %}
+        {% if perms.invoices.view_invoice %}<li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
+        {% if perms.reports.view_report %}<li><a class="dlink" href="{% url 'reports:report_list' %}">Reports</a></li>{% endif %}
+        {% if perms.maintenance.view_maintenancerequest %}<li><a class="dlink" href="{% url 'maintenance:request_list' %}">Maintenance</a></li>{% endif %}
+        {% if perms.smart_meter.view_meter %}<li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>{% endif %}
+        {% if perms.core.view_globalsettings %}<li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>{% endif %}
+        {% if user.is_staff %}<li><a class="dlink" href="{% url 'accounts:user_access_list' %}">Users</a></li>{% endif %}
         <!-- Fast data entry -->
-        <li><a class="dlink fw-bold text-success" href="{% url 'payments:payment_create' %}">+ Payment</a></li>
-        <li><a class="dlink fw-bold text-success" href="{% url 'leases:lease_create' %}">+ Lease</a></li>
-        <li><a class="dlink fw-bold text-success" href="{% url 'invoices:invoice_create' %}">+ Invoice</a></li>
+        {% if perms.payments.add_payment %}<li><a class="dlink fw-bold text-success" href="{% url 'payments:payment_create' %}">+ Payment</a></li>{% endif %}
+        {% if perms.leases.add_lease %}<li><a class="dlink fw-bold text-success" href="{% url 'leases:lease_create' %}">+ Lease</a></li>{% endif %}
+        {% if perms.invoices.add_invoice %}<li><a class="dlink fw-bold text-success" href="{% url 'invoices:invoice_create' %}">+ Invoice</a></li>{% endif %}
       </ul>
 
       <div class="d-flex align-items-center gap-2">
@@ -101,9 +109,15 @@
           <input class="form-check-input js-viewport-toggle" type="checkbox" aria-label="Toggle viewport bar">
         </label>
         {% if user.is_authenticated %}
+          {% if user.is_impersonated %}
+            <a href="{% url 'accounts:impersonate_stop' %}" class="btn btn-sm btn-warning">
+              Viewing as {{ user.username }} - Stop
+            </a>
+          {% endif %}
           <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">
             <i class="bi bi-lightbulb"></i> Suggestions
           </a>
+          <a href="{% url 'accounts:profile' %}" class="btn btn-sm btn-outline-light">Profile</a>
           <a href="{% url 'logout' %}" class="btn btn-sm btn-light">Logout</a>
         {% else %}
           <a href="{% url 'login' %}" class="btn btn-sm btn-light">Login</a>

@@ -8,17 +8,18 @@
    photos_page.html
    ===================================================== */
 #pp-shell {
-  display: flex;
-  height: calc(100vh - 56px);
-  overflow: hidden;
-  background: #eef1f7;
-  font-size: .82rem;
+  display:flex;
+  height:calc(100vh - 56px);
+  overflow:hidden;
+  background:#eef1f7;
+  font-size:.82rem;
 
-  position: relative;
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
-  max-width: 100vw;
-  box-sizing: border-box;
+  position:relative;
+  width:auto;
+  max-width:1450px;
+  margin:0 auto;
+  box-sizing:border-box;
+  border-radius:10px;
 }
 
 /* Rail */
@@ -248,26 +249,6 @@
     <a href="{% url 'leases:deleted_photos_view' lease.id %}" class="pp-nav-item">
       <i class="ti ti-trash"></i>Deleted Photos
     </a>
-    <div style="padding: 8px 12px; border-top: 1px solid #eef0f6; margin-top: auto;">
-      <div style="font-size:.62rem;font-weight:700;color:#b0bcd8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Export</div>
-      <a id="btn-export-save"
-         href="{% url 'leases:photos_export' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}"
-         class="pp-nav-item" style="padding: 5px 10px; border-radius: 6px; margin-bottom: 2px;">
-        <i class="ti ti-file-export"></i>Export PDF
-      </a>
-      <a id="btn-export-download"
-         href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1{% if history %}&history={{ history.pk }}{% endif %}"
-         target="_blank" rel="noopener"
-         class="pp-nav-item" style="padding: 5px 10px; border-radius: 6px; margin-bottom: 2px;">
-        <i class="ti ti-download"></i>Download PDF
-      </a>
-      <a id="btn-export-open"
-         href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}"
-         target="_blank" rel="noopener"
-         class="pp-nav-item" style="padding: 5px 10px; border-radius: 6px;">
-        <i class="ti ti-external-link"></i>Open in Tab
-      </a>
-    </div>
   </div>
 
   {# Main #}
@@ -281,6 +262,12 @@
       </div>
       <div class="pp-tb-right">
         <span class="pp-pill pp-pill-blue">{{ lease.start_date }} → {{ lease.end_date }}</span>
+        <a id="btn-top-export-pdf" href="{% url 'leases:photos_export_pdf_stream' lease.id %}?layout=4up&download=1{% if history %}&history={{ history.pk }}{% endif %}" class="btn btn-sm btn-outline-danger">
+          <i class="ti ti-file-type-pdf"></i> Export PDF
+        </a>
+        <a id="btn-top-export-docx" href="{% url 'leases:photos_export_docx_stream' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}" class="btn btn-sm btn-outline-primary">
+          <i class="ti ti-file-type-doc"></i> Export Word
+        </a>
         <a href="{% url 'leases:lease_update' lease.id %}" class="btn btn-sm btn-secondary">
           <i class="ti ti-arrow-left"></i> Back to Lease
         </a>
@@ -388,7 +375,6 @@
       <div class="pp-bottom-tab"><i class="ti ti-file-text"></i>Lease</div>
       <div class="pp-bottom-tab on"><i class="ti ti-photo"></i>Photos</div>
       <div class="pp-bottom-tab"><i class="ti ti-trash"></i>Deleted</div>
-      <div class="pp-bottom-tab"><i class="ti ti-file-export"></i>Export</div>
     </div>
 
   </div>{# /pp-main #}
@@ -410,18 +396,16 @@
 /* PDF layout links sync */
 (function(){
   const sel  = document.getElementById('pdf-layout');
-  const save = document.getElementById('btn-export-save');
-  const dl   = document.getElementById('btn-export-download');
-  const open = document.getElementById('btn-export-open');
+  const topPdf = document.getElementById('btn-top-export-pdf');
+  const topDocx = document.getElementById('btn-top-export-docx');
   function withLayout(url){
     const u = new URL(url, window.location.origin);
     u.searchParams.set('layout', sel.value||'4up');
     return u.pathname+'?'+u.searchParams.toString();
   }
   function updateLinks(){
-    if(save) save.href = withLayout(save.href);
-    if(dl)   dl.href   = withLayout(dl.href);
-    if(open) open.href = withLayout(open.href);
+    if(topPdf) topPdf.href = withLayout(topPdf.href);
+    if(topDocx) topDocx.href = withLayout(topDocx.href);
   }
   if(sel) { sel.addEventListener('change', updateLinks); updateLinks(); }
 

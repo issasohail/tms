@@ -16,14 +16,16 @@
     <div class="card mb-3">
         <div class="card-body py-2">
             <form method="get" class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">Status</label>
-                    <select name="status" class="form-select form-select-sm">
-                        <option value="">All</option>
-                        {% for value,label in status_choices %}
-                            <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Interested In</label>
+                    <div class="d-flex flex-wrap gap-2 small">
+                        {% for item in interest_types %}
+                            <label class="form-check-label">
+                                <input type="checkbox" class="form-check-input" name="interested_in" value="{{ item.id }}" {% if item.id|stringformat:"s" in current_interested_in %}checked{% endif %}>
+                                {{ item.name }}
+                            </label>
                         {% endfor %}
-                    </select>
+                    </div>
                 </div>
                 <div class="col-md-4">
                     <button class="btn btn-primary btn-sm">Filter</button>
@@ -40,41 +42,33 @@
                     <thead class="table-light">
                         <tr>
                             <th>Name</th>
-                            <th>WhatsApp</th>
-                            <th>Interested Unit</th>
-                            <th>Budget</th>
-                            <th>Status</th>
-                            <th>Next Follow-up</th>
+                            <th>Phone</th>
+                            <th>Lead Interest</th>
+                            <th>Notes</th>
                             <th style="width:210px">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for lead in leads %}
                         <tr>
-                            <td><a href="{% url 'tenants:lead_detail' lead.pk %}">{{ lead.name }}</a></td>
-                            <td>{{ lead.whatsapp_number|default:lead.phone }}</td>
+                            <td><a href="{% url 'tenants:lead_detail' lead.pk %}">{{ lead.get_full_name }}</a></td>
+                            <td>{{ lead.phone|default:"-" }}</td>
                             <td>
-                                {% if lead.interested_unit %}
-                                    {{ lead.interested_unit.property.property_name }} - {{ lead.interested_unit.unit_number }}
-                                {% elif lead.interested_building %}
-                                    {{ lead.interested_building.property_name }}
-                                {% else %}
+                                {% for item in lead.interested_in.all %}
+                                    <span class="badge bg-info text-dark">{{ item.name }}</span>
+                                {% empty %}
                                     -
-                                {% endif %}
+                                {% endfor %}
                             </td>
-                            <td>{{ lead.budget|default:"-" }}</td>
-                            <td><span class="badge bg-secondary">{{ lead.get_status_display }}</span></td>
-                            <td>{{ lead.next_follow_up_date|default:"-" }}</td>
+                            <td>{{ lead.notes|default:"-"|truncatechars:60 }}</td>
                             <td>
                                 <a href="{% url 'tenants:lead_detail' lead.pk %}" class="btn btn-outline-primary btn-sm">View</a>
                                 <a href="{% url 'tenants:lead_update' lead.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
-                                {% if lead.interested_unit %}
-                                    <a href="{% url 'tenants:lead_vacancy_whatsapp' lead.pk %}" class="btn btn-success btn-sm">WhatsApp</a>
-                                {% endif %}
+                                <a href="{% url 'tenants:lead_vacancy_whatsapp' lead.pk %}" class="btn btn-success btn-sm">WhatsApp</a>
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="7" class="text-center text-muted py-3">No leads yet.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No leads yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

@@ -2,7 +2,10 @@ from .models import Lease
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
+from django.db import transaction
+from django.db.models import Max
 from django.shortcuts import get_object_or_404, render
+import json
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -57,7 +60,8 @@ def _get_or_create_pcr(lease):
 def pcr_gallery(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
     pcr = _get_or_create_pcr(lease)
-    return render(request, "leases/_pcr_gallery.html", {"lease": lease, "pcr": pcr})
+    photos = pcr.photos.order_by("sort_order", "created_at", "id")
+    return render(request, "leases/_pcr_gallery.html", {"lease": lease, "pcr": pcr, "photos": photos})
 
 
 @login_required
@@ -71,8 +75,15 @@ def pcr_photo_upload(request, lease_id):
     comment = request.POST.get("comment", "")
     if not files:
         return HttpResponseBadRequest("No files")
-    for f in files:
-        PCRPhoto.objects.create(pcr=pcr, image=f, room=room, comment=comment)
+    next_order = (pcr.photos.aggregate(max_order=Max("sort_order"))["max_order"] or 0) + 10
+    for index, f in enumerate(files):
+        PCRPhoto.objects.create(
+            pcr=pcr,
+            image=f,
+            room=room,
+            comment=comment,
+            sort_order=next_order + (index * 10),
+        )
     return JsonResponse({"ok": True})
 
 
@@ -83,3 +94,35 @@ def pcr_photo_delete(request, photo_id):
     lease_id = photo.pcr.lease_id
     photo.delete()
     return JsonResponse({"ok": True, "lease_id": lease_id})
+
+
+@login_required
+@require_POST
+def pcr_photo_reorder(request, lease_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    pcr = _get_or_create_pcr(lease)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("Invalid JSON")
+
+    ids = payload.get("photo_ids")
+    if not isinstance(ids, list):
+        return HttpResponseBadRequest("Missing photo_ids")
+
+    clean_ids = []
+    for value in ids:
+        try:
+            clean_ids.append(int(value))
+        except (TypeError, ValueError):
+            return HttpResponseBadRequest("Invalid photo id")
+
+    owned_ids = set(pcr.photos.filter(id__in=clean_ids).values_list("id", flat=True))
+    if owned_ids != set(clean_ids):
+        return HttpResponseBadRequest("Invalid photo list")
+
+    with transaction.atomic():
+        for index, photo_id in enumerate(clean_ids, start=1):
+            PCRPhoto.objects.filter(pk=photo_id, pcr=pcr).update(sort_order=index * 10)
+
+    return JsonResponse({"ok": True})

@@ -1,0 +1,201 @@
+from django import forms
+from .models import GlobalSettings
+from django import forms
+from .models import GlobalSettings
+from zoneinfo import available_timezones
+
+
+class GlobalSettingsForm(forms.ModelForm):
+    smtp_password = forms.CharField(
+        required=False, widget=forms.PasswordInput(render_value=True))
+
+    TZ_CHOICES = sorted((tz, tz) for tz in available_timezones())
+    time_zone = forms.ChoiceField(choices=TZ_CHOICES)
+
+    class Meta:
+        model = GlobalSettings
+        fields = ["site_name", "logo", "favicon",
+                  "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user", "smtp_password",
+                  "whatsapp_number", "twilio_account_sid", "twilio_auth_token", "twilio_from_number",
+                  "currency_code","country_code",  "unit_rate_per_kwh", "service_charge_flat",
+                  "late_fee_enabled", "late_fee_type", "late_fee_amount",
+                  "late_fee_percent", "late_fee_grace_days", "billing_cap_amount",
+                  "listener_host", "listener_port",
+                  "time_zone",  # ← NEW
+                  "enable_debug_toolbar",
+                  ]
+    FIELD_GROUPS = [
+        ("Branding", "fas fa-building", ["site_name", "logo", "favicon"]),
+        ("Billing & Locale", "fas fa-coins", [
+            "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
+            "service_charge_flat", "billing_cap_amount",
+        ]),
+        ("Late Fees", "fas fa-clock", [
+            "late_fee_enabled", "late_fee_type", "late_fee_amount",
+            "late_fee_percent", "late_fee_grace_days",
+        ]),
+        ("WhatsApp / Twilio", "fab fa-whatsapp", [
+            "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
+            "twilio_from_number",
+        ]),
+        ("Email / SMTP", "fas fa-envelope", [
+            "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user",
+            "smtp_password",
+        ]),
+        ("Meter Listener", "fas fa-broadcast-tower", [
+            "listener_host", "listener_port",
+        ]),
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({"class": "form-check-input"})
+            elif isinstance(field.widget, forms.Select):
+                field.widget.attrs.update({"class": "form-select form-select-sm"})
+            elif isinstance(field.widget, forms.ClearableFileInput):
+                field.widget.attrs.update({"class": "form-control form-control-sm"})
+            else:
+                field.widget.attrs.update({"class": "form-control form-control-sm"})
+
+        self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
+        self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
+        self.fields["enable_debug_toolbar"].label = "Enable Django Debug Toolbar (local development only)"
+        self.fields["enable_debug_toolbar"].help_text = "Only works when DEBUG=True and host is local. It will not show in production."
+
+
+# core/forms.py
+from django import forms
+from .models import PaymentMethod
+
+
+class PaymentMethodForm(forms.ModelForm):
+    class Meta:
+        model = PaymentMethod
+        fields = ["name", "code", "is_active", "sort_order"]
+
+
+class BackupSettingsForm(forms.Form):
+    backup_root = forms.CharField(
+        label="Backup Root Folder",
+        widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+    )
+    retention_count = forms.IntegerField(
+        min_value=1,
+        max_value=200,
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
+    )
+    mysqldump_path = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+    )
+    mysql_path = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+    )
+    include_db_in_full = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    include_media_in_full = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    include_code_in_full = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    compress_backups = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    enable_db_backup = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    enable_media_backup = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    enable_code_backup = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    enable_full_backup = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    fresh_reset_enabled = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+
+class BackupRestoreForm(forms.Form):
+    backup_id = forms.ChoiceField(
+        choices=(),
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    confirm_text = forms.CharField(
+        widget=forms.TextInput(attrs={
+            "class": "form-control form-control-sm",
+            "placeholder": "Type required confirmation text exactly",
+        }),
+    )
+
+    def __init__(self, *args, backup_choices=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["backup_id"].choices = backup_choices or [("", "----------")]
+
+
+class BackupUploadForm(forms.Form):
+    backup_type = forms.ChoiceField(
+        choices=(("db", "Database"), ("media", "Media"), ("full", "Full")),
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    backup_file = forms.FileField(
+        widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
+    )
+
+    def clean_backup_file(self):
+        upload = self.cleaned_data["backup_file"]
+        name = upload.name.lower()
+        backup_type = self.cleaned_data.get("backup_type")
+        if backup_type == "db" and not (name.endswith(".sql") or name.endswith(".sqlite3")):
+            raise forms.ValidationError("Database restore upload must be .sql or .sqlite3.")
+        if backup_type in {"media", "full"} and not name.endswith(".zip"):
+            raise forms.ValidationError("Media and full restore uploads must be .zip files.")
+        return upload
+
+
+class SuggestionTicketForm(forms.Form):
+    ticket_type = forms.ChoiceField(
+        choices=(("SUGGESTION", "Suggestion"), ("ERROR", "Report Error")),
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    screen_name = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Example: Cash Ledger, Settings, Payment Receipt",
+        }),
+    )
+    title = forms.CharField(
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    description = forms.CharField(
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+    )
+    priority = forms.ChoiceField(
+        choices=(("LOW", "Low"), ("NORMAL", "Normal"), ("HIGH", "High"), ("URGENT", "Urgent")),
+        initial="NORMAL",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+
+class SuggestionReplyForm(forms.Form):
+    message = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )

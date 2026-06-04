@@ -19,6 +19,9 @@
       <a class="nav-link active" href="#settings-global">Settings</a>
       <a class="nav-link" href="#settings-tools">Tools</a>
       <a class="nav-link" href="#settings-payments">Payments</a>
+      <a class="nav-link" href="#settings-doc-categories">Doc Categories</a>
+      <a class="nav-link" href="#settings-interest-types">Lead Interests</a>
+      <a class="nav-link" href="#settings-relationship-types">Relationships</a>
     </div>
   </div>
 
@@ -205,6 +208,156 @@
       </div>
     </div>
   </div>
+
+  <div class="card shadow-sm mt-3" id="settings-doc-categories">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="fas fa-folder-open me-2"></i>Lease Document Categories</h4>
+      <button class="btn btn-sm btn-primary" id="btn-add-doc-category" type="button">
+        + Add Category
+      </button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:38%">Name</th>
+              <th style="width:27%">Code</th>
+              <th style="width:15%">Active</th>
+              <th style="width:20%">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in lease_document_categories %}
+            <tr>
+              <td>{{ cat.name }}</td>
+              <td>{{ cat.code }}</td>
+              <td>
+                {% if cat.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-cat-edit" data-url="{% url 'core:lease_document_category_get' cat.id %}">Edit</button>
+                  {% if cat.is_active %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-cat-toggle" data-url="{% url 'core:lease_document_category_toggle' cat.id %}">Remove</button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-cat-toggle" data-url="{% url 'core:lease_document_category_toggle' cat.id %}">Restore</button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center py-3 text-muted">No lease document categories added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mt-3" id="settings-interest-types">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="fas fa-list-check me-2"></i>Lead Interest Options</h4>
+      <button class="btn btn-sm btn-primary" id="btn-add-interest-type" type="button">
+        + Add Option
+      </button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:38%">Name</th>
+              <th style="width:27%">Code</th>
+              <th style="width:15%">Active</th>
+              <th style="width:20%">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in tenant_interest_types %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>{{ item.code }}</td>
+              <td>
+                {% if item.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-interest-edit" data-url="{% url 'core:tenant_interest_type_get' item.id %}">Edit</button>
+                  {% if item.is_active %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-interest-toggle" data-url="{% url 'core:tenant_interest_type_toggle' item.id %}">Remove</button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-interest-toggle" data-url="{% url 'core:tenant_interest_type_toggle' item.id %}">Restore</button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center py-3 text-muted">No lead interest options added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mt-3" id="settings-relationship-types">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="fas fa-people-arrows me-2"></i>Family Relationship Types</h4>
+      <button class="btn btn-sm btn-primary" id="btn-add-relationship-type" type="button">
+        + Add Relationship
+      </button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:38%">Name</th>
+              <th style="width:27%">Code</th>
+              <th style="width:15%">Active</th>
+              <th style="width:20%">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in lease_relationship_types %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>{{ item.code }}</td>
+              <td>
+                {% if item.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-relationship-edit" data-url="{% url 'core:lease_relationship_type_get' item.id %}">Edit</button>
+                  {% if item.is_active %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-relationship-toggle" data-url="{% url 'core:lease_relationship_type_toggle' item.id %}">Remove</button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-relationship-toggle" data-url="{% url 'core:lease_relationship_type_toggle' item.id %}">Restore</button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center py-3 text-muted">No family relationship types added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -360,6 +513,126 @@
   </div>
 </div>
 
+<div class="modal fade" id="docCategoryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="doc-category-form">
+        {% csrf_token %}
+        <input type="hidden" id="doc-cat-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="docCategoryModalTitle">Add Lease Document Category</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="doc-cat-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="doc-cat-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="doc-cat-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="doc-cat-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="interestTypeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="interest-type-form">
+        {% csrf_token %}
+        <input type="hidden" id="interest-type-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="interestTypeModalTitle">Add Lead Interest Option</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="interest-type-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="interest-type-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="interest-type-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="interest-type-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="relationshipTypeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="relationship-type-form">
+        {% csrf_token %}
+        <input type="hidden" id="relationship-type-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="relationshipTypeModalTitle">Add Family Relationship Type</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="relationship-type-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="relationship-type-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="relationship-type-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="relationship-type-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 // CSRF helper
 function getCookie(name) {
@@ -381,9 +654,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const csrftoken = getCookie("csrftoken");
   const modalEl = document.getElementById("pmModal");
   const modal = new bootstrap.Modal(modalEl);
+  const docCategoryModalEl = document.getElementById("docCategoryModal");
+  const docCategoryModal = new bootstrap.Modal(docCategoryModalEl);
+  const interestTypeModalEl = document.getElementById("interestTypeModal");
+  const interestTypeModal = new bootstrap.Modal(interestTypeModalEl);
+  const relationshipTypeModalEl = document.getElementById("relationshipTypeModal");
+  const relationshipTypeModal = new bootstrap.Modal(relationshipTypeModalEl);
 
   const pmForm = document.getElementById("pm-form");
   const btnAdd = document.getElementById("btn-add-method");
+  const docCategoryForm = document.getElementById("doc-category-form");
+  const btnAddDocCategory = document.getElementById("btn-add-doc-category");
+  const interestTypeForm = document.getElementById("interest-type-form");
+  const btnAddInterestType = document.getElementById("btn-add-interest-type");
+  const relationshipTypeForm = document.getElementById("relationship-type-form");
+  const btnAddRelationshipType = document.getElementById("btn-add-relationship-type");
 
   // Open empty modal for Add
   btnAdd.addEventListener("click", function () {
@@ -459,6 +744,177 @@ document.addEventListener("DOMContentLoaded", function () {
     .catch(err => {
       alert("Could not save payment method: " + err.message);
     });
+  });
+
+  btnAddDocCategory.addEventListener("click", function () {
+    document.getElementById("docCategoryModalTitle").innerText = "Add Lease Document Category";
+    document.getElementById("doc-cat-id").value = "";
+    document.getElementById("doc-cat-name").value = "";
+    document.getElementById("doc-cat-code").value = "";
+    document.getElementById("doc-cat-sort").value = "50";
+    document.getElementById("doc-cat-active").value = "1";
+    docCategoryModal.show();
+  });
+
+  document.querySelectorAll(".btn-cat-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("docCategoryModalTitle").innerText = "Edit Lease Document Category";
+          document.getElementById("doc-cat-id").value = data.id;
+          document.getElementById("doc-cat-name").value = data.name;
+          document.getElementById("doc-cat-code").value = data.code || "";
+          document.getElementById("doc-cat-sort").value = data.sort_order || 50;
+          document.getElementById("doc-cat-active").value = data.is_active ? "1" : "0";
+          docCategoryModal.show();
+        });
+    });
+  });
+
+  document.querySelectorAll(".btn-cat-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken},
+      })
+      .then(r => r.json())
+      .then(_ => window.location.reload())
+      .catch(err => alert("Error updating category: " + err.message));
+    });
+  });
+
+  docCategoryForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(docCategoryForm);
+    fetch("{% url 'core:lease_document_category_save' %}", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(_ => {
+      docCategoryModal.hide();
+      window.location.reload();
+    })
+    .catch(err => alert("Could not save category: " + err.message));
+  });
+
+  btnAddInterestType.addEventListener("click", function () {
+    document.getElementById("interestTypeModalTitle").innerText = "Add Lead Interest Option";
+    document.getElementById("interest-type-id").value = "";
+    document.getElementById("interest-type-name").value = "";
+    document.getElementById("interest-type-code").value = "";
+    document.getElementById("interest-type-sort").value = "50";
+    document.getElementById("interest-type-active").value = "1";
+    interestTypeModal.show();
+  });
+
+  document.querySelectorAll(".btn-interest-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("interestTypeModalTitle").innerText = "Edit Lead Interest Option";
+          document.getElementById("interest-type-id").value = data.id;
+          document.getElementById("interest-type-name").value = data.name;
+          document.getElementById("interest-type-code").value = data.code || "";
+          document.getElementById("interest-type-sort").value = data.sort_order || 50;
+          document.getElementById("interest-type-active").value = data.is_active ? "1" : "0";
+          interestTypeModal.show();
+        });
+    });
+  });
+
+  document.querySelectorAll(".btn-interest-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken},
+      })
+      .then(r => r.json())
+      .then(_ => window.location.reload())
+      .catch(err => alert("Error updating lead interest option: " + err.message));
+    });
+  });
+
+  interestTypeForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(interestTypeForm);
+    fetch("{% url 'core:tenant_interest_type_save' %}", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(_ => {
+      interestTypeModal.hide();
+      window.location.reload();
+    })
+    .catch(err => alert("Could not save lead interest option: " + err.message));
+  });
+
+  btnAddRelationshipType.addEventListener("click", function () {
+    document.getElementById("relationshipTypeModalTitle").innerText = "Add Family Relationship Type";
+    document.getElementById("relationship-type-id").value = "";
+    document.getElementById("relationship-type-name").value = "";
+    document.getElementById("relationship-type-code").value = "";
+    document.getElementById("relationship-type-sort").value = "50";
+    document.getElementById("relationship-type-active").value = "1";
+    relationshipTypeModal.show();
+  });
+
+  document.querySelectorAll(".btn-relationship-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("relationshipTypeModalTitle").innerText = "Edit Family Relationship Type";
+          document.getElementById("relationship-type-id").value = data.id;
+          document.getElementById("relationship-type-name").value = data.name;
+          document.getElementById("relationship-type-code").value = data.code || "";
+          document.getElementById("relationship-type-sort").value = data.sort_order || 50;
+          document.getElementById("relationship-type-active").value = data.is_active ? "1" : "0";
+          relationshipTypeModal.show();
+        });
+    });
+  });
+
+  document.querySelectorAll(".btn-relationship-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken},
+      })
+      .then(r => r.json())
+      .then(_ => window.location.reload())
+      .catch(err => alert("Error updating relationship type: " + err.message));
+    });
+  });
+
+  relationshipTypeForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(relationshipTypeForm);
+    fetch("{% url 'core:lease_relationship_type_save' %}", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(_ => {
+      relationshipTypeModal.hide();
+      window.location.reload();
+    })
+    .catch(err => alert("Could not save relationship type: " + err.message));
   });
 });
 </script>

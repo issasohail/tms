@@ -41,17 +41,29 @@
       overflow: hidden;
       background: #fff;
       transition: opacity 0.3s ease, transform 0.3s ease;
+      display: flex;
+      flex-direction: column;
     }
+    .photo-card.dragging { opacity: .55; }
     .photo-thumb, video.photo-thumb {
       width: 100%;
       aspect-ratio: 4 / 3;
       object-fit: cover;
       display: block;
       background: #f6f6f6;
+      flex: 0 0 auto;
     }
-    .photo-meta { padding: 8px 10px 10px 10px; font-size: 0.9rem; }
+    .photo-meta { padding: 8px 10px 10px 10px; font-size: 0.9rem; display:flex; flex-direction:column; flex:1 1 auto; min-height:0; position:relative; }
     .photo-title { font-weight: 600; margin-bottom: 2px; word-break: break-word; }
     .photo-desc  { color: #666; word-break: break-word; }
+    .photo-text { min-height:0; overflow:hidden; }
+    .photo-actions { margin-top:auto; display:flex; align-items:center; gap:5px; flex-wrap:nowrap; padding-top:8px; padding-right:33px; }
+    .photo-actions form { margin:0; display:inline-flex; }
+    .photo-delete-form { position:absolute; right:10px; bottom:10px; margin:0; }
+    .photo-icon-btn { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; padding:0; }
+    .photo-order-row { display:flex; align-items:center; gap:5px; margin-bottom:6px; }
+    .photo-order-input { width:54px; height:28px; font-size:.78rem; padding:2px 4px; }
+    .photo-drag-handle { cursor:grab; touch-action:none; }
     .btn-sm {
       font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid #d0d0d0;
       padding: 4px 8px; font-size: 0.85rem;
@@ -68,6 +80,25 @@
     details summary { cursor: pointer; list-style: none; }
     details summary::marker { display: none; }
 
+    @media (min-width: 1200px) {
+      .photos-grid {
+        grid-template-columns: repeat(auto-fill, 220px);
+        align-items: start;
+      }
+      .photo-card {
+        width: 220px;
+        height: 360px;
+      }
+      .photo-thumb, video.photo-thumb {
+        width: 220px;
+        height: 165px;
+        aspect-ratio: auto;
+      }
+      .photo-meta {
+        height: 195px;
+      }
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: scale(0.98); }
       to   { opacity: 1; transform: scale(1); }
@@ -75,7 +106,7 @@
   </style>
 
   {# ===== GRID ===== #}
-  <div id="photos-grid-inner" class="photos-grid">
+  <div id="photos-grid-inner" class="photos-grid" data-reorder-url="{% url 'leases:photo_reorder' lease.id %}{% if history %}?history={{ history.pk }}{% endif %}">
     {% for p in media %}
       {% include "leases/_photo_card.html" with p=p %}
     {% empty %}
@@ -88,37 +119,160 @@
   {# ===== CLIENT-SIDE FILTERING & SEARCH ===== #}
 <script>
 (function(){
+  if (window.__leaseMediaGridBound) return;
+  window.__leaseMediaGridBound = true;
+
   const filterKey = 'lease-media-filter';
   const searchKey = 'lease-media-search';
 
-  function applySaved() {
+  window.filterAndSearch = window.filterAndSearch || function() {
+    const grid = document.getElementById('photos-grid-inner');
+    const filter = document.getElementById('media-filter');
+    const search = document.getElementById('media-search');
+    if (!grid || !filter || !search) return;
+
+    const selected = filter.value || 'all';
+    const query = (search.value || '').toLowerCase().trim();
+    grid.querySelectorAll('.photo-card').forEach(function(card) {
+      const mediaType = (card.dataset.mediaType || card.dataset.type || '').toLowerCase();
+      const haystack = (card.textContent || '').toLowerCase();
+      const matchesType = selected === 'all' || mediaType === selected;
+      const matchesSearch = !query || haystack.indexOf(query) !== -1;
+      card.style.display = matchesType && matchesSearch ? '' : 'none';
+    });
+  };
+
+  function applySaved(root) {
+    root = root || document;
+    const filter = root.querySelector('#media-filter') || document.getElementById('media-filter');
+    const search = root.querySelector('#media-search') || document.getElementById('media-search');
     const f = sessionStorage.getItem(filterKey);
     const s = sessionStorage.getItem(searchKey);
-    if (f) document.getElementById('media-filter').value = f;
-    if (s) document.getElementById('media-search').value = s;
-    filterAndSearch(); // call your existing function
+    if (filter && f) filter.value = f;
+    if (search && s) search.value = s;
+    if (typeof window.filterAndSearch === "function") window.filterAndSearch();
   }
 
   document.addEventListener('htmx:afterSwap', (e) => {
-    if (e.target && e.target.id === 'photos-grid') {
-      // grid was re-rendered; re-bind and reapply
-      applySaved();
+    if (e.target && (e.target.id === 'photos-grid' || e.target.querySelector?.('#photos-grid'))) {
+      applySaved(e.target);
     }
   });
 
   document.addEventListener('input', (e) => {
     if (e.target && e.target.id === 'media-search') {
       sessionStorage.setItem(searchKey, e.target.value);
+      if (typeof window.filterAndSearch === "function") window.filterAndSearch();
     }
   });
   document.addEventListener('change', (e) => {
     if (e.target && e.target.id === 'media-filter') {
       sessionStorage.setItem(filterKey, e.target.value);
+      if (typeof window.filterAndSearch === "function") window.filterAndSearch();
     }
   });
 
-  // initial page load
   applySaved();
+
+  function getCookie(name) {
+    let value = null;
+    if (document.cookie && document.cookie !== '') {
+      document.cookie.split(';').forEach(function(cookie) {
+        const item = cookie.trim();
+        if (item.substring(0, name.length + 1) === (name + '=')) {
+          value = decodeURIComponent(item.substring(name.length + 1));
+        }
+      });
+    }
+    return value;
+  }
+
+  function bindDragSort() {
+    const grid = document.getElementById('photos-grid-inner');
+    if (!grid || grid.dataset.dragBound === '1') return;
+    grid.dataset.dragBound = '1';
+    let dragged = null;
+
+    async function saveOrder() {
+      const ids = Array.from(grid.querySelectorAll('.photo-card')).map(function(card) {
+        return card.dataset.photoId;
+      }).filter(Boolean);
+      grid.querySelectorAll('.photo-order-input').forEach(function(input, index) {
+        input.value = index + 1;
+      });
+      const response = await fetch(grid.dataset.reorderUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') || ''},
+        body: JSON.stringify({photo_ids: ids})
+      });
+      if (!response.ok) {
+        alert(await response.text() || 'Sort save failed');
+      }
+    }
+
+    function placeDragged(x, y) {
+      if (!dragged) return;
+      dragged.style.pointerEvents = 'none';
+      const target = document.elementFromPoint(x, y)?.closest?.('.photo-card');
+      dragged.style.pointerEvents = '';
+      if (!target || target === dragged || !grid.contains(target)) {
+        grid.appendChild(dragged);
+        return;
+      }
+      const box = target.getBoundingClientRect();
+      const before = y < box.top + box.height / 2 || (
+        Math.abs(y - (box.top + box.height / 2)) < 18 &&
+        x < box.left + box.width / 2
+      );
+      if (before) grid.insertBefore(dragged, target);
+      else grid.insertBefore(dragged, target.nextSibling);
+    }
+
+    grid.addEventListener('dragstart', function(event) {
+      const handle = event.target.closest('.photo-drag-handle');
+      const card = event.target.closest('.photo-card');
+      if (!handle || !card) {
+        event.preventDefault();
+        return;
+      }
+      dragged = card;
+      card.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+    });
+    grid.addEventListener('dragover', function(event) {
+      if (!dragged) return;
+      event.preventDefault();
+      placeDragged(event.clientX, event.clientY);
+    });
+    grid.addEventListener('dragend', function() {
+      if (dragged) dragged.classList.remove('dragging');
+      dragged = null;
+      saveOrder();
+    });
+
+    grid.addEventListener('pointerdown', function(event) {
+      const handle = event.target.closest('.photo-drag-handle');
+      if (!handle) return;
+      dragged = handle.closest('.photo-card');
+      if (!dragged) return;
+      dragged.classList.add('dragging');
+      handle.setPointerCapture?.(event.pointerId);
+    });
+    grid.addEventListener('pointermove', function(event) {
+      if (!dragged) return;
+      placeDragged(event.clientX, event.clientY);
+    });
+    function endPointerSort() {
+      if (!dragged) return;
+      dragged.classList.remove('dragging');
+      dragged = null;
+      saveOrder();
+    }
+    grid.addEventListener('pointerup', endPointerSort);
+    grid.addEventListener('pointercancel', endPointerSort);
+  }
+
+  bindDragSort();
 })();
 </script>
 

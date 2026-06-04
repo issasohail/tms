@@ -96,6 +96,8 @@ from .models import (  # adjust import paths if needed
     DefaultClause,
     Lease,
     LeaseFamily,
+    LeaseFamilyMember,
+    LeaseRelationshipType,
     LeaseTemplate,
     Property,
     Tenant,
@@ -118,6 +120,22 @@ from .utils.email_service import send_lease_agreement_email
 
 
 ZERO = Decimal("0.00")
+
+
+def _relationship_type_from_value(value):
+    if not value:
+        return None
+    try:
+        return LeaseRelationshipType.objects.filter(pk=int(value), is_active=True).first()
+    except (TypeError, ValueError):
+        return LeaseRelationshipType.objects.filter(code=value, is_active=True).first()
+
+
+def _family_relationship_defaults(value):
+    relationship_type = _relationship_type_from_value(value)
+    if relationship_type:
+        return {"relationship_type": relationship_type, "relationship": relationship_type.code[:30]}
+    return {"relationship": value or "other"}
 
 
 def strip_html(text):
@@ -702,6 +720,10 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             "tenants_for_add",
             _tenant_family_options(),
         )
+        ctx.setdefault(
+            "relationship_types",
+            LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+        )
         return ctx
 
     # ---------- Main SAVE logic ----------
@@ -826,22 +848,19 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             except Tenant.DoesNotExist:
                 continue
 
-            link, created = LeaseFamily.objects.get_or_create(
+            link, created = LeaseFamilyMember.objects.get_or_create(
                 lease=lease,
-                tenant=tenant,
-                defaults={"relation": relation, "whatsapp_opt_in": wa},
+                primary_tenant=lease.tenant,
+                family_member=tenant,
+                defaults=_family_relationship_defaults(relation),
             )
             if not created:
                 # Optional: update relation/whatsapp if changed
-                changed = False
-                if relation and link.relation != relation:
-                    link.relation = relation
-                    changed = True
-                if link.whatsapp_opt_in != wa:
-                    link.whatsapp_opt_in = wa
-                    changed = True
-                if changed:
-                    link.save(update_fields=["relation", "whatsapp_opt_in"])
+                relationship_type = _relationship_type_from_value(relation)
+                if relationship_type and link.relationship_type_id != relationship_type.pk:
+                    link.relationship_type = relationship_type
+                    link.relationship = relationship_type.code[:30]
+                    link.save(update_fields=["relationship_type", "relationship"])
             else:
                 created_links += 1
 
@@ -929,13 +948,19 @@ def lease_family_add(request, pk):
 
     tenant = get_object_or_404(Tenant, pk=tenant_id)
 
-    link, created = LeaseFamily.objects.get_or_create(
-        lease=lease, tenant=tenant, defaults={"relation": relation}
+    link, created = LeaseFamilyMember.objects.get_or_create(
+        lease=lease,
+        primary_tenant=lease.tenant,
+        family_member=tenant,
+        defaults=_family_relationship_defaults(relation),
     )
     # If already linked and you changed relation, update it
-    if not created and relation and link.relation != relation:
-        link.relation = relation
-        link.save(update_fields=["relation"])
+    if not created and relation:
+        relationship_type = _relationship_type_from_value(relation)
+        if relationship_type and link.relationship_type_id != relationship_type.pk:
+            link.relationship_type = relationship_type
+            link.relationship = relationship_type.code[:30]
+            link.save(update_fields=["relationship_type", "relationship"])
 
     messages.success(request, f"{tenant} added to family.")
     # Optional JSON support:
@@ -949,6 +974,17 @@ def lease_family_add(request, pk):
             }
         )
     return redirect("leases:lease_update", pk=lease.pk)
+
+
+@login_required
+@require_POST
+def lease_family_remove(request, pk, member_id):
+    lease = get_object_or_404(Lease, pk=pk)
+    link = get_object_or_404(LeaseFamilyMember, pk=member_id, lease=lease)
+    name = link.family_member.get_full_name()
+    link.delete()
+    messages.success(request, f"Removed {name} from this lease family list.")
+    return redirect("leases:lease_detail", pk=lease.pk)
 
 
 # leases/views.py
@@ -1061,6 +1097,10 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             "tenants_for_add",
             _tenant_family_options(),
         )
+        ctx.setdefault(
+            "relationship_types",
+            LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+        )
         return ctx
 
     # ---------- Quick-add family members (same as in LeaseCreateView) ----------
@@ -1078,22 +1118,19 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             except Tenant.DoesNotExist:
                 continue
 
-            link, created = LeaseFamily.objects.get_or_create(
+            link, created = LeaseFamilyMember.objects.get_or_create(
                 lease=lease,
-                tenant=tenant,
-                defaults={"relation": relation, "whatsapp_opt_in": wa},
+                primary_tenant=lease.tenant,
+                family_member=tenant,
+                defaults=_family_relationship_defaults(relation),
             )
             if not created:
                 # Optional: update relation/whatsapp if changed
-                changed = False
-                if relation and link.relation != relation:
-                    link.relation = relation
-                    changed = True
-                if link.whatsapp_opt_in != wa:
-                    link.whatsapp_opt_in = wa
-                    changed = True
-                if changed:
-                    link.save(update_fields=["relation", "whatsapp_opt_in"])
+                relationship_type = _relationship_type_from_value(relation)
+                if relationship_type and link.relationship_type_id != relationship_type.pk:
+                    link.relationship_type = relationship_type
+                    link.relationship = relationship_type.code[:30]
+                    link.save(update_fields=["relationship_type", "relationship"])
             else:
                 created_links += 1
 
@@ -1323,6 +1360,30 @@ def generate_lease_pdf(request, pk):
     return response
 
 
+@login_required
+def police_verification_summary_pdf(request, pk):
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit", "unit__property").prefetch_related("family_members__family_member"),
+        pk=pk,
+    )
+    html = render_to_string(
+        "leases/police_verification_summary_pdf.html",
+        {
+            "lease": lease,
+            "tenant": lease.tenant,
+            "property": lease.unit.property,
+            "unit": lease.unit,
+            "family_members": lease.family_members.all(),
+            "generated_at": timezone.localtime(),
+        },
+        request=request,
+    )
+    pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
+    response = HttpResponse(pdf, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="police-verification-lease-{lease.pk}.pdf"'
+    return response
+
+
 class LeaseDetailView(LoginRequiredMixin, DetailView):
     model = Lease
     template_name = "leases/lease_detail.html"
@@ -1353,11 +1414,18 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                         "lease__unit__property",
                     ),
                 ),
-                "family_members__tenant",
+                "family_members__family_member",
                 "renewals",
                 "unit_occupancies__unit__property",
                 "meter_installations__meter",
                 "meter_installations__unit__property",
+                Prefetch(
+                    "documents",
+                    queryset=apps.get_model("leases", "LeaseDocument").objects.filter(is_active=True).select_related(
+                        "uploaded_by",
+                        "lease_history",
+                    ),
+                ),
                 Prefetch(
                     "security_transactions",
                     queryset=SecurityDepositTransaction.objects.select_related(
@@ -1401,6 +1469,10 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "balance_due": lease.get_balance,
                 "lease_total_payment": lease_total_payment,
                 "occupancy_count": 1 + lease.family_members.count(),
+                "lease_documents": list(lease.documents.all()),
+                "lease_document_categories": list(
+                    apps.get_model("leases", "LeaseDocumentCategory").objects.filter(is_active=True)
+                ),
             }
         )
         ensure_original_history(

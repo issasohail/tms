@@ -23,10 +23,14 @@
           </thead>
           <tbody>
             {% for submission in submissions %}
-              <tr>
+              <tr class="{% if submission.status == 'pending' %}table-warning{% endif %}">
                 <td>{{ submission.submitted_at|date:"M d, Y H:i" }}</td>
                 <td>{{ submission.tenant.get_full_name }}</td>
-                <td>{{ submission.get_status_display }}</td>
+                <td>
+                  <span class="badge bg-{% if submission.status == 'pending' %}warning text-dark{% elif submission.status == 'approved' %}success{% else %}secondary{% endif %}">
+                    {{ submission.get_status_display }}
+                  </span>
+                </td>
                 <td>{{ submission.reviewed_at|date:"M d, Y H:i"|default:"-" }}</td>
                 <td class="text-end">
                   <a href="{% url 'tenants:registration_submission_detail' submission.pk %}" class="btn btn-outline-primary btn-sm">Review</a>

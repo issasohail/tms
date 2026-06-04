@@ -10,7 +10,7 @@ from django.db import models
 
 from .forms import GlobalSettingsForm
 from .models import GlobalSettings
-from tenants.models import Tenant
+from tenants.models import Tenant, TenantInterestType
 from payments.models import Payment
 from invoices.models import Invoice
 from expenses.models import Expense
@@ -254,6 +254,7 @@ from django.contrib import messages
 
 from .models import GlobalSettings, PaymentMethod
 from .forms import GlobalSettingsForm
+from leases.models import LeaseDocumentCategory, LeaseRelationshipType
 # core/views.py
 from django.views.generic import FormView
 from django.urls import reverse_lazy
@@ -298,7 +299,160 @@ class SettingsView(FormView):
         ctx["payment_methods"] = PaymentMethod.objects.order_by(
             "sort_order", "name"
         )
+        ctx["lease_document_categories"] = LeaseDocumentCategory.objects.order_by(
+            "sort_order", "name"
+        )
+        ctx["tenant_interest_types"] = TenantInterestType.objects.order_by(
+            "sort_order", "name"
+        )
+        ctx["lease_relationship_types"] = LeaseRelationshipType.objects.order_by(
+            "sort_order", "name"
+        )
         return ctx
+
+
+def lease_document_category_get(request, pk):
+    category = get_object_or_404(LeaseDocumentCategory, pk=pk)
+    return JsonResponse({
+        "id": category.id,
+        "name": category.name,
+        "code": category.code,
+        "sort_order": category.sort_order,
+        "is_active": category.is_active,
+    })
+
+
+@require_POST
+def lease_document_category_toggle(request, pk):
+    category = get_object_or_404(LeaseDocumentCategory, pk=pk)
+    category.is_active = not category.is_active
+    category.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def lease_document_category_save(request):
+    category_id = request.POST.get("id")
+    name = (request.POST.get("name") or "").strip()
+    code = (request.POST.get("code") or "").strip() or slugify(name)
+    try:
+        sort_order = int(request.POST.get("sort_order", "50"))
+    except ValueError:
+        sort_order = 50
+    is_active = request.POST.get("is_active") == "1"
+
+    if not name:
+        return HttpResponseBadRequest("Name required")
+    if not code:
+        return HttpResponseBadRequest("Code required")
+
+    if category_id:
+        category = get_object_or_404(LeaseDocumentCategory, pk=category_id)
+    else:
+        category = LeaseDocumentCategory()
+
+    category.name = name
+    category.code = code
+    category.sort_order = sort_order
+    category.is_active = is_active
+    category.save()
+    return JsonResponse({"ok": True})
+
+
+def tenant_interest_type_get(request, pk):
+    interest_type = get_object_or_404(TenantInterestType, pk=pk)
+    return JsonResponse({
+        "id": interest_type.id,
+        "name": interest_type.name,
+        "code": interest_type.code,
+        "sort_order": interest_type.sort_order,
+        "is_active": interest_type.is_active,
+    })
+
+
+@require_POST
+def tenant_interest_type_toggle(request, pk):
+    interest_type = get_object_or_404(TenantInterestType, pk=pk)
+    interest_type.is_active = not interest_type.is_active
+    interest_type.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def tenant_interest_type_save(request):
+    interest_id = request.POST.get("id")
+    name = (request.POST.get("name") or "").strip()
+    code = (request.POST.get("code") or "").strip() or slugify(name)
+    try:
+        sort_order = int(request.POST.get("sort_order", "50"))
+    except ValueError:
+        sort_order = 50
+    is_active = request.POST.get("is_active") == "1"
+
+    if not name:
+        return HttpResponseBadRequest("Name required")
+    if not code:
+        return HttpResponseBadRequest("Code required")
+
+    if interest_id:
+        interest_type = get_object_or_404(TenantInterestType, pk=interest_id)
+    else:
+        interest_type = TenantInterestType()
+
+    interest_type.name = name
+    interest_type.code = code
+    interest_type.sort_order = sort_order
+    interest_type.is_active = is_active
+    interest_type.save()
+    return JsonResponse({"ok": True})
+
+
+def lease_relationship_type_get(request, pk):
+    relationship_type = get_object_or_404(LeaseRelationshipType, pk=pk)
+    return JsonResponse({
+        "id": relationship_type.id,
+        "name": relationship_type.name,
+        "code": relationship_type.code,
+        "sort_order": relationship_type.sort_order,
+        "is_active": relationship_type.is_active,
+    })
+
+
+@require_POST
+def lease_relationship_type_toggle(request, pk):
+    relationship_type = get_object_or_404(LeaseRelationshipType, pk=pk)
+    relationship_type.is_active = not relationship_type.is_active
+    relationship_type.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def lease_relationship_type_save(request):
+    relationship_id = request.POST.get("id")
+    name = (request.POST.get("name") or "").strip()
+    code = (request.POST.get("code") or "").strip() or slugify(name)
+    try:
+        sort_order = int(request.POST.get("sort_order", "50"))
+    except ValueError:
+        sort_order = 50
+    is_active = request.POST.get("is_active") == "1"
+
+    if not name:
+        return HttpResponseBadRequest("Name required")
+    if not code:
+        return HttpResponseBadRequest("Code required")
+
+    if relationship_id:
+        relationship_type = get_object_or_404(LeaseRelationshipType, pk=relationship_id)
+    else:
+        relationship_type = LeaseRelationshipType()
+
+    relationship_type.name = name
+    relationship_type.code = code
+    relationship_type.sort_order = sort_order
+    relationship_type.is_active = is_active
+    relationship_type.save()
+    return JsonResponse({"ok": True})
 
 
 from django.views import View

@@ -1,0 +1,336 @@
+{% extends 'base.html' %}
+{% load static humanize money_tags tenant_filters %}
+
+{% block title %}{{ tenant }}{% endblock %}
+
+{% block content %}
+<div class="tenant-dashboard-v3">
+
+  <div class="td-hero card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+        <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="td-avatar-wrap text-decoration-none">
+          {% if tenant.photo %}
+            <img src="{{ tenant.photo.url }}" alt="Tenant Photo" class="td-avatar">
+          {% else %}
+            <div class="td-avatar td-avatar-empty"><i class="fas fa-user"></i></div>
+          {% endif %}
+        </a>
+
+        <div class="td-hero-main flex-grow-1 min-w-0">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <h2 class="td-title mb-0">{{ tenant.first_name|add:" "|add:tenant.last_name }}</h2>
+            {% if tenant.pk %}
+              <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-sm btn-primary">Edit Tenant</a>
+            {% endif %}
+          </div>
+
+          <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+            <span class="td-balance {% if tenant.current_balance > 0 %}text-danger{% else %}text-success{% endif %}">Balance: {{ tenant.current_balance|default:0|money:2 }}</span>
+            <span class="badge td-badge bg-{% if tenant.is_active %}success{% else %}secondary{% endif %}">{% if tenant.is_active %}Active{% else %}Inactive{% endif %}</span>
+            <span class="badge td-badge bg-{% if tenant.police_verification_status == 'verified' %}success{% elif tenant.police_verification_status == 'rejected' %}danger{% elif tenant.police_verification_status == 'pending' or tenant.police_verification_status == 'follow_up' %}warning text-dark{% else %}secondary{% endif %}">Police: {{ tenant.get_police_verification_status_display }}</span>
+          </div>
+        </div>
+
+        <div class="td-hero-actions d-flex flex-wrap gap-2 justify-content-end">
+          <button class="btn btn-sm btn-outline-secondary" onclick="history.back()">Go Back</button>
+          <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" class="btn btn-sm btn-success"><i class="fas fa-money-bill-wave me-1"></i> Record Payment</a>
+          {% if tenant.lease %}<a href="{% url 'leases:lease_detail' tenant.lease.pk %}" class="btn btn-sm btn-outline-primary"><i class="far fa-file-alt me-1"></i> Lease</a>{% endif %}
+          {% if registration_link %}
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#registrationLinkBox"><i class="fas fa-link me-1"></i> Registration Link</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if registration_link %}
+    <div class="collapse mb-3 {% if request.GET.show_registration %}show{% endif %}" id="registrationLinkBox">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body py-2">
+          <div class="input-group input-group-sm tenant-reg-link-group">
+            <span class="input-group-text fw-semibold">Tenant Update Link</span>
+            <input id="tenantRegistrationLink" type="text" class="form-control text-break" value="{{ registration_link }}" readonly onclick="this.select();">
+            <button class="btn btn-outline-primary" type="button" data-copy-target="#tenantRegistrationLink"><i class="far fa-copy me-1"></i> Copy</button>
+            <a class="btn btn-outline-success {% if not registration_whatsapp_url %}disabled{% endif %}" target="_blank" rel="noopener" href="{{ registration_whatsapp_url|default:'#' }}"><i class="fab fa-whatsapp me-1"></i> WhatsApp</a>
+            <a href="{{ registration_link }}" target="_blank" rel="noopener" class="btn btn-outline-dark"><i class="fas fa-external-link-alt me-1"></i> Open</a>
+            <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-secondary"><i class="far fa-list-alt me-1"></i> Submissions</a>
+          </div>
+          <div class="form-text">Public link expires after {{ registration_link_days }} days. Submitted changes require admin approval.</div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-3">
+      <div class="card td-card shadow-sm mb-3">
+        <div class="card-header"><h6 class="mb-0"><i class="far fa-folder-open text-primary me-2"></i>Documents</h6></div>
+        <div class="card-body">
+          <div class="td-doc-stack">
+            <div class="td-doc-item">
+              <div class="td-doc-title">CNIC Front</div>
+              {% if tenant.cnic_front %}
+                <a href="{{ tenant.cnic_front.url }}" data-fancybox="tenant-documents" data-caption="CNIC Front"><img src="{{ tenant.cnic_front.url }}" class="td-doc-img td-doc-img-wide" alt="CNIC Front"></a>
+              {% else %}<div class="td-doc-empty">No CNIC front</div>{% endif %}
+            </div>
+            <div class="td-doc-item">
+              <div class="td-doc-title">CNIC Back</div>
+              {% if tenant.cnic_back %}
+                <a href="{{ tenant.cnic_back.url }}" data-fancybox="tenant-documents" data-caption="CNIC Back"><img src="{{ tenant.cnic_back.url }}" class="td-doc-img td-doc-img-wide" alt="CNIC Back"></a>
+              {% else %}<div class="td-doc-empty">No CNIC back</div>{% endif %}
+            </div>
+            {% if tenant.police_verification_document %}
+              <a href="{{ tenant.police_verification_document.url }}" target="_blank" class="btn btn-sm btn-outline-primary w-100">View Police Document</a>
+            {% else %}
+              <span class="btn btn-sm btn-outline-secondary disabled w-100">No Police Document</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card td-card shadow-sm h-xl-auto">
+        <div class="card-header"><h6 class="mb-0"><i class="fas fa-shield-alt text-primary me-2"></i>Police Verification</h6></div>
+        <div class="card-body small">
+          <div class="info-list">
+            <div><span>Status</span><strong><span class="badge bg-{% if tenant.police_verification_status == 'verified' %}success{% elif tenant.police_verification_status == 'rejected' %}danger{% elif tenant.police_verification_status == 'pending' or tenant.police_verification_status == 'follow_up' %}warning text-dark{% else %}secondary{% endif %}">{{ tenant.get_police_verification_status_display }}</span></strong></div>
+            <div><span>Date</span><strong>{% if tenant.police_verification_date %}{{ tenant.police_verification_date|date:"M d, Y" }}{% else %}-{% endif %}</strong></div>
+            <div><span>Police Station</span><strong>{{ tenant.police_station|default:"-" }}</strong></div>
+            <div><span>Follow Up Date</span><strong>{% if tenant.police_verification_follow_up_date %}{{ tenant.police_verification_follow_up_date|date:"M d, Y" }}{% else %}-{% endif %}</strong></div>
+            <div><span>Document</span><strong>{% if tenant.police_verification_document %}<a href="{{ tenant.police_verification_document.url }}" target="_blank">View</a>{% else %}-{% endif %}</strong></div>
+            <div><span>Remarks</span><strong>{{ tenant.police_verification_remarks|default:"-" }}</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-9">
+      <div class="card td-card shadow-sm mb-3">
+        <div class="card-header"><h6 class="mb-0"><i class="far fa-user text-primary me-2"></i>Personal & Contact Information</h6></div>
+        <div class="card-body p-0">
+          <div class="td-info-grid td-info-grid-6">
+            <div><span>Name</span><strong>{{ tenant.prefix }} {{ tenant.first_name|add:" "|add:tenant.last_name }}</strong></div>
+            <div><span>CNIC</span><strong>{{ tenant.cnic|default:"-" }}</strong></div>
+            <div><span>Phone</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone label=tenant.phone name=tenant.get_full_name only %}</strong></div>
+            <div><span>Phone 2</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone2 label=tenant.phone2 name=tenant.get_full_name only %}</strong></div>
+            <div><span>Phone 3</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone3 label=tenant.phone3 name=tenant.get_full_name only %}</strong></div>
+            <div><span>Email</span><strong>{{ tenant.email|default:"-" }}</strong></div>
+
+            <div><span>Gender</span><strong>{{ tenant.get_gender_display|default:"-" }}</strong></div>
+            <div><span>Date of Birth</span><strong>{% if tenant.date_of_birth %}{{ tenant.date_of_birth|date:"M d, Y" }}{% else %}-{% endif %}</strong></div>
+            <div><span>Family Members</span><strong>{{ tenant.number_of_family_member|default:"-" }}</strong></div>
+            <div><span>Nationality</span><strong>{{ tenant.nationality|default:"-" }}</strong></div>
+            <div><span>City</span><strong>{{ tenant.city|default:"-" }}</strong></div>
+            <div><span>Province</span><strong>{{ tenant.province|default:"-" }}</strong></div>
+
+            <div><span>Country</span><strong>{{ tenant.country|default:"-" }}</strong></div>
+            <div><span>Notifications</span><strong>Flat: {% if tenant.notify_vacant_flat %}Yes{% else %}No{% endif %}, Room: {% if tenant.notify_vacant_room %}Yes{% else %}No{% endif %}</strong></div>
+            <div class="td-span-2"><span>Lead Interest</span><strong>{% for item in tenant.interested_in.all %}<span class="badge bg-info text-dark me-1 mb-1">{{ item.name }}</span>{% empty %}-{% endfor %}</strong></div>
+            <div><span>Created</span><strong>{{ tenant.created_at|date:"M d, Y" }}</strong></div>
+            <div><span>Updated</span><strong>{{ tenant.updated_at|date:"M d, Y" }}</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card td-card shadow-sm mb-3">
+        <div class="card-header"><h6 class="mb-0"><i class="fas fa-address-book text-primary me-2"></i>References, Employment & Emergency</h6></div>
+        <div class="card-body p-0">
+          <div class="td-three-panel">
+            <section>
+              <h6><i class="fas fa-address-book text-primary me-1"></i> References</h6>
+              <div class="info-list">
+                <div><span>Reference 1</span><strong>{{ tenant.reference_name_1|default:"-" }}{% if tenant.reference_relation_1 %} ({{ tenant.reference_relation_1 }}){% endif %}</strong></div>
+                <div><span>Phone 1</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.reference_phone_1 label=tenant.reference_phone_1 name=tenant.reference_name_1 only %}</strong></div>
+                <div><span>Reference 2</span><strong>{{ tenant.reference_name_2|default:"-" }}{% if tenant.reference_relation_2 %} ({{ tenant.reference_relation_2 }}){% endif %}</strong></div>
+                <div><span>Phone 2</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.reference_phone_2 label=tenant.reference_phone_2 name=tenant.reference_name_2 only %}</strong></div>
+              </div>
+            </section>
+            <section>
+              <h6><i class="fas fa-briefcase text-primary me-1"></i> Employment</h6>
+              <div class="info-list">
+                <div><span>Occupation</span><strong>{{ tenant.occupation|default:"-" }}</strong></div>
+                <div><span>Employer</span><strong>{{ tenant.employer_name|default:"-" }}</strong></div>
+                <div><span>Employer Phone</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.employer_phone label=tenant.employer_phone name=tenant.employer_name only %}</strong></div>
+              </div>
+            </section>
+            <section>
+              <h6><i class="fas fa-user-friends text-danger me-1"></i> Emergency Contact</h6>
+              <div class="info-list">
+                <div><span>Name</span><strong>{{ tenant.emergency_contact_name|default:"-" }}</strong></div>
+                <div><span>Relation</span><strong>{{ tenant.emergency_contact_relation|default:"-" }}</strong></div>
+                <div><span>Phone</span><strong>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.emergency_contact_phone label=tenant.emergency_contact_phone name=tenant.emergency_contact_name only %}</strong></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <div class="card td-card shadow-sm mb-3">
+        <div class="card-header"><h6 class="mb-0"><i class="fas fa-map-marker-alt text-primary me-2"></i>Addresses & Notes</h6></div>
+        <div class="card-body">
+          <div class="row g-2 small">
+            <div class="col-12 col-lg-6"><strong>Address</strong><div class="address-box address-box-main">{{ tenant.address|default:"-" }}</div></div>
+            <div class="col-12 col-lg-6"><strong>Notes</strong><div class="address-box address-box-main">{{ tenant.notes|default:"-" }}</div></div>
+            <div class="col-12 col-lg-4"><strong>Temporary Address</strong><div class="address-box address-box-4">{{ tenant.temporary_address|default:"-" }}</div></div>
+            <div class="col-12 col-lg-4"><strong>Permanent Address</strong><div class="address-box address-box-4">{{ tenant.permanent_address|default:"-" }}</div></div>
+            <div class="col-12 col-lg-4"><strong>Working Address</strong><div class="address-box address-box-4">{{ tenant.working_address|default:"-" }}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card td-card shadow-sm my-3">
+    <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+      <h6 class="mb-0 text-success"><i class="fas fa-home me-2"></i>Current Lease & Lease History</h6>
+      <a class="btn btn-sm btn-primary" href="{% url 'leases:lease_create' %}?tenant={{ tenant.id }}"><i class="fas fa-plus me-1"></i> Add Lease</a>
+    </div>
+    <div class="card-body">
+      {% if tenant.lease %}
+        <div class="td-lease-current small mb-3">
+          <div class="info-list">
+            <div><span>Current Property</span><strong>{{ tenant.lease.unit.property.property_name|default:"-" }}</strong></div>
+            <div><span>Current Unit</span><strong>{{ tenant.lease.unit.unit_number|default:"-" }}</strong></div>
+          </div>
+          <div class="info-list">
+            <div><span>Start Date</span><strong>{% if tenant.lease.start_date %}{{ tenant.lease.start_date|date:"M d, Y" }}{% else %}-{% endif %}</strong></div>
+            <div><span>End Date</span><strong>{% if tenant.lease.end_date %}{{ tenant.lease.end_date|date:"M d, Y" }}{% else %}-{% endif %}</strong></div>
+          </div>
+          <div class="td-balance-card">
+            <span>Current Balance</span>
+            <strong class="{% if tenant.current_balance > 0 %}text-danger{% else %}text-success{% endif %}">{{ tenant.current_balance|default:0|money:2 }}</strong>
+            <div class="info-list mt-2"><div><span>Status</span><strong><span class="badge bg-{% if tenant.lease.is_active %}success{% else %}secondary{% endif %}">{% if tenant.lease.is_active %}Active{% else %}Closed{% endif %}</span></strong></div></div>
+          </div>
+        </div>
+      {% else %}
+        <p class="text-muted small mb-3">No active lease found.</p>
+      {% endif %}
+
+      {% if leases %}
+        <div class="table-responsive"><table class="table table-sm table-hover align-middle td-table mb-0"><thead><tr><th>S.N</th><th>Property</th><th>Unit</th><th>Start Date</th><th>End Date</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody>{% for lease in leases %}<tr><td>{{ forloop.counter }}</td><td>{{ lease.unit.property.property_name|default:"-" }}</td><td>{{ lease.unit.unit_number|default:"-" }}</td><td>{% if lease.start_date %}{{ lease.start_date|date:"M d, Y" }}{% else %}-{% endif %}</td><td>{% if lease.end_date %}{{ lease.end_date|date:"M d, Y" }}{% else %}-{% endif %}</td><td><span class="badge bg-{% if lease.is_active %}success{% else %}secondary{% endif %}">{% if lease.is_active %}Active{% else %}Closed{% endif %}</span></td><td class="text-end"><a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-sm btn-outline-primary">View</a></td></tr>{% endfor %}</tbody></table></div>
+      {% elif tenant.lease_set.all %}
+        {% with all_leases=tenant.lease_set.all %}{% include "partials/_tenant_leases_table.html" %}{% endwith %}
+      {% elif tenant.leases.all %}
+        {% with all_leases=tenant.leases.all %}{% include "partials/_tenant_leases_table.html" %}{% endwith %}
+      {% else %}
+        <p class="text-muted mb-0 small">No leases found.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-6">
+      <div class="card td-card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center"><h6 class="mb-0 text-primary"><i class="far fa-file-alt me-2"></i>Invoices</h6>{% if tenant.lease %}<a href="{% url 'invoices:invoice_create' %}?tenant={{ tenant.pk }}&property={{ tenant.lease.unit.property.id }}&unit={{ tenant.lease.unit.id }}" class="btn btn-sm btn-outline-primary">Create</a>{% endif %}</div>
+        <div class="card-body py-2">
+          {% if invoices %}
+            <div class="table-responsive"><table class="table table-sm table-hover align-middle td-table mb-0"><thead><tr><th>S.N</th><th>Issue</th><th>Property / Unit</th><th class="text-end">Amount</th></tr></thead><tbody>{% for invoice in invoices %}<tr><td>{{ forloop.counter }}</td><td>{{ invoice.issue_date|date:"M d, Y" }}</td><td>{% with p=invoice.lease.unit.property.property_name|slice:":8" u=invoice.lease.unit.unit_number %}<span class="text-muted">{{ p }}</span> / <strong>{{ u }}</strong>{% endwith %}</td><td class="text-end"><a href="{% url 'invoices:invoice_detail' invoice.pk %}" class="text-decoration-none">{{ invoice.amount|money:2 }}</a></td></tr>{% endfor %}</tbody></table></div>
+          {% else %}<p class="mb-0 small text-muted">No invoices found.</p>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-6">
+      <div class="card td-card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center"><h6 class="mb-0 text-success"><i class="fas fa-wallet me-2"></i>Payments</h6><a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" class="btn btn-sm btn-success"><i class="fas fa-money-bill-wave me-1"></i> Record</a></div>
+        <div class="card-body py-2">
+          {% if payments %}
+            <div class="table-responsive"><table class="table table-sm table-hover align-middle td-table mb-0"><thead><tr><th>S.N</th><th>Date</th><th>Property / Unit</th><th class="text-end">Amount</th></tr></thead><tbody>{% for payment in payments %}<tr><td>{{ forloop.counter }}</td><td>{{ payment.payment_date|date:"M d, Y" }}</td><td>{% with p=payment.lease.unit.property.property_name|slice:":8" u=payment.lease.unit.unit_number %}<span class="text-muted">{{ p }}</span> / <strong>{{ u }}</strong>{% endwith %}</td><td class="text-end"><a href="{% url 'payments:payment_detail' payment.pk %}" class="text-decoration-none">{{ payment.amount|money:2 }}</a></td></tr>{% endfor %}</tbody></table></div>
+          {% else %}<p class="mb-0 small text-muted">No payments found.</p>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card td-card shadow-sm h-100">
+        <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+          <h6 class="mb-0 text-primary"><i class="fas fa-users me-2"></i>Family Members</h6>
+          <div class="d-flex gap-2 small"><span class="badge bg-primary-subtle text-primary border">Adults: {{ family_adults|default:0 }}</span><span class="badge bg-warning-subtle text-warning border">Children: {{ family_children|default:0 }}</span><span class="badge bg-success-subtle text-success border">Total: {{ family_total|default:0 }}</span></div>
+        </div>
+        <div class="card-body py-2">
+          {% if family_members %}
+            <div class="table-responsive"><table class="table table-sm table-hover align-middle td-table mb-0"><thead><tr><th>S.N</th><th>Name</th><th>Relation</th><th>CNIC</th><th>DOB</th><th>Phone</th><th>Age</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody>{% for member in family_members %}<tr><td>{{ forloop.counter }}</td><td>{{ member.family_member.get_full_name }}</td><td>{{ member.relation }}</td><td>{{ member.family_member.cnic|default:"-" }}</td><td>{% if member.family_member.date_of_birth %}{{ member.family_member.date_of_birth|date:"M d, Y" }}{% else %}-{% endif %}</td><td>{% include "tenants/_whatsapp_phone_link.html" with phone=member.family_member.phone label=member.family_member.phone name=member.family_member.get_full_name only %}</td><td>{{ member.family_member.age|default:"-" }}</td><td><span class="badge bg-{% if member.family_member.is_active %}success{% else %}secondary{% endif %}">{% if member.family_member.is_active %}Active{% else %}Inactive{% endif %}</span></td><td class="text-end"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">View</a> <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a></td></tr>{% endfor %}</tbody></table></div>
+          {% else %}<p class="mb-0 small text-muted">No family members recorded.</p>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css" />
+<style>
+  .tenant-dashboard-v3 { max-width: 1420px; margin: 0 auto; font-size: .88rem; }
+  .td-hero { border-radius: .75rem; }
+  .td-title { font-size: 1.45rem; font-weight: 800; color: #111827; }
+  .td-avatar { width: 128px; height: 128px; object-fit: cover; border-radius: 50%; border: 6px solid #f1f5f9; box-shadow: 0 2px 10px rgba(15,23,42,.10); }
+  .td-avatar-empty { display:flex; align-items:center; justify-content:center; background:#e5e7eb; color:#9ca3af; font-size:3rem; }
+  .td-balance { font-size: 1.05rem; font-weight: 800; }
+  .td-badge { font-size: .82rem; padding: .42rem .72rem; }
+  .td-hero-actions { min-width: 260px; }
+  .td-card { border: 1px solid #dfe5ec; border-radius: .65rem; overflow: hidden; }
+  .td-card .card-header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: .65rem .85rem; }
+  .td-card .card-header h6 { font-size: .9rem; font-weight: 800; text-transform: uppercase; letter-spacing: .01rem; }
+  .td-doc-stack { display:flex; flex-direction:column; gap:1rem; align-items:center; }
+  .td-doc-item { width:100%; text-align:center; }
+  .td-doc-title { font-weight:800; margin-bottom:.35rem; }
+  .td-doc-img { border: 1px solid #d1d5db; border-radius:.45rem; background:#fff; padding:.22rem; box-shadow:0 1px 4px rgba(15,23,42,.08); }
+  .td-doc-img-wide { width: 100%; max-width: 235px; max-height: 155px; object-fit: contain; }
+  .td-doc-empty { border:1px dashed #cbd5e1; color:#64748b; border-radius:.45rem; padding:1.25rem .75rem; font-size:.8rem; }
+  .td-info-grid { display:grid; }
+  .td-info-grid-6 { grid-template-columns: repeat(6, minmax(0,1fr)); }
+  .td-span-2 { grid-column: span 2; }
+  .td-info-grid > div { padding:.75rem .85rem; border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb; min-height:4.05rem; }
+  .td-info-grid span, .info-list span { display:block; color:#111827; font-size:.76rem; font-weight:800; margin-bottom:.25rem; }
+  .td-info-grid strong, .info-list strong { font-weight:500; color:#111827; overflow-wrap:anywhere; }
+  .td-three-panel { display:grid; grid-template-columns: 1.1fr 1fr 1fr; }
+  .td-three-panel section { padding:.9rem 1rem; border-right:1px solid #e5e7eb; }
+  .td-three-panel section:last-child { border-right:0; }
+  .td-three-panel h6 { font-size:.84rem; font-weight:800; text-transform:uppercase; color:#0d6efd; margin-bottom:.7rem; }
+  .info-list > div { display:grid; grid-template-columns: 130px minmax(0,1fr); gap:.65rem; align-items:center; padding:.28rem 0; }
+  .address-box { min-height: 5.5rem; border:1px solid #e5e7eb; border-radius:.5rem; padding:.55rem .7rem; background:#fff; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .address-box-main { min-height: 6.2rem; }
+  .address-box-4 { min-height: 6.2rem; }
+  .td-lease-current { display:grid; grid-template-columns: 1fr 1fr 1.25fr; gap:1rem; }
+  .td-lease-current > div { border:1px solid #e5e7eb; border-radius:.55rem; padding:.75rem .9rem; }
+  .td-balance-card { background:linear-gradient(90deg,#ecfdf5,#f8fafc); }
+  .td-balance-card > span { display:block; color:#334155; font-size:.78rem; font-weight:700; }
+  .td-balance-card > strong { display:block; font-size:1.55rem; margin:.25rem 0; }
+  .td-table { font-size:.78rem; }
+  .td-table th { font-size:.74rem; white-space:nowrap; background:#f8fafc; }
+  .td-table td, .td-table th { padding:.42rem .55rem !important; vertical-align:middle; }
+  .tenant-reg-link-group { flex-wrap: wrap; }
+  .tenant-reg-link-group .form-control { min-width: 280px; overflow-wrap: anywhere; }
+  .phone-wa-link { text-decoration:none; white-space:nowrap; }
+  .phone-wa-link:hover { text-decoration:underline; }
+  @media (max-width: 1200px) { .td-info-grid-6 { grid-template-columns: repeat(3, minmax(0,1fr)); } .td-three-panel, .td-lease-current { grid-template-columns:1fr; } .td-three-panel section { border-right:0; border-bottom:1px solid #e5e7eb; } .td-doc-stack { flex-direction:row; align-items:flex-start; } }
+  @media (max-width: 768px) { .td-avatar { width:88px; height:88px; } .td-title { font-size:1.2rem; } .td-info-grid-6 { grid-template-columns:1fr; } .td-span-2 { grid-column: span 1; } .info-list > div { grid-template-columns:105px minmax(0,1fr); } .td-doc-stack { flex-direction:column; } }
+  @media print { .text-danger, .text-success { color:#000 !important; } .td-hero-actions, .btn { display:none !important; } }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
+<script>
+  if (window.Fancybox) { Fancybox.bind("[data-fancybox]", {}); }
+  document.addEventListener("click", function (event) {
+    const btn = event.target.closest("[data-copy-target]");
+    if (!btn) return;
+    const input = document.querySelector(btn.dataset.copyTarget);
+    if (!input) return;
+    const original = btn.innerHTML;
+    const value = input.value || "";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(function () {
+        btn.innerHTML = "Copied";
+        setTimeout(function () { btn.innerHTML = original; }, 1200);
+      });
+    } else {
+      input.select();
+      document.execCommand("copy");
+    }
+  });
+</script>
+{% endblock %}

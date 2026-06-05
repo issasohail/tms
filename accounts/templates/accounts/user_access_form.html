@@ -22,6 +22,7 @@
       <div class="col-md-3">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
       <div class="col-md-3">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
       <div class="col-md-3">{{ form.whatsapp_number.label_tag }}{{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}</div>
+      <div class="col-md-6">{{ form.groups.label_tag }}{{ form.groups }}{{ form.groups.errors }}</div>
       <div class="col-md-3">{{ form.password1.label_tag }}{{ form.password1 }}{{ form.password1.errors }}</div>
       <div class="col-md-3">{{ form.password2.label_tag }}{{ form.password2 }}{{ form.password2.errors }}</div>
       <div class="col-md-3 d-flex align-items-end gap-3">
@@ -34,12 +35,25 @@
       <h6 class="mb-0">Permissions</h6>
       <span class="small text-muted">View / Add / Update / Delete by app table</span>
     </div>
+    <div class="d-flex flex-wrap gap-2 mb-2 permission-toolbar">
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="view">Select All View</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="add">Select All Add</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="change">Select All Change</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="delete">Select All Delete</button>
+      <button type="button" class="btn btn-outline-danger btn-sm js-clear-all">Clear All</button>
+      <div class="vr d-none d-md-block"></div>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="admin">Admin Full</button>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="manager">Manager</button>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="data-entry">Data Entry</button>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="viewer">Viewer</button>
+    </div>
     <div class="table-responsive">
       <table class="table table-sm table-bordered align-middle permission-table">
         <thead class="table-light">
           <tr>
             <th>App</th>
             <th>Table</th>
+            <th class="text-center">All</th>
             <th class="text-center">View</th>
             <th class="text-center">Add</th>
             <th class="text-center">Update</th>
@@ -51,18 +65,21 @@
             <tr>
               <td class="text-muted">{{ group.app_label }}</td>
               <td>{{ group.label }}</td>
+              <td class="text-center">
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-row-all">All</button>
+              </td>
               {% for action, action_label in permission_actions %}
                 <td class="text-center">
                   {% with perm=group.permissions|get_item:action %}
                     {% if perm %}
-                      <input type="checkbox" name="permissions" value="{{ perm.id }}" {% if perm.id in selected_permissions %}checked{% endif %}>
+                      <input type="checkbox" name="permissions" value="{{ perm.id }}" data-action="{{ action }}" {% if perm.id in selected_permissions %}checked{% endif %}>
                     {% endif %}
                   {% endwith %}
                 </td>
               {% endfor %}
             </tr>
           {% empty %}
-            <tr><td colspan="6" class="text-muted p-3">No permissions found.</td></tr>
+            <tr><td colspan="7" class="text-muted p-3">No permissions found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -83,6 +100,61 @@
   }
   @media (max-width: 576px) {
     .permission-table { font-size: .75rem; }
+    .permission-toolbar .btn { font-size: .72rem; }
   }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.$?.fn?.select2) {
+    $('#id_groups').select2({theme: 'bootstrap-5', width: '100%', placeholder: 'Groups'});
+  }
+
+  const table = document.querySelector('.permission-table');
+  const checks = () => Array.from(document.querySelectorAll('input[name="permissions"]'));
+  const setActions = actions => {
+    checks().forEach(input => { input.checked = actions.includes(input.dataset.action); });
+  };
+
+  document.querySelectorAll('.js-select-action').forEach(button => {
+    button.addEventListener('click', () => {
+      checks().filter(input => input.dataset.action === button.dataset.action)
+        .forEach(input => { input.checked = true; });
+    });
+  });
+
+  document.querySelector('.js-clear-all')?.addEventListener('click', () => {
+    checks().forEach(input => { input.checked = false; });
+  });
+
+  document.querySelectorAll('.js-row-all').forEach(button => {
+    button.addEventListener('click', () => {
+      const rowChecks = Array.from(button.closest('tr').querySelectorAll('input[name="permissions"]'));
+      const shouldCheck = rowChecks.some(input => !input.checked);
+      rowChecks.forEach(input => { input.checked = shouldCheck; });
+    });
+  });
+
+  document.querySelectorAll('.js-preset').forEach(button => {
+    button.addEventListener('click', () => {
+      const preset = button.dataset.preset;
+      if (preset === 'admin') {
+        checks().forEach(input => { input.checked = true; });
+        document.getElementById('id_is_staff').checked = true;
+        document.getElementById('id_is_active').checked = true;
+      } else if (preset === 'manager') {
+        setActions(['view', 'add', 'change']);
+      } else if (preset === 'data-entry') {
+        setActions(['view', 'add', 'change']);
+        checks().filter(input => input.dataset.action === 'delete')
+          .forEach(input => { input.checked = false; });
+      } else if (preset === 'viewer') {
+        setActions(['view']);
+      }
+    });
+  });
+});
+</script>
 {% endblock %}

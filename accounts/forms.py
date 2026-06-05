@@ -6,7 +6,7 @@ from django.contrib.auth.forms import (
     UserCreationForm,
     UserChangeForm,
 )
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
 
 Account = get_user_model()
 
@@ -47,6 +47,11 @@ class AccountChangeForm(UserChangeForm):
 class AccountAccessForm(forms.ModelForm):
     password1 = forms.CharField(required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
     password2 = forms.CharField(required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
+    groups = forms.ModelMultipleChoiceField(
+        queryset=Group.objects.order_by("name"),
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": "form-select form-select-sm select2"}),
+    )
 
     class Meta:
         model = Account
@@ -56,6 +61,7 @@ class AccountAccessForm(forms.ModelForm):
             "last_name",
             "email",
             "whatsapp_number",
+            "groups",
             "is_active",
             "is_staff",
         )

@@ -15,8 +15,8 @@
         }
         body {
             font-family: Arial, sans-serif;
-            font-size: 12px;
-            line-height: 1.5;
+            font-size: 11px;
+            line-height: 1.35;
         }
         .header {
             margin-bottom: 3px;
@@ -62,16 +62,16 @@
             border-collapse: collapse;
             margin: 2px 0;
             border: 1px solid #ddd;
-            font-size: 12px;
+            font-size: 10.5px;
         }
         th {
             background-color: #f2f2f2;
             text-align: left;
-            padding: 4px;
+            padding: 3px;
             border: 1px solid #ddd;
         }
         td {
-            padding: 4px;
+            padding: 3px;
             border: 1px solid #ddd;
         }
         .positive {
@@ -117,6 +117,16 @@
         .description-column {
             width: 41%;
         }
+        .description-cell {
+            max-width: 220px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .description-cell a {
+            color: #0d6efd;
+            text-decoration: none;
+        }
         .generated-date {
             font-size: 10px;
             text-align: right;
@@ -135,10 +145,10 @@
         <h2 class="tenant-header">{{ tenant.get_full_name }} — {{ lease.unit.unit_number }}</h2>
         <div class="header-info">
             <div class="header-left">
-                <p class="compact-info"><strong>Phone:</strong> {{ tenant.phone|default:"N/A" }}</p>
+                <p class="compact-info"><strong>Phone:</strong> {{ tenant_phone }}</p>
                 <p class="compact-info"><strong>Monthly Rent:</strong> Rs. {{ lease.monthly_rent|floatformat:0|intcomma }}</p>
                 <p class="compact-info"><strong>Society Maint.:</strong> Rs.{{ lease.society_maintenance|floatformat:0|intcomma }}</p>
-                <p class="compact-info"><strong>Monthly Total:</strong> Rs.{{ lease.total_payment|floatformat:0|intcomma }}</p>
+                <p class="compact-info"><strong>Monthly Total:</strong> Rs.{{ monthly_total|floatformat:0|intcomma }}</p>
             </div>
             <div class="header-right">
                 <p class="compact-info"><strong>Lease Period:</strong> {{ lease.start_date|date:"M d, Y" }} to {{ lease.end_date|date:"M d, Y" }}</p>
@@ -171,9 +181,15 @@
                             <td class="serial-no">{{ forloop.counter }}</td>
                             <td>{{ t.date|date:"m/d/Y" }}</td>
                             <td>{{ t.type }}</td>
-                            <td>{{ t.description }}</td>
-                            <td class="amount-column {% if t.amount > 0 %}positive{% else %}negative{% endif %}">
-                                Rs. {{ t.amount|floatformat:0|intcomma }}
+                            <td class="description-cell">
+                                {% if t.url %}
+                                    <a href="{{ t.url }}">{{ t.description|default:"Invoice" }}</a>
+                                {% else %}
+                                    {{ t.description }}
+                                {% endif %}
+                            </td>
+                            <td class="amount-column {% if t.is_credit %}positive{% else %}negative{% endif %}">
+                                {% if t.is_credit %}Rs. {{ t.display_amount|floatformat:0|intcomma }}{% else %}-Rs. {{ t.display_amount|floatformat:0|intcomma }}{% endif %}
                             </td>
                             <td class="balance-column">Rs. {{ t.balance|floatformat:0|intcomma }}</td>
                         </tr>

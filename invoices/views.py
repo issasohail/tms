@@ -37,10 +37,12 @@ from django.db.models import Count, ProtectedError
 from .models import RecurringCharge
 from datetime import date, timedelta
 from django.utils import timezone
+from django.core import signing
 from properties.models import Property, Unit  # adjust imports
 
 from .forms import InvoiceForm
 from .models import Invoice, InvoiceItem, ItemCategory,SecurityDepositTransaction
+from .public_links import load_public_invoice_token
 from django.db import transaction
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
@@ -620,6 +622,52 @@ class InvoiceDetailView(DetailView):
 
         return ctx
     
+
+
+def public_invoice_detail(request, token):
+    try:
+        data = load_public_invoice_token(token)
+        invoice_id = data.get("invoice_id")
+    except signing.SignatureExpired:
+        return render(request, "invoices/public_invoice_expired.html", status=410)
+    except signing.BadSignature:
+        raise Http404("Invalid invoice link.")
+
+    invoice = get_object_or_404(
+        Invoice.objects.select_related(
+            "lease__tenant",
+            "lease__unit__property",
+        ).prefetch_related(
+            Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
+        ),
+        pk=invoice_id,
+    )
+    items = list(invoice.items.all())
+    combined_description = ", ".join(
+        part
+        for item in items
+        for part in [
+            (
+                f"{item.category.name}: {item.description}"
+                if item.category and item.description
+                else item.category.name
+                if item.category
+                else item.description or ""
+            )
+        ]
+        if part
+    )
+    return render(
+        request,
+        "invoices/public_invoice_detail.html",
+        {
+            "invoice": invoice,
+            "items": items,
+            "combined_description": combined_description,
+            "computed_total": sum((item.amount for item in items), Decimal("0.00")),
+            "generated_on": timezone.now(),
+        },
+    )
 
 
 class InvoiceDeleteView(LoginRequiredMixin, DeleteView):

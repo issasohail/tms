@@ -72,6 +72,7 @@ from rest_framework.response import Response
 from weasyprint import HTML
 
 from invoices.models import Invoice, SecurityDepositTransaction
+from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm
 from leases.models import Lease
@@ -1902,6 +1903,30 @@ def _truncate15(s: str) -> str:
     return (s[:15] + "…") if len(s) > 15 else s
 
 
+def _active_monthly_total_for_lease(lease):
+    today = timezone.localdate()
+    active_history = (
+        lease.renewals.filter(start_date__lte=today, end_date__gte=today)
+        .order_by("-renewal_number", "-start_date", "-pk")
+        .first()
+    )
+    if active_history:
+        return active_history.total_monthly_amount
+    return lease.total_payment
+
+
+def _readable_phone(value):
+    value = (value or "").strip()
+    if not value:
+        return "N/A"
+    digits = re.sub(r"\D", "", value)
+    if value.startswith("+") and len(digits) > 7:
+        return f"+{digits}"
+    if len(digits) == 11 and digits.startswith("03"):
+        return f"{digits[:4]} {digits[4:7]} {digits[7:]}"
+    return value
+
+
 class LeaseLedgerView(LoginRequiredMixin, TemplateView):
     model = Lease
     template_name = "leases/lease_ledger.html"
@@ -2145,6 +2170,8 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
         for t in transactions:
             balance += t["amount"]
             t["balance"] = balance
+            t["display_amount"] = abs(t["amount"])
+            t["is_credit"] = t["amount"] > 0
 
         def prepare_transaction_columns(transactions):
             return [
@@ -2219,6 +2246,12 @@ def lease_ledger_pdf(request, lease_id):
                     "invoices", queryset=Invoice.objects.order_by("issue_date", "id")
                 ),
                 Prefetch(
+                    "renewals",
+                    queryset=LeaseRenewal.objects.order_by(
+                        "-renewal_number", "-start_date", "-id"
+                    ),
+                ),
+                Prefetch(
                     "payments",
                     queryset=Payment.objects.select_related("allocation").order_by(
                         "payment_date", "id"
@@ -2234,14 +2267,19 @@ def lease_ledger_pdf(request, lease_id):
 
         # Process invoices
         for invoice in lease.invoices_qs:
-            balance -= invoice.amount
+            amount = invoice.amount or Decimal("0.00")
+            balance -= amount
+            public_token = make_public_invoice_token(invoice.pk)
             transactions.append(
                 {
                     "date": invoice.issue_date,
                     "type": "Invoice",
                     "description": invoice.description,
-                    "amount": -invoice.amount,
+                    "amount": -amount,
                     "balance": balance,
+                    "url": request.build_absolute_uri(
+                        reverse("invoices:public_invoice_detail", args=[public_token])
+                    ),
                 }
             )
 
@@ -2274,6 +2312,8 @@ def lease_ledger_pdf(request, lease_id):
         for t in transactions:
             balance += t["amount"]
             t["balance"] = balance
+            t["display_amount"] = abs(t["amount"])
+            t["is_credit"] = t["amount"] > 0
 
         # Prepare transaction columns
         if len(transactions) > 25:
@@ -2285,6 +2325,8 @@ def lease_ledger_pdf(request, lease_id):
         context = {
             "lease": lease,
             "tenant": lease.tenant,
+            "tenant_phone": _readable_phone(lease.tenant.phone),
+            "monthly_total": _active_monthly_total_for_lease(lease),
             "transactions": transactions,
             "transaction_columns": transaction_columns,  # Add this line
             "total_paid": sum(

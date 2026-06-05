@@ -37,6 +37,7 @@ urlpatterns = [
 
     # Detail/Update/Delete
     path('<int:pk>/', InvoiceDetailView.as_view(), name='invoice_detail'),
+    path('public/<path:token>/', views.public_invoice_detail, name='public_invoice_detail'),
     path('<int:pk>/update/', InvoiceUpdateView.as_view(), name='invoice_update'),
     path('<int:pk>/delete/', InvoiceDeleteView.as_view(), name='invoice_delete'),
 

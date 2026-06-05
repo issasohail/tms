@@ -1,0 +1,86 @@
+{% load humanize money_tags %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice #{{ invoice.invoice_number }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; font-size: 13px; margin: 24px; }
+    .sheet { max-width: 860px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; border-bottom: 1px solid #d1d5db; padding-bottom: 12px; margin-bottom: 14px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .muted { color: #6b7280; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #e5e7eb; padding: 7px; text-align: left; }
+    th { background: #f9fafb; }
+    .amount { text-align: right; white-space: nowrap; }
+    .total { font-weight: 700; }
+    @media (max-width: 640px) {
+      body { margin: 12px; }
+      .header, .grid { display: block; }
+      .box { margin-bottom: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <div class="header">
+      <div>
+        <h1>Invoice #{{ invoice.invoice_number }}</h1>
+        <div class="muted">{{ invoice.issue_date|date:"M d, Y" }} to {{ invoice.due_date|date:"M d, Y" }}</div>
+      </div>
+      <div class="amount">
+        <div class="muted">Amount</div>
+        <strong>{{ computed_total|money:2 }}</strong>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="box">
+        <div class="muted">Tenant</div>
+        <strong>{{ invoice.lease.tenant.get_full_name }}</strong><br>
+        {{ invoice.lease.tenant.phone|default:"-" }}<br>
+        {{ invoice.lease.unit.property.property_name }} - {{ invoice.lease.unit.unit_number }}
+      </section>
+      <section class="box">
+        <div class="muted">Status</div>
+        <strong>{{ invoice.get_status_display }}</strong><br>
+        <span class="muted">Generated:</span> {{ generated_on|date:"M d, Y H:i" }}
+      </section>
+    </div>
+
+    {% if combined_description %}
+      <p><strong>Description:</strong> {{ combined_description }}</p>
+    {% endif %}
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:54px">#</th>
+          <th>Category</th>
+          <th>Description</th>
+          <th class="amount">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ item.category.name|default:"-" }}</td>
+            <td>{{ item.description|default:"-" }}</td>
+            <td class="amount">{{ item.amount|money:2 }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="muted">No invoice items.</td></tr>
+        {% endfor %}
+        <tr class="total">
+          <td colspan="3" class="amount">Total</td>
+          <td class="amount">{{ computed_total|money:2 }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

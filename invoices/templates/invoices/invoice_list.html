@@ -9,7 +9,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3 page-header invoice-page-compact">
   <h2 class="h4 mb-0">Invoices</h2>
 
-  <div class="top-actions d-flex align-items-center flex-wrap gap-2">
+  <div class="top-actions invoice-header-actions d-flex align-items-center flex-wrap gap-2">
     <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary">
       <i class="fas fa-plus"></i><span class="btn-label"> New Invoice</span>
     </a>
@@ -138,7 +138,7 @@
     .actions-wrap .btn .btn-label { display: none !important; }
 
     
-.table.table-compact { font-size: .775rem; }
+.table.table-compact { font-size: .68rem; }
   .table.table-compact > :not(caption) > * > * { padding: .25rem .5rem; line-height: 1.1; }
   .table.table-compact .btn.btn-sm { padding: 2px 6px; line-height: 1.1; }
 
@@ -183,7 +183,7 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
 /* ===== SMALL SCREENS (≤ 400px) — compact, readable, no scroll ===== */
 @media (max-width: 400px) {
   /* Global tiny font & tight spacing */
-  body, .btn, .form-select, .form-control, table.table { font-size: .70rem; }
+  body, .btn, .form-select, .form-control, table.table { font-size: .68rem; }
   .mb-3 { margin-bottom: .2rem !important; }
 
   /* Hide page H2 to save space (you asked this earlier) */
@@ -1238,6 +1238,273 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
 
 </style>
 
+<style>
+/* ===== Invoice list requested layout overrides ===== */
+.invoice-list-dense .mobile-subtext {
+  display: none;
+}
+
+.invoice-list-dense table.table th.col-due,
+.invoice-list-dense table.table td.col-due {
+  display: none !important;
+}
+
+.invoice-list-dense table.table th.col-sn,
+.invoice-list-dense table.table td.col-sn {
+  width: 42px !important;
+  max-width: 42px !important;
+  text-align: center;
+}
+
+.invoice-list-dense table.table th:nth-child(2),
+.invoice-list-dense table.table td:nth-child(2) {
+  width: 32px !important;
+  max-width: 32px !important;
+  text-align: center;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+}
+
+.invoice-list-dense table.table th.col-invno,
+.invoice-list-dense table.table td.col-invno {
+  width: 78px !important;
+  max-width: 78px !important;
+  white-space: nowrap;
+}
+
+.invoice-list-dense table.table th.col-propunit,
+.invoice-list-dense table.table td.col-propunit {
+  width: 150px !important;
+  max-width: 150px !important;
+}
+
+.invoice-list-dense table.table th.col-desc,
+.invoice-list-dense table.table td.col-desc {
+  min-width: 170px;
+  max-width: 28ch;
+}
+
+.invoice-list-dense table.table th.col-issue,
+.invoice-list-dense table.table td.col-issue {
+  width: 92px !important;
+  max-width: 92px !important;
+  white-space: nowrap;
+}
+
+.invoice-list-dense table.table th.col-amount,
+.invoice-list-dense table.table td.col-amount {
+  width: 105px !important;
+  max-width: 105px !important;
+  white-space: nowrap;
+}
+
+.invoice-list-dense table.table th:nth-child(10),
+.invoice-list-dense table.table td.actions-cell {
+  width: 155px !important;
+  max-width: 155px !important;
+  white-space: nowrap;
+}
+
+.invoice-actions,
+.invoice-list-dense .actions-wrap {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 3px !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.invoice-actions .btn,
+.invoice-list-dense .actions-wrap .btn {
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  font-size: .75rem !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0 !important;
+  white-space: nowrap;
+}
+
+.invoice-list-dense .actions-wrap .btn i {
+  font-size: .75rem !important;
+  margin: 0 !important;
+}
+
+@media (max-width: 575.98px) {
+  .page-header.invoice-page-compact {
+    display: block !important;
+    width: 100%;
+  }
+
+  .invoice-page-compact .invoice-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    gap: .32rem !important;
+    width: 100%;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 0 .45rem !important;
+  }
+
+  .invoice-page-compact .invoice-header-actions > * {
+    grid-row: auto !important;
+    grid-column: auto !important;
+    min-width: 0;
+    max-width: none !important;
+  }
+
+  .invoice-page-compact .invoice-header-actions .export-group,
+  .invoice-page-compact .invoice-header-actions .btn-group {
+    width: 100%;
+  }
+
+  .invoice-page-compact .invoice-header-actions .btn,
+  .invoice-page-compact .invoice-header-actions .dropdown-toggle,
+  .invoice-page-compact .invoice-header-actions .input-group-text,
+  .invoice-page-compact .invoice-header-actions input[type="month"],
+  .invoice-page-compact .invoice-header-actions button[type="submit"] {
+    width: 100%;
+    min-height: 30px;
+    height: auto !important;
+    font-size: .68rem !important;
+    padding: .28rem .38rem !important;
+    line-height: 1.1 !important;
+    white-space: nowrap;
+  }
+
+  .invoice-page-compact .invoice-header-actions .btn-label {
+    display: inline !important;
+  }
+
+  .invoice-page-compact .invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+  }
+
+  .invoice-page-compact .invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto;
+    gap: .25rem !important;
+    width: 100%;
+    max-width: none !important;
+  }
+
+  .invoice-list-dense table.table {
+    font-size: .68rem !important;
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .invoice-list-dense table.table th,
+  .invoice-list-dense table.table td {
+    padding: .18rem .22rem !important;
+    line-height: 1.1 !important;
+    vertical-align: middle;
+  }
+
+  .invoice-list-dense table.table th.col-sn,
+  .invoice-list-dense table.table td.col-sn {
+    width: 28px !important;
+    max-width: 28px !important;
+  }
+
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2),
+  .invoice-list-dense table.table th.col-invno,
+  .invoice-list-dense table.table td.col-invno,
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td.tenant-cell,
+  .invoice-list-dense table.table th.col-issue,
+  .invoice-list-dense table.table td.col-issue,
+  .invoice-list-dense table.table th.col-due,
+  .invoice-list-dense table.table td.col-due,
+  .invoice-list-dense .action-edit,
+  .invoice-list-dense .btn-edit {
+    display: none !important;
+  }
+
+  .invoice-list-dense table.table th.col-propunit,
+  .invoice-list-dense table.table td.col-propunit {
+    width: 92px !important;
+    max-width: 92px !important;
+    white-space: normal !important;
+    overflow: hidden;
+  }
+
+  .invoice-list-dense table.table th.col-desc,
+  .invoice-list-dense table.table td.col-desc {
+    display: table-cell !important;
+    width: 92px !important;
+    max-width: 92px !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow: hidden;
+  }
+
+  .invoice-list-dense table.table td.col-desc .text-truncate {
+    max-width: 100% !important;
+  }
+
+  .invoice-list-dense table.table th.col-amount,
+  .invoice-list-dense table.table td.col-amount {
+    width: 62px !important;
+    max-width: 62px !important;
+    white-space: nowrap;
+  }
+
+  .invoice-list-dense table.table th:nth-child(10),
+  .invoice-list-dense table.table td.actions-cell {
+    width: 62px !important;
+    max-width: 62px !important;
+    white-space: normal !important;
+    padding-left: .12rem !important;
+    padding-right: .12rem !important;
+  }
+
+  .invoice-list-dense .mobile-subtext {
+    display: block;
+    font-size: .68rem;
+    color: #6c757d;
+    line-height: 1.1;
+    margin-top: 1px;
+  }
+
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap {
+    display: grid !important;
+    grid-template-columns: repeat(2, 24px) !important;
+    gap: 2px !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-items: center !important;
+    width: 50px !important;
+    margin: 0 auto !important;
+    white-space: normal !important;
+  }
+
+  .invoice-actions .btn,
+  .invoice-list-dense .actions-wrap .btn {
+    width: 24px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    padding: 0 !important;
+    font-size: .68rem !important;
+    margin: 0 !important;
+  }
+
+  .invoice-list-dense .actions-wrap .btn i {
+    font-size: .68rem !important;
+  }
+}
+</style>
+
 
 {% endblock %}
 
@@ -1401,6 +1668,78 @@ document.addEventListener('DOMContentLoaded', () => {
   document
     .querySelectorAll('.invoice-list-dense table.table')
     .forEach(t => t.classList.add('table-compact'));
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.invoice-list-dense table.table').forEach(table => {
+    table.querySelectorAll('thead th').forEach((th, index) => {
+      if (index === 1) th.classList.add('col-check');
+      if (index === 4) th.classList.add('col-tenant');
+      if (index === 9) th.classList.add('col-actions');
+    });
+
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const propertyCell = row.querySelector('td.col-propunit');
+      const tenantCell = row.querySelector('td.tenant-cell');
+      const descCell = row.querySelector('td.col-desc');
+      const issueCell = row.querySelector('td.col-issue');
+      const actionsCell = row.querySelector('td.actions-cell');
+
+      if (propertyCell && tenantCell && !propertyCell.querySelector('.mobile-tenant')) {
+        const tenantText = tenantCell.textContent.trim();
+        if (tenantText) {
+          const tenantSubtext = document.createElement('span');
+          tenantSubtext.className = 'mobile-subtext mobile-tenant';
+          tenantSubtext.textContent = tenantText;
+          propertyCell.appendChild(tenantSubtext);
+        }
+      }
+
+      if (descCell && issueCell && !descCell.querySelector('.mobile-issue-date')) {
+        const issueText = issueCell.textContent.trim();
+        if (issueText) {
+          const issueSubtext = document.createElement('span');
+          issueSubtext.className = 'mobile-subtext mobile-issue-date';
+          issueSubtext.textContent = `Issue: ${issueText}`;
+          descCell.appendChild(issueSubtext);
+        }
+      }
+
+      if (actionsCell) {
+        actionsCell.classList.add('col-actions');
+        actionsCell.querySelectorAll('.actions-wrap').forEach(wrap => {
+          wrap.classList.add('invoice-actions');
+        });
+        actionsCell.querySelectorAll('.btn-edit').forEach(btn => {
+          btn.classList.add('action-edit');
+        });
+      }
+    });
+  });
+
+  const mobileLabels = [
+    ['.invoice-header-actions a[href*="invoice_create"] .btn-label', ' New'],
+    ['.invoice-header-actions a[href*="generate"] .btn-label', ' Generate'],
+    ['.invoice-header-actions form[action*="apply_late_fees"] .btn-label', ' Late Fees'],
+    ['.invoice-header-actions a[href*="recurring"] .btn-label', ' Recurring'],
+    ['.invoice-header-actions a[href*="waterbill"] .btn-label', ' Water'],
+    ['.invoice-header-actions a[href*="category"] .btn-label', ' Category'],
+  ];
+
+  const applyMobileLabels = () => {
+    const useMobile = window.matchMedia('(max-width: 575.98px)').matches;
+    mobileLabels.forEach(([selector, mobileText]) => {
+      document.querySelectorAll(selector).forEach(label => {
+        if (!label.dataset.fullLabel) label.dataset.fullLabel = label.textContent;
+        label.textContent = useMobile ? mobileText : label.dataset.fullLabel;
+      });
+    });
+  };
+
+  applyMobileLabels();
+  window.addEventListener('resize', applyMobileLabels);
 });
 </script>
 

@@ -13,6 +13,14 @@ from .views import (
 from .views import TenantListView, tenant_ajax_update
 from .api import TenantLeasesAPI
 
+# Import notification views directly from notifications app
+from notifications.views import (
+    NotificationCreateView,
+    notification_list,
+    notification_detail
+)
+from notifications.views import NotificationCreateView
+
 app_name = 'tenants'
 
 urlpatterns = [
@@ -58,6 +66,11 @@ urlpatterns = [
     path('api/tenants/<int:pk>/leases/',
          TenantLeasesAPI.as_view(), name='tenant_leases_api'),
 
+    # Notification URLs (using direct imports)
+    path('create/', NotificationCreateView.as_view(), name='create'),
+    path('notifications/', notification_list, name='notification_list'),
+    path('notifications/<int:pk>/', notification_detail,
+         name='notification_detail'),
     path('payments/tenant-search/', views.tenant_search, name='tenant_search'),
 
     path('ajax/update/', tenant_ajax_update, name='tenant_ajax_update'),

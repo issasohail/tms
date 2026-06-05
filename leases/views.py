@@ -2760,6 +2760,66 @@ def generate_lease_agreement(request, lease_id):
     return response
 
 
+def _edit_clause_filter_context(request, current_lease):
+    property_id = request.GET.get("property") or ""
+    unit_id = request.GET.get("unit") or ""
+    tenant_id = request.GET.get("tenant") or ""
+    lease_status = request.GET.get("lease_status") or "active"
+    today = timezone.localdate()
+
+    units_qs = Unit.objects.select_related("property").order_by(
+        "property__property_name", "unit_number"
+    )
+    if property_id:
+        units_qs = units_qs.filter(property_id=property_id)
+
+    leases_qs = Lease.objects.select_related("tenant", "unit", "unit__property")
+    if property_id:
+        leases_qs = leases_qs.filter(unit__property_id=property_id)
+    if unit_id:
+        leases_qs = leases_qs.filter(unit_id=unit_id)
+    if tenant_id:
+        leases_qs = leases_qs.filter(tenant_id=tenant_id)
+    if lease_status != "all":
+        leases_qs = leases_qs.filter(
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+    leases_qs = leases_qs.order_by(
+        "tenant__first_name",
+        "tenant__last_name",
+        "unit__property__property_name",
+        "unit__unit_number",
+    )
+
+    lease_choices = []
+    for lease in leases_qs[:300]:
+        tenant_name = lease.tenant.get_full_name()
+        prop_name = lease.unit.property.property_name if lease.unit_id else ""
+        unit_number = lease.unit.unit_number if lease.unit_id else ""
+        status = lease.get_status_display()
+        lease_choices.append(
+            {
+                "id": lease.pk,
+                "url": reverse("leases:edit_clauses", kwargs={"pk": lease.pk}),
+                "label": f"{tenant_name} | {prop_name} | {unit_number} | {status}",
+            }
+        )
+
+    return {
+        "filter_properties": Property.objects.order_by("property_name"),
+        "filter_units": units_qs,
+        "filter_tenants": Tenant.objects.order_by("first_name", "last_name"),
+        "filter_lease_choices": lease_choices,
+        "filter_property": property_id,
+        "filter_unit": unit_id,
+        "filter_tenant": tenant_id,
+        "filter_lease_status": lease_status,
+        "filter_current_lease": str(current_lease.pk),
+    }
+
+
 @require_http_methods(["GET", "POST"])
 def edit_clauses(request, pk):
     from copy import copy
@@ -2771,6 +2831,10 @@ def edit_clauses(request, pk):
     )
 
     lease = get_object_or_404(Lease, pk=pk)
+    selected_lease_id = request.GET.get("lease_select")
+    if selected_lease_id and str(selected_lease_id) != str(lease.pk):
+        return redirect("leases:edit_clauses", pk=selected_lease_id)
+
     ensure_original_history(
         lease,
         user=request.user if request.user.is_authenticated else None,
@@ -2880,6 +2944,7 @@ def edit_clauses(request, pk):
             "clauses": clauses,
             "agreement_date": history.agreement_date or history.start_date,
             "placeholders": _active_agreement_placeholders(),
+            **_edit_clause_filter_context(request, lease),
         },
     )
 

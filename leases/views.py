@@ -2314,10 +2314,13 @@ def lease_ledger_pdf(request, lease_id):
             t["balance"] = balance
             t["display_amount"] = abs(t["amount"])
             t["is_credit"] = t["amount"] > 0
+        for index, transaction_row in enumerate(transactions, start=1):
+            transaction_row["serial_no"] = index
 
         # Prepare transaction columns
-        if len(transactions) > 25:
-            split_at = ceil(len(transactions) / 2)
+        first_column_limit = 20
+        if len(transactions) > first_column_limit:
+            split_at = first_column_limit
             transaction_columns = [transactions[:split_at], transactions[split_at:]]
         else:
             transaction_columns = [transactions]

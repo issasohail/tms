@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ owner_label }} Photos{% endblock %}
+{% block title %}{{ media_page_title|default:owner_label }}{% endblock %}
 
 {% block content %}
 <style>
@@ -26,7 +26,31 @@
     user-select: none;
   }
   .description-view {
-    min-height: 2.2rem;
+    min-height: 2.25rem;
+    cursor: text;
+    white-space: pre-wrap;
+  }
+  .description-view.text-muted {
+    font-style: italic;
+  }
+  .description-input {
+    min-height: 2.25rem;
+    resize: vertical;
+  }
+  .description-input.is-saving {
+    background: #fff8e1;
+  }
+  .description-input.is-saved {
+    background: #ecfdf3;
+  }
+  .description-input.is-error {
+    border-color: #dc3545;
+  }
+  .sort-input {
+    display: none;
+  }
+  .sort-status {
+    min-height: 1rem;
   }
 </style>
 
@@ -108,23 +132,19 @@
                 <div class="small fw-semibold text-truncate" title="{{ media.display_filename }}">{{ forloop.counter|stringformat:"02d" }}. {{ media.display_filename }}</div>
                 <div class="d-flex align-items-center gap-2 mt-1">
                     <div class="small text-muted flex-grow-1">{{ media.uploaded_at|date:"Y-m-d H:i" }}</div>
-                    <span class="small text-muted media-drag-handle" title="Drag to sort">Sort</span>
+                    <span class="small text-muted media-drag-handle" title="Drag photo to sort">Drag</span>
                     <input type="number" class="form-control form-control-sm sort-input" value="{{ media.sort_order }}" min="1" inputmode="numeric" style="width:4.5rem;">
                 </div>
                 {% if update_url_name %}
                     <div class="mt-2 description-box" data-update-url="{% url update_url_name owner.pk media.pk %}">
-                        <div class="d-flex justify-content-end mb-1">
-                            <button type="button" class="btn btn-link btn-sm p-0 edit-description">Edit</button>
-                        </div>
-                        <div class="small description-view">{{ media.description }}</div>
-                        <form method="post" action="{% url update_url_name owner.pk media.pk %}" class="description-form mt-2 d-none">
-                            {% csrf_token %}
-                            <textarea name="description" class="form-control form-control-sm" rows="2" maxlength="300" placeholder="Description">{{ media.description }}</textarea>
-                            <div class="d-flex gap-2 mt-2">
-                                <button type="submit" class="btn btn-outline-primary btn-sm">Save</button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm cancel-description">Cancel</button>
-                            </div>
-                        </form>
+                        <div class="small description-view {% if not media.description %}text-muted{% endif %}"
+                             title="Click to edit">{{ media.description|default:"No Description" }}</div>
+                        <textarea name="description"
+                                  class="form-control form-control-sm description-input d-none"
+                                  rows="2"
+                                  maxlength="300"
+                                  placeholder="Description">{{ media.description }}</textarea>
+                        <div class="small text-muted mt-1 description-status"></div>
                     </div>
                 {% else %}
                     <div class="small text-muted mt-2">{{ media.description }}</div>
@@ -150,9 +170,11 @@
     </div>
     {% endfor %}
 </div>
+<div class="small text-muted mt-2 sort-status" id="media-sort-status"></div>
 
 <script>
 (() => {
+  document.title = '{{ media_page_title|default:owner_label|escapejs }}';
   const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
   const grid = document.getElementById('media-grid');
   const sortUrl = grid?.dataset.sortUrl;
@@ -165,6 +187,26 @@
 
   if (grid && sortUrl) {
     let dragged = null;
+    const sortStatus = document.getElementById('media-sort-status');
+    const setSortStatus = message => {
+      if (!sortStatus) return;
+      sortStatus.textContent = message || '';
+      if (message) setTimeout(() => {
+        if (sortStatus.textContent === message) sortStatus.textContent = '';
+      }, 1600);
+    };
+    const saveOrder = () => {
+      const order = [...grid.querySelectorAll('.media-item')].map(item => item.dataset.mediaId);
+      syncSortInputs();
+      setSortStatus('Saving order...');
+      postJson(sortUrl, {order})
+        .then(response => response.json())
+        .then(data => {
+          if (!data.success) throw new Error(data.error || 'Could not save order.');
+          setSortStatus('Order saved.');
+        })
+        .catch(error => setSortStatus(error.message || 'Could not save order.'));
+    };
     const syncSortInputs = () => {
       grid.querySelectorAll('.media-item').forEach((item, index) => {
         const input = item.querySelector('.sort-input');
@@ -179,9 +221,7 @@
       card.addEventListener('dragend', () => {
         card.classList.remove('dragging');
         dragged = null;
-        const order = [...grid.querySelectorAll('.media-item')].map(item => item.dataset.mediaId);
-        syncSortInputs();
-        postJson(sortUrl, {order}).catch(() => {});
+        saveOrder();
       });
     });
     grid.addEventListener('dragover', event => {
@@ -202,35 +242,81 @@
 
   document.querySelectorAll('.description-box').forEach(box => {
     const view = box.querySelector('.description-view');
-    const form = box.querySelector('.description-form');
-    box.querySelector('.edit-description')?.addEventListener('click', () => {
-      form.classList.remove('d-none');
-      view.classList.add('d-none');
-      form.querySelector('textarea')?.focus();
-    });
-    box.querySelector('.cancel-description')?.addEventListener('click', () => {
-      form.classList.add('d-none');
-      view.classList.remove('d-none');
-    });
-    form?.addEventListener('submit', event => {
-      event.preventDefault();
-      const data = new FormData(form);
-      fetch(form.action, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}, body: data})
+    const input = box.querySelector('.description-input');
+    const status = box.querySelector('.description-status');
+    if (!input) return;
+    input.dataset.savedValue = input.value;
+    const showText = value => {
+      const text = (value || '').trim();
+      if (view) {
+        view.textContent = text || 'No Description';
+        view.classList.toggle('text-muted', !text);
+        view.classList.remove('d-none');
+      }
+      input.classList.add('d-none');
+    };
+    const showInput = () => {
+      if (view) view.classList.add('d-none');
+      input.classList.remove('d-none');
+      input.focus();
+      input.select();
+    };
+    const setStatus = (message, className = '') => {
+      if (status) status.textContent = message || '';
+      input.classList.remove('is-saving', 'is-saved', 'is-error');
+      if (className) input.classList.add(className);
+      if (message && className === 'is-saved') {
+        setTimeout(() => {
+          if (status?.textContent === message) status.textContent = '';
+          input.classList.remove('is-saved');
+        }, 1200);
+      }
+    };
+    const saveDescription = () => {
+      if (input.value === input.dataset.savedValue) {
+        showText(input.value);
+        return;
+      }
+      const data = new FormData();
+      data.append('description', input.value.trim());
+      setStatus('Saving...', 'is-saving');
+      fetch(box.dataset.updateUrl, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+        body: data
+      })
         .then(response => response.json())
         .then(data => {
-          if (!data.success) return;
-          view.textContent = data.description || '';
-          form.classList.add('d-none');
-          view.classList.remove('d-none');
+          if (!data.success) throw new Error(data.error || 'Could not save description.');
+          input.value = data.description === 'No description' ? '' : (data.description || '');
+          input.dataset.savedValue = input.value;
+          showText(input.value);
+          setStatus('Saved.', 'is-saved');
         })
-        .catch(() => form.submit());
+        .catch(error => {
+          showText(input.dataset.savedValue);
+          setStatus(error.message || 'Could not save.', 'is-error');
+        });
+    };
+    view?.addEventListener('click', showInput);
+    input.addEventListener('blur', saveDescription);
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        input.value = input.dataset.savedValue;
+        showText(input.value);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        input.blur();
+      }
     });
   });
 
   document.querySelectorAll('.media-delete-form').forEach(form => {
     form.addEventListener('submit', event => {
       event.preventDefault();
-      if (!confirm('Delete this media from the active list?')) return;
       const item = form.closest('.media-item');
       const data = new FormData(form);
       fetch(form.action, {

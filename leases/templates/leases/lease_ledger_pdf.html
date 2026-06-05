@@ -15,7 +15,7 @@
         }
         body {
             font-family: Arial, sans-serif;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.35;
         }
         .header {
@@ -59,6 +59,7 @@
         }
         table {
             width: 100%;
+            table-layout: fixed;
             border-collapse: collapse;
             margin: 2px 0;
             border: 1px solid #ddd;
@@ -97,28 +98,41 @@
             color: #666;
         }
         .serial-no {
-            width: 5%;
+            width: 4%;
             text-align: center;
         }
         .amount-column {
             text-align: right;
-            width: 12%;
+            width: 19%;
+            white-space: nowrap;
         }
         .balance-column {
             text-align: right;
-            width: 12%;
+            width: 19%;
+            white-space: nowrap;
         }
         .date-column {
             width: 15%;
+            white-space: nowrap;
         }
         .type-column {
-            width: 15%;
+            width: 12%;
+            white-space: nowrap;
         }
         .description-column {
-            width: 41%;
+            width: 31%;
         }
         .description-cell {
-            max-width: 220px;
+            width: 31%;
+            max-width: 31%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .description-text {
+            display: block;
+            width: 100%;
+            max-width: 100%;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -127,20 +141,12 @@
             color: #0d6efd;
             text-decoration: none;
         }
-        .generated-date {
-            font-size: 10px;
-            text-align: right;
-            margin-bottom: 5px;
-        }
         .page-break {
             page-break-after: always;
         }
     </style>
 </head>
 <body>
-    <div class="generated-date">Generated on: {{ generated_on|date:"Y-m-d" }}
-</div>
-    
     <div class="header">
         <h2 class="tenant-header">{{ tenant.get_full_name }} — {{ lease.unit.unit_number }}</h2>
         <div class="header-info">
@@ -165,6 +171,14 @@
             {% for column in transaction_columns %}
             <div class="transaction-column">
                 <table>
+                    <colgroup>
+                        <col class="serial-no">
+                        <col class="date-column">
+                        <col class="type-column">
+                        <col class="description-column">
+                        <col class="amount-column">
+                        <col class="balance-column">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th class="serial-no">#</th>
@@ -178,15 +192,17 @@
                     <tbody>
                         {% for t in column %}
                         <tr>
-                            <td class="serial-no">{{ forloop.counter }}</td>
+                            <td class="serial-no">{{ t.serial_no }}</td>
                             <td>{{ t.date|date:"m/d/Y" }}</td>
                             <td>{{ t.type }}</td>
                             <td class="description-cell">
-                                {% if t.url %}
-                                    <a href="{{ t.url }}">{{ t.description|default:"Invoice" }}</a>
-                                {% else %}
-                                    {{ t.description }}
-                                {% endif %}
+                                <span class="description-text">
+                                    {% if t.url %}
+                                        <a href="{{ t.url }}">{{ t.description|default:"Invoice" }}</a>
+                                    {% else %}
+                                        {{ t.description }}
+                                    {% endif %}
+                                </span>
                             </td>
                             <td class="amount-column {% if t.is_credit %}positive{% else %}negative{% endif %}">
                                 {% if t.is_credit %}Rs. {{ t.display_amount|floatformat:0|intcomma }}{% else %}-Rs. {{ t.display_amount|floatformat:0|intcomma }}{% endif %}

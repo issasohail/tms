@@ -1162,6 +1162,7 @@ def unit_media_page(request, pk):
         {
             "owner": unit,
             "owner_label": f"Unit {unit.unit_number}",
+            "media_page_title": f"{unit} Photos",
             "parent_label": unit.property.property_name,
             "media_files": media_files,
             "public_token": _sign_media_token("unit", unit.pk),
@@ -1198,6 +1199,7 @@ def property_media_page(request, pk):
         {
             "owner": property_obj,
             "owner_label": property_obj.property_name,
+            "media_page_title": f"{property_obj.property_name} Photos",
             "parent_label": "Property / Building",
             "media_files": media_files,
             "public_token": _sign_media_token("property", property_obj.pk),
@@ -1263,6 +1265,8 @@ def property_media_update(request, pk, media_id):
 @require_POST
 def unit_media_sort(request, pk):
     unit = get_object_or_404(Unit, pk=pk)
+    if not _can_manage_media(request.user, unit):
+        return _media_permission_denied()
     data = json.loads(request.body.decode("utf-8") or "{}")
     order = data.get("order") or []
     sort_value = data.get("sort_order")
@@ -1283,6 +1287,8 @@ def unit_media_sort(request, pk):
 @require_POST
 def property_media_sort(request, pk):
     property_obj = get_object_or_404(Property, pk=pk)
+    if not _can_manage_media(request.user, property_obj):
+        return _media_permission_denied()
     data = json.loads(request.body.decode("utf-8") or "{}")
     order = data.get("order") or []
     sort_value = data.get("sort_order")

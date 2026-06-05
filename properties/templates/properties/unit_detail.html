@@ -535,7 +535,7 @@
                         </div>
                         <div class="small text-muted mt-1 unit-photo-description"
                              title="Click to edit"
-                             data-update-url="{% url 'properties:unit_media_update' unit.pk media.pk %}">{{ media.description|default:"No description" }}</div>
+                             data-update-url="{% url 'properties:unit_media_update' unit.pk media.pk %}">{{ media.description|default:"No Description" }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -604,7 +604,7 @@
     view.addEventListener('click', () => {
       if (view.dataset.editing === '1') return;
       view.dataset.editing = '1';
-      const original = view.textContent.trim() === 'No description' ? '' : view.textContent.trim();
+      const original = view.textContent.trim() === 'No Description' ? '' : view.textContent.trim();
       const input = document.createElement('textarea');
       input.className = 'form-control form-control-sm mt-1';
       input.rows = 2;
@@ -623,12 +623,13 @@
         })
           .then(response => response.json())
           .then(data => {
-            view.textContent = data.success ? (data.description || 'No description') : original || 'No description';
+            const savedDescription = data.description === 'No description' ? '' : (data.description || '');
+            view.textContent = data.success ? (savedDescription || 'No Description') : original || 'No Description';
             input.replaceWith(view);
             view.dataset.editing = '0';
           })
           .catch(() => {
-            view.textContent = original || 'No description';
+            view.textContent = original || 'No Description';
             input.replaceWith(view);
             view.dataset.editing = '0';
           });
@@ -638,7 +639,7 @@
       input.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
           event.preventDefault();
-          view.textContent = original || 'No description';
+          view.textContent = original || 'No Description';
           input.replaceWith(view);
           view.dataset.editing = '0';
         }
@@ -648,7 +649,6 @@
 
   document.querySelectorAll('.unit-photo-delete').forEach(button => {
     button.addEventListener('click', () => {
-      if (!confirm('Delete this media from the active list?')) return;
       const data = new FormData();
       data.append('confirm_delete', 'yes');
       fetch(button.dataset.deleteUrl, {

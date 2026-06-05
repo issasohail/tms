@@ -1,7 +1,7 @@
 # payments/forms.py
 from django import forms
 from django.apps import apps
-from .models import Payment
+from .models import Payment, PaymentAllocation
 from properties.models import Property, Unit
 from tenants.models import Tenant
 from django.db.models import Case, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When
@@ -255,13 +255,6 @@ class PaymentForm(forms.ModelForm):
 
         return lease_qs.order_by('tenant__first_name', 'tenant__last_name')
 
-from django import forms
-from payments.models import PaymentAllocation
-
-from decimal import Decimal
-from django import forms
-from payments.models import PaymentAllocation
-
 class PaymentAllocationForm(forms.ModelForm):
     MODE_CHOICES = [
         ("LEASE", "Lease"),
@@ -280,12 +273,13 @@ class PaymentAllocationForm(forms.ModelForm):
         model = PaymentAllocation
         fields = ["allocation_mode", "lease_amount", "security_amount", "security_type"]
         widgets = {
-            "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
-            "security_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
+            "lease_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
+            "security_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
             "security_type": forms.Select(attrs={"class": "form-select"}),
         }
 
     def __init__(self, *args, **kwargs):
+        self.payment_total = kwargs.pop("payment_total", None)
         super().__init__(*args, **kwargs)
 
         # When editing an existing allocation, pick the correct mode so JS doesn't overwrite values
@@ -305,46 +299,36 @@ class PaymentAllocationForm(forms.ModelForm):
             # If the field already has initial/posted value, don't fight it; but for GET edit this fixes display.
             if "allocation_mode" not in self.data:
                 self.initial["allocation_mode"] = mode
-
-    MODE_CHOICES = [
-            ("LEASE", "Lease"),
-            ("SECURITY", "Security"),
-            ("SPLIT", "Split"),
-        ]
-    allocation_mode = forms.ChoiceField(
-            choices=MODE_CHOICES,
-            required=False,
-            initial="LEASE",
-            widget=forms.Select(attrs={"class": "form-select"})
-        )
-    class Meta:
-
-        model = PaymentAllocation
-        fields = ["allocation_mode","lease_amount", "security_amount", "security_type"]
-        widgets = {
-           
-            "lease_amount": forms.NumberInput(attrs={ "class": "form-control"}),
-            "security_amount": forms.NumberInput(attrs={ "class": "form-control"}),
-            "security_type": forms.Select(attrs={"class": "form-select"}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # If editing an existing allocation, set mode based on stored split
-        inst = getattr(self, "instance", None)
-        if inst and getattr(inst, "pk", None):
-            la = inst.lease_amount or Decimal("0.00")
-            sa = inst.security_amount or Decimal("0.00")
-
-            if la > 0 and sa > 0:
-                mode = "SPLIT"
-            elif sa > 0 and la == 0:
-                mode = "SECURITY"
-            else:
-                mode = "LEASE"
-
-            self.fields["allocation_mode"].initial = mode
         else:
-            # create default
             self.fields["allocation_mode"].initial = "LEASE"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        mode = (cleaned_data.get("allocation_mode") or "LEASE").upper()
+        lease_amount = cleaned_data.get("lease_amount") or Decimal("0.00")
+        security_amount = cleaned_data.get("security_amount") or Decimal("0.00")
+
+        if lease_amount < 0:
+            self.add_error("lease_amount", "Lease amount cannot be negative.")
+        if security_amount < 0:
+            self.add_error("security_amount", "Security amount cannot be negative.")
+
+        payment_total = self.payment_total
+        if payment_total is not None:
+            payment_total = Decimal(payment_total or "0.00")
+            if mode == "LEASE":
+                lease_amount = payment_total
+                security_amount = Decimal("0.00")
+            elif mode == "SECURITY":
+                lease_amount = Decimal("0.00")
+                security_amount = payment_total
+            elif lease_amount + security_amount != payment_total:
+                raise forms.ValidationError(
+                    f"Allocation total ({lease_amount + security_amount}) must equal Payment amount ({payment_total})."
+                )
+
+        cleaned_data["allocation_mode"] = mode
+        cleaned_data["lease_amount"] = lease_amount
+        cleaned_data["security_amount"] = security_amount
+        cleaned_data["security_type"] = (cleaned_data.get("security_type") or "PAYMENT").upper()
+        return cleaned_data

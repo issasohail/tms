@@ -246,14 +246,7 @@ class AllocationUpdateView(UpdateView):
         context["today"] = timezone.now().date()
         context["nocache"] = timezone.now().timestamp()
 
-        # IMPORTANT:
-        # Your payment_form.html uses BOTH `form` (payment form) and `allocation_form`.
-        # On allocation edit, `form` is PaymentAllocationForm, so keep `allocation_form` too:
-        context["allocation_form"] = context["form"]
-
-        # Provide a "payment-like" object for template blocks that refer to payment fields
-        # (optional: only if your template accesses form.instance.payment)
-        context["payment"] = getattr(self.object, "payment", None)
+        context["payment"] = self.object
 
         return context
 
@@ -265,22 +258,28 @@ class AllocationUpdateView(UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        payment = form.save()
+        payment = form.save(commit=False)
 
-        alloc_form = PaymentAllocationForm(self.request.POST, instance=self.allocation)
+        alloc_form = PaymentAllocationForm(
+            self.request.POST,
+            instance=self.allocation,
+            payment_total=payment.amount,
+        )
         if not alloc_form.is_valid():
+            form.add_error(None, alloc_form.errors.as_text())
             return self.form_invalid(form)
 
-        alloc = alloc_form.save(commit=False)
+        payment.save()
 
-        rebuild_allocation(
+        alloc = rebuild_allocation(
             payment=payment,
-            lease_amount=alloc.lease_amount,
-            security_amount=alloc.security_amount,
-            security_type=alloc.security_type,
+            lease_amount=alloc_form.cleaned_data["lease_amount"],
+            security_amount=alloc_form.cleaned_data["security_amount"],
+            security_type=alloc_form.cleaned_data["security_type"],
             user=self.request.user,
             reason="Edited allocation",
         )
+        self.allocation = alloc
 
         messages.success(self.request, "Payment + Allocation updated successfully.")
         return redirect(self.get_success_url())
@@ -348,7 +347,11 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
         # allocation form prefilled from allocation
         if self.request.method == "POST":
-            ctx["allocation_form"] = PaymentAllocationForm(self.request.POST, instance=self.allocation)
+            ctx["allocation_form"] = PaymentAllocationForm(
+                self.request.POST,
+                instance=self.allocation,
+                payment_total=_dec(self.request.POST.get("amount"), "0.00"),
+            )
         else:
             ctx["allocation_form"] = PaymentAllocationForm(instance=self.allocation)
 
@@ -384,32 +387,28 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        payment = form.save()
-        alloc_form = PaymentAllocationForm(self.request.POST, instance=self.allocation)
+        payment = form.save(commit=False)
+        alloc_form = PaymentAllocationForm(
+            self.request.POST,
+            instance=self.allocation,
+            payment_total=payment.amount,
+        )
 
         if not alloc_form.is_valid():
+            form.add_error(None, alloc_form.errors.as_text())
             return self.form_invalid(form)
 
-        alloc = alloc_form.save(commit=False)
-        lease_amt = _dec(self.request.POST.get("lease_amount"), "0.00")
-        sec_amt   = _dec(self.request.POST.get("security_amount"), "0.00")
-        total = lease_amt + sec_amt
+        payment.save()
 
-        if total != payment.amount:
-            form.add_error(None, f"Allocation total ({total}) must equal Payment amount ({payment.amount}).")
-            return self.form_invalid(form)
-
-        alloc.updated_by = self.request.user
-        alloc.save()
-
-        rebuild_allocation(
+        alloc = rebuild_allocation(
             payment=payment,
-            lease_amount=lease_amt,
-            security_amount=sec_amt,
-            security_type=alloc.security_type,
+            lease_amount=alloc_form.cleaned_data["lease_amount"],
+            security_amount=alloc_form.cleaned_data["security_amount"],
+            security_type=alloc_form.cleaned_data["security_type"],
             user=self.request.user,
             reason="Edited via AllocationEditView",
         )
+        self.allocation = alloc
 
         messages.success(self.request, "Allocation updated successfully.")
         return redirect(self.get_success_url())
@@ -522,6 +521,9 @@ def allocation_update_api(request):
 
     payment = alloc.payment
     total = lease_amt + sec_amt
+
+    if lease_amt < 0 or sec_amt < 0:
+        return JsonResponse({"error": "Allocation amounts cannot be negative."}, status=400)
 
     if total != payment.amount:
         return JsonResponse({
@@ -683,6 +685,9 @@ def allocation_update_api(request):
 
     # Must equal payment amount
     total = lease_amt + sec_amt
+    if lease_amt < 0 or sec_amt < 0:
+        return JsonResponse({"ok": False, "error": "Allocation amounts cannot be negative."}, status=400)
+
     if total != (payment.amount or Decimal("0.00")):
         return JsonResponse({"ok": False, "error": f"Split total {total} must equal payment amount {payment.amount}."}, status=400)
 

@@ -998,6 +998,9 @@ def _export_media_pdf(
     pagesize = landscape(A4) if photos_per_page == 4 else A4
     pdf = canvas.Canvas(buffer, pagesize=pagesize)
     title = f"{owner_label} Photos"
+    pdf.setTitle(title)
+    pdf.setAuthor("TMS")
+    pdf.setSubject(title)
     link_rows = (
         _media_link_rows(request, owner_kind, owner_pk, media_files)
         if request and owner_kind and owner_pk

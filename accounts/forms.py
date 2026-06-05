@@ -110,6 +110,29 @@ class AccountAccessForm(forms.ModelForm):
         return user
 
 
+class GroupAccessForm(forms.ModelForm):
+    permissions = forms.ModelMultipleChoiceField(
+        queryset=Permission.objects.select_related("content_type").order_by(
+            "content_type__app_label",
+            "content_type__model",
+            "codename",
+        ),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    class Meta:
+        model = Group
+        fields = ("name", "permissions")
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields)
+
+
 def permission_groups():
     perms = (
         Permission.objects

@@ -6,10 +6,18 @@ from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
+from django.db.models import ProtectedError
 from django.views.decorators.http import require_POST
 
-from .forms import LoginForm, AccountCreationForm, AccountChangeForm, AccountAccessForm, permission_groups
+from .forms import (
+    LoginForm,
+    AccountCreationForm,
+    AccountChangeForm,
+    AccountAccessForm,
+    GroupAccessForm,
+    permission_groups,
+)
 
 Account = get_user_model()
 PERMISSION_ACTIONS = [
@@ -126,6 +134,104 @@ def user_access_update(request, pk):
         "selected_permissions": selected_permissions,
         "is_create": False,
     })
+
+
+@login_required
+@require_POST
+def user_access_delete(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage users.")
+        return redirect("dashboard:home")
+    user = get_object_or_404(Account, pk=pk)
+    if user.pk == request.user.pk:
+        messages.error(request, "You cannot delete the account you are currently using.")
+        return redirect("accounts:user_access_list")
+    username = user.username
+    try:
+        user.delete()
+    except ProtectedError:
+        messages.error(request, f"{username} cannot be deleted because related records protect it.")
+    else:
+        messages.success(request, f"Deleted user {username}.")
+    return redirect("accounts:user_access_list")
+
+
+@login_required
+def group_access_list(request):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    groups = (
+        Group.objects
+        .prefetch_related("permissions", "user_set")
+        .order_by("name")
+    )
+    return render(request, "accounts/group_access_list.html", {"groups": groups})
+
+
+def _selected_permission_ids(form, group):
+    if form.is_bound:
+        return {int(pk) for pk in form.data.getlist("permissions") if pk.isdigit()}
+    if group.pk:
+        return set(group.permissions.values_list("id", flat=True))
+    return set()
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def group_access_create(request):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    group = Group()
+    form = GroupAccessForm(request.POST or None, instance=group)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Group created.")
+        return redirect("accounts:group_access_list")
+    return render(request, "accounts/group_access_form.html", {
+        "form": form,
+        "managed_group": group,
+        "permission_groups": permission_groups(),
+        "permission_actions": PERMISSION_ACTIONS,
+        "selected_permissions": _selected_permission_ids(form, group),
+        "is_create": True,
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def group_access_update(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    group = get_object_or_404(Group, pk=pk)
+    form = GroupAccessForm(request.POST or None, instance=group)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Group access updated.")
+        return redirect("accounts:group_access_list")
+    return render(request, "accounts/group_access_form.html", {
+        "form": form,
+        "managed_group": group,
+        "permission_groups": permission_groups(),
+        "permission_actions": PERMISSION_ACTIONS,
+        "selected_permissions": _selected_permission_ids(form, group),
+        "is_create": False,
+    })
+
+
+@login_required
+@require_POST
+def group_access_delete(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    group = get_object_or_404(Group, pk=pk)
+    name = group.name
+    group.delete()
+    messages.success(request, f"Deleted group {name}.")
+    return redirect("accounts:group_access_list")
 
 
 @login_required

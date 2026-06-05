@@ -2318,7 +2318,7 @@ def lease_ledger_pdf(request, lease_id):
             transaction_row["serial_no"] = index
 
         # Prepare transaction columns
-        first_column_limit = 20
+        first_column_limit = 40
         if len(transactions) > first_column_limit:
             split_at = first_column_limit
             transaction_columns = [transactions[:split_at], transactions[split_at:]]

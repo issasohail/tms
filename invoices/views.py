@@ -639,10 +639,27 @@ def public_invoice_detail(request, token):
             "lease__unit__property",
         ).prefetch_related(
             Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
+            "lease__invoices",
+            Prefetch("lease__payments", queryset=Payment.objects.select_related("allocation")),
+            "lease__security_transactions",
         ),
         pk=invoice_id,
     )
     items = list(invoice.items.all())
+    lease = getattr(invoice, "lease", None)
+    if lease:
+        sec_totals = security_deposit_totals(lease)
+        lease_balance = lease.get_balance
+    else:
+        sec_totals = {
+            "required": 0,
+            "paid_in": 0,
+            "refunded": 0,
+            "damages": 0,
+            "balance_to_collect": 0,
+            "currently_held": 0,
+        }
+        lease_balance = Decimal("0.00")
     combined_description = ", ".join(
         part
         for item in items
@@ -665,7 +682,8 @@ def public_invoice_detail(request, token):
             "items": items,
             "combined_description": combined_description,
             "computed_total": sum((item.amount for item in items), Decimal("0.00")),
-            "generated_on": timezone.now(),
+            "lease_balance": lease_balance,
+            "sec_totals": sec_totals,
         },
     )
 

@@ -14,6 +14,7 @@ import re
 from django.core.exceptions import ValidationError
 from django.db import models
 from core.upload_utils import compress_instance_file_field
+from core.utils.text import normalize_title_fields, smart_title
 
 CNIC_DIGITS = re.compile(r'\D+')
 
@@ -33,6 +34,10 @@ class TenantInterestType(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
 
 
 def tenant_photo_upload_to(instance, filename):
@@ -218,6 +223,18 @@ class Tenant(models.Model):
         return (self.monthly_rent or 0) + (self.society_maintenance or 0)
 
     def save(self, *args, **kwargs):
+        normalize_title_fields(self, (
+            "first_name",
+            "last_name",
+            "employer_name",
+            "reference_name_1",
+            "reference_name_2",
+            "nationality",
+            "city",
+            "province",
+            "country",
+            "emergency_contact_name",
+        ))
         for field_name in ("photo", "cnic_front", "cnic_back", "police_verification_document"):
             compress_instance_file_field(self, field_name)
 
@@ -388,6 +405,20 @@ class TenantRegistrationSubmission(models.Model):
         return f"{self.tenant} registration update ({self.status})"
 
     def save(self, *args, **kwargs):
+        for key in (
+            "first_name",
+            "last_name",
+            "employer_name",
+            "reference_name_1",
+            "reference_name_2",
+            "nationality",
+            "city",
+            "province",
+            "country",
+            "emergency_contact_name",
+        ):
+            if key in self.submitted_data:
+                self.submitted_data[key] = smart_title(self.submitted_data[key])
         for field_name in ("photo", "cnic_front", "cnic_back"):
             compress_instance_file_field(self, field_name)
         super().save(*args, **kwargs)

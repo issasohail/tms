@@ -7,6 +7,7 @@ from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 from core.upload_utils import compress_instance_file_field
+from core.utils.text import smart_title
 
 
 MAINTENANCE_FILE_EXTENSIONS = [
@@ -118,6 +119,10 @@ class MaintenanceRequest(models.Model):
 
     def get_absolute_url(self):
         return reverse("maintenance:request_detail", kwargs={"pk": self.pk})
+
+    def save(self, *args, **kwargs):
+        self.title = smart_title(self.title)
+        super().save(*args, **kwargs)
 
 
 class MaintenanceRequestMedia(models.Model):

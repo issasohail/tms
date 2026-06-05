@@ -10,6 +10,7 @@ from tenants.models import Tenant
 from django import forms
 from django.utils import timezone
 from datetime import timedelta
+from core.utils.text import add_auto_titlecase_class
 
 
 from django import forms
@@ -114,6 +115,7 @@ class LeaseForm(forms.ModelForm):
             self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                 property=self.instance.unit.property
             )
+        add_auto_titlecase_class(self.fields)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -216,6 +218,10 @@ class AgreementPlaceholderForm(forms.ModelForm):
             raise forms.ValidationError("Use underscores instead of spaces.")
         return key
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"label", "category"})
+
 
 class WhatsAppTemplateForm(forms.ModelForm):
     class Meta:
@@ -227,6 +233,10 @@ class WhatsAppTemplateForm(forms.ModelForm):
             "body": forms.Textarea(attrs={"rows": 10, "class": "form-control whatsapp-template-body"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"name"})
 
 
 LeaseClauseFormSet = inlineformset_factory(
@@ -351,6 +361,10 @@ class LeaseTemplateForm(forms.ModelForm):
         widgets = {
             'content': forms.Textarea(attrs={'rows': 20}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"name"})
 
 
 # leases/forms.py

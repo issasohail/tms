@@ -3,6 +3,7 @@ from .models import GlobalSettings
 from django import forms
 from .models import GlobalSettings
 from zoneinfo import available_timezones
+from core.utils.text import add_auto_titlecase_class
 
 
 class GlobalSettingsForm(forms.ModelForm):
@@ -65,6 +66,7 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
         self.fields["enable_debug_toolbar"].label = "Enable Django Debug Toolbar (local development only)"
         self.fields["enable_debug_toolbar"].help_text = "Only works when DEBUG=True and host is local. It will not show in production."
+        add_auto_titlecase_class(self.fields, {"site_name"})
 
 
 # core/forms.py
@@ -76,6 +78,10 @@ class PaymentMethodForm(forms.ModelForm):
     class Meta:
         model = PaymentMethod
         fields = ["name", "code", "is_active", "sort_order"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"name"})
 
 
 class BackupSettingsForm(forms.Form):

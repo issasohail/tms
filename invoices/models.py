@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.db.models import Sum
 from properties.models import Property
 from decimal import Decimal
+from core.utils.text import smart_title
 
 
 class Invoice(models.Model):
@@ -121,6 +122,7 @@ class ItemCategory(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
         result = super().save(*args, **kwargs)
         cache.delete("invoices.active_item_categories")
         return result

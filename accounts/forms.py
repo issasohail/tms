@@ -7,6 +7,7 @@ from django.contrib.auth.forms import (
     UserChangeForm,
 )
 from django.contrib.auth.models import Group, Permission
+from core.utils.text import add_auto_titlecase_class
 
 Account = get_user_model()
 
@@ -34,6 +35,10 @@ class AccountCreationForm(UserCreationForm):
         fields = ("username", "email", "first_name",
                   "last_name", "whatsapp_number")
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields)
+
 
 class AccountChangeForm(UserChangeForm):
     # Hide raw password hash field on the profile page
@@ -42,6 +47,10 @@ class AccountChangeForm(UserChangeForm):
     class Meta:
         model = Account
         fields = ("first_name", "last_name", "email", "whatsapp_number")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields)
 
 
 class AccountAccessForm(forms.ModelForm):
@@ -74,6 +83,10 @@ class AccountAccessForm(forms.ModelForm):
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "is_staff": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields)
 
     def clean(self):
         cleaned = super().clean()

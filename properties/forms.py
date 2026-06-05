@@ -8,6 +8,7 @@ from .models import Property, Unit
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Row, Column, Div
 from tenants.models import TenantInterestType
+from core.utils.text import add_auto_titlecase_class
 
 
 def default_interest_type_for_property(property_obj):
@@ -29,6 +30,18 @@ class PropertyForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'rows': 3}),
             'bank_account_details': forms.Textarea(attrs={'rows': 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {
+            "property_name",
+            "owner_name",
+            "owner_father_name",
+            "caretaker_name",
+            "caretaker_father_name",
+            "property_city",
+            "property_state",
+        })
 
 
 # forms.py
@@ -66,6 +79,7 @@ class UnitForm(forms.ModelForm):
         self.fields['interest_type'].label = 'Building Type'
         self.fields['status'].label = 'Unit State'
         self.fields['status'].help_text = 'Occupancy is calculated from current lease history dates.'
+        add_auto_titlecase_class(self.fields)
         if (
             not self.is_bound
             and self.instance

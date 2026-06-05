@@ -1003,6 +1003,25 @@
       el.classList.add("field-label");
     }
   });
+
+  function smartTitle(value) {
+    const keep = new Set(["USA", "UAE", "UK", "USD", "CAD", "EUR", "PKR"]);
+    return (value || "").trim().replace(/\s+/g, " ").replace(/[A-Za-z]+/g, function(word) {
+      const upper = word.toUpperCase();
+      if (keep.has(upper)) return upper;
+      const lower = word.toLowerCase();
+      if (lower.startsWith("mc") && lower.length > 2) {
+        return "Mc" + lower.charAt(2).toUpperCase() + lower.slice(3);
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    });
+  }
+
+  document.addEventListener("blur", function(event) {
+    const el = event.target;
+    if (!el || !el.classList || !el.classList.contains("auto-titlecase")) return;
+    el.value = smartTitle(el.value);
+  }, true);
 })();
 </script>
 </body>

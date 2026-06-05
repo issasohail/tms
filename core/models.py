@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.db import models
+from core.utils.text import smart_title
 
 
 class GlobalSettings(models.Model):
@@ -76,6 +77,7 @@ class GlobalSettings(models.Model):
         return obj
 
     def save(self, *args, **kwargs):
+        self.site_name = smart_title(self.site_name)
         result = super().save(*args, **kwargs)
         cache.delete("core.global_settings")
         return result
@@ -117,3 +119,7 @@ class PaymentMethod(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)

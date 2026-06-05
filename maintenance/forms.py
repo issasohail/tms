@@ -1,6 +1,7 @@
 from django import forms
 
 from .models import MaintenanceRequest, MaintenanceRequestMedia
+from core.utils.text import add_auto_titlecase_class
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -52,6 +53,10 @@ class MaintenanceRequestForm(forms.ModelForm):
             "cost": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0", "step": "0.01"}),
             "admin_notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"title"})
 
 
 class MaintenanceRequestMediaForm(forms.ModelForm):

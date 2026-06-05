@@ -38,6 +38,7 @@ from django.template import Template, Context
 from decimal import Decimal
 from django.db.models import Sum, Case, When, F, DecimalField
 from django.db.models.functions import Coalesce
+from core.utils.text import normalize_title_fields, smart_title
 
 
 def default_lease_terms():
@@ -329,6 +330,7 @@ class Lease(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        normalize_title_fields(self, ("witness1_name", "witness2_name"))
         is_new = self.pk is None
         old_file = None
         if not is_new:
@@ -937,6 +939,7 @@ class LeaseTemplate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
         if self.is_default:
             LeaseTemplate.objects.filter(is_default=True).update(is_default=False)
         super().save(*args, **kwargs)
@@ -1106,6 +1109,10 @@ class LeaseRelationshipType(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
 
 
 class LeaseFamilyMember(models.Model):
@@ -1329,6 +1336,10 @@ class AgreementPlaceholder(models.Model):
     def __str__(self):
         return f"[{self.key}]"
 
+    def save(self, *args, **kwargs):
+        normalize_title_fields(self, ("label", "category"))
+        super().save(*args, **kwargs)
+
 
 class WhatsAppTemplate(models.Model):
     TEMPLATE_TENANT_WELCOME = "tenant_welcome"
@@ -1371,6 +1382,10 @@ class WhatsAppTemplate(models.Model):
     def __str__(self):
         return self.name or self.get_template_type_display()
 
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
+
 
 def lease_document_upload_to(instance, filename):
     ext = os.path.splitext(filename or "")[1].lower() or ".bin"
@@ -1402,6 +1417,10 @@ class LeaseDocumentCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
 
 
 class LeaseDocument(models.Model):

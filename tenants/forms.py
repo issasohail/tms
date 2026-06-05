@@ -15,6 +15,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import F, Value
 from django.db.models.functions import Replace
 from .models import Tenant
+from core.utils.text import add_auto_titlecase_class
 
 CNIC_DIGITS = re.compile(r'\D+')
 
@@ -187,6 +188,7 @@ class TenantForm(forms.ModelForm):
         self.fields['reference_relation_2'].label = "Reference Relation 2"
         if "interested_in" in self.fields:
             self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+        add_auto_titlecase_class(self.fields)
 
 
 class LeaseForm(forms.ModelForm):
@@ -258,6 +260,7 @@ class TenantPublicRegistrationForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+        add_auto_titlecase_class(self.fields)
 
 
 class TenantPreRegistrationLinkForm(forms.Form):
@@ -265,6 +268,10 @@ class TenantPreRegistrationLinkForm(forms.Form):
     phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
     notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields)
 
 
 class TenantRegistrationSubmissionReviewForm(forms.ModelForm):

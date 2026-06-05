@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from PIL import Image, ImageDraw, ImageFont
 from core.upload_utils import compress_instance_file_field
+from core.utils.text import normalize_title_fields, smart_title
 
 
 class ExpenseDistribution(models.Model):
@@ -17,6 +18,10 @@ class ExpenseDistribution(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
 
 
 class Property(models.Model):
@@ -83,6 +88,18 @@ class Property(models.Model):
         parts.append(self.property_zipcode)
 
         return ", ".join(parts)
+
+    def save(self, *args, **kwargs):
+        normalize_title_fields(self, (
+            "property_name",
+            "owner_name",
+            "owner_father_name",
+            "caretaker_name",
+            "caretaker_father_name",
+            "property_city",
+            "property_state",
+        ))
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['property_name']

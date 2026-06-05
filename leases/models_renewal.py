@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from core.utils.text import normalize_title_fields
 
 
 def renewal_file_upload_to(instance, filename):
@@ -145,6 +146,10 @@ class LeaseRenewal(models.Model):
             + (self.water_charges or Decimal("0.00"))
             + (self.internet_charges or Decimal("0.00"))
         )
+
+    def save(self, *args, **kwargs):
+        normalize_title_fields(self, ("witness1_name", "witness2_name"))
+        super().save(*args, **kwargs)
 
 
 class LeaseRenewalClause(models.Model):

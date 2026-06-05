@@ -641,6 +641,7 @@ from .backup_utils import (
     create_db_backup,
     create_full_backup,
     create_media_backup,
+    delete_backup,
     list_backups,
     load_backup_settings,
     prune_old_backups,
@@ -778,6 +779,18 @@ class BackupDownloadView(LoginRequiredMixin, UserPassesTestMixin, View):
         if not backup:
             raise Http404("Backup not found")
         return FileResponse(open(backup.display_path, "rb"), as_attachment=True, filename=backup.id)
+
+
+class BackupDeleteView(LoginRequiredMixin, UserPassesTestMixin, View):
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def post(self, request, backup_id):
+        try:
+            delete_backup(load_backup_settings(), backup_id)
+        except Exception as exc:
+            return JsonResponse({"success": False, "error": str(exc)}, status=400)
+        return JsonResponse({"success": True})
 
 
 from django.http import Http404, HttpResponseForbidden

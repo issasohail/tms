@@ -1,6 +1,6 @@
 # core/urls.py
 from django.urls import path
-from .views import BackupCenterView, BackupDownloadView, dashboard, SettingsView
+from .views import BackupCenterView, BackupDeleteView, BackupDownloadView, dashboard, SettingsView
 from . import views
 
 app_name = "core"
@@ -10,6 +10,7 @@ urlpatterns = [
     path("settings/", SettingsView.as_view(), name="settings"),
     path("settings/backup-restore/", BackupCenterView.as_view(), name="backup_center"),
     path("settings/backup-restore/download/<path:backup_id>/", BackupDownloadView.as_view(), name="backup_download"),
+    path("settings/backup-restore/delete/<path:backup_id>/", BackupDeleteView.as_view(), name="backup_delete"),
     path("suggestions/", views.suggestion_list, name="suggestion_list"),
     path("suggestions/new/", views.suggestion_create, name="suggestion_create"),
     path("suggestions/<int:pk>/", views.suggestion_detail, name="suggestion_detail"),

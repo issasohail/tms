@@ -344,6 +344,19 @@ def restore_full(config, backup_id):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def delete_backup(config, backup_id):
+    backups = list_backups(config)
+    item = next((backup for backup in backups if backup.id == backup_id), None)
+    if not item:
+        raise RuntimeError("Selected backup was not found.")
+    root = ensure_backup_root(config).resolve()
+    path = Path(item.display_path).resolve()
+    if root not in path.parents or not path.is_file():
+        raise RuntimeError("Invalid backup path.")
+    path.unlink()
+    return item
+
+
 def prune_old_backups(config):
     retention = int(config.get("retention_count") or 10)
     backups = list_backups(config)

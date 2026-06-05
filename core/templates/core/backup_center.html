@@ -263,7 +263,7 @@
               </thead>
               <tbody>
                 {% for b in backups %}
-                  <tr>
+                  <tr data-backup-id="{{ b.id }}">
                     <td>
                       <div class="fw-semibold">{{ b.name }}</div>
                       <div class="text-muted small text-break">{{ b.display_path }}</div>
@@ -276,6 +276,11 @@
                     <td>
                       <div class="d-flex flex-wrap gap-1">
                         <a href="{% url 'core:backup_download' b.id %}" class="btn btn-sm btn-outline-primary">Download</a>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger js-backup-delete"
+                                data-url="{% url 'core:backup_delete' b.id %}">
+                          Delete
+                        </button>
                         {% if b.backup_type == 'db' %}
                           <a href="{% url 'core:backup_center' %}?selected_db={{ b.id }}" class="btn btn-sm btn-outline-secondary">Use for DB Restore</a>
                         {% elif b.backup_type == 'media' %}
@@ -323,4 +328,32 @@
   .backup-center .table td { padding: .3rem; }
 }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("click", function (event) {
+  const button = event.target.closest(".js-backup-delete");
+  if (!button) return;
+  if (!confirm("Delete this backup file?")) return;
+  const csrf = "{{ csrf_token }}";
+  fetch(button.dataset.url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRFToken": csrf,
+      "X-Requested-With": "XMLHttpRequest"
+    }
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (!data.success) {
+        alert(data.error || "Could not delete backup.");
+        return;
+      }
+      button.closest("tr")?.remove();
+    })
+    .catch(() => alert("Could not delete backup."));
+});
+</script>
 {% endblock %}

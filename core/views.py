@@ -788,6 +788,7 @@ from .suggestion_store import (
     TYPE_CHOICES,
     add_reply,
     create_ticket,
+    delete_ticket,
     get_ticket,
     list_tickets,
     update_status,
@@ -866,3 +867,27 @@ def suggestion_status_update(request, pk):
     if not ticket:
         return JsonResponse({"ok": False, "error": "Suggestion not found."}, status=404)
     return JsonResponse({"ok": True, "status": ticket.status})
+
+
+@login_required
+@require_POST
+def suggestion_delete(request, pk):
+    ticket = get_ticket(pk)
+    if not ticket:
+        return JsonResponse(
+            {"success": False, "error": "Suggestion not found."},
+            status=404,
+        )
+    can_delete = request.user.is_staff or request.user.is_superuser
+    can_delete = can_delete or ticket.user_name_snapshot == request.user.get_username()
+    if not can_delete:
+        return JsonResponse(
+            {"success": False, "error": "Permission denied."},
+            status=403,
+        )
+    if not delete_ticket(pk):
+        return JsonResponse(
+            {"success": False, "error": "Suggestion not found."},
+            status=404,
+        )
+    return JsonResponse({"success": True})

@@ -219,6 +219,18 @@ def update_status(ticket_id, status):
     return ticket
 
 
+def delete_ticket(ticket_id):
+    data = _read_payload()
+    before_count = len(data["tickets"])
+    data["tickets"] = [
+        item for item in data["tickets"] if int(item.get("id")) != int(ticket_id)
+    ]
+    if len(data["tickets"]) == before_count:
+        return False
+    _write_payload(data)
+    return True
+
+
 def add_reply(ticket_id, message, user, status=None):
     ticket = get_ticket(ticket_id)
     if not ticket:

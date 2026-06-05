@@ -14,6 +14,7 @@ urlpatterns = [
     path("suggestions/new/", views.suggestion_create, name="suggestion_create"),
     path("suggestions/<int:pk>/", views.suggestion_detail, name="suggestion_detail"),
     path("suggestions/<int:pk>/status/", views.suggestion_status_update, name="suggestion_status_update"),
+    path("suggestions/<int:pk>/delete/", views.suggestion_delete, name="suggestion_delete"),
     path(
         "payment-methods/quick-add/",
         views.payment_method_quick_add,

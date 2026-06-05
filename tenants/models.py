@@ -123,7 +123,7 @@ class Tenant(models.Model):
         max_length=20, null=True, blank=True)
     number_of_family_member = models.CharField(max_length=2, default=4)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
     interested_in = models.ManyToManyField(TenantInterestType, blank=True, related_name="tenants")
     notes = models.TextField(blank=True, null=True, default="")
@@ -221,24 +221,29 @@ class Tenant(models.Model):
         for field_name in ("photo", "cnic_front", "cnic_back", "police_verification_document"):
             compress_instance_file_field(self, field_name)
 
+        def remove_file_if_present(file_field):
+            try:
+                path = file_field.path
+            except (ValueError, OSError):
+                return
+            if os.path.isfile(path):
+                os.remove(path)
+
         # Get the current instance from database (if it exists)
         if self.pk:
             old_instance = Tenant.objects.get(pk=self.pk)
 
             # Check and delete old photo if it exists and is being changed
             if old_instance.photo and old_instance.photo != self.photo:
-                if os.path.isfile(old_instance.photo.path):
-                    os.remove(old_instance.photo.path)
+                remove_file_if_present(old_instance.photo)
 
             # Check and delete old cnic_front if it exists and is being changed
             if old_instance.cnic_front and old_instance.cnic_front != self.cnic_front:
-                if os.path.isfile(old_instance.cnic_front.path):
-                    os.remove(old_instance.cnic_front.path)
+                remove_file_if_present(old_instance.cnic_front)
 
             # Check and delete old cnic_back if it exists and is being changed
             if old_instance.cnic_back and old_instance.cnic_back != self.cnic_back:
-                if os.path.isfile(old_instance.cnic_back.path):
-                    os.remove(old_instance.cnic_back.path)
+                remove_file_if_present(old_instance.cnic_back)
         self.cnic_digits = normalize_cnic(self.cnic) or None
         super().save(*args, **kwargs)
 

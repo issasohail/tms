@@ -273,7 +273,17 @@
       {% if form.cnic_back_crop %}{{ form.cnic_back_crop }}{% endif %}
     </div>
 
-    {% if form.non_field_errors %}<div class="reg-alert">{{ form.non_field_errors }}</div>{% endif %}
+    {% if form.errors %}
+      <div class="reg-alert">
+        <strong>Please fix the highlighted fields.</strong>
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          {% for error in field.errors %}
+            <div>{{ field.label }}: {{ error }}</div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    {% endif %}
 
     <div class="reg-card">
       <div class="reg-card-header">

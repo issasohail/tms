@@ -235,6 +235,26 @@ def resolve_placeholders(lease, text):
     return text
 
 
+def _is_owner_billed_electricity_clause(text):
+    text = (text or "").lower()
+    return "electricity bill" in text and ("owner" in text or "unit" in text)
+
+
+def _lease_clauses_for_agreement(lease):
+    clauses = lease.clauses.all().order_by("clause_number")
+    return _filter_electricity_clauses(clauses, lease)
+
+
+def _filter_electricity_clauses(clauses, lease):
+    if getattr(lease, "electricity_bill_by_owner", True):
+        return clauses
+    return [
+        clause
+        for clause in clauses
+        if not _is_owner_billed_electricity_clause(clause.template_text)
+    ]
+
+
 def prepare_transaction_columns(transactions):
     columns = []
     if len(transactions) <= 25:
@@ -593,6 +613,12 @@ def _seed_units_queryset(form, request):
         return
     Unit = apps.get_model("properties", "Unit")
     prop_id = request.POST.get("property") or request.GET.get("property")
+    unit_id = request.POST.get("unit") or request.GET.get("unit")
+    if unit_id and not prop_id:
+        try:
+            prop_id = Unit.objects.only("property_id").get(pk=unit_id).property_id
+        except (Unit.DoesNotExist, TypeError, ValueError):
+            prop_id = None
     if getattr(form.instance, "unit_id", None) and not prop_id:
         prop_id = form.instance.unit.property_id
     form.fields["unit"].queryset = (
@@ -692,8 +718,18 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             full_name=Concat("first_name", Value(" "), "last_name")
         ).order_by(Lower("full_name"), "id")
 
-        # property -> pre-select + filter units
+        # property/unit prefill supports links from Unit Detail.
         prop_id = self.request.POST.get("property") or self.request.GET.get("property")
+        unit_id = self.request.POST.get("unit") or self.request.GET.get("unit")
+        selected_unit = None
+        if unit_id:
+            try:
+                selected_unit = Unit.objects.select_related("property").get(pk=unit_id)
+                if not prop_id:
+                    prop_id = selected_unit.property_id
+            except (Unit.DoesNotExist, TypeError, ValueError):
+                selected_unit = None
+
         if "property" in form.fields:
             form.fields["property"].initial = prop_id
 
@@ -704,6 +740,18 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             if prop_id
             else Unit.objects.none()
         )
+        if selected_unit:
+            form.fields["unit"].initial = selected_unit.pk
+
+        if self.request.method == "GET" and selected_unit:
+            default_map = {
+                "monthly_rent": selected_unit.monthly_rent,
+                "society_maintenance": selected_unit.society_maintenance,
+                "water_charges": selected_unit.water_charges,
+            }
+            for field_name, value in default_map.items():
+                if field_name in form.fields and value not in (None, ""):
+                    form.fields[field_name].initial = value
         return form
 
     def get_context_data(self, **kwargs):
@@ -2637,7 +2685,7 @@ def generate_lease_agreement(request, lease_id):
         </div>
         
         <div>
-            {"".join(f'<p class="clause">{resolve_placeholders(lease, clause.template_text)}</p>' for clause in lease.clauses.order_by("clause_number"))}
+            {"".join(f'<p class="clause">{resolve_placeholders(lease, clause.template_text)}</p>' for clause in _lease_clauses_for_agreement(lease))}
         </div>
 
         <div class="signature">
@@ -2693,7 +2741,10 @@ def edit_clauses(request, pk):
         history = latest_history(lease)
 
     copy_previous_history_clauses(lease, history)
-    clauses = history.clauses.all().order_by("clause_number")
+    clauses = _filter_electricity_clauses(
+        history.clauses.all().order_by("clause_number"),
+        lease,
+    )
 
     lease_for_preview = copy(lease)
     for field in [
@@ -2855,7 +2906,10 @@ def download_preview_pdf(request, lease_id):
         else latest_history(lease)
     )
     copy_previous_history_clauses(lease, history)
-    clauses = history.clauses.all().order_by("clause_number")
+    clauses = _filter_electricity_clauses(
+        history.clauses.all().order_by("clause_number"),
+        lease,
+    )
     lease_for_preview = copy(lease)
     for field in [
         "start_date",
@@ -3365,7 +3419,7 @@ from .models import Lease
 
 def generate_agreement_docx(request, pk):
     lease = get_object_or_404(Lease, pk=pk)
-    clauses = lease.clauses.all().order_by("clause_number")
+    clauses = _lease_clauses_for_agreement(lease)
 
     # Apply placeholder replacement exactly like PDF/preview
     for clause in clauses:
@@ -3729,7 +3783,10 @@ def download_preview_docx(request, lease_id):
         else latest_history(lease)
     )
     copy_previous_history_clauses(lease, history)
-    clauses = history.clauses.all().order_by("clause_number")
+    clauses = _filter_electricity_clauses(
+        history.clauses.all().order_by("clause_number"),
+        lease,
+    )
     lease_for_preview = copy(lease)
     for field in [
         "start_date",
@@ -3800,9 +3857,7 @@ def reset_clauses_from_default(request, pk):
         if history_id
         else latest_history(lease)
     )
-    default_clauses = DefaultClause.objects.filter(is_active=True).order_by(
-        "clause_number"
-    )
+    default_clauses = DefaultClause.included_for_lease(lease)
 
     if not default_clauses.exists():
         messages.error(request, "No active default clauses found.")

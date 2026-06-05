@@ -29,6 +29,15 @@ LOCAL_PATTERNS = (
 )
 
 
+def _normalize_phone(value: str) -> str:
+    value = (value or '').strip()
+    if not value:
+        return ''
+    if value.startswith('+'):
+        return '+' + re.sub(r'\D', '', value[1:])
+    return re.sub(r'[\s\-\(\)]', '', value)
+
+
 def _is_valid_international(number: str) -> bool:
     """
     Accept anything that STARTS WITH '+' as international,
@@ -95,7 +104,7 @@ class TenantForm(forms.ModelForm):
 
     # Optional: server-side validation that still preserves leading zero
     def _clean_pk_phone(self, value, field_label):
-        value = (value or '').strip()
+        value = _normalize_phone(value)
         if not value:
             return value  # allow blank for optional fields
 
@@ -105,7 +114,7 @@ class TenantForm(forms.ModelForm):
             return value
 
         raise forms.ValidationError(
-            f"{field_label}: enter 03XXXXXXXXX or anything starting with +."
+            f"{field_label}: enter 03XXXXXXXXX, +92XXXXXXXXXX, or a valid international number."
         )
 
     def clean_phone(self):

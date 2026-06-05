@@ -336,22 +336,74 @@ def _unit_has_current_lease(unit, today=None):
 
 
 def _attach_unit_occupancy(unit):
-    unit.has_active_lease_history = LeaseRenewal.objects.filter(
-        lease__unit=unit,
-        start_date__lte=timezone.now().date(),
-        end_date__gte=timezone.now().date(),
-    ).exists()
-    unit.has_active_lease = (
-        Lease.objects.filter(
-            unit=unit,
-            start_date__lte=timezone.now().date(),
-            end_date__gte=timezone.now().date(),
+    today = timezone.now().date()
+    active_lease_history = (
+        LeaseRenewal.objects.select_related("lease", "lease__tenant", "lease__unit")
+        .filter(
+            lease__unit=unit,
+            start_date__lte=today,
+            end_date__gte=today,
         )
-        .exclude(status__in=["ended", "terminated"])
-        .exists()
+        .order_by("-renewal_number", "-start_date", "-pk")
+        .first()
     )
-    unit.is_currently_occupied = unit.has_active_lease_history or unit.has_active_lease
+    current_lease = None
+    if active_lease_history:
+        current_lease = active_lease_history.lease
+    else:
+        current_lease = (
+            Lease.objects.select_related("tenant", "unit")
+            .filter(
+                unit=unit,
+                start_date__lte=today,
+                end_date__gte=today,
+            )
+            .exclude(status__in=["ended", "terminated"])
+            .order_by("-start_date", "-pk")
+            .first()
+        )
+
+    unit.active_lease_history = active_lease_history
+    unit.current_lease = current_lease
+    unit.current_tenant = current_lease.tenant if current_lease else None
+    unit.has_active_lease_history = active_lease_history is not None
+    unit.has_active_lease = current_lease is not None and active_lease_history is None
+    unit.is_currently_occupied = current_lease is not None
     return unit
+
+
+def _unit_detail_context(unit):
+    _attach_unit_occupancy(unit)
+    return {
+        "unit": unit,
+        "units": unit,
+        "media_files": unit.media_files.filter(is_active=True)[:6],
+        "current_lease": unit.current_lease,
+        "current_tenant": unit.current_tenant,
+        "active_lease_history": unit.active_lease_history,
+    }
+
+
+def _can_manage_media(user, owner):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if isinstance(owner, Unit):
+        return (
+            user.has_perm("properties.change_unit")
+            or user.has_perm("properties.change_unitmedia")
+            or user.has_perm("properties.delete_unitmedia")
+        )
+    return (
+        user.has_perm("properties.change_property")
+        or user.has_perm("properties.change_propertymedia")
+        or user.has_perm("properties.delete_propertymedia")
+    )
+
+
+def _media_permission_denied():
+    return JsonResponse({"success": False, "error": "Permission denied"}, status=403)
 
 
 def _lead_money(value):
@@ -640,20 +692,16 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        _attach_unit_occupancy(self.object)
-        context["units"] = self.object
-        context["media_files"] = self.object.media_files.filter(is_active=True)[:6]
+        context.update(_unit_detail_context(self.object))
         return context
 
 
 def unit_detail(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
-    _attach_unit_occupancy(unit)
-    media_files = unit.media_files.filter(is_active=True)[:6]
     return render(
         request,
         "properties/unit_detail.html",
-        {"unit": unit, "media_files": media_files},
+        _unit_detail_context(unit),
     )
 
 
@@ -1177,6 +1225,8 @@ def property_media_page(request, pk):
 @require_POST
 def unit_media_update(request, pk, media_id):
     unit = get_object_or_404(Unit, pk=pk)
+    if not _can_manage_media(request.user, unit):
+        return _media_permission_denied()
     media = get_object_or_404(UnitMedia, pk=media_id, unit=unit, is_active=True)
     media.description = (request.POST.get("description") or "").strip()[:300]
     media.save(update_fields=["description", "updated_at"])
@@ -1193,6 +1243,8 @@ def unit_media_update(request, pk, media_id):
 @require_POST
 def property_media_update(request, pk, media_id):
     property_obj = get_object_or_404(Property, pk=pk)
+    if not _can_manage_media(request.user, property_obj):
+        return _media_permission_denied()
     media = get_object_or_404(
         PropertyMedia, pk=media_id, property=property_obj, is_active=True
     )
@@ -1353,12 +1405,21 @@ def property_media_export_docx(request, pk):
 @require_POST
 def unit_media_delete(request, pk, media_id):
     unit = get_object_or_404(Unit, pk=pk)
+    if not _can_manage_media(request.user, unit):
+        return _media_permission_denied()
     media = get_object_or_404(UnitMedia, pk=media_id, unit=unit, is_active=True)
     if request.POST.get("confirm_delete") != "yes":
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse(
+                {"success": False, "error": "Media delete was not confirmed."},
+                status=400,
+            )
         messages.error(request, "Media delete was not confirmed.")
     else:
         media.is_active = False
         media.save(update_fields=["is_active", "updated_at"])
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"success": True})
         messages.success(request, "Media removed from active list.")
     return redirect("properties:unit_media", pk=unit.pk)
 
@@ -1367,14 +1428,23 @@ def unit_media_delete(request, pk, media_id):
 @require_POST
 def property_media_delete(request, pk, media_id):
     property_obj = get_object_or_404(Property, pk=pk)
+    if not _can_manage_media(request.user, property_obj):
+        return _media_permission_denied()
     media = get_object_or_404(
         PropertyMedia, pk=media_id, property=property_obj, is_active=True
     )
     if request.POST.get("confirm_delete") != "yes":
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse(
+                {"success": False, "error": "Media delete was not confirmed."},
+                status=400,
+            )
         messages.error(request, "Media delete was not confirmed.")
     else:
         media.is_active = False
         media.save(update_fields=["is_active", "updated_at"])
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"success": True})
         messages.success(request, "Media removed from active list.")
     return redirect("properties:property_media", pk=property_obj.pk)
 

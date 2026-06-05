@@ -88,6 +88,7 @@ class LeaseForm(forms.ModelForm):
             'paint_condition': forms.Textarea(attrs={'class': 'form-control form-control-sm', 'rows': 2}),
             'key_replacement_cost': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'electric_unit_rate': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
+            'electricity_bill_by_owner': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -171,9 +172,10 @@ from .models_renewal import LeaseRenewal
 class DefaultClauseForm(forms.ModelForm):
     class Meta:
         model = DefaultClause
-        fields = ["clause_number", "body", "is_active"]
+        fields = ["clause_number", "category", "body", "is_active"]
         widgets = {
             "clause_number": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
+            "category": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "body": forms.Textarea(attrs={"rows": 8, "class": "form-control clause-body-field"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }

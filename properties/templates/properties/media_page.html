@@ -136,7 +136,7 @@
                 {% else %}
                     <a href="{% url 'properties:media_public_file' public_token media.pk %}" class="btn btn-outline-secondary btn-sm" download>Download</a>
                 {% endif %}
-                <form method="post" action="{% url delete_url_name owner.pk media.pk %}" onsubmit="return confirm('Delete this media from the active list?');">
+                <form method="post" action="{% url delete_url_name owner.pk media.pk %}" class="media-delete-form">
                     {% csrf_token %}
                     <input type="hidden" name="confirm_delete" value="yes">
                     <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
@@ -222,6 +222,29 @@
           view.textContent = data.description || '';
           form.classList.add('d-none');
           view.classList.remove('d-none');
+        })
+        .catch(() => form.submit());
+    });
+  });
+
+  document.querySelectorAll('.media-delete-form').forEach(form => {
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      if (!confirm('Delete this media from the active list?')) return;
+      const item = form.closest('.media-item');
+      const data = new FormData(form);
+      fetch(form.action, {
+        method: 'POST',
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        body: data
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (!data.success) {
+            alert(data.error || 'Could not delete media.');
+            return;
+          }
+          item?.remove();
         })
         .catch(() => form.submit());
     });

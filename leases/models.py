@@ -122,6 +122,10 @@ class Lease(models.Model):
     witness2_name = models.CharField(max_length=100, null=True, blank=True)
     witness2_cnic = models.CharField(max_length=20, null=True, blank=True)
     electric_unit_rate = models.IntegerField(blank=True, null=True, default=50)
+    electricity_bill_by_owner = models.BooleanField(
+        default=True,
+        help_text="Include owner-billed electricity clauses and charge electricity by unit rate.",
+    )
     electricity_meter_reading = models.CharField(max_length=20, null=True, blank=True)
     gas_meter_reading = models.CharField(max_length=20, null=True, blank=True)
     signed_agreement = models.FileField(
@@ -253,9 +257,7 @@ class Lease(models.Model):
         if self.clauses.exists():
             return  # already initialized
 
-        default_clauses = DefaultClause.objects.filter(is_active=True).order_by(
-            "clause_number"
-        )
+        default_clauses = DefaultClause.included_for_lease(self)
 
         for dc in default_clauses:
             LeaseAgreementClause.objects.create(
@@ -1166,7 +1168,20 @@ class DefaultClause(models.Model):
     Edit these in Admin or a custom UI.
     """
 
+    CATEGORY_GENERAL = "general"
+    CATEGORY_ELECTRICITY = "electricity"
+    CATEGORY_CHOICES = [
+        (CATEGORY_GENERAL, "General"),
+        (CATEGORY_ELECTRICITY, "Electricity billed by owner"),
+    ]
+
     clause_number = models.PositiveIntegerField()
+    category = models.CharField(
+        max_length=30,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_GENERAL,
+        help_text="Electricity clauses are copied only when electricity is billed by owner.",
+    )
     body = models.TextField(
         help_text="Use {{ }} variables like {{ monthly_rent }}, {{ tenant.full_name }}, etc."
     )
@@ -1181,6 +1196,13 @@ class DefaultClause(models.Model):
 
     def __str__(self):
         return f"Default Clause {self.clause_number}"
+
+    @classmethod
+    def included_for_lease(cls, lease):
+        queryset = cls.objects.filter(is_active=True).order_by("clause_number")
+        if not getattr(lease, "electricity_bill_by_owner", True):
+            queryset = queryset.exclude(category=cls.CATEGORY_ELECTRICITY)
+        return queryset
 
 
 # leases/models.py

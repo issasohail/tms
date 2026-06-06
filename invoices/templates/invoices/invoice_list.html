@@ -1305,33 +1305,39 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
   white-space: nowrap;
 }
 
-.invoice-actions,
-.invoice-list-dense .actions-wrap {
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  gap: 3px !important;
-  align-items: center;
-  justify-content: center;
+.invoice-list-dense table.table thead th {
+  text-transform: none !important;
 }
 
-.invoice-actions .btn,
-.invoice-list-dense .actions-wrap .btn {
-  width: 26px !important;
-  min-width: 26px !important;
-  height: 24px !important;
-  padding: 0 !important;
-  font-size: .75rem !important;
-  line-height: 1 !important;
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  margin-left: 0 !important;
-  white-space: nowrap;
-}
+@media (min-width: 768px) {
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 3px !important;
+    align-items: center;
+    justify-content: center;
+  }
 
-.invoice-list-dense .actions-wrap .btn i {
-  font-size: .75rem !important;
-  margin: 0 !important;
+  .invoice-actions .btn,
+  .invoice-list-dense .actions-wrap .btn {
+    width: 26px !important;
+    min-width: 26px !important;
+    height: 24px !important;
+    padding: 0 !important;
+    font-size: .75rem !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0 !important;
+    white-space: nowrap;
+  }
+
+  .invoice-list-dense .actions-wrap .btn i {
+    font-size: .75rem !important;
+    margin: 0 !important;
+  }
 }
 
 @media (max-width: 575.98px) {
@@ -1340,35 +1346,40 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
     width: 100%;
   }
 
-  .invoice-page-compact .invoice-header-actions {
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     grid-auto-flow: row !important;
-    gap: .32rem !important;
+    grid-auto-columns: unset !important;
+    gap: .35rem !important;
     width: 100%;
     overflow: visible !important;
     padding: 0 !important;
     margin: 0 0 .45rem !important;
   }
 
-  .invoice-page-compact .invoice-header-actions > * {
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > * {
     grid-row: auto !important;
     grid-column: auto !important;
+    display: block !important;
+    width: 100% !important;
     min-width: 0;
-    max-width: none !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    flex: none !important;
   }
 
-  .invoice-page-compact .invoice-header-actions .export-group,
-  .invoice-page-compact .invoice-header-actions .btn-group {
-    width: 100%;
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn-group {
+    width: 100% !important;
   }
 
-  .invoice-page-compact .invoice-header-actions .btn,
-  .invoice-page-compact .invoice-header-actions .dropdown-toggle,
-  .invoice-page-compact .invoice-header-actions .input-group-text,
-  .invoice-page-compact .invoice-header-actions input[type="month"],
-  .invoice-page-compact .invoice-header-actions button[type="submit"] {
-    width: 100%;
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .dropdown-toggle,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .input-group-text,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions input[type="month"],
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions button[type="submit"] {
+    width: 100% !important;
     min-height: 30px;
     height: auto !important;
     font-size: .68rem !important;
@@ -1377,16 +1388,16 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
     white-space: nowrap;
   }
 
-  .invoice-page-compact .invoice-header-actions .btn-label {
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn-label {
     display: inline !important;
   }
 
-  .invoice-page-compact .invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
     grid-column: 1 / -1 !important;
-    width: 100%;
+    width: 100% !important;
   }
 
-  .invoice-page-compact .invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
     display: grid !important;
     grid-template-columns: auto 1fr auto;
     gap: .25rem !important;
@@ -1409,8 +1420,10 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
 
   .invoice-list-dense table.table th.col-sn,
   .invoice-list-dense table.table td.col-sn {
-    width: 28px !important;
-    max-width: 28px !important;
+    width: 24px !important;
+    max-width: 24px !important;
+    padding-left: .08rem !important;
+    padding-right: .08rem !important;
   }
 
   .invoice-list-dense table.table th:nth-child(2),
@@ -1422,9 +1435,7 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
   .invoice-list-dense table.table th.col-issue,
   .invoice-list-dense table.table td.col-issue,
   .invoice-list-dense table.table th.col-due,
-  .invoice-list-dense table.table td.col-due,
-  .invoice-list-dense .action-edit,
-  .invoice-list-dense .btn-edit {
+  .invoice-list-dense table.table td.col-due {
     display: none !important;
   }
 
@@ -1459,11 +1470,15 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
 
   .invoice-list-dense table.table th:nth-child(10),
   .invoice-list-dense table.table td.actions-cell {
-    width: 62px !important;
-    max-width: 62px !important;
+    width: 40px !important;
+    max-width: 40px !important;
     white-space: normal !important;
-    padding-left: .12rem !important;
-    padding-right: .12rem !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .invoice-list-dense table.table th:nth-child(10) {
+    font-size: .62rem;
   }
 
   .invoice-list-dense .mobile-subtext {
@@ -1477,33 +1492,869 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
   .invoice-actions,
   .invoice-list-dense .actions-wrap {
     display: grid !important;
-    grid-template-columns: repeat(2, 24px) !important;
-    gap: 2px !important;
+    grid-template-columns: repeat(2, 18px) !important;
+    gap: 1px !important;
     justify-content: center !important;
     justify-items: center !important;
     align-items: center !important;
-    width: 50px !important;
+    width: 37px !important;
     margin: 0 auto !important;
     white-space: normal !important;
   }
 
   .invoice-actions .btn,
   .invoice-list-dense .actions-wrap .btn {
-    width: 24px !important;
-    min-width: 24px !important;
-    max-width: 24px !important;
-    height: 22px !important;
-    min-height: 22px !important;
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 17px !important;
+    min-height: 17px !important;
     padding: 0 !important;
-    font-size: .68rem !important;
+    font-size: .56rem !important;
     margin: 0 !important;
   }
 
   .invoice-list-dense .actions-wrap .btn i {
+    font-size: .56rem !important;
+  }
+
+}
+
+@media (min-width: 576px) and (max-width: 767.98px) {
+  .invoice-list-dense table.table {
+    table-layout: fixed;
+    width: 100%;
     font-size: .68rem !important;
+  }
+
+  .invoice-list-dense table.table th,
+  .invoice-list-dense table.table td {
+    padding: .14rem .16rem !important;
+    line-height: 1.1 !important;
+    vertical-align: middle;
+  }
+
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2),
+  .invoice-list-dense table.table th.col-invno,
+  .invoice-list-dense table.table td.col-invno,
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td.tenant-cell,
+  .invoice-list-dense table.table th.col-issue,
+  .invoice-list-dense table.table td.col-issue,
+  .invoice-list-dense table.table th.col-due,
+  .invoice-list-dense table.table td.col-due,
+  .invoice-list-dense .mobile-hide {
+    display: none !important;
+  }
+
+  .invoice-list-dense table.table th.col-sn,
+  .invoice-list-dense table.table td.col-sn {
+    width: 24px !important;
+    max-width: 24px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .invoice-list-dense table.table th.col-propunit,
+  .invoice-list-dense table.table td.col-propunit {
+    width: 100px !important;
+    max-width: 100px !important;
+    white-space: normal !important;
+    overflow: hidden;
+  }
+
+  .invoice-list-dense table.table th.col-desc,
+  .invoice-list-dense table.table td.col-desc {
+    display: table-cell !important;
+    width: 100px !important;
+    max-width: 100px !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow: hidden;
+  }
+
+  .invoice-list-dense table.table th.col-amount,
+  .invoice-list-dense table.table td.col-amount {
+    width: 68px !important;
+    max-width: 68px !important;
+    white-space: nowrap;
+  }
+
+  .invoice-list-dense table.table th:nth-child(10),
+  .invoice-list-dense table.table td.actions-cell {
+    width: 42px !important;
+    max-width: 42px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    white-space: normal !important;
+  }
+
+  .invoice-list-dense .mobile-subtext {
+    display: block;
+    font-size: .68rem;
+    color: #6c757d;
+    line-height: 1.1;
+    margin-top: 1px;
+  }
+
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap {
+    display: grid !important;
+    grid-template-columns: repeat(2, 18px) !important;
+    gap: 1px !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-items: center !important;
+    width: 37px !important;
+    max-width: 37px !important;
+    margin: 0 auto !important;
+    white-space: normal !important;
+  }
+
+  .invoice-actions .btn,
+  .invoice-list-dense .actions-wrap .btn {
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 17px !important;
+    min-height: 17px !important;
+    padding: 0 !important;
+    font-size: .56rem !important;
+    margin: 0 !important;
+  }
+
+  .invoice-list-dense .actions-wrap .btn i {
+    font-size: .56rem !important;
+  }
+}
+
+/* =============================================================
+   FINAL FIX — actions grid for ALL screens < 768px
+   Must be last in stylesheet. Targets both .invoice-actions
+   (added by JS at runtime) and .actions-wrap directly.
+   ============================================================= */
+@media (max-width: 767.98px) {
+
+  /* Cell: just wide enough for 2x2 grid */
+  .invoice-list-dense table.table td.actions-cell,
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table th:nth-child(10) {
+    width: 42px !important;
+    max-width: 42px !important;
+    min-width: 42px !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    padding: 2px 1px !important;
+  }
+
+  /* Grid: 2 columns — overrides JS-added .invoice-actions flex */
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap,
+  td.actions-cell .actions-wrap {
+    display: grid !important;
+    grid-template-columns: 18px 18px !important;
+    gap: 1px 1px !important;
+    width: 37px !important;
+    max-width: 37px !important;
+    margin: 0 auto !important;
+    flex-wrap: unset !important;
+  }
+
+  /* Buttons: 18x17px each */
+  .invoice-actions .btn,
+  .invoice-list-dense .actions-wrap .btn,
+  td.actions-cell .actions-wrap .btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 17px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: .56rem !important;
+    line-height: 1 !important;
+    white-space: normal !important;
+  }
+
+  .invoice-actions .btn i,
+  .invoice-list-dense .actions-wrap .btn i,
+  td.actions-cell .actions-wrap .btn i {
+    font-size: .56rem !important;
+    margin: 0 !important;
   }
 }
 </style>
+
+
+
+
+<style>
+/* =============================================================
+   SOHAIL FINAL MOBILE FIX — keep desktop unchanged
+   Fixes:
+   1) Top actions become 3 columns on phone screens.
+   2) Rollback month controls stay together on their own full-width row.
+   3) Invoice action icons are forced into a centered 2-column grid INSIDE
+      the Actions cell, using last-child + class selectors so it survives
+      django-tables2 column/order differences.
+   ============================================================= */
+@media (max-width: 575.98px) {
+  /* ---------- Top action buttons: 3 columns ---------- */
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    gap: .32rem !important;
+    width: 100% !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 0 .45rem !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > * {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .dropdown-toggle {
+    width: 100% !important;
+    min-height: 30px !important;
+    height: 30px !important;
+    padding: .24rem .18rem !important;
+    font-size: .68rem !important;
+    line-height: 1.05 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn i {
+    margin-right: .18rem !important;
+    font-size: .68rem !important;
+    line-height: 1 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group .btn-group,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group .dropdown,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group .btn {
+    width: 100% !important;
+  }
+
+  /* Month + Preview Rollback: full row, label | input | button */
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    gap: .25rem !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group-text,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] input[type="month"],
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] button[type="submit"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: .24rem .24rem !important;
+    font-size: .68rem !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+  }
+
+  /* ---------- Invoice table: no horizontal leak ---------- */
+  .invoice-list-dense.table-responsive,
+  .invoice-list-dense.table-mobile-sm {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+  }
+
+  .invoice-list-dense table.table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: .68rem !important;
+  }
+
+  .invoice-list-dense table.table th,
+  .invoice-list-dense table.table td {
+    box-sizing: border-box !important;
+    padding: .16rem .16rem !important;
+    line-height: 1.08 !important;
+    vertical-align: middle !important;
+  }
+
+  /* Hide the non-mobile columns. Keep: S.N, Property, Description, Amount, Actions. */
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2),
+  .invoice-list-dense table.table th.col-invno,
+  .invoice-list-dense table.table td.col-invno,
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td.tenant-cell,
+  .invoice-list-dense table.table th.col-issue,
+  .invoice-list-dense table.table td.col-issue,
+  .invoice-list-dense table.table th.col-due,
+  .invoice-list-dense table.table td.col-due {
+    display: none !important;
+  }
+
+  .invoice-list-dense table.table th.col-sn,
+  .invoice-list-dense table.table td.col-sn {
+    width: 24px !important;
+    max-width: 24px !important;
+    padding-left: .05rem !important;
+    padding-right: .05rem !important;
+    text-align: center !important;
+  }
+
+  .invoice-list-dense table.table th.col-propunit,
+  .invoice-list-dense table.table td.col-propunit {
+    width: 92px !important;
+    max-width: 92px !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+  }
+
+  .invoice-list-dense table.table th.col-desc,
+  .invoice-list-dense table.table td.col-desc {
+    display: table-cell !important;
+    width: 88px !important;
+    max-width: 88px !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+  }
+
+  .invoice-list-dense table.table th.col-amount,
+  .invoice-list-dense table.table td.col-amount {
+    width: 62px !important;
+    max-width: 62px !important;
+    white-space: nowrap !important;
+    text-align: right !important;
+  }
+
+  /* Robust Actions-column targeting: class, generated class, and final cell fallback. */
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table td.actions-cell,
+  .invoice-list-dense table.table th:last-child,
+  .invoice-list-dense table.table td:last-child {
+    width: 50px !important;
+    max-width: 50px !important;
+    min-width: 50px !important;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
+    overflow: hidden !important;
+    white-space: normal !important;
+    text-align: center !important;
+  }
+
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table th:last-child {
+    font-size: .60rem !important;
+  }
+
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap,
+  .invoice-list-dense td.actions-cell .actions-wrap,
+  .invoice-list-dense td:last-child .actions-wrap {
+    display: grid !important;
+    grid-template-columns: repeat(2, 21px) !important;
+    grid-auto-rows: 19px !important;
+    gap: 2px !important;
+    width: 44px !important;
+    max-width: 44px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-items: center !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+  }
+
+  .invoice-actions .btn,
+  .invoice-list-dense .actions-wrap .btn,
+  .invoice-list-dense td.actions-cell .actions-wrap .btn,
+  .invoice-list-dense td:last-child .actions-wrap .btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 21px !important;
+    min-width: 21px !important;
+    max-width: 21px !important;
+    height: 19px !important;
+    min-height: 19px !important;
+    max-height: 19px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    border-radius: 4px !important;
+    white-space: normal !important;
+  }
+
+  .invoice-actions .btn i,
+  .invoice-list-dense .actions-wrap .btn i,
+  .invoice-list-dense td.actions-cell .actions-wrap .btn i,
+  .invoice-list-dense td:last-child .actions-wrap .btn i {
+    font-size: .58rem !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+
+  .invoice-list-dense .actions-wrap .btn .btn-label,
+  .invoice-list-dense .actions-wrap .btn .btn-text,
+  .invoice-list-dense td:last-child .actions-wrap .btn .btn-label,
+  .invoice-list-dense td:last-child .actions-wrap .btn .btn-text {
+    display: none !important;
+  }
+}
+</style>
+
+
+<!-- FINAL MOBILE OVERRIDES: top rollback first + centered action buttons -->
+<style>
+@media (max-width: 575.98px) {
+  /* Header/top actions: Rollback first, then 3-column buttons */
+  .page-header.invoice-page-compact {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    grid-auto-columns: unset !important;
+    gap: .35rem !important;
+    width: 100% !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 0 .45rem 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    flex: none !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+  }
+
+  /* Move rollback to the beginning and make it one full horizontal row */
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
+    order: -1 !important;
+    grid-column: 1 / -1 !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
+    display: grid !important;
+    grid-template-columns: 3.4rem minmax(0, 1fr) 6.4rem !important;
+    gap: .25rem !important;
+    width: 100% !important;
+    max-width: none !important;
+    align-items: stretch !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .dropdown-toggle,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .input-group-text,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions input[type="month"],
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions button[type="submit"] {
+    min-height: 30px !important;
+    height: 30px !important;
+    font-size: .68rem !important;
+    padding: .22rem .30rem !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group .btn-group,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group .dropdown,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .export-group .btn {
+    width: 100% !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions .btn-label {
+    display: inline !important;
+  }
+
+  /* Mobile table: no horizontal scroll, reserve enough space for 5 action buttons */
+  .invoice-list-dense.table-responsive,
+  .table-responsive.invoice-list-dense {
+    overflow-x: hidden !important;
+  }
+
+  .invoice-list-dense table.table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: .68rem !important;
+  }
+
+  .invoice-list-dense table.table th,
+  .invoice-list-dense table.table td {
+    padding: .15rem .12rem !important;
+    line-height: 1.08 !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Keep only: S.N, Property, Description, Amount, Actions */
+  .invoice-list-dense table.table th:nth-child(2),
+  .invoice-list-dense table.table td:nth-child(2),
+  .invoice-list-dense table.table th.col-invno,
+  .invoice-list-dense table.table td.col-invno,
+  .invoice-list-dense table.table th:nth-child(5),
+  .invoice-list-dense table.table td.tenant-cell,
+  .invoice-list-dense table.table th.col-issue,
+  .invoice-list-dense table.table td.col-issue,
+  .invoice-list-dense table.table th.col-due,
+  .invoice-list-dense table.table td.col-due {
+    display: none !important;
+  }
+
+  .invoice-list-dense table.table th.col-sn,
+  .invoice-list-dense table.table td.col-sn,
+  .invoice-list-dense table.table th:first-child,
+  .invoice-list-dense table.table td:first-child {
+    display: table-cell !important;
+    width: 24px !important;
+    max-width: 24px !important;
+    min-width: 24px !important;
+    text-align: center !important;
+    padding-left: .04rem !important;
+    padding-right: .04rem !important;
+  }
+
+  .invoice-list-dense table.table th.col-propunit,
+  .invoice-list-dense table.table td.col-propunit {
+    display: table-cell !important;
+    width: 82px !important;
+    max-width: 82px !important;
+    min-width: 82px !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+    word-break: normal !important;
+  }
+
+  .invoice-list-dense table.table th.col-desc,
+  .invoice-list-dense table.table td.col-desc {
+    display: table-cell !important;
+    width: 84px !important;
+    max-width: 84px !important;
+    min-width: 84px !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+  }
+
+  .invoice-list-dense table.table td.col-desc .text-truncate {
+    max-width: 100% !important;
+  }
+
+  .invoice-list-dense table.table th.col-amount,
+  .invoice-list-dense table.table td.col-amount {
+    display: table-cell !important;
+    width: 58px !important;
+    max-width: 58px !important;
+    min-width: 58px !important;
+    white-space: nowrap !important;
+    text-align: right !important;
+    padding-left: .04rem !important;
+    padding-right: .04rem !important;
+  }
+
+  /* Action column: wide enough for 3 icons on first row + 2 on second row */
+  .invoice-list-dense table.table th:nth-child(10),
+  .invoice-list-dense table.table td:nth-child(10),
+  .invoice-list-dense table.table th:last-child,
+  .invoice-list-dense table.table td:last-child,
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table td.col-actions,
+  .invoice-list-dense table.table td.actions-cell {
+    display: table-cell !important;
+    width: 64px !important;
+    max-width: 64px !important;
+    min-width: 64px !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-align: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .invoice-list-dense table.table th:last-child,
+  .invoice-list-dense table.table th.col-actions {
+    font-size: .60rem !important;
+    text-align: center !important;
+  }
+
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap,
+  .invoice-list-dense td.actions-cell .actions-wrap,
+  .invoice-list-dense td:last-child .actions-wrap {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    align-content: center !important;
+    gap: 2px !important;
+    width: 60px !important;
+    max-width: 60px !important;
+    min-width: 60px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-align: center !important;
+  }
+
+  .invoice-actions .btn,
+  .invoice-list-dense .actions-wrap .btn,
+  .invoice-list-dense td.actions-cell .btn,
+  .invoice-list-dense td:last-child .btn {
+    display: inline-flex !important;
+    flex: 0 0 18px !important;
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    max-height: 18px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    border-radius: 50% !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: visible !important;
+    float: none !important;
+    position: static !important;
+  }
+
+  .invoice-actions .btn i,
+  .invoice-list-dense .actions-wrap .btn i,
+  .invoice-list-dense td.actions-cell .btn i,
+  .invoice-list-dense td:last-child .btn i {
+    font-size: .56rem !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+
+  .invoice-list-dense td.actions-cell .btn .btn-label,
+  .invoice-list-dense td.actions-cell .btn .btn-text,
+  .invoice-list-dense td.actions-cell .btn span:not(.badge),
+  .invoice-list-dense td:last-child .btn .btn-label,
+  .invoice-list-dense td:last-child .btn .btn-text,
+  .invoice-list-dense td:last-child .btn span:not(.badge) {
+    display: none !important;
+  }
+}
+</style>
+
+<!-- FINAL MOBILE PATCH v2: rollback first, hide edit, compact amount -->
+<style>
+@media (max-width: 575.98px) {
+  /* Force rollback to the first row and keep it one horizontal row */
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    gap: .35rem !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
+    grid-row: 1 !important;
+    grid-column: 1 / -1 !important;
+    order: -100 !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="invoice_create"] {
+    grid-row: 2 !important;
+    grid-column: 1 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > .export-group {
+    grid-row: 2 !important;
+    grid-column: 2 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="generate"] {
+    grid-row: 2 !important;
+    grid-column: 3 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="apply_late_fees"] {
+    grid-row: 3 !important;
+    grid-column: 1 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="recurring"] {
+    grid-row: 3 !important;
+    grid-column: 2 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="waterbill"] {
+    grid-row: 3 !important;
+    grid-column: 3 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="category"] {
+    grid-row: 4 !important;
+    grid-column: 1 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
+    display: grid !important;
+    grid-template-columns: 3.25rem minmax(0, 1fr) 5.8rem !important;
+    align-items: stretch !important;
+    gap: .20rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group-text,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] input[type="month"],
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] button[type="submit"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: .18rem .18rem !important;
+    font-size: .62rem !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] button[type="submit"] i {
+    margin-right: .12rem !important;
+  }
+
+  /* Hide edit/pencil action only on small screen, leaving 4 actions visible */
+  .invoice-list-dense td.actions-cell .action-edit,
+  .invoice-list-dense td.actions-cell .btn-edit,
+  .invoice-list-dense td.actions-cell a[href*="edit"],
+  .invoice-list-dense td.actions-cell a[href*="update"],
+  .invoice-list-dense td.actions-cell a[title*="Edit"],
+  .invoice-list-dense td.actions-cell button[title*="Edit"],
+  .invoice-list-dense td.actions-cell a[aria-label*="Edit"],
+  .invoice-list-dense td.actions-cell button[aria-label*="Edit"] {
+    display: none !important;
+  }
+
+  /* With edit hidden, keep a compact 2x2 centered action group */
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table td.col-actions,
+  .invoice-list-dense table.table td.actions-cell,
+  .invoice-list-dense table.table th:last-child,
+  .invoice-list-dense table.table td:last-child {
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    text-align: center !important;
+    overflow: visible !important;
+  }
+
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap,
+  .invoice-list-dense td.actions-cell .actions-wrap,
+  .invoice-list-dense td:last-child .actions-wrap {
+    display: grid !important;
+    grid-template-columns: repeat(2, 18px) !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-items: center !important;
+    gap: 2px !important;
+    width: 40px !important;
+    max-width: 40px !important;
+    min-width: 40px !important;
+    margin: 0 auto !important;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const amountCells = () => document.querySelectorAll('.invoice-list-dense td.col-amount');
+
+  const normalizeMobileAmounts = () => {
+    const useMobile = window.matchMedia('(max-width: 575.98px)').matches;
+    amountCells().forEach(cell => {
+      if (!cell.dataset.fullAmount) {
+        cell.dataset.fullAmount = cell.textContent.trim();
+      }
+      if (useMobile) {
+        cell.textContent = cell.dataset.fullAmount.replace(/(\.\d{2})(\s*)$/, '$2');
+      } else {
+        cell.textContent = cell.dataset.fullAmount;
+      }
+    });
+  };
+
+  const markEditButtons = () => {
+    document.querySelectorAll('.invoice-list-dense td.actions-cell').forEach(cell => {
+      cell.querySelectorAll('a, button').forEach(btn => {
+        const text = (btn.textContent || '').toLowerCase();
+        const title = (btn.getAttribute('title') || '').toLowerCase();
+        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+        const href = (btn.getAttribute('href') || '').toLowerCase();
+        if (
+          btn.classList.contains('btn-edit') ||
+          text.includes('edit') ||
+          title.includes('edit') ||
+          aria.includes('edit') ||
+          href.includes('edit') ||
+          href.includes('update')
+        ) {
+          btn.classList.add('action-edit');
+        }
+      });
+    });
+  };
+
+  markEditButtons();
+  normalizeMobileAmounts();
+  window.addEventListener('resize', normalizeMobileAmounts);
+});
+</script>
 
 
 {% endblock %}
@@ -1580,6 +2431,26 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
 document.getElementById('id_lease')?.addEventListener('change', () => {
   document.getElementById('invoice-filter-form').submit();
 });
+
+function initInvoiceLeaseSelect2() {
+  if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) return;
+  const $lease = jQuery('#id_lease');
+  if (!$lease.length || $lease.data('select2')) return;
+  $lease.select2({
+    theme: 'bootstrap-5',
+    width: 'style',
+    placeholder: 'Lease',
+    allowClear: true,
+    dropdownAutoWidth: true,
+    dropdownParent: jQuery('#invoice-filter-form')
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initInvoiceLeaseSelect2);
+} else {
+  initInvoiceLeaseSelect2();
+}
 
 /* Show inactive auto-submit */
 document.getElementById('id_show_inactive')?.addEventListener('change', () => {
@@ -1740,6 +2611,180 @@ document.addEventListener('DOMContentLoaded', () => {
 
   applyMobileLabels();
   window.addEventListener('resize', applyMobileLabels);
+});
+</script>
+
+
+<!-- FINAL MOBILE PATCH v2: rollback first, hide edit, compact amount -->
+<style>
+@media (max-width: 575.98px) {
+  /* Force rollback to the first row and keep it one horizontal row */
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    gap: .35rem !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] {
+    grid-row: 1 !important;
+    grid-column: 1 / -1 !important;
+    order: -100 !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="invoice_create"] {
+    grid-row: 2 !important;
+    grid-column: 1 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > .export-group {
+    grid-row: 2 !important;
+    grid-column: 2 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="generate"] {
+    grid-row: 2 !important;
+    grid-column: 3 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="apply_late_fees"] {
+    grid-row: 3 !important;
+    grid-column: 1 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="recurring"] {
+    grid-row: 3 !important;
+    grid-column: 2 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="waterbill"] {
+    grid-row: 3 !important;
+    grid-column: 3 !important;
+  }
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > a[href*="category"] {
+    grid-row: 4 !important;
+    grid-column: 1 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group {
+    display: grid !important;
+    grid-template-columns: 3.25rem minmax(0, 1fr) 5.8rem !important;
+    align-items: stretch !important;
+    gap: .20rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] .input-group-text,
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] input[type="month"],
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] button[type="submit"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: .18rem .18rem !important;
+    font-size: .62rem !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .page-header.invoice-page-compact > .top-actions.invoice-header-actions > form[action*="invoices_bulk_delete_preview"] button[type="submit"] i {
+    margin-right: .12rem !important;
+  }
+
+  /* Hide edit/pencil action only on small screen, leaving 4 actions visible */
+  .invoice-list-dense td.actions-cell .action-edit,
+  .invoice-list-dense td.actions-cell .btn-edit,
+  .invoice-list-dense td.actions-cell a[href*="edit"],
+  .invoice-list-dense td.actions-cell a[href*="update"],
+  .invoice-list-dense td.actions-cell a[title*="Edit"],
+  .invoice-list-dense td.actions-cell button[title*="Edit"],
+  .invoice-list-dense td.actions-cell a[aria-label*="Edit"],
+  .invoice-list-dense td.actions-cell button[aria-label*="Edit"] {
+    display: none !important;
+  }
+
+  /* With edit hidden, keep a compact 2x2 centered action group */
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table td.col-actions,
+  .invoice-list-dense table.table td.actions-cell,
+  .invoice-list-dense table.table th:last-child,
+  .invoice-list-dense table.table td:last-child {
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    text-align: center !important;
+    overflow: visible !important;
+  }
+
+  .invoice-actions,
+  .invoice-list-dense .actions-wrap,
+  .invoice-list-dense td.actions-cell .actions-wrap,
+  .invoice-list-dense td:last-child .actions-wrap {
+    display: grid !important;
+    grid-template-columns: repeat(2, 18px) !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-items: center !important;
+    gap: 2px !important;
+    width: 40px !important;
+    max-width: 40px !important;
+    min-width: 40px !important;
+    margin: 0 auto !important;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const amountCells = () => document.querySelectorAll('.invoice-list-dense td.col-amount');
+
+  const normalizeMobileAmounts = () => {
+    const useMobile = window.matchMedia('(max-width: 575.98px)').matches;
+    amountCells().forEach(cell => {
+      if (!cell.dataset.fullAmount) {
+        cell.dataset.fullAmount = cell.textContent.trim();
+      }
+      if (useMobile) {
+        cell.textContent = cell.dataset.fullAmount.replace(/(\.\d{2})(\s*)$/, '$2');
+      } else {
+        cell.textContent = cell.dataset.fullAmount;
+      }
+    });
+  };
+
+  const markEditButtons = () => {
+    document.querySelectorAll('.invoice-list-dense td.actions-cell').forEach(cell => {
+      cell.querySelectorAll('a, button').forEach(btn => {
+        const text = (btn.textContent || '').toLowerCase();
+        const title = (btn.getAttribute('title') || '').toLowerCase();
+        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+        const href = (btn.getAttribute('href') || '').toLowerCase();
+        if (
+          btn.classList.contains('btn-edit') ||
+          text.includes('edit') ||
+          title.includes('edit') ||
+          aria.includes('edit') ||
+          href.includes('edit') ||
+          href.includes('update')
+        ) {
+          btn.classList.add('action-edit');
+        }
+      });
+    });
+  };
+
+  markEditButtons();
+  normalizeMobileAmounts();
+  window.addEventListener('resize', normalizeMobileAmounts);
 });
 </script>
 

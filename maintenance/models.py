@@ -1,35 +1,61 @@
 import os
-import uuid
 
 from django.conf import settings
+from django.core.files.storage import default_storage
 from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
-from core.upload_utils import compress_instance_file_field
 from core.utils.text import smart_title
 
 
 MAINTENANCE_FILE_EXTENSIONS = [
-    "jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "mp4", "mov", "avi", "mkv"
+    "jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "mp4", "mov", "webm", "avi", "mkv",
+    "doc", "docx", "xls", "xlsx", "txt", "csv",
 ]
+MAINTENANCE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+MAINTENANCE_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
+
+
+def _safe_name_part(value, fallback="item", max_len=42):
+    value = str(value or fallback).strip()
+    safe = "".join(ch if ch.isalnum() else "-" for ch in value)
+    safe = "-".join(part for part in safe.split("-") if part)
+    return (safe or fallback)[:max_len]
+
+
+def _maintenance_media_base(instance):
+    request_obj = instance.request
+    property_name = getattr(getattr(request_obj, "building", None), "property_name", "") or "property"
+    unit_name = getattr(getattr(request_obj, "unit", None), "unit_number", "") or "unit"
+    date_value = getattr(request_obj, "reported_date", None) or timezone.localdate()
+    date_part = date_value.strftime("%Y-%m-%d")
+    serial = MaintenanceRequestMedia.objects.filter(request=request_obj).count() + 1
+    return (
+        f"{_safe_name_part(property_name)}_"
+        f"{_safe_name_part(unit_name)}_"
+        f"{date_part}_{serial:03d}"
+    )
 
 
 def maintenance_media_upload_to(instance, filename):
     ext = os.path.splitext(filename)[1].lower()
-    return f"maintenance/{instance.request_id or 'new'}/{uuid.uuid4().hex}{ext}"
+    base = _maintenance_media_base(instance)
+    folder = f"maintenance/{instance.request_id or 'new'}"
+    path = f"{folder}/{base}{ext}"
+    suffix = 1
+    while default_storage.exists(path):
+        path = f"{folder}/{base}-{suffix:02d}{ext}"
+        suffix += 1
+    return path
 
 
 class MaintenanceRequest(models.Model):
-    CATEGORY_CHOICES = [
-        ("general", "General"),
-        ("electric", "Electric"),
-        ("plumbing", "Plumbing"),
-        ("paint", "Paint"),
-        ("appliance", "Appliance"),
-        ("cleaning", "Cleaning"),
-        ("security", "Security"),
-        ("other", "Other"),
+    SOURCE_MANUAL = "manual"
+    SOURCE_PUBLIC_LINK = "public_link"
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, "Manual"),
+        (SOURCE_PUBLIC_LINK, "Public Link"),
     ]
     PRIORITY_CHOICES = [
         ("low", "Low"),
@@ -45,20 +71,6 @@ class MaintenanceRequest(models.Model):
         ("cancelled", "Cancelled"),
     ]
 
-    tenant = models.ForeignKey(
-        "tenants.Tenant",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="maintenance_requests",
-    )
-    building = models.ForeignKey(
-        "properties.Property",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="maintenance_requests",
-    )
     unit = models.ForeignKey(
         "properties.Unit",
         on_delete=models.SET_NULL,
@@ -73,9 +85,24 @@ class MaintenanceRequest(models.Model):
         blank=True,
         related_name="maintenance_requests",
     )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="maintenance_requests",
+    )
     title = models.CharField(max_length=160)
-    description = models.TextField()
-    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES, default="general")
+    description = models.TextField(blank=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
+    category = models.CharField(max_length=80, blank=True, default="General")
+    category_ref = models.ForeignKey(
+        "maintenance.MaintenanceCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requests",
+    )
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="normal")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new")
     reported_date = models.DateField(default=timezone.localdate)
@@ -120,8 +147,69 @@ class MaintenanceRequest(models.Model):
     def get_absolute_url(self):
         return reverse("maintenance:request_detail", kwargs={"pk": self.pk})
 
+    @property
+    def building(self):
+        return getattr(self.unit, "property", None)
+
+    @property
+    def current_lease(self):
+        if self.lease_id:
+            return self.lease
+        if not self.unit_id:
+            return None
+        from leases.models import Lease
+
+        request_date = self.reported_date or timezone.localdate()
+        lease = (
+            Lease.objects.select_related("tenant", "unit", "unit__property")
+            .filter(unit_id=self.unit_id, start_date__lte=request_date, end_date__gte=request_date)
+            .order_by("-start_date", "-id")
+            .first()
+        )
+        if lease:
+            return lease
+        return (
+            Lease.objects.select_related("tenant", "unit", "unit__property")
+            .filter(unit_id=self.unit_id, status="active")
+            .order_by("-start_date", "-id")
+            .first()
+        )
+
+    @property
+    def lease_tenant(self):
+        if self.tenant_id:
+            return self.tenant
+        lease = self.current_lease
+        return getattr(lease, "tenant", None)
+
     def save(self, *args, **kwargs):
         self.title = smart_title(self.title)
+        if self.lease_id:
+            self.unit = self.lease.unit
+            self.tenant = self.lease.tenant
+        if self.category_ref_id:
+            self.category = self.category_ref.name
+        if self.status == "completed" and not self.resolved_date:
+            self.resolved_date = timezone.localdate()
+        super().save(*args, **kwargs)
+
+
+class MaintenanceCategory(models.Model):
+    name = models.CharField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name_plural = "Maintenance categories"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
         super().save(*args, **kwargs)
 
 
@@ -155,12 +243,23 @@ class MaintenanceRequestMedia(models.Model):
 
     @property
     def is_image(self):
-        return os.path.splitext(self.file.name or "")[1].lower() in {
-            ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"
-        }
+        return os.path.splitext(self.file.name or "")[1].lower() in MAINTENANCE_IMAGE_EXTENSIONS
+
+    @property
+    def is_video(self):
+        return os.path.splitext(self.file.name or "")[1].lower() in MAINTENANCE_VIDEO_EXTENSIONS
+
+    @property
+    def is_pdf(self):
+        return os.path.splitext(self.file.name or "")[1].lower() == ".pdf"
+
+    @property
+    def display_filename(self):
+        return os.path.basename(self.file.name or self.original_filename or "file")
 
     def save(self, *args, **kwargs):
-        compress_instance_file_field(self, "file")
+        if self.file and not self.original_filename:
+            self.original_filename = os.path.basename(self.file.name or "")
         super().save(*args, **kwargs)
 
 

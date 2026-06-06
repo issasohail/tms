@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<style>
+  .maint-wrap { max-width: 1320px; }
+  .maint-filter, .maint-quick, .maint-row {
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .maint-row { padding: .65rem; margin-bottom: .55rem; }
+  .maint-grid {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr) minmax(130px, .8fr) minmax(110px, .65fr) minmax(105px, .55fr) minmax(170px, .9fr);
+    gap: .5rem;
+    align-items: start;
+  }
+  .maint-inline, .maint-inline-sm {
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    padding: .15rem .25rem;
+  }
+  .maint-inline:focus, .maint-inline-sm:focus {
+    background: #fff;
+    border-color: #86b7fe;
+    outline: 0;
+    box-shadow: 0 0 0 .12rem rgba(13,110,253,.16);
+  }
+  textarea.maint-inline { resize: vertical; min-height: 2.2rem; }
+  .maint-label { display:block; font-size:.68rem; color:#6c757d; margin-bottom:.1rem; }
+  .maint-media-list { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.45rem; }
+  .maint-media-chip {
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:.25rem;
+    max-width:100%;
+    border:1px solid #dee2e6;
+    border-radius:7px;
+    padding:.25rem;
+    background:#f8f9fa;
+  }
+  .maint-media-chip a { max-width: 180px; overflow-wrap:anywhere; }
+  .maint-media-chip input { width: 170px; max-width: 100%; }
+  .maint-actions, .maint-upload { display:flex; flex-wrap:wrap; gap:.25rem; justify-content:flex-end; }
+  .maint-upload input[type=file] { max-width: 190px; }
+  .maint-row.saving { opacity:.68; }
+  @media (max-width: 900px) {
+    .maint-grid { grid-template-columns: 1fr 1fr; }
+    .maint-actions { justify-content:flex-start; }
+  }
+  @media (max-width: 520px) {
+    .container.maint-wrap { padding-left: .45rem; padding-right: .45rem; }
+    .maint-grid { grid-template-columns: 1fr; gap:.35rem; }
+    .maint-filter, .maint-quick, .maint-row { border-radius: 7px; }
+    .maint-filter .card-body, .maint-quick .card-body { padding: .55rem; }
+    .maint-row { padding: .5rem; }
+    .maint-actions, .maint-upload { justify-content:flex-start; }
+    .maint-upload input[type=file], .maint-media-chip input { width: 100%; max-width: 100%; }
+  }
+  @media (max-width: 360px) {
+    .maint-wrap, .maint-wrap .btn, .maint-wrap .form-select, .maint-wrap .form-control, .maint-wrap input, .maint-wrap textarea {
+      font-size: .68rem;
+    }
+    .maint-label { font-size:.64rem; }
+  }
+</style>
+
+<div class="container maint-wrap mt-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h4 class="mb-0">Maintenance Requests</h4>
+    <a href="{% url 'maintenance:request_add' %}" class="btn btn-primary btn-sm">Add Request</a>
+  </div>
+
+  <form method="get" class="maint-filter card mb-2">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-3">
+          <label class="form-label small mb-1">Search</label>
+          <input type="text" name="q" value="{{ filters.q }}" class="form-control form-control-sm" placeholder="Title, tenant, unit">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1">Status</label>
+          <select name="status" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1">Priority</label>
+          <select name="priority" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for value, label in priority_choices %}
+              <option value="{{ value }}" {% if filters.priority == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1">Building</label>
+          <select name="building" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for building in buildings %}
+              <option value="{{ building.id }}" {% if filters.building == building.id|stringformat:"s" %}selected{% endif %}>{{ building.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for unit in units %}
+              <option value="{{ unit.id }}" {% if filters.unit == unit.id|stringformat:"s" %}selected{% endif %}>{{ unit }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-1 d-grid">
+          <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <form id="maint-quick-add" class="maint-quick card mb-2" enctype="multipart/form-data" data-url="{% url 'maintenance:request_quick_add' %}">
+    {% csrf_token %}
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">Building / Property</label>
+          <select name="building" class="form-select form-select-sm">
+            <option value="">Select</option>
+            {% for building in buildings %}<option value="{{ building.id }}">{{ building.property_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">Unit</label>
+          <select name="unit" class="form-select form-select-sm">
+            <option value="">Select</option>
+            {% for unit in units %}<option value="{{ unit.id }}">{{ unit }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">Lease / Tenant</label>
+          <select name="lease" class="form-select form-select-sm">
+            <option value="">Select lease</option>
+            {% for lease in leases %}<option value="{{ lease.id }}">{{ lease.tenant }} - {{ lease.unit }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">Tenant</label>
+          <select name="tenant" class="form-select form-select-sm">
+            <option value="">Select tenant</option>
+            {% for tenant in tenants %}<option value="{{ tenant.id }}">{{ tenant.get_full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-lg-2">
+          <label class="form-label small mb-1">Title</label>
+          <input name="title" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-12 col-lg-2">
+          <label class="form-label small mb-1">Description</label>
+          <input name="description" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label small mb-1">Status</label>
+          <select name="status" class="form-select form-select-sm">
+            {% for value, label in status_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label small mb-1">Priority</label>
+          <select name="priority" class="form-select form-select-sm">
+            {% for value, label in priority_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label small mb-1">Cost</label>
+          <input name="cost" type="number" min="0" step="0.01" value="0" class="form-control form-control-sm">
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label small mb-1">Files / Receipts / Photos</label>
+          <input name="files" type="file" multiple class="form-control form-control-sm" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif">
+        </div>
+        <div class="col-12 col-lg-1 d-grid">
+          <button type="submit" class="btn btn-success btn-sm">Quick Add</button>
+        </div>
+      </div>
+      <div class="small text-danger mt-1 d-none" id="maint-quick-error"></div>
+    </div>
+  </form>
+
+  <div id="maint-list">
+    {% for item in requests %}
+      <div class="maint-row" data-id="{{ item.id }}" data-update-url="{% url 'maintenance:request_inline_update' item.id %}" data-upload-url="{% url 'maintenance:request_media_upload' item.id %}" data-whatsapp-url="{% url 'maintenance:request_whatsapp' item.id %}">
+        <div class="maint-grid">
+          <div>
+            <span class="maint-label">Request title</span>
+            <input class="maint-inline fw-semibold js-inline" data-field="title" value="{{ item.title }}">
+            <span class="maint-label mt-1">Description</span>
+            <textarea class="maint-inline js-inline" data-field="description" rows="2">{{ item.description }}</textarea>
+          </div>
+          <div>
+            <span class="maint-label">Building / Unit</span>
+            <div>{{ item.building|default:"-" }}</div>
+            <div class="small text-muted">{{ item.unit|default:"" }}</div>
+            <span class="maint-label mt-2">Reported</span>
+            <div>{{ item.reported_date|date:"M d, Y" }}</div>
+          </div>
+          <div>
+            <span class="maint-label">Tenant</span>
+            <div>{{ item.tenant|default:"-" }}</div>
+            {% if item.tenant.phone %}<div class="small text-muted">{{ item.tenant.phone }}</div>{% endif %}
+          </div>
+          <div>
+            <span class="maint-label">Status</span>
+            <select class="form-select form-select-sm js-inline" data-field="status">
+              {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <span class="maint-label mt-2">Priority</span>
+            <div>{{ item.get_priority_display }}</div>
+          </div>
+          <div>
+            <span class="maint-label">Cost</span>
+            <input type="number" min="0" step="0.01" class="maint-inline-sm text-end js-inline" data-field="cost" value="{{ item.cost }}">
+            <span class="maint-label mt-2">Files</span>
+            <span class="badge bg-secondary js-media-count">{{ item.active_media_count|default:0 }}</span>
+          </div>
+          <div>
+            <span class="maint-label">Actions</span>
+            <div class="maint-actions">
+              <a href="{% url 'maintenance:request_detail' item.id %}" class="btn btn-outline-primary btn-sm">Detail</a>
+              <button type="button" class="btn btn-success btn-sm js-whatsapp">WhatsApp</button>
+              <a href="{% url 'maintenance:request_delete' item.id %}" class="btn btn-outline-danger btn-sm">Delete</a>
+            </div>
+            <form class="maint-upload js-upload mt-2" enctype="multipart/form-data">
+              <input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">Upload/Edit</button>
+            </form>
+          </div>
+        </div>
+        <div class="maint-media-list js-media-list">
+          {% for media in item.media.all %}
+            {% if media.is_active %}
+              <span class="maint-media-chip" data-media-id="{{ media.id }}" data-description-url="{% url 'maintenance:media_description_update' media.id %}" data-delete-url="{% url 'maintenance:media_delete' media.id %}">
+                <a href="{{ media.file.url }}" target="_blank" rel="noopener">{{ media.display_filename }}</a>
+                <input class="form-control form-control-sm js-media-desc" value="{{ media.description }}" placeholder="Description">
+                <button type="button" class="btn btn-outline-danger btn-sm js-media-delete">Delete</button>
+              </span>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="text-muted p-3 bg-white border rounded" id="maint-empty">No maintenance requests found.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+(function () {
+  const list = document.getElementById("maint-list");
+  const quickForm = document.getElementById("maint-quick-add");
+  const quickError = document.getElementById("maint-quick-error");
+  const csrf = document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
+  const statusOptions = `{% for value, label in status_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}`;
+
+  function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, function (ch) {
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch];
+    });
+  }
+
+  function postForm(url, formData) {
+    return fetch(url, {
+      method: "POST",
+      headers: {"X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest"},
+      body: formData,
+      credentials: "same-origin"
+    }).then(async response => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) throw new Error(data.error || "Request failed.");
+      return data;
+    });
+  }
+
+  function initInline(scope) {
+    (scope || document).querySelectorAll(".js-inline, .js-media-desc").forEach(function (input) {
+      input.dataset.lastValue = input.value;
+    });
+  }
+
+  function mediaChip(media) {
+    return `
+      <span class="maint-media-chip" data-media-id="${media.id}" data-description-url="${escapeHtml(media.description_url)}" data-delete-url="${escapeHtml(media.delete_url)}">
+        <a href="${escapeHtml(media.url)}" target="_blank" rel="noopener">${escapeHtml(media.filename)}</a>
+        <input class="form-control form-control-sm js-media-desc" value="${escapeHtml(media.description)}" placeholder="Description">
+        <button type="button" class="btn btn-outline-danger btn-sm js-media-delete">Delete</button>
+      </span>`;
+  }
+
+  function requestRow(item) {
+    const options = statusOptions.replace(`value="${item.status}"`, `value="${item.status}" selected`);
+    return `
+      <div class="maint-row" data-id="${item.id}" data-update-url="${escapeHtml(item.update_url)}" data-upload-url="${escapeHtml(item.upload_url)}" data-whatsapp-url="${escapeHtml(item.whatsapp_url)}">
+        <div class="maint-grid">
+          <div>
+            <span class="maint-label">Request title</span>
+            <input class="maint-inline fw-semibold js-inline" data-field="title" value="${escapeHtml(item.title)}">
+            <span class="maint-label mt-1">Description</span>
+            <textarea class="maint-inline js-inline" data-field="description" rows="2">${escapeHtml(item.description)}</textarea>
+          </div>
+          <div><span class="maint-label">Building / Unit</span><div>${escapeHtml(item.building)}</div><div class="small text-muted">${escapeHtml(item.unit)}</div><span class="maint-label mt-2">Reported</span><div>${escapeHtml(item.reported_date)}</div></div>
+          <div><span class="maint-label">Tenant</span><div>${escapeHtml(item.tenant)}</div><div class="small text-muted">${escapeHtml(item.tenant_phone)}</div></div>
+          <div><span class="maint-label">Status</span><select class="form-select form-select-sm js-inline" data-field="status">${options}</select><span class="maint-label mt-2">Priority</span><div>${escapeHtml(item.priority_display)}</div></div>
+          <div><span class="maint-label">Cost</span><input type="number" min="0" step="0.01" class="maint-inline-sm text-end js-inline" data-field="cost" value="${escapeHtml(item.cost)}"><span class="maint-label mt-2">Files</span> <span class="badge bg-secondary js-media-count">${item.media_count || 0}</span></div>
+          <div><span class="maint-label">Actions</span><div class="maint-actions"><a href="${escapeHtml(item.detail_url)}" class="btn btn-outline-primary btn-sm">Detail</a><button type="button" class="btn btn-success btn-sm js-whatsapp">WhatsApp</button><a href="${escapeHtml(item.delete_url)}" class="btn btn-outline-danger btn-sm">Delete</a></div><form class="maint-upload js-upload mt-2" enctype="multipart/form-data"><input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif"><button type="submit" class="btn btn-outline-secondary btn-sm">Upload/Edit</button></form></div>
+        </div>
+        <div class="maint-media-list js-media-list">${(item.media || []).map(mediaChip).join("")}</div>
+      </div>`;
+  }
+
+  quickForm?.addEventListener("submit", function (event) {
+    event.preventDefault();
+    quickError.classList.add("d-none");
+    postForm(quickForm.dataset.url, new FormData(quickForm)).then(data => {
+      document.getElementById("maint-empty")?.remove();
+      list.insertAdjacentHTML("afterbegin", requestRow(data.request));
+      initInline(list.firstElementChild);
+      quickForm.reset();
+      if (data.skipped && data.skipped.length) alert("Skipped unsupported file(s): " + data.skipped.join(", "));
+    }).catch(error => {
+      quickError.textContent = error.message;
+      quickError.classList.remove("d-none");
+    });
+  });
+
+  list?.addEventListener("change", handleInline);
+  list?.addEventListener("blur", handleInline, true);
+
+  function handleInline(event) {
+    const input = event.target.closest(".js-inline");
+    if (!input) return;
+    if (input.dataset.lastValue === input.value) return;
+    input.dataset.lastValue = input.value;
+    const row = input.closest(".maint-row");
+    const formData = new FormData();
+    formData.append("field", input.dataset.field);
+    formData.append("value", input.value);
+    row.classList.add("saving");
+    postForm(row.dataset.updateUrl, formData).then(data => {
+      row.querySelector(".js-media-count").textContent = data.request.media_count;
+    }).catch(error => alert(error.message)).finally(() => row.classList.remove("saving"));
+  }
+
+  list?.addEventListener("submit", function (event) {
+    const form = event.target.closest(".js-upload");
+    if (!form) return;
+    event.preventDefault();
+    const row = form.closest(".maint-row");
+    postForm(row.dataset.uploadUrl, new FormData(form)).then(data => {
+      const mediaList = row.querySelector(".js-media-list");
+      data.media.forEach(media => mediaList.insertAdjacentHTML("afterbegin", mediaChip(media)));
+      row.querySelector(".js-media-count").textContent = data.media_count;
+      form.reset();
+      if (data.skipped && data.skipped.length) alert("Skipped unsupported file(s): " + data.skipped.join(", "));
+    }).catch(error => alert(error.message));
+  });
+
+  list?.addEventListener("click", function (event) {
+    const wa = event.target.closest(".js-whatsapp");
+    if (wa) {
+      const row = wa.closest(".maint-row");
+      fetch(row.dataset.whatsappUrl, {headers: {"X-Requested-With": "XMLHttpRequest"}, credentials: "same-origin"})
+        .then(r => r.json())
+        .then(data => {
+          if (data.whatsapp_url) window.open(data.whatsapp_url, "_blank", "noopener");
+          else alert("Tenant phone is missing. Message:\n\n" + data.message);
+        })
+        .catch(() => alert("Failed to prepare WhatsApp message."));
+      return;
+    }
+    const del = event.target.closest(".js-media-delete");
+    if (del) {
+      if (!confirm("Remove this file from active view?")) return;
+      const chip = del.closest(".maint-media-chip");
+      const row = del.closest(".maint-row");
+      const fd = new FormData();
+      fd.append("confirm_delete", "yes");
+      postForm(chip.dataset.deleteUrl, fd).then(data => {
+        chip.remove();
+        row.querySelector(".js-media-count").textContent = data.media_count;
+      }).catch(error => alert(error.message));
+    }
+  });
+
+  list?.addEventListener("blur", function (event) {
+    const input = event.target.closest(".js-media-desc");
+    if (!input) return;
+    if (input.dataset.lastValue === input.value) return;
+    input.dataset.lastValue = input.value;
+    const chip = input.closest(".maint-media-chip");
+    const fd = new FormData();
+    fd.append("description", input.value);
+    postForm(chip.dataset.descriptionUrl, fd).catch(error => alert(error.message));
+  }, true);
+  initInline(document);
+})();
+</script>
+{% endblock %}

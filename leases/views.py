@@ -76,6 +76,7 @@ from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm
 from leases.models import Lease
+from maintenance.public_links import make_public_maintenance_token
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
 from leases.utils import do_replace_placeholders
@@ -1544,6 +1545,16 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     )
                 ),
             }
+        )
+        public_maintenance_token = make_public_maintenance_token(lease)
+        ctx["public_maintenance_url"] = self.request.build_absolute_uri(
+            reverse("maintenance:public_request_create", args=[public_maintenance_token])
+        )
+        ctx["public_maintenance_whatsapp_text"] = (
+            f"Dear {lease.tenant.get_full_name()},\n\n"
+            f"For maintenance in {lease.unit.property.property_name} - {lease.unit.unit_number}, "
+            "please open this link, describe the issue, and upload photos/videos if available:\n"
+            f"{ctx['public_maintenance_url']}"
         )
         ensure_original_history(
             lease,

@@ -351,6 +351,14 @@
       <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
       <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
+      {% if lease.status == "active" %}
+        <button type="button" class="btn btn-sm btn-outline-primary" data-maintenance-link="{{ public_maintenance_url }}" id="copyMaintenanceLinkBtn">
+          <i class="fas fa-link"></i> Copy Maintenance Link
+        </button>
+        <a href="https://wa.me/?text={{ public_maintenance_whatsapp_text|urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">
+          <i class="fab fa-whatsapp"></i> Share Maintenance Link
+        </a>
+      {% endif %}
       <a href="{% url 'leases:police_verification_summary_pdf' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-file-pdf"></i> Police PDF</a>
       <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i> Print</a>
       {% if lease.generated_agreement_pdf %}
@@ -1067,5 +1075,16 @@ function openRenewalMedia(btn) {
     new bootstrap.Modal(document.getElementById('renewalMediaModal')).show();
 }
 
+document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', function () {
+  const link = this.dataset.maintenanceLink || '';
+  if (!link) return;
+  navigator.clipboard.writeText(link).then(() => {
+    const original = this.innerHTML;
+    this.innerHTML = '<i class="fas fa-check"></i> Copied';
+    setTimeout(() => { this.innerHTML = original; }, 1600);
+  }).catch(() => {
+    window.prompt('Copy maintenance link:', link);
+  });
+});
 </script>
 {% endblock %}

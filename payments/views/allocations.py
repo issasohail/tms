@@ -231,6 +231,7 @@ class AllocationUpdateView(UpdateView):
             "lease__unit",
             "lease__unit__property",
             "payment_method",
+            "allocation",
         ).order_by("-id")[:size])
 
         # ---- tenants/properties (same as create) ----
@@ -371,6 +372,7 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
             "lease__unit",
             "lease__unit__property",
             "payment_method",
+            "allocation",
         ).order_by("-id")[:size])
 
         include_inactive = str(self.request.GET.get("include_inactive", "")).lower() in ("on","1","true","yes")
@@ -721,17 +723,31 @@ def api_allocation_receipt_whatsapp(request, pk: int):
     sec_totals = security_deposit_totals(lease) if lease else {"balance_to_collect": 0, "required": 0}
     sec_status = "Pending" if (sec_totals.get("balance_to_collect") or 0) > 0 else "Paid"
 
-    # Message includes total payment + both portions
+    is_refund = (alloc.security_type or "").upper() == "REFUND"
+    heading = "*Security deposit refunded*" if is_refund else "*Payment received*"
+    amount_line = (
+        f"*Refund Amount: {_money(alloc.security_amount)}*"
+        if is_refund
+        else f"*Total Amount Received: {_money(pay.amount)}*"
+    )
+    security_line = ""
+    if (alloc.security_amount or 0) > 0:
+        security_line = (
+            f"Security Refund: {_money(alloc.security_amount)}\n"
+            if is_refund
+            else f"Security Portion: {_money(alloc.security_amount)}\n"
+        )
+
     msg = (
         f"Dear {getattr(tenant,'first_name','')},\n"
-        f"*Payment received* for {lease.unit.property.property_name if lease and lease.unit and lease.unit.property else ''}.\n"
+        f"{heading} for {lease.unit.property.property_name if lease and lease.unit and lease.unit.property else ''}.\n"
         f"Unit: {lease.unit.unit_number if lease and lease.unit else ''}\n"
-        f"Period: {lease.start_date:%b %d, %Y} – {lease.end_date:%b %d, %Y}\n"
+        f"Period: {lease.start_date:%b %d, %Y} - {lease.end_date:%b %d, %Y}\n"
         f"Security Deposit: {_money(sec_totals.get('required', 0))} ({sec_status})\n"
         f"Date: {pay.payment_date:%b %d, %Y}\n"
-        f"*Total Amount Received: {_money(pay.amount)}*\n" +
+        f"{amount_line}\n" +
         (f"Lease Portion: {_money(alloc.lease_amount)}\n" if (alloc.lease_amount or 0) > 0 else "") +
-        (f"Security Portion: {_money(alloc.security_amount)}\n" if (alloc.security_amount or 0) > 0 else "") +
+        security_line +
         f"Thank you!"
     )
 

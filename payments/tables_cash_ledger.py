@@ -74,7 +74,17 @@ class CashLedgerTable(tables.Table):
         return self.row_counter
 
     def render_source(self, value, record):
-        if record.source == "PAYMENT":
+        source_type = (getattr(record, "source_type", "") or "").upper()
+        if source_type == "REFUND":
+            cls = "bg-danger"
+            label = "Refund"
+        elif source_type == "DAMAGE":
+            cls = "bg-danger"
+            label = "Damage"
+        elif source_type == "ADJUST":
+            cls = "bg-info text-dark"
+            label = "Adjust"
+        elif record.source == "PAYMENT":
             cls = "bg-primary"
             label = "Payment"
         else:

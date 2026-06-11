@@ -3,10 +3,7 @@
 
 {% block content %}
 <style>
-  .maint-wrap {
-    max-width: 1500px;
-    --maint-sticky-top: 48px;
-  }
+  .maint-wrap { max-width: 1500px; }
   /*
     Width tuning lives here:
     Desktop:
@@ -50,23 +47,20 @@
     --ml-category: 90px;
     --ml-cost: 76px;
     --ml-title: minmax(180px, 1fr);
-    --ml-description: minmax(120px, .55fr);
-    --ml-actions: 164px;
+    --ml-description: minmax(160px, .9fr);
+    --ml-actions: 116px;
     display: grid;
     grid-template-columns: var(--ml-sr) var(--ml-property) var(--ml-tenant) var(--ml-date) var(--ml-resolved) var(--ml-status) var(--ml-category) var(--ml-cost) var(--ml-title) var(--ml-description) var(--ml-actions);
     gap: .45rem;
     align-items: center;
   }
-  .maint-item-grid > div { min-width:0; }
   .maint-mobile-head { display:none; }
   .maint-list-head {
-    position: -webkit-sticky;
     position: sticky;
-    top: var(--maint-sticky-top);
-    z-index: 1020;
-    background: #fff;
+    top: 0;
+    z-index: 20;
+    background: rgba(255,255,255,.96);
     backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
     padding: .45rem .6rem;
     color: #6c757d;
     font-size: .72rem;
@@ -99,9 +93,7 @@
   .maint-muted { color:#6c757d; font-size:.72rem; }
   .maint-description-cell {
     color:#6c757d;
-    font-size:.66rem;
     min-width:0;
-    overflow:hidden;
   }
   .maint-description-text {
     display:block;
@@ -230,7 +222,6 @@
       font-size:.68rem !important;
     }
     .container.maint-wrap { padding-left:.45rem; padding-right:.45rem; }
-    .maint-wrap { --maint-sticky-top: 40px; }
     .maint-filter .card-body, .maint-quick .card-body { padding:.55rem; }
     .maint-item { padding:.48rem; }
     .maint-filter-row {
@@ -277,27 +268,25 @@
       grid-template-columns: var(--mq-mobile-left) var(--mq-mobile-right);
       gap:.32rem;
     }
-    .mq-lease { grid-column:1 / 3; grid-row:1; }
-    .mq-building { grid-column:1 / 2; grid-row:2; }
-    .mq-unit { grid-column:2 / 3; grid-row:2; }
-    .mq-title { grid-column:1 / 2; grid-row:3; }
-    .mq-category { grid-column:2 / 3; grid-row:3; }
-    .mq-description { grid-column:1 / 3; grid-row:4; }
-    .mq-attach { grid-column:1 / 2; grid-row:5; }
-    .mq-submit { grid-column:2 / 3; grid-row:5; }
+    .mq-lease { grid-column:1 / 3; }
+    .mq-building { grid-column:1 / 2; }
+    .mq-unit { grid-column:2 / 3; }
+    .mq-title { grid-column:1 / 2; }
+    .mq-category { grid-column:2 / 3; }
+    .mq-description { grid-column:1 / 3; }
+    .mq-attach { grid-column:1 / 2; }
+    .mq-submit { grid-column:2 / 3; }
     .mq-submit .btn { width:100%; }
     .maint-mobile-head {
       --ms-sn: 28px;
       --ms-property: minmax(0, 1fr);
       --ms-date: 80px;
       --ms-action: 28px;
-      position:-webkit-sticky;
       position: sticky;
-      top: var(--maint-sticky-top);
-      z-index: 1020;
-      background: #fff;
+      top: 0;
+      z-index: 21;
+      background: rgba(255,255,255,.96);
       backdrop-filter: blur(4px);
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
       display:grid;
       grid-template-columns: var(--ms-sn) var(--ms-property) var(--ms-date) var(--ms-action);
       gap:.18rem .3rem;
@@ -360,7 +349,6 @@
       grid-row:5;
       min-width:0;
       line-height:1.15;
-      font-size:.62rem;
     }
     .maint-action-cell {
       grid-column:4;
@@ -749,10 +737,7 @@
           </div>
           <div class="maint-description-cell">
             <span class="maint-cell-label">Description</span>
-            <span class="js-inline-cell" data-field="description">
-              <span class="maint-description-text maint-display js-display">{{ item.description|default:"-" }}</span>
-              <input type="text" class="form-control form-control-sm js-editor d-none maint-edit-control" value="{{ item.description|default:'' }}">
-            </span>
+            <span class="maint-description-text">{{ item.description|default:"-" }}</span>
           </div>
           <div class="maint-action-cell">
             <div class="maint-row-actions">
@@ -1092,7 +1077,7 @@
           <div class="maint-unit-mobile-line"><span class="js-mobile-unit-display">${escapeHtml(item.unit || "-")}</span></div>
           <div class="maint-cost-cell"><span class="maint-cell-label">Cost</span><div class="js-inline-cell" data-field="cost"><div class="maint-display js-display">${escapeHtml(item.cost_display)}</div><input type="number" min="0" step="0.01" class="form-control form-control-sm js-editor d-none maint-edit-control" value="${escapeHtml(item.cost)}"></div></div>
           <div class="maint-title maint-title-cell"><span class="maint-cell-label">Title</span><div class="maint-title-line"><span class="maint-title-text maint-plain-title js-title-display">${escapeHtml(item.title)}</span> <span class="badge bg-light text-dark border js-media-count">${item.media_count || 0} file</span></div></div>
-          <div class="maint-description-cell"><span class="maint-cell-label">Description</span><span class="js-inline-cell" data-field="description"><span class="maint-description-text maint-display js-display">${escapeHtml(item.description || "-")}</span><input type="text" class="form-control form-control-sm js-editor d-none maint-edit-control" value="${escapeHtml(item.description || "")}"></span></div>
+          <div class="maint-description-cell"><span class="maint-cell-label">Description</span><span class="maint-description-text">${escapeHtml(item.description || "-")}</span></div>
           <div class="maint-action-cell">
             <div class="maint-row-actions">
             <form class="maint-upload js-upload" enctype="multipart/form-data"><input type="file" name="files" multiple class="maint-upload-file js-row-files" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif"><button type="button" class="btn btn-outline-secondary btn-sm js-row-attach"><i class="bi bi-upload"></i><span class="btn-text ms-1">Upload</span></button></form><div class="maint-actions"><a href="${escapeHtml(item.detail_url)}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i><span class="btn-text ms-1">Detail</span></a><a href="${escapeHtml(item.edit_url)}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil"></i><span class="btn-text ms-1">Edit</span></a><button type="button" class="btn btn-outline-danger btn-sm js-request-delete" data-delete-url="${escapeHtml(item.delete_url)}"><i class="bi bi-trash"></i><span class="btn-text ms-1">Delete</span></button><button type="button" class="btn btn-success btn-sm js-whatsapp"><i class="bi bi-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span></button></div>

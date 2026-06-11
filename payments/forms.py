@@ -259,6 +259,7 @@ class PaymentAllocationForm(forms.ModelForm):
     MODE_CHOICES = [
         ("LEASE", "Lease"),
         ("SECURITY", "Security"),
+        ("REFUND", "Refund"),
         ("SPLIT", "Split"),
     ]
 
@@ -288,7 +289,11 @@ class PaymentAllocationForm(forms.ModelForm):
             lease_amt = inst.lease_amount or Decimal("0.00")
             sec_amt = inst.security_amount or Decimal("0.00")
 
-            if lease_amt > 0 and sec_amt > 0:
+            sec_type = (inst.security_type or "PAYMENT").upper()
+
+            if sec_type == "REFUND" and sec_amt > 0 and lease_amt <= 0:
+                mode = "REFUND"
+            elif lease_amt > 0 and sec_amt > 0:
                 mode = "SPLIT"
             elif sec_amt > 0 and lease_amt <= 0:
                 mode = "SECURITY"
@@ -322,6 +327,10 @@ class PaymentAllocationForm(forms.ModelForm):
             elif mode == "SECURITY":
                 lease_amount = Decimal("0.00")
                 security_amount = payment_total
+            elif mode == "REFUND":
+                lease_amount = Decimal("0.00")
+                security_amount = payment_total
+                cleaned_data["security_type"] = "REFUND"
             elif lease_amount + security_amount != payment_total:
                 raise forms.ValidationError(
                     f"Allocation total ({lease_amount + security_amount}) must equal Payment amount ({payment_total})."
@@ -331,4 +340,6 @@ class PaymentAllocationForm(forms.ModelForm):
         cleaned_data["lease_amount"] = lease_amount
         cleaned_data["security_amount"] = security_amount
         cleaned_data["security_type"] = (cleaned_data.get("security_type") or "PAYMENT").upper()
+        if mode == "REFUND":
+            cleaned_data["security_type"] = "REFUND"
         return cleaned_data

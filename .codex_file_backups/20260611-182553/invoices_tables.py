@@ -119,14 +119,12 @@ class InvoiceTable(ExportableTable):
     # ---------- renderers ----------
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.row_counter = 0
+        self._sn_seen = 0
 
     def render_sn(self):
-        """Auto-incrementing serial number across paginated pages."""
-        self.row_counter += 1
-        page = getattr(self, "page", None)
-        offset = page.start_index() - 1 if page is not None else 0
-        return offset + self.row_counter
+        """Auto-incrementing serial number"""
+        self.row_counter = getattr(self, 'row_counter', 0) + 1
+        return self.row_counter
 
     def render_tenant(self, record, value):
         first = (value or "").strip()

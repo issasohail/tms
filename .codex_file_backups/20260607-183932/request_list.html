@@ -3,10 +3,7 @@
 
 {% block content %}
 <style>
-  .maint-wrap {
-    max-width: 1500px;
-    --maint-sticky-top: 48px;
-  }
+  .maint-wrap { max-width: 1500px; }
   /*
     Width tuning lives here:
     Desktop:
@@ -60,13 +57,11 @@
   .maint-item-grid > div { min-width:0; }
   .maint-mobile-head { display:none; }
   .maint-list-head {
-    position: -webkit-sticky;
     position: sticky;
-    top: var(--maint-sticky-top);
-    z-index: 1020;
-    background: #fff;
+    top: 0;
+    z-index: 20;
+    background: rgba(255,255,255,.96);
     backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
     padding: .45rem .6rem;
     color: #6c757d;
     font-size: .72rem;
@@ -230,7 +225,6 @@
       font-size:.68rem !important;
     }
     .container.maint-wrap { padding-left:.45rem; padding-right:.45rem; }
-    .maint-wrap { --maint-sticky-top: 40px; }
     .maint-filter .card-body, .maint-quick .card-body { padding:.55rem; }
     .maint-item { padding:.48rem; }
     .maint-filter-row {
@@ -291,13 +285,11 @@
       --ms-property: minmax(0, 1fr);
       --ms-date: 80px;
       --ms-action: 28px;
-      position:-webkit-sticky;
       position: sticky;
-      top: var(--maint-sticky-top);
-      z-index: 1020;
-      background: #fff;
+      top: 0;
+      z-index: 21;
+      background: rgba(255,255,255,.96);
       backdrop-filter: blur(4px);
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
       display:grid;
       grid-template-columns: var(--ms-sn) var(--ms-property) var(--ms-date) var(--ms-action);
       gap:.18rem .3rem;

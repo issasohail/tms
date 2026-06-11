@@ -2487,8 +2487,6 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
 
       const status      = el.dataset.status || '';
       const leaseBalFmt = el.dataset.leasebal || '0.00';
-      const securityBalFmt = el.dataset.securitybal || '0.00';
-      const totalBalFmt = el.dataset.totalbal || '';
       const totalFmt    = el.dataset.total || '0.00';
 
       // ---- items (array of {cat, desc, amount}) ----
@@ -2502,12 +2500,6 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
         : '—';
 
       const rs = v => v ? `${currencySymbol} ${v}` : `${currencySymbol} 0.00`;
-      const parseAmount = v => parseFloat(String(v || '0').replace(/,/g, '')) || 0;
-      const newBalanceFmt = totalBalFmt || (parseAmount(leaseBalFmt) + parseAmount(securityBalFmt))
-        .toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const securityLine = parseAmount(securityBalFmt) > 0
-        ? ['Security Deposit Balance: ' + rs(securityBalFmt)]
-        : [];
 
       // ---- build the WhatsApp message (identical to your detail page) ----
       const msg = [
@@ -2517,13 +2509,12 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
         '',
         'Property / Unit: ' + propertyName + '-' + unitNumber,
         'Status: ' + status + ' | Lease Bal: ' + rs(leaseBalFmt),
-        ...securityLine,
         '',
         'Items:',
         itemsText,
         '',
         'Total: *' + rs(totalFmt) + '*',
-        'New Balance: * ' + rs(newBalanceFmt) + '*',
+        'New Balance: * ' + rs(leaseBalFmt) + '*',
         '',
         'Thank you!'
       ].join('\n');

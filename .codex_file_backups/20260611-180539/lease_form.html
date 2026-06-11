@@ -730,22 +730,6 @@
       {% endif %}
         {% csrf_token %}
 
-        {% if form.errors %}
-          <div class="alert alert-danger py-2 px-3 mb-2 small">
-            <div class="fw-bold mb-1">Lease was not saved. Please fix the fields listed below.</div>
-            {% if form.non_field_errors %}
-              <div class="mb-1">{{ form.non_field_errors }}</div>
-            {% endif %}
-            <ul class="mb-0 ps-3">
-              {% for field in form %}
-                {% for error in field.errors %}
-                  <li><strong>{{ field.label }}:</strong> {{ error }}</li>
-                {% endfor %}
-              {% endfor %}
-            </ul>
-          </div>
-        {% endif %}
-
         {# ======= PANE: Details (Main Tenant) ======= #}
         <div id="pane-tenant" class="lf-pane">
 
@@ -1385,13 +1369,6 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('lease-form')?.addEventListener('submit', function(){
     document.querySelectorAll('input.money').forEach(inp => inp.value = uncomma(inp.value));
   });
-  function submitLeaseForm(){
-    const form = document.getElementById('lease-form');
-    if (!form) return;
-    document.querySelectorAll('input.money').forEach(inp => inp.value = uncomma(inp.value));
-    if (form.requestSubmit) form.requestSubmit();
-    else form.submit();
-  }
   document.addEventListener('input', function(e){
     if (['id_monthly_rent','id_society_maintenance','id_water_charges','id_internet_charges'].includes(e.target.id)) updateTotal();
   });
@@ -1468,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const row=e.target.closest('tr.fam-row'); if(!row) return;
       const readBits=row.querySelectorAll('.fm-read'), editBits=row.querySelectorAll('.fm-editing');
       if(btnEdit){ readBits.forEach(el=>el.classList.add('d-none')); editBits.forEach(el=>el.classList.remove('d-none')); row.querySelector('.fm-edit')?.classList.add('d-none'); row.querySelector('.fm-save')?.classList.remove('d-none'); }
-      if(btnSave){ submitLeaseForm(); }
+      if(btnSave){ document.getElementById('lease-form')?.submit(); }
     });
   });
 

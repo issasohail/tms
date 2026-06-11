@@ -849,8 +849,55 @@ def meter_delete(request, pk):
 
 
 def meter_detail(request, pk):
-    meter = get_object_or_404(Meter, pk=pk)
-    return render(request, 'smart_meter/meter_detail.html', {'meter': meter})
+    meter = get_object_or_404(
+        Meter.objects.select_related("unit", "unit__property"),
+        pk=pk,
+    )
+    installation_history = (
+        MeterInstallation.objects
+        .filter(meter=meter)
+        .select_related("unit", "unit__property", "lease", "lease__tenant")
+        .order_by("-is_active", "-start_date", "-id")
+    )
+    active_installations = installation_history.filter(is_active=True, end_date__isnull=True)
+    if meter.unit_id:
+        current_installation = active_installations.filter(unit_id=meter.unit_id).first()
+    else:
+        current_installation = active_installations.first()
+
+    current_lease = None
+    if meter.unit_id:
+        today = date.today()
+        current_lease = (
+            Lease.objects
+            .filter(unit_id=meter.unit_id, status="active", start_date__lte=today, end_date__gte=today)
+            .select_related("tenant")
+            .order_by("-start_date", "-id")
+            .first()
+        )
+        if current_lease is None:
+            current_lease = (
+                Lease.objects
+                .filter(unit_id=meter.unit_id, status="active")
+                .select_related("tenant")
+                .order_by("-start_date", "-id")
+                .first()
+            )
+
+    if current_lease is None and current_installation and current_installation.lease_id:
+        current_lease = current_installation.lease
+
+    return render(
+        request,
+        'smart_meter/meter_detail.html',
+        {
+            'meter': meter,
+            'current_installation': current_installation,
+            'current_lease': current_lease,
+            'current_tenant': current_lease.tenant if current_lease else None,
+            'installation_history': installation_history,
+        },
+    )
 
 
 def install_meter_to_unit(request, unit_id):

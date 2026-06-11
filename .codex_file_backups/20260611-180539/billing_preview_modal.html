@@ -303,10 +303,13 @@
 
   // Wire up the main confirm button to submit the main form
   document.getElementById('confirmBillingBtn')?.addEventListener('click', function(){
+    var form = document.getElementById('lease-form');
+    if (!form) return;
     var confirmField = document.getElementById('confirm_billing_field');
     if (confirmField) {
         confirmField.value = "1";   // mark as confirmed
       }
+    form.submit();
   });
 
 

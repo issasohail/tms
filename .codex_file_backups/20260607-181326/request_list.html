@@ -3,10 +3,7 @@
 
 {% block content %}
 <style>
-  .maint-wrap {
-    max-width: 1500px;
-    --maint-sticky-top: 48px;
-  }
+  .maint-wrap { max-width: 1500px; }
   /*
     Width tuning lives here:
     Desktop:
@@ -42,7 +39,7 @@
   }
   .maint-list-head, .maint-item-grid {
     --ml-sr: 22px;
-    --ml-property: 120px;
+    --ml-property: minmax(130px, .9fr);
     --ml-tenant: 76px;
     --ml-date: 82px;
     --ml-resolved: 82px;
@@ -50,23 +47,19 @@
     --ml-category: 90px;
     --ml-cost: 76px;
     --ml-title: minmax(180px, 1fr);
-    --ml-description: minmax(120px, .55fr);
-    --ml-actions: 164px;
+    --ml-actions: 116px;
     display: grid;
-    grid-template-columns: var(--ml-sr) var(--ml-property) var(--ml-tenant) var(--ml-date) var(--ml-resolved) var(--ml-status) var(--ml-category) var(--ml-cost) var(--ml-title) var(--ml-description) var(--ml-actions);
+    grid-template-columns: var(--ml-sr) var(--ml-property) var(--ml-tenant) var(--ml-date) var(--ml-resolved) var(--ml-status) var(--ml-category) var(--ml-cost) var(--ml-title) var(--ml-actions);
     gap: .45rem;
     align-items: center;
   }
-  .maint-item-grid > div { min-width:0; }
   .maint-mobile-head { display:none; }
   .maint-list-head {
-    position: -webkit-sticky;
     position: sticky;
-    top: var(--maint-sticky-top);
-    z-index: 1020;
-    background: #fff;
+    top: 0;
+    z-index: 20;
+    background: rgba(255,255,255,.96);
     backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
     padding: .45rem .6rem;
     color: #6c757d;
     font-size: .72rem;
@@ -74,7 +67,7 @@
   }
   .maint-item { padding: .52rem .6rem; margin-bottom: .45rem; }
   .maint-cell-label { display: none; color:#6c757d; font-size:.64rem; line-height:1.1; }
-  .maint-title { font-weight:400; overflow-wrap:anywhere; }
+  .maint-title { font-weight:700; overflow-wrap:anywhere; }
   .maint-title-line {
     display:flex;
     align-items:center;
@@ -97,20 +90,6 @@
     margin-left:auto;
   }
   .maint-muted { color:#6c757d; font-size:.72rem; }
-  .maint-description-cell {
-    color:#6c757d;
-    font-size:.66rem;
-    min-width:0;
-    overflow:hidden;
-  }
-  .maint-description-text {
-    display:block;
-    min-width:0;
-    max-width:100%;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-  }
   .maint-actions, .maint-upload {
     display:flex;
     flex-wrap:nowrap;
@@ -186,7 +165,6 @@
   }
   .maint-mobile-tenant { display:none; }
   .maint-unit-mobile-line { display:none; }
-  .maint-mobile-upload { display:none; }
   .maint-export-tools { display:flex; flex-wrap:wrap; gap:.25rem; justify-content:flex-end; }
   .maint-quick-row {
     --mq-lease: 205px;
@@ -230,7 +208,6 @@
       font-size:.68rem !important;
     }
     .container.maint-wrap { padding-left:.45rem; padding-right:.45rem; }
-    .maint-wrap { --maint-sticky-top: 40px; }
     .maint-filter .card-body, .maint-quick .card-body { padding:.55rem; }
     .maint-item { padding:.48rem; }
     .maint-filter-row {
@@ -277,27 +254,24 @@
       grid-template-columns: var(--mq-mobile-left) var(--mq-mobile-right);
       gap:.32rem;
     }
-    .mq-lease { grid-column:1 / 3; grid-row:1; }
-    .mq-building { grid-column:1 / 2; grid-row:2; }
-    .mq-unit { grid-column:2 / 3; grid-row:2; }
-    .mq-title { grid-column:1 / 2; grid-row:3; }
-    .mq-category { grid-column:2 / 3; grid-row:3; }
-    .mq-description { grid-column:1 / 3; grid-row:4; }
-    .mq-attach { grid-column:1 / 2; grid-row:5; }
-    .mq-submit { grid-column:2 / 3; grid-row:5; }
+    .mq-lease { grid-column:1 / 2; }
+    .mq-category { grid-column:2 / 3; }
+    .mq-building { grid-column:1 / 2; }
+    .mq-unit { grid-column:2 / 3; }
+    .mq-title, .mq-description { grid-column:1 / 3; }
+    .mq-attach { grid-column:1 / 2; }
+    .mq-submit { grid-column:2 / 3; }
     .mq-submit .btn { width:100%; }
     .maint-mobile-head {
       --ms-sn: 28px;
       --ms-property: minmax(0, 1fr);
       --ms-date: 80px;
       --ms-action: 28px;
-      position:-webkit-sticky;
       position: sticky;
-      top: var(--maint-sticky-top);
-      z-index: 1020;
-      background: #fff;
+      top: 0;
+      z-index: 21;
+      background: rgba(255,255,255,.96);
       backdrop-filter: blur(4px);
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
       display:grid;
       grid-template-columns: var(--ms-sn) var(--ms-property) var(--ms-date) var(--ms-action);
       gap:.18rem .3rem;
@@ -312,13 +286,13 @@
       --ms-date: 80px;
       --ms-action: 28px;
       grid-template-columns: var(--ms-sn) var(--ms-property) var(--ms-date) var(--ms-action);
-      grid-template-rows: 18px 18px 18px 18px 18px;
+      grid-template-rows: 18px 18px 18px 18px;
       gap:.12rem .3rem;
       align-items:stretch;
     }
     .maint-sr-cell {
       grid-column:1;
-      grid-row:1 / 6;
+      grid-row:1 / 5;
       align-self:stretch;
       display:flex;
       align-items:center;
@@ -355,16 +329,11 @@
       padding-right:.15rem;
     }
     .maint-description-cell {
-      display:block;
-      grid-column:2 / 4;
-      grid-row:5;
-      min-width:0;
-      line-height:1.15;
-      font-size:.62rem;
+      display:none;
     }
     .maint-action-cell {
       grid-column:4;
-      grid-row:1 / 6;
+      grid-row:1 / 5;
       align-self:stretch;
       min-width:0;
     }
@@ -375,8 +344,7 @@
     .maint-category-cell .maint-display,
     .maint-title-text,
     .maint-title-text .maint-display,
-    .maint-plain-title,
-    .maint-description-text {
+    .maint-plain-title {
       display:block;
       white-space:nowrap;
       overflow:hidden;
@@ -385,28 +353,7 @@
       overflow-wrap:normal;
     }
     .maint-property-cell .js-building-display { display:none; }
-    .maint-property-cell .maint-muted {
-      color:#6c757d;
-      display:flex;
-      align-items:center;
-      gap:.25rem;
-    }
-    .maint-property-cell .maint-mobile-tenant {
-      min-width:0;
-      flex:1 1 auto;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-    }
-    .maint-mobile-upload {
-      display:inline-flex;
-      flex:0 0 auto;
-      align-items:center;
-      gap:.15rem;
-      height:18px;
-      padding:0 .25rem;
-      line-height:1;
-    }
+    .maint-property-cell .maint-muted { color:#6c757d; }
     .maint-title-cell .js-media-count { display:none; }
     .maint-title-upload { display:none; }
     .maint-actions .btn, .maint-upload .btn {
@@ -455,7 +402,8 @@
       flex-direction:column;
     }
     .maint-action-cell .maint-upload {
-      display:none;
+      flex-direction:column;
+      align-items:flex-start;
     }
     .maint-action-cell .btn {
       width:22px;
@@ -495,7 +443,7 @@
     }
     .maint-date-cell, .maint-resolved-cell, .maint-status-cell { line-height:1.05; }
     .maint-title-cell { line-height:1.15; }
-    .maint-title { font-weight:400; }
+    .maint-title { font-weight:700; }
     .maint-muted { line-height:1.15; }
   }
   @media (max-width: 360px) {
@@ -618,13 +566,6 @@
             {% for unit in unit_options %}<option value="{{ unit.id }}">{{ unit.text }}</option>{% endfor %}
           </select>
         </div>
-        <div class="col-12 col-md-2 mq-category">
-          <label class="form-label small mb-1">Category</label>
-          <select name="category_ref" class="form-select form-select-sm js-select2 js-category-select js-qa-category" data-placeholder="Category">
-            <option value="">Select category</option>
-            {% for category in categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}
-          </select>
-        </div>
         <div class="col-12 col-md-2 mq-title">
           <label class="form-label small mb-1">Title</label>
           <input name="title" class="form-control form-control-sm" required>
@@ -633,7 +574,13 @@
           <label class="form-label small mb-1">Description</label>
           <input name="description" class="form-control form-control-sm">
         </div>
-
+        <div class="col-12 col-md-2 mq-category">
+          <label class="form-label small mb-1">Category</label>
+          <select name="category_ref" class="form-select form-select-sm js-select2 js-category-select js-qa-category" data-placeholder="Category">
+            <option value="">Select category</option>
+            {% for category in categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}
+          </select>
+        </div>
         <div class="col-6 col-md-auto mq-attach">
           <label class="form-label small mb-1 d-block">Attach</label>
           <input name="files" type="file" multiple class="maint-upload-file js-qa-files" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif">
@@ -659,7 +606,6 @@
     <div>Category</div>
     <div>Cost</div>
     <div>Title</div>
-    <div>Description</div>
     <div class="text-end">Upload / Actions</div>
   </div>
   <div class="maint-mobile-head">
@@ -687,7 +633,7 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="maint-muted"><span class="js-building-display">{{ item.building|default:"-" }}</span><span class="maint-mobile-tenant"><span class="js-mobile-tenant-first">{% if item.lease and item.lease.tenant %}{{ item.lease.tenant.first_name|default:item.lease.tenant }}{% else %}-{% endif %}</span></span><button type="button" class="btn btn-outline-secondary btn-sm js-row-attach maint-mobile-upload"><i class="bi bi-upload"></i><span>Upload</span></button></div>
+            <div class="maint-muted"><span class="js-building-display">{{ item.building|default:"-" }}</span><span class="maint-mobile-tenant"><span class="js-mobile-tenant-first">{% if item.lease and item.lease.tenant %}{{ item.lease.tenant.first_name|default:item.lease.tenant }}{% else %}-{% endif %}</span></span></div>
           </div>
           <div class="maint-tenant-cell">
             <span class="maint-cell-label">Tenant</span>
@@ -746,13 +692,6 @@
               <span class="maint-title-text maint-plain-title js-title-display">{{ item.title }}</span>
               <span class="badge bg-light text-dark border js-media-count">{{ item.active_media_count|default:0 }} file</span>
             </div>
-          </div>
-          <div class="maint-description-cell">
-            <span class="maint-cell-label">Description</span>
-            <span class="js-inline-cell" data-field="description">
-              <span class="maint-description-text maint-display js-display">{{ item.description|default:"-" }}</span>
-              <input type="text" class="form-control form-control-sm js-editor d-none maint-edit-control" value="{{ item.description|default:'' }}">
-            </span>
           </div>
           <div class="maint-action-cell">
             <div class="maint-row-actions">
@@ -818,7 +757,6 @@
         row.querySelector('[data-field="category_ref"] .js-display')?.textContent.trim() || "",
         row.querySelector('[data-field="cost"] .js-display')?.textContent.trim() || "",
         row.querySelector(".js-title-display")?.textContent.trim() || row.querySelector('[data-field="title"] .js-display')?.textContent.trim() || "",
-        row.querySelector(".maint-description-text")?.textContent.trim() || "",
       ];
     });
   }
@@ -832,8 +770,8 @@
       <div style="font-size:20px;font-weight:700;margin-bottom:2px;">${escapeHtml(title)}</div>
       <div style="font-size:12px;color:#555;margin-bottom:12px;">${escapeHtml(subtitle)}</div>
       <table style="border-collapse:collapse;font-size:12px;width:max-content;min-width:900px;">
-        <thead><tr>${["Sr", "Property - Unit", "Tenant", "Date", "Resolved", "Status", "Category", "Cost", "Title", "Description"].map(h => `<th style="border:1px solid #999;padding:6px;background:#f1f3f5;text-align:left;">${h}</th>`).join("")}</tr></thead>
-        <tbody>${rows.map(row => `<tr>${row.map(cell => `<td style="border:1px solid #bbb;padding:6px;vertical-align:top;">${escapeHtml(cell)}</td>`).join("")}</tr>`).join("") || '<tr><td colspan="10" style="border:1px solid #bbb;padding:8px;">No records found.</td></tr>'}</tbody>
+        <thead><tr>${["Sr", "Property - Unit", "Tenant", "Date", "Resolved", "Status", "Category", "Cost", "Title"].map(h => `<th style="border:1px solid #999;padding:6px;background:#f1f3f5;text-align:left;">${h}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(row => `<tr>${row.map(cell => `<td style="border:1px solid #bbb;padding:6px;vertical-align:top;">${escapeHtml(cell)}</td>`).join("")}</tr>`).join("") || '<tr><td colspan="9" style="border:1px solid #bbb;padding:8px;">No records found.</td></tr>'}</tbody>
       </table>
       <div style="display:flex;justify-content:space-between;gap:18px;font-size:11px;color:#555;margin-top:12px;">
         <span>${escapeHtml(timestamp)}</span><span>${escapeHtml(title)}</span><span>Page 1 of 1</span>
@@ -1083,7 +1021,7 @@
       <div class="maint-item" data-id="${item.id}" data-update-url="${escapeHtml(item.update_url)}" data-upload-url="${escapeHtml(item.upload_url)}" data-whatsapp-url="${escapeHtml(item.whatsapp_url)}">
         <div class="maint-item-grid">
           <div class="maint-sr-cell"><span class="maint-cell-label">Sr</span><span class="js-sr">${sr}</span></div>
-          <div class="maint-property-cell"><span class="maint-cell-label">Property - Unit</span><div class="js-inline-cell" data-field="unit"><div class="maint-display js-display">${escapeHtml(item.unit || "-")}</div><select class="form-select form-select-sm js-editor js-row-unit d-none maint-edit-control">${unitOptions}</select></div><div class="maint-muted"><span class="js-building-display">${escapeHtml(item.building || "-")}</span><span class="maint-mobile-tenant"><span class="js-mobile-tenant-first">${escapeHtml(item.tenant_first_name || "-")}</span></span><button type="button" class="btn btn-outline-secondary btn-sm js-row-attach maint-mobile-upload"><i class="bi bi-upload"></i><span>Upload</span></button></div></div>
+          <div class="maint-property-cell"><span class="maint-cell-label">Property - Unit</span><div class="js-inline-cell" data-field="unit"><div class="maint-display js-display">${escapeHtml(item.unit || "-")}</div><select class="form-select form-select-sm js-editor js-row-unit d-none maint-edit-control">${unitOptions}</select></div><div class="maint-muted"><span class="js-building-display">${escapeHtml(item.building || "-")}</span><span class="maint-mobile-tenant"><span class="js-mobile-tenant-first">${escapeHtml(item.tenant_first_name || "-")}</span></span></div></div>
           <div class="maint-tenant-cell"><span class="maint-cell-label">Tenant</span><span class="js-tenant-first">${escapeHtml(item.tenant_first_name || "-")}</span></div>
           <div class="maint-date-cell"><span class="maint-cell-label">Date</span><div class="js-inline-cell" data-field="reported_date"><div class="maint-display js-display">${escapeHtml(item.reported_date)}</div><input type="date" class="form-control form-control-sm js-editor d-none maint-edit-control" value="${escapeHtml(item.reported_date_value)}"></div></div>
           <div class="maint-resolved-cell"><span class="maint-cell-label">Resolved</span><div class="js-inline-cell" data-field="resolved_date"><div class="maint-display js-display">${escapeHtml(item.resolved_date || "-")}</div><input type="date" class="form-control form-control-sm js-editor d-none maint-edit-control" value="${escapeHtml(item.resolved_date_value)}"></div></div>
@@ -1092,7 +1030,6 @@
           <div class="maint-unit-mobile-line"><span class="js-mobile-unit-display">${escapeHtml(item.unit || "-")}</span></div>
           <div class="maint-cost-cell"><span class="maint-cell-label">Cost</span><div class="js-inline-cell" data-field="cost"><div class="maint-display js-display">${escapeHtml(item.cost_display)}</div><input type="number" min="0" step="0.01" class="form-control form-control-sm js-editor d-none maint-edit-control" value="${escapeHtml(item.cost)}"></div></div>
           <div class="maint-title maint-title-cell"><span class="maint-cell-label">Title</span><div class="maint-title-line"><span class="maint-title-text maint-plain-title js-title-display">${escapeHtml(item.title)}</span> <span class="badge bg-light text-dark border js-media-count">${item.media_count || 0} file</span></div></div>
-          <div class="maint-description-cell"><span class="maint-cell-label">Description</span><span class="js-inline-cell" data-field="description"><span class="maint-description-text maint-display js-display">${escapeHtml(item.description || "-")}</span><input type="text" class="form-control form-control-sm js-editor d-none maint-edit-control" value="${escapeHtml(item.description || "")}"></span></div>
           <div class="maint-action-cell">
             <div class="maint-row-actions">
             <form class="maint-upload js-upload" enctype="multipart/form-data"><input type="file" name="files" multiple class="maint-upload-file js-row-files" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif"><button type="button" class="btn btn-outline-secondary btn-sm js-row-attach"><i class="bi bi-upload"></i><span class="btn-text ms-1">Upload</span></button></form><div class="maint-actions"><a href="${escapeHtml(item.detail_url)}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i><span class="btn-text ms-1">Detail</span></a><a href="${escapeHtml(item.edit_url)}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil"></i><span class="btn-text ms-1">Edit</span></a><button type="button" class="btn btn-outline-danger btn-sm js-request-delete" data-delete-url="${escapeHtml(item.delete_url)}"><i class="bi bi-trash"></i><span class="btn-text ms-1">Delete</span></button><button type="button" class="btn btn-success btn-sm js-whatsapp"><i class="bi bi-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span></button></div>

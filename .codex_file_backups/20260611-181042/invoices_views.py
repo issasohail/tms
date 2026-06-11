@@ -138,7 +138,7 @@ class InvoiceListView(SingleTableView):
     model = Invoice
     table_class = InvoiceTable
     template_name = "invoices/invoice_list.html"
-    paginate_by = 45
+    paginate_by = 20
 
     def _period_to_dates(self, period: str):
         if not period:
@@ -208,7 +208,6 @@ class InvoiceListView(SingleTableView):
                   "lease__unit__unit_number",
                   "lease__unit__property__id",
                   "lease__unit__property__property_name",
-                  "lease__security_deposit",
               )
               )
 
@@ -289,34 +288,15 @@ class InvoiceListView(SingleTableView):
                 )
             )
         }
-        security_rows = (
-            SecurityDepositTransaction.objects
-            .filter(lease_id__in=lease_ids)
-            .values("lease_id", "type")
-            .annotate(total=Coalesce(Sum("amount"), Value(Decimal("0.00")), output_field=money_field))
-        )
-        security_totals = {}
-        for row in security_rows:
-            lease_id = row["lease_id"]
-            security_totals.setdefault(lease_id, {"PAYMENT": Decimal("0.00"), "ADJUST": Decimal("0.00")})
-            security_totals[lease_id][row["type"]] = row["total"] or Decimal("0.00")
 
         for record in records:
             balance = (
                 invoice_totals.get(record.lease_id, Decimal("0.00"))
                 - payment_totals.get(record.lease_id, Decimal("0.00"))
             )
-            security_required = getattr(getattr(record, "lease", None), "security_deposit", None) or Decimal("0.00")
-            security_paid = security_totals.get(record.lease_id, {}).get("PAYMENT", Decimal("0.00"))
-            security_adjust = security_totals.get(record.lease_id, {}).get("ADJUST", Decimal("0.00"))
-            security_balance = max(security_required - (security_paid + security_adjust), Decimal("0.00"))
-            total_balance = balance + security_balance
             record.dashboard_lease_balance = balance
-            record.dashboard_security_balance = security_balance
-            record.dashboard_total_balance = total_balance
             if getattr(record, "lease", None) is not None:
                 record.lease._cached_get_balance = balance
-                record.lease._cached_security_due = security_balance
 
     def get_table(self, **kwargs):
         table = super().get_table(**kwargs)
@@ -2872,9 +2852,6 @@ def build_invoice_whatsapp_message(request, inv):
 
     num = getattr(inv, "invoice_number", inv.pk)
     amount = getattr(inv, "amount", 0) or 0
-    lease_balance = getattr(lease, "get_balance", Decimal("0.00")) if lease else Decimal("0.00")
-    security_balance = getattr(lease, "security_balance_to_collect", Decimal("0.00")) if lease else Decimal("0.00")
-    total_balance = (lease_balance or Decimal("0.00")) + (security_balance or Decimal("0.00"))
     due = getattr(inv, "due_date", None)
 
     detail_url = request.build_absolute_uri(
@@ -2885,9 +2862,6 @@ def build_invoice_whatsapp_message(request, inv):
         "",
         f"*Invoice #{num}*",
         f"Amount: Rs.{float(amount):,.2f}",
-        f"Lease Balance: Rs.{float(lease_balance or 0):,.2f}",
-        f"Security Deposit Balance: Rs.{float(security_balance or 0):,.2f}" if security_balance else "",
-        f"New Balance: Rs.{float(total_balance or 0):,.2f}",
         f"Due Date: {due:%b %d, %Y}" if due else "",
         f"Property: {getattr(prop, 'property_name', '')}",
         f"Unit: {getattr(unit, 'unit_number', '')}",

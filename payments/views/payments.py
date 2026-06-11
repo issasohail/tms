@@ -122,7 +122,7 @@ class PaymentListView(SingleTableView):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
-            'lease__tenant', 'lease__unit', 'lease__unit__property')
+            'lease__tenant', 'lease__unit', 'lease__unit__property', 'allocation')
 
         # Get filter parameters
         property_id = self.request.GET.get('property')
@@ -211,7 +211,16 @@ class PaymentListView(SingleTableView):
         ZERO = Value(Decimal("0.00"), output_field=DECIMAL)
 
         total_amount = queryset.aggregate(
-            total=Coalesce(Sum("amount", output_field=DECIMAL), ZERO)
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__security_type="REFUND", then=-F("amount")),
+                        default=F("amount"),
+                        output_field=DECIMAL,
+                    )
+                ),
+                ZERO,
+            )
         )["total"]
 
 
@@ -262,7 +271,16 @@ class PaymentListView(SingleTableView):
         # Handle AJAX requests for total amount
         if request.GET.get("ajax") == "1":
             total_amount = queryset.aggregate(
-                total=Coalesce(Sum("amount", output_field=DECIMAL), ZERO_DB)
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(allocation__security_type="REFUND", then=-F("amount")),
+                            default=F("amount"),
+                            output_field=DECIMAL,
+                        )
+                    ),
+                    ZERO_DB,
+                )
             )["total"]
 
             return JsonResponse({"total_amount": float(total_amount)})
@@ -543,6 +561,10 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         elif mode == "SECURITY":
             lease_amt = Decimal("0.00")
             sec_amt = payment_total
+        elif mode == "REFUND":
+            lease_amt = Decimal("0.00")
+            sec_amt = payment_total
+            sec_type = "REFUND"
 
         else:  # SPLIT
             # If user left both blank/zero, default all to lease
@@ -603,6 +625,7 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             "lease__unit",
             "lease__unit__property",
             "payment_method",
+            "allocation",
         ).order_by("-id")[:size]
         context["recent_payments"] = _attach_cached_lease_balances(recent_payments)
         context["allocation_form"] = PaymentAllocationForm(initial={
@@ -666,6 +689,10 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         elif mode == "SECURITY":
             lease_amt = Decimal("0.00")
             sec_amt = payment_total
+        elif mode == "REFUND":
+            lease_amt = Decimal("0.00")
+            sec_amt = payment_total
+            sec_type = "REFUND"
         else:
             if lease_amt <= 0 and sec_amt <= 0:
                 lease_amt = payment_total
@@ -1132,6 +1159,8 @@ def build_payment_receipt_message(request, pay):
     payment_date = getattr(pay, "payment_date", None)
     amount = getattr(pay, "amount", 0) or 0
     balance = lease.get_balance if lease else 0
+    alloc = getattr(pay, "allocation", None)
+    is_refund = (getattr(alloc, "security_type", "") or "").upper() == "REFUND"
 
     # 🔹 NEW: security deposit summary using your helper
     sec_required = 0
@@ -1146,7 +1175,7 @@ def build_payment_receipt_message(request, pay):
 
     lines = [
         f"Dear {first_name},",
-        f"*Payment received* for {property_name}.",
+        f"{'*Security deposit refunded*' if is_refund else '*Payment received*'} for {property_name}.",
         f"Unit: {unit_number}",
         (
             f"Period: {start_date:%b %d, %Y} – {end_date:%b %d, %Y}"
@@ -1171,7 +1200,7 @@ def build_payment_receipt_message(request, pay):
         lines.append(f"Date: {payment_date:%b %d, %Y}")
 
     lines.extend([
-        f"*Amount: Rs. {float(amount):,.2f}*",
+        f"*{'Refund Amount' if is_refund else 'Amount'}: Rs. {float(amount):,.2f}*",
         f"Balance: Rs. {float(balance):,.2f}",
         "",
         "Thank you!",

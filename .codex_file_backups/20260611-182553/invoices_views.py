@@ -138,7 +138,7 @@ class InvoiceListView(SingleTableView):
     model = Invoice
     table_class = InvoiceTable
     template_name = "invoices/invoice_list.html"
-    paginate_by = 45
+    paginate_by = 20
 
     def _period_to_dates(self, period: str):
         if not period:

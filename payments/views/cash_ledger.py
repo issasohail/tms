@@ -199,7 +199,7 @@ class CashLedgerView(SingleTableView):
             refunded = Decimal(tx.get("REFUND", 0) or 0)
             damaged = Decimal(tx.get("DAMAGE", 0) or 0)
 
-            balance_to_collect = required - paid - adjusted + refunded + damaged
+            balance_to_collect = required - paid - adjusted
             if balance_to_collect < 0:
                 balance_to_collect = Decimal("0.00")
 
@@ -231,12 +231,18 @@ class CashLedgerView(SingleTableView):
             sec_amt = Decimal("0.00")
 
             description = (p.description or p.notes or "").strip()
+            row_source_type = "PAYMENT"
+            row_amount = Decimal(p.amount or 0)
 
             if alloc:
                 allocation_id = alloc.id
                 lease_amt = Decimal(getattr(alloc, "lease_amount", 0) or 0)
                 sec_amt = Decimal(getattr(alloc, "security_amount", 0) or 0)
+                sec_type = (getattr(alloc, "security_type", "") or "PAYMENT").upper()
+                row_source_type = sec_type if sec_amt > 0 else "PAYMENT"
                 is_split = (sec_amt != Decimal("0.00"))  # treat true split only when sec portion exists
+                if sec_type == "REFUND":
+                    row_amount = lease_amt - sec_amt
 
                 # Allocation routes override
                 view_url = reverse("payments:allocation_detail", args=[allocation_id])
@@ -246,12 +252,12 @@ class CashLedgerView(SingleTableView):
 
             rows.append(CashLedgerRow(
                 source="PAYMENT",
-                source_type="PAYMENT",
+                source_type=row_source_type,
                 source_id=p.id,
                 lease=lease_map[p.lease_id],
                 date=p.payment_date,
                 description=description,
-                amount=Decimal(p.amount or 0),
+                amount=row_amount,
                 method=str(p.payment_method) if p.payment_method else "N/A",
                 lease_balance=lease_balance_map.get(p.lease_id, Decimal("0.00")),
                 security_balance=Decimal(sec_totals.get("balance_to_collect") or 0),

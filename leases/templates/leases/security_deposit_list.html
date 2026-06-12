@@ -15,7 +15,17 @@
       </a>
       <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&allocation_mode=SECURITY"
         class="btn btn-primary btn-sm">
-        Add Entry
+        Payment In
+      </a>
+      {% if security_totals.currently_held > 0 %}
+      <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_totals.currently_held }}"
+        class="btn btn-danger btn-sm">
+        Refund Security
+      </a>
+      {% endif %}
+      <a href="{% url 'leases:lease_security_add' lease.id %}"
+        class="btn btn-secondary btn-sm">
+        Manual Entry
       </a>
 
 
@@ -63,10 +73,18 @@
   <div class="card">
     <div class="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center">
       <span class="fw-semibold">Security Deposit Transactions</span>
-      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&allocation_mode=SECURITY"
-        class="btn btn-primary btn-sm">
-        Add Entry
-      </a>
+      <div class="d-flex gap-1">
+        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&allocation_mode=SECURITY"
+          class="btn btn-primary btn-sm">
+          Payment In
+        </a>
+        {% if security_totals.currently_held > 0 %}
+        <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_totals.currently_held }}"
+          class="btn btn-danger btn-sm">
+          Refund
+        </a>
+        {% endif %}
+      </div>
     </div>
     <div class="card-body p-0">
       {% if ledger_rows %}

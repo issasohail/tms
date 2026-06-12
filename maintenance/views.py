@@ -10,7 +10,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.files.storage import default_storage
-from django.db.models import Count, Q
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.http import FileResponse, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -254,6 +254,18 @@ def _current_user_whatsapp_phone(request):
     )
 
 
+def _active_media_count_annotation():
+    return Subquery(
+        MaintenanceRequestMedia.objects
+        .filter(request_id=OuterRef("pk"), is_active=True)
+        .order_by()
+        .values("request_id")
+        .annotate(total=Count("id"))
+        .values("total")[:1],
+        output_field=IntegerField(),
+    )
+
+
 def _unit_options(property_id=None):
     units = Unit.objects.select_related("property").order_by("property__property_name", "unit_number")
     if property_id:
@@ -441,8 +453,7 @@ class MaintenanceRequestListView(LoginRequiredMixin, ListView):
         qs = (
             MaintenanceRequest.objects
             .select_related("unit", "unit__property", "lease", "tenant", "assigned_to", "category_ref")
-            .prefetch_related("media")
-            .annotate(active_media_count=Count("media", filter=Q(media__is_active=True)))
+            .annotate(active_media_count=_active_media_count_annotation())
         )
         raw_status = self.request.GET.get("status")
         status = _clean_filter_value(raw_status)
@@ -531,9 +542,8 @@ def category_request_list(request, pk):
     requests_qs = (
         MaintenanceRequest.objects
         .filter(category_ref=category)
-        .select_related("unit", "unit__property")
-        .prefetch_related("media")
-        .annotate(active_media_count=Count("media", filter=Q(media__is_active=True)))
+        .select_related("unit", "unit__property", "lease", "lease__tenant")
+        .annotate(active_media_count=_active_media_count_annotation())
         .order_by("-reported_date", "-id")
     )
     return render(

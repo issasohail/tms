@@ -308,7 +308,8 @@ class InvoiceListView(SingleTableView):
             )
             security_required = getattr(getattr(record, "lease", None), "security_deposit", None) or Decimal("0.00")
             security_paid = security_totals.get(record.lease_id, {}).get("PAYMENT", Decimal("0.00"))
-            security_balance = max(security_required - security_paid, Decimal("0.00"))
+            security_adjust = security_totals.get(record.lease_id, {}).get("ADJUST", Decimal("0.00"))
+            security_balance = max(security_required - (security_paid + security_adjust), Decimal("0.00"))
             total_balance = balance + security_balance
             record.dashboard_lease_balance = balance
             record.dashboard_security_balance = security_balance
@@ -2972,7 +2973,10 @@ class SecurityDepositListView(LeaseSecurityMixin, ListView):
                 signed_amt = -amt                   # show as negative
                 balance -= amt                      # decrease held
             elif tx.type == 'ADJUST':
+                # manual adjustment: treat as signed
+                # (if you always enter positive, this will increase)
                 signed_amt = amt
+                balance += amt
             else:
                 # REQUIRED or anything else → does not change current held,
                 # but we still show as positive line item

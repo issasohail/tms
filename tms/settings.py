@@ -134,7 +134,13 @@ THUMBNAIL_PROCESSORS = (
 IMAGE_CROPPING_THUMB_SIZE = (300, 300)
 
 DEBUG_TOOLBAR_INSTALLED = importlib.util.find_spec("debug_toolbar") is not None
-ENABLE_LOCAL_DEBUG_TOOLBAR = DEBUG and DEBUG_TOOLBAR_INSTALLED and os.getenv("TMS_DISABLE_DEBUG_TOOLBAR", "").lower() not in {
+IS_LOCAL_DEVELOPMENT = os.getenv("TMS_LOCAL_DEV", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+} or os.name == "nt"
+ENABLE_LOCAL_DEBUG_TOOLBAR = DEBUG and IS_LOCAL_DEVELOPMENT and DEBUG_TOOLBAR_INSTALLED and os.getenv("TMS_DISABLE_DEBUG_TOOLBAR", "").lower() not in {
     "1",
     "true",
     "yes",
@@ -152,6 +158,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "accounts.middleware.ImpersonationMiddleware",
+    "accounts.middleware.NoCacheAuthenticatedMiddleware",
     "accounts.middleware.PermissionEnforcementMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

@@ -75,7 +75,10 @@ class CashLedgerTable(tables.Table):
 
     def render_source(self, value, record):
         source_type = (getattr(record, "source_type", "") or "").upper()
-        if source_type == "REFUND":
+        if source_type == "LEASE_REFUND":
+            cls = "bg-danger"
+            label = "Lease Refund"
+        elif source_type == "REFUND":
             cls = "bg-danger"
             label = "Refund"
         elif source_type == "DAMAGE":

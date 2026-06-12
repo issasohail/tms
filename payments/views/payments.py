@@ -529,7 +529,10 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
     @transaction.atomic
     def form_valid(self, form):
         # Validate allocation subform (so lease_amount/security_amount errors show nicely if any)
-        allocation_form = PaymentAllocationForm(self.request.POST)
+        allocation_form = PaymentAllocationForm(
+            self.request.POST,
+            payment_total=form.cleaned_data.get("amount"),
+        )
         if not allocation_form.is_valid():
             return self.form_invalid(form)
 
@@ -555,6 +558,9 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
         # 3) Normalize amounts by mode FIRST
         if mode == "LEASE":
+            lease_amt = payment_total
+            sec_amt = Decimal("0.00")
+        elif mode == "LEASE_REFUND":
             lease_amt = payment_total
             sec_amt = Decimal("0.00")
 
@@ -667,7 +673,10 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        allocation_form = PaymentAllocationForm(self.request.POST)
+        allocation_form = PaymentAllocationForm(
+            self.request.POST,
+            payment_total=form.cleaned_data.get("amount"),
+        )
         if not allocation_form.is_valid():
             return self.form_invalid(form)
 
@@ -684,6 +693,9 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
 
         # Normalize FIRST
         if mode == "LEASE":
+            lease_amt = payment_total
+            sec_amt = Decimal("0.00")
+        elif mode == "LEASE_REFUND":
             lease_amt = payment_total
             sec_amt = Decimal("0.00")
         elif mode == "SECURITY":
@@ -1161,6 +1173,7 @@ def build_payment_receipt_message(request, pay):
     balance = lease.get_balance if lease else 0
     alloc = getattr(pay, "allocation", None)
     is_refund = (getattr(alloc, "security_type", "") or "").upper() == "REFUND"
+    is_lease_refund = (getattr(alloc, "lease_amount", amount) or Decimal("0.00")) < 0
 
     # 🔹 NEW: security deposit summary using your helper
     sec_required = 0
@@ -1175,7 +1188,7 @@ def build_payment_receipt_message(request, pay):
 
     lines = [
         f"Dear {first_name},",
-        f"{'*Security deposit refunded*' if is_refund else '*Payment received*'} for {property_name}.",
+        f"{'*Lease payment refunded*' if is_lease_refund else '*Security deposit refunded*' if is_refund else '*Payment received*'} for {property_name}.",
         f"Unit: {unit_number}",
         (
             f"Period: {start_date:%b %d, %Y} – {end_date:%b %d, %Y}"
@@ -1200,7 +1213,7 @@ def build_payment_receipt_message(request, pay):
         lines.append(f"Date: {payment_date:%b %d, %Y}")
 
     lines.extend([
-        f"*{'Refund Amount' if is_refund else 'Amount'}: Rs. {float(amount):,.2f}*",
+        f"*{'Refund Amount' if (is_refund or is_lease_refund) else 'Amount'}: Rs. {abs(float(amount)):,.2f}*",
         f"Balance: Rs. {float(balance):,.2f}",
         "",
         "Thank you!",

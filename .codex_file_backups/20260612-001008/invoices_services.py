@@ -466,8 +466,9 @@ def security_deposit_totals(lease):
     refunded           = sum of REFUND
     damages            = sum of DAMAGE
     adjust             = sum of ADJUST (signed)
-    balance_to_collect = max(required - paid_in, 0)
-    currently_held     = max(paid_in - refunded - damages, 0)
+    effective_paid_in  = paid_in + adjust
+    balance_to_collect = max(required - effective_paid_in, 0)
+    currently_held     = max(effective_paid_in - refunded - damages, 0)
     """
     ZERO = Decimal('0.00')
 
@@ -496,8 +497,10 @@ def security_deposit_totals(lease):
     damages  = qs.filter(type="DAMAGE").aggregate(total=Sum("amount"))["total"] or ZERO
     adjust   = qs.filter(type="ADJUST").aggregate(total=Sum("amount"))["total"] or ZERO
 
-    balance_to_collect = max(required - paid_in, ZERO)
-    currently_held     = max(paid_in - refunded - refund_deductions - damages, ZERO)
+    effective_paid_in = paid_in + adjust
+
+    balance_to_collect = max(required - effective_paid_in, ZERO)
+    currently_held     = max(effective_paid_in - refunded - refund_deductions - damages, ZERO)
 
     return {
         "required": required,

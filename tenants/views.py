@@ -286,14 +286,22 @@ def _split_registration_name(name):
     return parts[0], " ".join(parts[1:])
 
 
-def _create_new_registration_shell():
-    return Tenant.objects.create(
-        first_name="New",
-        last_name="Registration",
+def _create_new_registration_shell(form=None):
+    cleaned_data = getattr(form, "cleaned_data", {}) if form else {}
+    first_name, last_name = _split_registration_name(cleaned_data.get("name") or "New Registration")
+    notes = (cleaned_data.get("notes") or "").strip()
+    tenant = Tenant.objects.create(
+        first_name=first_name,
+        last_name=last_name or "Registration",
+        phone=(cleaned_data.get("phone") or "").strip(),
+        email=(cleaned_data.get("email") or "").strip(),
         cnic=f"NEW{uuid.uuid4().hex[:10]}",
         is_active=False,
-        notes="Created from new tenant registration link.",
+        notes=notes or "Created from quick tenant registration.",
     )
+    if cleaned_data.get("interested_in"):
+        tenant.interested_in.set(cleaned_data["interested_in"])
+    return tenant
 
 
 def _registration_link_payload(request, tenant):
@@ -518,8 +526,16 @@ def tenant_public_registration_update(request, token):
 @require_POST
 @login_required
 def tenant_pre_registration_link_create(request):
-    tenant = _create_new_registration_shell()
+    form = TenantPreRegistrationLinkForm(request.POST or None)
+    if not form.is_valid():
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"success": False, "errors": form.errors}, status=400)
+        messages.error(request, "Could not create registration. Please check the required fields.")
+        return redirect("tenants:tenant_list")
+
+    tenant = _create_new_registration_shell(form)
     payload = _registration_link_payload(request, tenant)
+    payload["success"] = True
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JsonResponse(payload)
     messages.success(request, "New tenant registration link generated.")

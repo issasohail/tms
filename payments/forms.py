@@ -98,7 +98,7 @@ class PaymentForm(forms.ModelForm):
             "id": "id_amount",
             "step": "0.01",            # allow any 2dp
             "inputmode": "decimal",    # better mobile keypad
-            "pattern": r"^\d+([.]\d{0,2})?$",  # xx | xx. | xx.x | xx.xx
+            "pattern": r"^-?\d+([.]\d{0,2})?$",  # xx | -xx | xx. | xx.x | xx.xx
             "lang": "en",              # force '.' as decimal sep in some browsers
             "autocomplete": "off",
         })
@@ -193,11 +193,11 @@ class PaymentForm(forms.ModelForm):
         if raw.endswith("."):                         # allow trailing dot
             raw += "0"
 
-        # match xx | xx. | xx.x | xx.xx
+        # match xx | -xx | xx. | xx.x | xx.xx
         import re
-        if not re.fullmatch(r"\d+(?:\.\d{0,2})?", raw):
+        if not re.fullmatch(r"-?\d+(?:\.\d{0,2})?", raw):
             raise forms.ValidationError(
-                "Enter a valid amount (e.g., 100, 100., 100.5, 100.50).")
+                "Enter a valid amount (e.g., 100, -100, 100.5, 100.50).")
 
         try:
             amt = Decimal(raw)
@@ -258,6 +258,7 @@ class PaymentForm(forms.ModelForm):
 class PaymentAllocationForm(forms.ModelForm):
     MODE_CHOICES = [
         ("LEASE", "Lease"),
+        ("LEASE_REFUND", "Lease Refund"),
         ("SECURITY", "Security"),
         ("REFUND", "Refund"),
         ("SPLIT", "Split"),
@@ -274,7 +275,7 @@ class PaymentAllocationForm(forms.ModelForm):
         model = PaymentAllocation
         fields = ["allocation_mode", "lease_amount", "security_amount", "security_type"]
         widgets = {
-            "lease_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
+            "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
             "security_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
             "security_type": forms.Select(attrs={"class": "form-select"}),
         }
@@ -291,7 +292,9 @@ class PaymentAllocationForm(forms.ModelForm):
 
             sec_type = (inst.security_type or "PAYMENT").upper()
 
-            if sec_type == "REFUND" and sec_amt > 0 and lease_amt <= 0:
+            if lease_amt < 0 and sec_amt <= 0:
+                mode = "LEASE_REFUND"
+            elif sec_type == "REFUND" and sec_amt > 0 and lease_amt <= 0:
                 mode = "REFUND"
             elif lease_amt > 0 and sec_amt > 0:
                 mode = "SPLIT"
@@ -313,15 +316,22 @@ class PaymentAllocationForm(forms.ModelForm):
         lease_amount = cleaned_data.get("lease_amount") or Decimal("0.00")
         security_amount = cleaned_data.get("security_amount") or Decimal("0.00")
 
-        if lease_amount < 0:
-            self.add_error("lease_amount", "Lease amount cannot be negative.")
-        if security_amount < 0:
-            self.add_error("security_amount", "Security amount cannot be negative.")
-
         payment_total = self.payment_total
         if payment_total is not None:
             payment_total = Decimal(payment_total or "0.00")
+            if payment_total < 0:
+                mode = "LEASE_REFUND"
+
+        if lease_amount < 0 and mode != "LEASE_REFUND":
+            self.add_error("lease_amount", "Lease amount cannot be negative unless Allocation Mode is Lease Refund.")
+        if security_amount < 0:
+            self.add_error("security_amount", "Security amount cannot be negative.")
+
+        if payment_total is not None:
             if mode == "LEASE":
+                lease_amount = payment_total
+                security_amount = Decimal("0.00")
+            elif mode == "LEASE_REFUND":
                 lease_amount = payment_total
                 security_amount = Decimal("0.00")
             elif mode == "SECURITY":

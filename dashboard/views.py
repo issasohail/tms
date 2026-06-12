@@ -12,9 +12,11 @@ from invoices.models import Invoice
 from leases.models import Lease, LeaseRenewal
 from payments.models import Payment
 from properties.models import Property, Unit
+from smart_meter.models import LiveReading
 from tenants.models import Tenant
 
 ZERO = Decimal("0.00")
+METER_ONLINE_MINUTES = 3
 
 
 def dashboard(request):
@@ -133,6 +135,20 @@ def dashboard(request):
             status__in=["unpaid", "partially_paid"],
         )
         .order_by("due_date", "id")[:5]
+    )
+
+    meter_offline_cutoff = timezone.now() - timedelta(minutes=METER_ONLINE_MINUTES)
+    offline_meter_readings = list(
+        LiveReading.objects.select_related(
+            "meter",
+            "meter__unit",
+            "meter__unit__property",
+        )
+        .filter(
+            meter__is_active=True,
+            ts__lt=meter_offline_cutoff,
+        )
+        .order_by("ts", "meter__unit__property__property_name", "meter__unit__unit_number")[:10]
     )
 
     ending_soon_histories = list(
@@ -340,6 +356,8 @@ def dashboard(request):
         "net_income": net_income,
         "recent_payments": recent_payments,
         "upcoming_invoices": upcoming_invoices,
+        "offline_meter_readings": offline_meter_readings,
+        "meter_online_minutes": METER_ONLINE_MINUTES,
         "ending_soon_leases": ending_soon_leases,
         "vacant_units": vacant_units,
         "recent_expenses": recent_expenses,

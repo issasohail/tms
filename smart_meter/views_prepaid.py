@@ -30,7 +30,7 @@ except Exception:
 
 class PrepaidParamsForm(forms.Form):
     meter = forms.ModelChoiceField(
-        queryset=Meter.objects.order_by("meter_number"),
+        queryset=Meter.objects.select_related("unit", "unit__property").order_by("meter_number"),
         label="Meter",
         widget=forms.Select(attrs={"class": "form-select"})
     )

@@ -13,6 +13,7 @@ from django.conf.urls.static import static
 from leases.views import UnitAutocomplete
 from leases import views_lease_files
 from core.views import SettingsView
+from accounts.views import LogoutView as AccountsLogoutView
 
 
 def plain_include(module_path):
@@ -159,7 +160,7 @@ urlpatterns = [
 
     path(
         'logout/',
-        auth_views.LogoutView.as_view(),
+        AccountsLogoutView.as_view(),
         name='logout'
     ),
 

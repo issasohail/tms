@@ -265,12 +265,17 @@ class TenantPublicRegistrationForm(forms.Form):
 
 class TenantPreRegistrationLinkForm(forms.Form):
     name = forms.CharField(max_length=120, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
-    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    phone = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
+    interested_in = forms.ModelMultipleChoiceField(
+        queryset=TenantInterestType.objects.none(),
+        widget=forms.CheckboxSelectMultiple(),
+    )
     notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         add_auto_titlecase_class(self.fields)
 
 

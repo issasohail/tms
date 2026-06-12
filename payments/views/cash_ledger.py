@@ -137,6 +137,7 @@ class CashLedgerView(SingleTableView):
                 "allocation__payment_id",
                 "allocation__lease_amount",
                 "allocation__security_amount",
+                "allocation__security_type",
             )
         )
 
@@ -243,6 +244,8 @@ class CashLedgerView(SingleTableView):
                 is_split = (sec_amt != Decimal("0.00"))  # treat true split only when sec portion exists
                 if sec_type == "REFUND":
                     row_amount = lease_amt - sec_amt
+                elif lease_amt < 0:
+                    row_source_type = "LEASE_REFUND"
 
                 # Allocation routes override
                 view_url = reverse("payments:allocation_detail", args=[allocation_id])

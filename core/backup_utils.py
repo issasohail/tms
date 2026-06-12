@@ -12,6 +12,7 @@ from django.conf import settings
 
 
 SETTINGS_FILE_NAME = "backup_settings.json"
+MIN_PROTECTED_BACKUPS = 3
 
 
 def default_backup_settings():
@@ -349,6 +350,9 @@ def delete_backup(config, backup_id):
     item = next((backup for backup in backups if backup.id == backup_id), None)
     if not item:
         raise RuntimeError("Selected backup was not found.")
+    protected_ids = {backup.id for backup in backups[:MIN_PROTECTED_BACKUPS]}
+    if item.id in protected_ids:
+        raise RuntimeError("The latest 3 backups are protected and cannot be deleted.")
     root = ensure_backup_root(config).resolve()
     path = Path(item.display_path).resolve()
     if root not in path.parents or not path.is_file():
@@ -358,7 +362,7 @@ def delete_backup(config, backup_id):
 
 
 def prune_old_backups(config):
-    retention = int(config.get("retention_count") or 10)
+    retention = max(int(config.get("retention_count") or 10), MIN_PROTECTED_BACKUPS)
     backups = list_backups(config)
     for item in backups[retention:]:
         try:

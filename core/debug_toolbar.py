@@ -45,7 +45,7 @@ def _debug_toolbar_enabled_in_db():
 
 
 def show_toolbar(request):
-    if not settings.DEBUG:
+    if not settings.DEBUG or not getattr(settings, "ENABLE_LOCAL_DEBUG_TOOLBAR", False):
         return False
 
     host = _host_without_port(request)
@@ -61,4 +61,4 @@ def show_toolbar(request):
     if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
         return False
 
-    return _debug_toolbar_enabled_in_db()
+    return True

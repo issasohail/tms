@@ -24,8 +24,8 @@ def rebuild_allocation(*, payment, lease_amount, security_amount, security_type=
     sec_amt   = D(security_amount)
     sec_type  = (security_type or "PAYMENT").upper()
 
-    if lease_amt < 0 or sec_amt < 0:
-        raise ValueError("Allocation amounts cannot be negative.")
+    if sec_amt < 0:
+        raise ValueError("Security allocation amount cannot be negative.")
 
     total = lease_amt + sec_amt
 

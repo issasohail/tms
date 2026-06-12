@@ -504,6 +504,7 @@ class Lease(models.Model):
         refunded = grouped["REFUND"]
         damages = grouped["DAMAGE"]
         adjust = grouped["ADJUST"]
+        effective_paid_in = paid_in + adjust
         required = self.security_required
 
         return {
@@ -513,9 +514,9 @@ class Lease(models.Model):
             "refund_deductions": refund_deductions,
             "damages": damages,
             "adjust": adjust,
-            "balance_to_collect": max(required - paid_in, zero),
+            "balance_to_collect": max(required - effective_paid_in, zero),
             "currently_held": max(
-                paid_in - refunded - refund_deductions - damages,
+                effective_paid_in - refunded - refund_deductions - damages,
                 zero,
             ),
         }

@@ -82,7 +82,6 @@ from leases.services.lease_history import ensure_original_history
 from leases.utils import do_replace_placeholders
 from payments.models import Payment
 from properties.models import Property, Unit
-from smart_meter.models import MeterInstallation
 from tenants.models import Tenant
 from utils.pdf_export import handle_export
 
@@ -101,7 +100,6 @@ from .models import (  # adjust import paths if needed
     LeaseFamilyMember,
     LeaseRelationshipType,
     LeaseTemplate,
-    LeaseUnitOccupancy,
     Property,
     Tenant,
     Unit,
@@ -1107,7 +1105,7 @@ def create_security_required_adjustment(old_lease, new_lease):
     return SecurityDepositTransaction.objects.create(
         lease=new_lease,
         type="ADJUST",
-        amount=delta,
+        amount=delta.copy_abs(),
         notes=f"Required security changed from {old_required} to {new_required}",
     )
 
@@ -1483,29 +1481,11 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                         "lease__unit__property",
                     ),
                 ),
+                "family_members__family_member",
                 "renewals",
-                Prefetch(
-                    "unit_occupancies",
-                    queryset=LeaseUnitOccupancy.objects.select_related(
-                        "unit",
-                        "unit__property",
-                    ),
-                ),
-                Prefetch(
-                    "family_members",
-                    queryset=LeaseFamilyMember.objects.select_related(
-                        "family_member",
-                        "relationship_type",
-                    ),
-                ),
-                Prefetch(
-                    "meter_installations",
-                    queryset=MeterInstallation.objects.select_related(
-                        "meter",
-                        "unit",
-                        "unit__property",
-                    ),
-                ),
+                "unit_occupancies__unit__property",
+                "meter_installations__meter",
+                "meter_installations__unit__property",
                 Prefetch(
                     "documents",
                     queryset=apps.get_model("leases", "LeaseDocument")
@@ -1576,14 +1556,10 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             "please open this link, describe the issue, and upload photos/videos if available:\n"
             f"{ctx['public_maintenance_url']}"
         )
-        if not any(
-            renewal.renewal_number == 1 and renewal.is_original
-            for renewal in renewals
-        ):
-            ensure_original_history(
-                lease,
-                user=self.request.user if self.request.user.is_authenticated else None,
-            )
+        ensure_original_history(
+            lease,
+            user=self.request.user if self.request.user.is_authenticated else None,
+        )
         today = timezone.localdate()
         active_renewals = [
             renewal
@@ -1633,9 +1609,8 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 dep_balance += amt
                 signed_amt = amt
             elif tx.type in ("REFUND", "DAMAGE"):
-                deduction = (tx.deduction_amount or ZERO) if tx.type == "REFUND" else ZERO
-                dep_balance -= amt + deduction
-                signed_amt = -(amt + deduction)
+                dep_balance -= amt
+                signed_amt = -amt
             else:
                 # REQUIRED / ADJUST etc. – doesn’t change “held” balance
                 signed_amt = amt
@@ -2271,48 +2246,6 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
         return ctx
 
 
-def _security_ledger_rows_for_lease(lease):
-    rows = []
-    balance = Decimal("0.00")
-    zero = Decimal("0.00")
-
-    transactions = getattr(lease, "security_transactions_qs", None)
-    if transactions is None:
-        transactions = lease.security_transactions.all().order_by("date", "id")
-
-    for tx in transactions:
-        amount = tx.amount or zero
-        deduction = tx.deduction_amount or zero
-
-        if tx.type == "PAYMENT":
-            signed_amount = amount
-            balance += amount
-        elif tx.type == "REFUND":
-            signed_amount = -(amount + deduction)
-            balance -= amount + deduction
-        elif tx.type == "DAMAGE":
-            signed_amount = -amount
-            balance -= amount
-        elif tx.type == "ADJUST":
-            signed_amount = amount
-            balance += amount
-        else:
-            signed_amount = amount
-
-        rows.append(
-            {
-                "date": tx.date,
-                "type": tx.get_type_display(),
-                "description": tx.notes or tx.refund_notes or "",
-                "amount": signed_amount,
-                "balance": balance,
-                "deduction_amount": deduction,
-                "refund_status": tx.get_refund_status_display() if tx.type == "REFUND" else "",
-            }
-        )
-    return rows
-
-
 def lease_ledger_pdf(request, lease_id):
     """Generate PDF ledger with proper formatting and filename"""
     try:
@@ -2334,10 +2267,6 @@ def lease_ledger_pdf(request, lease_id):
                     queryset=Payment.objects.select_related("allocation").order_by(
                         "payment_date", "id"
                     ),
-                ),
-                Prefetch(
-                    "security_transactions",
-                    queryset=SecurityDepositTransaction.objects.order_by("date", "id"),
                 ),
             ),
             pk=lease_id,
@@ -2399,12 +2328,6 @@ def lease_ledger_pdf(request, lease_id):
         for index, transaction_row in enumerate(transactions, start=1):
             transaction_row["serial_no"] = index
 
-        security_rows = _security_ledger_rows_for_lease(lease)
-        for index, row in enumerate(security_rows, start=1):
-            row["serial_no"] = index
-            row["display_amount"] = abs(row["amount"])
-            row["is_credit"] = row["amount"] > 0
-
         # Prepare transaction columns
         first_column_limit = 40
         if len(transactions) > first_column_limit:
@@ -2427,8 +2350,6 @@ def lease_ledger_pdf(request, lease_id):
             ),
             "total_owed": sum(-t["amount"] for t in transactions if t["amount"] < 0),
             "current_balance": balance,
-            "security_rows": security_rows,
-            "security_totals": security_deposit_totals(lease),
             "date": datetime.now().date(),
             "generated_on": datetime.now(),
             "intcomma": intcomma,
@@ -2489,17 +2410,9 @@ def send_ledger_email(request, lease_id):
 
 def export_ledger_excel(request, lease_id):
     try:
-        lease = get_object_or_404(
-            Lease.objects.prefetch_related(
-                Prefetch(
-                    "security_transactions",
-                    queryset=SecurityDepositTransaction.objects.order_by("date", "id"),
-                )
-            ),
-            id=lease_id,
-        )
+        lease = get_object_or_404(Lease, id=lease_id)
         invoices = Invoice.objects.filter(lease=lease).order_by("issue_date")
-        payments = Payment.objects.filter(lease=lease).select_related("allocation").order_by("payment_date")
+        payments = Payment.objects.filter(lease=lease).order_by("payment_date")
 
         # Calculate running balance
         transactions = []
@@ -2520,20 +2433,13 @@ def export_ledger_excel(request, lease_id):
 
         # Process payments
         for payment in payments:
-            alloc = getattr(payment, "allocation", None)
-            lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
-            amount = (
-                lease_amt
-                if lease_amt is not None
-                else (payment.amount or Decimal("0.00"))
-            ) or Decimal("0.00")
-            balance += amount
+            balance += payment.amount
             transactions.append(
                 {
                     "date": payment.payment_date,
                     "type": "Payment",
                     "description": payment.reference_number or "Payment",
-                    "amount": amount,
+                    "amount": payment.amount,
                     "balance": balance,
                 }
             )
@@ -2664,45 +2570,6 @@ def export_ledger_excel(request, lease_id):
                 cell.border = thin_border
                 if cell.column_letter in ["E", "F"]:  # Amount and Balance columns
                     cell.number_format = "#,##0.00"
-
-        security_rows = _security_ledger_rows_for_lease(lease)
-        if security_rows:
-            ws.append([])
-            security_heading_row = ws.max_row + 1
-            ws.append(["Security Deposit Ledger"])
-            ws.merge_cells(
-                start_row=security_heading_row,
-                start_column=1,
-                end_row=security_heading_row,
-                end_column=6,
-            )
-            ws.cell(row=security_heading_row, column=1).font = Font(bold=True, size=14)
-            ws.cell(row=security_heading_row, column=1).alignment = centered
-
-            security_header_row = ws.max_row + 1
-            ws.append(["S.No", "Date", "Type", "Description", "Amount", "Held Balance"])
-            for cell in ws[security_header_row]:
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = centered
-                cell.border = thin_border
-
-            for index, row in enumerate(security_rows, start=1):
-                ws.append([
-                    index,
-                    row["date"].strftime("%b %d, %Y"),
-                    row["type"],
-                    row["description"],
-                    row["amount"],
-                    row["balance"],
-                ])
-
-            for row in ws.iter_rows(min_row=security_header_row, max_row=ws.max_row):
-                for cell in row:
-                    cell.font = black_font if cell.row != security_header_row else cell.font
-                    cell.border = thin_border
-                    if cell.column_letter in ["E", "F"]:
-                        cell.number_format = "#,##0.00"
 
         # Set custom column widths
         column_widths = {
@@ -3287,6 +3154,7 @@ class SecurityDepositListView(LeaseSecurityMixin, ListView):
                 balance -= amt + deduction
             elif tx.type == "ADJUST":
                 signed_amt = amt
+                balance += amt
             else:
                 signed_amt = amt
 
@@ -3325,28 +3193,6 @@ class SecurityDepositCreateView(LeaseSecurityMixin, CreateView):
     model = SecurityDepositTransaction
     form_class = SecurityDepositTransactionForm
     template_name = "leases/security_deposit_form.html"
-
-    def get_initial(self):
-        initial = super().get_initial()
-        tx_type = (self.request.GET.get("type") or "").upper()
-        if tx_type in {"REQUIRED", "PAYMENT", "REFUND", "DAMAGE", "ADJUST"}:
-            initial["type"] = tx_type
-
-        amount = self.request.GET.get("amount")
-        if amount:
-            try:
-                initial["amount"] = Decimal(str(amount).replace(",", ""))
-            except Exception:
-                pass
-
-        if tx_type == "REFUND":
-            initial.setdefault("date", timezone.localdate())
-            initial.setdefault("refund_status", "PAID")
-            initial.setdefault(
-                "notes",
-                "Security deposit refunded after final invoices and deductions.",
-            )
-        return initial
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()

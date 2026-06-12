@@ -524,8 +524,8 @@ def allocation_update_api(request):
     payment = alloc.payment
     total = lease_amt + sec_amt
 
-    if lease_amt < 0 or sec_amt < 0:
-        return JsonResponse({"error": "Allocation amounts cannot be negative."}, status=400)
+    if sec_amt < 0:
+        return JsonResponse({"error": "Security allocation amount cannot be negative."}, status=400)
 
     if total != payment.amount:
         return JsonResponse({
@@ -687,8 +687,8 @@ def allocation_update_api(request):
 
     # Must equal payment amount
     total = lease_amt + sec_amt
-    if lease_amt < 0 or sec_amt < 0:
-        return JsonResponse({"ok": False, "error": "Allocation amounts cannot be negative."}, status=400)
+    if sec_amt < 0:
+        return JsonResponse({"ok": False, "error": "Security allocation amount cannot be negative."}, status=400)
 
     if total != (payment.amount or Decimal("0.00")):
         return JsonResponse({"ok": False, "error": f"Split total {total} must equal payment amount {payment.amount}."}, status=400)
@@ -723,18 +723,27 @@ def api_allocation_receipt_whatsapp(request, pk: int):
     sec_totals = security_deposit_totals(lease) if lease else {"balance_to_collect": 0, "required": 0}
     sec_status = "Pending" if (sec_totals.get("balance_to_collect") or 0) > 0 else "Paid"
 
-    is_refund = (alloc.security_type or "").upper() == "REFUND"
-    heading = "*Security deposit refunded*" if is_refund else "*Payment received*"
+    is_security_refund = (alloc.security_type or "").upper() == "REFUND"
+    is_lease_refund = (alloc.lease_amount or 0) < 0
+    heading = (
+        "*Lease payment refunded*"
+        if is_lease_refund
+        else "*Security deposit refunded*"
+        if is_security_refund
+        else "*Payment received*"
+    )
     amount_line = (
-        f"*Refund Amount: {_money(alloc.security_amount)}*"
-        if is_refund
+        f"*Refund Amount: {_money(abs(alloc.lease_amount))}*"
+        if is_lease_refund
+        else f"*Refund Amount: {_money(alloc.security_amount)}*"
+        if is_security_refund
         else f"*Total Amount Received: {_money(pay.amount)}*"
     )
     security_line = ""
     if (alloc.security_amount or 0) > 0:
         security_line = (
             f"Security Refund: {_money(alloc.security_amount)}\n"
-            if is_refund
+            if is_security_refund
             else f"Security Portion: {_money(alloc.security_amount)}\n"
         )
 

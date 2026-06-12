@@ -2,7 +2,7 @@ from __future__ import annotations
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout as auth_logout
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import get_user_model
@@ -34,7 +34,18 @@ class LoginView(auth_views.LoginView):
 
 
 class LogoutView(auth_views.LogoutView):
+    http_method_names = ["get", "post", "options"]
     template_name = "accounts/logout.html"
+
+    def get(self, request, *args, **kwargs):
+        auth_logout(request)
+        messages.success(request, "You have been logged out.")
+        return redirect("login")
+
+    def post(self, request, *args, **kwargs):
+        auth_logout(request)
+        messages.success(request, "You have been logged out.")
+        return redirect("login")
 
 
 @require_http_methods(["GET", "POST"])

@@ -37,7 +37,7 @@
       <a class="settings-tab-card" href="#settings-development-tools" data-settings-target="settings-development-tools">
         <span class="settings-tab-icon"><i class="fas fa-code"></i></span><span>Development Tools</span>
       </a>
-      <a class="settings-tab-card" href="#settings-tool-backup" data-settings-target="settings-tool-backup">
+      <a class="settings-tab-card" href="{% url 'core:backup_center' %}">
         <span class="settings-tab-icon"><i class="bi bi-database-lock"></i></span><span>Backup</span>
       </a>
       <a class="settings-tab-card" href="#settings-tool-suggestions" data-settings-target="settings-tool-suggestions">
@@ -801,6 +801,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   settingsTabs.forEach(tab => {
     tab.addEventListener("click", function (event) {
+      if (!this.dataset.settingsTarget) return;
       event.preventDefault();
       showSettingsPanel(this.dataset.settingsTarget, true);
     });

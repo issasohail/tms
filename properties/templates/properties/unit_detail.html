@@ -282,7 +282,7 @@
     </div>
 
     <div class="row g-3 mb-3">
-        <div class="col-12 col-xl-6">
+        <div class="col-12 col-xl-4">
             <div class="card unit-detail-card h-100">
                 <div class="card-header">
                     <h5 class="mb-0">Basic Information & Charges</h5>
@@ -346,7 +346,7 @@
             </div>
         </div>
 
-        <div class="col-12 col-xl-6">
+        <div class="col-12 col-xl-4">
             <div class="card unit-detail-card h-100">
                 <div class="card-header">
                     <h5 class="mb-0">Rooms, Amenities & Condition</h5>
@@ -367,6 +367,58 @@
                         <div class="unit-info-item unit-info-wide"><span class="unit-info-label">Paint Condition</span><div class="unit-info-value">{{ unit.paint_condition|default:"-" }}</div></div>
                         <div class="unit-info-item unit-info-wide"><span class="unit-info-label">Comments</span><div class="unit-info-value">{{ unit.comments|default:"-" }}</div></div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card unit-detail-card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Tenant Information</h5>
+                </div>
+                <div class="card-body">
+                    {% if current_tenant and current_lease %}
+                        <div class="unit-info-grid mb-3">
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Tenant Name</span>
+                                <div class="unit-info-value">{{ current_tenant.get_full_name }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Phone</span>
+                                <div class="unit-info-value">{{ current_tenant.phone|default:"-" }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">CNIC</span>
+                                <div class="unit-info-value">{{ current_tenant.cnic|default:"-" }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Lease Start</span>
+                                <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.start_date|date:"M d, Y" }}{% else %}{{ current_lease.start_date|date:"M d, Y" }}{% endif %}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Lease End</span>
+                                <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.end_date|date:"M d, Y" }}{% else %}{{ current_lease.end_date|date:"M d, Y" }}{% endif %}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Lease Status</span>
+                                <div class="unit-info-value">{{ current_lease.get_status_display }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Monthly Total</span>
+                                <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.total_monthly_amount|money }}{% else %}{{ current_lease.total_payment|money }}{% endif %}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{% url 'tenants:tenant_detail' current_tenant.pk %}" class="btn btn-sm btn-primary">View Tenant</a>
+                            <a href="{% url 'leases:lease_detail' current_lease.pk %}" class="btn btn-sm btn-outline-primary">View Lease</a>
+                            <a href="{% url 'leases:lease_ledger_by_pk' current_lease.pk %}" class="btn btn-sm btn-outline-secondary">Ledger</a>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No current tenant</p>
+                        <a href="{% url 'leases:lease_create' %}?property={{ unit.property_id }}&unit={{ unit.pk }}" class="btn btn-sm btn-success">
+                            Add Lease / Assign Tenant
+                        </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -392,71 +444,11 @@
 
     <div class="card unit-detail-card mb-3">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <h5 class="mb-0">Current Meters</h5>
+            <h5 class="mb-0">Meters</h5>
             <div class="d-flex flex-wrap gap-2">
                 <a href="{% url 'smart_meter:install_meter_to_unit' unit.pk %}" class="btn btn-sm btn-primary">Install Meter</a>
                 <a href="{% url 'smart_meter:switch_meter' unit.pk %}" class="btn btn-sm btn-outline-primary">Change / Switch Meter</a>
             </div>
-        </div>
-        <div class="card-body p-0">
-            {% with current_installations=unit.meter_installations.all %}
-                <div class="unit-desktop-table">
-                    <table class="table table-sm table-striped unit-meter-table mb-0">
-                        <thead>
-                            <tr>
-                                <th>Meter</th>
-                                <th>Type</th>
-                                <th>Start Date</th>
-                                <th class="text-end">Start Reading</th>
-                                <th class="text-end">Current / Last Reading</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for installation in current_installations %}
-                                {% if installation.is_active %}
-                                    <tr>
-                                        <td><a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}">{{ installation.meter.meter_number }}</a></td>
-                                        <td>{{ installation.meter.get_meter_type_display }}</td>
-                                        <td>{{ installation.start_date|date:"M d, Y" }}</td>
-                                        <td class="text-end">{{ installation.start_reading }}</td>
-                                        <td class="text-end">{{ installation.meter.latest_live.total_energy|default:"-" }}</td>
-                                        <td><span class="badge bg-success">Active</span></td>
-                                    </tr>
-                                {% endif %}
-                            {% empty %}
-                                <tr><td colspan="6" class="text-muted text-center py-3">No meters installed.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="unit-mobile-list p-2">
-                    {% for installation in current_installations %}
-                        {% if installation.is_active %}
-                            <div class="unit-mobile-meter-card">
-                                <div class="unit-mobile-meter-title">
-                                    <a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}"><strong>{{ installation.meter.meter_number }}</strong></a>
-                                    <span class="badge bg-success">Active</span>
-                                </div>
-                                <div class="unit-meter-mini-grid">
-                                    <div><span class="unit-info-label">Type</span><div>{{ installation.meter.get_meter_type_display }}</div></div>
-                                    <div><span class="unit-info-label">Start Date</span><div>{{ installation.start_date|date:"M d, Y" }}</div></div>
-                                    <div><span class="unit-info-label">Start Reading</span><div>{{ installation.start_reading }}</div></div>
-                                    <div><span class="unit-info-label">Current / Last</span><div>{{ installation.meter.latest_live.total_energy|default:"-" }}</div></div>
-                                </div>
-                            </div>
-                        {% endif %}
-                    {% empty %}
-                        <p class="text-muted text-center py-3 mb-0">No meters installed.</p>
-                    {% endfor %}
-                </div>
-            {% endwith %}
-        </div>
-    </div>
-
-    <div class="card unit-detail-card mb-3">
-        <div class="card-header">
-            <h5 class="mb-0">Meter History</h5>
         </div>
         <div class="card-body p-0">
             <div class="unit-desktop-table">
@@ -464,41 +456,47 @@
                     <thead>
                         <tr>
                             <th>Meter</th>
+                            <th>Type</th>
                             <th>From</th>
                             <th>To</th>
                             <th class="text-end">Start</th>
-                            <th class="text-end">End</th>
+                            <th class="text-end">End / Current</th>
+                            <th>Status</th>
                             <th>Reason</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for installation in unit.meter_installations.all %}
+                        {% for row in meter_history_rows %}
                             <tr>
-                                <td><a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}">{{ installation.meter.meter_number }}</a></td>
-                                <td>{{ installation.start_date|date:"M d, Y" }}</td>
-                                <td>{{ installation.end_date|date:"M d, Y"|default:"Current" }}</td>
-                                <td class="text-end">{{ installation.start_reading }}</td>
-                                <td class="text-end">{{ installation.end_reading|default:"-" }}</td>
-                                <td>{{ installation.reason|default:"-" }}</td>
+                                <td><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}">{{ row.meter.meter_number }}</a></td>
+                                <td>{{ row.meter.get_meter_type_display }}</td>
+                                <td>{{ row.start_date|date:"M d, Y" }}</td>
+                                <td>{{ row.end_date|date:"M d, Y"|default:"Current" }}</td>
+                                <td class="text-end">{{ row.start_reading|default_if_none:"-" }}</td>
+                                <td class="text-end">{% if row.is_active %}{{ row.meter.latest_live.total_energy|default:row.end_reading|default:"-" }}{% else %}{{ row.end_reading|default_if_none:"-" }}{% endif %}</td>
+                                <td>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">History</span>{% endif %}</td>
+                                <td>{{ row.reason|default:"-" }}</td>
                             </tr>
                         {% empty %}
-                            <tr><td colspan="6" class="text-muted text-center py-3">No meter history recorded.</td></tr>
+                            <tr><td colspan="8" class="text-muted text-center py-3">No meter history recorded.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             <div class="unit-mobile-list p-2">
-                {% for installation in unit.meter_installations.all %}
+                {% for row in meter_history_rows %}
                     <div class="unit-mobile-meter-card">
                         <div class="unit-mobile-meter-title">
-                            <a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}"><strong>{{ installation.meter.meter_number }}</strong></a>
-                            <span>{{ installation.reason|default:"-" }}</span>
+                            <a href="{% url 'smart_meter:meter_detail' row.meter.pk %}"><strong>{{ row.meter.meter_number }}</strong></a>
+                            {% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">History</span>{% endif %}
                         </div>
                         <div class="unit-meter-mini-grid">
-                            <div><span class="unit-info-label">From</span><div>{{ installation.start_date|date:"M d, Y" }}</div></div>
-                            <div><span class="unit-info-label">To</span><div>{{ installation.end_date|date:"M d, Y"|default:"Current" }}</div></div>
-                            <div><span class="unit-info-label">Start</span><div>{{ installation.start_reading }}</div></div>
-                            <div><span class="unit-info-label">End</span><div>{{ installation.end_reading|default:"-" }}</div></div>
+                            <div><span class="unit-info-label">Type</span><div>{{ row.meter.get_meter_type_display }}</div></div>
+                            <div><span class="unit-info-label">Reason</span><div>{{ row.reason|default:"-" }}</div></div>
+                            <div><span class="unit-info-label">From</span><div>{{ row.start_date|date:"M d, Y" }}</div></div>
+                            <div><span class="unit-info-label">To</span><div>{{ row.end_date|date:"M d, Y"|default:"Current" }}</div></div>
+                            <div><span class="unit-info-label">Start</span><div>{{ row.start_reading|default_if_none:"-" }}</div></div>
+                            <div><span class="unit-info-label">End / Current</span><div>{% if row.is_active %}{{ row.meter.latest_live.total_energy|default:row.end_reading|default:"-" }}{% else %}{{ row.end_reading|default_if_none:"-" }}{% endif %}</div></div>
                         </div>
                     </div>
                 {% empty %}
@@ -545,55 +543,6 @@
         </div>
     </div>
 
-    <div class="card unit-detail-card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Tenant Information</h5>
-        </div>
-        <div class="card-body">
-            {% if current_tenant and current_lease %}
-                <div class="unit-info-grid mb-3">
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">Tenant Name</span>
-                        <div class="unit-info-value">{{ current_tenant.get_full_name }}</div>
-                    </div>
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">Phone</span>
-                        <div class="unit-info-value">{{ current_tenant.phone|default:"-" }}</div>
-                    </div>
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">CNIC</span>
-                        <div class="unit-info-value">{{ current_tenant.cnic|default:"-" }}</div>
-                    </div>
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">Lease Start</span>
-                        <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.start_date|date:"M d, Y" }}{% else %}{{ current_lease.start_date|date:"M d, Y" }}{% endif %}</div>
-                    </div>
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">Lease End</span>
-                        <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.end_date|date:"M d, Y" }}{% else %}{{ current_lease.end_date|date:"M d, Y" }}{% endif %}</div>
-                    </div>
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">Lease Status</span>
-                        <div class="unit-info-value">{{ current_lease.get_status_display }}</div>
-                    </div>
-                    <div class="unit-info-item">
-                        <span class="unit-info-label">Monthly Total</span>
-                        <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.total_monthly_amount|money }}{% else %}{{ current_lease.total_payment|money }}{% endif %}</div>
-                    </div>
-                </div>
-                <div class="d-flex flex-wrap gap-2">
-                    <a href="{% url 'tenants:tenant_detail' current_tenant.pk %}" class="btn btn-primary">View Tenant</a>
-                    <a href="{% url 'leases:lease_detail' current_lease.pk %}" class="btn btn-outline-primary">View Lease</a>
-                    <a href="{% url 'leases:lease_ledger_by_pk' current_lease.pk %}" class="btn btn-outline-secondary">Lease Ledger</a>
-                </div>
-            {% else %}
-                <p class="text-muted">No current tenant</p>
-                <a href="{% url 'leases:lease_create' %}?property={{ unit.property_id }}&unit={{ unit.pk }}" class="btn btn-success">
-                    Add Lease / Assign Tenant
-                </a>
-            {% endif %}
-        </div>
-    </div>
 </div>
 
 <script>

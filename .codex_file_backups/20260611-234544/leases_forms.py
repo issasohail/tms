@@ -100,20 +100,6 @@ class LeaseForm(forms.ModelForm):
         self.fields['tenant'].queryset = Tenant.objects.order_by(
             'first_name', 'last_name')
 
-        optional_police_fields = [
-            "police_verification_status",
-            "police_verification_date",
-            "police_verification_document",
-            "police_verification_remarks",
-            "police_verification_follow_up_date",
-            "police_verified_by",
-        ]
-        for field_name in optional_police_fields:
-            if field_name in self.fields:
-                self.fields[field_name].required = False
-        if "police_verification_status" in self.fields:
-            self.fields["police_verification_status"].initial = "not_started"
-
         # If user selected a property (POST or initial), filter units
         pid = self.data.get('property') or self.initial.get('property')
         if pid:
@@ -137,8 +123,6 @@ class LeaseForm(forms.ModelForm):
         end_date = cleaned_data.get('end_date')
         if start_date and end_date and end_date < start_date:
             raise forms.ValidationError("End date cannot be before start date")
-        if not cleaned_data.get("police_verification_status"):
-            cleaned_data["police_verification_status"] = "not_started"
         return cleaned_data
 
     def clean_signed_agreement(self):

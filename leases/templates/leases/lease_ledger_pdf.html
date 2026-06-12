@@ -217,6 +217,52 @@
         </div>
     </div>
 
+    {% if security_rows %}
+    <div class="transaction-container">
+        <h3 style="margin:6px 0 2px;font-size:12px;">Security Deposit Ledger</h3>
+        <p class="compact-info">
+            Required: Rs. {{ security_totals.required|floatformat:0|intcomma }}
+            | Paid In: Rs. {{ security_totals.paid_in|floatformat:0|intcomma }}
+            | Refunded: Rs. {{ security_totals.refunded|floatformat:0|intcomma }}
+            | Currently Held: Rs. {{ security_totals.currently_held|floatformat:0|intcomma }}
+        </p>
+        <table>
+            <colgroup>
+                <col class="serial-no">
+                <col class="date-column">
+                <col class="type-column">
+                <col class="description-column">
+                <col class="amount-column">
+                <col class="balance-column">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="serial-no">#</th>
+                    <th class="date-column">Date</th>
+                    <th class="type-column">Type</th>
+                    <th class="description-column">Description</th>
+                    <th class="amount-column">Amount</th>
+                    <th class="balance-column">Held Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in security_rows %}
+                <tr>
+                    <td class="serial-no">{{ t.serial_no }}</td>
+                    <td>{{ t.date|date:"m/d/Y" }}</td>
+                    <td>{{ t.type }}</td>
+                    <td class="description-cell"><span class="description-text">{{ t.description }}</span></td>
+                    <td class="amount-column {% if t.is_credit %}positive{% else %}negative{% endif %}">
+                        {% if t.is_credit %}Rs. {{ t.display_amount|floatformat:0|intcomma }}{% else %}-Rs. {{ t.display_amount|floatformat:0|intcomma }}{% endif %}
+                    </td>
+                    <td class="balance-column">Rs. {{ t.balance|floatformat:0|intcomma }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
     <div class="footer">
         <p>Document Generated on: {{ generated_on|date:"Y-m-d" }}
 </p>

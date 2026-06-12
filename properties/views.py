@@ -126,27 +126,45 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         today = timezone.now().date()
-        units = self.object.units.all().order_by("unit_number")
-        active_unit_ids = (
+        units = list(self.object.units.all().order_by("unit_number"))
+        active_unit_ids = set(
             Lease.objects.filter(
                 unit__property=self.object,
                 status="active",
                 start_date__lte=today,
                 end_date__gte=today,
             )
+            .order_by()
             .values_list("unit_id", flat=True)
             .distinct()
         )
+        actual_total_units = len(units)
+        occupied_units_count = sum(1 for unit in units if unit.id in active_unit_ids)
+        vacant_units_count = sum(
+            1
+            for unit in units
+            if unit.status == "vacant" and unit.id not in active_unit_ids
+        )
+        maintenance_units_count = sum(1 for unit in units if unit.status == "maintenance")
 
         context["units"] = units
-        context["actual_total_units"] = units.count()
+        context["actual_total_units"] = actual_total_units
         context["configured_total_units"] = self.object.total_units
-        context["occupied_units_count"] = units.filter(id__in=active_unit_ids).count()
-        context["vacant_units_count"] = (
-            units.filter(status="vacant").exclude(id__in=active_unit_ids).count()
-        )
-        context["maintenance_units_count"] = units.filter(status="maintenance").count()
-        context["media_files"] = self.object.media_files.filter(is_active=True)[:6]
+        context["occupied_units_count"] = occupied_units_count
+        context["vacant_units_count"] = vacant_units_count
+        context["maintenance_units_count"] = maintenance_units_count
+        context["media_files"] = self.object.media_files.filter(is_active=True).only(
+            "id",
+            "property_id",
+            "file",
+            "file_type",
+            "description",
+            "stamped_file",
+            "thumbnail",
+            "original_filename",
+            "sort_order",
+            "uploaded_at",
+        )[:6]
         return context
 
 
@@ -374,14 +392,133 @@ def _attach_unit_occupancy(unit):
 
 def _unit_detail_context(unit):
     _attach_unit_occupancy(unit)
+    current_meter_rows, meter_history_rows = _unit_meter_rows(unit)
     return {
         "unit": unit,
         "units": unit,
-        "media_files": unit.media_files.filter(is_active=True)[:6],
+        "media_files": unit.media_files.filter(is_active=True).only(
+            "id",
+            "unit_id",
+            "file",
+            "file_type",
+            "description",
+            "stamped_file",
+            "thumbnail",
+            "original_filename",
+            "sort_order",
+            "uploaded_at",
+        )[:6],
         "current_lease": unit.current_lease,
         "current_tenant": unit.current_tenant,
         "active_lease_history": unit.active_lease_history,
+        "current_meter_rows": current_meter_rows,
+        "meter_history_rows": meter_history_rows,
     }
+
+
+def _unit_meter_rows(unit):
+    from smart_meter.models import Meter, MeterInstallation, MeterReading
+
+    installation_rows = list(
+        MeterInstallation.objects
+        .filter(unit=unit)
+        .select_related("meter")
+        .order_by("-is_active", "-start_date", "-id")
+    )
+    history_rows = []
+    seen_meter_ids = set()
+
+    for installation in installation_rows:
+        last_reading = (
+            MeterReading.objects
+            .filter(meter=installation.meter)
+            .order_by("-ts")
+            .first()
+        )
+        display_is_active = (
+            installation.is_active
+            and installation.end_date is None
+            and installation.meter.is_active
+            and installation.meter.unit_id == unit.id
+        )
+        display_end_date = installation.end_date
+        if not display_is_active and display_end_date is None and last_reading:
+            display_end_date = timezone.localtime(last_reading.ts).date()
+        display_end_reading = installation.end_reading
+        if display_end_reading is None and last_reading:
+            display_end_reading = last_reading.total_energy
+        seen_meter_ids.add(installation.meter_id)
+        history_rows.append({
+            "meter": installation.meter,
+            "start_date": installation.start_date,
+            "end_date": display_end_date,
+            "start_reading": installation.start_reading,
+            "end_reading": display_end_reading,
+            "reason": installation.reason or "installation",
+            "is_active": display_is_active,
+        })
+
+    cached_unit_meters = (
+        Meter.objects
+        .filter(unit=unit)
+        .select_related("unit")
+        .order_by("-is_active", "-installed_at", "meter_number")
+    )
+    for meter in cached_unit_meters:
+        if meter.pk in seen_meter_ids:
+            continue
+        assignment = (
+            meter.assignment_history
+            .filter(new_unit=unit)
+            .order_by("-change_date", "-id")
+            .first()
+        )
+        if assignment:
+            start_dt = timezone.localtime(assignment.change_date)
+            start_date = start_dt.date()
+            start_reading_obj = (
+                MeterReading.objects
+                .filter(meter=meter, ts__lte=assignment.change_date)
+                .order_by("-ts")
+                .first()
+            )
+            start_reading = start_reading_obj.total_energy if start_reading_obj else None
+            reason = "assignment"
+        else:
+            start_date = timezone.localtime(meter.installed_at).date() if meter.installed_at else None
+            start_reading = None
+            reason = "cached unit"
+
+        display_is_active = bool(meter.is_active and meter.unit_id == unit.id)
+        last_reading = (
+            MeterReading.objects
+            .filter(meter=meter)
+            .order_by("-ts")
+            .first()
+        )
+        history_rows.append({
+            "meter": meter,
+            "start_date": start_date,
+            "end_date": None if display_is_active else (
+                timezone.localtime(last_reading.ts).date() if last_reading else None
+            ),
+            "start_reading": start_reading,
+            "end_reading": getattr(meter.latest_live, "total_energy", None) or (
+                last_reading.total_energy if last_reading else None
+            ),
+            "reason": reason,
+            "is_active": display_is_active,
+        })
+
+    history_rows.sort(
+        key=lambda row: (row["is_active"], row["start_date"] or timezone.datetime.min.date()),
+        reverse=True,
+    )
+    current_rows = [
+        row for row in history_rows
+        if row["is_active"] and row["meter"].unit_id == unit.id and row["meter"].is_active
+    ]
+    return current_rows, history_rows
 
 
 def _can_manage_media(user, owner):
@@ -688,7 +825,7 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "unit"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("property")
+        return super().get_queryset().select_related("property", "interest_type")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -697,7 +834,7 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
 
 
 def unit_detail(request, pk):
-    unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
+    unit = get_object_or_404(Unit.objects.select_related("property", "interest_type"), pk=pk)
     return render(
         request,
         "properties/unit_detail.html",

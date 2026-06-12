@@ -1256,20 +1256,14 @@
               style="min-width:var(--filter-minw);max-width:var(--filter-maxw)" onchange="this.form.submit()">
               <option value="">All meters</option>
               {% for m in filtered_meters %}
-              <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>
-                {{ m.meter_number }} — {{ m.unit.unit_number }}
+              <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>{{ m.unit.unit_number }} — {{
+                m.meter_number }}
               </option>
               {% endfor %}
 
 
 
 
-            </select>
-
-            <select name="active" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
-              <option value="active" {% if active_filter == "active" %}selected{% endif %}>Active</option>
-              <option value="all" {% if active_filter == "all" %}selected{% endif %}>All</option>
-              <option value="inactive" {% if active_filter == "inactive" %}selected{% endif %}>Inactive</option>
             </select>
 
             <button class="btn btn-sm btn-primary" type="submit">

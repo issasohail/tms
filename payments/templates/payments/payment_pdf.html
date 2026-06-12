@@ -5,7 +5,7 @@
 <div class="receipt-container">
     <!-- Header -->
     <div class="receipt-header">
-        <h1>PAYMENT RECEIPT-testing</h1>
+        <h1>{% if payment.is_lease_refund %}LEASE REFUND RECEIPT{% elif payment.allocation.security_type == "REFUND" %}SECURITY REFUND RECEIPT{% else %}PAYMENT RECEIPT{% endif %}</h1>
         <p class="receipt-number">#{{ payment.reference|default:"-" }}</p>
     </div>
 
@@ -57,7 +57,7 @@
             </thead>
             <tbody>
                 <tr>
-                    <td>Payment for {{ payment.get_payment_method_display }}</td>
+                    <td>{% if payment.is_lease_refund %}Lease refund{% elif payment.allocation.security_type == "REFUND" %}Security refund{% else %}Payment for {{ payment.get_payment_method_display }}{% endif %}</td>
                     <td class="text-right">{{ payment.amount|money:2 }}</td>
                 </tr>
                 {% if payment.notes %}
@@ -71,7 +71,7 @@
 
     <!-- Footer -->
     <div class="receipt-footer">
-        <p>Thank you for your payment!</p>
+        <p>{% if payment.is_lease_refund %}Lease refund recorded.{% elif payment.allocation.security_type == "REFUND" %}Security refund recorded.{% else %}Thank you for your payment!{% endif %}</p>
         <p class="generated-date">Generated on {% now "M d, Y" %}</p>
     </div>
 </div>

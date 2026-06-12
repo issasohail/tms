@@ -21,7 +21,10 @@ from invoices.models import SecurityDepositTransaction
 from expenses.models import Expense
 from properties.models import Property, Unit
 from leases.models import Lease, LeaseRenewal
+from smart_meter.models import LiveReading
 from django.contrib.auth.decorators import login_required
+
+METER_ONLINE_MINUTES = 3
 
 
 def _annotate_dashboard_lease_financials(queryset):
@@ -217,6 +220,20 @@ def dashboard(request):
         .order_by("due_date", "id")[:5]
     )
 
+    meter_offline_cutoff = timezone.now() - timedelta(minutes=METER_ONLINE_MINUTES)
+    offline_meter_readings = (
+        LiveReading.objects.select_related(
+            "meter",
+            "meter__unit",
+            "meter__unit__property",
+        )
+        .filter(
+            meter__is_active=True,
+            ts__lt=meter_offline_cutoff,
+        )
+        .order_by("ts", "meter__unit__property__property_name", "meter__unit__unit_number")[:50]
+    )
+
     dashboard_lease_base = Lease.objects.select_related(
         "tenant",
         "unit",
@@ -279,6 +296,8 @@ def dashboard(request):
         'recent_payments': recent_payments,
         'recent_invoices': Invoice.objects.order_by('-issue_date')[:5],
         'upcoming_invoices': upcoming_invoices,
+        'offline_meter_readings': offline_meter_readings,
+        'meter_online_minutes': METER_ONLINE_MINUTES,
         'ending_soon_leases': ending_soon_leases,
         'recent_expenses': recent_expenses,
         'lease_balances': lease_balances,

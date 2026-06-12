@@ -39,8 +39,8 @@ def update_allocation(request):
     sec_type = (request.POST.get("security_type") or "PAYMENT").upper()
     payment = alloc.payment
 
-    if lease_amt < 0 or sec_amt < 0:
-        return JsonResponse({"ok": False, "error": "Allocation amounts cannot be negative."}, status=400)
+    if sec_amt < 0:
+        return JsonResponse({"ok": False, "error": "Security allocation amount cannot be negative."}, status=400)
 
     total = lease_amt + sec_amt
     if total != (payment.amount or Decimal("0.00")):

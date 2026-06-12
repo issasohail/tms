@@ -769,8 +769,20 @@
     const fmt   = v => asNum(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     const currency = window.TMS_CURRENCY_SYMBOL || '{{ CURRENCY_SYMBOL|escapejs }}';
     const isRefund = securityType === 'REFUND';
+    const isLeaseRefund = asNum(amount) < 0;
+    const refundAmount = Math.abs(asNum(amount));
 
-    const message = isRefund ?
+    const message = isLeaseRefund ?
+`Dear ${firstName},
+Lease payment refund for
+Unit: ${propertyName}-${unitNumber}
+Period: ${startDate} - ${endDate}
+Date: ${paymentDate}
+*Refund Amount: ${currency} ${fmt(refundAmount)}*
+Balance: ${currency} ${fmt(balance)}
+
+Thank you!` :
+    isRefund ?
 `Dear ${firstName},
 Security deposit refund for
 Unit: ${propertyName}-${unitNumber}
@@ -838,10 +850,20 @@ Thank you!`;
     let lock = false;
 
     function applyMode(){
-      const mode = ($mode.val() || 'LEASE').toUpperCase();
+      let mode = ($mode.val() || 'LEASE').toUpperCase();
       const total = n($total.val());
 
+      if (total < 0 && mode !== 'LEASE_REFUND'){
+        mode = 'LEASE_REFUND';
+        $mode.val('LEASE_REFUND');
+      }
+
       if (mode === 'LEASE'){
+        $lease.prop('readonly', true).val(f2(total));
+        $sec.prop('readonly', true).val(f2(0));
+        return;
+      }
+      if (mode === 'LEASE_REFUND'){
         $lease.prop('readonly', true).val(f2(total));
         $sec.prop('readonly', true).val(f2(0));
         return;
@@ -875,8 +897,13 @@ Thank you!`;
       if (lock) return;
       lock = true;
 
-      const mode = ($mode.val() || 'LEASE').toUpperCase();
+      let mode = ($mode.val() || 'LEASE').toUpperCase();
       const total = n($total.val());
+
+      if (total < 0 && mode !== 'LEASE_REFUND'){
+        mode = 'LEASE_REFUND';
+        $mode.val('LEASE_REFUND');
+      }
 
       if (mode !== 'SPLIT'){
         applyMode();

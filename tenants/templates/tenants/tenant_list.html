@@ -48,11 +48,11 @@
             <a href="{% url 'tenants:tenant_create' %}" class="btn btn-primary btn-sm me-2">
                 <i class="fas fa-plus"></i> Add Tenants
             </a>
-            <button class="btn btn-outline-success btn-sm me-2" type="button" id="btnNewRegistrationLink" data-url="{% url 'tenants:tenant_pre_registration_link_create' %}">
-                New Registration
+            <button class="btn btn-outline-success btn-sm me-2" type="button" id="btnNewRegistrationLink" data-bs-toggle="modal" data-bs-target="#quickRegistrationModal">
+                Quick Registration
             </button>
             <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-dark btn-sm me-2">
-                Registrations
+                Pending Registrations
                 {% if pending_registration_count %}
                     <span class="badge bg-danger ms-1">{{ pending_registration_count }}</span>
                 {% endif %}
@@ -95,6 +95,57 @@
                 <i class="fab fa-whatsapp"></i> WhatsApp
             </a>
             <span class="form-text mb-0">Valid for {{ registration_link_days }} days. The URL is hidden here; use Copy or WhatsApp.</span>
+        </div>
+    </div>
+
+    <div class="modal fade" id="quickRegistrationModal" tabindex="-1" aria-labelledby="quickRegistrationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form method="post" id="quickRegistrationForm" action="{% url 'tenants:tenant_pre_registration_link_create' %}">
+                    {% csrf_token %}
+                    <div class="modal-header py-2">
+                        <h5 class="modal-title h6" id="quickRegistrationModalLabel">Quick Registration</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-2">
+                            <label class="form-label small mb-1" for="{{ pre_registration_form.name.id_for_label }}">Tenant Name <span class="text-danger">*</span></label>
+                            {{ pre_registration_form.name }}
+                            <div class="invalid-feedback" data-field-error="name"></div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1" for="{{ pre_registration_form.phone.id_for_label }}">Phone Number <span class="text-danger">*</span></label>
+                            {{ pre_registration_form.phone }}
+                            <div class="invalid-feedback" data-field-error="phone"></div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1" for="{{ pre_registration_form.email.id_for_label }}">Email</label>
+                            {{ pre_registration_form.email }}
+                            <div class="invalid-feedback" data-field-error="email"></div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Interested In <span class="text-danger">*</span></label>
+                            <div class="quick-interest-grid">
+                                {% for choice in pre_registration_form.interested_in %}
+                                    <label class="quick-interest-item">{{ choice.tag }} {{ choice.choice_label }}</label>
+                                {% empty %}
+                                    <span class="text-muted small">No interest options configured.</span>
+                                {% endfor %}
+                            </div>
+                            <div class="invalid-feedback d-block" data-field-error="interested_in"></div>
+                        </div>
+                        <div>
+                            <label class="form-label small mb-1" for="{{ pre_registration_form.notes.id_for_label }}">Notes</label>
+                            {{ pre_registration_form.notes }}
+                            <div class="invalid-feedback" data-field-error="notes"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success btn-sm" id="quickRegistrationSubmit">Save Registration</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -578,6 +629,26 @@
   /* Tenant contact inline (under name) */
   .tenant-contact-inline{ margin-top:2px; }
 
+  .quick-interest-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem .5rem;
+  }
+  .quick-interest-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .2rem .45rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fff;
+    font-size: .8rem;
+    margin: 0;
+  }
+  .quick-interest-item input {
+    margin: 0;
+  }
+
   /* --------- Filters grid (mobile-first) ---------- */
   .filters-grid{
     display:grid; gap:var(--fg-gap);
@@ -994,21 +1065,94 @@ document.addEventListener('DOMContentLoaded', function () {
   const copyRegistrationLink = document.getElementById("copyRegistrationLink");
   const openRegistrationLink = document.getElementById("openRegistrationLink");
   const whatsappRegistrationLink = document.getElementById("whatsappRegistrationLink");
+  const quickRegistrationForm = document.getElementById("quickRegistrationForm");
+  const quickRegistrationSubmit = document.getElementById("quickRegistrationSubmit");
+  const quickRegistrationModal = document.getElementById("quickRegistrationModal");
 
-  if (registrationButton && registrationPanel && registrationInput) {
-    registrationButton.addEventListener("click", function () {
-      registrationButton.disabled = true;
-      registrationButton.textContent = "Creating...";
-      fetch(registrationButton.dataset.url, {
+  function clearQuickRegistrationErrors() {
+    if (!quickRegistrationForm) return;
+    quickRegistrationForm.querySelectorAll(".is-invalid").forEach(function (field) {
+      field.classList.remove("is-invalid");
+    });
+    quickRegistrationForm.querySelectorAll("[data-field-error]").forEach(function (holder) {
+      holder.textContent = "";
+    });
+  }
+
+  function showQuickRegistrationErrors(errors) {
+    if (!quickRegistrationForm || !errors) return;
+    Object.keys(errors).forEach(function (fieldName) {
+      const input = quickRegistrationForm.querySelector('[name="' + fieldName + '"]');
+      const holder = quickRegistrationForm.querySelector('[data-field-error="' + fieldName + '"]');
+      const messages = Array.isArray(errors[fieldName]) ? errors[fieldName].join(" ") : errors[fieldName];
+      if (input) input.classList.add("is-invalid");
+      if (holder) holder.textContent = messages;
+    });
+  }
+
+  function refreshTenantListForTenant(tenantId) {
+    if (!tenantId) return Promise.resolve();
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("tenant", tenantId);
+    nextUrl.searchParams.delete("page");
+
+    return fetch(nextUrl.toString(), {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    })
+    .then(function (response) {
+      if (!response.ok) throw new Error("Registration saved, but the tenant list could not refresh.");
+      return response.text();
+    })
+    .then(function (html) {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const newTableWrap = doc.querySelector(".table-responsive");
+      const currentTableWrap = document.querySelector(".table-responsive");
+      const newTenantFilter = doc.querySelector("#tenant-filter");
+      const currentTenantFilter = document.querySelector("#tenant-filter");
+
+      if (newTableWrap && currentTableWrap) {
+        currentTableWrap.innerHTML = newTableWrap.innerHTML;
+      }
+      if (newTenantFilter && currentTenantFilter) {
+        currentTenantFilter.innerHTML = newTenantFilter.innerHTML;
+        if (window.jQuery && $(currentTenantFilter).data("select2")) {
+          $(currentTenantFilter).trigger("change.select2");
+        }
+      }
+      window.history.replaceState({}, "", nextUrl.toString());
+
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        if (window.bootstrap) new bootstrap.Tooltip(el);
+      });
+    });
+  }
+
+  if (quickRegistrationForm && registrationPanel && registrationInput) {
+    quickRegistrationForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearQuickRegistrationErrors();
+      if (quickRegistrationSubmit) {
+        quickRegistrationSubmit.disabled = true;
+        quickRegistrationSubmit.textContent = "Creating...";
+      }
+      fetch(quickRegistrationForm.action, {
         method: "POST",
+        body: new FormData(quickRegistrationForm),
         headers: {
           "X-CSRFToken": getTenantListCookie("csrftoken"),
           "X-Requested-With": "XMLHttpRequest",
         },
       })
       .then(function (response) {
-        if (!response.ok) throw new Error("Could not create registration link.");
-        return response.json();
+        return response.json().then(function (data) {
+          if (!response.ok) {
+            const error = new Error("Could not create registration.");
+            error.payload = data;
+            throw error;
+          }
+          return data;
+        });
       })
       .then(function (data) {
         registrationPanel.classList.remove("d-none");
@@ -1022,13 +1166,25 @@ document.addEventListener('DOMContentLoaded', function () {
           whatsappRegistrationLink.href = data.whatsapp_url || "#";
           whatsappRegistrationLink.classList.toggle("disabled", !data.whatsapp_url);
         }
+        quickRegistrationForm.reset();
+        if (quickRegistrationModal && window.bootstrap) {
+          const modal = bootstrap.Modal.getInstance(quickRegistrationModal);
+          if (modal) modal.hide();
+        }
+        return refreshTenantListForTenant(data.tenant_id);
       })
       .catch(function (error) {
-        alert(error.message);
+        if (error.payload && error.payload.errors) {
+          showQuickRegistrationErrors(error.payload.errors);
+        } else {
+          alert(error.message);
+        }
       })
       .finally(function () {
-        registrationButton.disabled = false;
-        registrationButton.textContent = "New Registration";
+        if (quickRegistrationSubmit) {
+          quickRegistrationSubmit.disabled = false;
+          quickRegistrationSubmit.textContent = "Save Registration";
+        }
       });
     });
   }
@@ -1077,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $leadOnly.on('change', function () {
     $form.submit();
   });
-  $('input[name="interested_in"]').on('change', function () {
+  $('#filter-form input[name="interested_in"]').on('change', function () {
     $form.submit();
   });
 

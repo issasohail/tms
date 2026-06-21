@@ -4,536 +4,862 @@
 {% load humanize money_tags %}
 
 {% block title %}Leases{% endblock %}
-
+{% block main_container_class %}container-fluid{% endblock %}
 {% block content %}
+{% url 'payments:payment_create' as payment_create_url %}
 
-<!-- ═══════════════════════════════════════════════════════
-     LEASE LIST HEADER — single line on desktop, stacked on mobile
-     ═══════════════════════════════════════════════════════ -->
-<div class="ll-header">
+<div class="ll-page {% if current_layout == '2' %}ll-page--layout2{% endif %}">
 
-  <h2 class="ll-title">Leases</h2>
+  <div class="ll-header">
+    <div class="ll-title-wrap">
+      <h2 class="ll-title">Leases</h2>
+      <div class="ll-subtitle">Manage all lease agreements</div>
+    </div>
+
+    <div class="ll-actions" aria-label="Lease actions">
+      <a href="{% url 'leases:lease_create' %}" class="ll-btn ll-btn--primary ll-action-add">
+        <i class="fas fa-plus"></i><span class="ll-btn-label">Add Lease</span>
+      </a>
+      <a href="{% url 'leases:default_clause_list' %}" class="ll-btn ll-btn--primary ll-action-default">
+        <i class="fas fa-book"></i><span class="ll-btn-label">Default Agreement</span>
+      </a>
+      <button id="send-all-reminders" type="button" class="ll-btn ll-btn--success ll-action-reminder">
+        <i class="fas fa-bell"></i><span class="ll-btn-label">Reminders</span>
+      </button>
+      <a href="{% url 'leases:lease_ledger' %}" class="ll-btn ll-btn--primary ll-action-ledger">
+        <i class="fas fa-book-open"></i><span class="ll-btn-label">Ledger</span>
+      </a>
+      <span class="ll-export-slot ll-action-export">
+        {% include "includes/export_buttons.html" %}
+      </span>
+      <a href="{{ payment_create_url|default:'#' }}" class="ll-btn ll-btn--success ll-action-payment">
+        <i class="fas fa-search-dollar"></i><span class="ll-btn-label">Make Payment</span>
+      </a>
+      <span class="ll-layout-switch" aria-label="Tablet layout switch">
+        <a href="?layout=1" class="ll-layout-link {% if current_layout != '2' %}is-active{% endif %}" data-layout-link="1">Layout 1</a>
+        <a href="?layout=2" class="ll-layout-link {% if current_layout == '2' %}is-active{% endif %}" data-layout-link="2">Layout 2</a>
+      </span>
+    </div>
+  </div>
 
   <form method="get" id="lease-filter-form" class="ll-filters">
-
-    <!-- Property -->
-    <div class="ll-filter-item">
+    <input type="hidden" name="layout" value="{{ current_layout|default:'1' }}">
+    <div class="ll-filter-item ll-filter-property">
       <label for="id_property" class="ll-label">Property</label>
       <select name="property" class="ll-select" id="id_property">
-        <option value="">All</option>
+        <option value="">All Properties</option>
         {% for property in all_properties %}
-          <option value="{{ property.id }}"
-                  {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+          <option value="{{ property.id }}" {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
             {{ property.property_name }}
           </option>
         {% endfor %}
       </select>
     </div>
 
-    <!-- Unit -->
-    <div class="ll-filter-item">
+    <div class="ll-filter-item ll-filter-unit">
       <label for="id_unit" class="ll-label">Unit</label>
       <select name="unit" class="ll-select ll-select--unit" id="id_unit">
-        <option value="">All</option>
+        <option value="">All Units</option>
         {% for unit in filtered_units %}
-          <option value="{{ unit.id }}"
-                  {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+          <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
             {{ unit.unit_number }}
           </option>
         {% endfor %}
       </select>
     </div>
 
-    <!-- Tenant (Select2) -->
-    <div class="ll-filter-item ll-filter-item--tenant">
+    <div class="ll-filter-item ll-filter-status">
+      <label for="id_status" class="ll-label">Status</label>
+      <select name="status" class="ll-select" id="id_status">
+        <option value="" {% if not current_status %}selected{% endif %}>All Statuses</option>
+        <option value="active" {% if current_status == 'active' %}selected{% endif %}>Active</option>
+        <option value="terminated" {% if current_status == 'terminated' %}selected{% endif %}>Terminated</option>
+        <option value="ended" {% if current_status == 'ended' %}selected{% endif %}>Ended</option>
+      </select>
+    </div>
+
+    <div class="ll-filter-item ll-filter-item--tenant ll-filter-tenant">
       <label for="id_tenant" class="ll-label">Tenant</label>
       <select name="tenant" class="ll-select select2" id="id_tenant">
         <option value="">All</option>
         {% for tenant in all_tenants %}
-          <option value="{{ tenant.id }}"
-                  {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+          <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
             {{ tenant.get_full_name }}
           </option>
         {% endfor %}
       </select>
     </div>
 
-    <!-- Checkboxes -->
-    <label class="ll-check">
-      <input type="checkbox" name="include_inactive" id="id_include_inactive"
-             {% if include_inactive %}checked{% endif %}>
-      <span>Inactive</span>
-    </label>
-    <label class="ll-check">
-      <input type="checkbox" name="nonzero_balance" id="id_nonzero_balance"
-             {% if nonzero_balance %}checked{% endif %}>
+    <label class="ll-check ll-filter-nonzero">
+      <input type="checkbox" name="nonzero_balance" id="id_nonzero_balance" {% if nonzero_balance %}checked{% endif %}>
       <span>Non-zero</span>
     </label>
 
-    <!-- Filter / Clear -->
-    <button type="submit" class="ll-btn ll-btn--filter">
-      <i class="fas fa-filter"></i> Filter
-    </button>
     {% if request.GET %}
-    <a href="?" class="ll-btn ll-btn--clear">
-      <i class="fas fa-undo"></i> Clear
-    </a>
+      <a href="?" class="ll-btn ll-btn--clear ll-filter-clear" title="Clear filters" aria-label="Clear filters">
+        <i class="fas fa-times"></i><span class="ll-clear-label">Clear</span>
+      </a>
     {% endif %}
+  </form>
 
-  </form><!-- /.ll-filters -->
-
-  <!-- Action buttons -->
-  <div class="ll-actions">
-    <a href="{% url 'leases:lease_create' %}" class="ll-btn ll-btn--primary">
-      <i class="fas fa-plus"></i><span class="ll-btn-label"> Add</span>
-    </a>
-    <a href="{% url 'leases:default_clause_list' %}" class="ll-btn ll-btn--primary">
-      <i class="fas fa-book"></i><span class="ll-btn-label"> Clauses</span>
-    </a>
-    <a href="{% url 'leases:lease_ledger' %}" class="ll-btn ll-btn--primary">
-      <i class="fas fa-book-open"></i><span class="ll-btn-label"> Ledger</span>
-    </a>
-    <button id="send-all-reminders" class="ll-btn ll-btn--success">
-      <i class="fas fa-bell"></i><span class="ll-btn-label"> Reminders</span>
-    </button>
-    {% include "includes/export_buttons.html" %}
+  <div class="ll-summary" aria-label="Lease totals">
+    <div class="ll-summary-card">
+      <span class="ll-summary-icon"><i class="fas fa-file-signature"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Total Leases</span>
+        <strong>{{ lease_count|default:"" }}</strong>
+      </span>
+    </div>
+    <div class="ll-summary-card">
+      <span class="ll-summary-icon ll-summary-icon--green"><i class="fas fa-calendar-check"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Expiring Soon</span>
+        <strong>{{ expiring_soon_count|default:"0" }}</strong>
+      </span>
+    </div>
+    <div class="ll-summary-card">
+      <span class="ll-summary-icon ll-summary-icon--orange"><i class="fas fa-balance-scale"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Total Balance</span>
+        <strong>{{ total_balance|money:2 }}</strong>
+      </span>
+    </div>
+    <div class="ll-summary-card">
+      <span class="ll-summary-icon ll-summary-icon--red"><i class="fas fa-lock"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Security Deposit Due</span>
+        <strong>{{ total_security_due|money:2 }}</strong>
+      </span>
+    </div>
   </div>
 
-</div><!-- /.ll-header -->
+  <div class="ll-table-wrap">
+    {% render_table table %}
+  </div>
 
-<!-- Totals strip -->
-<div class="ll-totals">
-  <span class="ll-totals-item ll-totals-item--bold">
-    Total Balance: {{ total_balance|money:2 }}
-  </span>
-  <span class="ll-totals-item">
-    Security Deposit Due: {{ total_security_due|money:2 }}
-  </span>
 </div>
-
-<!-- Table -->
-<div class="ll-table-wrap">
-  {% render_table table %}
-</div>
-
-<!-- Totals strip (bottom repeat) -->
-<div class="ll-totals ll-totals--bottom">
-  <span class="ll-totals-item ll-totals-item--bold">
-    Total Balance: {{ total_balance|money:2 }}
-  </span>
-  <span class="ll-totals-item">
-    Security Deposit Due: {{ total_security_due|money:2 }}
-  </span>
-</div>
-
 {% endblock %}
-
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
-/* ══════════════════════════════════════════════════════════
-   LEASE LIST — Design 1 "Clean Card Rows"
-   No horizontal scrolling on any screen size.
-   ══════════════════════════════════════════════════════════ */
-
-/* ── Variables ── */
 :root {
-  --ll-font-base:   0.82rem;
-  --ll-font-sm:     0.72rem;
-  --ll-font-xs:     0.65rem;
-  --ll-font-label:  0.70rem;
-  --ll-font-table:  0.80rem;
-  --ll-font-table-mobile: 0.72rem;
+  --ll-blue: #0d6efd;
+  --ll-green: #198754;
+  --ll-red: #dc3545;
+  --ll-orange: #fd7e14;
+  --ll-dark: #101828;
+  --ll-muted: #667085;
+  --ll-border: #e4e7ec;
+  --ll-soft: #f8fafc;
+  --ll-radius: 10px;
+  --ll-gap: 8px;
 
-  --ll-radius:      6px;
-  --ll-gap:         6px;
+  --ll-font-label: .76rem;
+  --ll-font-control: .84rem;
+  --ll-font-table: .92rem;
+  --ll-font-table-head: .76rem;
 
-  /* Column widths — desktop */
-  --col-sn:         36px;
-  --col-tenant:     170px;
-  --col-prop:       70px;
-  --col-unit:       110px;
-  --col-monthly:    90px;
-  --col-status:     68px;
-  --col-start:      88px;
-  --col-end:        90px;
-  --col-balance:    90px;
-  --col-sec:        80px;
-  --col-actions:    108px;
+  --col-sn: 42px;
+  --col-id: 52px;
+  --col-tenant: 190px;
+  --col-prop: 78px;
+  --col-unit: 118px;
+  --col-monthly: 112px;
+  --col-status: 82px;
+  --col-start: 106px;
+  --col-end: 112px;
+  --col-balance: 112px;
+  --col-sec: 92px;
+  --col-actions: 150px;
 }
 
-/* ── Header shell ── */
+.ll-page {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
 .ll-header {
   display: flex;
-  align-items: center;
-  gap: var(--ll-gap);
-  flex-wrap: nowrap;          /* single line on desktop */
-  margin-bottom: 6px;
-}
-
-.ll-title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin: 0;
-  line-height: 1;
-}
-
-/* ── Filter form — inline flex, single line ── */
-.ll-filters {
-  display: flex;
   align-items: flex-end;
-  gap: var(--ll-gap);
-  flex-wrap: nowrap;
-  flex: 1;                    /* fill available space between title and actions */
-  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
 }
-
-/* Each labelled filter item */
-.ll-filter-item {
+.ll-title-wrap { flex: 0 0 auto; }
+.ll-title {
+  margin: 0;
+  font-size: 1.28rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--ll-dark);
+}
+.ll-subtitle {
+  margin-top: 2px;
+  font-size: .78rem;
+  color: var(--ll-muted);
+}
+.ll-actions {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.ll-filter-item--tenant {
-  flex-shrink: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: nowrap;
   min-width: 0;
 }
-
-.ll-label {
-  font-size: var(--ll-font-label);
-  color: #6c757d;
-  line-height: 1;
+.ll-btn,
+.ll-export-slot .btn,
+.ll-export-slot button,
+.ll-export-slot a {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 31px;
+  padding: 6px 11px !important;
+  border-radius: 7px !important;
+  font-size: .82rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
   white-space: nowrap;
+  text-decoration: none !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.08);
 }
-
-/* Native selects */
-.ll-select {
-  font-size: var(--ll-font-sm);
-  padding: 3px 6px;
-  border-radius: var(--ll-radius);
-  border: 1px solid #ced4da;
+.ll-btn--primary { background: var(--ll-blue); color: #fff !important; }
+.ll-btn--success { background: var(--ll-green); color: #fff !important; }
+.ll-btn--clear { background: #fff; color: #475467 !important; border-color: var(--ll-border) !important; }
+.ll-export-slot .btn,
+.ll-export-slot button,
+.ll-export-slot a { background: #6c757d !important; color: #fff !important; }
+.ll-layout-switch {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ll-border);
+  border-radius: 7px;
   background: #fff;
-  color: #212529;
-  height: 28px;
+}
+.ll-layout-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  color: #475467;
+  font-size: .70rem;
+  font-weight: 800;
   line-height: 1;
-  max-width: 120px;
+  text-decoration: none !important;
 }
-.ll-select--unit { max-width: 100px; }
+.ll-layout-link.is-active {
+  background: var(--ll-blue);
+  color: #fff;
+}
 
-/* Select2 wrapper alignment */
-.ll-filter-item--tenant .select2-container {
-  min-width: 140px;
-  max-width: 200px;
+.ll-filters {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, .9fr) minmax(130px, .9fr) minmax(190px, 1.25fr) auto auto;
+  gap: 8px 12px;
+  align-items: end;
+  margin-bottom: 14px;
 }
+.ll-filter-item { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ll-label { font-size: var(--ll-font-label); color: var(--ll-muted); line-height: 1; }
+.ll-select {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #d0d5dd;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ll-dark);
+  padding: 5px 9px;
+  font-size: var(--ll-font-control);
+  line-height: 1.1;
+}
+.ll-filter-item--tenant .select2-container { width: 100% !important; min-width: 0 !important; }
 .ll-filter-item--tenant .select2-container .select2-selection--single {
-  height: 28px;
-  font-size: var(--ll-font-sm);
-  border-radius: var(--ll-radius);
-  border: 1px solid #ced4da;
+  height: 34px;
+  border: 1px solid #d0d5dd;
+  border-radius: 7px;
   display: flex;
   align-items: center;
 }
 .ll-filter-item--tenant .select2-container .select2-selection__rendered {
-  padding: 0 24px 0 8px;
-  font-size: var(--ll-font-sm);
-  line-height: 1;
+  font-size: var(--ll-font-control);
+  line-height: 32px;
+  padding-left: 9px;
+  padding-right: 28px;
 }
-.ll-filter-item--tenant .select2-container .select2-selection__arrow {
-  height: 28px;
-}
-
-/* Checkboxes */
+.ll-filter-item--tenant .select2-container .select2-selection__arrow { height: 32px; }
 .ll-check {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--ll-font-label);
-  color: #495057;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-  padding-bottom: 4px;   /* align with select bottom edge */
-}
-.ll-check input { width: 13px; height: 13px; cursor: pointer; margin: 0; }
-
-/* Buttons */
-.ll-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: var(--ll-font-sm);
-  padding: 4px 9px;
-  border-radius: var(--ll-radius);
-  border: 1px solid #ced4da;
-  background: #f8f9fa;
-  color: #495057;
-  cursor: pointer;
+  gap: 6px;
+  height: 34px;
+  margin: 0;
+  color: #475467;
+  font-size: .82rem;
   white-space: nowrap;
-  line-height: 1;
-  text-decoration: none;
-  flex-shrink: 0;
+  cursor: pointer;
 }
-.ll-btn:hover { background: #e9ecef; color: #212529; text-decoration: none; }
+.ll-check input { width: 15px; height: 15px; margin: 0; }
+.ll-filter-clear { height: 34px; align-self: end; }
 
-.ll-btn--filter { background: #0d6efd; border-color: #0d6efd; color: #fff; }
-.ll-btn--filter:hover { background: #0b5ed7; color: #fff; }
-
-.ll-btn--clear { background: #6c757d; border-color: #6c757d; color: #fff; }
-.ll-btn--clear:hover { background: #5c636a; color: #fff; }
-
-.ll-btn--primary { background: #0d6efd; border-color: #0d6efd; color: #fff; }
-.ll-btn--primary:hover { background: #0b5ed7; color: #fff; }
-
-.ll-btn--success { background: #198754; border-color: #198754; color: #fff; }
-.ll-btn--success:hover { background: #157347; color: #fff; }
-
-/* Action group */
-.ll-actions {
+.ll-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  background: #fff;
+  border: 1px solid var(--ll-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(16,24,40,.06);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.ll-summary-card {
   display: flex;
   align-items: center;
-  gap: var(--ll-gap);
-  flex-shrink: 0;
+  gap: 13px;
+  min-height: 64px;
+  padding: 10px 18px;
+  border-right: 1px solid var(--ll-border);
 }
-
-/* ── Totals strip ── */
-.ll-totals {
-  display: flex;
-  justify-content: flex-end;
-  gap: 20px;
-  margin-bottom: 4px;
-  padding: 0 2px;
+.ll-summary-card:last-child { border-right: 0; }
+.ll-summary-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f0ff;
+  color: var(--ll-blue);
+  font-size: 1.1rem;
+  flex: 0 0 auto;
 }
-.ll-totals--bottom { margin-top: 6px; margin-bottom: 0; }
-.ll-totals-item { font-size: 0.78rem; color: #495057; }
-.ll-totals-item--bold { font-weight: 600; color: #212529; }
+.ll-summary-icon--green { background: #e9f8ef; color: var(--ll-green); }
+.ll-summary-icon--orange { background: #fff3e6; color: var(--ll-orange); }
+.ll-summary-icon--red { background: #ffecef; color: var(--ll-red); }
+.ll-summary-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ll-summary-label { color: var(--ll-muted); font-size: .76rem; }
+.ll-summary-text strong {
+  color: var(--ll-dark);
+  font-size: 1.05rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.ll-summary-text small { color: var(--ll-muted); font-size: .72rem; }
 
-/* ── Table wrapper — NO horizontal scroll ── */
 .ll-table-wrap {
   width: 100%;
-  overflow: hidden;          /* no horizontal scroll ever */
+  overflow-x: auto;
+  overflow-y: visible;
+  background: #fff;
+  border: 1px solid var(--ll-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(16,24,40,.06);
 }
-
-/* ── Table styles ── */
 .ll-table-wrap table.table {
   table-layout: fixed;
   width: 100%;
-  font-size: var(--ll-font-table);
+  margin: 0;
   border-collapse: collapse;
-  margin-bottom: 0;
+  font-size: var(--ll-font-table);
 }
-
-/* Column widths */
-.ll-table-wrap .col-sn     { width: var(--col-sn); text-align: center; }
+.ll-table-wrap .col-sn { width: var(--col-sn); text-align: center; }
+.ll-table-wrap .col-id { width: var(--col-id); text-align: center; }
 .ll-table-wrap .col-tenant { width: var(--col-tenant); }
 .ll-table-wrap .col-property { width: var(--col-prop); }
-.ll-table-wrap .col-unit   { width: var(--col-unit); }
-.ll-table-wrap .col-monthly { width: var(--col-monthly); }
-.ll-table-wrap .col-status { width: var(--col-status); }
-.ll-table-wrap .col-start  { width: var(--col-start); }
-.ll-table-wrap .col-end    { width: var(--col-end); white-space: nowrap; }
-.ll-table-wrap .col-balance { width: var(--col-balance); }
-.ll-table-wrap .col-sec    { width: var(--col-sec); }
+.ll-table-wrap .col-unit { width: var(--col-unit); }
+.ll-table-wrap .col-monthly { width: var(--col-monthly); text-align: right; }
+.ll-table-wrap .col-status { width: var(--col-status); text-align: center; }
+.ll-table-wrap .col-start { width: var(--col-start); }
+.ll-table-wrap .col-end { width: var(--col-end); }
+.ll-table-wrap .col-balance { width: var(--col-balance); text-align: right; }
+.ll-table-wrap .col-sec { width: var(--col-sec); text-align: right; }
 .ll-table-wrap .col-actions { width: var(--col-actions); }
-
-/* Header cells */
 .ll-table-wrap table.table thead th {
-  font-size: 0.70rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #6c757d;
-  background: #f8f9fa;
-  padding: 6px 6px;
-  border: 1px solid #dee2e6;
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--ll-border);
+  color: #475467;
+  background: #f8fafc;
+  font-size: var(--ll-font-table-head);
+  font-weight: 800;
+  text-transform: none;
+  letter-spacing: .01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* Body cells */
 .ll-table-wrap table.table tbody td {
-  padding: 5px 6px;
-  border: 1px solid #dee2e6;
+  padding: 10px 9px;
+  border-top: 1px solid var(--ll-border);
   vertical-align: middle;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
+  color: #101828;
 }
-
-/* Tenant: hard fixed width + ellipsis — prevents long names from stretching the column */
-.ll-table-wrap th.col-tenant,
-.ll-table-wrap td.col-tenant {
-  width: var(--col-tenant);
-  min-width: var(--col-tenant);
-  max-width: var(--col-tenant);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.ll-table-wrap table.table tbody tr:nth-child(even) td { background: #fbfcfe; }
+.ll-table-wrap table.table tbody tr:hover td { background: #f2f6ff; }
+.ll-table-wrap a { color: #06f; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.ll-table-wrap td.col-tenant a,
 .ll-table-wrap td.col-tenant .tenant-text {
-  display: block;
+  display: inline-block;
+  max-width: 100%;
+  color: #101828;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  vertical-align: middle;
 }
-
-/* Status / end-date coloring */
-.end-soon   { color: #b50707 !important; font-weight: 700; }
-.status-ended { color: #b50707 !important; font-weight: 700; }
-
-/* Action buttons in table */
-.actions-wrap {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 3px;
-  align-items: center;
+.ll-table-wrap td.col-tenant a:hover { color: var(--ll-blue); text-decoration: underline; }
+.ll-table-wrap td.col-status { font-size: .78rem; }
+.ll-status-pill,
+.ll-table-wrap td.col-status {
+  color: #087443;
+  font-weight: 800;
 }
+.end-soon,
+.ll-days-left { color: #dc3545 !important; font-weight: 900 !important; }
+.status-ended { color: #dc3545 !important; font-weight: 900 !important; }
+.ll-table-wrap td.col-balance a,
+.ll-table-wrap td.col-balance { color: #078044; }
+.ll-table-wrap td.col-sec { color: #101828; }
+.ll-table-wrap td.col-actions { overflow: visible; }
+.actions-wrap { display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
 .actions-wrap .btn {
-  padding: 2px 5px !important;
-  font-size: 0.68rem !important;
+  width: 28px;
+  height: 26px;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px !important;
+  font-size: .72rem !important;
   line-height: 1 !important;
-  border-width: 1px;
 }
-.actions-wrap .btn > span { display: none !important; }  /* icon-only in table */
-.actions-wrap .btn i { font-size: 0.68rem; margin-right: 0; }
+.actions-wrap .btn > span { display: none !important; }
+.actions-wrap .btn,
+.actions-wrap .btn i { color: #fff !important; }
+.actions-wrap .btn i { margin: 0 !important; }
 
-/* Row striping */
-.ll-table-wrap table.table tbody tr:nth-child(even) td { background: #f9fafb; }
-.ll-table-wrap table.table tbody tr:hover td { background: #eef3fb; }
-
-
-/* ══════════════════════════════════════════════════════════
-   MOBILE  ≤ 768px
-   - Header stacks: title row | filter grid | action row
-   - Table: hide non-essential columns, icon-only actions
-   ══════════════════════════════════════════════════════════ */
-@media (max-width: 768px) {
-
-  /* Stack the header vertically */
-  .ll-header {
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: flex-start;
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  :root {
+    --ll-font-table: .70rem;      /* Tablet Layout 1 body font */
+    --ll-font-table-head: .60rem; /* Tablet Layout 1 header font */
+    --col-sn: 34px;
+    --col-id: 38px;
+    --col-tenant: 142px;
+    --col-prop: 54px;
+    --col-unit: 92px;
+    --col-monthly: 94px;
+    --col-status: 50px;
+    --col-start: 76px;
+    --col-end: 82px;
+    --col-balance: 74px;
+    --col-sec: 64px;
+    --col-actions: 62px;
   }
-
-  /* Title + actions sit on one row */
-  .ll-title { flex: 1 1 auto; font-size: 1rem; }
-
-  .ll-actions {
-    flex: 0 0 auto;
-    flex-wrap: wrap;
-    gap: 4px;
+  .ll-header { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .ll-title-wrap { flex: 1 1 180px; }
+  .ll-actions { flex: 1 1 100%; justify-content: flex-end; order: 2; }
+  .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a {
+    min-height: 30px;
+    padding: 6px 10px !important;
+    font-size: .76rem !important;
   }
-  .ll-btn-label { display: none; }   /* icon-only action buttons on mobile */
-
-  /* Filter form: 2-column grid */
   .ll-filters {
-    flex: 0 0 100%;         /* full width below title row */
-    flex-wrap: wrap;
+    grid-template-columns: 1fr 1fr 1fr minmax(180px, 1.45fr) auto auto;
+    gap: 7px;
+  }
+  .ll-summary-card { min-height: 64px; padding: 10px 12px; gap: 9px; }
+  .ll-summary-icon { width: 35px; height: 35px; font-size: .95rem; border-radius: 10px; }
+  .ll-summary-text strong { font-size: .94rem; }
+  .ll-layout-switch { display: inline-flex; }
+  .ll-table-wrap table.table tbody td { padding: 7px 5px; }
+  .ll-table-wrap table.table thead th { padding: 7px 5px; }
+  .ll-table-wrap .col-tenant { width: var(--col-tenant); }
+  .ll-table-wrap td.col-tenant, .ll-table-wrap th.col-tenant { max-width: var(--col-tenant); }
+  .actions-wrap { gap: 5px; }
+  .actions-wrap .btn { width: 20px; height: 22px; font-size: .62rem !important; }
+
+  .ll-page--layout2 {
+    --ll-font-table: .58rem;
+    --ll-font-table-head: .50rem;
+    --col-sn: 28px;
+    --col-id: 32px;
+    --col-tenant: 118px;
+    --col-prop: 62px;
+    --col-unit: 0;
+    --col-monthly: 80px;
+    --col-status: 44px;
+    --col-start: 0;
+    --col-end: 62px;
+    --col-balance: 62px;
+    --col-sec: 0;
+    --col-actions: 84px;
+  }
+  .ll-page--layout2 .ll-table-wrap table.table thead th.col-unit,
+  .ll-page--layout2 .ll-table-wrap table.table thead th.col-start,
+  .ll-page--layout2 .ll-table-wrap table.table thead th.col-sec { display: none; }
+  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-unit,
+  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-start,
+  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-sec { display: none; }
+  .ll-page--layout2 .ll-table-wrap table.table tbody td,
+  .ll-page--layout2 .ll-table-wrap table.table thead th { padding: 6px 4px; }
+  .ll-page--layout2 .ll-table-wrap .col-property { width: var(--col-prop); }
+  .ll-page--layout2 .ll-table-wrap .col-end { width: var(--col-end); }
+  .ll-page--layout2 .ll-table-wrap .col-balance { width: var(--col-balance); }
+  .ll-layout2-sub {
+    display: block;
+    margin-top: 2px;
+    color: #667085;
+    font-size: .50rem;
+    font-weight: 800;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-page--layout2 .ll-table-wrap td.col-property,
+  .ll-page--layout2 .ll-table-wrap td.col-end,
+  .ll-page--layout2 .ll-table-wrap td.col-balance {
+    font-size: .54rem;
+    line-height: 1.05;
+  }
+  .ll-page--layout2 .actions-wrap {
+    display: inline-flex;
+    width: 80px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .ll-page--layout2 .actions-wrap .action-btn { display: none !important; }
+  .ll-page--layout2 .actions-wrap .btn-view,
+  .ll-page--layout2 .actions-wrap .btn-pay,
+  .ll-page--layout2 .actions-wrap .btn-wa-remind {
+    display: inline-flex !important;
+    width: 22px;
+    height: 22px;
+    padding: 0 !important;
+    align-items: center;
+    justify-content: center;
+  }
+  .ll-page--layout2 .actions-wrap .btn-view {
+    background: var(--ll-blue) !important;
+    border-color: var(--ll-blue) !important;
+    color: #fff !important;
+    order: 3;
+  }
+  .ll-page--layout2 .actions-wrap .btn-pay { order: 2; }
+  .ll-page--layout2 .actions-wrap .btn-wa-remind { order: 1; }
+  .ll-page--layout2 .actions-wrap .btn-pay {
+    width: 30px;
+    font-size: .58rem !important;
+    font-weight: 900;
+  }
+  .ll-page--layout2 .actions-wrap .btn-pay i { display: none !important; }
+  .ll-page--layout2 .actions-wrap .btn-pay span {
+    display: inline !important;
+    margin: 0 !important;
+    color: #fff !important;
+  }
+  .ll-page--layout2 .actions-wrap .btn-view i,
+  .ll-page--layout2 .actions-wrap .btn-view span { display: none !important; }
+  .ll-page--layout2 .actions-wrap .btn-view::before {
+    content: "\22EE";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff !important;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .container,
+  .container-fluid,
+  main,
+  .content,
+  .page-content {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .ll-page {
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  .ll-header { display: block; margin-bottom: 9px; }
+  .ll-title { font-size: 1.08rem; }
+  .ll-subtitle { font-size: .72rem; }
+  .ll-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 9px;
+  }
+  .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a {
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 5px !important;
+    font-size: .68rem !important;
+  }
+  .ll-action-add { order: 1; }
+  .ll-action-default { order: 2; }
+  .ll-action-reminder { order: 3; }
+  .ll-action-ledger { order: 4; }
+  .ll-action-export { order: 5; }
+  .ll-action-payment { order: 6; }
+
+  .ll-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 9px;
+  }
+  .ll-filter-property { grid-column: 1; }
+  .ll-filter-unit { grid-column: 2; }
+  .ll-filter-status { grid-column: 3; }
+  .ll-filter-tenant { grid-column: 1 / span 2; }
+  .ll-filter-nonzero { grid-column: 3; align-self: end; justify-content: center; }
+  .ll-filter-clear { grid-column: 3; display: none !important; }
+  .ll-label { font-size: .62rem; }
+  .ll-select { height: 29px; padding: 4px 6px; font-size: .66rem; border-radius: 6px; }
+  .ll-filter-item--tenant .select2-container .select2-selection--single { height: 29px; border-radius: 6px; }
+  .ll-filter-item--tenant .select2-container .select2-selection__rendered { font-size: .66rem; line-height: 27px; padding-left: 7px; }
+  .ll-filter-item--tenant .select2-container .select2-selection__arrow { height: 27px; }
+  .ll-check { height: 29px; font-size: .64rem; gap: 4px; }
+  .ll-check input { width: 13px; height: 13px; }
+
+  .ll-summary {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    margin-bottom: 9px;
+    overflow: visible;
+  }
+  .ll-summary-card {
+    min-height: 54px;
+    padding: 8px;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid var(--ll-border) !important;
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05);
+  }
+  .ll-summary-icon { width: 31px; height: 31px; border-radius: 9px; font-size: .85rem; }
+  .ll-summary-text { gap: 1px; }
+  .ll-summary-label { font-size: .58rem; line-height: 1.05; }
+  .ll-summary-text strong { font-size: .78rem; line-height: 1.05; }
+  .ll-summary-text small { display: none; }
+
+  .ll-table-wrap { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+  .ll-table-wrap table.table,
+  .ll-table-wrap table.table tbody,
+  .ll-table-wrap table.table tr,
+  .ll-table-wrap table.table td { display: block; width: 100% !important; box-sizing: border-box; }
+  .ll-table-wrap table.table thead { display: none; }
+  .ll-table-wrap table.table { table-layout: auto; border-collapse: separate; border-spacing: 0; }
+  .ll-table-wrap table.table tbody tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1fr);
     gap: 6px 8px;
+    background: #fff;
+    border: 1px solid var(--ll-border);
+    border-radius: 11px;
+    padding: 8px 7px;
+    margin-bottom: 9px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.07);
   }
-
-  .ll-filter-item { flex: 1 1 calc(50% - 4px); min-width: 0; }
-  .ll-filter-item--tenant { flex: 1 1 100%; }
-
-  .ll-select { max-width: 100%; width: 100%; font-size: var(--ll-font-xs); }
-  .ll-select--unit { max-width: 100%; }
-
-  .ll-filter-item--tenant .select2-container {
-    min-width: 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
+  .ll-table-wrap table.table tbody td {
+    border: 0;
+    padding: 0;
+    background: transparent !important;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: .72rem;
+    font-weight: 700;
+    color: #101828;
   }
+  .ll-table-wrap td::before { display: none !important; }
+  .ll-table-wrap .col-sn,
+  .ll-table-wrap .col-id { display: none !important; }
 
-  .ll-check { font-size: var(--ll-font-xs); padding-bottom: 0; }
-
-  .ll-btn { font-size: var(--ll-font-xs); padding: 4px 7px; }
-
-  /* Totals: column on mobile */
-  .ll-totals {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
+  .ll-table-wrap td.col-tenant {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto !important;
+    min-width: 0;
+    font-size: .82rem;
+    line-height: 1.15;
+    padding-right: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
-
-  /* ── Mobile table: hide heavy columns ── */
-  .ll-table-wrap table.table {
-    font-size: var(--ll-font-table-mobile);
+  .ll-table-wrap td.col-status {
+    position: static;
+    grid-column: 1;
+    grid-row: 3;
+    width: auto !important;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #dcfce7 !important;
+    color: #087443;
+    font-size: .62rem;
+    text-align: center;
   }
-
-  /* Hidden on mobile */
-  .ll-table-wrap th.col-start,
-  .ll-table-wrap td.col-start,
-  .ll-table-wrap th.col-monthly,
-  .ll-table-wrap td.col-monthly,
-  .ll-table-wrap th.col-sec,
-  .ll-table-wrap td.col-sec,
-  .ll-table-wrap th.col-status,
-  .ll-table-wrap td.col-status,
-  .ll-table-wrap th.col-unit,
+  .ll-table-wrap td.col-property {
+    grid-column: 2 / span 2;
+    grid-row: 1;
+    width: auto !important;
+    color: #475467;
+    font-size: .66rem;
+    text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ll-mobile-unit {
+    display: inline;
+    color: #475467;
+    font-weight: 800;
+  }
+  .ll-mobile-unit::before { content: "-"; padding: 0 2px; }
+  .ll-table-wrap td.col-property::after { content: " •"; }
   .ll-table-wrap td.col-unit {
     display: none !important;
+    grid-column: 2;
+    grid-row: 1;
+    width: auto !important;
+    color: #475467;
+    font-size: .66rem;
+    padding-left: 0;
   }
-
-  /* Remaining column widths on mobile */
-  :root {
-    --col-sn:       24px;
-    --col-tenant:   28vw;
-    --col-prop:     16vw;
-    --col-end:      18vw;
-    --col-balance:  18vw;
-    --col-actions:  20vw;
+  .ll-table-wrap td.col-monthly {
+    grid-column: 1;
+    grid-row: 2;
+    text-align: left;
   }
-
-  .ll-table-wrap thead th { font-size: 0.60rem; padding: 4px 3px; }
-  .ll-table-wrap tbody td { padding: 4px 3px; font-size: 0.68rem; }
-
-  /* Tiny action buttons on mobile */
-  .actions-wrap { gap: 2px; }
+  .ll-table-wrap td.col-sec {
+    grid-column: 1;
+    grid-row: 2;
+    padding-top: 1.05rem;
+    text-align: left;
+  }
+  .ll-table-wrap td.col-balance {
+    grid-column: 2 / span 2;
+    grid-row: 2;
+    text-align: right;
+  }
+  .ll-table-wrap td.col-monthly::before,
+  .ll-table-wrap td.col-balance::before,
+  .ll-table-wrap td.col-sec::before {
+    display: inline !important;
+    content: attr(data-short-label) ": ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-monthly,
+  .ll-table-wrap td.col-balance,
+  .ll-table-wrap td.col-sec {
+    white-space: nowrap;
+    font-size: .62rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-table-wrap td.col-start { grid-column: 2; grid-row: 3; text-align: left; }
+  .ll-table-wrap td.col-end { grid-column: 3; grid-row: 3; text-align: right; }
+  .ll-table-wrap td.col-start::before {
+    display: inline !important;
+    content: attr(data-short-label) ": ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-end::before { display: none !important; }
+  .ll-table-wrap td.col-status::before { display: none !important; }
+  .ll-table-wrap td.col-start,
+  .ll-table-wrap td.col-end {
+    font-size: .66rem;
+    color: #101828;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-table-wrap td.col-end .ll-days-left {
+    display: block !important;
+    margin-top: 2px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .ll-table-wrap td.col-property::after { content: "" !important; }
+  .ll-table-wrap td.col-actions {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    padding-top: 7px;
+    border-top: 1px solid #eef2f7;
+    overflow: hidden;
+  }
+  .actions-wrap { display: grid; grid-template-columns: repeat(5, 1fr) 22px; gap: 6px; width: 100%; }
   .actions-wrap .btn {
-    padding: 2px 3px !important;
-    font-size: 0.60rem !important;
+    width: 100%;
+    height: 27px;
+    font-size: .68rem !important;
+    border-radius: 7px !important;
+    color: #fff !important;
+    border-color: rgba(255,255,255,.85) !important;
+  }
+  .actions-wrap .btn i { color: #fff !important; }
+  .actions-wrap .btn-pay i { display: none !important; }
+  .actions-wrap .btn-pay > span {
+    display: inline !important;
+    margin: 0 !important;
+    color: #fff !important;
+    font-size: .70rem;
+    font-weight: 900;
   }
 }
 
-/* ══════════════════════════════════════════════════════════
-   VERY SMALL  ≤ 400px
-   ══════════════════════════════════════════════════════════ */
 @media (max-width: 400px) {
-  :root {
-    --col-tenant:  26vw;
-    --col-prop:    14vw;
-    --col-end:     16vw;
-    --col-balance: 16vw;
-    --col-actions: 18vw;
-  }
-  .ll-table-wrap tbody td { font-size: 0.62rem; }
-  .ll-table-wrap thead th { font-size: 0.56rem; }
+  .ll-actions { gap: 5px; }
+  .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a { font-size: .62rem !important; }
+  .ll-table-wrap table.table tbody tr { padding: 9px 8px 7px; gap: 5px 6px; }
+  .ll-table-wrap td.col-monthly,
+  .ll-table-wrap td.col-balance,
+  .ll-table-wrap td.col-sec,
+  .ll-table-wrap td.col-start,
+  .ll-table-wrap td.col-end { font-size: .62rem; }
 }
 
-/* ── Select2 dropdown compact ── */
-.select2-dropdown .select2-results__option {
-  font-size: 0.75rem;
-  padding: 3px 8px;
-  line-height: 1.2;
-}
-.select2-search__field { font-size: 0.75rem !important; }
+.select2-dropdown .select2-results__option { font-size: .78rem; padding: 4px 8px; line-height: 1.2; }
+.select2-search__field { font-size: .78rem !important; }
 </style>
 {% endblock %}
-
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-  /* ── Select2 for tenant ── */
   $('#id_tenant').select2({
     placeholder: "Search tenant...",
     allowClear: true,
@@ -542,12 +868,12 @@ document.addEventListener("DOMContentLoaded", function () {
     templateResult: function (data) {
       if (!data.id) return data.text;
       const full = data.text || '';
-      const short = full.length > 32 ? full.slice(0, 32) + '…' : full;
+      const short = full.length > 36 ? full.slice(0, 36) + '…' : full;
       return $('<span>').text(short).attr('title', full);
     },
     templateSelection: function (data) {
       const full = data.text || '';
-      return full.length > 28 ? full.slice(0, 28) + '…' : full;
+      return full.length > 30 ? full.slice(0, 30) + '…' : full;
     }
   });
 
@@ -558,10 +884,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 0);
   });
 
-  /* ── Auto-submit ── */
   $('input[type="checkbox"]').change(() => $('#lease-filter-form').submit());
-  $('#id_property, #id_unit').change(() => {
-    $('#id_tenant').val('').trigger('change');
+  $('#id_property, #id_unit, #id_status').change(function (event) {
+    if (event.target.id === 'id_property' || event.target.id === 'id_unit') {
+      $('#id_tenant').val('').trigger('change.select2');
+    }
     $('#lease-filter-form').submit();
   });
   $('#id_tenant').change(function () {
@@ -569,7 +896,6 @@ document.addEventListener("DOMContentLoaded", function () {
     $('#lease-filter-form').submit();
   });
 
-  /* ── Tenant truncation + status/end-date colouring ── */
   const today = new Date();
   const MS = 86400000;
   function daysUntil(s) {
@@ -580,35 +906,117 @@ document.addEventListener("DOMContentLoaded", function () {
     return Math.ceil((t1 - t0) / MS);
   }
 
-  document.querySelectorAll('table tbody tr').forEach(tr => {
+  (function applyMobileCardLabels() {
+    const headerCells = document.querySelectorAll('.ll-table-wrap thead th');
+    const labels = Array.from(headerCells).map(th => th.textContent.trim());
+    document.querySelectorAll('.ll-table-wrap tbody tr').forEach(tr => {
+      const cells = tr.querySelectorAll('td');
+      cells.forEach((td, i) => {
+        if (labels[i]) td.setAttribute('data-label', labels[i]);
+        const normalized = (labels[i] || '').toLowerCase();
+        if (normalized.includes('monthly') || normalized.includes('rent')) td.setAttribute('data-short-label', 'Monthly');
+        if (normalized.includes('balance')) td.setAttribute('data-short-label', 'Bal');
+        if (normalized.includes('sec')) td.setAttribute('data-short-label', 'Sec Due');
+        if (normalized.includes('start')) td.setAttribute('data-short-label', 'Start');
+        if (normalized.includes('end')) td.setAttribute('data-short-label', 'End');
+      });
+    });
+  })();
+
+  (function applyTabletLayout2Stacking() {
+    if (!document.querySelector('.ll-page--layout2')) return;
+    document.querySelectorAll('.ll-table-wrap tbody tr').forEach(tr => {
+      const propertyCell = tr.querySelector('td.col-property');
+      const unitCell = tr.querySelector('td.col-unit');
+      const endCell = tr.querySelector('td.col-end');
+      const startCell = tr.querySelector('td.col-start');
+      const balanceCell = tr.querySelector('td.col-balance');
+      const secCell = tr.querySelector('td.col-sec');
+
+      function appendSub(target, source, prefix) {
+        if (!target || !source || target.querySelector(`[data-layout2-sub="${prefix}"]`)) return;
+        const text = (source.textContent || '').trim();
+        if (!text) return;
+        const sub = document.createElement('span');
+        sub.className = 'll-layout2-sub';
+        sub.dataset.layout2Sub = prefix;
+        sub.textContent = text;
+        target.appendChild(sub);
+      }
+
+      appendSub(propertyCell, unitCell, 'unit');
+      appendSub(endCell, startCell, 'start');
+      appendSub(balanceCell, secCell, 'sec');
+    });
+  })();
+
+  (function applyMobilePropertyUnit() {
+    document.querySelectorAll('.ll-table-wrap tbody tr').forEach(tr => {
+      const propertyCell = tr.querySelector('td.col-property');
+      const unitCell = tr.querySelector('td.col-unit');
+      if (!propertyCell || !unitCell || propertyCell.querySelector('.ll-mobile-unit')) return;
+      const unitText = (unitCell.textContent || '').trim();
+      if (!unitText) return;
+      const unitSpan = document.createElement('span');
+      unitSpan.className = 'll-mobile-unit';
+      unitSpan.textContent = unitText;
+      propertyCell.appendChild(unitSpan);
+    });
+  })();
+
+  document.querySelectorAll('.ll-table-wrap table tbody tr').forEach(tr => {
     const tdTenant = tr.querySelector('td.col-tenant');
     const tdEnd    = tr.querySelector('td.col-end');
     const tdStatus = tr.querySelector('td.col-status');
 
-    if (tdTenant && !tdTenant.querySelector('.tenant-text')) {
-      const fullName = (tdTenant.textContent || '').trim();
-      const sp = document.createElement('span');
-      sp.className = 'tenant-text';
-      sp.textContent = fullName;
-      sp.title = fullName;
-      tdTenant.innerHTML = '';
-      tdTenant.appendChild(sp);
+    if (tdTenant) {
+      const link = tdTenant.querySelector('a');
+      if (link) {
+        link.classList.add('tenant-text');
+        link.title = link.textContent.trim();
+      } else if (!tdTenant.querySelector('.tenant-text')) {
+        const fullName = (tdTenant.textContent || '').trim();
+        const sp = document.createElement('span');
+        sp.className = 'tenant-text';
+        sp.textContent = fullName;
+        sp.title = fullName;
+        tdTenant.innerHTML = '';
+        tdTenant.appendChild(sp);
+      }
     }
 
     if (tdStatus) {
       const st = (tdStatus.textContent || '').trim().toLowerCase();
-      if (/ended|inactive/.test(st)) tdStatus.classList.add('status-ended');
+      if (/ended|terminated|inactive/.test(st)) tdStatus.classList.add('status-ended');
     }
 
     if (tdEnd) {
-      const dl = daysUntil((tdEnd.textContent || '').trim());
-      if (dl !== null && dl <= 40) tdEnd.classList.add('end-soon');
+      const rawEnd = (tdEnd.textContent || '').trim();
+      const dl = daysUntil(rawEnd);
+      if (dl !== null) {
+        if (dl < 60) tdEnd.classList.add('end-soon');
+        if (dl < 60 && !tdEnd.querySelector('.ll-days-left')) {
+          const small = document.createElement('small');
+          small.className = 'll-days-left';
+          small.style.display = 'block';
+          small.style.fontSize = '0.68em';
+          small.style.fontWeight = '700';
+          small.style.color = '#dc3545';
+          small.textContent = dl >= 0 ? dl + ' days left' : Math.abs(dl) + ' days overdue';
+          tdEnd.appendChild(small);
+        }
+      }
     }
+  });
+
+  document.querySelectorAll('[data-layout-link]').forEach(link => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('layout', link.dataset.layoutLink);
+    link.href = url.pathname + '?' + url.searchParams.toString();
   });
 });
 </script>
 
-<!-- WhatsApp helper (unchanged) -->
 <script>
 const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
 const TMS_CURRENCY_SYMBOL  = "{{ CURRENCY_SYMBOL|escapejs }}";
@@ -644,7 +1052,6 @@ function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balanc
 }
 </script>
 
-<!-- Progress Modal (unchanged) -->
 <div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">

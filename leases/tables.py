@@ -29,6 +29,12 @@ def _global_settings():
 
 
 class LeaseTable(ExportableTable):
+    id = tables.Column(
+        verbose_name="ID",
+        linkify=lambda record: reverse("leases:lease_detail", args=[record.pk]),
+        attrs={"td": {"class": "col-id"}, "th": {"class": "col-id"}},
+    )
+
     tenant = tables.Column(
         accessor="tenant",
         order_by=("tenant__first_name", "tenant__last_name"),
@@ -202,7 +208,10 @@ class LeaseTable(ExportableTable):
     def render_tenant(self, record, value):
         t = record.tenant
         full = f"{t.first_name} {t.last_name}".strip() if t else ""
-        return mark_safe(f'<span class="tenant-text">{full}</span>')
+        short = (full[:15] + "...") if len(full) > 15 else full
+        return mark_safe(
+            f'<span class="tenant-text" title="{escape(full)}">{escape(short)}</span>'
+        )
 
     def render_actions(self, record):
         # Monthly / normal balance (rent, maintenance, etc.)

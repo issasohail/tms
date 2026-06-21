@@ -216,225 +216,225 @@
         </form>
 
 
-    {# ============ DESKTOP TABLE (>=992px) ============ #}
-    <div class="table-responsive d-none d-lg-block">
-        <table class="table table-bordered table-hover table-sm tenant-table">
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover table-sm">
             <thead class="thead-light">
             <tr>
-                <th class="col-sn">#</th>
-                <th class="col-photo">Photo</th>
-                <th class="col-tenant">Tenant Info</th>
-                <th class="col-emergency">Emergency</th>
-                <th class="col-cnic">CNIC</th>
-                <th class="col-address">Address</th>
-                <th class="col-notes">Notes</th>
-                <th class="col-lease">Lease &amp; Payment</th>
-                <th class="col-actions">Actions</th>
+                <th class="col-sn" style="width:2%">#</th>
+                <th class="col-photo" style="width:12%">Photo</th>
+                <th class="col-tenant" style="width:14%">Tenant Info</th>
+                <th class="col-contact" style="width:10%">Contact/Email</th>
+                <th class="col-emergency" style="width:8%">Emergency</th>
+                <th class="col-cnic-front" style="width:6%">CNIC Front</th>
+                <th class="col-cnic-back" style="width:6%">CNIC Back</th>
+                <th class="col-address" style="width:8%">Address</th>
+                <th class="col-notes" style="width:8%">Notes</th>
+                <th class="col-lease" style="width:11%">Lease & Payment</th>
+                <th class="col-actions" style="width:19%">Actions</th>
             </tr>
             </thead>
             <tbody>
             {% for tenant in tenants %}
             {% with lease=tenant.current_lease %}
             <tr>
-            <td class="col-sn">{{ page_obj.start_index|add:forloop.counter0 }}</td>
+            <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
 
+            {# --- PHOTO w/ CNIC thumbnails underneath (stacked) --- #}
             <td class="p-0 col-photo">
-                {% if tenant.photo %}
-                <a href="{{ tenant.photo.url }}" data-toggle="lightbox" class="d-block">
-                    <img src="{{ tenant.photo.url }}" class="img-main" alt="Photo">
-                </a>
-                {% else %}
-                <div class="bg-secondary d-flex align-items-center justify-content-center img-main">
-                    <i class="fas fa-user text-white"></i>
-                </div>
-                {% endif %}
-            </td>
-
-            <td class="p-1 col-tenant">
-                <a href="{% url 'tenants:tenant_update' tenant.id %}" class="text-primary d-block text-truncate">
-                <strong>{{ tenant.first_name }}</strong>
-                </a>
-                <span class="text-muted xsmall d-block">{{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}</span>
-                <div class="xsmall text-truncate">{{ tenant.phone }}</div>
-                {% if tenant.email %}<div class="xsmall text-muted text-truncate">{{ tenant.email }}</div>{% endif %}
-                <div class="mt-1">
-                    {% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{{ item.name }}</span>{% endfor %}
-                </div>
-            </td>
-
-            <td class="col-emergency xsmall">
-                <div class="text-truncate">{{ tenant.emergency_contact_name|default:"-" }}</div>
-                <div class="text-truncate">{{ tenant.emergency_contact_phone }}</div>
-            </td>
-
-            <td class="p-0 col-cnic">
-                <div class="cnic-pair">
-                {% if tenant.cnic_front %}
-                <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" class="d-block" title="CNIC Front">
-                    <img src="{{ tenant.cnic_front.url }}" class="img-cnic" alt="CNIC Front">
-                </a>
-                {% endif %}
-                {% if tenant.cnic_back %}
-                <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" class="d-block" title="CNIC Back">
-                    <img src="{{ tenant.cnic_back.url }}" class="img-cnic" alt="CNIC Back">
-                </a>
-                {% endif %}
-                {% if not tenant.cnic_front and not tenant.cnic_back %}<span class="text-muted">-</span>{% endif %}
-                </div>
-            </td>
-
-            <td class="col-address xsmall" title="{{ tenant.address|default:'-' }}">
-                {{ tenant.address|default:"-"|truncatechars:40 }}
-            </td>
-
-            <td class="col-notes xsmall" title="{{ tenant.notes|default:'-' }}">
-                {{ tenant.notes|default:"-"|truncatechars:40 }}
-            </td>
-
-            <td class="p-1 col-lease xsmall">
-            {% if lease %}
-                <div class="d-flex flex-column">
-                <a href="{% url 'leases:lease_detail' lease.pk %}" class="link-primary text-decoration-none">
-                    <span><strong>{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</strong></span>
-                </a>
-                <span>Ends: <span class="{% if lease.is_ending_soon %}text-danger{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span></span>
-                <span>Monthly: {{ lease.total_payment|money:0 }}</span>
-                <span class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                    Balance: {{ lease.get_balance|money:0 }}
-                </span>
-                {% with sec=lease.security_due %}
-                    <span class="{% if sec > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
-                    Security: {% if sec > 0 %}{{ sec|money:0 }}{% else %}Paid{% endif %}
-                    </span>
-                {% endwith %}
-                </div>
-            {% else %}
-                <span class="text-muted">No active lease</span>
-            {% endif %}
-            </td>
-
-            <td class="p-1 col-actions">
-                <div class="icon-row">
-                    <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="icon-btn text-info" title="View" data-bs-toggle="tooltip" aria-label="View"><i class="fas fa-eye"></i></a>
-                    <a href="{% url 'tenants:tenant_update' tenant.id %}" class="icon-btn text-primary" title="Edit" data-bs-toggle="tooltip" aria-label="Edit"><i class="fas fa-edit"></i></a>
-                    {% if lease %}
-                    <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="icon-btn text-secondary" title="Ledger" data-bs-toggle="tooltip" aria-label="Ledger"><i class="fas fa-file-invoice-dollar"></i></a>
-                    <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="icon-btn text-success" title="Pay" data-bs-toggle="tooltip" aria-label="Pay"><i class="fas fa-money-bill-wave"></i></a>
-                    <button type="button" class="icon-btn text-success" title="WhatsApp" data-bs-toggle="tooltip" aria-label="WhatsApp"
-                        onclick="sendWhatsAppReminder('{{ tenant.phone|default_if_none:""|escapejs }}','{{ tenant.first_name|default_if_none:""|escapejs }}','{{ tenant.last_name|default_if_none:""|escapejs }}','{{ lease.unit.property.property_name|default_if_none:""|escapejs }}','{{ lease.unit.unit_number|default_if_none:""|escapejs }}','{{ lease.get_balance|default_if_none:0 }}','{{ lease.security_due|default_if_none:0 }}')">
-                        <i class="fab fa-whatsapp"></i>
-                    </button>
-                    {% endif %}
-                    <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="icon-btn text-danger" title="Delete" data-bs-toggle="tooltip" aria-label="Delete"><i class="fas fa-trash"></i></a>
-                </div>
-            </td>
-            </tr>
-            {% endwith %}
-            {% empty %}
-            <tr>
-            <td colspan="9" class="text-center py-2 xxsmall">No tenants found matching your criteria</td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    {# ============ CARD VIEW (tablet + mobile, <992px) ============ #}
-    <div class="tenant-cards d-lg-none">
-        {% for tenant in tenants %}
-        {% with lease=tenant.current_lease %}
-        <div class="tenant-card">
-            <div class="tc-top">
-                <div class="tc-photo">
+                <div class="photo-stack">
+                <div class="photo-main">
                     {% if tenant.photo %}
                     <a href="{{ tenant.photo.url }}" data-toggle="lightbox" class="d-block">
                         <img src="{{ tenant.photo.url }}" class="img-main" alt="Photo">
                     </a>
                     {% else %}
                     <div class="bg-secondary d-flex align-items-center justify-content-center img-main">
-                        <i class="fas fa-user text-white"></i>
+                        <i class="fas fa-user text-white fa-lg"></i>
                     </div>
                     {% endif %}
                 </div>
-                <div class="tc-main">
-                    <a href="{% url 'tenants:tenant_update' tenant.id %}" class="text-primary d-block">
-                        <strong>{{ tenant.first_name }}</strong>
-                    </a>
-                    <span class="text-muted xsmall d-block">{{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}</span>
-                    <div class="xsmall">{{ tenant.phone }}</div>
-                    {% if tenant.email %}<div class="xsmall text-muted text-truncate">{{ tenant.email }}</div>{% endif %}
                 </div>
-                <div class="tc-index text-muted xsmall">#{{ page_obj.start_index|add:forloop.counter0 }}</div>
-            </div>
 
-            {% if tenant.interested_in.all %}
-            <div class="tc-row tc-tags">
-                {% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{{ item.name }}</span>{% endfor %}
-            </div>
-            {% endif %}
 
-            <div class="tc-grid">
-                <div class="tc-field">
-                    <span class="tc-label">Emergency</span>
-                    <span class="tc-value">{{ tenant.emergency_contact_name|default:"-" }} {% if tenant.emergency_contact_phone %}· {{ tenant.emergency_contact_phone }}{% endif %}</span>
-                </div>
-                <div class="tc-field">
-                    <span class="tc-label">Address</span>
-                    <span class="tc-value">{{ tenant.address|default:"-"|truncatechars:60 }}</span>
-                </div>
-                {% if tenant.notes %}
-                <div class="tc-field">
-                    <span class="tc-label">Notes</span>
-                    <span class="tc-value">{{ tenant.notes|truncatechars:60 }}</span>
-                </div>
-                {% endif %}
-                {% if tenant.cnic_front or tenant.cnic_back %}
-                <div class="tc-field">
-                    <span class="tc-label">CNIC</span>
-                    <span class="tc-value cnic-pair">
-                        {% if tenant.cnic_front %}<a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" title="CNIC Front"><img src="{{ tenant.cnic_front.url }}" class="img-cnic" alt="CNIC Front"></a>{% endif %}
-                        {% if tenant.cnic_back %}<a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" title="CNIC Back"><img src="{{ tenant.cnic_back.url }}" class="img-cnic" alt="CNIC Back"></a>{% endif %}
-                    </span>
-                </div>
-                {% endif %}
-            </div>
+            </td>
 
-            <div class="tc-lease">
-            {% if lease %}
-                <a href="{% url 'leases:lease_detail' lease.pk %}" class="link-primary text-decoration-none">
-                    <strong>{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</strong>
+            {# --- TENANT INFO w/ contact/email moved beneath --- #}
+            <td class="p-1 col-tenant">
+                <a href="{% url 'tenants:tenant_update' tenant.id %}" class="text-primary d-block">
+                <strong>{{ tenant.first_name }}</strong>
                 </a>
-                <div class="tc-lease-grid">
-                    <span>Ends: <span class="{% if lease.is_ending_soon %}text-danger{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span></span>
-                    <span>Monthly: {{ lease.total_payment|money:0 }}</span>
-                    <span class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">Balance: {{ lease.get_balance|money:0 }}</span>
-                    {% with sec=lease.security_due %}
-                    <span class="{% if sec > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">Security: {% if sec > 0 %}{{ sec|money:0 }}{% else %}Paid{% endif %}</span>
-                    {% endwith %}
+                <span class="text-muted xsmall d-block">
+                {{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}
+                </span>
+                <div class="mt-1">
+                    {% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{{ item.name }}</span>{% endfor %}
+                </div>
+
+                {# Contact/Email lives here (always), but original column is hidden on small #}
+                <div class="tenant-contact-inline">
+                <div class="xsmall">{{ tenant.phone }}</div>
+                {% if tenant.email %}<div class="xsmall text-muted">{{ tenant.email }}</div>{% endif %}
+                </div>
+            </td>
+
+            {# -- Original columns (visible ≥ md). Hidden on small and represented by icons -- #}
+            <td class="p-1 xsmall col-contact d-none d-md-table-cell">
+                {{ tenant.phone }}
+                <span class="text-muted xsmall d-block">{{ tenant.email }}</span>
+            </td>
+            <td class="col-emergency d-none d-md-table-cell" style="font-size:0.7rem">
+                {{ tenant.emergency_contact_name }}<br>{{ tenant.emergency_contact_phone }}
+            </td>
+            <td class="p-0 col-cnic-front d-none d-md-table-cell">
+                {% if tenant.cnic_front %}
+                <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" class="d-block">
+                    <img src="{{ tenant.cnic_front.url }}" style="width:100px;height:75px;object-fit:contain;" alt="CNIC Front">
+                </a>
+                {% endif %}
+            </td>
+            <td class="p-0 col-cnic-back d-none d-md-table-cell">
+                {% if tenant.cnic_back %}
+                <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" class="d-block">
+                    <img src="{{ tenant.cnic_back.url }}" style="width:100px;height:75px;object-fit:contain;" alt="CNIC Back">
+                </a>
+                {% endif %}
+            </td>
+            <td class="col-address d-none d-md-table-cell" style="font-size:0.7rem">
+                {{ tenant.address|default:"-"|truncatechars:40 }}
+            </td>
+
+            <td class="col-notes" style="font-size:0.7rem">
+                {{ tenant.notes|default:"-"|truncatechars:40 }}
+            </td>
+
+            <td class="p-1 small col-lease" style="font-size:0.7rem">
+            {% if lease %}
+                <div class="d-flex flex-column">
+                <a href="{% url 'leases:lease_detail' lease.pk %}" class="link-primary text-decoration-none">
+                    <span><strong>{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</strong></span>
+                </a>
+
+                <span>
+                    Ends:
+                    <span class="{% if lease.is_ending_soon %}text-danger{% endif %}">
+                    {{ lease.end_date|date:"Y-m-d" }}
+                    </span>
+                </span>
+
+                <span>Monthly: {{ lease.total_payment|money:0 }}</span>
+
+                <span class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                    Balance: {{ lease.get_balance|money:0 }}
+                </span>
+
+                {# 🔻 NEW: Security Deposit Balance #}
+                {% with sec=lease.security_due %}
+                    <span class="{% if sec > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
+                    Security:
+                    {% if sec > 0 %}
+                        {{ sec|money:0 }}
+                    {% else %}
+                        Paid
+                    {% endif %}
+                    </span>
+                {% endwith %}
+                {# 🔺 NEW END #}
                 </div>
             {% else %}
                 <span class="text-muted">No active lease</span>
             {% endif %}
-            </div>
+            </td>
 
-            <div class="icon-row tc-actions">
-                <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="icon-btn text-info" title="View" data-bs-toggle="tooltip" aria-label="View"><i class="fas fa-eye"></i></a>
-                <a href="{% url 'tenants:tenant_update' tenant.id %}" class="icon-btn text-primary" title="Edit" data-bs-toggle="tooltip" aria-label="Edit"><i class="fas fa-edit"></i></a>
-                {% if lease %}
-                <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="icon-btn text-secondary" title="Ledger" data-bs-toggle="tooltip" aria-label="Ledger"><i class="fas fa-file-invoice-dollar"></i></a>
-                <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="icon-btn text-success" title="Pay" data-bs-toggle="tooltip" aria-label="Pay"><i class="fas fa-money-bill-wave"></i></a>
-                <button type="button" class="icon-btn text-success" title="WhatsApp" data-bs-toggle="tooltip" aria-label="WhatsApp"
-                    onclick="sendWhatsAppReminder('{{ tenant.phone|default_if_none:""|escapejs }}','{{ tenant.first_name|default_if_none:""|escapejs }}','{{ tenant.last_name|default_if_none:""|escapejs }}','{{ lease.unit.property.property_name|default_if_none:""|escapejs }}','{{ lease.unit.unit_number|default_if_none:""|escapejs }}','{{ lease.get_balance|default_if_none:0 }}','{{ lease.security_due|default_if_none:0 }}')">
-                    <i class="fab fa-whatsapp"></i>
-                </button>
-                {% endif %}
-                <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="icon-btn text-danger" title="Delete" data-bs-toggle="tooltip" aria-label="Delete"><i class="fas fa-trash"></i></a>
-            </div>
-        </div>
-        {% endwith %}
-        {% empty %}
-        <div class="text-center py-3 text-muted small">No tenants found matching your criteria</div>
-        {% endfor %}
+
+            {# ACTIONS: grid w/ 2 icons per row on small, regular buttons ≥ md #}
+            <td class="p-1 col-actions">
+
+                <div class="d-none d-md-flex flex-wrap">
+                    <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="btn btn-info btn-xs m-1">
+                        <i class="fas fa-eye"></i><span class="ms-1">View</span>
+                    </a>
+                    <a href="{% url 'tenants:tenant_update' tenant.id %}" class="btn btn-primary btn-xs m-1">
+                        <i class="fas fa-edit"></i><span class="ms-1">Edit</span>
+                    </a>
+                    {% if lease %}
+                        <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="btn btn-secondary btn-xs m-1">
+                        <i class="fas fa-file-invoice-dollar"></i><span class="ms-1">Ledger</span>
+                        </a>
+                        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="btn btn-success btn-xs m-1">
+                        <i class="fas fa-money-bill-wave"></i><span class="ms-1">Pay</span>
+                        </a>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-success tenant-wa-btn"
+                            onclick="sendWhatsAppReminder(
+                                '{{ tenant.phone|default_if_none:""|escapejs }}',
+                                '{{ tenant.first_name|default_if_none:""|escapejs }}',
+                                '{{ tenant.last_name|default_if_none:""|escapejs }}',
+                                '{{ lease.unit.property.property_name|default_if_none:""|escapejs }}',
+                                '{{ lease.unit.unit_number|default_if_none:""|escapejs }}',
+                                '{{ lease.get_balance|default_if_none:0 }}',
+                                '{{ lease.security_due|default_if_none:0 }}'
+                            )">
+                            <i class="fab fa-whatsapp"></i><span class="tenant-wa-text"> WhatsApp</span>
+                            </button>
+
+                    {% endif %}
+                    <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="btn btn-danger btn-xs m-1">
+                        <i class="fas fa-trash"></i><span class="ms-1">Delete</span>
+                    </a>
+                    </div>
+
+                <div class="actions-grid d-md-none">
+                    <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="icon-btn text-info"  title="View"  data-bs-toggle="tooltip" aria-label="View">
+                        <i class="fas fa-eye"></i>
+                    </a>
+
+                    <a href="{% url 'tenants:tenant_update' tenant.id %}" class="icon-btn text-primary" title="Edit"  data-bs-toggle="tooltip" aria-label="Edit">
+                        <i class="fas fa-edit"></i>
+                    </a>
+
+                    {% if lease %}
+                        <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="icon-btn text-secondary" title="Ledger" data-bs-toggle="tooltip" aria-label="Ledger">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        </a>
+
+                        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="icon-btn text-success" title="Pay" data-bs-toggle="tooltip" aria-label="Pay">
+                        <i class="fas fa-money-bill-wave"></i>
+                        </a>
+
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-success tenant-wa-btn"
+                            onclick="sendWhatsAppReminder(
+                                '{{ tenant.phone|default_if_none:""|escapejs }}',
+                                '{{ tenant.first_name|default_if_none:""|escapejs }}',
+                                '{{ tenant.last_name|default_if_none:""|escapejs }}',
+                                '{{ lease.unit.property.property_name|default_if_none:""|escapejs }}',
+                                '{{ lease.unit.unit_number|default_if_none:""|escapejs }}',
+                                '{{ lease.get_balance|default_if_none:0 }}',
+                                '{{ lease.security_due|default_if_none:0 }}'
+                            )">
+                            <i class="fab fa-whatsapp"></i><span class="tenant-wa-text"> WhatsApp</span>
+                            </button>
+
+
+                    {% endif %}
+                    <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="icon-btn text-danger" title="Delete" data-bs-toggle="tooltip" aria-label="Delete">
+                        <i class="fas fa-trash"></i>
+                    </a>
+                    </div>
+
+            </td>
+            </tr>
+            {% endwith %}
+            {% empty %}
+            <tr>
+            <td colspan="11" class="text-center py-2 xxsmall">No tenants found matching your criteria</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+
+        </table>
     </div>
 
     {% if is_paginated %}
@@ -481,163 +481,483 @@
 
 
 <style>
-    /* ===================== Layout / Filters ===================== */
-    .filters-grid{
-        display:grid; gap:8px;
-        grid-template-columns: 1fr 1fr;
-        grid-template-areas:
-            "name phone"
-            "property unit"
-            "actions actions";
+    /* Compact table styling */
+    .table-sm td, .table-sm th {
+        padding: 0.2rem;
+        font-size: 0.8rem;
+        vertical-align: middle;
     }
-    .filters-grid .fg.name{ grid-area:name; }
-    .filters-grid .fg.phone{ grid-area:phone; }
-    .filters-grid .fg.property{ grid-area:property; }
-    .filters-grid .fg.unit{ grid-area:unit; }
-    .filters-grid .fg.actions{ grid-area:actions; }
-
-    @media (min-width: 768px){
-        .filters-grid{
-            grid-template-columns: minmax(160px,1.2fr) 130px minmax(160px,1fr) 120px auto;
-            grid-template-areas: "name phone property unit actions";
-            align-items: center;
-        }
-        #filter-form .fg.actions .d-flex{ justify-content:flex-end; }
+    
+    .small {
+        font-size: 0.8rem;
     }
-
-    #unit-select{ width:100%; }
-    #unit-select:disabled{ background-color:#e9ecef; opacity:1; }
-
-    .select2-container .select2-selection--single{ height:30px !important; font-size:.8rem; }
-    .select2-container--default .select2-selection--single .select2-selection__arrow{ height:28px; }
-    .form-control-sm{ height:calc(1.2em + .5rem + 2px); padding:.25rem .5rem; font-size:.8rem; }
-    .pagination-sm .page-link{ padding:.25rem .5rem; font-size:.8rem; }
-    .dropdown-menu{ min-width:7rem; }
-
-    .quick-interest-grid{ display:flex; flex-wrap:wrap; gap:.35rem .5rem; }
-    .quick-interest-item{
-        display:inline-flex; align-items:center; gap:.3rem;
-        padding:.2rem .45rem; border:1px solid #dee2e6; border-radius:4px;
-        background:#fff; font-size:.8rem; margin:0;
+    
+    .xsmall {
+        font-size: 0.7rem;
+        color: #666;
     }
-    .quick-interest-item input{ margin:0; }
-
-    /* ===================== Type scale ===================== */
-    .table-sm td, .table-sm th{ padding:.3rem; font-size:.78rem; vertical-align:middle; }
-    .small{ font-size:.8rem; }
-    .xsmall{ font-size:.72rem; color:#666; line-height:1.25; }
-    .xxsmall{ font-size:.65rem; color:#666; }
-
-    /* ===================== Shared icon-action buttons ===================== */
-    .icon-row{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
-    .icon-row .icon-btn,
-    .icon-row button.icon-btn{
-        display:inline-flex; align-items:center; justify-content:center;
-        width:26px; height:26px; border:1px solid #e5e7eb; border-radius:6px;
-        background:#fff; line-height:1; padding:0;
+    
+    .xxsmall {
+        font-size: 0.6rem;
+        color: #666;
     }
-    .icon-row .icon-btn i{ font-size:.8rem; }
-    .icon-row .icon-btn:hover{ background:#f3f4f6; }
-
-    /* ===================== Photo / CNIC thumbnails ===================== */
-    .img-main{
-        width:48px; height:48px; object-fit:cover; border-radius:4px; display:block; margin:0 auto;
+    
+    /* Buttons */
+    .btn-xs {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        line-height: 1.2;
+        border-radius: 0.2rem;
     }
-    .cnic-pair{ display:flex; gap:4px; justify-content:center; flex-wrap:wrap; }
-    .img-cnic{ width:42px; height:30px; object-fit:contain; border:1px solid #e5e7eb; border-radius:3px; }
-
-    .text-truncate{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-    /* ===================== DESKTOP TABLE (>=992px) ===================== */
-    .tenant-table{ table-layout:fixed; width:100%; }
-    .tenant-table .col-sn{ width:2.5%; text-align:center; }
-    .tenant-table .col-photo{ width:5.5%; text-align:center; }
-    .tenant-table .col-tenant{ width:16%; }
-    .tenant-table .col-emergency{ width:9%; }
-    .tenant-table .col-cnic{ width:8%; }
-    .tenant-table .col-address{ width:11%; }
-    .tenant-table .col-notes{ width:10%; }
-    .tenant-table .col-lease{ width:16%; }
-    .tenant-table .col-actions{ width:22%; }
-
-    .tenant-table .col-tenant,
-    .tenant-table .col-emergency,
-    .tenant-table .col-address,
-    .tenant-table .col-notes{
-        word-break: break-word;
+    
+    /* Images */
+    .table img {
+        max-height: 40px;
+        width: 100%;
+        object-fit: cover;
     }
-
-    @media (min-width: 1400px){
-        .tenant-table .col-actions{ width:19%; }
-        .tenant-table .col-lease{ width:17%; }
-        .tenant-table .col-tenant{ width:17%; }
+    
+    /* Select2 dropdown */
+    .select2-container .select2-selection--single {
+        height: 30px !important;
+        font-size: 0.8rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 28px;
+    }
+    
+    /* Form controls */
+    .form-control-sm {
+        height: calc(1.2em + 0.5rem + 2px);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Pagination */
+    .pagination-sm .page-link {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Photo column */
+    td.p-0 {
+        padding: 0 !important;
+    }
+    
+    /* Action buttons */
+    .btn-group-vertical .btn {
+        margin-bottom: 0.1rem;
+    }
+    
+    /* Unit select width */
+    #unit-select {
+        width: 120px !important;
+    }
+    
+    /* Disabled unit select */
+    #unit-select:disabled {
+        background-color: #e9ecef;
+        opacity: 1;
+    }
+    
+    /* Button spacing */
+    .btn-group, .btn {
+        margin-right: 0.5rem;
+    }
+    
+    /* Dropdown fix */
+    .dropdown-menu {
+        min-width: 7rem;
     }
 
-    /* ===================== CARD VIEW (<992px, tablet + mobile) ===================== */
-    .tenant-cards{
-        display:flex; flex-direction:column; gap:10px;
-    }
-    .tenant-card{
-        border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px;
-        background:#fff;
-    }
-    .tc-top{ display:flex; gap:10px; align-items:flex-start; position:relative; }
-    .tc-photo{ flex:0 0 auto; }
-    .tc-photo .img-main{ width:52px; height:52px; }
-    .tc-main{ flex:1 1 auto; min-width:0; }
-    .tc-index{ position:absolute; top:0; right:0; }
 
-    .tc-row.tc-tags{ display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+  /* ---------- Tunables ---------- */
+  :root{
+    /* image sizes */
+    --photo-main-w: 100px;
+    --photo-main-h: 100px;
+    --cnic-w: 46px;   /* tweak CNIC thumb size */
+    --cnic-h: 34px;
+    --photo-gap: 6px;
 
-    .tc-grid{
-        display:grid; grid-template-columns:1fr 1fr; gap:6px 10px;
-        margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb;
-    }
-    .tc-field{ display:flex; flex-direction:column; min-width:0; }
-    .tc-label{ font-size:.62rem; text-transform:uppercase; letter-spacing:.02em; color:#9aa0a6; }
-    .tc-value{ font-size:.75rem; color:#222; overflow-wrap:anywhere; }
-    .tc-value.cnic-pair{ justify-content:flex-start; }
+    /* table column widths on small (applied via media rules) */
+    --w-col-photo: 110px;
+    --w-col-tenant: 60;  /* fill */
+    --w-col-actions: 30px;
+    --w-col-lease: 90px;
 
-    .tc-lease{
-        margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; font-size:.78rem;
-    }
-    .tc-lease-grid{
-        display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; margin-top:4px; font-size:.74rem;
+    /* action/icon controls on small */
+    --icon-size: 12px;
+    --icon-pad: 1px;
+    --icon-gap: 1px;
+
+    /* filters */
+    --fg-gap: 6px;
+
+    /* How many icons per row on SMALL screens (1 or 2) */
+    --actions-cols: 2;
+
+
+  }
+
+  /* Keep existing compact styles you already had … */
+
+  /* --- Photo+CNIC vertical stack --- */
+  .photo-stack{ display:flex; flex-direction:column; align-items:center; gap:var(--photo-gap); padding:4px; }
+  .photo-stack .img-main{
+    width:var(--photo-main-w); height:var(--photo-main-h);
+    object-fit:contain; object-position:center;
+  }
+  .photo-stack .photo-cnic{ display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
+  .photo-stack .img-cnic{
+    width:var(--cnic-w); height:var(--cnic-h); object-fit:contain;
+  }
+
+
+  /* Actions: 2 icons per row on small */
+  .actions-grid{
+    display:grid; gap:var(--icon-gap);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .actions-grid .icon-btn{ /* reuse same icon button look */
+    display:flex; align-items:center; justify-content:center;
+    width:100%; padding:var(--icon-pad); border:1px solid #e5e7eb; border-radius:6px; background:#fff;
+  }
+  .actions-grid .icon-btn i{ font-size:var(--icon-size); }
+
+  /* Tenant contact inline (under name) */
+  .tenant-contact-inline{ margin-top:2px; }
+
+  .quick-interest-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem .5rem;
+  }
+  .quick-interest-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .2rem .45rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fff;
+    font-size: .8rem;
+    margin: 0;
+  }
+  .quick-interest-item input {
+    margin: 0;
+  }
+
+  /* --------- Filters grid (mobile-first) ---------- */
+  .filters-grid{
+    display:grid; gap:var(--fg-gap);
+    grid-template-columns: 1fr 1fr; /* mobile: two columns => (name+phone), (property+unit), then full-row actions */
+    grid-template-areas:
+      "name phone"
+      "property unit"
+      "actions actions";
+  }
+  .filters-grid .fg.name{ grid-area:name; }
+  .filters-grid .fg.phone{ grid-area:phone; }
+  .filters-grid .fg.property{ grid-area:property; }
+  .filters-grid .fg.unit{ grid-area:unit; }
+  .filters-grid .fg.actions{ grid-area:actions; }
+
+  /* ---------- Small screens: ≤ 380px explicitly covers 360px ---------- */
+  @media (max-width: 380px){
+    /* Kill horizontal scroll by forcing key widths and hiding heavy columns */
+    table{ table-layout:fixed; width:100%; }
+    th.col-photo, td.col-photo{ width:var(--w-col-photo); }
+    th.col-actions, td.col-actions{ width:var(--w-col-actions); }
+    th.col-tenant, td.col-tenant{ width:var(--w-col-tenant); }
+     th.col-lease, td.col-lease{ width:var(--w-col-lease); }
+
+
+ 
+
+    /* Hide “heavy” columns, show icons instead */
+    th.col-contact, td.col-contact,
+    th.col-emergency, td.col-emergency,
+    th.col-cnic-front, td.col-cnic-front,
+    th.col-cnic-back, td.col-cnic-back,
+    th.col-notes,td.col-notes,
+    th.col-address, td.col-address{
+      display:none !important;
     }
 
-    .tc-actions{ margin-top:10px; padding-top:8px; border-top:1px dashed #e5e7eb; justify-content:flex-start; }
+    /* Show icon-grid actions; hide full button set */
+    .col-actions .d-md-flex{ display:none !important; }
+    .col-actions .actions-grid{ display:grid; }
 
-    /* Single column cards on phones */
-    @media (max-width: 575.98px){
-        .tc-grid{ grid-template-columns:1fr; }
-        .tc-lease-grid{ grid-template-columns:1fr; }
-        .container-fluid{ padding-left:.5rem; padding-right:.5rem; }
-    }
+    /* Tighten paddings/fonts a bit */
+    .table-sm td, .table-sm th{ padding:0.25rem 0.3rem; font-size:0.58rem; }
+  }
 
-    /* Two-column card grid on tablets for denser use of width */
-    @media (min-width: 576px) and (max-width: 991.98px){
-        .tenant-cards{
-            display:grid; grid-template-columns:1fr 1fr; gap:10px;
-        }
-    }
+  /* ---------- ≥ md: keep desktop/tablet normal ---------- */
+  @media (min-width: 768px){
 
-    /* Header row wrapping on small screens */
-    @media (max-width: 767.98px){
-        .d-flex.justify-content-between.align-items-center.mb-2{
-            align-items:flex-start !important; gap:.4rem; flex-wrap:wrap;
-        }
-        .d-flex.justify-content-between.align-items-center.mb-2 > .d-flex{
-            flex-wrap:wrap; gap:.25rem;
-        }
-        .d-flex.justify-content-between.align-items-center.mb-2 .btn-sm{
-            margin-right:0 !important; padding:.25rem .4rem; font-size:.72rem;
-        }
-        #filter-form .fg.actions .d-flex{
-            flex-wrap:nowrap; gap:.25rem !important; overflow-x:auto; -webkit-overflow-scrolling:touch;
-        }
-        #filter-form .fg.actions .form-check{ white-space:nowrap; margin-right:.15rem !important; }
-        #filter-form .fg.actions .btn{ flex:0 0 auto; }
-    }
+    .col-actions .actions-grid{ display:none !important; }
+    .col-actions .d-md-flex{ display:flex !important; }
+  }
+  /* ===== MOBILE ICONS + ACTIONS TUNABLES ===== */
+:root{
+  /* Sizes you can tweak */
+  --icon-size: 16px;      /* icon glyph size */
+  --icon-pad: 4px;        /* inner padding around icon */
+  --icon-gap: 6px;        /* gap between buttons */
+
+  /* How many icons per row on SMALL screens (1 or 2) */
+  --actions-cols: 1;
+
+
+  /* Small column widths (keep narrow to avoid horizontal scroll) */
+  --w-col-photo: 110px;
+  --w-col-actions: 22px;
+}
+
+/* Ensure Font Awesome glyphs are visible in the icon squares */
+.mini-icons{ display:none !important; }
+
+
+/* Action icons grid on small screens */
+.actions-grid{
+  display:grid;
+  gap:var(--icon-gap);
+  grid-template-columns: repeat(var(--actions-cols), auto);
+  justify-content:center; /* center icons in the column */
+}
+
+/* icon-only buttons: no white bg, no forced color */
+.actions-grid .icon-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:var(--icon-pad);
+  background:transparent;
+  border:0;             /* remove box look */
+  line-height:1;
+}
+
+/* PHOTO + CNIC stack — slightly smaller defaults */
+.photo-stack .img-main{
+  width: 90px; height: 90px; /* tweak freely */
+  object-fit: contain; object-position: center;
+}
+.photo-stack .photo-cnic .img-cnic{
+  width: 44px; height: 32px; /* tweak CNIC thumbs here */
+}
+
+/* Kill horizontal scroll on very small screens (incl. 360px) */
+@media (max-width: 380px){
+  table{ table-layout: fixed; width: 100%; }
+
+  th.col-photo, td.col-photo{ width: var(--w-col-photo); }
+  th.col-actions, td.col-actions{ width: var(--w-col-actions); }
+
+
+
+  /* Make action grid active; hide full buttons */
+  th.col-actions, td.col-actions{ width: var(--w-col-actions); }
+  .col-actions .d-md-flex{ display: none !important; }
+  .col-actions .actions-grid{ display: grid; }
+
+
+
+  /* Reduce table padding a touch more */
+  .table-sm td, .table-sm th{
+    padding: 0.22rem 0.28rem;
+    font-size: 0.76rem;
+  }
+
+  
+  /* === SMALL SCREEN: make Actions narrow (1 icon per line) and Lease wider === */
+@media (max-width: 380px){
+  /* knobs you can tweak */
+  :root{
+    --w-col-sn:15px;
+    --w-col-actions: 52px;   /* shrink Actions; try 48–64px */
+    --w-col-lease:  40%;     /* give Lease & Payment more room (percent works well) */
+    --icon-size:    14px;    /* icon glyph size */
+    --icon-pad:     2px;     /* tap padding */
+    --icon-gap:     4px;     /* gap between icons */
+  }
+
+  /* enforce column widths */
+  th.col-actions, td.col-actions { width: var(--w-col-actions) !important; }
+  th.col-lease,   td.col-lease   { width: var(--w-col-lease)  !important; }
+  th.col-sn,   td.col-sn   { width: var(--w-col-sn)  !important; }
+
+  /* force 1 icon per row and remove any white boxes */
+  .actions-grid{
+    grid-template-columns: 1fr !important;     /* one icon per line */
+    gap: var(--icon-gap) !important;
+    justify-content: center !important;
+  }
+  .actions-grid .icon-btn{
+    padding: var(--icon-pad) !important;
+    background: transparent !important;
+    border: 0 !important;
+    width: auto !important;                    /* don't stretch */
+    line-height: 1;
+  }
+  .actions-grid .icon-btn i{
+    font-size: var(--icon-size) !important;
+    color: currentColor !important;            /* keep your text-* colors */
+  }
+}
+@media (min-width: 992px) {
+  .payment-list-dense th.col-tenant,
+  .payment-list-dense td.col-tenant {
+    max-width: var(--lg-tenant-w, 20rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ✅ Narrower tenant filter on big screens */
+  #id_tenant { width: 10rem !important; }
+}
+}
+
+/* Final tenant-list layout overrides */
+@media (min-width: 992px) {
+  #filter-form .filters-grid {
+    grid-template-columns: minmax(180px, 1.2fr) 150px minmax(180px, 1fr) 130px auto;
+    grid-template-areas: "name phone property unit actions";
+    align-items: center;
+  }
+  #filter-form .fg.actions .d-flex {
+    justify-content: flex-end;
+  }
+}
+
+.photo-stack .photo-main,
+.photo-stack .img-main {
+  width: 54px;
+  height: 54px;
+}
+.photo-stack .img-main {
+  object-fit: cover;
+}
+
+@media (max-width: 767.98px) {
+  .container {
+    max-width: 100%;
+    padding-left: .45rem;
+    padding-right: .45rem;
+  }
+  .d-flex.justify-content-between.align-items-center.mb-2 {
+    align-items: flex-start !important;
+    gap: .4rem;
+  }
+  .d-flex.justify-content-between.align-items-center.mb-2 > .d-flex {
+    flex-wrap: wrap;
+    gap: .25rem;
+  }
+  .d-flex.justify-content-between.align-items-center.mb-2 .btn-sm {
+    margin-right: 0 !important;
+    padding: .25rem .4rem;
+    font-size: .72rem;
+  }
+  .filters-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "name phone"
+      "property unit"
+      "actions actions";
+  }
+  #filter-form .fg.actions .d-flex {
+    flex-wrap: nowrap;
+    gap: .25rem !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #filter-form .fg.actions .form-check {
+    white-space: nowrap;
+    margin-right: .15rem !important;
+  }
+  #filter-form .fg.actions .btn {
+    flex: 0 0 auto;
+  }
+  table.table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 0;
+  }
+  th.col-sn, td.col-sn { width: 24px !important; }
+  th.col-photo, td.col-photo { width: 54px !important; }
+  th.col-tenant, td.col-tenant { width: 33% !important; }
+  th.col-lease, td.col-lease { width: 34% !important; }
+  th.col-actions, td.col-actions { width: 52px !important; }
+  th.col-contact, td.col-contact,
+  th.col-emergency, td.col-emergency,
+  th.col-cnic-front, td.col-cnic-front,
+  th.col-cnic-back, td.col-cnic-back,
+  th.col-notes, td.col-notes,
+  th.col-address, td.col-address {
+    display: none !important;
+  }
+  .table-sm td,
+  .table-sm th {
+    padding: .2rem .18rem !important;
+    font-size: .68rem !important;
+    word-break: break-word;
+  }
+  .photo-stack {
+    padding: 2px;
+  }
+  .photo-stack .photo-main,
+  .photo-stack .img-main {
+    width: 42px;
+    height: 42px;
+  }
+  .photo-stack .bg-secondary.img-main {
+    display: flex;
+  }
+  .actions-grid {
+    grid-template-columns: 1fr !important;
+    gap: .25rem !important;
+  }
+  .actions-grid .icon-btn,
+  .actions-grid .tenant-wa-btn {
+    width: 28px !important;
+    min-width: 28px;
+    height: 24px;
+    padding: .15rem !important;
+    margin: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tenant-wa-text {
+    display: none;
+  }
+  .tenant-contact-inline {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 380px) {
+  .table-responsive {
+    overflow-x: hidden;
+  }
+  .filters-grid .select2-container,
+  .filters-grid .form-control,
+  .filters-grid .form-select {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: .75rem;
+  }
+  th.col-photo, td.col-photo { width: 48px !important; }
+  th.col-actions, td.col-actions { width: 46px !important; }
+  .photo-stack .photo-main,
+  .photo-stack .img-main {
+    width: 38px;
+    height: 38px;
+  }
+}
+
 </style>
 
 {% endblock %}
@@ -788,16 +1108,11 @@ document.addEventListener('DOMContentLoaded', function () {
       const doc = new DOMParser().parseFromString(html, "text/html");
       const newTableWrap = doc.querySelector(".table-responsive");
       const currentTableWrap = document.querySelector(".table-responsive");
-      const newCardWrap = doc.querySelector(".tenant-cards");
-      const currentCardWrap = document.querySelector(".tenant-cards");
       const newTenantFilter = doc.querySelector("#tenant-filter");
       const currentTenantFilter = document.querySelector("#tenant-filter");
 
       if (newTableWrap && currentTableWrap) {
         currentTableWrap.innerHTML = newTableWrap.innerHTML;
-      }
-      if (newCardWrap && currentCardWrap) {
-        currentCardWrap.innerHTML = newCardWrap.innerHTML;
       }
       if (newTenantFilter && currentTenantFilter) {
         currentTenantFilter.innerHTML = newTenantFilter.innerHTML;

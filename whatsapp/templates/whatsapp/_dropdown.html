@@ -1,0 +1,60 @@
+{% if phone %}
+  <div class="btn-group">
+    <button class="btn btn-sm btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="fab fa-whatsapp me-1"></i> WhatsApp
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      {% if object_type == "invoice" %}
+        <li>
+          <form method="post" action="{% url 'whatsapp:send_object_message' object_type object_id 'invoice' %}">
+            {% csrf_token %}
+            <button class="dropdown-item" type="submit">Send Invoice</button>
+          </form>
+        </li>
+      {% endif %}
+      {% if object_type == "payment" %}
+        <li>
+          <form method="post" action="{% url 'whatsapp:send_object_message' object_type object_id 'receipt' %}">
+            {% csrf_token %}
+            <button class="dropdown-item" type="submit">Send Receipt</button>
+          </form>
+        </li>
+      {% endif %}
+      {% if object_type == "lease" %}
+        <li>
+          <form method="post" action="{% url 'whatsapp:send_object_message' object_type object_id 'lease' %}">
+            {% csrf_token %}
+            <button class="dropdown-item" type="submit">Send Lease</button>
+          </form>
+        </li>
+      {% endif %}
+      {% if object_type == "maintenance" %}
+        <li>
+          <form method="post" action="{% url 'whatsapp:send_object_message' object_type object_id 'maintenance_update' %}">
+            {% csrf_token %}
+            <button class="dropdown-item" type="submit">Send Maintenance Update</button>
+          </form>
+        </li>
+      {% endif %}
+      {% if object_type == "tenant" %}
+        <li>
+          <form method="post" action="{% url 'whatsapp:send_object_message' object_type object_id 'text' %}">
+            {% csrf_token %}
+            <button class="dropdown-item" type="submit">Send Message</button>
+          </form>
+        </li>
+      {% endif %}
+      <li><hr class="dropdown-divider"></li>
+      <li>
+        <a class="dropdown-item" href="{% url 'whatsapp:webhook_log_list' %}?phone={{ phone|cut:'+'|cut:' '|cut:'-'|cut:'('|cut:')' }}">
+          View Conversation
+        </a>
+      </li>
+      <li>
+        <a class="dropdown-item" href="{% url 'whatsapp:webhook_log_list' %}">
+          View Message Log
+        </a>
+      </li>
+    </ul>
+  </div>
+{% endif %}

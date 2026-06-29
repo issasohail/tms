@@ -23,6 +23,11 @@ from smart_meter.forms import MeterPrepaidSettingsForm
 from smart_meter.models import MeterPrepaidSettings, Meter
 from .forms import SwitchLabForm
 from smart_meter.utils.commands import refresh_live
+from smart_meter.utils.tenants import (
+    attach_active_tenant_names,
+    attach_tenant_names_for_dates,
+    active_tenant_names_for_units,
+)
 from smart_meter.models import Meter, LiveReading
 from smart_meter.utils.commands import send_cutoff_command, send_restore_command
 from django.shortcuts import redirect
@@ -91,11 +96,9 @@ from smart_meter.models import MeterReading, MeterBalance
 from properties.models import Unit
 from django.utils.timezone import now
 from datetime import timedelta
-from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 # You will write these
 from smart_meter.utils import send_cutoff_command, send_restore_command
-from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 # You will write these
 from smart_meter.utils import send_cutoff_command, send_restore_command
@@ -103,7 +106,6 @@ from properties.models import Property
 from smart_meter.models import MeterBalance
 from django.contrib import messages
 from decimal import Decimal
-from django.views.decorators.csrf import csrf_exempt
 from smart_meter.models import Meter, MeterEvent
 from smart_meter.utils import send_cutoff_command, send_restore_command
 from django.shortcuts import render
@@ -114,6 +116,12 @@ import socket
 from django.shortcuts import render, redirect
 from .models import Meter
 from .forms import MeterForm
+from .forms import (
+    CloseMeterInstallationForm,
+    InstallMeterToUnitForm,
+    MoveLeaseUnitForm,
+    SwitchMeterForm,
+)
 from django.shortcuts import get_object_or_404
 from django.shortcuts import get_object_or_404, redirect
 from .models import MeterReading
@@ -121,6 +129,8 @@ from .forms import MeterReadingForm
 from .forms import MeterSettingsForm
 from django.shortcuts import render, get_object_or_404, redirect
 from .models import Meter
+from .models import MeterInstallation
+from leases.models import LeaseUnitOccupancy
 from .tasks import poll_all_meters
 from django.http import JsonResponse
 from datetime import date
@@ -299,12 +309,23 @@ def assign_meter(request):
     return render(request, "smart_meter/assign_meter.html", {"form": form})
 
 
+def _first_active_meter_for_unit(unit):
+    installation = (
+        unit.meter_installations
+        .filter(is_active=True, end_date__isnull=True)
+        .select_related("meter")
+        .order_by("start_date", "id")
+        .first()
+    )
+    return installation.meter if installation else None
+
+
 # views.py (replace daily_report)
 
 
 def daily_report(request, unit_id):
     unit = get_object_or_404(Unit, id=unit_id)
-    meter = getattr(unit, "meter", None)
+    meter = _first_active_meter_for_unit(unit)
     if not meter:
         return render(request, "smart_meter/daily.html", {
             "unit": unit, "rows": [], "chart_labels": [], "chart_data": [],
@@ -388,7 +409,7 @@ def daily_report(request, unit_id):
 
 def monthly_report(request, unit_id):
     unit = get_object_or_404(Unit, id=unit_id)
-    meter = getattr(unit, "meter", None)
+    meter = _first_active_meter_for_unit(unit)
     if not meter:
         return render(request, "smart_meter/monthly.html", {"unit": unit, "rows": []})
 
@@ -701,6 +722,10 @@ def meter_list(request):
     }
     paginator = Paginator(meters_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
+    attach_active_tenant_names(
+        page_obj.object_list,
+        lambda meter: meter.unit_id,
+    )
     total_count = paginator.count
 
     ctx = {
@@ -833,8 +858,395 @@ def meter_delete(request, pk):
 
 
 def meter_detail(request, pk):
-    meter = get_object_or_404(Meter, pk=pk)
-    return render(request, 'smart_meter/meter_detail.html', {'meter': meter})
+    meter = get_object_or_404(
+        Meter.objects.select_related("unit", "unit__property"),
+        pk=pk,
+    )
+    installation_history = list(
+        MeterInstallation.objects
+        .filter(meter=meter)
+        .select_related("unit", "unit__property", "lease", "lease__tenant")
+        .order_by("-is_active", "-start_date", "-id")
+    )
+    active_installations = [
+        installation for installation in installation_history
+        if installation.is_active and installation.end_date is None
+    ]
+    if meter.unit_id:
+        current_installation = next(
+            (installation for installation in active_installations if installation.unit_id == meter.unit_id),
+            None,
+        )
+    else:
+        current_installation = active_installations[0] if active_installations else None
+
+    current_lease = None
+    if meter.unit_id:
+        today = date.today()
+        current_lease = (
+            Lease.objects
+            .filter(unit_id=meter.unit_id, status="active", start_date__lte=today, end_date__gte=today)
+            .select_related("tenant")
+            .order_by("-start_date", "-id")
+            .first()
+        )
+        if current_lease is None:
+            current_lease = (
+                Lease.objects
+                .filter(unit_id=meter.unit_id, status="active")
+                .select_related("tenant")
+                .order_by("-start_date", "-id")
+                .first()
+            )
+
+    if current_lease is None and current_installation and current_installation.lease_id:
+        current_lease = current_installation.lease
+
+    latest_reading = (
+        MeterReading.objects
+        .filter(meter=meter)
+        .order_by("-ts")
+        .first()
+    )
+    latest_live = meter.latest_live
+    current_energy = (
+        getattr(latest_live, "total_energy", None)
+        if latest_live and getattr(latest_live, "total_energy", None) is not None
+        else (latest_reading.total_energy if latest_reading else None)
+    )
+    def active_lease_for_unit(unit, on_date):
+        if not unit:
+            return None
+        return (
+            Lease.objects
+            .filter(unit=unit, start_date__lte=on_date, end_date__gte=on_date)
+            .select_related("tenant")
+            .order_by("-start_date", "-id")
+            .first()
+        )
+
+    def lease_for_history_row(unit, on_date, fallback=None):
+        lease = active_lease_for_unit(unit, on_date)
+        if lease:
+            return lease
+        if fallback and getattr(fallback, "unit_id", None) == getattr(unit, "id", None):
+            return fallback
+        return None
+
+    def latest_energy_until(ts):
+        reading = (
+            MeterReading.objects
+            .filter(meter=meter, ts__lte=ts)
+            .order_by("-ts")
+            .first()
+        )
+        return reading.total_energy if reading and reading.total_energy is not None else None
+
+    display_installation_history = []
+    assignment_changes = list(
+        meter.assignment_history
+        .select_related(
+            "old_unit", "old_unit__property", "new_unit", "new_unit__property",
+            "old_lease", "old_lease__tenant", "new_lease", "new_lease__tenant",
+        )
+        .order_by("change_date", "id")
+    )
+
+    for installation in installation_history:
+        segment_unit = installation.unit
+        segment_lease = installation.lease
+        segment_from = installation.start_date
+        segment_start_reading = installation.start_reading
+        relevant_changes = [
+            change for change in assignment_changes
+            if timezone.localtime(change.change_date).date() >= installation.start_date
+            and (
+                installation.end_date is None
+                or timezone.localtime(change.change_date).date() <= installation.end_date
+            )
+            and change.new_unit_id
+            and (
+                change.old_unit_id == getattr(segment_unit, "id", None)
+                or change.new_unit_id == meter.unit_id
+                or change.meter_id == meter.id
+            )
+        ]
+
+        for change in relevant_changes:
+            change_day = timezone.localtime(change.change_date).date()
+            change_energy = latest_energy_until(change.change_date)
+            display_installation_history.append({
+                "unit": segment_unit,
+                "lease": lease_for_history_row(
+                    segment_unit,
+                    segment_from,
+                    segment_lease or change.old_lease,
+                ),
+                "start_date": segment_from,
+                "display_to_date": change_day,
+                "start_reading": segment_start_reading,
+                "display_end_reading": change_energy,
+                "is_active": False,
+            })
+            segment_unit = change.new_unit
+            segment_lease = lease_for_history_row(change.new_unit, change_day, change.new_lease)
+            segment_from = change_day
+            segment_start_reading = change_energy
+
+        last_installation_reading = (
+            MeterReading.objects
+            .filter(meter=meter, ts__date__gte=segment_from)
+            .filter(ts__date__lte=installation.end_date if installation.end_date else date.today())
+            .order_by("-ts")
+            .first()
+        )
+        display_to_date = installation.end_date
+        display_end_reading = installation.end_reading
+        segment_is_active = bool(
+            installation.is_active
+            and installation.end_date is None
+            and meter.is_active
+            and getattr(segment_unit, "id", None) == meter.unit_id
+        )
+        if display_end_reading is None:
+            if segment_is_active:
+                display_end_reading = current_energy
+            elif last_installation_reading:
+                display_end_reading = last_installation_reading.total_energy
+        if not segment_is_active and display_to_date is None and last_installation_reading:
+            display_to_date = timezone.localtime(last_installation_reading.ts).date()
+        display_installation_history.append({
+            "unit": segment_unit,
+            "lease": lease_for_history_row(segment_unit, segment_from, segment_lease),
+            "start_date": segment_from,
+            "display_to_date": display_to_date,
+            "start_reading": segment_start_reading,
+            "display_end_reading": display_end_reading,
+            "is_active": segment_is_active,
+        })
+
+    display_installation_history.sort(
+        key=lambda row: (row["is_active"], row["start_date"]),
+        reverse=True,
+    )
+
+    readings = list(
+        MeterReading.objects
+        .filter(meter=meter)
+        .order_by("-ts")[:500]
+    )
+    recent_daily_readings = []
+    latest_by_day = OrderedDict()
+    max_current_by_day = {}
+    max_voltage_by_day = {}
+
+    def phase_max(reading, names):
+        values = [getattr(reading, name, None) for name in names]
+        values = [value for value in values if value is not None]
+        return max(values) if values else None
+
+    for reading in readings:
+        local_ts = timezone.localtime(reading.ts)
+        reading.local_day = local_ts.date()
+        reading.max_current_value = phase_max(reading, ("current_a", "current_b", "current_c"))
+        reading.max_voltage_value = phase_max(reading, ("voltage_a", "voltage_b", "voltage_c"))
+        latest_by_day.setdefault(reading.local_day, reading)
+        current_best = max_current_by_day.get(reading.local_day)
+        if reading.max_current_value is not None and (
+            current_best is None or reading.max_current_value > current_best.max_current_value
+        ):
+            max_current_by_day[reading.local_day] = reading
+        voltage_best = max_voltage_by_day.get(reading.local_day)
+        if reading.max_voltage_value is not None and (
+            voltage_best is None or reading.max_voltage_value > voltage_best.max_voltage_value
+        ):
+            max_voltage_by_day[reading.local_day] = reading
+
+    daily_latest = list(latest_by_day.values())[:7]
+    for index, reading in enumerate(daily_latest):
+        previous = daily_latest[index + 1] if index + 1 < len(daily_latest) else None
+        reading.day_difference = None
+        if previous and reading.total_energy is not None and previous.total_energy is not None:
+            reading.day_difference = reading.total_energy - previous.total_energy
+        reading.day_max_current = max_current_by_day.get(reading.local_day)
+        reading.day_max_voltage = max_voltage_by_day.get(reading.local_day)
+        recent_daily_readings.append(reading)
+
+    return render(
+        request,
+        'smart_meter/meter_detail.html',
+        {
+            'meter': meter,
+            'current_installation': current_installation,
+            'current_lease': current_lease,
+            'current_tenant': current_lease.tenant if current_lease else None,
+            'installation_history': display_installation_history,
+            'latest_reading': latest_reading,
+            'latest_live': latest_live,
+            'recent_daily_readings': recent_daily_readings,
+        },
+    )
+
+
+def install_meter_to_unit(request, unit_id):
+    unit = get_object_or_404(Unit, pk=unit_id)
+    if request.method == "POST":
+        form = InstallMeterToUnitForm(request.POST, unit=unit, user=request.user)
+        if form.is_valid():
+            installation = form.save()
+            messages.success(
+                request,
+                f"Meter {installation.meter.meter_number} installed on {unit}.",
+            )
+            return redirect("properties:unit_detail", pk=unit.pk)
+    else:
+        form = InstallMeterToUnitForm(unit=unit, user=request.user)
+    return render(
+        request,
+        "smart_meter/meter_installation_form.html",
+        {
+            "form": form,
+            "unit": unit,
+            "title": "Install Meter",
+            "submit_label": "Install Meter",
+            "cancel_url": reverse("properties:unit_detail", args=[unit.pk]),
+        },
+    )
+
+
+def switch_meter(request, unit_id):
+    unit = get_object_or_404(Unit, pk=unit_id)
+    if request.method == "POST":
+        form = SwitchMeterForm(request.POST, unit=unit)
+        if form.is_valid():
+            with transaction.atomic():
+                old_installation = (
+                    MeterInstallation.objects
+                    .select_for_update()
+                    .select_related("meter")
+                    .get(pk=form.cleaned_data["old_installation"].pk)
+                )
+                old_installation.close(
+                    end_date=form.cleaned_data["switch_date"],
+                    end_reading=form.cleaned_data["old_end_reading"],
+                    notes=form.cleaned_data.get("notes", ""),
+                )
+                if old_installation.meter.unit_id == unit.pk:
+                    Meter.objects.filter(pk=old_installation.meter_id).update(unit=None)
+
+                new_installation = MeterInstallation.objects.create(
+                    meter=form.cleaned_data["new_meter"],
+                    unit=unit,
+                    lease=form.cleaned_data.get("lease"),
+                    start_date=form.cleaned_data["switch_date"],
+                    start_reading=form.cleaned_data["new_start_reading"],
+                    installed_by=request.user if request.user.is_authenticated else None,
+                    reason=form.cleaned_data.get("reason") or "Meter switched",
+                    notes=form.cleaned_data.get("notes", ""),
+                )
+
+            messages.success(
+                request,
+                f"Switched {old_installation.meter.meter_number} to {new_installation.meter.meter_number}.",
+            )
+            return redirect("properties:unit_detail", pk=unit.pk)
+    else:
+        form = SwitchMeterForm(unit=unit)
+    return render(
+        request,
+        "smart_meter/meter_switch_form.html",
+        {
+            "form": form,
+            "unit": unit,
+            "cancel_url": reverse("properties:unit_detail", args=[unit.pk]),
+        },
+    )
+
+
+def close_meter_installation(request, installation_id):
+    installation = get_object_or_404(
+        MeterInstallation.objects.select_related("meter", "unit"),
+        pk=installation_id,
+        is_active=True,
+    )
+    if request.method == "POST":
+        form = CloseMeterInstallationForm(request.POST, installation=installation)
+        if form.is_valid():
+            installation.close(
+                end_date=form.cleaned_data["end_date"],
+                end_reading=form.cleaned_data.get("end_reading"),
+                notes=form.cleaned_data.get("notes", ""),
+            )
+            if installation.meter.unit_id == installation.unit_id:
+                Meter.objects.filter(pk=installation.meter_id).update(unit=None)
+            messages.success(request, f"Closed installation for {installation.meter.meter_number}.")
+            return redirect("smart_meter:meter_detail", pk=installation.meter.pk)
+    else:
+        form = CloseMeterInstallationForm(installation=installation)
+    return render(
+        request,
+        "smart_meter/meter_installation_close_form.html",
+        {
+            "form": form,
+            "installation": installation,
+            "cancel_url": reverse("smart_meter:meter_detail", args=[installation.meter.pk]),
+        },
+    )
+
+
+def move_lease_unit(request, lease_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    if request.method == "POST":
+        form = MoveLeaseUnitForm(request.POST, lease=lease)
+        if form.is_valid():
+            move_date = form.cleaned_data["move_date"]
+            new_unit = form.cleaned_data["new_unit"]
+            notes = form.cleaned_data.get("notes", "")
+            with transaction.atomic():
+                active = (
+                    LeaseUnitOccupancy.objects
+                    .select_for_update()
+                    .filter(lease=lease, move_out_date__isnull=True)
+                    .order_by("-move_in_date", "-id")
+                    .first()
+                )
+                if active:
+                    active.move_out_date = move_date - timedelta(days=1) if move_date > active.move_in_date else move_date
+                    if notes:
+                        active.notes = (active.notes + "\n" + notes).strip()
+                    active.save()
+                elif lease.unit_id:
+                    move_out_date = move_date - timedelta(days=1) if move_date > lease.start_date else move_date
+                    LeaseUnitOccupancy.objects.create(
+                        lease=lease,
+                        unit=lease.unit,
+                        move_in_date=lease.start_date,
+                        move_out_date=move_out_date,
+                        notes="Created from existing lease unit during tenant move.",
+                    )
+
+                LeaseUnitOccupancy.objects.create(
+                    lease=lease,
+                    unit=new_unit,
+                    move_in_date=move_date,
+                    notes=notes,
+                )
+                lease.unit = new_unit
+                lease.save(update_fields=["unit"])
+
+            messages.success(request, f"Moved lease #{lease.pk} to {new_unit}.")
+            return redirect("leases:lease_detail", pk=lease.pk)
+    else:
+        form = MoveLeaseUnitForm(lease=lease)
+    return render(
+        request,
+        "smart_meter/lease_unit_move_form.html",
+        {
+            "form": form,
+            "lease": lease,
+            "cancel_url": reverse("leases:lease_detail", args=[lease.pk]),
+        },
+    )
 
 
 def edit_reading(request, pk):
@@ -910,22 +1322,46 @@ def live_custom(request):
     # 1) Pull the filter values from query string
     q = (request.GET.get("q") or "").strip()
     offline_only = (request.GET.get("offline") == "1")
+    active_filter = (request.GET.get("active") or "active").strip()
 
     # 2) Reuse the same cascading filter sets as meter list
     #    selected_meters = the final meter set based on property/unit/meter GET params
     (selected_meters,
      all_properties, filtered_units, filtered_meters,
-     prop_id, unit_id, meter_id) = _filtered_meter_sets(request)
+     prop_id, unit_id, meter_id) = _filtered_meter_sets(
+        request, include_meter_property=False
+    )
+    if active_filter == "active":
+        filtered_meters = filtered_meters.filter(is_active=True)
+    elif active_filter == "inactive":
+        filtered_meters = filtered_meters.filter(is_active=False)
 
     # 3) Base queryset: only readings for the selected meters
     qs = (
         LiveReading.objects
         .select_related("meter", "meter__unit", "meter__unit__property")
-        .filter(meter__in=selected_meters)
+        .only(
+            "id", "meter", "ts", "source_ip", "source_port", "balance",
+            "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
+            "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
+            "meter__is_active",
+            "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
+            "meter__unit__property__id", "meter__unit__property__property_name",
+        )
         .order_by("meter__unit__property__property_name",
                   "meter__unit__unit_number",
                   "meter__meter_number")
     )
+    if meter_id:
+        qs = qs.filter(meter_id=meter_id)
+    elif unit_id:
+        qs = qs.filter(meter__unit_id=unit_id)
+    elif prop_id:
+        qs = qs.filter(meter__unit__property_id=prop_id)
+    if active_filter == "active":
+        qs = qs.filter(meter__is_active=True)
+    elif active_filter == "inactive":
+        qs = qs.filter(meter__is_active=False)
 
     # 4) Optional free-text search across property / unit / meter
     if q:
@@ -943,6 +1379,10 @@ def live_custom(request):
         if offline_only and r.is_online:
             continue
         rows.append(r)
+    attach_active_tenant_names(
+        rows,
+        lambda reading: reading.meter.unit_id if reading.meter else None,
+    )
 
     # Mark selected flags (NO template comparison needed)
     # formatter-proof flags (avoid template comparisons)
@@ -969,6 +1409,7 @@ def live_custom(request):
         "online_minutes": ONLINE_MINUTES,
         "q": q,
         "offline_only": offline_only,
+        "active_filter": active_filter,
 
         # dropdown data (same as meter list)
         "all_properties": all_properties,
@@ -1309,20 +1750,32 @@ BILLING_RATE = Decimal("7.50")
 ONLINE_MINUTES = 10
 
 
-def _filtered_meter_sets(request):
+def _filtered_meter_sets(request, include_meter_property=True):
     """Return (meters_qs, all_properties, filtered_units, filtered_meters, current ids) for meter_filters.html."""
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
 
-    all_properties = Property.objects.all().order_by("property_name")
+    all_properties = Property.objects.only("id", "property_name").order_by("property_name")
 
-    units_qs = Unit.objects.all()
+    units_qs = Unit.objects.only("id", "property_id", "unit_number")
     if prop_id:
         units_qs = units_qs.filter(property_id=prop_id)
     filtered_units = units_qs.order_by("unit_number")
 
-    meters_qs = Meter.objects.select_related("unit", "unit__property")
+    meter_related = ("unit", "unit__property") if include_meter_property else ("unit",)
+    meters_qs = Meter.objects.select_related(*meter_related)
+    if include_meter_property:
+        meters_qs = meters_qs.only(
+            "id", "meter_number", "unit",
+            "unit__id", "unit__unit_number", "unit__property",
+            "unit__property__id", "unit__property__property_name",
+        )
+    else:
+        meters_qs = meters_qs.only(
+            "id", "meter_number", "unit",
+            "unit__id", "unit__unit_number",
+        )
     if unit_id:
         meters_qs = meters_qs.filter(unit_id=unit_id)
     elif prop_id:
@@ -1650,7 +2103,7 @@ def energy_dashboard(request):
     return render(request, "smart_meter/dashboard.html", context)
 
 
-def _filtered_meter_sets(request):
+def _filtered_meter_sets(request, include_meter_property=True):
     """
     Reuse the exact same GET keys your meter filters use: ?property=, ?unit=, ?meter=
     Returns (selected_meters, all_properties, filtered_units,
@@ -1660,14 +2113,26 @@ def _filtered_meter_sets(request):
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
 
-    all_properties = Property.objects.all().order_by("property_name")
+    all_properties = Property.objects.only("id", "property_name").order_by("property_name")
 
-    units_qs = Unit.objects.all()
+    units_qs = Unit.objects.only("id", "property_id", "unit_number")
     if prop_id:
         units_qs = units_qs.filter(property_id=prop_id)
     filtered_units = units_qs.order_by("unit_number")
 
-    meters_qs = Meter.objects.select_related("unit", "unit__property")
+    meter_related = ("unit", "unit__property") if include_meter_property else ("unit",)
+    meters_qs = Meter.objects.select_related(*meter_related)
+    if include_meter_property:
+        meters_qs = meters_qs.only(
+            "id", "meter_number", "unit",
+            "unit__id", "unit__unit_number", "unit__property",
+            "unit__property__id", "unit__property__property_name",
+        )
+    else:
+        meters_qs = meters_qs.only(
+            "id", "meter_number", "unit",
+            "unit__id", "unit__unit_number",
+        )
     if unit_id:
         meters_qs = meters_qs.filter(unit_id=unit_id)
     elif prop_id:
@@ -1700,28 +2165,24 @@ def _parse_meter_param(meter_param: str):
     return Q(meter_number=meter_param)
 
 
-@csrf_exempt
+@login_required
+@require_POST
 def fetch_meter_data(request):
-    if request.method == "POST":
-        try:
-            # Simulate data fetching - in real app, this would call your API
-            # Update last_updated timestamp for all meters
-            from .models import Meter
-            Meter.objects.update(last_updated=timezone.now())
+    try:
+        # Simulate data fetching - in real app, this would call your API
+        # Update last_updated timestamp for all meters
+        from .models import Meter
+        Meter.objects.update(last_updated=timezone.now())
 
-            return JsonResponse({
-                "status": "success",
-                "message": "Meter data refreshed successfully"
-            })
-        except Exception as e:
-            return JsonResponse({
-                "status": "error",
-                "message": f"Failed to fetch data: {str(e)}"
-            }, status=500)
-    return JsonResponse({
-        "status": "error",
-        "message": "Invalid request method"
-    }, status=400)
+        return JsonResponse({
+            "status": "success",
+            "message": "Meter data refreshed successfully"
+        })
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "message": f"Failed to fetch data: {str(e)}"
+        }, status=500)
 
 
 # views.py
@@ -1757,7 +2218,53 @@ def _range_to_dates(range_key: str):
     return None, None
 
 
+def _reading_date_window_from_request(request):
+    range_key = (request.GET.get("range") or "").strip()
+    if range_key not in QUICK_RANGES:
+        range_key = ""
+
+    start_str = (request.GET.get("start") or "").strip()
+    end_str = (request.GET.get("end") or "").strip()
+
+    start_date = end_date = None
+    if range_key and range_key != "custom":
+        start_date, end_date = _range_to_dates(range_key)
+    else:
+        try:
+            if start_str:
+                start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
+            if end_str:
+                end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
+        except ValueError:
+            start_date = end_date = None
+
+    tz = timezone.get_current_timezone()
+
+    def aware_start(d: date | None):
+        if not d:
+            return None
+        return timezone.make_aware(datetime.combine(d, time.min), tz)
+
+    def aware_end_exclusive(d: date | None):
+        if not d:
+            return None
+        next_day = d + timedelta(days=1)
+        return timezone.make_aware(datetime.combine(next_day, time.min), tz)
+
+    return range_key, start_date, end_date, aware_start(start_date), aware_end_exclusive(end_date)
+
+
+def _reading_local_date(reading):
+    ts = getattr(reading, "ts", None)
+    if not ts:
+        return None
+    if timezone.is_aware(ts):
+        return timezone.localtime(ts).date()
+    return ts.date()
+
+
 def reading_list(request):
+    page_size = 100
     prop_id = request.GET.get("property") or ""
     unit_id = request.GET.get("unit") or ""
     meter_id = request.GET.get("meter") or ""
@@ -1824,14 +2331,51 @@ def reading_list(request):
     if end_dt_excl:
         readings = readings.filter(ts__lt=end_dt_excl)
 
-    total_count = readings.count()
     readings = readings.order_by("-ts")
 
-    paginator = Paginator(readings, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
-    page_items = page_obj.object_list
-    rows = [(r, ReadingManualForm(instance=r, request=request, prefix=f"r{r.pk}"))
-            for r in page_items]
+    try:
+        page_number = max(1, int(request.GET.get("page") or 1))
+    except (TypeError, ValueError):
+        page_number = 1
+
+    offset = (page_number - 1) * page_size
+    page_items = list(readings[offset:offset + page_size + 1])
+    has_next = len(page_items) > page_size
+    rows = page_items[:page_size]
+    attach_tenant_names_for_dates(
+        rows,
+        lambda reading: reading.meter.unit_id if reading.meter else None,
+        _reading_local_date,
+    )
+
+    class ReadingPage:
+        def __init__(self, object_list, number, per_page, has_next_page):
+            self.object_list = object_list
+            self.number = number
+            self.per_page = per_page
+            self._has_next = has_next_page
+
+        def __len__(self):
+            return len(self.object_list)
+
+        @property
+        def has_previous(self):
+            return self.number > 1
+
+        @property
+        def has_next(self):
+            return self._has_next
+
+        def previous_page_number(self):
+            return max(1, self.number - 1)
+
+        def next_page_number(self):
+            return self.number + 1
+
+        def start_index(self):
+            if not self.object_list:
+                return 0
+            return ((self.number - 1) * self.per_page) + 1
 
     qs = request.GET.copy()
     qs.pop("page", None)
@@ -1847,7 +2391,7 @@ def reading_list(request):
         current_unit=unit_id,
         current_meter=meter_id,
         rows=rows,
-        page_obj=page_obj, paginator=paginator, total_count=total_count,
+        page_obj=ReadingPage(rows, page_number, page_size, has_next),
         range=range_key,          # keeps the dropdown state
         # still dates for the template's value="{{ start|date:'Y-m-d' }}"
         start=start_date,
@@ -1875,6 +2419,12 @@ def _filtered_readings_qs(request):
     elif prop_id:
         qs = qs.filter(meter__unit__property_id=prop_id)
 
+    _, _, _, start_dt, end_dt_excl = _reading_date_window_from_request(request)
+    if start_dt:
+        qs = qs.filter(ts__gte=start_dt)
+    if end_dt_excl:
+        qs = qs.filter(ts__lt=end_dt_excl)
+
     if q:
         qs = qs.filter(
             Q(meter__meter_number__icontains=q) |
@@ -1886,6 +2436,21 @@ def _filtered_readings_qs(request):
 # smart_meter/views.py (replace the headers/rows in both exporters)
 
 
+def _reading_export_chunks(qs, chunk_size=2000):
+    offset = 0
+    while True:
+        rows = list(qs[offset:offset + chunk_size])
+        if not rows:
+            break
+        attach_tenant_names_for_dates(
+            rows,
+            lambda reading: reading.meter.unit_id if reading.meter else None,
+            _reading_local_date,
+        )
+        yield rows
+        offset += chunk_size
+
+
 def export_meter_readings_csv(request):
     qs = _filtered_readings_qs(request).order_by("-ts")
     now_str = timezone.now().strftime("%Y%m%d_%H%M%S")
@@ -1894,26 +2459,28 @@ def export_meter_readings_csv(request):
     writer = csv.writer(resp)
 
     headers = [
-        "Timestamp", "Property", "Unit", "Meter",
+        "Timestamp", "Property", "Unit", "Tenant", "Meter",
         "Voltage_A(V)", "Current_A(A)", "Total_Power(W)",
         "Total_Energy(kWh)", "PF_Total"
     ]
     writer.writerow(headers)
 
-    for r in qs.iterator(chunk_size=2000):
-        ts = getattr(r, "ts", None)
-        row = [
-            ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "",
-            getattr(r.meter.unit.property, "property_name", ""),
-            getattr(r.meter.unit, "unit_number", ""),
-            r.meter.meter_number,
-            r.voltage_a if r.voltage_a is not None else "",
-            r.current_a if r.current_a is not None else "",
-            r.total_power if r.total_power is not None else "",
-            r.total_energy if r.total_energy is not None else "",
-            r.pf_total if r.pf_total is not None else "",
-        ]
-        writer.writerow(row)
+    for rows in _reading_export_chunks(qs):
+        for r in rows:
+            ts = getattr(r, "ts", None)
+            row = [
+                ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "",
+                getattr(r.meter.unit.property, "property_name", ""),
+                getattr(r.meter.unit, "unit_number", ""),
+                getattr(r, "tenant_name", "Vacant"),
+                r.meter.meter_number,
+                r.voltage_a if r.voltage_a is not None else "",
+                r.current_a if r.current_a is not None else "",
+                r.total_power if r.total_power is not None else "",
+                r.total_energy if r.total_energy is not None else "",
+                r.pf_total if r.pf_total is not None else "",
+            ]
+            writer.writerow(row)
     return resp
 
 
@@ -1926,26 +2493,28 @@ def export_meter_readings_xlsx(request):
     ws.title = "Readings"
 
     headers = [
-        "Timestamp", "Property", "Unit", "Meter",
+        "Timestamp", "Property", "Unit", "Tenant", "Meter",
         "Voltage_A(V)", "Current_A(A)", "Total_Power(W)",
         "Total_Energy(kWh)", "PF_Total"
     ]
     ws.append(headers)
 
-    for r in qs.iterator(chunk_size=2000):
-        ts = getattr(r, "ts", None)
-        row = [
-            ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "",
-            getattr(r.meter.unit.property, "property_name", ""),
-            getattr(r.meter.unit, "unit_number", ""),
-            r.meter.meter_number,
-            r.voltage_a if r.voltage_a is not None else None,
-            r.current_a if r.current_a is not None else None,
-            r.total_power if r.total_power is not None else None,
-            r.total_energy if r.total_energy is not None else None,
-            r.pf_total if r.pf_total is not None else None,
-        ]
-        ws.append(row)
+    for rows in _reading_export_chunks(qs):
+        for r in rows:
+            ts = getattr(r, "ts", None)
+            row = [
+                ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "",
+                getattr(r.meter.unit.property, "property_name", ""),
+                getattr(r.meter.unit, "unit_number", ""),
+                getattr(r, "tenant_name", "Vacant"),
+                r.meter.meter_number,
+                r.voltage_a if r.voltage_a is not None else None,
+                r.current_a if r.current_a is not None else None,
+                r.total_power if r.total_power is not None else None,
+                r.total_energy if r.total_energy is not None else None,
+                r.pf_total if r.pf_total is not None else None,
+            ]
+            ws.append(row)
 
     # Auto width
     for col in ws.columns:
@@ -2822,19 +3391,39 @@ def live_custom_data(request):
     # keep filters identical to live_custom
     q = (request.GET.get("q") or "").strip()
     offline_only = (request.GET.get("offline") == "1")
+    active_filter = (request.GET.get("active") or "active").strip()
 
     (selected_meters,
      all_properties, filtered_units, filtered_meters,
-     prop_id, unit_id, meter_id) = _filtered_meter_sets(request)
+     prop_id, unit_id, meter_id) = _filtered_meter_sets(
+        request, include_meter_property=False
+     )
 
     qs = (
         LiveReading.objects
         .select_related("meter", "meter__unit", "meter__unit__property")
-        .filter(meter__in=selected_meters)
+        .only(
+            "id", "meter", "ts", "source_ip", "source_port", "balance",
+            "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
+            "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
+            "meter__is_active",
+            "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
+            "meter__unit__property__id", "meter__unit__property__property_name",
+        )
         .order_by("meter__unit__property__property_name",
                   "meter__unit__unit_number",
                   "meter__meter_number")
     )
+    if meter_id:
+        qs = qs.filter(meter_id=meter_id)
+    elif unit_id:
+        qs = qs.filter(meter__unit_id=unit_id)
+    elif prop_id:
+        qs = qs.filter(meter__unit__property_id=prop_id)
+    if active_filter == "active":
+        qs = qs.filter(meter__is_active=True)
+    elif active_filter == "inactive":
+        qs = qs.filter(meter__is_active=False)
 
     if q:
         qs = qs.filter(
@@ -2844,6 +3433,9 @@ def live_custom_data(request):
         )
 
     cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+    tenant_names = active_tenant_names_for_units(
+        qs.values_list("meter__unit_id", flat=True)
+    )
 
     payload = []
     for r in qs:
@@ -2864,6 +3456,7 @@ def live_custom_data(request):
             "property_name": p.property_name or "",
             "property_short": (p.property_name or "")[:8],
             "unit_number": u.unit_number or "",
+            "tenant_name": tenant_names.get(u.id, "Vacant"),
             "meter_number": m.meter_number or "",
 
             "updated_ts": _ts_iso(r.ts),

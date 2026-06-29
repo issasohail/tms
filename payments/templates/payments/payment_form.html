@@ -221,7 +221,13 @@
 
                   <td class="col-date">{{ payment.payment_date|date:"M j, Y" }}</td>
 
-                  <td class="col-amount">{{ payment.amount|intcomma }}</td>
+                  <td class="col-amount">
+                    {% if payment.allocation.security_type == "REFUND" %}
+                      <span class="text-danger">-{{ payment.amount|intcomma }}</span>
+                    {% else %}
+                      {{ payment.amount|intcomma }}
+                    {% endif %}
+                  </td>
 
                   <td class="col-pu">
                     <span class="pu-desktop d-none d-sm-inline">
@@ -250,11 +256,12 @@
                         data-unit="{{ payment.lease.unit.unit_number }}"
                         data-amount="{{ payment.amount }}"
                         data-date="{{ payment.payment_date|date:'M d, Y' }}"
-                        data-balance="{{ payment.lease.get_balance }}"
+                        data-balance="{{ payment.cached_lease_balance|default_if_none:payment.lease.get_balance }}"
                         data-start-date="{{ payment.lease.start_date|date:'M d, Y' }}"
                         data-end-date="{{ payment.lease.end_date|date:'M d, Y' }}"
                         data-security-amount="{{ payment.lease.security_deposit|default:0 }}"
                         data-security-paid="{{ payment.lease.security_deposit_paid|yesno:'true,false' }}"
+                        data-security-type="{{ payment.allocation.security_type|default:'PAYMENT' }}"
                         title="WhatsApp">
                         <i class="fab fa-whatsapp"></i>
                         <span class="ms-1 d-none d-sm-inline">WhatsApp</span>
@@ -635,8 +642,8 @@
       sb.textContent = "—";
       return;
     }
-    lb.textContent = "Rs. " + (leaseData.balance || "0.00");
-    sb.textContent = "Rs. " + (leaseData.sec_balance || "0.00");
+    lb.textContent = (window.TMS_CURRENCY_SYMBOL || "{{ CURRENCY_SYMBOL|escapejs }}") + " " + (leaseData.balance || "0.00");
+    sb.textContent = (window.TMS_CURRENCY_SYMBOL || "{{ CURRENCY_SYMBOL|escapejs }}") + " " + (leaseData.sec_balance || "0.00");
   }
 
   function updateLeaseList(){
@@ -744,14 +751,15 @@
         startDate:      $b.data('start-date') || '',
         endDate:        $b.data('end-date') || '',
         securityAmount: $b.data('security-amount'),
-        securityPaid:   String($b.data('security-paid')).toLowerCase() === 'true'
+        securityPaid:   String($b.data('security-paid')).toLowerCase() === 'true',
+        securityType:   String($b.data('security-type') || 'PAYMENT').toUpperCase()
       };
       sendWhatsAppSingle(opts);
     });
   }
 
   function sendWhatsAppSingle(opts){
-    const { phone, firstName, propertyName, unitNumber, amount, paymentDate, balance, startDate, endDate, securityAmount, securityPaid } = opts;
+    const { phone, firstName, propertyName, unitNumber, amount, paymentDate, balance, startDate, endDate, securityAmount, securityPaid, securityType } = opts;
     if (!phone) { alert('No phone number available.'); return; }
 
     let cleaned = String(phone).replace(/[^\d+]/g,'');
@@ -759,16 +767,39 @@
 
     const asNum = v => parseFloat(String(v).replace(/,/g,'')) || 0;
     const fmt   = v => asNum(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const currency = window.TMS_CURRENCY_SYMBOL || '{{ CURRENCY_SYMBOL|escapejs }}';
+    const isRefund = securityType === 'REFUND';
+    const isLeaseRefund = asNum(amount) < 0;
+    const refundAmount = Math.abs(asNum(amount));
 
-    const message =
+    const message = isLeaseRefund ?
+`Dear ${firstName},
+Lease payment refund for
+Unit: ${propertyName}-${unitNumber}
+Period: ${startDate} - ${endDate}
+Date: ${paymentDate}
+*Refund Amount: ${currency} ${fmt(refundAmount)}*
+Balance: ${currency} ${fmt(balance)}
+
+Thank you!` :
+    isRefund ?
+`Dear ${firstName},
+Security deposit refund for
+Unit: ${propertyName}-${unitNumber}
+Period: ${startDate} - ${endDate}
+Date: ${paymentDate}
+*Refund Amount: ${currency} ${fmt(amount)}*
+Lease Balance: ${currency} ${fmt(balance)}
+
+Thank you!` :
 `Dear ${firstName},
 Payment received for
 Unit: ${propertyName}-${unitNumber}
-Period: ${startDate} – ${endDate}
-Security Deposit: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
+Period: ${startDate} - ${endDate}
+Security Deposit: ${currency} ${fmt(securityAmount)} (${securityPaid ? 'Paid' : 'Pending'})
 Date: ${paymentDate}
-Amount: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(amount)}
-Balance: ${window.TMS_CURRENCY_SYMBOL || 'Rs.'} ${fmt(balance)}
+Amount: ${currency} ${fmt(amount)}
+Balance: ${currency} ${fmt(balance)}
 
 Thank you!`;
 
@@ -778,7 +809,6 @@ Thank you!`;
       '_blank'
     );
   }
-
   /* =========================
      Mobile enhancement: put Amount under Date
      ========================= */
@@ -820,10 +850,20 @@ Thank you!`;
     let lock = false;
 
     function applyMode(){
-      const mode = ($mode.val() || 'LEASE').toUpperCase();
+      let mode = ($mode.val() || 'LEASE').toUpperCase();
       const total = n($total.val());
 
+      if (total < 0 && mode !== 'LEASE_REFUND'){
+        mode = 'LEASE_REFUND';
+        $mode.val('LEASE_REFUND');
+      }
+
       if (mode === 'LEASE'){
+        $lease.prop('readonly', true).val(f2(total));
+        $sec.prop('readonly', true).val(f2(0));
+        return;
+      }
+      if (mode === 'LEASE_REFUND'){
         $lease.prop('readonly', true).val(f2(total));
         $sec.prop('readonly', true).val(f2(0));
         return;
@@ -831,6 +871,12 @@ Thank you!`;
       if (mode === 'SECURITY'){
         $lease.prop('readonly', true).val(f2(0));
         $sec.prop('readonly', true).val(f2(total));
+        return;
+      }
+      if (mode === 'REFUND'){
+        $lease.prop('readonly', true).val(f2(0));
+        $sec.prop('readonly', true).val(f2(total));
+        $('#id_security_type').val('REFUND').trigger('change');
         return;
       }
 
@@ -851,8 +897,13 @@ Thank you!`;
       if (lock) return;
       lock = true;
 
-      const mode = ($mode.val() || 'LEASE').toUpperCase();
+      let mode = ($mode.val() || 'LEASE').toUpperCase();
       const total = n($total.val());
+
+      if (total < 0 && mode !== 'LEASE_REFUND'){
+        mode = 'LEASE_REFUND';
+        $mode.val('LEASE_REFUND');
+      }
 
       if (mode !== 'SPLIT'){
         applyMode();

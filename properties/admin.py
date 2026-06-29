@@ -9,8 +9,8 @@ from .models import Property, Unit  # Import models from models.py only
 class UnitAdmin(admin.ModelAdmin):
     # , 'rent_amount', 'is_occupied')
     list_display = ('property', 'unit_number', 'status',
-                    "is_smart_meter", "electric_meter_num", "use_property_bank_account")
-    list_filter = ("is_smart_meter", "property", "status")
+                    "interest_type", "is_smart_meter", "electric_meter_num", "use_property_bank_account")
+    list_filter = ("is_smart_meter", "property", "status", "interest_type")
     search_fields = ('unit_number', 'property__name', "electric_meter_num")
     ordering = ('property', 'unit_number')
     list_editable = ("is_smart_meter", "electric_meter_num")

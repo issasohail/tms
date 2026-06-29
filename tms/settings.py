@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import os
+import importlib.util
 
 LOG_DIR = r"C:\tenant_management_system\logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -98,6 +99,7 @@ INSTALLED_APPS = [
     "weasyprint",
     "dal_select2",
     "maintenance",
+    "whatsapp.apps.WhatsappConfig",
     "django_extensions",
     "django_filters",
     "widget_tweaks",
@@ -125,12 +127,45 @@ CKEDITOR_5_CONFIGS = {
     },
 }
 
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "1186798447852753")
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "4573255446332475")
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "TMS_WHATSAPP_VERIFY_2026")
+WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v23.0")
+WHATSAPP_DEFAULT_COUNTRY_CODE = os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "+92")
+WHATSAPP_REQUEST_TIMEOUT = int(os.getenv("WHATSAPP_REQUEST_TIMEOUT", "20"))
+WHATSAPP_DEFAULT_TEMPLATE_NAME = os.getenv("WHATSAPP_DEFAULT_TEMPLATE_NAME", "hello_world")
+WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE = os.getenv("WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE", "en_US")
+WHATSAPP_AI_ENABLED = os.getenv("WHATSAPP_AI_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+WHATSAPP_AI_PROVIDER = os.getenv("WHATSAPP_AI_PROVIDER", "rules")
+WHATSAPP_AI_OCR_PROVIDER = os.getenv("WHATSAPP_AI_OCR_PROVIDER", "basic")
+WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in {"1", "true", "yes", "on"}
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_WHATSAPP_AI_MODEL = os.getenv("OPENAI_WHATSAPP_AI_MODEL", "gpt-4o-mini")
+
 
 INSTALLED_APPS += ["easy_thumbnails", "image_cropping"]
 THUMBNAIL_PROCESSORS = (
     "image_cropping.thumbnail_processors.crop_corners",
 ) + thumb_settings.THUMBNAIL_PROCESSORS
 IMAGE_CROPPING_THUMB_SIZE = (300, 300)
+
+DEBUG_TOOLBAR_INSTALLED = importlib.util.find_spec("debug_toolbar") is not None
+IS_LOCAL_DEVELOPMENT = os.getenv("TMS_LOCAL_DEV", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+} or os.name == "nt"
+ENABLE_LOCAL_DEBUG_TOOLBAR = DEBUG and IS_LOCAL_DEVELOPMENT and DEBUG_TOOLBAR_INSTALLED and os.getenv("TMS_DISABLE_DEBUG_TOOLBAR", "").lower() not in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+if ENABLE_LOCAL_DEBUG_TOOLBAR:
+    INSTALLED_APPS += ["debug_toolbar"]
 
 MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -139,10 +174,19 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.ImpersonationMiddleware",
+    "accounts.middleware.NoCacheAuthenticatedMiddleware",
+    "accounts.middleware.PermissionEnforcementMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "notifications.middleware.NotificationRecursionMiddleware",  # Add this line
 ]
+
+if ENABLE_LOCAL_DEBUG_TOOLBAR:
+    MIDDLEWARE.insert(
+        MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware") + 1,
+        "debug_toolbar.middleware.DebugToolbarMiddleware",
+    )
 
 CACHES = {
     "default": {
@@ -151,6 +195,21 @@ CACHES = {
     }
 }
 ROOT_URLCONF = "tms.urls"
+
+INTERNAL_IPS = [
+    "127.0.0.1",
+    "localhost",
+    "::1",
+    "192.168.0.0/16",
+]
+
+DEBUG_TOOLBAR_CONFIG = {
+    "INTERCEPT_REDIRECTS": False,
+    "SHOW_TOOLBAR_CALLBACK": "core.debug_toolbar.show_toolbar",
+    "DISABLE_PANELS": {
+        "debug_toolbar.panels.profiling.ProfilingPanel",
+    },
+}
 
 LEASE_STAMP_SCALE = 0.5  # overall scale
 LEASE_STAMP_PROP_SCALE = 0.52

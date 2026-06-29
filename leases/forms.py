@@ -1,4 +1,4 @@
-from .models import Lease, LeaseFamily
+from .models import Lease, LeaseFamily, LeaseFamilyMember, LeaseRelationshipType
 
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from .models import LeaseTemplate
@@ -10,6 +10,7 @@ from tenants.models import Tenant
 from django import forms
 from django.utils import timezone
 from datetime import timedelta
+from core.utils.text import add_auto_titlecase_class
 
 
 from django import forms
@@ -88,6 +89,7 @@ class LeaseForm(forms.ModelForm):
             'paint_condition': forms.Textarea(attrs={'class': 'form-control form-control-sm', 'rows': 2}),
             'key_replacement_cost': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'electric_unit_rate': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
+            'electricity_bill_by_owner': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -98,11 +100,25 @@ class LeaseForm(forms.ModelForm):
         self.fields['tenant'].queryset = Tenant.objects.order_by(
             'first_name', 'last_name')
 
+        optional_police_fields = [
+            "police_verification_status",
+            "police_verification_date",
+            "police_verification_document",
+            "police_verification_remarks",
+            "police_verification_follow_up_date",
+            "police_verified_by",
+        ]
+        for field_name in optional_police_fields:
+            if field_name in self.fields:
+                self.fields[field_name].required = False
+        if "police_verification_status" in self.fields:
+            self.fields["police_verification_status"].initial = "not_started"
+
         # If user selected a property (POST or initial), filter units
         pid = self.data.get('property') or self.initial.get('property')
         if pid:
             try:
-                self.fields['unit'].queryset = Unit.objects.filter(
+                self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                     property_id=int(pid)
                 ).order_by('unit_number')
             except (TypeError, ValueError):
@@ -110,9 +126,10 @@ class LeaseForm(forms.ModelForm):
         # Editing existing lease: keep units for that lease's property
         elif self.instance.pk and self.instance.unit:
             self.fields['property'].initial = self.instance.unit.property
-            self.fields['unit'].queryset = Unit.objects.filter(
+            self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                 property=self.instance.unit.property
             )
+        add_auto_titlecase_class(self.fields)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -120,6 +137,8 @@ class LeaseForm(forms.ModelForm):
         end_date = cleaned_data.get('end_date')
         if start_date and end_date and end_date < start_date:
             raise forms.ValidationError("End date cannot be before start date")
+        if not cleaned_data.get("police_verification_status"):
+            cleaned_data["police_verification_status"] = "not_started"
         return cleaned_data
 
     def clean_signed_agreement(self):
@@ -171,9 +190,10 @@ from .models_renewal import LeaseRenewal
 class DefaultClauseForm(forms.ModelForm):
     class Meta:
         model = DefaultClause
-        fields = ["clause_number", "body", "is_active"]
+        fields = ["clause_number", "category", "body", "is_active"]
         widgets = {
             "clause_number": forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
+            "category": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "body": forms.Textarea(attrs={"rows": 8, "class": "form-control clause-body-field"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
@@ -214,6 +234,10 @@ class AgreementPlaceholderForm(forms.ModelForm):
             raise forms.ValidationError("Use underscores instead of spaces.")
         return key
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"label", "category"})
+
 
 class WhatsAppTemplateForm(forms.ModelForm):
     class Meta:
@@ -225,6 +249,10 @@ class WhatsAppTemplateForm(forms.ModelForm):
             "body": forms.Textarea(attrs={"rows": 10, "class": "form-control whatsapp-template-body"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"name"})
 
 
 LeaseClauseFormSet = inlineformset_factory(
@@ -350,6 +378,10 @@ class LeaseTemplateForm(forms.ModelForm):
             'content': forms.Textarea(attrs={'rows': 20}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"name"})
+
 
 # leases/forms.py
 
@@ -359,18 +391,23 @@ class LeaseTemplateForm(forms.ModelForm):
 
 class LeaseFamilyForm(forms.ModelForm):
     class Meta:
-        model = LeaseFamily
-        fields = ['tenant', 'relation', 'whatsapp_opt_in']
+        model = LeaseFamilyMember
+        fields = ['family_member', 'relationship_type', 'lives_with_tenant', 'notes']
         widgets = {
-            'tenant': forms.Select(attrs={'class': 'form-select form-select-sm'}),
-            'relation': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
-            'whatsapp_opt_in': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'family_member': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'relationship_type': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'lives_with_tenant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'notes': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["relationship_type"].queryset = LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
 
 
 LeaseFamilyFormSet = inlineformset_factory(
     Lease,
-    LeaseFamily,
+    LeaseFamilyMember,
     form=LeaseFamilyForm,
     extra=0,            # existing links only; quick-add handles new rows
     can_delete=True

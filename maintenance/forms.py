@@ -1,6 +1,9 @@
 from django import forms
+from django.utils import timezone
 
-from .models import MaintenanceRequest, MaintenanceRequestMedia
+from leases.models import Lease
+from .models import MaintenanceCategory, MaintenanceRequest, MaintenanceRequestMedia
+from core.utils.text import add_auto_titlecase_class
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -12,6 +15,7 @@ class MultipleFileField(forms.FileField):
         kwargs.setdefault("widget", MultipleFileInput(attrs={
             "class": "form-control form-control-sm",
             "multiple": True,
+            "accept": "image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.heic,.heif",
         }))
         super().__init__(*args, **kwargs)
 
@@ -31,18 +35,15 @@ class MaintenanceRequestForm(forms.ModelForm):
     class Meta:
         model = MaintenanceRequest
         fields = [
-            "tenant", "building", "unit", "lease", "title", "description",
-            "category", "priority", "status", "reported_date",
+            "unit", "title", "description",
+            "status", "priority", "category_ref", "reported_date",
             "resolved_date", "assigned_to", "cost", "admin_notes", "files",
         ]
         widgets = {
-            "tenant": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "building": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "unit": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "lease": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "title": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "description": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 4}),
-            "category": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "category_ref": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "priority": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "status": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "reported_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
@@ -51,6 +52,30 @@ class MaintenanceRequestForm(forms.ModelForm):
             "cost": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0", "step": "0.01"}),
             "admin_notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"title"})
+        self.fields["description"].required = False
+        units = self.fields["unit"].queryset.select_related("property").order_by("property__property_name", "unit_number")
+        current_leases = {}
+        today = timezone.localdate()
+        for lease in (
+            Lease.objects.select_related("tenant", "unit")
+            .filter(status="active", start_date__lte=today, end_date__gte=today, unit_id__in=units.values("id"))
+            .order_by("unit_id", "-start_date", "-id")
+        ):
+            current_leases.setdefault(lease.unit_id, lease)
+        self.fields["unit"].queryset = units
+        self.fields["unit"].label_from_instance = lambda unit: (
+            f"{getattr(unit, 'unit_number', '') or unit} - "
+            f"{getattr(getattr(current_leases.get(unit.pk), 'tenant', None), 'first_name', '') or 'Vacant'}"
+        )
+        self.fields["category_ref"].queryset = MaintenanceCategory.objects.filter(
+            is_active=True
+        ).order_by("sort_order", "name")
+        self.fields["category_ref"].required = False
+        self.fields["category_ref"].label = "Category"
 
 
 class MaintenanceRequestMediaForm(forms.ModelForm):

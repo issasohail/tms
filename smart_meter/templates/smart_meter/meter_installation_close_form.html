@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Close Meter Installation</h5>
+            <a href="{{ cancel_url }}" class="btn btn-sm btn-secondary">Back</a>
+        </div>
+        <div class="card-body">
+            <p class="mb-3">
+                <strong>{{ installation.meter.meter_number }}</strong> on
+                <strong>{{ installation.unit }}</strong>
+            </p>
+            <form method="post" novalidate>
+                {% csrf_token %}
+                {{ form.non_field_errors }}
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">End Date</label>
+                        {{ form.end_date }}
+                        {{ form.end_date.errors }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">End Reading</label>
+                        {{ form.end_reading }}
+                        {{ form.end_reading.errors }}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notes</label>
+                        {{ form.notes }}
+                        {{ form.notes.errors }}
+                    </div>
+                </div>
+
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Close Installation</button>
+                    <a href="{{ cancel_url }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,13 +1,59 @@
 # payments/forms.py
 from django import forms
 from django.apps import apps
-from .models import Payment
+from .models import Payment, PaymentAllocation
 from properties.models import Property, Unit
 from tenants.models import Tenant
-from django.db.models import Q
+from django.db.models import Case, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce
 from leases.models import Lease
+from invoices.models import Invoice
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from core.models import PaymentMethod
+
+
+def optimize_lease_dropdown_queryset(qs):
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    zero = Value(Decimal("0.00"), output_field=money_field)
+
+    invoice_total = (
+        Invoice.objects.filter(lease_id=OuterRef("pk"))
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), zero))
+        .values("total")[:1]
+    )
+    payment_total = (
+        Payment.objects.filter(lease_id=OuterRef("pk"))
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                zero,
+            )
+        )
+        .values("total")[:1]
+    )
+
+    return (
+        qs.select_related('tenant', 'unit', 'unit__property')
+        .annotate(
+            _invoice_total=Coalesce(Subquery(invoice_total, output_field=money_field), zero),
+            _payment_total=Coalesce(Subquery(payment_total, output_field=money_field), zero),
+        )
+        .annotate(
+            cached_balance=ExpressionWrapper(
+                F("_invoice_total") - F("_payment_total"),
+                output_field=money_field,
+            )
+        )
+    )
+
 
 class PaymentForm(forms.ModelForm):
     lease = forms.ModelChoiceField(
@@ -52,7 +98,7 @@ class PaymentForm(forms.ModelForm):
             "id": "id_amount",
             "step": "0.01",            # allow any 2dp
             "inputmode": "decimal",    # better mobile keypad
-            "pattern": r"^\d+([.]\d{0,2})?$",  # xx | xx. | xx.x | xx.xx
+            "pattern": r"^-?\d+([.]\d{0,2})?$",  # xx | -xx | xx. | xx.x | xx.xx
             "lang": "en",              # force '.' as decimal sep in some browsers
             "autocomplete": "off",
         })
@@ -75,15 +121,14 @@ class PaymentForm(forms.ModelForm):
             selected_id = str(instance_lease.pk)
 
         # 2) Build queryset: active + (optionally) the selected (possibly inactive) one
+        # PERF: lease dropdown label renders every option; keep related tenant/unit/property loaded.
         qs = Lease.objects.all()
         if selected_id:
             qs = qs.filter(Q(status='active') | Q(pk=selected_id))
         else:
             qs = qs.filter(status='active')
 
-        self.fields['lease'].queryset = qs.select_related(
-            'tenant', 'unit', 'unit__property'
-        ).order_by('tenant__first_name')
+        self.fields['lease'].queryset = optimize_lease_dropdown_queryset(qs).order_by('tenant__first_name')
 
         # 3) Preselect the lease if we have one
         if lease_param:
@@ -101,7 +146,11 @@ class PaymentForm(forms.ModelForm):
 
         # 5) Your label logic (kept simple and one-liner)
         def format_lease_label(obj):
-            balance = "{:,.2f}".format(float(obj.get_balance))
+            # PERF: get_balance aggregates invoices/payments per lease option; Phase 5 replaces this with annotated values.
+            balance_value = getattr(obj, "cached_balance", None)
+            if balance_value is None:
+                balance_value = obj.get_balance
+            balance = "{:,.2f}".format(float(balance_value or Decimal("0.00")))
             return f"{obj.tenant.get_full_name()} | {obj.unit.property.property_name} - {obj.unit.unit_number} | Balance: {balance}"
         self.fields['lease'].label_from_instance = format_lease_label
 
@@ -109,12 +158,12 @@ class PaymentForm(forms.ModelForm):
         if 'property' in self.data:
             try:
                 property_id = int(self.data.get('property'))
-                self.fields['unit'].queryset = Unit.objects.filter(
+                self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                     property_id=property_id)
             except (ValueError, TypeError):
                 pass
         elif instance_lease:
-            self.fields['unit'].queryset = Unit.objects.filter(
+            self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                 property=instance_lease.unit.property)
             
         # 7) Dynamic payment methods (NEW)
@@ -144,11 +193,11 @@ class PaymentForm(forms.ModelForm):
         if raw.endswith("."):                         # allow trailing dot
             raw += "0"
 
-        # match xx | xx. | xx.x | xx.xx
+        # match xx | -xx | xx. | xx.x | xx.xx
         import re
-        if not re.fullmatch(r"\d+(?:\.\d{0,2})?", raw):
+        if not re.fullmatch(r"-?\d+(?:\.\d{0,2})?", raw):
             raise forms.ValidationError(
-                "Enter a valid amount (e.g., 100, 100., 100.5, 100.50).")
+                "Enter a valid amount (e.g., 100, -100, 100.5, 100.50).")
 
         try:
             amt = Decimal(raw)
@@ -172,7 +221,7 @@ class PaymentForm(forms.ModelForm):
         if lease:
             lease_qs = lease_qs | Lease.objects.filter(pk=lease.pk)
 
-        self.fields['lease'].queryset = lease_qs
+        self.fields['lease'].queryset = optimize_lease_dropdown_queryset(lease_qs)
 
         # Auto-select and validation
         if lease_qs.count() == 1 and not lease:
@@ -206,17 +255,12 @@ class PaymentForm(forms.ModelForm):
 
         return lease_qs.order_by('tenant__first_name', 'tenant__last_name')
 
-from django import forms
-from payments.models import PaymentAllocation
-
-from decimal import Decimal
-from django import forms
-from payments.models import PaymentAllocation
-
 class PaymentAllocationForm(forms.ModelForm):
     MODE_CHOICES = [
         ("LEASE", "Lease"),
+        ("LEASE_REFUND", "Lease Refund"),
         ("SECURITY", "Security"),
+        ("REFUND", "Refund"),
         ("SPLIT", "Split"),
     ]
 
@@ -232,11 +276,12 @@ class PaymentAllocationForm(forms.ModelForm):
         fields = ["allocation_mode", "lease_amount", "security_amount", "security_type"]
         widgets = {
             "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
-            "security_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
+            "security_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
             "security_type": forms.Select(attrs={"class": "form-select"}),
         }
 
     def __init__(self, *args, **kwargs):
+        self.payment_total = kwargs.pop("payment_total", None)
         super().__init__(*args, **kwargs)
 
         # When editing an existing allocation, pick the correct mode so JS doesn't overwrite values
@@ -245,7 +290,13 @@ class PaymentAllocationForm(forms.ModelForm):
             lease_amt = inst.lease_amount or Decimal("0.00")
             sec_amt = inst.security_amount or Decimal("0.00")
 
-            if lease_amt > 0 and sec_amt > 0:
+            sec_type = (inst.security_type or "PAYMENT").upper()
+
+            if lease_amt < 0 and sec_amt <= 0:
+                mode = "LEASE_REFUND"
+            elif sec_type == "REFUND" and sec_amt > 0 and lease_amt <= 0:
+                mode = "REFUND"
+            elif lease_amt > 0 and sec_amt > 0:
                 mode = "SPLIT"
             elif sec_amt > 0 and lease_amt <= 0:
                 mode = "SECURITY"
@@ -256,46 +307,49 @@ class PaymentAllocationForm(forms.ModelForm):
             # If the field already has initial/posted value, don't fight it; but for GET edit this fixes display.
             if "allocation_mode" not in self.data:
                 self.initial["allocation_mode"] = mode
-
-    MODE_CHOICES = [
-            ("LEASE", "Lease"),
-            ("SECURITY", "Security"),
-            ("SPLIT", "Split"),
-        ]
-    allocation_mode = forms.ChoiceField(
-            choices=MODE_CHOICES,
-            required=False,
-            initial="LEASE",
-            widget=forms.Select(attrs={"class": "form-select"})
-        )
-    class Meta:
-
-        model = PaymentAllocation
-        fields = ["allocation_mode","lease_amount", "security_amount", "security_type"]
-        widgets = {
-           
-            "lease_amount": forms.NumberInput(attrs={ "class": "form-control"}),
-            "security_amount": forms.NumberInput(attrs={ "class": "form-control"}),
-            "security_type": forms.Select(attrs={"class": "form-select"}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # If editing an existing allocation, set mode based on stored split
-        inst = getattr(self, "instance", None)
-        if inst and getattr(inst, "pk", None):
-            la = inst.lease_amount or Decimal("0.00")
-            sa = inst.security_amount or Decimal("0.00")
-
-            if la > 0 and sa > 0:
-                mode = "SPLIT"
-            elif sa > 0 and la == 0:
-                mode = "SECURITY"
-            else:
-                mode = "LEASE"
-
-            self.fields["allocation_mode"].initial = mode
         else:
-            # create default
             self.fields["allocation_mode"].initial = "LEASE"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        mode = (cleaned_data.get("allocation_mode") or "LEASE").upper()
+        lease_amount = cleaned_data.get("lease_amount") or Decimal("0.00")
+        security_amount = cleaned_data.get("security_amount") or Decimal("0.00")
+
+        payment_total = self.payment_total
+        if payment_total is not None:
+            payment_total = Decimal(payment_total or "0.00")
+            if payment_total < 0:
+                mode = "LEASE_REFUND"
+
+        if lease_amount < 0 and mode != "LEASE_REFUND":
+            self.add_error("lease_amount", "Lease amount cannot be negative unless Allocation Mode is Lease Refund.")
+        if security_amount < 0:
+            self.add_error("security_amount", "Security amount cannot be negative.")
+
+        if payment_total is not None:
+            if mode == "LEASE":
+                lease_amount = payment_total
+                security_amount = Decimal("0.00")
+            elif mode == "LEASE_REFUND":
+                lease_amount = payment_total
+                security_amount = Decimal("0.00")
+            elif mode == "SECURITY":
+                lease_amount = Decimal("0.00")
+                security_amount = payment_total
+            elif mode == "REFUND":
+                lease_amount = Decimal("0.00")
+                security_amount = payment_total
+                cleaned_data["security_type"] = "REFUND"
+            elif lease_amount + security_amount != payment_total:
+                raise forms.ValidationError(
+                    f"Allocation total ({lease_amount + security_amount}) must equal Payment amount ({payment_total})."
+                )
+
+        cleaned_data["allocation_mode"] = mode
+        cleaned_data["lease_amount"] = lease_amount
+        cleaned_data["security_amount"] = security_amount
+        cleaned_data["security_type"] = (cleaned_data.get("security_type") or "PAYMENT").upper()
+        if mode == "REFUND":
+            cleaned_data["security_type"] = "REFUND"
+        return cleaned_data

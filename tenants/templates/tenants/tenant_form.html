@@ -1,223 +1,527 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load crispy_forms_tags %}
 
 {% block title %}{% if form.instance.pk %}Update{% else %}Create{% endif %} Tenant{% endblock %}
-
+{% block main_container_class %}container-fluid px-0{% endblock %}
 {% block content %}
-<div class="container-fluid grid-tight control-sm">
-
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center py-2">
-            <h5 class="mb-0">{% if form.instance.pk %}Update{% else %}Create{% endif %} Tenant</h5>
-            <div>
-                <button class="btn btn-outline-secondary" onclick="history.back()">Go Back</button>
-                <button type="submit" form="tenantForm" class="btn btn-primary btn-sm">Save</button>
-                <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" 
-                   class="btn btn-outline-secondary btn-sm ms-1">Cancel</a>
-            </div>
-        </div>
-        <div class="card-body p-2">
-            <form method="post" enctype="multipart/form-data" id="tenantForm">
-                {% csrf_token %}
-                
-                <div class="row">
-                    <!-- Left Column - Personal Info -->
-                    <div class="col-lg-7 col-md-6 pe-2">
-                        <!-- Row 1: Basic Info -->
-                        <div class="row gx-1 mb-1">
-                            <div class="col-sm-3 col-6">{{ form.prefix|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.first_name|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.relation|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.last_name|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.cnic|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.phone|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.phone2|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.phone3|as_crispy_field }}</div>
-                        </div>
-                        
-                        <!-- Row 2: Personal Details -->
-                        <div class="row gx-1 mb-1">
-                            <div class="col-sm-4 col-6">{{ form.email|as_crispy_field }}</div>
-                            <div class="col-sm-2 col-6">{{ form.gender|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.date_of_birth|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.number_of_family_member|as_crispy_field }}</div>
-                        </div>
-                        
-                        <!-- Row 3: Emergency Contacts -->
-                        <div class="row gx-1 mb-1">
-                            <div class="col-sm-4 col-6">{{ form.emergency_contact_name|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.emergency_contact_phone|as_crispy_field }}</div>
-                            <div class="col-sm-3 col-6">{{ form.emergency_contact_relation|as_crispy_field }}</div>
-                        </div>
-                        
-                        <!-- Row 4: Address & Notes (side by side with 4 lines each) -->
-                        <div class="row gx-1">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label class="form-label">{{ form.address.label }}</label>
-                                    <textarea name="{{ form.address.name }}" class="form-control" rows="2">{{ form.address.value|default:'' }}</textarea>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label class="form-label">{{ form.notes.label }}</label>
-                                    <textarea name="{{ form.notes.name }}" class="form-control" rows="2">{{ form.notes.value|default:'' }}</textarea>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Right Column - Documents -->
-                    <div class="col-lg-5 col-md-6 ps-2">
-                        <div class="card border-0 bg-light h-100">
-                            <div class="card-body p-2 d-flex flex-column">
-                                <!-- Image Upload Section -->
-                                <div class="row gx-1 mb-2 flex-grow-1">
-                                    <!-- Photo -->
-                                    <div class="col-4 d-flex flex-column">
-                                        <label class="small text-muted text-center mb-1">Photo</label>
-                                        <div class="image-upload-container flex-grow-1 d-flex flex-column">
-                                            {% if form.instance.photo %}
-                                                <img src="{{ form.instance.photo.url }}" class="img-thumbnail w-100 mb-1" style="height:100px;object-fit:cover;">
-                                            {% else %}
-                                                <div class="bg-light d-flex justify-content-center align-items-center" style="height:100px;">
-                                                    <i class="fas fa-user-slash text-muted"></i>
-                                                </div>
-                                            {% endif %}
-                                            <label class="btn btn-sm btn-outline-primary w-100">
-                                                <input type="file" name="{{ form.photo.name }}" class="d-none" accept="image/*">
-                                                Upload
-                                            </label>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- CNIC Front -->
-                                    <div class="col-4 d-flex flex-column">
-                                        <label class="small text-muted text-center mb-1">CNIC Front</label>
-                                        <div class="image-upload-container flex-grow-1 d-flex flex-column">
-                                            {% if form.instance.cnic_front %}
-                                                <img src="{{ form.instance.cnic_front.url }}" class="img-thumbnail w-100 mb-1" style="height:100px;object-fit:cover;">
-                                            {% else %}
-                                                <div class="bg-light d-flex justify-content-center align-items-center" style="height:100px;">
-                                                    <i class="fas fa-id-card text-muted"></i>
-                                                </div>
-                                            {% endif %}
-                                            <label class="btn btn-sm btn-outline-primary w-100">
-                                                <input type="file" name="{{ form.cnic_front.name }}" class="d-none" accept="image/*">
-                                                Upload
-                                            </label>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- CNIC Back -->
-                                    <div class="col-4 d-flex flex-column">
-                                        <label class="small text-muted text-center mb-1">CNIC Back</label>
-                                        <div class="image-upload-container flex-grow-1 d-flex flex-column">
-                                            {% if form.instance.cnic_back %}
-                                                <img src="{{ form.instance.cnic_back.url }}" class="img-thumbnail w-100 mb-1" style="height:100px;object-fit:cover;">
-                                            {% else %}
-                                                <div class="bg-light d-flex justify-content-center align-items-center" style="height:100px;">
-                                                    <i class="fas fa-id-card text-muted"></i>
-                                                </div>
-                                            {% endif %}
-                                            <label class="btn btn-sm btn-outline-primary w-100">
-                                                <input type="file" name="{{ form.cnic_back.name }}" class="d-none" accept="image/*">
-                                                Upload
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Status Section -->
-                                <div class="row gx-1 mt-auto">
-                                    <div class="col-12">
-                                        {{ form.is_active|as_crispy_field }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <style>
-    /* Compact form styling */
-    .form-control, .form-select, .form-control-sm {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.8rem;
-        height: calc(1.8em + 0.5rem + 2px);
-    }
-    .form-group {
-        margin-bottom: 0.4rem;
-    }
-    .card {
-        font-size: 0.85rem;
-    }
-    .form-label {
-        margin-bottom: 0.1rem;
-        font-size: 0.75rem;
-    }
-    
-    /* Image upload styling */
-    .image-upload-container {
-        min-height: 120px;
-    }
-    .img-thumbnail {
-        padding: 0.1rem;
-        background-color: #fff;
-    }
-    
-    /* Textarea styling */
-    textarea.form-control {
-        min-height: calc(4 * (1.8em + 0.5rem + 2px));
-    }
-    
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-        .pe-2, .ps-2 {
-            padding-right: 0.5rem !important;
-            padding-left: 0.5rem !important;
-        }
-    }
-   
-  .grid-tight .row { --bs-gutter-x: .5rem; --bs-gutter-y: .4rem; }
-  .form-label { margin-bottom: .15rem; font-size: .8rem; }
-  .card, .border { border-radius: .6rem; }
-  .p-2-compact { padding: .5rem !important; }
-  .control-sm .form-control, .control-sm .form-select {
-    padding: .3rem .5rem; font-size: .85rem; height: calc(1.8em + .6rem + 2px);
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --reg-bg:        #f0f2f5;
+    --reg-surface:   #ffffff;
+    --reg-surface2:  #f7f8fa;
+    --reg-border:    #e2e5ea;
+    --reg-border2:   #d0d4db;
+    --reg-primary:   #1a56db;
+    --reg-primary-h: #1446c0;
+    --reg-primary-bg:#eff4ff;
+    --reg-text:      #111827;
+    --reg-text-2:    #374151;
+    --reg-text-3:    #6b7280;
+    --reg-text-4:    #9ca3af;
+    --reg-danger:    #dc2626;
+    --reg-warn:      #d97706;
+    --reg-radius:    6px;
+    --reg-radius-lg: 10px;
+    --reg-shadow:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+    --reg-font:      'DM Sans', system-ui, sans-serif;
   }
-  .section-title { font-weight: 600; font-size: .9rem; color: #6c757d; margin-bottom: .25rem; }
-  textarea.form-control { min-height: unset; }
+  body { background: var(--reg-bg); }
+  .reg-page {
+    max-width: 1420px;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 2.5rem;
+    font-family: var(--reg-font);
+    font-size: 14px;
+    color: var(--reg-text);
+  }
+  .reg-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--reg-border);
+  }
+  .reg-page-header .header-meta { display: flex; align-items: center; gap: .75rem; }
+  .header-icon {
+    width: 38px; height: 38px;
+    border-radius: var(--reg-radius);
+    background: var(--reg-primary-bg);
+    color: var(--reg-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .reg-page-header h1 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0 0 .15rem;
+    color: var(--reg-text);
+    letter-spacing: -.015em;
+  }
+  .reg-page-header .subtext {
+    font-size: .75rem;
+    color: var(--reg-text-3);
+    display: flex; align-items: center; gap: .3rem;
+  }
+  .reg-page-header .subtext i { color: var(--reg-warn); font-size: .7rem; }
+  .header-actions { display:flex; gap:.4rem; flex-wrap:wrap; justify-content:flex-end; }
+  .btn-submit-main,
+  .btn-admin-secondary {
+    border-radius: var(--reg-radius);
+    padding: .45rem 1rem;
+    font-size: .82rem;
+    font-weight: 600;
+    font-family: var(--reg-font);
+    cursor: pointer;
+    display: flex; align-items: center; gap: .4rem;
+    white-space: nowrap;
+    transition: background .15s, color .15s, border-color .15s;
+    text-decoration:none;
+  }
+  .btn-submit-main { background: var(--reg-primary); color: #fff; border: none; }
+  .btn-submit-main:hover { background: var(--reg-primary-h); color:#fff; }
+  .btn-admin-secondary { background:#fff; color:var(--reg-text-2); border:1px solid var(--reg-border2); }
+  .btn-admin-secondary:hover { background:var(--reg-surface2); color:var(--reg-text); }
+  .reg-card {
+    background: var(--reg-surface);
+    border: 1px solid var(--reg-border);
+    border-radius: var(--reg-radius-lg);
+    box-shadow: var(--reg-shadow);
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .reg-card-header {
+    padding: .6rem .9rem;
+    border-bottom: 1px solid var(--reg-border);
+    background: var(--reg-surface2);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .reg-card-header .section-icon {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    background: var(--reg-primary-bg);
+    color: var(--reg-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .65rem;
+    flex-shrink: 0;
+  }
+  .reg-card-header h6 {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--reg-text-2);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin: 0;
+  }
+  .reg-card-body { padding: .9rem; }
+  .dense-body { padding: .75rem .8rem; }
+  .field-group { display: grid; gap: .5rem .6rem; }
+  .dense-grid { gap: .45rem .55rem; }
+  .field-wrap { display: flex; flex-direction: column; min-width:0; }
+  .field-wrap label,
+  .field-label {
+    font-size: .72rem !important;
+    font-weight: 500 !important;
+    color: var(--reg-text-3) !important;
+    text-transform: uppercase;
+    letter-spacing: .035em;
+    margin-bottom: .25rem !important;
+  }
+  .field-control,
+  .reg-page input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  .reg-page select,
+  .reg-page textarea {
+    background: var(--reg-surface);
+    border: 1px solid var(--reg-border2);
+    border-radius: var(--reg-radius);
+    padding: .32rem .55rem;
+    font-size: .83rem;
+    font-family: var(--reg-font);
+    color: var(--reg-text);
+    width: 100%;
+    transition: border-color .15s, box-shadow .15s;
+    line-height: 1.4;
+    min-height: 32px;
+  }
+  .reg-page input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  .reg-page select { height: 32px; }
+  .field-control:focus,
+  .reg-page input:focus,
+  .reg-page select:focus,
+  .reg-page textarea:focus {
+    outline: none;
+    border-color: var(--reg-primary);
+    box-shadow: 0 0 0 3px rgba(26,86,219,.12);
+  }
+  .reg-page select { cursor: pointer; }
+  .reg-page textarea { height: 32px; min-height: 32px; resize: vertical; }
+  .address-grid textarea { height: auto !important; min-height: 86px !important; resize: vertical; line-height: 1.35; }
+  .g2 { grid-template-columns: repeat(2,1fr); }
+  .g3 { grid-template-columns: repeat(3,1fr); }
+  .g4 { grid-template-columns: repeat(4,1fr); }
+  .g5 { grid-template-columns: repeat(5,1fr); }
+  .g6 { grid-template-columns: repeat(6,1fr); }
+  .g7 { grid-template-columns: repeat(7,1fr); }
+  .core-name-grid { grid-template-columns: 60px 1fr 80px 1fr 180px; }
+  .core-contact-grid { grid-template-columns: repeat(4, 1fr); }
+  .core-extra-grid { grid-template-columns: 1.8fr .78fr .9fr 1fr 1fr 1fr 1fr; }
+  .core-employment-grid { grid-template-columns: repeat(5, 1fr) 1.5fr; }
+  .compact-field { max-width: 130px; }
+  .family-member-grid { grid-template-columns: 150px 150px 150px 120px 120px 120px 120px 120px 200px 1fr; }
+  .photo-panel { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: .5rem; align-items: stretch; justify-content: start; }
+  .compact-photo-panel { max-width: 520px; }
+  .core-top-grid { display: grid; grid-template-columns: minmax(440px, 520px) minmax(0, 1fr); gap: .75rem; align-items: start; }
+  .document-block, .core-fields-block { min-width: 0; }
+  .mini-section-title { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--reg-text-4); margin-bottom: .35rem; }
+  .mt-compact { margin-top: .55rem; }
+  .photo-slot { display: flex; flex-direction: column; gap: .3rem; }
+  .photo-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--reg-text-3); text-align: center; }
+  .photo-preview-wrap {
+    flex: 1;
+    min-height: 116px;
+    border: 1.5px dashed var(--reg-border2);
+    border-radius: var(--reg-radius);
+    background: var(--reg-surface2);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    position: relative;
+  }
+  .photo-preview-wrap:hover { border-color: var(--reg-primary); background: var(--reg-primary-bg); }
+  .photo-preview-wrap img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+  .photo-preview-wrap .placeholder-icon { font-size: 1.4rem; color: var(--reg-text-4); }
+  .photo-preview-wrap input[type='file'] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; z-index:2; }
+  .btn-upload { background: none; border: 1px solid var(--reg-primary); border-radius: var(--reg-radius); color: var(--reg-primary); font-size: .72rem; font-weight: 600; font-family: var(--reg-font); padding: .25rem .4rem; cursor: pointer; text-align: center; transition: background .15s, color .15s; width: 100%; }
+  .btn-upload:hover { background: var(--reg-primary-bg); }
+  .interest-grid { display: flex; flex-wrap: wrap; gap: .35rem .5rem; padding: .5rem .6rem; border: 1px solid var(--reg-border2); border-radius: var(--reg-radius); background: var(--reg-surface2); }
+  .interest-item { display: flex; align-items: center; gap: .3rem; font-size: .8rem; color: var(--reg-text-2); cursor: pointer; padding: .2rem .45rem; border-radius: 4px; border: 1px solid transparent; transition: border-color .15s, background .15s; text-transform:none !important; letter-spacing:0 !important; margin:0 !important; }
+  .interest-item input[type='checkbox'] { accent-color: var(--reg-primary); cursor: pointer; }
+  .interest-item:has(input:checked) { background: var(--reg-primary-bg); border-color: rgba(26,86,219,.25); color: var(--reg-primary); font-weight: 500; }
+  .notify-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: .4rem; }
+  .notify-item { display: flex; align-items: center; gap: .35rem; font-size: .81rem; color: var(--reg-text-2); cursor: pointer; text-transform:none !important; letter-spacing:0 !important; margin:0 !important; }
+  .notify-item input[type='checkbox'] { accent-color: var(--reg-primary); }
+  .family-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-bottom: .75rem; }
+  .family-table th { background: var(--reg-surface2); border-bottom: 1px solid var(--reg-border); padding: .4rem .6rem; text-align: left; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--reg-text-3); }
+  .family-table td { padding: .4rem .6rem; border-bottom: 1px solid var(--reg-border); color: var(--reg-text-2); }
+  .family-table tr:last-child td { border-bottom: none; }
+  .family-table-wrap { border: 1px solid var(--reg-border); border-radius: var(--reg-radius); overflow: hidden; margin-bottom: .75rem; overflow-x: auto; }
+  .btn-add-family { background: none; border: 1px solid var(--reg-primary); color: var(--reg-primary); border-radius: var(--reg-radius); font-size: .75rem; font-weight: 600; font-family: var(--reg-font); padding: .3rem .65rem; cursor: pointer; display: flex; align-items: center; gap: .3rem; transition: background .15s; }
+  .btn-add-family:hover { background: var(--reg-primary-bg); }
+  .family-member-card { border: 1px solid var(--reg-border); border-radius: var(--reg-radius-lg); padding: .75rem; background: var(--reg-surface2); position: relative; }
+  .family-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .6rem; }
+  .family-card-num { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--reg-text-4); }
+  .btn-remove-family { background: none; border: 1px solid #fca5a5; color: var(--reg-danger); border-radius: var(--reg-radius); font-size: .72rem; font-weight: 600; font-family: var(--reg-font); padding: .2rem .5rem; cursor: pointer; display: flex; align-items: center; gap: .25rem; transition: background .15s; }
+  .btn-remove-family:hover { background: #fef2f2; }
+  .reg-footer { display: flex; justify-content: flex-end; padding-top: .75rem; margin-top: .5rem; border-top: 1px solid var(--reg-border); gap:.4rem; }
+  .reg-alert { background: #fef2f2; border: 1px solid #fca5a5; color: var(--reg-danger); border-radius: var(--reg-radius); padding: .5rem .75rem; font-size: .8rem; margin-bottom: .75rem; }
+  .text-error { color: var(--reg-danger); font-size:.75rem; margin-top:.2rem; }
+  @media (max-width: 1024px) {
+    .g7, .g6 { grid-template-columns: repeat(3,1fr); }
+    .g4 { grid-template-columns: repeat(2,1fr); }
+    .core-top-grid { grid-template-columns: 1fr; }
+    .family-member-grid, .core-name-grid, .core-contact-grid, .core-extra-grid, .core-employment-grid { grid-template-columns: repeat(3,1fr); }
+  }
+  @media (max-width: 600px) {
+    .reg-page { padding: .75rem .6rem 2rem; }
+    .reg-page-header { flex-wrap: wrap; }
+    .reg-page-header .header-meta { flex: 1 1 100%; }
+    .header-actions, .btn-submit-main, .btn-admin-secondary { width: 100%; justify-content: center; }
+    .g7, .g6, .g5, .g4, .g3, .g2, .family-member-grid, .core-name-grid, .core-contact-grid, .core-extra-grid, .core-employment-grid { grid-template-columns: 1fr 1fr; }
+    .photo-panel { grid-template-columns: 1fr 1fr 1fr; gap: .4rem; }
+    .reg-card-body { padding: .65rem; }
+  }
+  @media (max-width: 400px) {
+    .g7, .g6, .g5, .g4, .g3, .g2, .family-member-grid, .core-name-grid, .core-contact-grid, .core-extra-grid, .core-employment-grid { grid-template-columns: 1fr; }
+    .photo-panel { grid-template-columns: repeat(3, 1fr); gap: .3rem; }
+    .photo-preview-wrap { min-height: 95px; }
+  }
 </style>
 
+<div class="reg-page">
+  <div class="reg-page-header">
+    <div class="header-meta">
+      <div class="header-icon"><i class="fas fa-user-check"></i></div>
+      <div>
+        <h1>{% if form.instance.pk %}Update Tenant{% else %}Create Tenant{% endif %}</h1>
+        <div class="subtext">
+          <i class="fas fa-pen-to-square"></i>
+          Tenant information, documents, preferences, address, and verification details.
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn-admin-secondary" onclick="history.back()"><i class="fas fa-arrow-left"></i> Go Back</button>
+      <button type="submit" form="tenantForm" class="btn-submit-main"><i class="fas fa-save"></i> Save</button>
+      <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" class="btn-admin-secondary"><i class="fas fa-times"></i> Cancel</a>
+    </div>
+  </div>
 
+  <form method="post" enctype="multipart/form-data" id="tenantForm" novalidate>
+    {% csrf_token %}
+    <div class="d-none">
+      {% if form.photo_crop %}{{ form.photo_crop }}{% endif %}
+      {% if form.cnic_front_crop %}{{ form.cnic_front_crop }}{% endif %}
+      {% if form.cnic_back_crop %}{{ form.cnic_back_crop }}{% endif %}
+    </div>
+
+    {% if form.errors %}
+      <div class="reg-alert">
+        <strong>Please fix the highlighted fields.</strong>
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          {% for error in field.errors %}
+            <div>{{ field.label }}: {{ error }}</div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="reg-card">
+      <div class="reg-card-header">
+        <div class="section-icon"><i class="fas fa-id-card"></i></div>
+        <h6>Documents &amp; Core Tenant Details</h6>
+      </div>
+      <div class="reg-card-body dense-body">
+        <div class="core-top-grid">
+          <div class="document-block">
+            <div class="mini-section-title">Documents &amp; Photo</div>
+            <div class="photo-panel compact-photo-panel">
+              <div class="photo-slot">
+                <div class="photo-label">Photo</div>
+                <label class="photo-preview-wrap image-upload-container" for="{{ form.photo.id_for_label }}">
+                  {% if form.instance.photo %}<img src="{{ form.instance.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<div class="placeholder-icon"><i class="fas fa-user-circle"></i></div>{% endif %}
+                  {{ form.photo }}
+                </label>
+                <label class="btn-upload" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
+              </div>
+              <div class="photo-slot">
+                <div class="photo-label">CNIC Front</div>
+                <label class="photo-preview-wrap image-upload-container" for="{{ form.cnic_front.id_for_label }}">
+                  {% if form.instance.cnic_front %}<img src="{{ form.instance.cnic_front.url }}" class="public-file-preview" alt="CNIC Front">{% else %}<div class="placeholder-icon"><i class="fas fa-id-card"></i></div>{% endif %}
+                  {{ form.cnic_front }}
+                </label>
+                <label class="btn-upload" for="{{ form.cnic_front.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
+              </div>
+              <div class="photo-slot">
+                <div class="photo-label">CNIC Back</div>
+                <label class="photo-preview-wrap image-upload-container" for="{{ form.cnic_back.id_for_label }}">
+                  {% if form.instance.cnic_back %}<img src="{{ form.instance.cnic_back.url }}" class="public-file-preview" alt="CNIC Back">{% else %}<div class="placeholder-icon"><i class="fas fa-id-card"></i></div>{% endif %}
+                  {{ form.cnic_back }}
+                </label>
+                <label class="btn-upload" for="{{ form.cnic_back.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="core-fields-block">
+            <div class="mini-section-title">Personal Information</div>
+            <div class="field-group core-name-grid dense-grid">
+              <div class="field-wrap compact-field">{{ form.prefix.label_tag }}{{ form.prefix }}{{ form.prefix.errors }}</div>
+              <div class="field-wrap">{{ form.first_name.label_tag }}{{ form.first_name }}{{ form.first_name.errors }}</div>
+              <div class="field-wrap compact-field">{{ form.relation.label_tag }}{{ form.relation }}{{ form.relation.errors }}</div>
+              <div class="field-wrap">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
+              <div class="field-wrap">{{ form.number_of_family_member.label_tag }}{{ form.number_of_family_member }}{{ form.number_of_family_member.errors }}</div>
+            </div>
+
+            <div class="mini-section-title mt-compact">Identity &amp; Contact</div>
+            <div class="field-group core-contact-grid dense-grid">
+              <div class="field-wrap">{{ form.cnic.label_tag }}{{ form.cnic }}{{ form.cnic.errors }}</div>
+              <div class="field-wrap">{{ form.phone.label_tag }}{{ form.phone }}{{ form.phone.errors }}</div>
+              <div class="field-wrap">{{ form.phone2.label_tag }}{{ form.phone2 }}{{ form.phone2.errors }}</div>
+              <div class="field-wrap">{{ form.phone3.label_tag }}{{ form.phone3 }}{{ form.phone3.errors }}</div>
+            </div>
+            <div class="field-group core-extra-grid dense-grid mt-compact">
+              <div class="field-wrap">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
+              <div class="field-wrap compact-field">{{ form.gender.label_tag }}{{ form.gender }}{{ form.gender.errors }}</div>
+              <div class="field-wrap compact-field">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}{{ form.date_of_birth.errors }}</div>
+              <div class="field-wrap">{{ form.nationality.label_tag }}{{ form.nationality }}{{ form.nationality.errors }}</div>
+              <div class="field-wrap">{{ form.city.label_tag }}{{ form.city }}{{ form.city.errors }}</div>
+              <div class="field-wrap">{{ form.province.label_tag }}{{ form.province }}{{ form.province.errors }}</div>
+              <div class="field-wrap">{{ form.country.label_tag }}{{ form.country }}{{ form.country.errors }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reg-card">
+      <div class="reg-card-header"><div class="section-icon"><i class="fas fa-address-book"></i></div><h6>References</h6></div>
+      <div class="reg-card-body dense-body">
+        <div class="field-group g6 dense-grid">
+          <div class="field-wrap">{{ form.reference_name_1.label_tag }}{{ form.reference_name_1 }}</div>
+          <div class="field-wrap">{{ form.reference_phone_1.label_tag }}{{ form.reference_phone_1 }}</div>
+          <div class="field-wrap">{{ form.reference_relation_1.label_tag }}{{ form.reference_relation_1 }}</div>
+          <div class="field-wrap">{{ form.reference_name_2.label_tag }}{{ form.reference_name_2 }}</div>
+          <div class="field-wrap">{{ form.reference_phone_2.label_tag }}{{ form.reference_phone_2 }}</div>
+          <div class="field-wrap">{{ form.reference_relation_2.label_tag }}{{ form.reference_relation_2 }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reg-card">
+      <div class="reg-card-header"><div class="section-icon"><i class="fas fa-briefcase"></i></div><h6>Employment &amp; Emergency Contact</h6></div>
+      <div class="reg-card-body dense-body">
+        <div class="field-group core-employment-grid dense-grid">
+          <div class="field-wrap">{{ form.occupation.label_tag }}{{ form.occupation }}</div>
+          <div class="field-wrap">{{ form.employer_name.label_tag }}{{ form.employer_name }}</div>
+          <div class="field-wrap">{{ form.employer_phone.label_tag }}{{ form.employer_phone }}</div>
+          <div class="field-wrap">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}</div>
+          <div class="field-wrap">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}</div>
+          <div class="field-wrap">{{ form.emergency_contact_relation.label_tag }}{{ form.emergency_contact_relation }}</div>
+        </div>
+      </div>
+    </div>
+
+    {% if form.interested_in %}
+    <div class="reg-card">
+      <div class="reg-card-header"><div class="section-icon"><i class="fas fa-home"></i></div><h6>Preferences</h6></div>
+      <div class="reg-card-body dense-body">
+        {% if form.interested_in %}
+        <div class="field-wrap">
+          <div class="field-label">Interested in</div>
+          <div class="interest-grid">
+            {% for choice in form.interested_in %}<label class="interest-item">{{ choice.tag }} {{ choice.choice_label }}</label>{% empty %}<span style="font-size:.78rem;color:var(--reg-text-4);">No options configured.</span>{% endfor %}
+          </div>
+          {% for error in form.interested_in.errors %}<div class="text-error">{{ error }}</div>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="reg-card">
+      <div class="reg-card-header"><div class="section-icon"><i class="fas fa-map-marker-alt"></i></div><h6>Address &amp; Notes</h6></div>
+      <div class="reg-card-body dense-body">
+        <div class="field-group g5 dense-grid address-grid">
+          <div class="field-wrap">{{ form.address.label_tag }}{{ form.address }}</div>
+          <div class="field-wrap">{{ form.notes.label_tag }}{{ form.notes }}</div>
+          <div class="field-wrap">{{ form.temporary_address.label_tag }}{{ form.temporary_address }}</div>
+          <div class="field-wrap">{{ form.permanent_address.label_tag }}{{ form.permanent_address }}</div>
+          <div class="field-wrap">{{ form.working_address.label_tag }}{{ form.working_address }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reg-card">
+      <div class="reg-card-header"><div class="section-icon"><i class="fas fa-shield-halved"></i></div><h6>Police Verification</h6></div>
+      <div class="reg-card-body dense-body">
+        <div class="field-group g6 dense-grid">
+          <div class="field-wrap">{{ form.police_verification_status.label_tag }}{{ form.police_verification_status }}</div>
+          <div class="field-wrap">{{ form.police_verification_date.label_tag }}{{ form.police_verification_date }}</div>
+          <div class="field-wrap">{{ form.police_verification_follow_up_date.label_tag }}{{ form.police_verification_follow_up_date }}</div>
+          <div class="field-wrap">{{ form.police_verification_document.label_tag }}{{ form.police_verification_document }}</div>
+          {% if form.police_verified_by %}<div class="field-wrap">{{ form.police_verified_by.label_tag }}{{ form.police_verified_by }}</div>{% endif %}
+          <div class="field-wrap">{{ form.is_active.label_tag }}{{ form.is_active }}</div>
+          <div class="field-wrap" style="grid-column:1 / -1;">{{ form.police_verification_remarks.label_tag }}{{ form.police_verification_remarks }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reg-card">
+      <div class="reg-card-header">
+        <div class="section-icon"><i class="fas fa-users"></i></div>
+        <h6>Family Members</h6>
+        <button type="button" class="btn-add-family ms-auto" id="addFamilyMember"><i class="fas fa-plus"></i> Add Member</button>
+      </div>
+      <div class="reg-card-body">
+        {% if existing_family %}
+          <div class="family-table-wrap">
+            <table class="family-table">
+              <thead><tr><th>Name</th><th>Relationship</th><th>CNIC</th><th>Phone</th></tr></thead>
+              <tbody>
+                {% for member in existing_family %}
+                  <tr><td>{{ member.family_member.get_full_name }}</td><td>{{ member.relation }}</td><td>{{ member.family_member.cnic|default:"—" }}</td><td>{{ member.family_member.phone|default:"—" }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+        <div id="familyMemberRows" style="display:flex;flex-direction:column;gap:.6rem;"></div>
+      </div>
+    </div>
+
+    <div class="reg-footer">
+      <button type="submit" class="btn-submit-main"><i class="fas fa-save"></i> Save Tenant</button>
+      <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" class="btn-admin-secondary"><i class="fas fa-times"></i> Cancel</a>
+    </div>
+  </form>
+</div>
+
+<template id="familyMemberTemplate">
+  <div class="family-member-card">
+    <div class="family-card-header">
+      <div class="family-card-num">Member #<span class="member-num"></span></div>
+      <button type="button" class="btn-remove-family remove-family-member"><i class="fas fa-times"></i> Remove</button>
+    </div>
+    <div class="field-group family-member-grid">
+      <div class="field-wrap"><label class="field-label">Name</label><input type="text" class="field-control" data-field="name"></div>
+      <div class="field-wrap"><label class="field-label">Father / Husband Name</label><input type="text" class="field-control" data-field="father_husband_name"></div>
+      <div class="field-wrap"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
+      <div class="field-wrap"><label class="field-label">Date of Birth</label><input type="date" class="field-control" data-field="dob"></div>
+      <div class="field-wrap"><label class="field-label">Phone</label><input type="text" class="field-control" data-field="phone"></div>
+      <div class="field-wrap"><label class="field-label">Occupation</label><input type="text" class="field-control" data-field="occupation"></div>
+      <div class="field-wrap"><label class="field-label">Nationality</label><input type="text" class="field-control" data-field="nationality"></div>
+      <div class="field-wrap"><label class="field-label">Relationship</label><select class="field-control" data-field="relationship_type"><option value="">Select…</option>{% for item in relationship_types %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
+      <div class="field-wrap"><label class="field-label">Email</label><input type="email" class="field-control" data-field="email"></div>
+      <div class="field-wrap" style="grid-column: span 3;"><label class="field-label">Notes</label><input type="text" class="field-control" data-field="notes"></div>
+    </div>
+  </div>
+</template>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Handle image preview when files are selected
-    document.querySelectorAll('input[type="file"]').forEach(function(input) {
-        input.addEventListener('change', function(e) {
-            const container = e.target.closest('.image-upload-container');
-            const preview = container.querySelector('img');
-            const placeholder = container.querySelector('.bg-light');
-            
-            if (e.target.files && e.target.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    if (preview) {
-                        preview.src = event.target.result;
-                    } else if (placeholder) {
-                        placeholder.innerHTML = `<img src="${event.target.result}" class="img-thumbnail w-100" style="height:100px;object-fit:cover;">`;
-                    }
-                };
-                reader.readAsDataURL(e.target.files[0]);
-            }
-        });
+(function () {
+  const rows = document.getElementById('familyMemberRows');
+  const template = document.getElementById('familyMemberTemplate');
+  const addButton = document.getElementById('addFamilyMember');
+  function renumber() {
+    rows.querySelectorAll('.family-member-card').forEach(function (card, index) {
+      const num = card.querySelector('.member-num');
+      if (num) num.textContent = index + 1;
+      card.querySelectorAll('[data-field]').forEach(function (field) {
+        field.name = 'family-' + index + '-' + field.dataset.field;
+      });
     });
-});
+  }
+  if (rows && template && addButton) {
+    addButton.addEventListener('click', function () { rows.appendChild(template.content.cloneNode(true)); renumber(); });
+    rows.addEventListener('click', function (event) {
+      const remove = event.target.closest('.remove-family-member');
+      if (!remove) return;
+      remove.closest('.family-member-card').remove();
+      renumber();
+    });
+  }
+  document.querySelectorAll('.image-upload-container input[type="file"]').forEach(function (input) {
+    input.addEventListener('change', function () {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const container = input.closest('.image-upload-container');
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        let preview = container.querySelector('img.public-file-preview');
+        const placeholder = container.querySelector('.placeholder-icon');
+        if (!preview) {
+          preview = document.createElement('img');
+          preview.className = 'public-file-preview';
+          preview.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
+          if (placeholder) placeholder.replaceWith(preview);
+          else container.insertBefore(preview, container.firstChild);
+        }
+        preview.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('.address-grid textarea').forEach(function(el) { el.setAttribute('rows', '4'); });
+})();
 </script>
 {% endblock %}

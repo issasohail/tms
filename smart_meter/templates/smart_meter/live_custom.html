@@ -16,6 +16,7 @@
     --w-rech: 80px;
     --w-prop: 60px;
     --w-unit: 100px;
+    --w-tenant: 110px;
     --w-meter: 110px;
     --w-status: 60px;
     --w-power: 60px;
@@ -69,6 +70,7 @@
       --w-sno: 18px;
       --w-prop: 62px;
       --w-unit: 70px;
+      --w-tenant: 90px;
       --w-meter: 110px;
       /* wider to fit 3-controls block beneath */
       --w-status: 108px;
@@ -123,6 +125,7 @@
 
       --w-sno: 18px;
       --w-prop: 62px;
+      --w-tenant: 80px;
       --w-meter: 80px;
       --w-updated: 60px;
       --w-total-energy: 80px;
@@ -145,6 +148,8 @@
 
     th.col-unit,
     td.col-unit,
+    th.col-tenant,
+    td.col-tenant,
     th.col-total_power,
     td.col-total_power,
     th.col-pf_total,
@@ -234,6 +239,14 @@
   td.col-unit {
     min-width: var(--w-unit);
     width: var(--w-unit);
+  }
+
+  th.col-tenant,
+  td.col-tenant {
+    min-width: var(--w-tenant);
+    width: var(--w-tenant);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   th.col-meter,
@@ -444,6 +457,8 @@
     /* Hide columns on small */
     th.col-unit,
     td.col-unit,
+    th.col-tenant,
+    td.col-tenant,
     th.col-total_power,
     td.col-total_power,
     th.col-pf_total,
@@ -467,10 +482,18 @@
       display: none !important;
     }
 
-    /* Property cell: show Unit beneath */
+    /* Property cell: show Unit and tenant beneath */
     .col-prop .mobile-unit {
       display: block;
       font-size: .52rem;
+      opacity: .85;
+      margin-top: .12rem;
+      line-height: 1.0;
+    }
+
+    .col-prop .mobile-tenant {
+      display: block;
+      font-size: .50rem;
       opacity: .85;
       margin-top: .12rem;
       line-height: 1.0;
@@ -565,6 +588,7 @@
 
     /* Hide mobile helpers on desktop */
     .mobile-unit,
+    .mobile-tenant,
     .col-meter .mobile-actions,
     td[data-col="total_energy"] .mobile-voltage,
     td[data-col="total_energy"] .mobile-current {
@@ -1182,7 +1206,7 @@
       <div class="d-flex align-items-start flex-wrap gap-2">
         <div class="me-3">
           <h2 class="mb-0 d-flex align-items-center">
-            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings
+            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings 101
             <span id="headingPowerMsg" class="small ms-3 text-muted" aria-live="polite"></span>
           </h2>
           <small class="text-muted d-block lh-1">
@@ -1225,7 +1249,10 @@
         <form method="get" class="filters-inline d-flex align-items-center flex-wrap gap-2 m-0 w-100">
           <!-- Property -->
           <select name="property" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <option value="">All properties</option>
+            {% for p in all_properties %}
             <option value="{{ p.id }}" {% if p.is_selected %} selected{% endif %}>{{ p.property_name }}</option>
+            {% endfor %}
 
 
 
@@ -1235,7 +1262,10 @@
 
           <!-- Unit -->
           <select name="unit" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <option value="">All units</option>
+            {% for u in filtered_units %}
             <option value="{{ u.id }}" {% if u.is_selected %} selected{% endif %}>{{ u.unit_number }}</option>
+            {% endfor %}
 
 
 
@@ -1248,14 +1278,22 @@
           <div class="meter-actions d-flex align-items-center gap-2">
             <select name="meter" class="form-select form-select-sm text-truncate"
               style="min-width:var(--filter-minw);max-width:var(--filter-maxw)" onchange="this.form.submit()">
-              <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>{{ m.unit.unit_number }} — {{
-                m.meter_number }}
+              <option value="">All meters</option>
+              {% for m in filtered_meters %}
+              <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>
+                {{ m.meter_number }} — {{ m.unit.unit_number }}
               </option>
+              {% endfor %}
 
 
 
 
+            </select>
 
+            <select name="active" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+              <option value="active" {% if active_filter == "active" %}selected{% endif %}>Active</option>
+              <option value="all" {% if active_filter == "all" %}selected{% endif %}>All</option>
+              <option value="inactive" {% if active_filter == "inactive" %}selected{% endif %}>Inactive</option>
             </select>
 
             <button class="btn btn-sm btn-primary" type="submit">
@@ -1301,6 +1339,7 @@
             <th class="sticky-left col-recharge">Recharge</th>
             <th class="sticky-left col-prop">Property</th>
             <th class="sticky-left col-unit">Unit</th>
+            <th class="sticky-left col-tenant">Tenant</th>
             <th class="sticky-left col-meter">Meter #</th>
             <th class="sticky-left col-status">Status</th>
             <th class="sticky-left col-power">Power</th>
@@ -1335,10 +1374,15 @@
             <td class="sticky-left col-prop text-center" title="{{ p.property_name }}">
               {{ p.property_name|slice:":8" }}
               <span class="mobile-unit" aria-hidden="true">{{ u.unit_number|default:"" }}</span>
+              <span class="mobile-tenant">{{ r.tenant_name|default:"Vacant" }}</span>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ u.unit_number }}">
               {{ u.unit_number|default:"" }}
+            </td>
+
+            <td class="sticky-left col-tenant text-center" title="{{ r.tenant_name|default:"Vacant" }}">
+              {{ r.tenant_name|default:"Vacant" }}
             </td>
 
             <td class="sticky-left col-meter text-center" title="{{ m.meter_number }}">

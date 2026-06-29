@@ -1,5 +1,5 @@
 {# Expect: all_leases queryset passed in via {% with %} #}
-{% load static %}{% load humanize %}
+{% load static %}{% load humanize money_tags %}
 
 <style>
   /* Shrink table text + padding */
@@ -60,12 +60,12 @@
           <div>{{ lease.start_date|date:"M d, Y" }}</div>
           <div>{{ lease.end_date|date:"M d, Y" }}</div>
         </td>
-        <td class="text-end">Rs. {{ lease.get_total_payment|floatformat:2|intcomma }}</td>
+        <td class="text-end">{{ lease.get_total_payment|money:2 }}</td>
                             
 
         <td class="text-end">
           
-          Rs. {{ lease.get_balance|default:0|floatformat:2|intcomma }}
+          {{ lease.get_balance|default:0|money:2 }}
         </td>
         <td class="text-center">
           <div class="d-inline-flex  gap-1 justify-content-center">
@@ -86,7 +86,7 @@
           <th class="text-end">
             {% with total=leases_total_balance %}
               <span class="{% if total < 0 %}balance-negative{% elif total > 0 %}balance-positive{% else %}balance-zero{% endif %}">
-                Rs. {{ total|default:0|floatformat:2|intcomma }}
+                {{ total|default:0|money:2 }}
               </span>
             {% endwith %}
           </th>

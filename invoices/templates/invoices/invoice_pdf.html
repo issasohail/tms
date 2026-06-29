@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize money_tags %}
 <!doctype html>
 <html>
 <head>
@@ -193,7 +193,7 @@
         </div>
         <div class="to-col">
           <p><strong>Lease Balance:</strong></p>
-          <p>Rs.{{ invoice.lease.get_balance|floatformat:2|intcomma }}</p>
+          <p>{{ invoice.lease.get_balance|money:2 }}</p>
           <p><strong>Lease End:</strong> {{ invoice.lease.end_date|date:"M d, Y"|default:"-" }}</p>
           <p><strong>Invoice Status:</strong> <span class="badge">{{ invoice.get_status_display }}</span></p>
         </div>
@@ -218,7 +218,7 @@
           <td class="sn-col">{{ forloop.counter }}</td>
           <td class="category-col">{{ item.category.name|default:item.category|default:"-" }}</td>
           <td class="description-col"></td>
-          <td class="amount-col">Rs.{{ item.amount|floatformat:2|intcomma }}</td>
+          <td class="amount-col">{{ item.amount|money:2 }}</td>
         </tr>
         <tr class="description-row">
           <td class="sn-col"></td>
@@ -234,8 +234,8 @@
     </table>
 
     <div class="totals">
-      <div class="total-left"><strong>Total:</strong> Rs.{{ computed_total|floatformat:2|intcomma }}</div>
-      <div class="total-right">Rs.{{ computed_total|floatformat:2|intcomma }}</div>
+      <div class="total-left"><strong>Total:</strong> {{ computed_total|money:2 }}</div>
+      <div class="total-right">{{ computed_total|money:2 }}</div>
     </div>
 
     <div class="payment-note">

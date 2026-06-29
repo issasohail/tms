@@ -290,17 +290,23 @@
 
     <input type="hidden" name="cols" id="colsField" value="{{ visible_cat_ids|join:',' }}" />
 
+    <label class="chip-btn" title="Show active leases only">
+      <input type="checkbox" name="active_only" value="1" {% if active_only %}checked{% endif %}
+             onchange="this.form.submit()" style="margin:0;">
+      Active only
+    </label>
+
     <button type="button" id="btnCols" class="chip-btn">Show more Categories</button>
 
     <button type="submit" class="chip-btn" title="Apply filters">Apply</button>
 
     {% with cols_param=visible_cat_ids|join:"," %}
       <a class="badge badge-excel" title="Export Excel"
-         href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}">
+         href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}{{ active_only_param }}">
         Excel
       </a>
       <a class="badge badge-pdf" title="Export PDF"
-         href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}">
+         href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}{{ active_only_param }}">
         PDF
       </a>
     {% endwith %}
@@ -403,7 +409,8 @@
                      data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                      data-unit="{{ r.unit.id }}"
                      data-category="{{ cell.cat_id }}"
-                     data-cols="{{ visible_cat_ids|join:',' }}">{{ cell.value|floatformat:0|intcomma }}</a>
+                     data-cols="{{ visible_cat_ids|join:',' }}"
+                     data-active-only="{% if active_only %}1{% endif %}">{{ cell.value|floatformat:0|intcomma }}</a>
                 </td>
               {% elif cell.kind == 'other' %}
                 <td class="num cat-col" data-col="other">
@@ -412,7 +419,8 @@
                      data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                      data-unit="{{ r.unit.id }}"
                      data-category="other"
-                     data-cols="{{ visible_cat_ids|join:',' }}">{{ cell.value|floatformat:0|intcomma }}</a>
+                     data-cols="{{ visible_cat_ids|join:',' }}"
+                     data-active-only="{% if active_only %}1{% endif %}">{{ cell.value|floatformat:0|intcomma }}</a>
                 </td>
               {% elif cell.kind == 'total' %}
                 <td class="num" data-col="total" data-fixed>
@@ -421,7 +429,8 @@
                      data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                      data-unit="{{ r.unit.id }}"
                      data-category="*all*"
-                     data-cols="{{ visible_cat_ids|join:',' }}">{{ cell.value|floatformat:0|intcomma }}</a>
+                     data-cols="{{ visible_cat_ids|join:',' }}"
+                     data-active-only="{% if active_only %}1{% endif %}">{{ cell.value|floatformat:0|intcomma }}</a>
                 </td>
               {% elif cell.kind == 'balance' %}
                 <td class="num" data-col="total_balance" data-fixed>{{ cell.value|floatformat:0|intcomma }}</td>
@@ -450,7 +459,8 @@
                    data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                    data-property="{{ g.property.id }}"
                    data-category="{{ cell.cat_id }}"
-                   data-cols="{{ visible_cat_ids|join:',' }}">
+                   data-cols="{{ visible_cat_ids|join:',' }}"
+                   data-active-only="{% if active_only %}1{% endif %}">
                    {{ cell.value|floatformat:0|intcomma }}
                 </a>
               </td>
@@ -461,7 +471,8 @@
                    data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                    data-property="{{ g.property.id }}"
                    data-category="other"
-                   data-cols="{{ visible_cat_ids|join:',' }}">
+                   data-cols="{{ visible_cat_ids|join:',' }}"
+                   data-active-only="{% if active_only %}1{% endif %}">
                    {{ cell.value|floatformat:0|intcomma }}
                 </a>
               </td>
@@ -472,7 +483,8 @@
                    data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                    data-property="{{ g.property.id }}"
                    data-category="*all*"
-                   data-cols="{{ visible_cat_ids|join:',' }}">
+                   data-cols="{{ visible_cat_ids|join:',' }}"
+                   data-active-only="{% if active_only %}1{% endif %}">
                    {{ cell.value|floatformat:0|intcomma }}
                 </a>
               </td>
@@ -497,7 +509,8 @@
                  data-scope="grand"
                  data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                  data-category="{{ cell.cat_id }}"
-                 data-cols="{{ visible_cat_ids|join:',' }}">
+                 data-cols="{{ visible_cat_ids|join:',' }}"
+                 data-active-only="{% if active_only %}1{% endif %}">
                  <strong>{{ cell.value|floatformat:0|intcomma }}</strong>
               </a>
             </td>
@@ -507,7 +520,8 @@
                  data-scope="grand"
                  data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                  data-category="other"
-                 data-cols="{{ visible_cat_ids|join:',' }}">
+                 data-cols="{{ visible_cat_ids|join:',' }}"
+                 data-active-only="{% if active_only %}1{% endif %}">
                  <strong>{{ cell.value|floatformat:0|intcomma }}</strong>
               </a>
             </td>
@@ -517,7 +531,8 @@
                  data-scope="grand"
                  data-month="{{ year }}-{{ month|stringformat:'02d' }}"
                  data-category="*all*"
-                 data-cols="{{ visible_cat_ids|join:',' }}">
+                 data-cols="{{ visible_cat_ids|join:',' }}"
+                 data-active-only="{% if active_only %}1{% endif %}">
                  <strong>{{ cell.value|floatformat:0|intcomma }}</strong>
               </a>
             </td>
@@ -653,6 +668,7 @@
       if(a.dataset.unit)     params.set('unit_id', a.dataset.unit);
       if(a.dataset.property) params.set('property_id', a.dataset.property);
       if(a.dataset.cols)     params.append('cols', a.dataset.cols);
+      if(a.dataset.activeOnly) params.set('active_only', a.dataset.activeOnly);
 
       const url = "{% url 'smart_meter:billing_summary_items' %}?" + params.toString();
 

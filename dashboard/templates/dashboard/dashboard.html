@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load money_tags %}
 
 {% block title %}Dashboard{% endblock %}
 
@@ -33,7 +34,7 @@
         <div class="card text-white bg-dark">
             <div class="card-body">
                 <h5 class="card-title">Net Income</h5>
-                <p class="card-text display-4">${{ net_income|floatformat:2 }}</p>
+                <p class="card-text display-4">{{ net_income|money:2 }}</p>
                 <small>Last 30 days</small>
             </div>
         </div>
@@ -66,8 +67,8 @@
                                 <td>{{ payment.payment_date|date:"M d" }}</td>
                                 <td>{{ payment.lease.tenant.get_full_name }}</td>
                                 <td>{{ payment.lease.unit.property.property_name }}-{{ payment.lease.unit.unit_number }}</td>
-                                <td>${{ payment.amount }}</td>
-                                <td>${{ payment.lease.get_balance|floatformat:2 }}</td>
+                                <td>{{ payment.amount|money:2 }}</td>
+                                <td>{{ payment.dashboard_balance|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -81,35 +82,83 @@
         </div>
     </div>
 
-    <!-- Upcoming Invoices -->
+    <!-- Offline Meters -->
     <div class="col-md-6">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5>Upcoming Invoices</h5>
-                <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-primary">View All</a>
+                <h5>Offline Meters</h5>
+                <a href="{% url 'smart_meter:smart_meter_live_custom' %}?offline=1" class="btn btn-sm btn-primary">View All</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover table-sm mb-0 align-middle dashboard-meter-table">
                         <thead class="thead-light">
                             <tr>
-                                <th>Due Date</th>
+                                <th>S.N#</th>
+                                <th>Property/Unit</th>
                                 <th>Tenant</th>
-                                <th>Property-Unit</th>
-                                <th>Amount</th>
+                                <th>Meter#</th>
+                                <th>Status</th>
+                                <th>Power</th>
+                                <th>Switch</th>
+                                <th>Last Updated</th>
+                                <th>Total Energy</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for invoice in upcoming_invoices %}
-                            <tr onclick="window.location='{{ invoice.get_absolute_url }}'" style="cursor: pointer;">
-                                <td>{{ invoice.due_date|date:"M d" }}</td>
-                                <td>{{ invoice.lease.tenant.get_full_name }}</td>
-                                <td>{{ invoice.lease.unit.property.property_name }}-{{ invoice.lease.unit.unit_number }}</td>
-                                <td>${{ invoice.amount }}</td>
+                            {% for reading in offline_meter_readings %}
+                            {% with meter=reading.meter unit=reading.meter.unit %}
+                            <tr data-dashboard-meter-row>
+                                <td>{{ forloop.counter }}</td>
+                                <td>
+                                    {% if unit %}
+                                        {{ unit.property.property_name }}-{{ unit.unit_number }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>{{ reading.tenant_name|default:"Vacant" }}</td>
+                                <td>{{ meter.meter_number }}</td>
+                                <td>
+                                    <span class="badge rounded-pill bg-secondary dashboard-online-badge">Offline</span>
+                                </td>
+                                <td>
+                                    {% if reading.total_power is not None %}
+                                        {{ reading.total_power|floatformat:3 }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge rounded-pill dashboard-power-badge {% if meter.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">
+                                        {% if meter.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}
+                                    </span>
+                                    <button type="button"
+                                            class="btn btn-sm btn-secondary dashboard-power-toggle"
+                                            title="Toggle power"
+                                            aria-label="Toggle power"
+                                            data-status="{{ meter.power_status|upper|default:'OFF' }}"
+                                            data-meter-id="{{ meter.id }}"
+                                            data-unit-number="{% if unit %}{{ unit.unit_number }}{% endif %}"
+                                            data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' meter.id %}"
+                                            data-restore-url="{% url 'smart_meter:smart_meter_restore' meter.id %}"
+                                            data-status-url="{% url 'smart_meter:meter_status' meter.id %}">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                </td>
+                                <td>{{ reading.ts|date:"M d, H:i" }}</td>
+                                <td>
+                                    {% if reading.total_energy is not None %}
+                                        {{ reading.total_energy|floatformat:3 }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
                             </tr>
+                            {% endwith %}
                             {% empty %}
                             <tr>
-                                <td colspan="4" class="text-center">No upcoming invoices</td>
+                                <td colspan="9" class="text-center">No offline meters</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -141,12 +190,12 @@
                         </thead>
                         <tbody>
                             {% for lease in ending_soon_leases %}
-                            <tr onclick="window.location='{{ lease.get_absolute_url }}'" style="cursor: pointer;">
+                            <tr onclick="window.location='{{ lease.url }}'" style="cursor: pointer;">
                                 <td>{{ lease.tenant.get_full_name }}</td>
                                 <td>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</td>
                                 <td>{{ lease.end_date|date:"M d, Y" }}</td>
-                                <td>${{ lease.total_payment|floatformat:2 }}</td>
-                                <td>${{ lease.security_deposit|floatformat:2 }}</td>
+                                <td>{{ lease.total_payment|money:2 }}</td>
+                                <td>{{ lease.security_deposit|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -181,8 +230,8 @@
                             {% for unit in vacant_units %}
                             <tr onclick="window.location='{% url 'properties:unit_detail' unit.id %}'" style="cursor: pointer;">
                                 <td>{{ unit.property.property_name }}-{{ unit.unit_number }}</td>
-                                <td>${{ unit.monthly_rent|floatformat:2 }}</td>
-                                <td>${{ unit.society_maintenance|floatformat:2 }}</td>
+                                <td>{{ unit.monthly_rent|money:2 }}</td>
+                                <td>{{ unit.society_maintenance|money:2 }}</td>
                                 <td>{{ unit.property.get_property_type_display }}</td>
                             </tr>
                             {% empty %}
@@ -223,7 +272,7 @@
                                 <td>{{ expense.date|date:"M d" }}</td>
                                 <td>{{ expense.category }}</td>
                                 <td>{{ expense.property.property_name|default:"-" }}</td>
-                                <td>${{ expense.amount|floatformat:2 }}</td>
+                                <td>{{ expense.amount|money:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -257,7 +306,7 @@
                         <tbody>
                             {% for tenant in tenant_balances %}
                             <tr onclick="window.location='{% url 'tenants:tenant_detail' tenant.id %}'" style="cursor: pointer;">
-                                <td>{{ tenant.get_full_name }}</td>
+                                <td>{{ tenant.full_name }}</td>
                                 <td>
                                     {% if tenant.current_lease %}
                                         {{ tenant.current_lease.unit.property.property_name }}-{{ tenant.current_lease.unit.unit_number }}
@@ -265,7 +314,7 @@
                                         -
                                     {% endif %}
                                 </td>
-                                <td>${{ tenant.balance|floatformat:2 }}</td>
+                                <td>{{ tenant.balance|money:2 }}</td>
                                 <td>
                                     {% if tenant.last_payment_date %}
                                         {{ tenant.last_payment_date|date:"M d" }}
@@ -286,4 +335,139 @@
         </div>
     </div>
 </div>
+
+<div class="row mt-4">
+    <!-- Upcoming Invoices -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>Upcoming Invoices</h5>
+                <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Due Date</th>
+                                <th>Tenant</th>
+                                <th>Property-Unit</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invoice in upcoming_invoices %}
+                            <tr onclick="window.location='{{ invoice.get_absolute_url }}'" style="cursor: pointer;">
+                                <td>{{ invoice.due_date|date:"M d" }}</td>
+                                <td>{{ invoice.lease.tenant.get_full_name }}</td>
+                                <td>{{ invoice.lease.unit.property.property_name }}-{{ invoice.lease.unit.unit_number }}</td>
+                                <td>{{ invoice.amount|money:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">No upcoming invoices</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+function dashboardGetCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : null;
+}
+
+function dashboardSetPowerBadge(badge, isOn) {
+    if (!badge) return;
+    badge.classList.remove("bg-success", "bg-danger");
+    badge.classList.add(isOn ? "bg-success" : "bg-danger");
+    badge.textContent = isOn ? "ON" : "OFF";
+}
+
+function dashboardSetOnlineBadge(badge, state) {
+    if (!badge) return;
+    badge.classList.remove("bg-success", "bg-secondary", "bg-warning", "text-dark");
+    if (state === "online") {
+        badge.classList.add("bg-success");
+        badge.textContent = "Online";
+    } else if (state === "pending") {
+        badge.classList.add("bg-warning", "text-dark");
+        badge.textContent = "Pending";
+    } else {
+        badge.classList.add("bg-secondary");
+        badge.textContent = "Offline";
+    }
+}
+
+async function dashboardPollMeterStatus(statusUrl) {
+    if (!statusUrl) return false;
+    const waits = [0, 2000, 5000, 10000];
+    for (const wait of waits) {
+        if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+        try {
+            const response = await fetch(statusUrl, {
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            const data = await response.json();
+            if (data && data.online === true) return true;
+        } catch (error) {}
+    }
+    return false;
+}
+
+async function dashboardTogglePower(button) {
+    const row = button.closest("[data-dashboard-meter-row]");
+    const onlineBadge = row ? row.querySelector(".dashboard-online-badge") : null;
+    const powerBadge = row ? row.querySelector(".dashboard-power-badge") : null;
+    const isOff = (button.dataset.status || "OFF").toUpperCase() === "OFF";
+    const url = isOff ? button.dataset.restoreUrl : button.dataset.cutoffUrl;
+    const nextIsOn = isOff;
+
+    button.disabled = true;
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/json",
+                "X-CSRFToken": dashboardGetCookie("csrftoken") || ""
+            },
+            body: JSON.stringify({ meter_id: button.dataset.meterId })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.success === false) {
+            throw new Error(data.error || "Request failed");
+        }
+
+        dashboardSetPowerBadge(powerBadge, nextIsOn);
+        button.dataset.status = nextIsOn ? "ON" : "OFF";
+
+        if (nextIsOn) {
+            dashboardSetOnlineBadge(onlineBadge, "pending");
+            const online = await dashboardPollMeterStatus(button.dataset.statusUrl);
+            dashboardSetOnlineBadge(onlineBadge, online ? "online" : "offline");
+        } else {
+            dashboardSetOnlineBadge(onlineBadge, "offline");
+        }
+    } catch (error) {
+        alert("Power command failed: " + (error.message || "Request failed"));
+    } finally {
+        button.disabled = false;
+    }
+}
+
+document.addEventListener("click", function (event) {
+    const button = event.target.closest(".dashboard-power-toggle");
+    if (button) dashboardTogglePower(button);
+});
+</script>
 {% endblock %}

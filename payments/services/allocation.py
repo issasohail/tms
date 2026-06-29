@@ -24,11 +24,15 @@ def rebuild_allocation(*, payment, lease_amount, security_amount, security_type=
     sec_amt   = D(security_amount)
     sec_type  = (security_type or "PAYMENT").upper()
 
+    if sec_amt < 0:
+        raise ValueError("Security allocation amount cannot be negative.")
+
     total = lease_amt + sec_amt
 
     # Keep payment cash consistent with allocation sum
-    payment.amount = total
-    payment.save(update_fields=["amount"])
+    if payment.amount != total:
+        payment.amount = total
+        payment.save(update_fields=["amount"])
 
     # ALWAYS upsert allocation
     alloc, _ = PaymentAllocation.objects.update_or_create(
@@ -41,6 +45,9 @@ def rebuild_allocation(*, payment, lease_amount, security_amount, security_type=
             last_reason=reason or "",
         ),
     )
+
+    # Remove stale duplicate movements for this payment from older edit paths.
+    SecurityDepositTransaction.objects.filter(payment=payment).exclude(allocation=alloc).delete()
 
     # Security ledger row ONLY when sec_amt > 0
     if sec_amt > 0:

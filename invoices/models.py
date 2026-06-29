@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.dispatch import receiver
+from django.core.cache import cache
 from django.db.models.signals import post_save, post_delete
 from django.db import models
 from django.core.validators import MinValueValidator
@@ -6,6 +8,7 @@ from django.utils import timezone
 from django.db.models import Sum
 from properties.models import Property
 from decimal import Decimal
+from core.utils.text import smart_title
 
 
 class Invoice(models.Model):
@@ -118,6 +121,16 @@ class ItemCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        result = super().save(*args, **kwargs)
+        cache.delete("invoices.active_item_categories")
+        return result
+
+    def delete(self, *args, **kwargs):
+        cache.delete("invoices.active_item_categories")
+        return super().delete(*args, **kwargs)
 
 # models.py
 
@@ -273,3 +286,151 @@ class SecurityDepositTransaction(models.Model):
 
     def __str__(self):
         return f"{self.lease_id} {self.type} {self.amount} on {self.date}"
+
+
+class MonthlyBillingRun(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_PREFLIGHT = "preflight"
+    STATUS_GENERATING = "generating"
+    STATUS_READY = "ready"
+    STATUS_PARTIAL = "partial"
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_PREFLIGHT, "Preflight"),
+        (STATUS_GENERATING, "Generating"),
+        (STATUS_READY, "Ready"),
+        (STATUS_PARTIAL, "Partial"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    billing_month = models.DateField(help_text="First day of the month being billed.")
+    run_date = models.DateField(default=timezone.localdate)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    total_active_leases = models.PositiveIntegerField(default=0)
+    recurring_created_count = models.PositiveIntegerField(default=0)
+    missing_recurring_count = models.PositiveIntegerField(default=0)
+    electric_ready_count = models.PositiveIntegerField(default=0)
+    electric_pending_count = models.PositiveIntegerField(default=0)
+    water_missing_count = models.PositiveIntegerField(default=0)
+    ready_to_send_count = models.PositiveIntegerField(default=0)
+    pending_attention_count = models.PositiveIntegerField(default=0)
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="monthly_billing_runs",
+    )
+    created_by_label = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-billing_month", "-created_at"]
+        indexes = [
+            models.Index(fields=["billing_month", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Monthly billing {self.billing_month:%b %Y} ({self.get_status_display()})"
+
+
+class MonthlyBillingRunItem(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_READY = "ready_to_send"
+    STATUS_PENDING = "pending_attention"
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_SKIPPED = "skipped"
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_READY, "Ready to Send"),
+        (STATUS_PENDING, "Pending Attention"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_SKIPPED, "Skipped"),
+    ]
+
+    ISSUE_INACTIVE_LEASE = "inactive_lease"
+    ISSUE_MISSING_RECURRING = "missing_recurring_invoice_setup"
+    ISSUE_RECURRING_FAILED = "recurring_invoice_generation_failed"
+    ISSUE_DUPLICATE_INVOICE = "duplicate_invoice_exists"
+    ISSUE_METER_MISSING = "latest_meter_reading_missing"
+    ISSUE_METER_OFFLINE = "meter_offline"
+    ISSUE_ELECTRIC_UNVERIFIED = "electric_billing_not_verified"
+    ISSUE_WATER_MISSING = "water_charge_missing"
+    ISSUE_PHONE_MISSING = "tenant_phone_missing"
+    ISSUE_PDF_FAILED = "pdf_generation_failed"
+    ISSUE_WHATSAPP_FAILED = "whatsapp_send_failed"
+    ISSUE_UNUSUAL_TOTAL = "unusual_invoice_total"
+    ISSUE_ZERO_TOTAL = "zero_invoice_total"
+
+    ISSUE_CHOICES = [
+        (ISSUE_INACTIVE_LEASE, "Inactive lease"),
+        (ISSUE_MISSING_RECURRING, "Missing recurring invoice setup"),
+        (ISSUE_RECURRING_FAILED, "Recurring invoice generation failed"),
+        (ISSUE_DUPLICATE_INVOICE, "Duplicate invoice exists"),
+        (ISSUE_METER_MISSING, "Latest meter reading missing"),
+        (ISSUE_METER_OFFLINE, "Meter offline"),
+        (ISSUE_ELECTRIC_UNVERIFIED, "Electric billing not verified"),
+        (ISSUE_WATER_MISSING, "Water charge missing"),
+        (ISSUE_PHONE_MISSING, "Tenant phone missing"),
+        (ISSUE_PDF_FAILED, "PDF generation failed"),
+        (ISSUE_WHATSAPP_FAILED, "WhatsApp send failed"),
+        (ISSUE_UNUSUAL_TOTAL, "Unusual invoice total"),
+        (ISSUE_ZERO_TOTAL, "Zero invoice total"),
+    ]
+
+    billing_run = models.ForeignKey(
+        MonthlyBillingRun,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="monthly_billing_items")
+    tenant = models.ForeignKey("tenants.Tenant", null=True, blank=True, on_delete=models.SET_NULL)
+    property = models.ForeignKey("properties.Property", null=True, blank=True, on_delete=models.SET_NULL)
+    unit = models.ForeignKey("properties.Unit", null=True, blank=True, on_delete=models.SET_NULL)
+    invoice = models.ForeignKey(Invoice, null=True, blank=True, on_delete=models.SET_NULL, related_name="monthly_billing_items")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    issue_code = models.CharField(max_length=80, choices=ISSUE_CHOICES, blank=True)
+    issue_message = models.TextField(blank=True)
+    recurring_invoice_found = models.BooleanField(default=False)
+    recurring_invoice_created = models.BooleanField(default=False)
+    electric_required = models.BooleanField(default=False)
+    electric_ready = models.BooleanField(default=False)
+    electric_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    latest_meter_reading_date = models.DateField(null=True, blank=True)
+    water_required = models.BooleanField(default=False)
+    water_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    water_resolved = models.BooleanField(default=False)
+    invoice_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    invoice_pdf = models.FileField(upload_to="invoices/monthly_billing_pdfs/", null=True, blank=True, max_length=255)
+    whatsapp_message_id = models.CharField(max_length=160, blank=True)
+    whatsapp_status = models.CharField(max_length=30, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    error_text = models.TextField(blank=True)
+    log = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["billing_run", "property_id", "unit_id", "lease_id"]
+        constraints = [
+            models.UniqueConstraint(fields=["billing_run", "lease"], name="uniq_monthly_billing_run_lease"),
+        ]
+        indexes = [
+            models.Index(fields=["billing_run", "status"]),
+            models.Index(fields=["lease", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.billing_run_id} lease {self.lease_id} {self.get_status_display()}"

@@ -824,8 +824,30 @@ class AllocationReceiptPDF:
         p = allocation.payment
         lease = p.lease
 
+        is_security_refund = (allocation.security_type or "").upper() == "REFUND"
+        is_lease_refund = (allocation.lease_amount or 0) < 0
+        is_refund = is_security_refund or is_lease_refund
+        receipt_title = (
+            "LEASE REFUND RECEIPT"
+            if is_lease_refund
+            else "SECURITY REFUND RECEIPT"
+            if is_security_refund
+            else "PAYMENT ALLOCATION RECEIPT"
+        )
+        total_label = "TOTAL REFUNDED" if is_refund else "TOTAL RECEIVED"
+        security_label = "Security Refund" if is_security_refund else "Security Amount"
+        security_value = f"Rs. {allocation.security_amount:,.2f}"
+        total_value = f"Rs. {allocation.total_received():,.2f}"
+        lease_value = f"Rs. {allocation.lease_amount:,.2f}"
+        if is_lease_refund:
+            lease_value = f"-Rs. {abs(allocation.lease_amount):,.2f}"
+            total_value = f"-Rs. {abs(allocation.lease_amount):,.2f}"
+        elif is_security_refund:
+            security_value = f"-Rs. {allocation.security_amount:,.2f}"
+            total_value = f"-Rs. {allocation.security_amount:,.2f}"
+
         elems = [
-            Paragraph("PAYMENT ALLOCATION RECEIPT", title),
+            Paragraph(receipt_title, title),
             Paragraph(f"Allocation #: {allocation.pk}", normal),
             Paragraph(f"Payment Ref: {p.reference_number or p.pk}", normal),
             Paragraph(f"Date: {p.payment_date.strftime('%b %d, %Y')}", normal),
@@ -850,10 +872,10 @@ class AllocationReceiptPDF:
 
         details = [
             ["Description", "Amount"],
-            ["Lease Amount", f"Rs. {allocation.lease_amount:,.2f}"],
-            ["Security Amount", f"Rs. {allocation.security_amount:,.2f}"],
+            ["Lease Refund" if is_lease_refund else "Lease Amount", lease_value],
+            [security_label, security_value],
             ["Security Type", allocation.security_type],
-            ["TOTAL RECEIVED", f"Rs. {allocation.total_received():,.2f}"],
+            [total_label, total_value],
         ]
         d = Table(details, colWidths=[300, 180])
         d.setStyle(TableStyle([

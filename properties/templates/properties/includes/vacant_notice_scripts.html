@@ -1,0 +1,292 @@
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modalEl = document.getElementById("vacantNoticeModal");
+    const modalTitle = document.getElementById("vacantNoticeModalLabel");
+    const statusEl = document.getElementById("vacantNoticeStatus");
+    const leadsEl = document.getElementById("vacantNoticeLeads");
+    const noticeModal = modalEl ? new bootstrap.Modal(modalEl) : null;
+
+    if (!noticeModal || modalEl.dataset.vacantNoticeReady === "1") return;
+    modalEl.dataset.vacantNoticeReady = "1";
+
+    document.querySelectorAll(".vacant-notice-btn").forEach(function (button) {
+        button.addEventListener("click", function (event) {
+            event.stopPropagation();
+            modalTitle.textContent = button.dataset.unitTitle || "Vacant Notice";
+            statusEl.textContent = "Loading...";
+            statusEl.classList.remove("d-none");
+            leadsEl.classList.add("d-none");
+            leadsEl.innerHTML = "";
+            noticeModal.show();
+
+            fetch(button.dataset.leadsUrl, {
+                headers: {"X-Requested-With": "XMLHttpRequest"}
+            })
+            .then(function (response) {
+                if (!response.ok) throw new Error("Could not load matching tenants.");
+                return response.json();
+            })
+            .then(function (data) {
+                renderVacantNoticeLeads(data);
+            })
+            .catch(function (error) {
+                statusEl.textContent = error.message;
+            });
+        });
+    });
+
+    function renderVacantNoticeLeads(data) {
+        const tenants = data.tenants || [];
+        const interestTypeName = data.unit && data.unit.interest_type ? data.unit.interest_type.name : "this building type";
+        if (!tenants.length) {
+            statusEl.textContent = "No tenants found for " + interestTypeName + ".";
+            leadsEl.classList.add("d-none");
+            return;
+        }
+
+        statusEl.classList.add("d-none");
+        leadsEl.classList.remove("d-none");
+        leadsEl.innerHTML = `
+            <table class="table table-sm table-bordered align-middle mb-0 vacant-leads-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:48px;">S.N#</th>
+                        <th style="width:56px;">Photo</th>
+                        <th>Tenant</th>
+                        <th style="width:170px;">Phone</th>
+                        <th>Interested In</th>
+                        <th style="width:230px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tenants.map(function (tenant, index) { return leadRowHtml(tenant, data.interest_types || [], index + 1); }).join("")}
+                </tbody>
+            </table>
+        `;
+
+        leadsEl.querySelectorAll(".lead-phone-text").forEach(function (span) {
+            span.addEventListener("click", function () {
+                startLeadPhoneEdit(span);
+            });
+            span.addEventListener("keydown", function (event) {
+                if (event.key === "Enter") startLeadPhoneEdit(span);
+            });
+        });
+
+        leadsEl.querySelectorAll(".lead-interest-check").forEach(function (checkbox) {
+            checkbox.addEventListener("change", function () {
+                const row = checkbox.closest("tr");
+                const checked = Array.from(row.querySelectorAll(".lead-interest-check:checked")).map(function (item) {
+                    return item.value;
+                });
+                saveTenantLeadField(checkbox.dataset.updateUrl, "interested_in", checked)
+                    .then(function (payload) {
+                        updateRowAfterSave(row, payload.tenant);
+                    })
+                    .catch(function (error) {
+                        alert(error.message);
+                    });
+            });
+        });
+
+        leadsEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+            new bootstrap.Tooltip(el);
+        });
+    }
+
+    function leadRowHtml(tenant, allInterestTypes, serialNumber) {
+        const photo = tenant.photo_url
+            ? `<img src="${escapeAttr(tenant.photo_url)}" alt="" class="rounded" style="width:42px;height:42px;object-fit:cover;">`
+            : `<div class="bg-secondary text-white rounded d-flex align-items-center justify-content-center" style="width:42px;height:42px;"><i class="fas fa-user"></i></div>`;
+        const badges = interestBadgesHtml(tenant.interested_in || []);
+        const checks = allInterestTypes.map(function (item) {
+            const checked = (tenant.interested_in || []).some(function (current) { return String(current.id) === String(item.id); });
+            return `
+                <label class="form-check form-check-inline mb-1 small">
+                    <input class="form-check-input lead-interest-check"
+                           type="checkbox"
+                           value="${item.id}"
+                           data-update-url="${escapeAttr(tenant.tenant_inline_update_url)}"
+                           ${checked ? "checked" : ""}>
+                    ${escapeHtml(item.name)}
+                </label>
+            `;
+        }).join("");
+        const waDisabled = tenant.phone ? "" : "disabled";
+        const waTitle = tenant.phone ? "WhatsApp" : "No phone number";
+        const waHref = tenant.phone ? tenant.whatsapp_url : "#";
+        return `
+            <tr data-message="${escapeAttr(tenant.whatsapp_message || "")}">
+                <td class="text-center">${serialNumber}</td>
+                <td>${photo}</td>
+                <td>
+                    <div class="fw-semibold">${escapeHtml(tenant.full_name || "")}</div>
+                    <div class="lead-interest-badges mt-1">${badges}</div>
+                </td>
+                <td>
+                    <span class="lead-phone-text"
+                          tabindex="0"
+                          data-value="${escapeAttr(tenant.phone || "")}"
+                          data-update-url="${escapeAttr(tenant.tenant_inline_update_url)}">${escapeHtml(tenant.phone || "-")}</span>
+                </td>
+                <td>
+                    <div class="lead-interest-checks">${checks}</div>
+                </td>
+                <td>
+                    <div class="d-flex flex-nowrap gap-1">
+                        <a href="${escapeAttr(tenant.tenant_detail_url)}" class="btn btn-sm btn-info" target="_blank" rel="noopener">
+                            <i class="fas fa-eye"></i> View
+                        </a>
+                        <a href="${escapeAttr(tenant.tenant_edit_url)}" class="btn btn-sm btn-warning" target="_blank" rel="noopener">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                        <a href="${escapeAttr(waHref)}"
+                           class="btn btn-sm btn-success lead-wa-btn ${waDisabled}"
+                           target="_blank"
+                           rel="noopener"
+                           title="${waTitle}"
+                           data-bs-toggle="tooltip">
+                            <i class="fab fa-whatsapp"></i> WhatsApp
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    function saveTenantLeadField(url, field, value) {
+        return fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            body: JSON.stringify({field: field, value: value})
+        }).then(function (response) {
+            return response.json().then(function (payload) {
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || "Could not save tenant.");
+                }
+                return payload;
+            });
+        });
+    }
+
+    function updateRowAfterSave(row, tenant) {
+        if (!row || !tenant) return;
+        const phoneText = row.querySelector(".lead-phone-text");
+        const whatsappButton = row.querySelector(".lead-wa-btn");
+        const badges = row.querySelector(".lead-interest-badges");
+        if (phoneText) {
+            phoneText.dataset.value = tenant.phone || "";
+            phoneText.textContent = tenant.phone || "-";
+        }
+        if (badges) {
+            badges.innerHTML = interestBadgesHtml(tenant.interested_in || []);
+        }
+        if (whatsappButton) {
+            const message = row.dataset.message || "";
+            const phone = tenant.phone || "";
+            if (phone) {
+                whatsappButton.href = buildWhatsAppUrl(phone, message);
+                whatsappButton.classList.remove("disabled");
+                whatsappButton.title = "WhatsApp";
+            } else {
+                whatsappButton.href = "#";
+                whatsappButton.classList.add("disabled");
+                whatsappButton.title = "No phone number";
+            }
+        }
+    }
+
+    function startLeadPhoneEdit(span) {
+        if (span.dataset.editing === "1") return;
+        span.dataset.editing = "1";
+        const previousValue = span.dataset.value || "";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "form-control form-control-sm";
+        input.value = previousValue;
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+        let finished = false;
+
+        function finish(save) {
+            if (finished) return;
+            finished = true;
+            if (!save) {
+                input.replaceWith(span);
+                span.dataset.editing = "0";
+                return;
+            }
+            saveTenantLeadField(span.dataset.updateUrl, "phone", input.value)
+                .then(function (payload) {
+                    input.replaceWith(span);
+                    updateRowAfterSave(span.closest("tr"), payload.tenant);
+                })
+                .catch(function (error) {
+                    alert(error.message);
+                    span.dataset.value = previousValue;
+                    span.textContent = previousValue || "-";
+                    input.replaceWith(span);
+                })
+                .finally(function () {
+                    span.dataset.editing = "0";
+                });
+        }
+
+        input.addEventListener("blur", function () { finish(true); });
+        input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") finish(true);
+            if (event.key === "Escape") finish(false);
+        });
+    }
+
+    function interestBadgesHtml(items) {
+        if (!items.length) return '<span class="text-muted small">-</span>';
+        return items.map(function (item) {
+            return `<span class="badge bg-light text-dark border me-1">${escapeHtml(item.name)}</span>`;
+        }).join("");
+    }
+
+    function buildWhatsAppUrl(phone, message) {
+        let digits = String(phone || "").replace(/\D/g, "");
+        const defaultCode = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}".replace(/\D/g, "");
+        if (!digits) return "#";
+        if (digits.startsWith("00")) digits = digits.slice(2);
+        if (digits.startsWith("0") && defaultCode) {
+            digits = defaultCode + digits.slice(1);
+        } else if (defaultCode && !digits.startsWith(defaultCode)) {
+            digits = defaultCode + digits;
+        }
+        return "https://wa.me/" + encodeURIComponent(digits) + "?text=" + encodeURIComponent(message || "");
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== "") {
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + "=")) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function escapeHtml(value) {
+        return String(value || "").replace(/[&<>"']/g, function (char) {
+            return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[char];
+        });
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+    }
+});
+</script>

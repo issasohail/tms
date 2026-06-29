@@ -27,7 +27,7 @@ from collections import defaultdict
 from invoices.models import Invoice, InvoiceItem, ItemCategory
 from properties.models import Unit
 from django.shortcuts import render
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, OuterRef, Subquery
 from datetime import date
 from leases.models import Lease
 # adjust app label if needed
@@ -55,15 +55,16 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
 from properties.models import Property, Unit
-from smart_meter.models import Meter, MeterReading, LiveReading, MeterBalance
+from smart_meter.models import Meter, MeterReading, LiveReading, MeterBalance, MeterInstallation
 import json
 from django.utils.safestring import mark_safe
 
 KW_RE = re.compile(r"total\s*usage\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)", re.I)
 try:
-    from leases.models import Lease
+    from leases.models import Lease, LeaseUnitOccupancy
 except Exception:
     Lease = None
+    LeaseUnitOccupancy = None
 try:
     from .models import Category  # adjust if Category lives elsewhere
 except Exception:
@@ -135,6 +136,117 @@ def _fmt0(n: Decimal | float | int) -> str:
     return f"{int(d):,}"
 
 
+def _tenant_display_name(tenant):
+    if not tenant:
+        return ""
+    return tenant.get_full_name() if hasattr(tenant, "get_full_name") else str(tenant)
+
+
+def _tenant_names_for_units(unit_ids, start_d: date, end_d: date):
+    tenant_names = {}
+    if not Lease or not unit_ids:
+        return tenant_names
+
+    try:
+        overlap_qs = (
+            Lease.objects
+            .filter(unit_id__in=unit_ids, start_date__lte=end_d, end_date__gte=start_d)
+            .select_related("tenant")
+            .order_by("unit_id", "-start_date")
+        )
+        for lease in overlap_qs:
+            if lease.unit_id in tenant_names:
+                continue
+            tenant_name = _tenant_display_name(getattr(lease, "tenant", None))
+            if tenant_name:
+                tenant_names[lease.unit_id] = tenant_name
+
+        missing_unit_ids = [unit_id for unit_id in unit_ids if unit_id not in tenant_names]
+        if missing_unit_ids:
+            today = timezone.localdate()
+            active_qs = (
+                Lease.objects
+                .filter(unit_id__in=missing_unit_ids, start_date__lte=today, end_date__gte=today)
+                .select_related("tenant")
+                .order_by("unit_id", "-start_date")
+            )
+            for lease in active_qs:
+                if lease.unit_id in tenant_names:
+                    continue
+                tenant_name = _tenant_display_name(getattr(lease, "tenant", None))
+                if tenant_name:
+                    tenant_names[lease.unit_id] = tenant_name
+    except Exception:
+        return {}
+
+    return tenant_names
+
+
+def _tenant_names_for_unit_dates(unit_dates):
+    tenant_names = {}
+    if not Lease or not unit_dates:
+        return tenant_names
+
+    all_dates = [
+        used_date
+        for dates in unit_dates.values()
+        for used_date in dates
+        if used_date
+    ]
+    if not all_dates:
+        return tenant_names
+
+    unit_ids = [unit_id for unit_id in unit_dates.keys() if unit_id]
+    min_date = min(all_dates)
+    max_date = max(all_dates)
+
+    occupancies = []
+    if LeaseUnitOccupancy:
+        occupancies = list(
+            LeaseUnitOccupancy.objects.filter(
+                unit_id__in=unit_ids,
+                move_in_date__lte=max_date,
+            )
+            .filter(Q(move_out_date__isnull=True) | Q(move_out_date__gte=min_date))
+            .select_related("lease", "lease__tenant")
+            .order_by("unit_id", "-move_in_date", "-id")
+        )
+
+    leases = list(
+        Lease.objects.filter(
+            unit_id__in=unit_ids,
+            start_date__lte=max_date,
+        )
+        .filter(Q(end_date__isnull=True) | Q(end_date__gte=min_date))
+        .select_related("tenant")
+        .order_by("unit_id", "-start_date", "-id")
+    )
+
+    for unit_id, dates in unit_dates.items():
+        for used_date in dates:
+            name = "Vacant"
+            for occupancy in occupancies:
+                if occupancy.unit_id != unit_id:
+                    continue
+                if occupancy.move_in_date <= used_date and (
+                    occupancy.move_out_date is None or occupancy.move_out_date >= used_date
+                ):
+                    name = _tenant_display_name(occupancy.lease.tenant) or "Vacant"
+                    break
+            if name == "Vacant":
+                for lease in leases:
+                    if lease.unit_id != unit_id:
+                        continue
+                    if lease.start_date <= used_date and (
+                        lease.end_date is None or lease.end_date >= used_date
+                    ):
+                        name = _tenant_display_name(lease.tenant) or "Vacant"
+                        break
+            tenant_names[(unit_id, used_date)] = name
+
+    return tenant_names
+
+
 def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     """
     Returns:
@@ -142,26 +254,45 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     """
     start_dt, end_dt, tz = _aware_range(start_d, end_d)
 
+    meters = list(meters_qs)
+    meter_ids = [m.id for m in meters]
     meter_to_rows = {}
     key_union = set()
 
-    for m in meters_qs:
-        qs = (MeterReading.objects
-              .filter(meter=m, ts__gte=start_dt, ts__lt=end_dt)
-              .order_by("ts")
-              .values("ts", "total_energy"))
+    readings_by_meter = defaultdict(list)
+    if meter_ids:
+        readings_qs = (
+            MeterReading.objects
+            .filter(meter_id__in=meter_ids, ts__gte=start_dt, ts__lt=end_dt)
+            .order_by("meter_id", "ts")
+            .values("meter_id", "ts", "total_energy")
+        )
+        for reading in readings_qs:
+            readings_by_meter[reading["meter_id"]].append(reading)
 
-        # NEW: get the last reading *before* the start window to seed Begin kWh
-        prev_snap = (MeterReading.objects
-                     .filter(meter=m, ts__lt=start_dt)
-                     .order_by("-ts")
-                     .values("total_energy")
-                     .first())
-        prev_end = Decimal(
-            str(prev_snap["total_energy"])) if prev_snap else None
+    prev_end_by_meter = {}
+    if meter_ids:
+        prev_total = (
+            MeterReading.objects
+            .filter(meter_id=OuterRef("pk"), ts__lt=start_dt)
+            .order_by("-ts")
+            .values("total_energy")[:1]
+        )
+        prev_qs = (
+            Meter.objects
+            .filter(id__in=meter_ids)
+            .annotate(prev_total=Subquery(prev_total))
+            .values("id", "prev_total")
+        )
+        for snap in prev_qs:
+            if snap["prev_total"] is not None:
+                prev_end_by_meter[snap["id"]] = Decimal(str(snap["prev_total"]))
+
+    for m in meters:
+        prev_end = prev_end_by_meter.get(m.id)
 
         groups = OrderedDict()
-        for r in qs:
+        for r in readings_by_meter.get(m.id, []):
             ts_local = timezone.localtime(r["ts"], tz)
             key, label = _period_key_and_label(ts_local, granularity)
             val = Decimal(str(r["total_energy"] or "0"))
@@ -196,6 +327,21 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     # Oldest → Latest
     keys_sorted = sorted(key_union)
 
+    def _date_from_key(k):
+        if isinstance(k, datetime):
+            return k.date()
+        if isinstance(k, date):
+            return k
+        return start_d
+
+    unit_dates = defaultdict(set)
+    for m in meters:
+        if not m.unit_id:
+            continue
+        for k in keys_sorted:
+            unit_dates[m.unit_id].add(_date_from_key(k))
+    tenant_names = _tenant_names_for_unit_dates(unit_dates)
+
     def _label_from_key(k):
         if isinstance(k, datetime):
             return k.strftime("%b %d %H:00")
@@ -213,7 +359,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     usage_charges = Decimal("0")
     service_total = Decimal("0")
 
-    for m in meters_qs:
+    for m in meters:
         unit_number = getattr(m.unit, "unit_number", "")
         legend_label = f"{unit_number} / {m.meter_number}"
         key_to_row = {r["period_key"]: r for r in meter_to_rows.get(m, [])}
@@ -233,40 +379,11 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
         rate = Decimal(str(m.unit_rate or "0"))
         svc = Decimal(str(m.service_charges or "0"))
 
-        tenant_name = "vacant"
-        if Lease:
-            try:
-                overlap = (Lease.objects
-                           .filter(unit=m.unit,
-                                   start_date__lte=end_d,
-                                   end_date__gte=start_d)
-                           .order_by("-start_date")
-                           .first())
-                if overlap and getattr(overlap, "tenant", None):
-                    tn = (overlap.tenant.get_full_name()
-                          if hasattr(overlap.tenant, "get_full_name")
-                          else str(overlap.tenant))
-                    tenant_name = tn
-                else:
-                    today = timezone.localdate()
-                    active = (Lease.objects
-                              .filter(unit=m.unit,
-                                      start_date__lte=today,
-                                      end_date__gte=today)
-                              .order_by("-start_date")
-                              .first())
-                    if active and getattr(active, "tenant", None):
-                        tn = (active.tenant.get_full_name()
-                              if hasattr(active.tenant, "get_full_name")
-                              else str(active.tenant))
-                        tenant_name = tn
-            except Exception:
-                tenant_name = "vacant"
-
         for k in keys_sorted:
             row = key_to_row.get(k)
             if not row:
                 continue
+            tenant_name = tenant_names.get((m.unit_id, _date_from_key(k)), "Vacant")
             usage_amt = (row["usage"] * rate).quantize(Decimal("0.01"))
             service_amt = svc if granularity == "monthly" else Decimal("0.00")
             total_amt = (usage_amt + service_amt).quantize(Decimal("0.01"))
@@ -275,6 +392,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 "meter_id": m.id,
                 "meter_number": m.meter_number,
                 "unit_number": unit_number,
+                "unit_id": m.unit_id,
                 "property_name": getattr(m.unit.property, "property_name", ""),
                 "tenant_name": tenant_name,
                 "period_label": _label_from_key(k),
@@ -1037,18 +1155,100 @@ def _parse_cols_param(request):
     return extras
 
 
+def _tenant_display(tenant):
+    if not tenant:
+        return "Vacant", ""
+    if hasattr(tenant, "get_full_name"):
+        full_name = (tenant.get_full_name() or "").strip()
+    else:
+        first_name = (getattr(tenant, "first_name", "") or "").strip()
+        last_name = (getattr(tenant, "last_name", "") or "").strip()
+        full_name = (first_name + " " + last_name).strip()
+    full_name = full_name or getattr(tenant, "name", "") or str(tenant)
+    phone = (
+        getattr(tenant, "phone", None)
+        or getattr(tenant, "phone2", None)
+        or getattr(tenant, "phone3", None)
+        or ""
+    )
+    return full_name, phone
+
+
+def _billing_month_units_and_leases(start, end):
+    """
+    Return one row source per unit/tenant record that overlaps the selected month.
+    A unit with two leases in the month gets two records; a unit with no lease
+    gets one Vacant record.
+    """
+    month_overlap = Q(start_date__lte=end) & (Q(end_date__isnull=True) | Q(end_date__gte=start))
+    occupancy_overlap = Q(move_in_date__lte=end) & (Q(move_out_date__isnull=True) | Q(move_out_date__gte=start))
+
+    unit_ids = set(
+        MeterInstallation.objects.filter(
+            start_date__lte=end
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=start)
+        ).values_list("unit_id", flat=True)
+    )
+
+    unit_ids.update(
+        Lease.objects.filter(month_overlap).values_list("unit_id", flat=True)
+    )
+
+    occupancies = list(
+        LeaseUnitOccupancy.objects.filter(occupancy_overlap)
+        .select_related("lease", "lease__tenant", "unit", "unit__property")
+        .order_by("unit__property__property_name", "unit__unit_number", "move_in_date", "id")
+    )
+    unit_ids.update(o.unit_id for o in occupancies)
+
+    units = list(
+        Unit.objects.filter(id__in=unit_ids)
+        .select_related("property")
+        .order_by("property__property_name", "unit_number", "id")
+    )
+
+    rows_by_unit = defaultdict(list)
+    occupancy_lease_ids = set()
+    for occ in occupancies:
+        rows_by_unit[occ.unit_id].append({"unit": occ.unit, "lease": occ.lease})
+        occupancy_lease_ids.add(occ.lease_id)
+
+    leases = (
+        Lease.objects.filter(month_overlap)
+        .exclude(id__in=occupancy_lease_ids)
+        .select_related("tenant", "unit", "unit__property")
+        .order_by("unit__property__property_name", "unit__unit_number", "start_date", "id")
+    )
+    for lease in leases:
+        rows_by_unit[lease.unit_id].append({"unit": lease.unit, "lease": lease})
+
+    row_sources = []
+    for unit in units:
+        unit_rows = rows_by_unit.get(unit.id)
+        if unit_rows:
+            row_sources.extend(unit_rows)
+        else:
+            row_sources.append({"unit": unit, "lease": None})
+
+    return row_sources
+
+
 def build_billing_summary_context(request):
     y, m = _ym_from_qs(request)
     start, end = _first_last_of_month(y, m)
 
     extra_ids = _parse_cols_param(request)
+    active_only = request.GET.get("active_only") == "1"
+    active_only_param = "&active_only=1" if active_only else ""
 
     month_full = date(y, m, 1).strftime("%B %Y")
     generated_at = timezone.localtime(
         timezone.now()).strftime("%d %b %Y, %I:%M %p")
 
-    # map categories (id -> name)
-    cat_map = dict(ItemCategory.objects.values_list("id", "name"))
+    # Load categories once; reused for header labels and the picker modal.
+    all_categories = list(ItemCategory.objects.order_by("name").values("id", "name"))
+    cat_map = {c["id"]: c["name"] for c in all_categories}
 
     # Invoices in month
     inv_qs = (
@@ -1073,13 +1273,58 @@ def build_billing_summary_context(request):
     for inv in inv_qs:
         inv_by_lease[inv.lease_id].append(inv)
 
-    # Leases to show (active)
-    leases = (
-        Lease.objects
-        .select_related("tenant", "unit", "unit__property")
-        .filter(status="active")
-        .order_by("unit__property__property_name", "unit__unit_number")
-    )
+    # Rows are based on the selected billing month, not the current lease status.
+    # This keeps historical tenant names correct and shows Vacant when no lease
+    # overlaps the month.
+    row_sources = _billing_month_units_and_leases(start, end)
+    row_lease_ids = [
+        source["lease"].id
+        for source in row_sources
+        if source.get("lease")
+    ]
+
+    balance_by_lease = defaultdict(Decimal)
+    if row_lease_ids:
+        from django.db.models import Case, DecimalField, F, When
+        from django.db.models.functions import Coalesce
+        from payments.models import Payment
+
+        invoice_totals = {
+            row["lease_id"]: Decimal(row["total"] or 0)
+            for row in (
+                Invoice.objects
+                .filter(lease_id__in=row_lease_ids)
+                .values("lease_id")
+                .annotate(total=Coalesce(Sum("amount"), Decimal("0.00")))
+            )
+        }
+
+        payment_totals = {
+            row["lease_id"]: Decimal(row["total"] or 0)
+            for row in (
+                Payment.objects
+                .filter(lease_id__in=row_lease_ids)
+                .values("lease_id")
+                .annotate(
+                    total=Coalesce(
+                        Sum(
+                            Case(
+                                When(
+                                    allocation__isnull=False,
+                                    then=F("allocation__lease_amount"),
+                                ),
+                                default=F("amount"),
+                                output_field=DecimalField(max_digits=12, decimal_places=2),
+                            )
+                        ),
+                        Decimal("0.00"),
+                    )
+                )
+            )
+        }
+
+        for lease_id in row_lease_ids:
+            balance_by_lease[lease_id] = invoice_totals.get(lease_id, ZERO) - payment_totals.get(lease_id, ZERO)
 
     # visible cats = defaults + extras (no dups)
     visible_cat_ids = []
@@ -1108,18 +1353,20 @@ def build_billing_summary_context(request):
     groups = defaultdict(list)
     grand = defaultdict(Decimal)
 
-    for lease in leases:
-        unit = lease.unit
+    for source in row_sources:
+        lease = source["lease"]
+        unit = source["unit"]
         prop = unit.property
 
         # Bucket amounts by category ID
         bucket = defaultdict(Decimal)
         row_total = ZERO
-        for inv in inv_by_lease.get(lease.id, []):
-            for it in items_by_inv.get(inv.id, []):
-                amt = Decimal(it.amount or 0)
-                bucket[it.category_id] += amt
-                row_total += amt
+        if lease:
+            for inv in inv_by_lease.get(lease.id, []):
+                for it in items_by_inv.get(inv.id, []):
+                    amt = Decimal(it.amount or 0)
+                    bucket[it.category_id] += amt
+                    row_total += amt
 
         vis_values = {cid: bucket.get(cid, ZERO) for cid in visible_cat_ids}
 
@@ -1128,18 +1375,11 @@ def build_billing_summary_context(request):
             if cid not in vis_values:
                 other_sum += amt
 
-        # Total Balance from Lease (pref get_balance1)
-        if hasattr(lease, "get_balance1") and lease.get_balance1 is not None:
-            total_balance = lease.get_balance1
-        else:
-            total_balance = getattr(lease, "get_balance", ZERO) or ZERO
+        total_balance = balance_by_lease.get(lease.id, ZERO) if lease else ZERO
+        total_balance = Decimal(total_balance or 0)
 
-        t = lease.tenant
-        first_name = (getattr(t, "first_name", "") or "").strip()
-        last_name = (getattr(t, "last_name", "") or "").strip()
-        full_name = (first_name + " " + last_name).strip() or str(t)
-        phone = getattr(t, "phone", None) or getattr(
-            t, "phone2", None) or getattr(t, "phone3", None) or ""
+        t = lease.tenant if lease else None
+        full_name, phone = _tenant_display(t)
 
         cells = []
         for col in header_cols:
@@ -1251,9 +1491,11 @@ def build_billing_summary_context(request):
         "header_cols": header_cols,
         "groups": grouped,
         "grand_row": grand_row,
-        "all_categories": ItemCategory.objects.order_by("name").values("id", "name"),
+        "all_categories": all_categories,
         "visible_cat_ids": visible_cat_ids,
         "has_extras": bool(extra_ids),  # for PDF orientation
+        "active_only": active_only,
+        "active_only_param": active_only_param,
     }
     return ctx
 
@@ -1318,6 +1560,7 @@ def billing_summary_items(request):
 
         unit_id = request.GET.get("unit_id")
         prop_id = request.GET.get("property_id")
+        active_only = request.GET.get("active_only") == "1"
 
         # derive heading property label
         scope_prop_name = ""
@@ -1326,6 +1569,8 @@ def billing_summary_items(request):
                 return JsonResponse({"error": "Missing unit_id for scope=unit."}, status=400)
             lease_qs = Lease.objects.filter(
                 unit_id=unit_id).select_related("unit__property")
+            if active_only:
+                lease_qs = lease_qs.filter(status="active")
             lease_ids = list(lease_qs.values_list("id", flat=True))
             u0 = lease_qs.first()
             if u0 and getattr(u0.unit, "property", None):
@@ -1334,14 +1579,18 @@ def billing_summary_items(request):
             if not prop_id:
                 return JsonResponse({"error": "Missing property_id for scope=property."}, status=400)
             lease_qs = Lease.objects.filter(
-                unit__property_id=prop_id, status="active").select_related("unit__property")
+                unit__property_id=prop_id).select_related("unit__property")
+            if active_only:
+                lease_qs = lease_qs.filter(status="active")
             lease_ids = list(lease_qs.values_list("id", flat=True))
             u0 = lease_qs.first()
             if u0 and getattr(u0.unit, "property", None):
                 scope_prop_name = u0.unit.property.property_name
         else:
-            lease_ids = list(Lease.objects.filter(
-                status="active").values_list("id", flat=True))
+            lease_qs = Lease.objects.all()
+            if active_only:
+                lease_qs = lease_qs.filter(status="active")
+            lease_ids = list(lease_qs.values_list("id", flat=True))
 
         # list invoices
         invs = (
@@ -1467,7 +1716,7 @@ def billing_summary_items(request):
 
         # build qs for export links
         base_params = {}
-        for k in ("month", "scope", "category", "unit_id", "property_id", "cols"):
+        for k in ("month", "scope", "category", "unit_id", "property_id", "cols", "active_only"):
             v = request.GET.get(k)
             if v:
                 base_params[k] = v

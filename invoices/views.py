@@ -37,10 +37,12 @@ from django.db.models import Count, ProtectedError
 from .models import RecurringCharge
 from datetime import date, timedelta
 from django.utils import timezone
+from django.core import signing
 from properties.models import Property, Unit  # adjust imports
 
 from .forms import InvoiceForm
 from .models import Invoice, InvoiceItem, ItemCategory,SecurityDepositTransaction
+from .public_links import load_public_invoice_token
 from django.db import transaction
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
@@ -61,6 +63,7 @@ from django.core.exceptions import ValidationError
 from django.utils.html import escape
 from django_tables2 import SingleTableView
 from django.conf import settings
+from django.core.cache import cache
 from django.views import View
 from .models import Invoice, InvoiceItem
 from .forms import InvoiceForm
@@ -79,7 +82,7 @@ from .models import ItemCategory
 from .forms import InvoiceForm
 import asyncio
 from django.db.models import F, Value
-from django.db.models.functions import Concat
+from django.db.models.functions import Coalesce, Concat
 from .aggregates import GroupConcat
 from django.urls import reverse
 # top of views.py
@@ -99,7 +102,7 @@ from django.views.generic import TemplateView
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.apps import apps
 from django.utils.dateformat import format as dj_format
-from django.db.models import Q
+from django.db.models import Case, DecimalField, ExpressionWrapper, OuterRef, Q, Subquery, When
 from django.db import transaction
 from django.forms import inlineformset_factory
 from .forms import InvoiceForm, InvoiceItemForm
@@ -108,6 +111,7 @@ from django.urls import reverse
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 
 from leases.models import Lease
+from payments.models import Payment
 from .models import SecurityDepositTransaction
 from .services import security_deposit_totals
 from core.models import GlobalSettings
@@ -115,6 +119,7 @@ import logging
 logger = logging.getLogger(__name__)
 # at top if not present
 ITEMS_PREFIX = "items"
+CATEGORY_CACHE_KEY = "invoices.active_item_categories"
 
 InvoiceItemFormset = inlineformset_factory(
     Invoice,
@@ -133,7 +138,7 @@ class InvoiceListView(SingleTableView):
     model = Invoice
     table_class = InvoiceTable
     template_name = "invoices/invoice_list.html"
-    paginate_by = 20
+    paginate_by = 45
 
     def _period_to_dates(self, period: str):
         if not period:
@@ -167,7 +172,45 @@ class InvoiceListView(SingleTableView):
 
     def get_queryset(self):
         qs = (Invoice.objects
-              .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property"))
+              .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
+              .prefetch_related(
+                  Prefetch(
+                      "items",
+                      queryset=InvoiceItem.objects.select_related("category").only(
+                          "id",
+                          "invoice_id",
+                          "category_id",
+                          "description",
+                          "amount",
+                          "category__id",
+                          "category__name",
+                      ),
+                  )
+              )
+              .only(
+                  "id",
+                  "lease_id",
+                  "invoice_number",
+                  "issue_date",
+                  "due_date",
+                  "amount",
+                  "status",
+                  "description",
+                  "lease__id",
+                  "lease__tenant_id",
+                  "lease__unit_id",
+                  "lease__tenant__id",
+                  "lease__tenant__first_name",
+                  "lease__tenant__last_name",
+                  "lease__tenant__phone",
+                  "lease__unit__id",
+                  "lease__unit__property_id",
+                  "lease__unit__unit_number",
+                  "lease__unit__property__id",
+                  "lease__unit__property__property_name",
+                  "lease__security_deposit",
+              )
+              )
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")
@@ -197,12 +240,90 @@ class InvoiceListView(SingleTableView):
 
         return qs  # don't force order here; table default covers first load
 
+    def _attach_page_lease_balances(self, table):
+        """
+        The invoice list only needs lease balance for the WhatsApp button rows.
+        Computing it in the main queryset adds correlated subqueries to every
+        invoice before pagination, so calculate it for the displayed page only.
+        """
+        records = []
+        try:
+            records = [row.record for row in table.paginated_rows]
+        except Exception:
+            page = getattr(table, "page", None)
+            if page is not None:
+                records = list(getattr(page, "object_list", []) or [])
+
+        lease_ids = sorted({record.lease_id for record in records if record.lease_id})
+        if not lease_ids:
+            return
+
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        invoice_totals = {
+            row["lease_id"]: row["total"] or Decimal("0.00")
+            for row in (
+                Invoice.objects
+                .filter(lease_id__in=lease_ids)
+                .values("lease_id")
+                .annotate(total=Coalesce(Sum("amount"), Value(Decimal("0.00")), output_field=money_field))
+            )
+        }
+        payment_totals = {
+            row["lease_id"]: row["total"] or Decimal("0.00")
+            for row in (
+                Payment.objects
+                .filter(lease_id__in=lease_ids)
+                .values("lease_id")
+                .annotate(
+                    total=Coalesce(
+                        Sum(
+                            Case(
+                                When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                                default=F("amount"),
+                                output_field=money_field,
+                            )
+                        ),
+                        Value(Decimal("0.00")),
+                        output_field=money_field,
+                    )
+                )
+            )
+        }
+        security_rows = (
+            SecurityDepositTransaction.objects
+            .filter(lease_id__in=lease_ids)
+            .values("lease_id", "type")
+            .annotate(total=Coalesce(Sum("amount"), Value(Decimal("0.00")), output_field=money_field))
+        )
+        security_totals = {}
+        for row in security_rows:
+            lease_id = row["lease_id"]
+            security_totals.setdefault(lease_id, {"PAYMENT": Decimal("0.00"), "ADJUST": Decimal("0.00")})
+            security_totals[lease_id][row["type"]] = row["total"] or Decimal("0.00")
+
+        for record in records:
+            balance = (
+                invoice_totals.get(record.lease_id, Decimal("0.00"))
+                - payment_totals.get(record.lease_id, Decimal("0.00"))
+            )
+            security_required = getattr(getattr(record, "lease", None), "security_deposit", None) or Decimal("0.00")
+            security_paid = security_totals.get(record.lease_id, {}).get("PAYMENT", Decimal("0.00"))
+            security_balance = max(security_required - security_paid, Decimal("0.00"))
+            total_balance = balance + security_balance
+            record.dashboard_lease_balance = balance
+            record.dashboard_security_balance = security_balance
+            record.dashboard_total_balance = total_balance
+            if getattr(record, "lease", None) is not None:
+                record.lease._cached_get_balance = balance
+                record.lease._cached_security_due = security_balance
+
     def get_table(self, **kwargs):
         table = super().get_table(**kwargs)
         # Only set default when there's no user sort in querystring
         sort_param = table.prefixed_order_by_field  # e.g. 'sort'
         if not self.request.GET.get(sort_param):
             table.order_by = ("invoice_number",)
+        self._attach_page_lease_balances(table)
         return table
 
     def get_context_data(self, **kwargs):
@@ -210,11 +331,13 @@ class InvoiceListView(SingleTableView):
         Lease = apps.get_model("leases", "Lease")
         Unit = apps.get_model("properties", "Unit")
 
-        ctx = super().get_context_data(**kwargs)
+        ctx = {"view": self}
+        table = self.get_table(**self.get_table_kwargs())
+        ctx[self.get_context_table_name(table)] = table
         today = timezone.localdate()
 
         # Properties
-        props = Property.objects.all().order_by("property_name")
+        props = Property.objects.only("id", "property_name").order_by("property_name")
         ctx["property_options"] = [
             {"id": p.id, "name": p.property_name} for p in props]
 
@@ -222,8 +345,26 @@ class InvoiceListView(SingleTableView):
         show_inactive = bool(self.request.GET.get("show_inactive"))
         ctx["show_inactive"] = show_inactive
 
-        leases_qs = Lease.objects.select_related(
-            "tenant", "unit", "unit__property")
+        leases_qs = (
+            Lease.objects
+            .select_related("tenant", "unit", "unit__property")
+            .only(
+                "id",
+                "tenant_id",
+                "unit_id",
+                "start_date",
+                "end_date",
+                "status",
+                "tenant__id",
+                "tenant__first_name",
+                "tenant__last_name",
+                "unit__id",
+                "unit__property_id",
+                "unit__unit_number",
+                "unit__property__id",
+                "unit__property__property_name",
+            )
+        )
         if not show_inactive:
             active_filter = {"status": "active"} if hasattr(
                 Lease, "status") else {}
@@ -232,8 +373,10 @@ class InvoiceListView(SingleTableView):
                 leases_qs = leases_qs.filter(
                     end_date__isnull=True) | leases_qs.filter(end_date__gte=today)
 
+        leases_list = list(leases_qs.order_by("-start_date"))
+
         lease_options = []
-        for L in leases_qs:
+        for L in leases_list:
             t = getattr(L, "tenant", None)
             u = getattr(L, "unit", None)
             p = getattr(u, "property", None) if u else None
@@ -259,18 +402,8 @@ class InvoiceListView(SingleTableView):
         ctx["lease_options"] = lease_options
 
         # Units by property (Unit — Tenant — End — Status)
-        leases_all = Lease.objects.select_related(
-            "tenant", "unit", "unit__property")
-        if not show_inactive:
-            active_filter = {"status": "active"} if hasattr(
-                Lease, "status") else {}
-            leases_all = leases_all.filter(**active_filter)
-            if hasattr(Lease, "end_date"):
-                leases_all = leases_all.filter(
-                    end_date__isnull=True) | leases_all.filter(end_date__gte=today)
-
         latest_by_unit = {}
-        for L in leases_all:
+        for L in leases_list:
             uid = getattr(L, "unit_id", None)
             if uid is None:
                 continue
@@ -281,7 +414,7 @@ class InvoiceListView(SingleTableView):
                 latest_by_unit[uid] = L
 
         by_prop = {}
-        units = Unit.objects.select_related("property").all()
+        units = Unit.objects.only("id", "property_id", "unit_number").all()
         for u in units:
             L = latest_by_unit.get(u.id)
             tname, end_txt, is_active = "", "—", False
@@ -442,13 +575,25 @@ class InvoiceDetailView(DetailView):
     model = Invoice
     template_name = "invoices/invoice_detail.html"
 
+    def get_queryset(self):
+        # PERF: avoids N+1 on invoice->lease->tenant/unit/property and invoice items/categories.
+        return super().get_queryset().select_related(
+            "lease__tenant",
+            "lease__unit__property",
+        ).prefetch_related(
+            Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
+            "lease__invoices",
+            Prefetch("lease__payments", queryset=Payment.objects.select_related("allocation")),
+            "lease__security_transactions",
+        )
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
         inv = self.object
 
         # Preload items + category
-        items = inv.items.select_related('category').all()
+        items = list(inv.items.all())
 
         # Combined description = "Category: desc, Category: desc, ..."
         parts = []
@@ -462,12 +607,21 @@ class InvoiceDetailView(DetailView):
         ctx["combined_description"] = ", ".join(parts)
 
         # Compute total from items (don’t trust stale invoice.amount)
-        ctx["computed_total"] = items.aggregate(t=Sum("amount"))["t"] or 0
+        ctx["computed_total"] = sum((item.amount for item in items), Decimal("0.00"))
 
         # For the category list box (datalist suggestions)
-        from .models import ItemCategory
-        ctx["categories"] = ItemCategory.objects.filter(
-            is_active=True).order_by("name").values("id", "name")
+        categories = cache.get(CATEGORY_CACHE_KEY)
+        if categories is None:
+            categories = list(
+                ItemCategory.objects.filter(is_active=True)
+                .order_by("name")
+                .values("id", "name")
+            )
+            cache.set(CATEGORY_CACHE_KEY, categories, 60)
+        ctx["categories"] = categories
+
+        # PERF: lease balance is expensive; cached Lease financial summary avoids repeated aggregates.
+        ctx["lease_balance"] = inv.lease.get_balance if inv.lease_id else Decimal("0.00")
         
         # 🔹 NEW: security deposit totals for this invoice's lease
         lease = getattr(inv, "lease", None)
@@ -487,6 +641,70 @@ class InvoiceDetailView(DetailView):
 
         return ctx
     
+
+
+def public_invoice_detail(request, token):
+    try:
+        data = load_public_invoice_token(token)
+        invoice_id = data.get("invoice_id")
+    except signing.SignatureExpired:
+        return render(request, "invoices/public_invoice_expired.html", status=410)
+    except signing.BadSignature:
+        raise Http404("Invalid invoice link.")
+
+    invoice = get_object_or_404(
+        Invoice.objects.select_related(
+            "lease__tenant",
+            "lease__unit__property",
+        ).prefetch_related(
+            Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
+            "lease__invoices",
+            Prefetch("lease__payments", queryset=Payment.objects.select_related("allocation")),
+            "lease__security_transactions",
+        ),
+        pk=invoice_id,
+    )
+    items = list(invoice.items.all())
+    lease = getattr(invoice, "lease", None)
+    if lease:
+        sec_totals = security_deposit_totals(lease)
+        lease_balance = lease.get_balance
+    else:
+        sec_totals = {
+            "required": 0,
+            "paid_in": 0,
+            "refunded": 0,
+            "damages": 0,
+            "balance_to_collect": 0,
+            "currently_held": 0,
+        }
+        lease_balance = Decimal("0.00")
+    combined_description = ", ".join(
+        part
+        for item in items
+        for part in [
+            (
+                f"{item.category.name}: {item.description}"
+                if item.category and item.description
+                else item.category.name
+                if item.category
+                else item.description or ""
+            )
+        ]
+        if part
+    )
+    return render(
+        request,
+        "invoices/public_invoice_detail.html",
+        {
+            "invoice": invoice,
+            "items": items,
+            "combined_description": combined_description,
+            "computed_total": sum((item.amount for item in items), Decimal("0.00")),
+            "lease_balance": lease_balance,
+            "sec_totals": sec_totals,
+        },
+    )
 
 
 class InvoiceDeleteView(LoginRequiredMixin, DeleteView):
@@ -532,7 +750,7 @@ def render_to_pdf(template_name, context):
 
 
 def _invoice_pdf_context(invoice):
-    items = invoice.items.select_related('category').all()
+    items = list(invoice.items.select_related('category').all())
     parts = []
     for item in items:
         category_name = item.category.name if item.category_id else ''
@@ -547,7 +765,7 @@ def _invoice_pdf_context(invoice):
     return {
         'invoice': invoice,
         'items': items,
-        'computed_total': items.aggregate(t=Sum('amount'))['t'] or Decimal('0.00'),
+        'computed_total': sum((item.amount for item in items), Decimal('0.00')),
         'combined_description': ', '.join(parts),
         'date': now().date(),
     }
@@ -2653,6 +2871,9 @@ def build_invoice_whatsapp_message(request, inv):
 
     num = getattr(inv, "invoice_number", inv.pk)
     amount = getattr(inv, "amount", 0) or 0
+    lease_balance = getattr(lease, "get_balance", Decimal("0.00")) if lease else Decimal("0.00")
+    security_balance = getattr(lease, "security_balance_to_collect", Decimal("0.00")) if lease else Decimal("0.00")
+    total_balance = (lease_balance or Decimal("0.00")) + (security_balance or Decimal("0.00"))
     due = getattr(inv, "due_date", None)
 
     detail_url = request.build_absolute_uri(
@@ -2663,6 +2884,9 @@ def build_invoice_whatsapp_message(request, inv):
         "",
         f"*Invoice #{num}*",
         f"Amount: Rs.{float(amount):,.2f}",
+        f"Lease Balance: Rs.{float(lease_balance or 0):,.2f}",
+        f"Security Deposit Balance: Rs.{float(security_balance or 0):,.2f}" if security_balance else "",
+        f"New Balance: Rs.{float(total_balance or 0):,.2f}",
         f"Due Date: {due:%b %d, %Y}" if due else "",
         f"Property: {getattr(prop, 'property_name', '')}",
         f"Unit: {getattr(unit, 'unit_number', '')}",
@@ -2748,10 +2972,7 @@ class SecurityDepositListView(LeaseSecurityMixin, ListView):
                 signed_amt = -amt                   # show as negative
                 balance -= amt                      # decrease held
             elif tx.type == 'ADJUST':
-                # manual adjustment: treat as signed
-                # (if you always enter positive, this will increase)
                 signed_amt = amt
-                balance += amt
             else:
                 # REQUIRED or anything else → does not change current held,
                 # but we still show as positive line item
@@ -2840,3 +3061,170 @@ def api_security_receipt_whatsapp(request, pk: int):
     phone = getattr(tx.lease.tenant, "phone", "") or ""
     message = build_security_receipt_message(request, tx)
     return JsonResponse({"phone": phone, "message": message, "security_tx_id": tx.pk})
+
+
+# ---------- Monthly billing run review ----------
+from invoices.services import (
+    _tenant_name,
+    generate_monthly_billing_electric,
+    generate_monthly_billing_invoices,
+    generate_monthly_billing_pdfs,
+    parse_billing_month,
+    prepare_monthly_billing_ready,
+    resolve_monthly_billing_water,
+    run_monthly_billing_preflight,
+    send_monthly_billing_ready,
+)
+from invoices.models import MonthlyBillingRun, MonthlyBillingRunItem
+
+
+class MonthlyBillingRunListView(LoginRequiredMixin, ListView):
+    model = MonthlyBillingRun
+    template_name = "invoices/monthly_billing_run_list.html"
+    context_object_name = "runs"
+    paginate_by = 24
+
+    def get_queryset(self):
+        return MonthlyBillingRun.objects.order_by("-billing_month", "-created_at")
+
+
+class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
+    model = MonthlyBillingRun
+    template_name = "invoices/monthly_billing_run_detail.html"
+    context_object_name = "run"
+
+    def get_queryset(self):
+        return MonthlyBillingRun.objects.prefetch_related(
+            "items__lease__tenant",
+            "items__lease__unit__property",
+            "items__invoice",
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        items = self.object.items.select_related("lease__tenant", "lease__unit__property", "invoice")
+        ctx["tabs"] = [
+            ("ready_to_send", "Ready to Send", items.filter(status=MonthlyBillingRunItem.STATUS_READY)),
+            ("pending_attention", "Pending Attention", items.filter(status=MonthlyBillingRunItem.STATUS_PENDING)),
+            ("sent", "Sent", items.filter(status=MonthlyBillingRunItem.STATUS_SENT)),
+            ("failed", "Failed", items.filter(status=MonthlyBillingRunItem.STATUS_FAILED)),
+            ("skipped", "Skipped", items.filter(status=MonthlyBillingRunItem.STATUS_SKIPPED)),
+        ]
+        ctx["all_items"] = items
+        return ctx
+
+
+@login_required
+@require_POST
+def monthly_billing_run_create(request):
+    month = parse_billing_month(request.POST.get("month"))
+    run = run_monthly_billing_preflight(month, created_by=request.user)
+    messages.success(request, f"Monthly billing preflight created for {month:%B %Y}.")
+    return redirect("invoices:monthly_billing_run_detail", pk=run.pk)
+
+
+@login_required
+@require_POST
+def monthly_billing_run_action(request, pk):
+    run = get_object_or_404(MonthlyBillingRun, pk=pk)
+    action = request.POST.get("action")
+    try:
+        if action == "preflight":
+            run_monthly_billing_preflight(run.billing_month, created_by=request.user)
+            messages.success(request, "Preflight completed.")
+        elif action == "generate_recurring":
+            generate_monthly_billing_invoices(run)
+            messages.success(request, "Recurring invoices generated.")
+        elif action == "generate_electric":
+            generate_monthly_billing_electric(run)
+            messages.success(request, "Electric billing checks completed.")
+        elif action == "prepare_ready":
+            prepare_monthly_billing_ready(run)
+            messages.success(request, "Ready-to-send review completed.")
+        elif action == "generate_pdfs":
+            generate_monthly_billing_pdfs(run)
+            messages.success(request, "Invoice PDFs generated for ready items.")
+        elif action == "send_ready":
+            send_monthly_billing_ready(run, created_by=request.user)
+            messages.success(request, "Ready invoices sent where possible.")
+        elif action == "retry_failed":
+            send_monthly_billing_ready(run, created_by=request.user, retry_failed=True)
+            messages.success(request, "Failed invoices retried.")
+        else:
+            messages.error(request, "Unknown billing action.")
+    except Exception as exc:
+        messages.error(request, f"Monthly billing action failed: {exc}")
+    return redirect("invoices:monthly_billing_run_detail", pk=run.pk)
+
+
+@login_required
+@require_POST
+def monthly_billing_water_update(request, pk):
+    item = get_object_or_404(MonthlyBillingRunItem.objects.select_related("billing_run"), pk=pk)
+    try:
+        if request.POST.get("not_applicable") == "1":
+            resolve_monthly_billing_water(item, not_applicable=True)
+            messages.success(request, "Water marked not applicable.")
+        else:
+            resolve_monthly_billing_water(item, amount=request.POST.get("water_charge"))
+            messages.success(request, "Water charge saved.")
+        prepare_monthly_billing_ready(item.billing_run)
+    except Exception as exc:
+        messages.error(request, f"Water update failed: {exc}")
+    return redirect("invoices:monthly_billing_run_detail", pk=item.billing_run_id)
+
+
+@login_required
+def monthly_billing_run_export(request, pk):
+    import csv
+
+    run = get_object_or_404(MonthlyBillingRun, pk=pk)
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="monthly_billing_{run.billing_month:%Y_%m}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([
+        "billing_month",
+        "tenant",
+        "property",
+        "unit",
+        "invoice",
+        "status",
+        "issue_code",
+        "issue_message",
+        "recurring_found",
+        "electric_required",
+        "electric_ready",
+        "latest_meter_reading_date",
+        "water_required",
+        "water_charge",
+        "water_resolved",
+        "invoice_total",
+        "whatsapp_status",
+        "whatsapp_message_id",
+        "sent_at",
+        "error_text",
+    ])
+    for item in run.items.select_related("tenant", "property", "unit", "invoice"):
+        writer.writerow([
+            run.billing_month,
+            _tenant_name(item.tenant) if item.tenant else "",
+            getattr(item.property, "property_name", ""),
+            getattr(item.unit, "unit_number", ""),
+            getattr(item.invoice, "invoice_number", ""),
+            item.get_status_display(),
+            item.issue_code,
+            item.issue_message,
+            item.recurring_invoice_found,
+            item.electric_required,
+            item.electric_ready,
+            item.latest_meter_reading_date,
+            item.water_required,
+            item.water_charge,
+            item.water_resolved,
+            item.invoice_total,
+            item.whatsapp_status,
+            item.whatsapp_message_id,
+            item.sent_at,
+            item.error_text,
+        ])
+    return response

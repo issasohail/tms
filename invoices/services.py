@@ -466,9 +466,8 @@ def security_deposit_totals(lease):
     refunded           = sum of REFUND
     damages            = sum of DAMAGE
     adjust             = sum of ADJUST (signed)
-    effective_paid_in  = paid_in + adjust
-    balance_to_collect = max(required - effective_paid_in, 0)
-    currently_held     = max(effective_paid_in - refunded - damages, 0)
+    balance_to_collect = max(required - paid_in, 0)
+    currently_held     = max(paid_in - refunded - damages, 0)
     """
     ZERO = Decimal('0.00')
 
@@ -484,6 +483,9 @@ def security_deposit_totals(lease):
             "currently_held": ZERO,
         }
 
+    if hasattr(lease, "security_summary"):
+        return lease.security_summary
+
     required = lease.security_deposit or ZERO
 
     qs = SecurityDepositTransaction.objects.filter(lease=lease)
@@ -494,10 +496,8 @@ def security_deposit_totals(lease):
     damages  = qs.filter(type="DAMAGE").aggregate(total=Sum("amount"))["total"] or ZERO
     adjust   = qs.filter(type="ADJUST").aggregate(total=Sum("amount"))["total"] or ZERO
 
-    effective_paid_in = paid_in + adjust
-
-    balance_to_collect = max(required - effective_paid_in, ZERO)
-    currently_held     = max(effective_paid_in - refunded - refund_deductions - damages, ZERO)
+    balance_to_collect = max(required - paid_in, ZERO)
+    currently_held     = max(paid_in - refunded - refund_deductions - damages, ZERO)
 
     return {
         "required": required,
@@ -597,3 +597,467 @@ def build_security_receipt_message(request, tx) -> str:
     ]
 
     return "\n".join(lines)
+
+
+# ---------- monthly billing workflow ----------
+import logging
+from calendar import monthrange
+
+from django.core.files.base import ContentFile
+from django.db.models import Q
+
+from .models import MonthlyBillingRun, MonthlyBillingRunItem
+
+logger = logging.getLogger(__name__)
+
+
+def parse_billing_month(value: str | None, default_today: date | None = None) -> date:
+    if value:
+        year, month = [int(part) for part in value.split("-", 1)]
+        return date(year, month, 1)
+    today = default_today or timezone.localdate()
+    if today.day == 1:
+        prev_month = today.month - 1 or 12
+        prev_year = today.year - 1 if today.month == 1 else today.year
+        return date(prev_year, prev_month, 1)
+    return date(today.year, today.month, 1)
+
+
+def monthly_period_end(month_start: date) -> date:
+    return date(month_start.year, month_start.month, monthrange(month_start.year, month_start.month)[1])
+
+
+def get_or_create_monthly_billing_run(billing_month: date, *, created_by=None, created_by_label=""):
+    run, created = MonthlyBillingRun.objects.get_or_create(
+        billing_month=first_of_month(billing_month),
+        defaults={
+            "run_date": timezone.localdate(),
+            "created_by": created_by if getattr(created_by, "is_authenticated", False) else None,
+            "created_by_label": created_by_label,
+        },
+    )
+    if created:
+        _run_log(run, "billing run started")
+    return run
+
+
+def _run_log(run, message):
+    notes = (run.notes or "").strip()
+    stamp = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+    run.notes = (notes + "\n" if notes else "") + f"[{stamp}] {message}"
+    run.save(update_fields=["notes", "updated_at"])
+    logger.info("Monthly billing run %s: %s", run.pk, message)
+
+
+def _item_log(item, message):
+    entry = {"at": timezone.localtime().isoformat(), "message": message}
+    item.log = list(item.log or []) + [entry]
+    item.save(update_fields=["log", "updated_at"])
+    logger.info("Monthly billing item %s: %s", item.pk, message)
+
+
+def _tenant_name(tenant):
+    return " ".join(filter(None, [getattr(tenant, "first_name", ""), getattr(tenant, "last_name", "")])).strip()
+
+
+def _active_leases_for_month(month_start: date):
+    month_end = monthly_period_end(month_start)
+    return (
+        active_leases_qs()
+        .filter(start_date__lte=month_end)
+        .filter(Q(end_date__gte=month_start) | Q(end_date__isnull=True))
+        .select_related("tenant", "unit", "unit__property")
+        .order_by("unit__property__property_name", "unit__unit_number", "id")
+    )
+
+
+def _recurring_rules_for_lease(lease, month_start: date):
+    month_end = monthly_period_end(month_start)
+    return RecurringCharge.objects.filter(
+        active=True,
+        kind="FIXED",
+        start_date__lte=month_end,
+    ).filter(
+        Q(end_date__isnull=True) | Q(end_date__gte=month_start)
+    ).filter(
+        Q(scope="GLOBAL") |
+        Q(scope="PROPERTY", property_id=getattr(getattr(lease, "unit", None), "property_id", None)) |
+        Q(scope="LEASE", lease_id=lease.pk)
+    )
+
+
+def _month_invoice_for_lease(lease, month_start: date):
+    return (
+        Invoice.objects.filter(lease=lease, issue_date__year=month_start.year, issue_date__month=month_start.month)
+        .order_by("issue_date", "id")
+        .first()
+    )
+
+
+def _invoice_has_water_item(invoice):
+    if not invoice:
+        return False
+    return invoice.items.filter(category__name__icontains="water").exists()
+
+
+def _latest_meter_reading_for_lease(lease, period_end: date):
+    from smart_meter.models import MeterInstallation, MeterReading
+
+    installations = MeterInstallation.objects.filter(
+        lease=lease,
+        meter__meter_type="electric",
+        meter__billing_mode="postpaid",
+        start_date__lte=period_end,
+    ).filter(Q(end_date__isnull=True) | Q(end_date__gte=period_end)).select_related("meter")
+    latest = None
+    for installation in installations:
+        reading = MeterReading.objects.filter(meter=installation.meter).order_by("-ts").first()
+        if reading and (latest is None or reading.ts > latest.ts):
+            latest = reading
+    return latest, list(installations)
+
+
+def _set_pending(item, code, message):
+    item.status = MonthlyBillingRunItem.STATUS_PENDING
+    item.issue_code = code
+    item.issue_message = message
+    item.save(update_fields=["status", "issue_code", "issue_message", "updated_at"])
+    _item_log(item, message)
+
+
+def _refresh_run_counts(run):
+    items = run.items.all()
+    run.total_active_leases = items.exclude(status=MonthlyBillingRunItem.STATUS_SKIPPED).count()
+    run.recurring_created_count = items.filter(recurring_invoice_created=True).count()
+    run.missing_recurring_count = items.filter(issue_code=MonthlyBillingRunItem.ISSUE_MISSING_RECURRING).count()
+    run.electric_ready_count = items.filter(electric_required=True, electric_ready=True).count()
+    run.electric_pending_count = items.filter(electric_required=True, electric_ready=False, status=MonthlyBillingRunItem.STATUS_PENDING).count()
+    run.water_missing_count = items.filter(issue_code=MonthlyBillingRunItem.ISSUE_WATER_MISSING).count()
+    run.ready_to_send_count = items.filter(status=MonthlyBillingRunItem.STATUS_READY).count()
+    run.pending_attention_count = items.filter(status=MonthlyBillingRunItem.STATUS_PENDING).count()
+    run.sent_count = items.filter(status=MonthlyBillingRunItem.STATUS_SENT).count()
+    run.failed_count = items.filter(status=MonthlyBillingRunItem.STATUS_FAILED).count()
+    run.skipped_count = items.filter(status=MonthlyBillingRunItem.STATUS_SKIPPED).count()
+    if run.failed_count:
+        run.status = MonthlyBillingRun.STATUS_PARTIAL
+    elif run.pending_attention_count:
+        run.status = MonthlyBillingRun.STATUS_PREFLIGHT
+    elif run.sent_count and not run.ready_to_send_count:
+        run.status = MonthlyBillingRun.STATUS_SENT
+    elif run.ready_to_send_count:
+        run.status = MonthlyBillingRun.STATUS_READY
+    run.save()
+
+
+def run_monthly_billing_preflight(billing_month: date, *, created_by=None, created_by_label="", dry_run=False):
+    billing_month = first_of_month(billing_month)
+    leases = list(_active_leases_for_month(billing_month))
+    if dry_run:
+        missing = sum(1 for lease in leases if not _recurring_rules_for_lease(lease, billing_month).exists())
+        return {"billing_month": billing_month, "active_leases": len(leases), "missing_recurring": missing, "dry_run": True}
+
+    run = get_or_create_monthly_billing_run(billing_month, created_by=created_by, created_by_label=created_by_label)
+    run.status = MonthlyBillingRun.STATUS_PREFLIGHT
+    run.save(update_fields=["status", "updated_at"])
+
+    for lease in leases:
+        tenant = getattr(lease, "tenant", None)
+        unit = getattr(lease, "unit", None)
+        prop = getattr(unit, "property", None)
+        item, _ = MonthlyBillingRunItem.objects.get_or_create(
+            billing_run=run,
+            lease=lease,
+            defaults={"tenant": tenant, "unit": unit, "property": prop},
+        )
+        item.tenant = tenant
+        item.unit = unit
+        item.property = prop
+        item.status = MonthlyBillingRunItem.STATUS_DRAFT
+        item.issue_code = ""
+        item.issue_message = ""
+        item.error_text = ""
+        item.recurring_invoice_found = _recurring_rules_for_lease(lease, billing_month).exists()
+        item.invoice = _month_invoice_for_lease(lease, billing_month)
+        item.invoice_total = getattr(item.invoice, "amount", None)
+        item.water_required = bool((getattr(lease, "water_charges", None) or Decimal("0.00")) > 0)
+        item.water_resolved = not item.water_required or _invoice_has_water_item(item.invoice) or bool(item.water_charge is not None)
+
+        period_end = monthly_period_end(billing_month)
+        latest, installations = _latest_meter_reading_for_lease(lease, period_end)
+        item.electric_required = bool(getattr(lease, "electricity_bill_by_owner", True) and installations)
+        item.latest_meter_reading_date = timezone.localtime(latest.ts).date() if latest else None
+        item.electric_ready = not item.electric_required
+        item.save()
+        _item_log(item, "active lease checked")
+
+        if not item.recurring_invoice_found:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_MISSING_RECURRING, "Active lease has no recurring invoice setup.")
+            continue
+        if item.electric_required:
+            if not latest or item.latest_meter_reading_date < period_end:
+                _set_pending(
+                    item,
+                    MonthlyBillingRunItem.ISSUE_METER_MISSING,
+                    f"Latest meter reading missing for billing month ending {period_end:%Y-%m-%d}.",
+                )
+                continue
+            if any(not installation.meter.is_active for installation in installations):
+                _set_pending(
+                    item,
+                    MonthlyBillingRunItem.ISSUE_METER_OFFLINE,
+                    f"Meter appears offline/stale. Latest reading date: {item.latest_meter_reading_date:%Y-%m-%d}.",
+                )
+                continue
+            item.electric_ready = True
+            item.save(update_fields=["electric_ready", "updated_at"])
+            _item_log(item, "meter reading verified")
+        if item.water_required and not item.water_resolved:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_WATER_MISSING, "Water charge missing.")
+            continue
+        item.status = MonthlyBillingRunItem.STATUS_DRAFT
+        item.save(update_fields=["status", "updated_at"])
+
+    _refresh_run_counts(run)
+    _run_log(run, "preflight completed")
+    return run
+
+
+def generate_monthly_billing_invoices(run, *, dry_run=False):
+    if dry_run:
+        return {"billing_month": run.billing_month, "items": run.items.count(), "dry_run": True}
+    _run_log(run, "recurring invoice generation started")
+    before = {
+        item.lease_id: set(
+            InvoiceItem.objects.filter(invoice__lease=item.lease, invoice__issue_date=run.billing_month).values_list("pk", flat=True)
+        )
+        for item in run.items.exclude(status=MonthlyBillingRunItem.STATUS_SKIPPED).select_related("lease")
+    }
+    apply_fixed_recurring(run.billing_month)
+    for item in run.items.select_related("lease"):
+        if item.status == MonthlyBillingRunItem.STATUS_PENDING and item.issue_code == MonthlyBillingRunItem.ISSUE_MISSING_RECURRING:
+            continue
+        invoice = _month_invoice_for_lease(item.lease, run.billing_month)
+        item.invoice = invoice
+        current = set()
+        if invoice:
+            current = set(invoice.items.values_list("pk", flat=True))
+        item.recurring_invoice_created = bool(current - before.get(item.lease_id, set()))
+        item.recurring_invoice_found = _recurring_rules_for_lease(item.lease, run.billing_month).exists()
+        item.invoice_total = getattr(invoice, "amount", None)
+        item.save()
+        _item_log(item, "invoice generated" if item.invoice else "recurring invoice generation failed")
+        if not invoice:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_RECURRING_FAILED, "Recurring invoice generation failed.")
+    _refresh_run_counts(run)
+    _run_log(run, "recurring invoice generation completed")
+    return run
+
+
+def generate_monthly_billing_electric(run, *, dry_run=False):
+    from smart_meter.models import MeterInstallation
+    from smart_meter.services.invoicing import compute_electric_bill, upsert_invoice_with_electric_item
+
+    period_start = run.billing_month
+    period_end = monthly_period_end(run.billing_month)
+    for item in run.items.filter(electric_required=True).exclude(status=MonthlyBillingRunItem.STATUS_PENDING).select_related("lease"):
+        if dry_run:
+            continue
+        installations = MeterInstallation.objects.filter(
+            lease=item.lease,
+            meter__meter_type="electric",
+            meter__billing_mode="postpaid",
+            start_date__lte=period_end,
+        ).filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start)).select_related("meter")
+        total = Decimal("0.00")
+        try:
+            for installation in installations:
+                ctx = compute_electric_bill(item.lease, installation.meter, period_start, period_end)
+                inv = upsert_invoice_with_electric_item(ctx)
+                item.invoice = inv
+                total += Decimal(ctx.line_total or 0)
+            item.electric_charge = total
+            item.electric_ready = True
+            item.invoice_total = getattr(item.invoice, "amount", None)
+            item.save()
+            _item_log(item, "electric charge created")
+        except Exception as exc:
+            item.error_text = str(exc)
+            item.save(update_fields=["error_text", "updated_at"])
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_ELECTRIC_UNVERIFIED, "Electric billing not verified.")
+    _refresh_run_counts(run)
+    return run
+
+
+def resolve_monthly_billing_water(item, *, amount=None, not_applicable=False):
+    if not_applicable:
+        item.water_required = False
+        item.water_resolved = True
+        item.water_charge = Decimal("0.00")
+        item.issue_code = ""
+        item.issue_message = ""
+        item.status = MonthlyBillingRunItem.STATUS_DRAFT
+        item.save()
+        _item_log(item, "water marked not applicable")
+        _refresh_run_counts(item.billing_run)
+        return item
+
+    amount = Decimal(str(amount or "0")).quantize(Decimal("0.01"))
+    invoice = item.invoice or ensure_month_invoice(item.lease, item.billing_run.billing_month)
+    water_cat, _ = ItemCategory.objects.get_or_create(name="Water Charges")
+    InvoiceItem.objects.update_or_create(
+        invoice=invoice,
+        category=water_cat,
+        description=f"Water charges {item.billing_run.billing_month:%b %Y}",
+        defaults={"amount": amount, "is_recurring": False},
+    )
+    item.invoice = invoice
+    item.water_required = True
+    item.water_resolved = True
+    item.water_charge = amount
+    item.issue_code = ""
+    item.issue_message = ""
+    item.status = MonthlyBillingRunItem.STATUS_DRAFT
+    item.invoice_total = invoice.amount
+    item.save()
+    _item_log(item, "water charge saved")
+    _refresh_run_counts(item.billing_run)
+    return item
+
+
+def prepare_monthly_billing_ready(run):
+    for item in run.items.exclude(status__in=[MonthlyBillingRunItem.STATUS_SENT, MonthlyBillingRunItem.STATUS_SKIPPED]):
+        invoice = item.invoice or _month_invoice_for_lease(item.lease, run.billing_month)
+        item.invoice = invoice
+        item.invoice_total = getattr(invoice, "amount", None)
+        if item.status == MonthlyBillingRunItem.STATUS_PENDING and item.issue_code:
+            item.save()
+            continue
+        if not invoice:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_RECURRING_FAILED, "Recurring invoice generation failed.")
+            continue
+        if not item.recurring_invoice_found:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_MISSING_RECURRING, "Active lease has no recurring invoice setup.")
+            continue
+        if item.water_required and not item.water_resolved:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_WATER_MISSING, "Water charge missing.")
+            continue
+        if not getattr(getattr(item.lease, "tenant", None), "phone", ""):
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_PHONE_MISSING, "Tenant phone missing.")
+            continue
+        if (item.invoice_total or Decimal("0.00")) <= 0:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_ZERO_TOTAL, "Zero invoice total.")
+            continue
+        item.status = MonthlyBillingRunItem.STATUS_READY
+        item.issue_code = ""
+        item.issue_message = ""
+        item.save()
+        _item_log(item, "invoice ready to send")
+    _refresh_run_counts(run)
+    return run
+
+
+def generate_monthly_billing_pdfs(run):
+    from invoices.views import _invoice_pdf_context, render_to_pdf
+
+    for item in run.items.filter(status=MonthlyBillingRunItem.STATUS_READY).select_related("invoice"):
+        try:
+            pdf_content = render_to_pdf("invoices/invoice_pdf.html", _invoice_pdf_context(item.invoice))
+            filename = f"Invoice_{item.invoice.invoice_number or item.invoice_id}.pdf"
+            item.invoice_pdf.save(filename, ContentFile(pdf_content), save=False)
+            item.save(update_fields=["invoice_pdf", "updated_at"])
+            _item_log(item, "PDF generated")
+        except Exception as exc:
+            item.error_text = str(exc)
+            item.save(update_fields=["error_text", "updated_at"])
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_PDF_FAILED, "PDF generation failed.")
+    _refresh_run_counts(run)
+    return run
+
+
+def build_monthly_invoice_whatsapp_message(invoice, billing_month):
+    lease = invoice.lease
+    tenant = lease.tenant
+    unit = lease.unit
+    prop = unit.property
+    items = list(invoice.items.select_related("category"))
+    def total_for(name):
+        return sum((line.amount for line in items if name in (line.category.name or "").lower()), Decimal("0.00"))
+    rent = total_for("rent")
+    electricity = total_for("electric")
+    water = total_for("water")
+    other = (invoice.amount or Decimal("0.00")) - rent - electricity - water
+    lines = [
+        f"Dear {_tenant_name(tenant) or 'Customer'},",
+        "",
+        f"*Invoice #{invoice.invoice_number}*",
+        f"Billing Month: {billing_month:%B %Y}",
+        f"Property: {prop.property_name}",
+        f"Unit: {unit.unit_number}",
+        f"Rent: Rs. {_fmt_pkr(rent)}",
+        f"Electricity: Rs. {_fmt_pkr(electricity)}",
+        f"Water: Rs. {_fmt_pkr(water)}",
+        f"Other / Previous balance: Rs. {_fmt_pkr(other)}",
+        f"Total Amount: Rs. {_fmt_pkr(invoice.amount or Decimal('0.00'))}",
+        f"Due Date: {invoice.due_date:%b %d, %Y}" if invoice.due_date else "",
+        "",
+        "PDF invoice is attached.",
+        "Thank you!",
+    ]
+    return "\n".join(line for line in lines if line)
+
+
+def send_monthly_billing_ready(run, *, created_by=None, retry_failed=False, dry_run=False):
+    from whatsapp.services.whatsapp import WhatsAppService
+
+    queryset = run.items.select_related("invoice", "lease", "lease__tenant").filter(status=MonthlyBillingRunItem.STATUS_READY)
+    if retry_failed:
+        queryset = run.items.select_related("invoice", "lease", "lease__tenant").filter(status=MonthlyBillingRunItem.STATUS_FAILED)
+    if dry_run:
+        return {"ready_to_send": queryset.count(), "dry_run": True}
+    service = WhatsAppService(created_by=created_by if getattr(created_by, "is_authenticated", False) else None)
+    for item in queryset:
+        if item.status == MonthlyBillingRunItem.STATUS_SENT and not retry_failed:
+            continue
+        if not item.invoice_pdf:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_PDF_FAILED, "Invoice PDF missing.")
+            continue
+        phone = getattr(getattr(item.lease, "tenant", None), "phone", "")
+        if not phone:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_PHONE_MISSING, "Tenant phone missing.")
+            continue
+        try:
+            item.invoice_pdf.open("rb")
+            pdf_bytes = item.invoice_pdf.read()
+            item.invoice_pdf.close()
+            result = service.send_invoice(
+                item.invoice,
+                phone_number=phone,
+                message=build_monthly_invoice_whatsapp_message(item.invoice, run.billing_month),
+                pdf_bytes=pdf_bytes,
+                filename=f"Invoice_{item.invoice.invoice_number or item.invoice_id}.pdf",
+            )
+            item.whatsapp_status = "sent" if result.get("ok") else "failed"
+            if result.get("ok"):
+                log_id = result.get("log_id")
+                item.whatsapp_message_id = str(log_id or "")
+                item.status = MonthlyBillingRunItem.STATUS_SENT
+                item.sent_at = timezone.now()
+                item.error_text = ""
+                item.save()
+                _item_log(item, "WhatsApp sent")
+            else:
+                item.status = MonthlyBillingRunItem.STATUS_FAILED
+                item.error_text = result.get("error", "WhatsApp send failed.")
+                item.issue_code = MonthlyBillingRunItem.ISSUE_WHATSAPP_FAILED
+                item.issue_message = "WhatsApp send failed."
+                item.save()
+                _item_log(item, "WhatsApp failed")
+        except Exception as exc:
+            item.status = MonthlyBillingRunItem.STATUS_FAILED
+            item.issue_code = MonthlyBillingRunItem.ISSUE_WHATSAPP_FAILED
+            item.issue_message = "WhatsApp send failed."
+            item.error_text = str(exc)
+            item.save()
+            _item_log(item, "WhatsApp failed")
+    _refresh_run_counts(run)
+    return run

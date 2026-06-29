@@ -5,8 +5,6 @@ from .models import Tenant
 from .views import (
     TenantListView, TenantDetailView, TenantCreateView,
     TenantUpdateView, TenantDeleteView, TenantLedgerView,
-    PotentialTenantLeadCreateView, PotentialTenantLeadDetailView,
-    PotentialTenantLeadListView, PotentialTenantLeadUpdateView,
     TenantRegistrationSubmissionDetailView,
     TenantRegistrationSubmissionListView,
     ledger_pdf, send_ledger, print_tenant_view,
@@ -14,15 +12,6 @@ from .views import (
 )
 from .views import TenantListView, tenant_ajax_update
 from .api import TenantLeasesAPI
-from django.views.decorators.csrf import csrf_exempt
-
-# Import notification views directly from notifications app
-from notifications.views import (
-    NotificationCreateView,
-    notification_list,
-    notification_detail
-)
-from notifications.views import NotificationCreateView
 
 app_name = 'tenants'
 
@@ -33,6 +22,9 @@ urlpatterns = [
     path('registration/<str:token>/',
          views.tenant_public_registration_update,
          name='tenant_public_registration'),
+    path('registration-link/new/',
+         views.tenant_pre_registration_link_create,
+         name='tenant_pre_registration_link_create'),
     path('registration-submissions/',
          TenantRegistrationSubmissionListView.as_view(),
          name='registration_submission_list'),
@@ -42,6 +34,9 @@ urlpatterns = [
     path('registration-submissions/<int:pk>/review/',
          views.tenant_registration_submission_review,
          name='registration_submission_review'),
+    path('<int:pk>/lead-inline-update/',
+         views.tenant_lead_inline_update,
+         name='tenant_lead_inline_update'),
     path('<int:pk>/', TenantDetailView.as_view(), name='tenant_detail'),
     path('<int:pk>/update/', TenantUpdateView.as_view(), name='tenant_update'),
     path('<int:pk>/delete/', TenantDeleteView.as_view(), name='tenant_delete'),
@@ -63,21 +58,8 @@ urlpatterns = [
     path('api/tenants/<int:pk>/leases/',
          TenantLeasesAPI.as_view(), name='tenant_leases_api'),
 
-    # Notification URLs (using direct imports)
-    path('create/', NotificationCreateView.as_view(), name='create'),
-    path('notifications/', notification_list, name='notification_list'),
-    path('notifications/<int:pk>/', notification_detail,
-         name='notification_detail'),
     path('payments/tenant-search/', views.tenant_search, name='tenant_search'),
 
     path('ajax/update/', tenant_ajax_update, name='tenant_ajax_update'),
-
-    path('leads/', PotentialTenantLeadListView.as_view(), name='lead_list'),
-    path('leads/create/', PotentialTenantLeadCreateView.as_view(), name='lead_create'),
-    path('leads/<int:pk>/', PotentialTenantLeadDetailView.as_view(), name='lead_detail'),
-    path('leads/<int:pk>/edit/', PotentialTenantLeadUpdateView.as_view(), name='lead_update'),
-    path('leads/<int:pk>/whatsapp/vacancy/',
-         views.lead_vacancy_whatsapp, name='lead_vacancy_whatsapp'),
-
 
 ]

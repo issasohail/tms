@@ -1,10 +1,21 @@
 # tables.py
 import django_tables2 as tables
+from django.core.cache import cache
 from django_tables2.utils import A
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.utils.html import format_html
+from core.currency import format_money
+from core.models import GlobalSettings
 from .models import Expense, ExpenseDistribution
+
+
+def _global_settings():
+    settings_obj = cache.get("core.global_settings")
+    if settings_obj is None:
+        settings_obj = GlobalSettings.get_solo()
+        cache.set("core.global_settings", settings_obj, 60)
+    return settings_obj
 
 
 class ExpenseTable(tables.Table):
@@ -64,26 +75,30 @@ class ExpenseTable(tables.Table):
     )
 
     amount = tables.Column(
-        verbose_name="Amount (Rs)",
+        verbose_name="Amount",
         attrs={"td": {"class": "col-amount d-none d-md-table-cell text-end text-nowrap"},
                "th": {"class": "col-amount d-none d-md-table-cell text-end text-nowrap"}}
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._global_settings = _global_settings()
 
     def render_when(self, record):
         # Date (line 1), Amount (line 2) for small screens
         date_str = record.date.strftime(
             '%Y-%m-%d') if getattr(record, 'date', None) else '—'
         try:
-            amt = f"Rs {float(record.amount or 0):,.2f}"
+            amt = format_money(record.amount, self._global_settings)
         except (TypeError, ValueError):
-            amt = "Rs 0.00"
+            amt = format_money(0, self._global_settings)
         return format_html('<div class="when-date">{}</div><div class="when-amt">{}</div>', date_str, amt)
 
     def render_amount(self, value):
         try:
-            return f"Rs {float(value):,.2f}"
+            return format_money(value, self._global_settings)
         except (TypeError, ValueError):
-            return "Rs 0.00"
+            return format_money(0, self._global_settings)
 
     receipt = tables.Column(
         empty_values=(),

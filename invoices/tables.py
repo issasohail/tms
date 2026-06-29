@@ -2,6 +2,7 @@
 from django.utils.html import format_html
 from django.urls import reverse
 from django.template.loader import render_to_string
+from django.core.cache import cache
 import django_tables2 as tables
 from django_tables2.columns import DateColumn, Column
 from .models import Invoice
@@ -9,6 +10,8 @@ from properties.tables import ExportableTable
 from utils.pdf_export import handle_export
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+from core.currency import format_money
+from core.models import GlobalSettings
 
 
 # invoices/tables.py
@@ -18,6 +21,14 @@ import django_tables2 as tables
 from django_tables2.columns import DateColumn, Column
 from .models import Invoice
 from properties.tables import ExportableTable
+
+
+def _settings_obj():
+    settings_obj = cache.get("core.global_settings")
+    if settings_obj is None:
+        settings_obj = GlobalSettings.get_solo()
+        cache.set("core.global_settings", settings_obj, 60)
+    return settings_obj
 
 
 class InvoiceTable(ExportableTable):
@@ -108,12 +119,14 @@ class InvoiceTable(ExportableTable):
     # ---------- renderers ----------
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._sn_seen = 0
+        self.row_counter = 0
 
     def render_sn(self):
-        """Auto-incrementing serial number"""
-        self.row_counter = getattr(self, 'row_counter', 0) + 1
-        return self.row_counter
+        """Auto-incrementing serial number across paginated pages."""
+        self.row_counter += 1
+        page = getattr(self, "page", None)
+        offset = page.start_index() - 1 if page is not None else 0
+        return offset + self.row_counter
 
     def render_tenant(self, record, value):
         first = (value or "").strip()
@@ -146,7 +159,7 @@ class InvoiceTable(ExportableTable):
         return mark_safe(f'<span class="d-inline-block text-truncate" style="max-width:30ch" title="{text}">{show}</span>')
 
     def render_total_amount(self, value):
-        return f"Rs. {float(value):,.2f}" if value else "Rs. 0.00"
+        return format_money(value, _settings_obj())
 
     def render_actions(self, record):
         return render_to_string('components/action_buttons.html', {

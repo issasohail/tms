@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maintenance Request Files</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background:#f8fafc; color:#111827; font-size:14px; }
+    .share-page { max-width:920px; margin:0 auto; padding:16px 10px 34px; }
+    .file-card { border:1px solid #e5e7eb; border-radius:8px; background:#fff; padding:10px; }
+    .file-name { font-weight:700; overflow-wrap:anywhere; }
+    .file-meta { font-size:12px; color:#6b7280; overflow-wrap:anywhere; }
+    .preview-img { max-height:360px; object-fit:contain; background:#f3f4f6; }
+    video { width:100%; max-height:360px; background:#000; }
+    @media (max-width:360px) {
+      body, .btn { font-size:.68rem; }
+      .share-page { padding-left:7px; padding-right:7px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="share-page">
+    {% if expired %}
+      <div class="alert alert-warning mt-3">
+        <h1 class="h5 mb-1">Link expired</h1>
+        <p class="mb-0">
+          {% if invalid %}
+            This maintenance media link is invalid.
+          {% else %}
+            This maintenance media link has expired. Please request a new 3-day link.
+          {% endif %}
+        </p>
+      </div>
+    {% else %}
+      <div class="mb-3">
+        <h1 class="h4 mb-1">{{ request_obj.title }}</h1>
+        <div class="text-muted small">
+          {{ request_obj.building|default:"-" }}{% if request_obj.unit %} / {{ request_obj.unit }}{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if request_obj.lease %}{{ request_obj.lease.tenant|default:"-" }}{% else %}-{% endif %}
+          {% if request_obj.lease.tenant.phone %} - {{ request_obj.lease.tenant.phone }}{% endif %}
+        </div>
+        <div class="text-muted small">Request date: {{ request_obj.reported_date|date:"Y-m-d" }}</div>
+        <div class="text-muted small">This secure link is valid for {{ expires_days }} days from when it was created.</div>
+      </div>
+
+      {% if request_obj.description %}
+        <div class="file-card mb-2">
+          <div class="fw-semibold mb-1">Description</div>
+          <div>{{ request_obj.description|linebreaksbr }}</div>
+        </div>
+      {% endif %}
+
+      <div class="d-grid gap-2">
+        {% for media in media_files %}
+          <div class="file-card">
+            <div class="file-name">{{ media.original_filename|default:media.display_filename }}</div>
+            {% if media.description %}<div class="file-meta mb-2">{{ media.description }}</div>{% endif %}
+            {% url 'maintenance:public_media_file' token media.pk as media_url %}
+            {% if media.is_image %}
+              <a href="{{ media_url }}" target="_blank" rel="noopener">
+                <img src="{{ media_url }}" alt="{{ media.description|default:media.display_filename }}" class="img-fluid preview-img rounded border w-100">
+              </a>
+            {% elif media.is_video %}
+              <video controls preload="metadata">
+                <source src="{{ media_url }}">
+                Your browser cannot play this video. Use the button below to open it.
+              </video>
+            {% elif media.is_pdf %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ media_url }}" target="_blank" rel="noopener">Open PDF</a>
+            {% else %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ media_url }}" target="_blank" rel="noopener">Open File</a>
+            {% endif %}
+          </div>
+        {% empty %}
+          <div class="text-muted bg-white border rounded p-3">No active files are attached to this maintenance request.</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>

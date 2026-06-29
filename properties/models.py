@@ -1,5 +1,4 @@
 import os
-import uuid
 import builtins
 
 from django.conf import settings
@@ -9,6 +8,8 @@ from django.db import models
 from django.utils import timezone
 
 from PIL import Image, ImageDraw, ImageFont
+from core.upload_utils import compress_instance_file_field
+from core.utils.text import normalize_title_fields, smart_title
 
 
 class ExpenseDistribution(models.Model):
@@ -17,6 +18,10 @@ class ExpenseDistribution(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
 
 
 class Property(models.Model):
@@ -84,6 +89,18 @@ class Property(models.Model):
 
         return ", ".join(parts)
 
+    def save(self, *args, **kwargs):
+        normalize_title_fields(self, (
+            "property_name",
+            "owner_name",
+            "owner_father_name",
+            "caretaker_name",
+            "caretaker_father_name",
+            "property_city",
+            "property_state",
+        ))
+        super().save(*args, **kwargs)
+
     class Meta:
         ordering = ['property_name']
         verbose_name_plural = "Properties"
@@ -98,6 +115,14 @@ class Unit(models.Model):
 
     property = models.ForeignKey(
         'Property', on_delete=models.CASCADE, related_name='units')
+    interest_type = models.ForeignKey(
+        "tenants.TenantInterestType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="units",
+        help_text="Used to match vacant units with interested tenants.",
+    )
     unit_number = models.CharField(max_length=20)
     electric_meter_num = models.CharField(max_length=20,
                                           null=True, blank=True, default="0000000000")
@@ -145,9 +170,9 @@ class Unit(models.Model):
 
 
 MEDIA_FILE_EXTENSIONS = [
-    "jpg", "jpeg", "png", "webp", "pdf", "mp4", "mov", "avi", "mkv"
+    "jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "mp4", "mov", "avi", "mkv"
 ]
-IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
@@ -169,22 +194,36 @@ def _media_date(instance):
     return timezone.localtime(dt).strftime("%Y%m%d")
 
 
-def _media_suffix():
-    return uuid.uuid4().hex[:8]
+def _media_serial(instance):
+    serial = getattr(instance, "_media_serial", None)
+    if serial:
+        return int(serial)
+    if isinstance(instance, PropertyMedia):
+        return instance.property.media_files.count() + 1
+    if isinstance(instance, UnitMedia):
+        return instance.unit.media_files.count() + 1
+    return 1
 
 
 def _media_base_filename(instance):
+    cached_name = getattr(instance, "_formatted_base_filename", "")
+    if cached_name:
+        return cached_name
+
     date_part = _media_date(instance)
     if isinstance(instance, PropertyMedia):
-        return f"{_name_part(instance.property.property_name, 'property')}_{date_part}_{_media_suffix()}"
+        return (
+            f"{_name_part(instance.property.property_name, 'property')}_"
+            f"{date_part}_{_media_serial(instance):04d}"
+        )
     if isinstance(instance, UnitMedia):
         unit = instance.unit
         return (
-            f"{_name_part(unit.property.property_name, 'property')}_"
+            f"{_name_part(unit.property.property_name, 'property')}-"
             f"{_name_part(unit.unit_number, 'unit')}_"
-            f"{date_part}_{_media_suffix()}"
+            f"{date_part}_{_media_serial(instance):04d}"
         )
-    return f"media_{date_part}_{_media_suffix()}"
+    return f"media_{date_part}_{_media_serial(instance):04d}"
 
 
 def _media_upload_path(instance, filename):
@@ -254,6 +293,10 @@ class BasePropertyMedia(models.Model):
         return self.file.url
 
     @property
+    def display_filename(self):
+        return os.path.basename(self.file.name or self.original_filename or "file")
+
+    @property
     def storage_folder(self):
         raise NotImplementedError
 
@@ -291,15 +334,16 @@ class BasePropertyMedia(models.Model):
             buffer = io.BytesIO()
             stamped.save(buffer, format="JPEG", quality=90)
             stamped_buffer = ContentFile(buffer.getvalue())
+            base_filename = _media_base_filename(self)
             self.stamped_file.save(
-                f"{_media_base_filename(self)}-stamped.jpg", stamped_buffer, save=False)
+                f"{base_filename}-stamped.jpg", stamped_buffer, save=False)
 
             thumb = stamped.copy()
             thumb.thumbnail((360, 260))
             thumb_buffer = io.BytesIO()
             thumb.save(thumb_buffer, format="JPEG", quality=85)
             self.thumbnail.save(
-                f"{_media_base_filename(self)}-thumb.jpg", ContentFile(thumb_buffer.getvalue()), save=False)
+                f"{base_filename}-thumb.jpg", ContentFile(thumb_buffer.getvalue()), save=False)
 
     @property
     def footer_text(self):
@@ -309,11 +353,21 @@ class BasePropertyMedia(models.Model):
         adding = self._state.adding
         if adding and not self.original_filename:
             self.original_filename = _safe_filename(getattr(self.file, "name", ""))
+        compress_instance_file_field(self, "file")
         self._set_file_type()
         super().save(*args, **kwargs)
         if self.file_type == "image" and (adding or not self.stamped_file or not self.thumbnail):
             self._build_image_derivatives()
             super().save(update_fields=["stamped_file", "thumbnail", "file_type", "updated_at"])
+
+    def refresh_image_derivatives(self):
+        if self.file_type != "image":
+            return
+        self.stamped_file = None
+        self.thumbnail = None
+        self._formatted_base_filename = os.path.splitext(self.display_filename)[0]
+        self._build_image_derivatives()
+        self.save(update_fields=["stamped_file", "thumbnail", "updated_at"])
 
 
 class PropertyMedia(BasePropertyMedia):
@@ -325,7 +379,7 @@ class PropertyMedia(BasePropertyMedia):
 
     @builtins.property
     def storage_folder(self):
-        return f"property-{self.property_id}"
+        return _name_part(self.property.property_name, f"property-{self.property_id}")
 
     @builtins.property
     def footer_text(self):
@@ -344,7 +398,10 @@ class UnitMedia(BasePropertyMedia):
 
     @property
     def storage_folder(self):
-        return f"unit-{self.unit_id}"
+        return (
+            f"{_name_part(self.unit.property.property_name, 'property')}-"
+            f"{_name_part(self.unit.unit_number, f'unit-{self.unit_id}')}"
+        )
 
     @property
     def footer_text(self):

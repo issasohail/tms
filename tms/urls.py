@@ -11,7 +11,10 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from leases.views import UnitAutocomplete
+from leases import views_lease_files
 from core.views import SettingsView
+from accounts.views import LogoutView as AccountsLogoutView
+from whatsapp.views import webhook as whatsapp_webhook
 
 
 def plain_include(module_path):
@@ -90,6 +93,17 @@ app_patterns = [
     )),
 
     path(
+        "whatsapp/webhook/",
+        whatsapp_webhook,
+        name="whatsapp_webhook",
+    ),
+
+    path('whatsapp/', include(
+        ('whatsapp.urls', 'whatsapp'),
+        namespace='whatsapp'
+    )),
+
+    path(
         'unit-autocomplete/',
         UnitAutocomplete.as_view(),
         name='unit-autocomplete'
@@ -129,6 +143,8 @@ root_app_patterns = [
     path('leases/', plain_include('leases.urls')),
     path('invoices/', plain_include('invoices.urls')),
     path('maintenance/', plain_include('maintenance.urls')),
+    path("whatsapp/webhook/", whatsapp_webhook, name="whatsapp_webhook"),
+    path('whatsapp/', plain_include('whatsapp.urls')),
 
     path(
         'unit-autocomplete/',
@@ -158,7 +174,7 @@ urlpatterns = [
 
     path(
         'logout/',
-        auth_views.LogoutView.as_view(),
+        AccountsLogoutView.as_view(),
         name='logout'
     ),
 
@@ -198,6 +214,27 @@ urlpatterns = [
     # Root URLs (existing)
     *root_app_patterns,
 
+    path(
+        "public/files/<str:token>/",
+        views_lease_files.public_lease_file_share,
+        name="public_file_share_root",
+    ),
+    path(
+        "public/files/<str:token>/download/",
+        views_lease_files.public_lease_file_download,
+        name="public_file_share_download_root",
+    ),
+    path(
+        "public/lease-files/<str:token>/",
+        views_lease_files.public_lease_files_share,
+        name="public_lease_files_share_root",
+    ),
+    path(
+        "public/lease-files/<str:token>/<int:document_id>/download/",
+        views_lease_files.public_lease_shared_document_download,
+        name="public_lease_files_download_root",
+    ),
+
     # Production-compatible URLs
     path('tms/', include(app_patterns)),
 ]
@@ -213,3 +250,8 @@ if settings.DEBUG:
         settings.MEDIA_URL,
         document_root=settings.MEDIA_ROOT
     )
+
+if getattr(settings, "ENABLE_LOCAL_DEBUG_TOOLBAR", False):
+    urlpatterns += [
+        path("__debug__/", include("debug_toolbar.urls")),
+    ]

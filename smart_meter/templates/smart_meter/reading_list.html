@@ -8,8 +8,8 @@
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h2 class="mb-0 sm-heading"><i class="fas fa-bolt text-warning me-2"></i>Meter Readings</h2>
   <div class="text-muted total-readings">
-    Total readings: {{ total_count }}
-    {% if page_obj %} — showing {{ page_obj|length }}{% endif %}
+    Showing {{ page_obj|length }}
+    {% if page_obj.number > 1 %} on page {{ page_obj.number }}{% endif %}
   </div>
 </div>
 
@@ -112,6 +112,7 @@
           <th class="col-ts">Timestamp</th>
           <th class="col-prop">Property</th>
           <th class="col-unit">Unit</th>
+          <th class="col-tenant">Tenant</th>
           <th class="col-meter">Meter #</th>
           {# Use unified toggle class on headers so they hide too #}
           <th class="col-ip toggle-col-ip d-none">Source IP</th>
@@ -125,19 +126,19 @@
       </thead>
 
         <tbody>
-          {% for r, form in rows %}
+          {% for r in rows %}
             {% if page_obj %}
               {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter0|add:page_obj.start_index %}
             {% else %}
               {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter %}
             {% endif %}
           {% empty %}
-            <tr><td colspan="12" class="text-center py-3">No readings found.</td></tr>
+            <tr><td colspan="13" class="text-center py-3">No readings found.</td></tr>
           {% endfor %}
         </tbody>
     </table>
 
-    {% if page_obj and paginator.num_pages > 1 %}
+    {% if page_obj.has_previous or page_obj.has_next %}
       <nav aria-label="Readings pages" class="p-2 small">
         <ul class="pagination pagination-sm mb-0 justify-content-end">
           <li class="page-item {% if page_obj.number == 1 %}disabled{% endif %}">
@@ -148,21 +149,10 @@
             {% if page_obj.has_previous %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.previous_page_number }}">Prev</a>
             {% else %}<span class="page-link">Prev</span>{% endif %}
           </li>
-          {% for i in paginator.page_range %}
-            {% if i >= page_obj.number|add:'-2' and i <= page_obj.number|add:'2' %}
-              <li class="page-item {% if page_obj.number == i %}active{% endif %}">
-                {% if page_obj.number == i %}<span class="page-link">{{ i }}</span>
-                {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ i }}">{{ i }}</a>{% endif %}
-              </li>
-            {% endif %}
-          {% endfor %}
+          <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
           <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
             {% if page_obj.has_next %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
             {% else %}<span class="page-link">Next</span>{% endif %}
-          </li>
-          <li class="page-item {% if page_obj.number == paginator.num_pages %}disabled{% endif %}">
-            {% if page_obj.number == paginator.num_pages %}<span class="page-link">&raquo;</span>
-            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ paginator.num_pages }}" aria-label="Last">&raquo;</a>{% endif %}
           </li>
         </ul>
       </nav>
@@ -225,6 +215,7 @@
     --lg-col-ts:  20%;
     --lg-col-prop:14%;
     --lg-col-unit:8%;
+    --lg-col-tenant:12%;
     --lg-col-meter:10%;
     --lg-col-ip:  10%;
     --lg-col-port:6%;
@@ -256,6 +247,7 @@
     .col-ts    { width: var(--lg-col-ts); }
     .col-prop  { width: var(--lg-col-prop); }
     .col-unit  { width: var(--lg-col-unit); }
+    .col-tenant{ width: var(--lg-col-tenant); }
     .col-meter { width: var(--lg-col-meter); }
     .col-ip    { width: var(--lg-col-ip); }
     .col-port  { width: var(--lg-col-port); }
@@ -268,7 +260,7 @@
   @media (max-width: 576px){
     .table { font-size: .54rem; }
     .table td, .table th { padding: .02rem .025rem; }
-    .col-unit, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf { display:none; }
+    .col-unit, .col-tenant, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf { display:none; }
     .col-idx   { width: var(--sm-col-idx); }
     .col-ts    { width: var(--sm-col-ts); }
     .col-prop  { width: var(--sm-col-prop); }

@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
 from django.utils import timezone
+from core.utils.text import normalize_title_fields
 
 
 class AccountManager(BaseUserManager):
@@ -37,3 +38,7 @@ class Account(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
+
+    def save(self, *args, **kwargs):
+        normalize_title_fields(self, ("first_name", "last_name"))
+        super().save(*args, **kwargs)

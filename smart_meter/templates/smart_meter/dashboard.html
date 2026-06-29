@@ -203,10 +203,8 @@
             <!-- Property: hidden on small -->
             <th class="d-none d-sm-table-cell"><span>Property</span></th>
 
-            {% if report_type == 'monthly' %}
-              <!-- Tenant header (desktop only) -->
-              <th class="d-none d-sm-table-cell col-tenant"><span>Tenant</span></th>
-            {% endif %}
+            <!-- Tenant header (desktop only) -->
+            <th class="d-none d-sm-table-cell col-tenant"><span>Tenant</span></th>
 
             <!-- Period: hidden on small (shown under Meter# instead) -->
             <th class="d-none d-sm-table-cell"><span>Period</span></th>
@@ -260,20 +258,16 @@
             <!-- Unit + (small) Tenant under it, ellipsized -->
             <td data-unit="{{ r.unit_number }}">
               <div>{{ r.unit_number }}</div>
-              {% if report_type == 'monthly' %}
-                <div class="d-sm-none small text-muted tenant-name--inline ellipsis-1line" title="{{ r.tenant_name }}">{{ r.tenant_name }}</div>
-              {% endif %}
+              <div class="d-sm-none small text-muted tenant-name--inline ellipsis-1line" title="{{ r.tenant_name|default:'Vacant' }}">{{ r.tenant_name|default:"Vacant" }}</div>
             </td>
 
             <!-- Property (desktop only) -->
             <td class="d-none d-sm-table-cell">{{ r.property_name }}</td>
 
-            {% if report_type == 'monthly' %}
-              <!-- Tenant (desktop only) with ellipsis -->
-              <td class="d-none d-sm-table-cell">
-                <span class="ellipsis-1line" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span>
-              </td>
-            {% endif %}
+            <!-- Tenant (desktop only) with ellipsis -->
+            <td class="d-none d-sm-table-cell col-tenant">
+              <span class="tenant-name ellipsis-1line" title="{{ r.tenant_name|default:'Vacant' }}">{{ r.tenant_name|default:"Vacant" }}</span>
+            </td>
 
             <!-- Period (desktop only) -->
             <td class="d-none d-sm-table-cell">{{ r.period_label }}</td>
@@ -323,12 +317,8 @@
             <!-- Property -->
             <td></td>
 
-            {% if report_type == 'monthly' %}
-              <!-- Tenant (desktop only) -->
-              <td class="d-none d-sm-table-cell col-tenant">
-                <span class="tenant-name ellipsis-1line" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span>
-              </td>
-            {% endif %}
+            <!-- Tenant -->
+            <td class="d-none d-sm-table-cell col-tenant"></td>
 
             <!-- Period -->
             <td></td>
@@ -830,6 +820,22 @@ function shortLabel(raw, maxLen) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  #energyTable th.col-tenant,
+  #energyTable td.col-tenant {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #energyTable td.col-tenant .tenant-name {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Tighten spacing for very small screens (≤400px) */

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">{% if object %}Edit{% else %}Add{% endif %} Maintenance Request</h4>
+    <a href="{% if object %}{% url 'maintenance:request_detail' object.id %}{% else %}{% url 'maintenance:request_list' %}{% endif %}" class="btn btn-secondary btn-sm">Back</a>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="card">
+    {% csrf_token %}
+    <div class="card-body">
+      {{ form.non_field_errors }}
+      <div class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label">Building</label>
+          {{ form.building }}
+          <div class="text-danger small">{{ form.building.errors }}</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Unit</label>
+          {{ form.unit }}
+          <div class="text-danger small">{{ form.unit.errors }}</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Lease / Tenant</label>
+          {{ form.lease }}
+          <div class="text-danger small">{{ form.lease.errors }}</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Tenant</label>
+          {{ form.tenant }}
+          <div class="text-danger small">{{ form.tenant.errors }}</div>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Title</label>
+          {{ form.title }}
+          <div class="text-danger small">{{ form.title.errors }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Description</label>
+          {{ form.description }}
+          <div class="text-danger small">{{ form.description.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+          {{ form.status }}
+          <div class="text-danger small">{{ form.status.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Priority</label>
+          {{ form.priority }}
+          <div class="text-danger small">{{ form.priority.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Cost</label>
+          {{ form.cost }}
+          <div class="text-danger small">{{ form.cost.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Files / Receipts / Photos</label>
+          {{ form.files }}
+          <div class="text-danger small">{{ form.files.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Reported Date</label>
+          {{ form.reported_date }}
+          <div class="text-danger small">{{ form.reported_date.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Resolved Date</label>
+          {{ form.resolved_date }}
+          <div class="text-danger small">{{ form.resolved_date.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Category</label>
+          {{ form.category_ref }}
+          <div class="text-danger small">{{ form.category_ref.errors }}</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Assigned To</label>
+          {{ form.assigned_to }}
+          <div class="text-danger small">{{ form.assigned_to.errors }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Admin Notes</label>
+          {{ form.admin_notes }}
+          <div class="text-danger small">{{ form.admin_notes.errors }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-between">
+      <a href="{% if object %}{% url 'maintenance:request_detail' object.id %}{% else %}{% url 'maintenance:request_list' %}{% endif %}" class="btn btn-secondary btn-sm">Cancel</a>
+      <button type="submit" class="btn btn-primary btn-sm">Save Request</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

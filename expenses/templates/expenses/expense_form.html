@@ -135,6 +135,16 @@
 <!-- jQuery (for Select2 if you keep it) -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
 
+<style>
+.safari-safe-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>
+
 <script>
 (function(){
   // ------- Property -> Unit cascade -------
@@ -213,9 +223,9 @@
     const input = document.createElement('input');
     input.type = 'file';
     input.name = 'receipts';          // Django: request.FILES.getlist('receipts')
-    input.accept = 'image/*';
+    input.accept = 'image/*,.heic,.heif';
     input.multiple = true;
-    input.className = 'd-none';
+    input.className = 'safari-safe-file-input';
     input.dataset.pid = 'pick' + (++counter);
     if (useCamera) input.setAttribute('capture','environment');
     input.addEventListener('change', () => {

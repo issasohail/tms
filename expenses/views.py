@@ -1,4 +1,5 @@
 from io import BytesIO
+from functools import partial
 from django.core.files.base import ContentFile
 import fitz  # PyMuPDF
 from django.contrib.auth.decorators import login_required
@@ -31,6 +32,8 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django_tables2 import SingleTableView
+from django.core.paginator import Paginator
+from django.utils.functional import cached_property
 from django.db.models import Sum
 from tenants.models import Tenant
 from properties.models import Property
@@ -44,7 +47,6 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django_tables2.export.views import ExportMixin
 from django.http import JsonResponse
 from .models import ExpenseCategory
-from django.views.decorators.csrf import csrf_exempt
 import json
 from datetime import timedelta
 
@@ -63,11 +65,35 @@ from .tables import ExpenseTable  # your existing table
 from invoices.models import ItemCategory  # shared category model
 
 
+class FixedCountPaginator(Paginator):
+    def __init__(self, *args, fixed_count=None, **kwargs):
+        self.fixed_count = fixed_count
+        super().__init__(*args, **kwargs)
+
+    @cached_property
+    def count(self):
+        if self.fixed_count is not None:
+            return self.fixed_count
+        return Paginator.count.func(self)
+
+
 class ExpenseListView(SingleTableView):
     model = Expense
     table_class = ExpenseTable
     template_name = "expenses/expense_list.html"
-    paginate_by = 20
+    paginate_by = None
+    table_pagination = {"per_page": 20}
+
+    def get_table_pagination(self, table):
+        pagination = super().get_table_pagination(table)
+        if isinstance(pagination, dict):
+            if not hasattr(self, "_expense_count"):
+                self._expense_count = self.object_list.count()
+            pagination["paginator_class"] = partial(
+                FixedCountPaginator,
+                fixed_count=self._expense_count,
+            )
+        return pagination
 
     # same helper shape as invoices list
     def _period_to_dates(self, period: str):
@@ -108,7 +134,7 @@ class ExpenseListView(SingleTableView):
 
     def get_queryset(self):
         qs = (Expense.objects
-              .select_related("property", "category")
+              .select_related("property", "unit", "category")
               .prefetch_related("receipts", "distributions__unit"))
 
         r = self.request
@@ -189,9 +215,18 @@ class ExpenseDetailView(LoginRequiredMixin, DetailView):
     template_name = 'expenses/expense_detail.html'
     context_object_name = 'expense'
 
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("property", "unit", "category")
+            .prefetch_related("receipts", "distributions__unit")
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['distributions'] = self.object.distributions.all()
+        context['receipts'] = list(self.object.receipts.all())
+        context['distributions'] = list(self.object.distributions.all())
         return context
 
 
@@ -203,8 +238,11 @@ def category_list_api(request):
     })
 
 
-@csrf_exempt
+@login_required
+@require_POST
 def category_add_api(request):
+    if not request.user.has_perm("expenses.add_expensecategory"):
+        return JsonResponse({"error": "Permission denied"}, status=403)
     data = json.loads(request.body)
     category, created = ExpenseCategory.objects.get_or_create(
         name=data['name'])
@@ -318,6 +356,15 @@ def _save_receipts(request, expense):
         ExpenseReceipt.objects.create(expense=expense, image=f)
 
 
+def _recent_expenses_queryset():
+    return (
+        Expense.objects
+        .select_related("property", "unit", "category")
+        .prefetch_related("distributions__unit")
+        .order_by("-date", "-pk")[:10]
+    )
+
+
 class ExpenseCreateView(LoginRequiredMixin, CreateView):
     model = Expense
     form_class = ExpenseForm
@@ -339,7 +386,7 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
                 "label": getattr(u, "unit_number", "") or str(u.id)
             })
         ctx["units_by_property_json"] = json.dumps(by_prop)
-        ctx["recent_expenses"] = Expense.objects.order_by("-date", "-pk")[:10]
+        ctx["recent_expenses"] = _recent_expenses_queryset()
         return ctx
 
     @transaction.atomic
@@ -353,8 +400,7 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
             return render(
                 self.request,
                 "expenses/partials/recent_expenses.html",
-                {"recent_expenses": Expense.objects.order_by(
-                    "-date", "-pk")[:10]},
+                {"recent_expenses": _recent_expenses_queryset()},
             )
         return redirect(self.get_success_url())
 
@@ -370,6 +416,14 @@ class ExpenseUpdateView(LoginRequiredMixin, UpdateView):
     model = Expense
     form_class = ExpenseForm
     template_name = "expenses/expense_form.html"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("property", "unit", "category")
+            .prefetch_related("receipts")
+        )
 
     def post(self, request, *args, **kwargs):
         print("UpdateView POST hit", request.POST.dict().keys(),
@@ -387,7 +441,7 @@ class ExpenseUpdateView(LoginRequiredMixin, UpdateView):
                 "label": getattr(u, "unit_number", "") or str(u.id)
             })
         ctx["units_by_property_json"] = json.dumps(by_prop)
-        ctx["recent_expenses"] = Expense.objects.order_by("-date", "-pk")[:10]
+        ctx["recent_expenses"] = _recent_expenses_queryset()
         return ctx
 
     @transaction.atomic
@@ -409,8 +463,7 @@ class ExpenseUpdateView(LoginRequiredMixin, UpdateView):
             return render(
                 self.request,
                 "expenses/partials/recent_expenses.html",
-                {"recent_expenses": Expense.objects.order_by(
-                    "-date", "-pk")[:10]},
+                {"recent_expenses": _recent_expenses_queryset()},
             )
         return redirect(self.get_success_url())
 

@@ -3,6 +3,7 @@ from .models import GlobalSettings
 from django import forms
 from .models import GlobalSettings
 from zoneinfo import available_timezones
+from core.utils.text import add_auto_titlecase_class
 
 
 class GlobalSettingsForm(forms.ModelForm):
@@ -20,14 +21,18 @@ class GlobalSettingsForm(forms.ModelForm):
                   "currency_code","country_code",  "unit_rate_per_kwh", "service_charge_flat",
                   "late_fee_enabled", "late_fee_type", "late_fee_amount",
                   "late_fee_percent", "late_fee_grace_days", "billing_cap_amount",
+                  "lease_file_share_valid_days",
                   "listener_host", "listener_port",
                   "time_zone",  # ← NEW
+                  "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
+                  "whatsapp_ai_ocr_provider", "whatsapp_ai_use_celery",
+                  "enable_debug_toolbar",
                   ]
     FIELD_GROUPS = [
         ("Branding", "fas fa-building", ["site_name", "logo", "favicon"]),
-        ("Billing & Locale", "fas fa-coins", [
+        ("Billing Scale & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
-            "service_charge_flat", "billing_cap_amount",
+            "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
         ]),
         ("Late Fees", "fas fa-clock", [
             "late_fee_enabled", "late_fee_type", "late_fee_amount",
@@ -36,6 +41,10 @@ class GlobalSettingsForm(forms.ModelForm):
         ("WhatsApp / Twilio", "fab fa-whatsapp", [
             "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
             "twilio_from_number",
+        ]),
+        ("WhatsApp AI Assistant", "fas fa-robot", [
+            "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
+            "whatsapp_ai_ocr_provider", "whatsapp_ai_use_celery",
         ]),
         ("Email / SMTP", "fas fa-envelope", [
             "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user",
@@ -60,6 +69,15 @@ class GlobalSettingsForm(forms.ModelForm):
 
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
+        self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
+        self.fields["whatsapp_ai_enabled"].label = "Enable WhatsApp AI assistant"
+        self.fields["whatsapp_ai_provider"].label = "Assistant provider"
+        self.fields["whatsapp_ai_model"].label = "OpenAI model"
+        self.fields["whatsapp_ai_ocr_provider"].label = "Payment OCR provider"
+        self.fields["whatsapp_ai_use_celery"].label = "Use Celery for WhatsApp AI"
+        self.fields["enable_debug_toolbar"].label = "Enable Django Debug Toolbar (local development only)"
+        self.fields["enable_debug_toolbar"].help_text = "Only works when DEBUG=True and host is local. It will not show in production."
+        add_auto_titlecase_class(self.fields, {"site_name"})
 
 
 # core/forms.py
@@ -71,6 +89,10 @@ class PaymentMethodForm(forms.ModelForm):
     class Meta:
         model = PaymentMethod
         fields = ["name", "code", "is_active", "sort_order"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {"name"})
 
 
 class BackupSettingsForm(forms.Form):

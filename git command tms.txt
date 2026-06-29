@@ -1,15 +1,39 @@
-LOCAL
-cd E:\tenant_management_system
+# LOCAL
 git add .
-git commit -m "update"
-git push origin main
-SERVER
-ssh ivs@213.199.56.12
+git commit -m "fix"
+git push
+
+
+
+
 
 cd /home/ivs/apps/tms
-source .venv/bin/activate
-git pull origin main
-python manage.py migrate
-sudo systemctl restart tms.service
 
-That’s now your clean production deployment flow fo
+git fetch origin
+
+git status
+git pull origin main
+git reset --hard origin/main
+
+source .venv/bin/activate
+
+python3 manage.py migrate
+
+python3 manage.py collectstatic --noinput
+
+sudo systemctl restart tms
+
+sudo systemctl status tms --no-pager -l
+
+cd /home/ivs/apps/tms
+
+git fetch origin
+git reset --hard origin/main
+
+source .venv/bin/activate
+
+python3 manage.py migrate
+python3 manage.py collectstatic --noinput
+
+sudo systemctl restart tms
+sudo systemctl status tms --no-pager -l

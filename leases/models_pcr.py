@@ -2,6 +2,7 @@
 from django.db import models
 from django.utils import timezone
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from PIL import Image, ImageDraw, ImageFont, ExifTags
 import uuid
 import io
@@ -39,13 +40,44 @@ class PCRPhoto(models.Model):
     comment = models.CharField(max_length=300, blank=True)
     room = models.CharField(max_length=80, blank=True)
     order = models.PositiveIntegerField(default=0)
+    sort_order = models.PositiveIntegerField(default=0, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["order", "created_at"]
+        ordering = ["sort_order", "created_at", "id"]
+
+    @property
+    def image_exists(self):
+        return bool(self.image and self.image.name and default_storage.exists(self.image.name))
+
+    @property
+    def thumbnail_exists(self):
+        return bool(self.thumbnail and self.thumbnail.name and default_storage.exists(self.thumbnail.name))
+
+    @property
+    def display_image_url(self):
+        try:
+            if self.thumbnail_exists:
+                return self.thumbnail.url
+            if self.image_exists:
+                return self.image.url
+        except Exception:
+            return ""
+        return ""
+
+    @property
+    def original_image_url(self):
+        try:
+            if self.image_exists:
+                return self.image.url
+        except Exception:
+            return ""
+        return ""
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
+        if is_new and not self.sort_order:
+            self.sort_order = self.order or 0
         super().save(*args, **kwargs)
         if is_new and self.image:
             if not self.taken_at:

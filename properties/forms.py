@@ -7,6 +7,18 @@ from .models import Property, Unit
 # NEW imports
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Row, Column, Div
+from tenants.models import TenantInterestType
+from core.utils.text import add_auto_titlecase_class
+
+
+def default_interest_type_for_property(property_obj):
+    property_name = (property_obj.property_name if property_obj else "").lower()
+    code = (
+        "single_room_attached_bath_kitchen"
+        if "f56" in property_name and "basement" in property_name
+        else "two_room_flat"
+    )
+    return TenantInterestType.objects.filter(code=code, is_active=True).first()
 
 
 class PropertyForm(forms.ModelForm):
@@ -18,6 +30,18 @@ class PropertyForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'rows': 3}),
             'bank_account_details': forms.Textarea(attrs={'rows': 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_auto_titlecase_class(self.fields, {
+            "property_name",
+            "owner_name",
+            "owner_father_name",
+            "caretaker_name",
+            "caretaker_father_name",
+            "property_city",
+            "property_state",
+        })
 
 
 # forms.py
@@ -52,6 +76,20 @@ class UnitForm(forms.ModelForm):
 
         # quick visual proof you're on the right file
         self.fields['unit_number'].label = 'Unit #'
+        self.fields['interest_type'].label = 'Building Type'
+        self.fields['status'].label = 'Unit State'
+        self.fields['status'].help_text = 'Occupancy is calculated from current lease history dates.'
+        add_auto_titlecase_class(self.fields)
+        if (
+            not self.is_bound
+            and self.instance
+            and self.instance.pk
+            and not self.instance.interest_type_id
+            and self.instance.property_id
+        ):
+            default_interest_type = default_interest_type_for_property(self.instance.property)
+            if default_interest_type:
+                self.fields['interest_type'].initial = default_interest_type.pk
 
         self.helper = FormHelper()
         self.helper.form_tag = False  # <form> tag lives in the template
@@ -64,6 +102,10 @@ class UnitForm(forms.ModelForm):
             Div(
                 Div('property',    css_class='col-12 col-md-6'),
                 Div('unit_number', css_class='col-12 col-md-6'),
+                css_class='row g-3'
+            ),
+            Div(
+                Div('interest_type', css_class='col-12 col-md-6'),
                 css_class='row g-3'
             ),
 
@@ -121,3 +163,9 @@ class UnitForm(forms.ModelForm):
             str(prop.pk): prop.bank_account_details or ""
             for prop in Property.objects.order_by("property_name")
         }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('interest_type') and cleaned_data.get('property'):
+            cleaned_data['interest_type'] = default_interest_type_for_property(cleaned_data['property'])
+        return cleaned_data

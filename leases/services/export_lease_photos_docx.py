@@ -1,0 +1,148 @@
+import io
+
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.utils import timezone
+from docx import Document
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches
+from PIL import Image, ImageOps
+
+from ..models_lease_photos import _folder_name_for_lease
+
+
+def _tenant_name(lease):
+    tenant = getattr(lease, "tenant", None)
+    if tenant and hasattr(tenant, "get_full_name"):
+        return tenant.get_full_name() or str(tenant)
+    return str(tenant or "Tenant")
+
+
+def _property_name(lease):
+    unit = getattr(lease, "unit", None)
+    prop = getattr(unit, "property", None)
+    return getattr(prop, "property_name", "") or str(prop or "Property")
+
+
+def _unit_name(lease):
+    unit = getattr(lease, "unit", None)
+    return getattr(unit, "unit_number", "") or str(unit or "")
+
+
+def _filename(lease):
+    return f"{_folder_name_for_lease(lease)}_Photos.docx"
+
+
+def _page_number(paragraph):
+    run = paragraph.add_run()
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = "PAGE"
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    run._r.append(begin)
+    run._r.append(instr)
+    run._r.append(end)
+
+
+def _contained_image_bytes(media, size=(1600, 1200)):
+    if not media.file or not media.file.name or not default_storage.exists(media.file.name):
+        return None
+    with default_storage.open(media.file.name, "rb") as fh:
+        raw = fh.read()
+    img = Image.open(io.BytesIO(raw))
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    img.thumbnail(size, Image.LANCZOS)
+    canvas = Image.new("RGB", size, "white")
+    x = (size[0] - img.width) // 2
+    y = (size[1] - img.height) // 2
+    canvas.paste(img, (x, y))
+    out = io.BytesIO()
+    canvas.save(out, format="JPEG", quality=90)
+    out.seek(0)
+    return out
+
+
+def _layout_count(layout):
+    if layout == "1up":
+        return 1
+    if layout == "2up":
+        return 2
+    return 4
+
+
+def export_lease_photos_docx(lease, layout="4up", photos_qs=None):
+    media_qs = photos_qs or lease.media.filter(media_type="image").order_by("sort_order", "created_at", "id")
+    photos = [
+        item for item in media_qs
+        if item.file and item.file.name and default_storage.exists(item.file.name)
+    ]
+    if not photos:
+        return None, None
+
+    tenant = _tenant_name(lease)
+    prop = _property_name(lease)
+    unit = _unit_name(lease)
+    start = getattr(lease, "start_date", "") or ""
+    end = getattr(lease, "end_date", "") or ""
+    generated = timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M")
+
+    doc = Document()
+    section = doc.sections[0]
+    section.left_margin = Inches(0.5)
+    section.right_margin = Inches(0.5)
+    section.top_margin = Inches(0.55)
+    section.bottom_margin = Inches(0.55)
+
+    footer = section.footer.add_table(rows=1, cols=3, width=Inches(7.3))
+    footer.cell(0, 0).text = generated
+    footer.cell(0, 1).text = f"{tenant} | {prop} | Unit {unit} | {start} to {end}"
+    page_para = footer.cell(0, 2).paragraphs[0]
+    page_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    page_para.add_run("Page ")
+    _page_number(page_para)
+
+    doc.add_heading("Lease Condition Photos", level=1)
+    for label, value in (
+        ("Tenant", tenant),
+        ("Property", prop),
+        ("Unit", unit),
+        ("Lease Start", start),
+        ("Lease End", end),
+        ("Generated", generated),
+    ):
+        p = doc.add_paragraph()
+        p.add_run(f"{label}: ").bold = True
+        p.add_run(str(value))
+
+    per_page = _layout_count(layout if layout in {"1up", "2up", "4up"} else "4up")
+    image_width = Inches(5.8 if per_page == 1 else 3.0)
+
+    for page_start in range(0, len(photos), per_page):
+        doc.add_section(WD_SECTION.NEW_PAGE)
+        page_photos = photos[page_start:page_start + per_page]
+        table = doc.add_table(rows=len(page_photos), cols=2)
+        table.autofit = False
+        for row_index, media in enumerate(page_photos):
+            left = table.cell(row_index, 0)
+            right = table.cell(row_index, 1)
+            image_para = left.paragraphs[0]
+            image_data = _contained_image_bytes(media)
+            if image_data:
+                image_para.add_run().add_picture(image_data, width=image_width)
+            else:
+                image_para.add_run("Photo file missing")
+            right.paragraphs[0].add_run("Tenant Initial:").bold = True
+            right.add_paragraph("____________________")
+        doc.add_paragraph("Tenant Signature: ______________________________")
+
+    out = io.BytesIO()
+    doc.save(out)
+    out.seek(0)
+    name = _filename(lease)
+    return name, ContentFile(out.read(), name=name)

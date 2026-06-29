@@ -237,8 +237,10 @@
         <div class="clause">
             <span class="clause-number">14.</span> That the Tenant shall pay all the Utility Bills regularly without 
             any failure and keep the paid bills in safe custody and photocopies of paid bills hand over to the Owner 
-            on demand. And Whatsapp the copy of paid bill to owner every month. Electricity Bill will be paid at 
-            Rs. {{ electricity_rate }}/- per unit by the tenant to the owner along with the rent.
+            on demand. And Whatsapp the copy of paid bill to owner every month.
+            {% if lease.electricity_bill_by_owner or electricity_bill_by_owner %}
+              Electricity Bill will be paid at Rs. {{ electricity_rate }}/- per unit by the tenant to the owner along with the rent.
+            {% endif %}
         </div>
         
         <!-- Clause 15: Vacation Notice -->

@@ -13,12 +13,31 @@ from django.apps import apps
 import re
 from django.core.exceptions import ValidationError
 from django.db import models
+from core.upload_utils import compress_instance_file_field
+from core.utils.text import normalize_title_fields, smart_title
 
 CNIC_DIGITS = re.compile(r'\D+')
 
 
 def normalize_cnic(value: str) -> str:
     return CNIC_DIGITS.sub('', value or '')
+
+
+class TenantInterestType(models.Model):
+    name = models.CharField(max_length=120)
+    code = models.SlugField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
 
 
 def tenant_photo_upload_to(instance, filename):
@@ -46,6 +65,12 @@ def cnic_back_upload_to(instance, filename):
     return os.path.join('tenants/cnic/', filename)
 
 
+def registration_submission_upload_to(instance, filename):
+    ext = filename.split('.')[-1]
+    tenant_id = instance.tenant_id or "new"
+    return os.path.join("tenants/registration_submissions/", str(tenant_id), f"{slugify(filename.rsplit('.', 1)[0])}.{ext}")
+
+
 class Tenant(models.Model):
     POLICE_STATUS_CHOICES = [
         ("not_started", "Not Started"),
@@ -71,14 +96,30 @@ class Tenant(models.Model):
     phone2 = models.CharField(max_length=20, null=True, blank=True)
     phone3 = models.CharField(max_length=20, null=True, blank=True)
     cnic = models.CharField(max_length=15)
+    occupation = models.CharField(max_length=120, blank=True, default="")
+    employer_name = models.CharField(max_length=120, blank=True, default="")
+    employer_phone = models.CharField(max_length=20, blank=True, default="")
+    reference_name_1 = models.CharField(max_length=120, blank=True, default="")
+    reference_phone_1 = models.CharField(max_length=20, blank=True, default="")
+    reference_relation_1 = models.CharField(max_length=80, blank=True, default="")
+    reference_name_2 = models.CharField(max_length=120, blank=True, default="")
+    reference_phone_2 = models.CharField(max_length=20, blank=True, default="")
+    reference_relation_2 = models.CharField(max_length=80, blank=True, default="")
+    nationality = models.CharField(max_length=80, blank=True, default="Pakistani")
+    city = models.CharField(max_length=80, blank=True, default="")
+    province = models.CharField(max_length=80, blank=True, default="")
+    country = models.CharField(max_length=80, blank=True, default="Pakistan")
     # NEW: normalized digits-only shadow field
     cnic_digits = models.CharField(
         max_length=13, blank=True, null=True, unique=True, editable=False, db_index=True)
     address = models.TextField(
         blank=True, null=True, default='Rawalpindi,Pakistan')
+    temporary_address = models.TextField(blank=True, default="")
+    permanent_address = models.TextField(blank=True, default="")
+    working_address = models.TextField(blank=True, default="")
     gender = models.CharField(
         max_length=1, choices=GENDER_CHOICES, default='M', blank=True, null=True)
-    date_of_birth = models.DateTimeField(blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
     emergency_contact_name = models.CharField(
         max_length=100, null=True, blank=True)
     emergency_contact_phone = models.CharField(
@@ -87,8 +128,9 @@ class Tenant(models.Model):
         max_length=20, null=True, blank=True)
     number_of_family_member = models.CharField(max_length=2, default=4)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    interested_in = models.ManyToManyField(TenantInterestType, blank=True, related_name="tenants")
     notes = models.TextField(blank=True, null=True, default="")
     photo = models.ImageField(
         upload_to=tenant_photo_upload_to, blank=True, null=True)
@@ -128,6 +170,14 @@ class Tenant(models.Model):
 
     def get_full_name_agreement(self):
         return f"{self.first_name} {self.relation} {self.last_name}"
+
+    @property
+    def age(self):
+        if not self.date_of_birth:
+            return None
+        dob = self.date_of_birth.date() if hasattr(self.date_of_birth, "date") else self.date_of_birth
+        today = timezone.now().date()
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
     def clean(self):
         super().clean()
@@ -173,24 +223,44 @@ class Tenant(models.Model):
         return (self.monthly_rent or 0) + (self.society_maintenance or 0)
 
     def save(self, *args, **kwargs):
+        normalize_title_fields(self, (
+            "first_name",
+            "last_name",
+            "employer_name",
+            "reference_name_1",
+            "reference_name_2",
+            "nationality",
+            "city",
+            "province",
+            "country",
+            "emergency_contact_name",
+        ))
+        for field_name in ("photo", "cnic_front", "cnic_back", "police_verification_document"):
+            compress_instance_file_field(self, field_name)
+
+        def remove_file_if_present(file_field):
+            try:
+                path = file_field.path
+            except (ValueError, OSError):
+                return
+            if os.path.isfile(path):
+                os.remove(path)
+
         # Get the current instance from database (if it exists)
         if self.pk:
             old_instance = Tenant.objects.get(pk=self.pk)
 
             # Check and delete old photo if it exists and is being changed
             if old_instance.photo and old_instance.photo != self.photo:
-                if os.path.isfile(old_instance.photo.path):
-                    os.remove(old_instance.photo.path)
+                remove_file_if_present(old_instance.photo)
 
             # Check and delete old cnic_front if it exists and is being changed
             if old_instance.cnic_front and old_instance.cnic_front != self.cnic_front:
-                if os.path.isfile(old_instance.cnic_front.path):
-                    os.remove(old_instance.cnic_front.path)
+                remove_file_if_present(old_instance.cnic_front)
 
             # Check and delete old cnic_back if it exists and is being changed
             if old_instance.cnic_back and old_instance.cnic_back != self.cnic_back:
-                if os.path.isfile(old_instance.cnic_back.path):
-                    os.remove(old_instance.cnic_back.path)
+                remove_file_if_present(old_instance.cnic_back)
         self.cnic_digits = normalize_cnic(self.cnic) or None
         super().save(*args, **kwargs)
 
@@ -209,6 +279,9 @@ class Tenant(models.Model):
     def current_lease(self):
         """Get the active lease for this tenant"""
         try:
+            if hasattr(self, 'active_leases'):
+                return self.active_leases[0] if self.active_leases else None
+
             Lease = apps.get_model('leases', 'Lease')
             return self.leases.filter(status='active').latest('start_date')
         except Lease.DoesNotExist:
@@ -310,6 +383,9 @@ class TenantRegistrationSubmission(models.Model):
         related_name="registration_submissions",
     )
     submitted_data = models.JSONField(default=dict)
+    photo = models.ImageField(upload_to=registration_submission_upload_to, blank=True, null=True)
+    cnic_front = models.ImageField(upload_to=registration_submission_upload_to, blank=True, null=True)
+    cnic_back = models.ImageField(upload_to=registration_submission_upload_to, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     submitted_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
@@ -328,51 +404,23 @@ class TenantRegistrationSubmission(models.Model):
     def __str__(self):
         return f"{self.tenant} registration update ({self.status})"
 
+    def save(self, *args, **kwargs):
+        for key in (
+            "first_name",
+            "last_name",
+            "employer_name",
+            "reference_name_1",
+            "reference_name_2",
+            "nationality",
+            "city",
+            "province",
+            "country",
+            "emergency_contact_name",
+        ):
+            if key in self.submitted_data:
+                self.submitted_data[key] = smart_title(self.submitted_data[key])
+        for field_name in ("photo", "cnic_front", "cnic_back"):
+            compress_instance_file_field(self, field_name)
+        super().save(*args, **kwargs)
 
-class PotentialTenantLead(models.Model):
-    STATUS_NEW = "new"
-    STATUS_CONTACTED = "contacted"
-    STATUS_INTERESTED = "interested"
-    STATUS_VISITED = "visited"
-    STATUS_NOT_INTERESTED = "not_interested"
-    STATUS_CONVERTED = "converted"
-    STATUS_CHOICES = [
-        (STATUS_NEW, "New"),
-        (STATUS_CONTACTED, "Contacted"),
-        (STATUS_INTERESTED, "Interested"),
-        (STATUS_VISITED, "Visited"),
-        (STATUS_NOT_INTERESTED, "Not Interested"),
-        (STATUS_CONVERTED, "Converted"),
-    ]
 
-    name = models.CharField(max_length=120)
-    phone = models.CharField(max_length=30, blank=True)
-    whatsapp_number = models.CharField(max_length=30, blank=True)
-    interested_building = models.ForeignKey(
-        "properties.Property",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="potential_tenant_leads",
-    )
-    interested_unit = models.ForeignKey(
-        "properties.Unit",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="potential_tenant_leads",
-    )
-    budget = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    family_size = models.PositiveIntegerField(null=True, blank=True)
-    notes = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW)
-    source = models.CharField(max_length=80, blank=True)
-    next_follow_up_date = models.DateField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return self.name

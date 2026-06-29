@@ -12,6 +12,7 @@ from django.conf import settings
 
 
 SETTINGS_FILE_NAME = "backup_settings.json"
+MIN_PROTECTED_BACKUPS = 3
 
 
 def default_backup_settings():
@@ -160,6 +161,46 @@ def _db_settings():
     return settings.DATABASES["default"]
 
 
+def _resolve_mysql_executable(configured_path, executable_name, label):
+    configured_path = (configured_path or executable_name).strip()
+    direct_path = Path(configured_path)
+    if direct_path.exists():
+        return str(direct_path)
+
+    found = shutil.which(configured_path)
+    if found:
+        return found
+
+    candidate_paths = [
+        Path("/usr/bin") / executable_name,
+        Path("/usr/local/bin") / executable_name,
+        Path("/opt/homebrew/bin") / executable_name,
+    ]
+    if os.name == "nt":
+        exe_name = executable_name if executable_name.lower().endswith(".exe") else f"{executable_name}.exe"
+        candidate_paths.extend([
+            Path("C:/Program Files/MySQL"),
+            Path("C:/Program Files (x86)/MySQL"),
+            Path("C:/Program Files/MariaDB"),
+            Path("C:/Program Files (x86)/MariaDB"),
+        ])
+        discovered = []
+        for base_path in candidate_paths[3:]:
+            if base_path.exists():
+                discovered.extend(base_path.glob(f"**/{exe_name}"))
+        candidate_paths.extend(discovered)
+
+    for path in candidate_paths:
+        if path.is_file():
+            return str(path)
+
+    raise RuntimeError(
+        f"{label} was not found. Install MySQL client tools or set the full {label} "
+        "in Backup Settings, for example C:\\Program Files\\MySQL\\MySQL Server 9.7\\bin\\"
+        f"{executable_name}.exe."
+    )
+
+
 def create_db_backup(config):
     if not config.get("enable_db_backup"):
         raise RuntimeError("Database backup is disabled in backup settings.")
@@ -173,9 +214,14 @@ def create_db_backup(config):
             source.backup(dest)
         return target
 
+    mysqldump_path = _resolve_mysql_executable(
+        config.get("mysqldump_path"),
+        "mysqldump",
+        "mysqldump path",
+    )
     target = root / f"tms_db_backup_{ts}.sql"
     cmd = [
-        config.get("mysqldump_path") or "mysqldump",
+        mysqldump_path,
         "--single-transaction",
         "--quick",
         f"--host={db.get('HOST') or 'localhost'}",
@@ -255,8 +301,13 @@ def restore_database(config, backup_id):
         return
     if path.suffix.lower() == ".zip":
         raise RuntimeError("Choose a database .sql backup, not a zip archive.")
+    mysql_path = _resolve_mysql_executable(
+        config.get("mysql_path"),
+        "mysql",
+        "mysql path",
+    )
     cmd = [
-        config.get("mysql_path") or "mysql",
+        mysql_path,
         f"--host={db.get('HOST') or 'localhost'}",
         f"--port={db.get('PORT') or 3306}",
         f"--user={db.get('USER') or ''}",
@@ -294,8 +345,24 @@ def restore_full(config, backup_id):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def delete_backup(config, backup_id):
+    backups = list_backups(config)
+    item = next((backup for backup in backups if backup.id == backup_id), None)
+    if not item:
+        raise RuntimeError("Selected backup was not found.")
+    protected_ids = {backup.id for backup in backups[:MIN_PROTECTED_BACKUPS]}
+    if item.id in protected_ids:
+        raise RuntimeError("The latest 3 backups are protected and cannot be deleted.")
+    root = ensure_backup_root(config).resolve()
+    path = Path(item.display_path).resolve()
+    if root not in path.parents or not path.is_file():
+        raise RuntimeError("Invalid backup path.")
+    path.unlink()
+    return item
+
+
 def prune_old_backups(config):
-    retention = int(config.get("retention_count") or 10)
+    retention = max(int(config.get("retention_count") or 10), MIN_PROTECTED_BACKUPS)
     backups = list_backups(config)
     for item in backups[retention:]:
         try:

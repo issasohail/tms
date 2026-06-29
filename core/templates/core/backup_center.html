@@ -26,13 +26,6 @@
       </form>
       <form method="post" class="d-inline">
         {% csrf_token %}
-        <input type="hidden" name="action" value="backup_code">
-        <button type="submit" class="btn btn-sm btn-outline-primary">
-          <i class="bi bi-file-earmark-zip me-1"></i> Backup Code
-        </button>
-      </form>
-      <form method="post" class="d-inline">
-        {% csrf_token %}
         <input type="hidden" name="action" value="backup_full">
         <button type="submit" class="btn btn-sm btn-danger">
           <i class="bi bi-shield-check me-1"></i> Full Backup
@@ -143,7 +136,7 @@
       <div class="row g-3">
         <div class="col-md-6">
           <div class="card shadow-sm h-100">
-            <div class="card-header py-2"><strong>Restore Database</strong></div>
+            <div class="card-header py-2" id="restore-db"><strong>Restore Database</strong></div>
             <div class="card-body">
               <div class="alert alert-danger py-2 small">This will overwrite the current database.</div>
               <form method="post">
@@ -252,6 +245,7 @@
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
                 <tr>
+                  <th style="width: 56px;">#</th>
                   <th>Name</th>
                   <th>Type</th>
                   <th>Status</th>
@@ -263,7 +257,8 @@
               </thead>
               <tbody>
                 {% for b in backups %}
-                  <tr>
+                  <tr data-backup-id="{{ b.id }}">
+                    <td>{{ forloop.counter }}</td>
                     <td>
                       <div class="fw-semibold">{{ b.name }}</div>
                       <div class="text-muted small text-break">{{ b.display_path }}</div>
@@ -276,8 +271,22 @@
                     <td>
                       <div class="d-flex flex-wrap gap-1">
                         <a href="{% url 'core:backup_download' b.id %}" class="btn btn-sm btn-outline-primary">Download</a>
+                        {% if forloop.counter <= 3 %}
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-secondary"
+                                  disabled
+                                  title="The latest 3 backups are protected.">
+                            Protected
+                          </button>
+                        {% else %}
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-danger js-backup-delete"
+                                  data-url="{% url 'core:backup_delete' b.id %}">
+                            Delete
+                          </button>
+                        {% endif %}
                         {% if b.backup_type == 'db' %}
-                          <a href="{% url 'core:backup_center' %}?selected_db={{ b.id }}" class="btn btn-sm btn-outline-secondary">Use for DB Restore</a>
+                          <a href="{% url 'core:backup_center' %}?selected_db={{ b.id }}#restore-db" class="btn btn-sm btn-outline-secondary">Use for DB Restore</a>
                         {% elif b.backup_type == 'media' %}
                           <a href="{% url 'core:backup_center' %}?selected_media={{ b.id }}" class="btn btn-sm btn-outline-secondary">Use for Media Restore</a>
                         {% elif b.backup_type == 'full' %}
@@ -289,7 +298,7 @@
                     </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="7" class="text-center text-muted py-4">No backups found yet.</td></tr>
+                  <tr><td colspan="8" class="text-center text-muted py-4">No backups found yet.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -323,4 +332,32 @@
   .backup-center .table td { padding: .3rem; }
 }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("click", function (event) {
+  const button = event.target.closest(".js-backup-delete");
+  if (!button) return;
+  if (!confirm("Delete this backup file?")) return;
+  const csrf = "{{ csrf_token }}";
+  fetch(button.dataset.url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRFToken": csrf,
+      "X-Requested-With": "XMLHttpRequest"
+    }
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (!data.success) {
+        alert(data.error || "Could not delete backup.");
+        return;
+      }
+      button.closest("tr")?.remove();
+    })
+    .catch(() => alert("Could not delete backup."));
+});
+</script>
 {% endblock %}

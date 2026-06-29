@@ -1,0 +1,846 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+<link rel="stylesheet" href="{% static 'properties/css/tables.css' %}">
+
+{% block title %}Units{% endblock %}
+
+
+{% block content %}
+<div class="unit-page-header d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Units</h2>
+    <div class="unit-page-actions d-flex gap-2">
+        <a href="{% url 'properties:unit_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Add Unit
+        </a>
+        <button type="button"
+                class="btn btn-success"
+                id="vacantSummaryMessageBtn"
+                data-summary-url="{% url 'properties:unit_vacant_summary_message' %}?{{ request.GET.urlencode }}">
+            <i class="fab fa-whatsapp me-1"></i> Vacant Summary
+        </button>
+        
+        {% include "includes/export_buttons.html" %}
+    </div>
+</div>
+
+<!-- Filter form -->
+<div class="card unit-filter-card mb-4">
+    <div class="card-body p-3">
+        <form method="get" class="unit-filter-row">
+            <div class="unit-filter-field unit-filter-property">
+                <label for="id_property" class="form-label">Property</label>
+                <select name="property" id="id_property" class="form-select" onchange="this.form.submit()">
+                    <option value="">All Properties</option>
+                    {% for property in all_properties %}
+                        <option value="{{ property.id }}"
+                            {% if request.GET.property|stringformat:"s" == property.id|stringformat:"s" %}selected{% endif %}>
+                            {{ property.property_name }} - ({{ property.unit_count }} units)
+                        </option>
+                    {% empty %}
+                        <option value="">No properties available</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="unit-filter-field unit-filter-status">
+                <label for="id_status" class="form-label">Status</label>
+                <select name="status" id="id_status" class="form-select" onchange="this.form.submit()">
+                    <option value="">All Statuses</option>
+                    <option value="vacant" {% if current_status == "vacant" %}selected{% endif %}>Vacant</option>
+                    <option value="occupied" {% if current_status == "occupied" %}selected{% endif %}>Occupied</option>
+                    <option value="ending_soon" {% if current_status == "ending_soon" %}selected{% endif %}>Lease Ending Soon</option>
+                    <option value="maintenance" {% if current_status == "maintenance" %}selected{% endif %}>Maintenance / Disabled</option>
+                </select>
+            </div>
+            <div class="unit-filter-buttons">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                {% if request.GET.property or request.GET.status %}
+                    <a href="?" class="btn btn-outline-secondary">Clear</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+
+    {% csrf_token %}
+<div class="table-responsive unit-table-wrap">
+    {% render_table table %}
+</div>
+{{ building_type_options|json_script:"buildingTypeOptions" }}
+
+{% include "properties/includes/vacant_notice_modal.html" %}
+
+
+    {% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    .unit-page-header {
+        gap: 12px;
+    }
+    .unit-page-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .unit-page-actions .btn,
+    .unit-page-actions .dropdown-toggle {
+        white-space: nowrap;
+    }
+    .unit-filter-card {
+        border: 0;
+        border-radius: 8px;
+        box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+    }
+    .unit-filter-card .form-label {
+        margin-bottom: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #475569;
+    }
+    .unit-filter-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .unit-filter-field {
+        flex: 0 0 auto;
+    }
+    .unit-filter-property {
+        width: min(430px, 42vw);
+        min-width: 260px;
+    }
+    .unit-filter-status {
+        width: min(320px, 30vw);
+        min-width: 210px;
+    }
+    .unit-filter-buttons {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 8px;
+        align-items: flex-end;
+    }
+    .unit-filter-card .btn {
+        min-height: 38px;
+    }
+    .unit-table-wrap {
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .unit-table-wrap table {
+        margin-bottom: 0;
+        min-width: 1180px;
+        table-layout: auto;
+        font-size: 14px !important;
+    }
+    .unit-table-wrap th,
+    .unit-table-wrap td {
+        padding: 8px 10px;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .unit-table-wrap th {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #475569;
+        background: #f8fafc;
+    }
+    .unit-table-wrap td:nth-child(3),
+    .unit-table-wrap td:nth-child(4),
+    .unit-table-wrap td:nth-child(10) {
+        white-space: normal;
+    }
+    .unit-table-wrap td:nth-child(2),
+    .unit-table-wrap th:nth-child(2) {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: inherit;
+        box-shadow: 1px 0 0 #dee2e6;
+    }
+    .unit-table-wrap th:nth-child(2) {
+        z-index: 3;
+        background: #f8fafc;
+    }
+    .unit-table-wrap th:nth-child(1),
+    .unit-table-wrap td:nth-child(1) {
+        width: 48px;
+        min-width: 48px;
+        max-width: 48px;
+    }
+    .unit-table-wrap th:nth-child(2),
+    .unit-table-wrap td:nth-child(2) {
+        width: 112px;
+        min-width: 112px;
+        max-width: 112px;
+    }
+    .unit-table-wrap th:nth-child(3),
+    .unit-table-wrap td:nth-child(3) {
+        width: 82px;
+        min-width: 82px;
+        max-width: 92px;
+    }
+    .unit-table-wrap th:nth-child(4),
+    .unit-table-wrap td:nth-child(4) {
+        width: 135px;
+        min-width: 135px;
+        max-width: 145px;
+    }
+    .unit-table-wrap th:nth-child(5),
+    .unit-table-wrap td:nth-child(5),
+    .unit-table-wrap th:nth-child(9),
+    .unit-table-wrap td:nth-child(9) {
+        width: 74px;
+        min-width: 74px;
+        max-width: 78px;
+    }
+    .unit-table-wrap th:nth-child(6),
+    .unit-table-wrap td:nth-child(6) {
+        width: 132px;
+        min-width: 132px;
+        max-width: 136px;
+    }
+    .unit-table-wrap th:nth-child(7),
+    .unit-table-wrap td:nth-child(7) {
+        width: 96px;
+        min-width: 96px;
+        max-width: 100px;
+    }
+    .unit-table-wrap th:nth-child(8),
+    .unit-table-wrap td:nth-child(8) {
+        width: 112px;
+        min-width: 112px;
+        max-width: 116px;
+    }
+    .unit-table-wrap th:nth-child(10),
+    .unit-table-wrap td:nth-child(10) {
+        width: 132px;
+        min-width: 132px;
+        max-width: 138px;
+    }
+    .unit-table-wrap th:nth-child(11),
+    .unit-table-wrap td:nth-child(11) {
+        width: 96px;
+        min-width: 96px;
+        max-width: 96px;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .unit-table-wrap th:nth-child(12),
+    .unit-table-wrap td:nth-child(12) {
+        width: 168px;
+        min-width: 168px;
+        max-width: 168px;
+    }
+    .unit-inline-edit,
+    .unit-building-type-edit,
+    .lead-phone-text {
+        display: inline-block;
+        min-width: 52px;
+        padding: 2px 4px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .unit-inline-edit:hover,
+    .unit-building-type-edit:hover,
+    .lead-phone-text:hover {
+        background: #eef5ff;
+        box-shadow: inset 0 0 0 1px #b6d4fe;
+    }
+    .unit-building-type-edit {
+        min-width: 120px;
+    }
+    .actions-wrap {
+        white-space: nowrap;
+        justify-content: center;
+    }
+    .table td.unit-actions-cell,
+    .table th.unit-actions-cell {
+        overflow: visible;
+        text-overflow: clip;
+        position: sticky;
+        right: 0;
+        z-index: 4;
+        min-width: 168px;
+        background: #fff;
+        box-shadow: -1px 0 0 #dee2e6;
+    }
+    .table th.unit-actions-cell {
+        z-index: 5;
+        background: #f8fafc;
+    }
+    .unit-actions-cell .actions-wrap {
+        gap: 4px !important;
+    }
+    .unit-actions-cell .action-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        min-width: 34px;
+        height: 28px;
+        padding: 0;
+        flex: 0 0 auto;
+    }
+    .unit-actions-cell .action-btn .btn-text {
+        display: none;
+    }
+    .actions-wrap .btn,
+    .vacant-leads-table .btn {
+        white-space: nowrap;
+    }
+    .vacant-leads-table th,
+    .vacant-leads-table td {
+        vertical-align: middle;
+    }
+    @media (max-width: 991.98px) {
+        .unit-page-header {
+            align-items: flex-start !important;
+            flex-direction: column;
+        }
+        .unit-page-actions {
+            justify-content: flex-start;
+            width: 100%;
+        }
+        .unit-filter-card {
+            margin-bottom: 14px !important;
+        }
+        .unit-filter-card .card-body {
+            padding: 12px !important;
+        }
+        .unit-filter-property {
+            width: 320px;
+            min-width: 320px;
+        }
+        .unit-filter-status {
+            width: 230px;
+            min-width: 230px;
+        }
+        .unit-table-wrap table {
+            min-width: 980px;
+            font-size: 13px !important;
+        }
+        .unit-table-wrap th,
+        .unit-table-wrap td {
+            padding: 7px 8px;
+        }
+    }
+    @media (max-width: 575.98px) {
+        /*
+           Small-screen layout only. Desktop/tablet styles above are unchanged.
+           Tweak these variables for 360px/iPhone without touching desktop widths.
+        */
+        :root {
+            --unit-mobile-font-size: 0.68rem;
+
+            /* Fixed column widths */
+            --unit-mobile-sn-width: 12px;
+            --unit-mobile-rent-width: 35px;
+            --unit-mobile-status-width: 63px;
+            --unit-mobile-actions-width: 75px;
+
+            /* Remaining width automatically goes to Unit column */
+
+            --unit-mobile-action-btn-size: 20px;
+            --unit-mobile-action-btn-padding: 0;
+            --unit-mobile-action-icon-size: 10px;
+            --unit-mobile-action-gap: 2px;
+        }
+        .unit-page-header {
+            gap: 8px;
+            margin-bottom: 10px !important;
+        }
+        .unit-page-header h2 {
+            font-size: 1.35rem;
+        }
+        .unit-page-actions {
+            display: grid !important;
+            grid-template-columns: 33fr 40fr 27fr;
+            gap: 5px !important;
+            width: 100%;
+        }
+        .unit-page-actions .btn,
+        .unit-page-actions .dropdown,
+        .unit-page-actions .dropdown-toggle {
+            width: 100%;
+            min-width: 0;
+        }
+        .unit-page-actions .btn,
+        .unit-page-actions .dropdown-toggle {
+            min-height: 30px;
+            padding: 5px 4px;
+            font-size: var(--unit-mobile-font-size);
+            line-height: 1.15;
+        }
+        .unit-page-actions .btn i,
+        .unit-page-actions .dropdown-toggle i {
+            margin-right: 2px !important;
+            font-size: 0.72rem;
+        }
+        .unit-filter-card {
+            margin-left: -4px;
+            margin-right: -4px;
+            margin-bottom: 10px !important;
+        }
+        .unit-filter-card .card-body {
+            padding: 8px !important;
+        }
+        .unit-filter-card .form-label {
+            display: none;
+        }
+        .unit-filter-row {
+            display: grid;
+            grid-template-columns: minmax(0, 42fr) minmax(0, 42fr) minmax(34px, 16fr);
+            gap: 5px;
+            overflow: hidden;
+            padding-bottom: 0;
+            width: 100%;
+        }
+        .unit-filter-field,
+        .unit-filter-property,
+        .unit-filter-status,
+        .unit-filter-buttons {
+            width: auto;
+            min-width: 0;
+        }
+        .unit-filter-buttons {
+            display: block;
+        }
+        .unit-filter-card .form-select {
+            min-height: 32px;
+            height: 32px;
+            padding: 4px 24px 4px 7px;
+            font-size: var(--unit-mobile-font-size);
+            line-height: 1.1;
+        }
+        .unit-filter-buttons .btn[type="submit"] {
+            width: 100%;
+            min-width: 0;
+            min-height: 32px;
+            height: 32px;
+            margin-top: 0;
+            padding: 0;
+            font-size: 0;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .unit-filter-buttons .btn[type="submit"]::before {
+            content: "\f0b0";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            font-size: 0.82rem;
+        }
+        .unit-filter-buttons .btn-outline-secondary {
+            display: none;
+        }
+        .unit-table-wrap {
+            margin-left: -8px;
+            margin-right: -8px;
+            border-left: 0;
+            border-right: 0;
+            border-radius: 0;
+            overflow-x: hidden;
+        }
+        .unit-table-wrap table {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: fixed;
+            font-size: var(--unit-mobile-font-size) !important;
+        }
+        .unit-table-wrap th,
+        .unit-table-wrap td {
+            padding: 5px 4px;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: normal;
+            line-height: 1.18;
+        }
+        .unit-table-wrap th {
+            font-size: 0.62rem;
+            letter-spacing: 0;
+        }
+        /* Mobile table keeps only: SN, Unit, Rent, Status, Actions. */
+        .unit-table-wrap th:nth-child(3),
+        .unit-table-wrap td:nth-child(3),
+        .unit-table-wrap th:nth-child(4),
+        .unit-table-wrap td:nth-child(4),
+        .unit-table-wrap th:nth-child(6),
+        .unit-table-wrap td:nth-child(6),
+        .unit-table-wrap th:nth-child(7),
+        .unit-table-wrap td:nth-child(7),
+        .unit-table-wrap th:nth-child(8),
+        .unit-table-wrap td:nth-child(8),
+        .unit-table-wrap th:nth-child(9),
+        .unit-table-wrap td:nth-child(9),
+        .unit-table-wrap th:nth-child(10),
+        .unit-table-wrap td:nth-child(10) {
+            display: none !important;
+        }
+        .unit-table-wrap th:nth-child(1),
+        .unit-table-wrap td:nth-child(1) {
+            width: var(--unit-mobile-sn-width) !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center;
+        }
+        .unit-table-wrap th:nth-child(2),
+        .unit-table-wrap td:nth-child(2) {
+            position: static;
+            width: var(--unit-mobile-unit-width) !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            box-shadow: none;
+            background: inherit;
+        }
+        .unit-table-wrap th:nth-child(5),
+        .unit-table-wrap td:nth-child(5) {
+            width: var(--unit-mobile-rent-width) !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: right;
+        }
+        .unit-table-wrap th:nth-child(11),
+        .unit-table-wrap td:nth-child(11) {
+            width: var(--unit-mobile-status-width) !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center;
+            white-space: normal;
+        }
+        .unit-table-wrap th:nth-child(12),
+        .unit-table-wrap td:nth-child(12),
+        .table td.unit-actions-cell,
+        .table th.unit-actions-cell {
+            position: static;
+            width: var(--unit-mobile-actions-width) !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            box-shadow: none;
+            background: inherit;
+            overflow: visible;
+        }
+        .unit-actions-cell .actions-wrap,
+        .actions-wrap {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            justify-content: center;
+            align-items: center;
+            gap: var(--unit-mobile-action-gap) !important;
+        }
+        .unit-actions-cell .action-btn,
+        .actions-wrap .action-btn {
+            width: var(--unit-mobile-action-btn-size);
+            min-width: var(--unit-mobile-action-btn-size);
+            height: var(--unit-mobile-action-btn-size);
+            padding: var(--unit-mobile-action-btn-padding);
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 var(--unit-mobile-action-btn-size);
+        }
+        .unit-actions-cell .action-btn i,
+        .actions-wrap .action-btn i {
+            font-size: var(--unit-mobile-action-icon-size);
+            line-height: 1;
+        }
+        .unit-actions-cell .action-btn .btn-text,
+        .actions-wrap .action-btn .btn-text {
+            display: none !important;
+        }
+        .unit-table-wrap table {
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        .unit-table-wrap th:nth-child(1),
+        .unit-table-wrap td:nth-child(1) {
+            width: var(--unit-mobile-sn-width);
+        }
+
+        .unit-table-wrap th:nth-child(3),
+        .unit-table-wrap td:nth-child(3) {
+            width: var(--unit-mobile-rent-width);
+        }
+
+        .unit-table-wrap th:nth-child(4),
+        .unit-table-wrap td:nth-child(4) {
+            width: var(--unit-mobile-status-width);
+        }
+
+        .unit-table-wrap th:nth-child(5),
+        .unit-table-wrap td:nth-child(5) {
+            width: var(--unit-mobile-actions-width);
+        }
+
+        /* Unit column gets all remaining space */
+        .unit-table-wrap th:nth-child(2),
+        .unit-table-wrap td:nth-child(2) {
+            width: auto;
+        }
+    }
+    @media (max-width: 380px) {
+        :root {
+            --unit-mobile-font-size: 0.66rem;
+            --unit-mobile-action-btn-size: 19px;
+            --unit-mobile-action-icon-size: 9px;
+            --unit-mobile-action-gap: 1px;
+        }
+        .unit-page-actions {
+            grid-template-columns: 33fr 40fr 27fr;
+        }
+        .unit-page-actions .btn,
+        .unit-page-actions .dropdown-toggle {
+            font-size: 0.64rem;
+        }
+    }
+</style>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const buildingTypeOptions = JSON.parse(document.getElementById("buildingTypeOptions").textContent || "[]");
+
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            const checkboxes = document.querySelectorAll('input[name="selected_units"]');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+        });
+    }
+
+    document.querySelectorAll("td[data-editable='true']").forEach(td => {
+        td.addEventListener("dblclick", function () {
+            const field = td.dataset.field;
+            const id = td.dataset.id;
+            const current = td.innerText.trim();
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = current;
+            input.className = "form-control";
+            td.innerHTML = "";
+            td.appendChild(input);
+            input.focus();
+
+            input.addEventListener("blur", function () {
+                fetch("{% url 'properties:unit_inline_update' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    },
+                    body: JSON.stringify({
+                        id: id,
+                        field: field,
+                        value: input.value
+                    })
+                }).then(res => res.json()).then(data => {
+                    td.innerText = data.new_value || input.value;
+                }).catch(err => {
+                    console.error(err);
+                    td.innerText = current;
+                });
+            });
+        });
+    });
+
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el);
+    });
+
+    document.querySelectorAll(".unit-building-type-edit").forEach(function (span) {
+        span.addEventListener("click", function () {
+            startBuildingTypeEdit(span);
+        });
+        span.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") startBuildingTypeEdit(span);
+        });
+    });
+
+    document.querySelectorAll(".unit-inline-edit").forEach(function (span) {
+        span.addEventListener("click", function () {
+            startUnitTextEdit(span);
+        });
+        span.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") startUnitTextEdit(span);
+        });
+    });
+
+    const vacantSummaryButton = document.getElementById("vacantSummaryMessageBtn");
+    if (vacantSummaryButton) {
+        vacantSummaryButton.addEventListener("click", function () {
+            vacantSummaryButton.disabled = true;
+            fetch(vacantSummaryButton.dataset.summaryUrl, {
+                headers: {"X-Requested-With": "XMLHttpRequest"}
+            })
+            .then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || !payload.success) {
+                        throw new Error(payload.error || "Could not build vacant summary.");
+                    }
+                    return payload;
+                });
+            })
+            .then(function (payload) {
+                window.open(payload.whatsapp_url, "_blank");
+            })
+            .catch(function (error) {
+                alert(error.message);
+            })
+            .finally(function () {
+                vacantSummaryButton.disabled = false;
+            });
+        });
+    }
+
+    function startBuildingTypeEdit(span) {
+        if (span.dataset.editing === "1") return;
+        span.dataset.editing = "1";
+        const previousValue = span.dataset.currentValue || "";
+        const previousText = span.textContent.trim();
+        const select = document.createElement("select");
+        select.className = "form-select form-select-sm";
+        select.innerHTML = '<option value="">-</option>' + buildingTypeOptions.map(function (item) {
+            return `<option value="${item.id}" ${String(item.id) === String(previousValue) ? "selected" : ""}>${escapeHtml(item.name)}</option>`;
+        }).join("");
+        span.replaceWith(select);
+        select.focus();
+        let finished = false;
+
+        function finish(save) {
+            if (finished) return;
+            finished = true;
+            if (!save) {
+                select.replaceWith(span);
+                span.dataset.editing = "0";
+                return;
+            }
+            select.disabled = true;
+            saveUnitField(span.dataset.unitId, "interest_type", select.value)
+                .then(function (payload) {
+                    span.dataset.currentValue = select.value;
+                    span.textContent = payload.new_value || "-";
+                    select.replaceWith(span);
+                })
+                .catch(function (error) {
+                    alert(error.message);
+                    span.dataset.currentValue = previousValue;
+                    span.textContent = previousText || "-";
+                    select.replaceWith(span);
+                })
+                .finally(function () {
+                    span.dataset.editing = "0";
+                });
+        }
+
+        select.addEventListener("change", function () { finish(true); });
+        select.addEventListener("blur", function () { finish(true); });
+        select.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") finish(false);
+        });
+    }
+
+    function startUnitTextEdit(span) {
+        if (span.dataset.editing === "1") return;
+        span.dataset.editing = "1";
+        const previousText = span.textContent.trim();
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "form-control form-control-sm";
+        input.value = previousText === "-" ? "" : previousText;
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+        let finished = false;
+
+        function finish(save) {
+            if (finished) return;
+            finished = true;
+            if (!save) {
+                input.replaceWith(span);
+                span.dataset.editing = "0";
+                return;
+            }
+            saveUnitField(span.dataset.unitId, span.dataset.field, input.value)
+                .then(function (payload) {
+                    span.textContent = payload.new_value || "-";
+                    input.replaceWith(span);
+                })
+                .catch(function (error) {
+                    alert(error.message);
+                    span.textContent = previousText || "-";
+                    input.replaceWith(span);
+                })
+                .finally(function () {
+                    span.dataset.editing = "0";
+                });
+        }
+
+        input.addEventListener("blur", function () { finish(true); });
+        input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") finish(true);
+            if (event.key === "Escape") finish(false);
+        });
+    }
+
+    function saveUnitField(id, field, value) {
+        return fetch("{% url 'properties:unit_inline_update' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            body: JSON.stringify({id: id, field: field, value: value})
+        }).then(function (response) {
+            return response.json().then(function (payload) {
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || "Could not save unit.");
+                }
+                return payload;
+            });
+        });
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== "") {
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + "=")) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function escapeHtml(value) {
+        return String(value || "").replace(/[&<>"']/g, function (char) {
+            return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[char];
+        });
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+    }
+});
+
+    
+</script>
+{% include "properties/includes/vacant_notice_scripts.html" %}
+{% endblock %}

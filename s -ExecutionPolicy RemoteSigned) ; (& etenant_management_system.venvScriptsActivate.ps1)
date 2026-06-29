@@ -1,0 +1,48 @@
+* 701d2d3d Tue May 26 02:48:10 2026  (HEAD -> main, origin/main, origin/HEAD) Add payments model migration
+* 84abe59c Tue May 26 02:44:04 2026  Restore full Django project files
+* 99584f73 Tue May 26 02:25:58 2026  Remove media cache logs and temp files from repo
+* 7bbbc54e Tue May 26 02:11:45 2026  Clean TMS project without large files
+* 19b488d1 Tue May 26 00:24:52 2026  (backup-before-force-main) Ignore runtime logs and temp files
+* ebe4e997 Mon May 25 22:47:56 2026  (backup-local-meter-update) meter update 05252026
+* fbe365df Mon May 25 18:16:56 2026  Clean up meter unit assumptions and add admin support
+* 30f6c6fe Mon May 25 18:12:24 2026  Add meter switch and tenant move workflows
+* 6d8bef10 Mon May 25 18:08:57 2026  Show meter and occupancy history on detail pages
+* fef71576 Mon May 25 18:06:42 2026  Calculate meter billing from installation and occupancy history
+* 756a4e8e Mon May 25 18:05:22 2026  Backfill meter installation and occupancy history
+* 2d7762af Mon May 25 18:04:41 2026  Add historical meter installations and lease unit occupancy
+* d2208274 Mon May 25 03:57:36 2026  Optimize tenant list lease balance queries
+* 7765f3a0 Mon May 25 03:55:26 2026  Remove unit list property count N plus one
+* fa56ac03 Mon May 25 03:52:54 2026  Place debug toolbar middleware after authentication
+* 07e4ba33 Mon May 25 03:49:15 2026  Fail closed when debug toolbar package is missing
+* 59e1c884 Mon May 25 03:47:56 2026  Show debug toolbar toggle explicitly in settings
+* 1c6a6822 Mon May 25 03:28:11 2026  Add safe local debug toolbar toggle and SQL performance review
+* d483e3ae Mon May 25 02:43:36 2026  Ignore media, zip, backup, and temp files
+* 7df233e3 Mon May 25 02:22:44 2026  05242026 update
+* 4a974ec2 Mon May 25 02:20:53 2026  Inspect TMS debug toolbar settings integration points
+* 88c8182a Mon May 18 11:28:04 2026  Add tenant registration and compliance workflow
+* b329d64f Sun May 17 14:30:04 2026  Harden backup restore workflow
+* 1112df6b Sun May 17 11:55:10 2026  Add core TMS report pages
+* acfb99ba Sun May 17 11:52:46 2026  Add meter assignment history and prepaid mode
+* 0e9dae9c Sun May 17 11:48:34 2026  Add maintenance collection report
+* 6c989d21 Sun May 17 11:46:29 2026  Add maintenance request workflow
+* 0aea1c4e Sun May 17 11:41:37 2026  Improve security deposit refund workflow
+* ecf5d34e Sun May 17 11:34:39 2026  Add configurable late fees and billing cap
+* 4552c068 Sun May 17 11:32:04 2026  Harden accounting destructive actions
+* a46064c2 Sun May 17 11:29:49 2026  Complete Phase 5 WhatsApp and lead workflow
+* 5942cd4d Sun May 17 11:22:22 2026  Add lease welcome WhatsApp preview
+* 17f2067e Sun May 17 06:44:24 2026  Add WhatsApp template settings
+* 79a07dd0 Sun May 17 06:41:01 2026  Add expiring unit media share links
+* 97b1492a Sun May 17 06:39:29 2026  Add property and unit media workflow
+* 8e2f42ac Sun May 17 06:34:27 2026  Add lease history media ownership
+* 5d1363f6 Sun May 17 06:11:57 2026  property unit bank accont  05162026
+* db32ede9 Sun May 17 02:24:26 2026  lease place holder  05162026
+* 1b6e5f1c Sun May 17 02:18:51 2026  lease print  shows lease history  05162026
+* 31d3b4d3 Sun May 17 02:15:20 2026  lease phase 2 edit clause shows lease history  05162026
+* 6445e38c Sun May 17 02:07:35 2026  lease phase 1 05162026
+* 9d336407 Sat May 16 03:21:25 2026  inovice template updated 05152026
+* ef676e99 Fri May 15 15:12:08 2026  Add TMS shared static assets
+* 84c61787 Fri May 15 14:54:56 2026  Production TMS HTTPS + /tms subpath settings
+* 372fbee6 Fri May 15 04:44:45 2026  Restore TMS project from server backup
+* 4a7c0625 Thu May 14 01:51:54 2026  Fix gitignore and stop tracking venv
+* 737cd361 Fri Feb 13 11:15:08 2026  Delete C:\tenant_management_system\logs directory
+* b6e9d7cf Mon Feb 9 16:10:06 2026  Server changes sync

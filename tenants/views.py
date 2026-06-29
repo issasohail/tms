@@ -1,4 +1,5 @@
-from django.db.models import Exists, OuterRef
+from django.db.models import Case, DecimalField, Exists, OuterRef, When
+from django.db.models.functions import Coalesce
 from django.db.models.functions import Replace
 from django.db.models import F, Value
 import re
@@ -7,7 +8,7 @@ from django.db.models import Q
 from utils.pdf_export import PDFTableExport, TableExport
 from django_tables2 import SingleTableView
 from properties.models import Property, Unit
-from .models import PotentialTenantLead, Tenant, TenantRegistrationSubmission
+from .models import Tenant, TenantRegistrationSubmission, normalize_cnic
 from .tables import TenantTable
 from django.core.mail import EmailMessage
 from django.shortcuts import render, get_object_or_404, redirect
@@ -21,7 +22,7 @@ from django.db.models import Sum
 from .tables import TenantTable
 from django.http import JsonResponse
 from properties.forms import PropertyForm, UnitForm
-from .forms import PotentialTenantLeadForm, TenantForm, TenantPublicRegistrationForm, TenantRegistrationSubmissionReviewForm
+from .forms import TenantForm, TenantPreRegistrationLinkForm, TenantPublicRegistrationForm, TenantRegistrationSubmissionReviewForm
 from leases.models import Lease
 from .forms import LeaseForm
 from django.http import HttpResponse
@@ -40,7 +41,7 @@ from django_tables2 import SingleTableView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Subquery, OuterRef
 from django.utils import timezone
-from invoices.models import Invoice  # Add this import
+from invoices.models import Invoice, SecurityDepositTransaction  # Add this import
 from payments.models import Payment
 from decimal import Decimal
 from django.db.models import Q
@@ -63,6 +64,8 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Subquery, OuterRef, CharField, Value
 from django.db.models.functions import Concat
 import logging
+import uuid
+import json
 from django.conf import settings
 from django.urls import reverse_lazy
 from django.urls import NoReverseMatch  # Add this import
@@ -73,7 +76,6 @@ from django.contrib import messages
 import django_tables2 as tables
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 # tenants/views.py
 from django.views.generic import ListView
 from .models import Tenant
@@ -130,7 +132,7 @@ class TenantListView(SingleTableView):
             to_attr='active_leases'
         )
 
-        queryset = super().get_queryset().prefetch_related(active_leases)
+        queryset = super().get_queryset().prefetch_related(active_leases, "interested_in")
 
         # Apply filters
         filters = {}
@@ -275,6 +277,166 @@ def _tenant_from_registration_token(token):
     return get_object_or_404(Tenant, pk=data["tenant_id"])
 
 
+def _split_registration_name(name):
+    parts = (name or "").strip().split()
+    if not parts:
+        return "Tenant", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+def _create_new_registration_shell(form=None):
+    cleaned_data = getattr(form, "cleaned_data", {}) if form else {}
+    first_name, last_name = _split_registration_name(cleaned_data.get("name") or "New Registration")
+    notes = (cleaned_data.get("notes") or "").strip()
+    tenant = Tenant.objects.create(
+        first_name=first_name,
+        last_name=last_name or "Registration",
+        phone=(cleaned_data.get("phone") or "").strip(),
+        email=(cleaned_data.get("email") or "").strip(),
+        cnic=f"NEW{uuid.uuid4().hex[:10]}",
+        is_active=False,
+        notes=notes or "Created from quick tenant registration.",
+    )
+    if cleaned_data.get("interested_in"):
+        tenant.interested_in.set(cleaned_data["interested_in"])
+    return tenant
+
+
+def _registration_link_payload(request, tenant):
+    link = request.build_absolute_uri(
+        reverse("tenants:tenant_public_registration", args=[tenant_registration_token(tenant)])
+    )
+    settings_obj = GlobalSettings.get_solo()
+    message = (
+        "Please complete your tenant registration using this secure link:\n\n"
+        f"{link}\n\n"
+        f"This link is valid for {TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)} days."
+    )
+    user_phone = getattr(request.user, "whatsapp_number", "") or getattr(settings_obj, "whatsapp_number", "")
+    return {
+        "tenant_id": tenant.pk,
+        "link": link,
+        "masked_link": "Registration link ready",
+        "whatsapp_url": build_whatsapp_url(
+            user_phone,
+            message,
+            country_code=getattr(settings_obj, "country_code", "+92"),
+        ),
+    }
+
+
+def _family_members_from_post(post):
+    rows = {}
+    for key, value in post.items():
+        if not key.startswith("family-"):
+            continue
+        parts = key.split("-", 2)
+        if len(parts) != 3:
+            continue
+        rows.setdefault(parts[1], {})[parts[2]] = (value or "").strip()
+    return [row for row in rows.values() if row.get("name") or row.get("cnic")]
+
+
+def _relationship_type_from_value(value):
+    if not value:
+        return None
+    LeaseRelationshipType = apps.get_model("leases", "LeaseRelationshipType")
+    try:
+        return LeaseRelationshipType.objects.filter(pk=int(value), is_active=True).first()
+    except (TypeError, ValueError):
+        return LeaseRelationshipType.objects.filter(code=value, is_active=True).first()
+
+
+def _age_from_dob(dob):
+    if not dob:
+        return None
+    if hasattr(dob, "date"):
+        dob = dob.date()
+    today = timezone.localdate()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def _family_counts(links):
+    adults = 0
+    children = 0
+    for link in links:
+        age = _age_from_dob(getattr(link.family_member, "date_of_birth", None))
+        if age is not None and age < 18:
+            children += 1
+        else:
+            adults += 1
+    return {"family_adults": adults, "family_children": children, "family_total": adults + children}
+
+
+def _apply_family_members_from_submission(tenant, family_members):
+    LeaseFamilyMember = apps.get_model("leases", "LeaseFamilyMember")
+    lease = tenant.current_lease or Lease.objects.filter(tenant=tenant).order_by("-start_date", "-id").first()
+    if not lease:
+        return 0
+
+    saved = 0
+    for row in family_members or []:
+        full_name = (row.get("name") or "").strip()
+        cnic = (row.get("cnic") or "").strip()
+        if not full_name and not cnic:
+            continue
+        first_name, last_name = _split_registration_name(full_name or "Family Member")
+        cnic_digits = normalize_cnic(cnic)
+        family_tenant = Tenant.objects.filter(cnic_digits=cnic_digits).first() if cnic_digits else None
+        if not family_tenant:
+            family_tenant = Tenant.objects.create(
+                first_name=first_name,
+                last_name=last_name,
+                cnic=cnic or f"FM{uuid.uuid4().hex[:10]}",
+                phone=row.get("phone") or "",
+                occupation=row.get("occupation") or "",
+                nationality=row.get("nationality") or "Pakistani",
+                email=row.get("email") or "",
+                notes=row.get("notes") or "",
+            )
+        else:
+            changed = []
+            for field, value in {
+                "phone": row.get("phone"),
+                "occupation": row.get("occupation"),
+                "nationality": row.get("nationality"),
+                "email": row.get("email"),
+                "notes": row.get("notes"),
+            }.items():
+                if value and getattr(family_tenant, field) != value:
+                    setattr(family_tenant, field, value)
+                    changed.append(field)
+            if changed:
+                family_tenant.save(update_fields=changed)
+
+        dob = parse_date(row.get("dob") or "")
+        if dob and not family_tenant.date_of_birth:
+            family_tenant.date_of_birth = dob
+            family_tenant.save(update_fields=["date_of_birth"])
+
+        relationship_type = _relationship_type_from_value(row.get("relationship_type") or row.get("relationship"))
+        defaults = {
+            "is_adult": True if not dob else (_age_from_dob(dob) or 0) >= 18,
+            "lives_with_tenant": True,
+        }
+        if relationship_type:
+            defaults["relationship_type"] = relationship_type
+            defaults["relationship"] = relationship_type.code[:30]
+        else:
+            defaults["relationship"] = row.get("relationship") or "other"
+
+        LeaseFamilyMember.objects.update_or_create(
+            lease=lease,
+            primary_tenant=tenant,
+            family_member=family_tenant,
+            defaults=defaults,
+        )
+        saved += 1
+    return saved
+
+
 def tenant_public_registration_update(request, token):
     try:
         tenant = _tenant_from_registration_token(token)
@@ -284,34 +446,109 @@ def tenant_public_registration_update(request, token):
         raise Http404("Invalid registration link")
 
     initial = {
+        "prefix": tenant.prefix,
         "first_name": tenant.first_name,
+        "relation": tenant.relation,
         "last_name": tenant.last_name,
         "email": tenant.email,
         "phone": tenant.phone,
         "phone2": tenant.phone2,
+        "phone3": tenant.phone3,
+        "cnic": tenant.cnic,
+        "occupation": tenant.occupation,
+        "employer_name": tenant.employer_name,
+        "employer_phone": tenant.employer_phone,
+        "reference_name_1": tenant.reference_name_1,
+        "reference_phone_1": tenant.reference_phone_1,
+        "reference_relation_1": tenant.reference_relation_1,
+        "reference_name_2": tenant.reference_name_2,
+        "reference_phone_2": tenant.reference_phone_2,
+        "reference_relation_2": tenant.reference_relation_2,
+        "nationality": tenant.nationality,
+        "city": tenant.city,
+        "province": tenant.province,
+        "country": tenant.country,
+        "gender": tenant.gender,
+        "date_of_birth": tenant.date_of_birth if tenant.date_of_birth else None,
         "address": tenant.address,
+        "temporary_address": tenant.temporary_address,
+        "permanent_address": tenant.permanent_address,
+        "working_address": tenant.working_address,
         "emergency_contact_name": tenant.emergency_contact_name,
         "emergency_contact_phone": tenant.emergency_contact_phone,
         "emergency_contact_relation": tenant.emergency_contact_relation,
         "number_of_family_member": tenant.number_of_family_member,
+        "interested_in": tenant.interested_in.all(),
+        "notes": tenant.notes,
     }
     if request.method == "POST":
-        form = TenantPublicRegistrationForm(request.POST)
+        form = TenantPublicRegistrationForm(request.POST, request.FILES)
         if form.is_valid():
-            TenantRegistrationSubmission.objects.create(
+            submitted_data = form.cleaned_data.copy()
+            submitted_data["interested_in"] = [item.pk for item in submitted_data.get("interested_in", [])]
+            for date_field in ["date_of_birth"]:
+                if submitted_data.get(date_field):
+                    submitted_data[date_field] = submitted_data[date_field].isoformat()
+            for file_field in ["photo", "cnic_front", "cnic_back"]:
+                submitted_data.pop(file_field, None)
+            submitted_data["family_members"] = _family_members_from_post(request.POST)
+            submission = TenantRegistrationSubmission.objects.create(
                 tenant=tenant,
-                submitted_data=form.cleaned_data,
+                submitted_data=submitted_data,
+                photo=request.FILES.get("photo"),
+                cnic_front=request.FILES.get("cnic_front"),
+                cnic_back=request.FILES.get("cnic_back"),
             )
-            return render(request, "tenants/public_registration_submitted.html", {"tenant": tenant})
+            return render(request, "tenants/public_registration_submitted.html", {
+                "tenant": tenant,
+                "submission": submission,
+                "submitted_name": f"{submitted_data.get('first_name', '')} {submitted_data.get('last_name', '')}".strip(),
+                "submitted_phone": submitted_data.get("phone") or "",
+            })
     else:
         form = TenantPublicRegistrationForm(initial=initial)
-    return render(request, "tenants/public_registration_form.html", {"tenant": tenant, "form": form})
+    existing_family = []
+    try:
+        lease = tenant.current_lease
+        if lease:
+            existing_family = lease.family_members.select_related("family_member").all()
+    except Exception:
+        existing_family = []
+    relationship_types = apps.get_model("leases", "LeaseRelationshipType").objects.filter(is_active=True).order_by("sort_order", "name")
+    return render(request, "tenants/public_registration_form.html", {
+        "tenant": tenant,
+        "form": form,
+        "existing_family": existing_family,
+        "relationship_types": relationship_types,
+    })
+
+
+@require_POST
+@login_required
+def tenant_pre_registration_link_create(request):
+    form = TenantPreRegistrationLinkForm(request.POST or None)
+    if not form.is_valid():
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"success": False, "errors": form.errors}, status=400)
+        messages.error(request, "Could not create registration. Please check the required fields.")
+        return redirect("tenants:tenant_list")
+
+    tenant = _create_new_registration_shell(form)
+    payload = _registration_link_payload(request, tenant)
+    payload["success"] = True
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse(payload)
+    messages.success(request, "New tenant registration link generated.")
+    return redirect(f"{reverse('tenants:tenant_list')}?new_registration={tenant.pk}")
 
 
 class TenantRegistrationSubmissionListView(LoginRequiredMixin, ListView):
     model = TenantRegistrationSubmission
     template_name = "tenants/registration_submission_list.html"
     context_object_name = "submissions"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("tenant")
 
 
 class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
@@ -340,14 +577,39 @@ def tenant_registration_submission_review(request, pk):
         obj.save()
         if obj.status == "approved":
             tenant = obj.tenant
+            tenant.is_active = True
             allowed = [
-                "first_name", "last_name", "email", "phone", "phone2", "address",
+                "prefix", "first_name", "relation", "last_name", "email", "phone", "phone2", "phone3",
+                "cnic", "occupation", "employer_name", "employer_phone",
+                "reference_name_1", "reference_phone_1", "reference_relation_1",
+                "reference_name_2", "reference_phone_2", "reference_relation_2",
+                "nationality", "city", "province", "country",
+                "gender", "date_of_birth", "address", "temporary_address",
+                "permanent_address", "working_address",
                 "emergency_contact_name", "emergency_contact_phone",
                 "emergency_contact_relation", "number_of_family_member",
+                "notes",
             ]
             for field in allowed:
-                setattr(tenant, field, obj.submitted_data.get(field, getattr(tenant, field)))
-            tenant.save(update_fields=allowed + ["updated_at"])
+                value = obj.submitted_data.get(field, getattr(tenant, field))
+                if field == "date_of_birth" and value:
+                    value = parse_date(value)
+                setattr(tenant, field, value)
+            if obj.photo:
+                tenant.photo = obj.photo
+            if obj.cnic_front:
+                tenant.cnic_front = obj.cnic_front
+            if obj.cnic_back:
+                tenant.cnic_back = obj.cnic_back
+            tenant.save()
+            if "interested_in" in obj.submitted_data:
+                tenant.interested_in.set(obj.submitted_data.get("interested_in") or [])
+            family_count = _apply_family_members_from_submission(
+                tenant,
+                obj.submitted_data.get("family_members", []),
+            )
+            if family_count:
+                messages.success(request, f"{family_count} family member relationship(s) saved.")
             messages.success(request, "Tenant registration update approved and applied.")
         else:
             messages.success(request, "Tenant registration submission updated.")
@@ -366,110 +628,54 @@ def get_units_by_property(request):
     return JsonResponse(data)
 
 
-class PotentialTenantLeadListView(LoginRequiredMixin, ListView):
-    model = PotentialTenantLead
-    template_name = "tenants/lead_list.html"
-    context_object_name = "leads"
-    paginate_by = 40
-
-    def get_queryset(self):
-        qs = PotentialTenantLead.objects.select_related(
-            "interested_building", "interested_unit"
-        )
-        status = self.request.GET.get("status")
-        if status:
-            qs = qs.filter(status=status)
-        return qs.order_by("-created_at")
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["status_choices"] = PotentialTenantLead.STATUS_CHOICES
-        context["current_status"] = self.request.GET.get("status", "")
-        return context
-
-
-class PotentialTenantLeadCreateView(LoginRequiredMixin, CreateView):
-    model = PotentialTenantLead
-    form_class = PotentialTenantLeadForm
-    template_name = "tenants/lead_form.html"
-    success_url = reverse_lazy("tenants:lead_list")
-
-    def form_valid(self, form):
-        messages.success(self.request, "Lead added.")
-        return super().form_valid(form)
-
-
-class PotentialTenantLeadUpdateView(LoginRequiredMixin, UpdateView):
-    model = PotentialTenantLead
-    form_class = PotentialTenantLeadForm
-    template_name = "tenants/lead_form.html"
-    success_url = reverse_lazy("tenants:lead_list")
-
-    def form_valid(self, form):
-        messages.success(self.request, "Lead updated.")
-        return super().form_valid(form)
-
-
-class PotentialTenantLeadDetailView(LoginRequiredMixin, DetailView):
-    model = PotentialTenantLead
-    template_name = "tenants/lead_detail.html"
-    context_object_name = "lead"
-
-
-@login_required
-def lead_vacancy_whatsapp(request, pk):
-    lead = get_object_or_404(PotentialTenantLead, pk=pk)
-    unit = lead.interested_unit
-    if not unit:
-        messages.error(request, "Select an interested unit before sending a vacancy message.")
-        return redirect("tenants:lead_detail", pk=lead.pk)
-
-    settings_obj = GlobalSettings.get_solo()
-    template, rendered_message = render_unit_whatsapp_template(
-        WhatsAppTemplate.TEMPLATE_VACANCY,
-        unit,
-        request=request,
-    )
-    phone = lead.whatsapp_number or lead.phone
-    whatsapp_url = build_whatsapp_url(
-        phone,
-        rendered_message,
-        country_code=getattr(settings_obj, "country_code", "+92"),
-    )
-    return render(request, "tenants/lead_vacancy_whatsapp.html", {
-        "lead": lead,
-        "unit": unit,
-        "template": template,
-        "message_text": rendered_message,
-        "phone": phone,
-        "whatsapp_url": whatsapp_url,
-    })
-
-
 class TenantDetailView(LoginRequiredMixin, DetailView):
     model = Tenant
     template_name = 'tenants/tenant_detail.html'
     context_object_name = 'tenant'
 
+    def get_queryset(self):
+        # PERF: tenant detail loops over leases and then touches unit/property/payments/invoices.
+        lease_qs = Lease.objects.select_related(
+            'unit',
+            'unit__property',
+        ).prefetch_related(
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.select_related(
+                    'lease',
+                    'lease__tenant',
+                    'lease__unit',
+                    'lease__unit__property',
+                ),
+            ),
+            Prefetch(
+                'invoices',
+                queryset=Invoice.objects.select_related(
+                    'lease',
+                    'lease__tenant',
+                    'lease__unit',
+                    'lease__unit__property',
+                ),
+            ),
+        ).order_by('-start_date', '-id')
+        return super().get_queryset().prefetch_related(
+            Prefetch('leases', queryset=lease_qs)
+        )
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         tenant = self.object
 
+        # PERF: this detail page repeats tenant lease/invoice/payment lookups; reuse selected querysets.
+        all_leases = list(tenant.leases.all())
+
         # Get active lease if available
-        lease = tenant.leases.filter(status='active').first()
+        lease = next((item for item in all_leases if item.status == 'active'), None)
         tenant.lease = lease
 
         # Safely initialize all values
         invoices = Invoice.objects.none()
         payments = Payment.objects.none()
-
-        total_invoices = Invoice.objects.filter(
-            lease__tenant=tenant
-        ).aggregate(total=Sum('amount'))['total'] or 0
-
-        total_payments = Payment.objects.filter(
-            lease__tenant=tenant
-        ).aggregate(total=Sum('amount'))['total'] or 0
 
         total_invoices_all = Invoice.objects.filter(
             lease__tenant=tenant
@@ -491,43 +697,20 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         # If there is an active lease, load its items for the table ONLY,
         # but DO NOT override tenant.current_balance anymore.
         if lease:
-            invoices = (Invoice.objects
-                        .filter(lease=lease)
-                        .select_related('lease')
-                        .order_by('issue_date'))
-            payments = (Payment.objects
-                        .filter(lease=lease)
-                        .select_related('lease')
-                        .order_by('-payment_date'))
+            invoices = sorted(list(lease.invoices.all()), key=lambda inv: inv.issue_date)
+            payments = sorted(
+                list(lease.payments.all()),
+                key=lambda payment: payment.payment_date,
+                reverse=True,
+            )
 
-            total_invoices_active = invoices.aggregate(
-                total=Sum('amount'))['total'] or 0
-            total_payments_active = payments.aggregate(
-                total=Sum('amount'))['total'] or 0
+            total_invoices_active = sum((inv.amount or 0 for inv in invoices), 0)
+            total_payments_active = sum((payment.amount or 0 for payment in payments), 0)
 
-        leases_qs = (
-            Lease.objects
-            .filter(tenant=tenant)
-            .select_related('unit__property')
-            .order_by('-start_date', '-id')
-        )
         # After you compute tenant.current_balance in TenantDetailView
-        context['all_leases'] = leases_qs
+        context['all_leases'] = all_leases
+        context['leases'] = all_leases
         context['leases_total_balance'] = tenant.current_balance  # <-- add this
-
-        if lease:
-            invoices = Invoice.objects.filter(
-                lease=lease
-            ).select_related('lease').order_by('issue_date')
-
-            payments = Payment.objects.filter(
-                lease=lease
-            ).select_related('lease').order_by('-payment_date')
-
-            total_invoices_active = invoices.aggregate(
-                total=Sum('amount'))['total'] or 0
-            total_payments_active = payments.aggregate(
-                total=Sum('amount'))['total'] or 0
 
         context.update({
             'invoices': invoices,
@@ -536,13 +719,41 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             'total_invoices': total_invoices_active,
             # active-lease totals for that section
             'total_payments': total_payments_active,
-            'all_leases': leases_qs,                  # for the partial loop
+            'all_leases': all_leases,                  # for the partial loop
+            'leases': all_leases,
             # <-- expose tenant-wide balance explicitly
             'current_balance': tenant.current_balance
         })
         context['registration_link'] = self.request.build_absolute_uri(
             reverse('tenants:tenant_public_registration', args=[tenant_registration_token(tenant)])
         )
+        registration_message = (
+            f"Hello {tenant.get_full_name()},\n\n"
+            "Please complete or update your tenant registration using the secure link below:\n\n"
+            f"{context['registration_link']}\n\n"
+            f"This link will expire in {TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)} days.\n\n"
+            "Thank you."
+        )
+        settings_obj = GlobalSettings.get_solo()
+        context["registration_whatsapp_url"] = build_whatsapp_url(
+            tenant.phone or tenant.phone2 or tenant.phone3 or "",
+            registration_message,
+            country_code=getattr(settings_obj, "country_code", "+92"),
+        )
+        family_links = []
+        try:
+            LeaseFamilyMember = apps.get_model("leases", "LeaseFamilyMember")
+            family_links = list(
+                LeaseFamilyMember.objects
+                .filter(primary_tenant=tenant)
+                .select_related("lease", "family_member")
+                .order_by("sort_order", "family_member__first_name", "family_member__last_name")
+            )
+        except Exception:
+            family_links = []
+        context["family_members"] = family_links
+        context.update(_family_counts(family_links))
+        context["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
 
         def get_object(self, queryset=None):
             tenant = super().get_object(queryset)
@@ -1075,10 +1286,12 @@ def get_units_by_property(request):
 CNIC_DIGITS = re.compile(r'\D+')
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def update_tenant_field(request, tenant_id):
     try:
+        if not request.user.has_perm("tenants.change_tenant"):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
         tenant = Tenant.objects.get(pk=tenant_id)
         field = request.POST.get('field')
         value = (request.POST.get('value') or '').strip()
@@ -1119,16 +1332,22 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
     export_formats = ['csv', 'xlsx', 'pdf']  # Add this line
 
     def get_queryset(self):
-        queryset = super().get_queryset().prefetch_related(
+        show_inactive = self.request.GET.get('show_inactive') == 'on'
+        lease_prefetch_queryset = Lease.objects.all() if show_inactive else Lease.objects.filter(status='active')
+        active_leases = Prefetch(
             'leases',
-            'leases__unit',
-            'leases__unit__property'
+            queryset=lease_prefetch_queryset
+            .select_related('unit__property')
+            .order_by('-start_date', '-id'),
+            to_attr='active_leases',
         )
+        queryset = super().get_queryset().prefetch_related(active_leases, "interested_in")
 
         tenant_id = self.request.GET.get('tenant')
         phone = self.request.GET.get('phone')
         property_id = self.request.GET.get('property')
         unit_id = self.request.GET.get('unit')
+        interest_ids = [value for value in self.request.GET.getlist('interested_in') if value]
 
         # If a specific tenant is chosen, short-circuit
         if tenant_id:
@@ -1139,42 +1358,127 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         if phone:
             queryset = queryset.filter(phone__icontains=phone)
 
+        if interest_ids:
+            queryset = queryset.filter(interested_in__id__in=interest_ids).distinct()
+
+        lease_filter = Lease.objects.filter(tenant_id=OuterRef('pk'))
+        if not show_inactive:
+            lease_filter = lease_filter.filter(status='active')
+
         if property_id:
-            queryset = queryset.filter(leases__unit__property_id=property_id).order_by(
-                'first_name', 'last_name')
+            lease_filter = lease_filter.filter(unit__property_id=property_id)
 
         if unit_id:
-            queryset = queryset.filter(leases__unit_id=unit_id).order_by(
-                'first_name', 'last_name')
+            lease_filter = lease_filter.filter(unit_id=unit_id)
 
         # ✅ Default: only tenants who have at least one ACTIVE lease.
         #    When "show_inactive" is checked, show all tenants.
-        show_inactive = self.request.GET.get('show_inactive') == 'on'
-        if not show_inactive:
-            queryset = queryset.filter(leases__status='active').distinct()
-        else:
-            queryset = queryset.distinct()
+        if not show_inactive or property_id or unit_id:
+            queryset = queryset.annotate(has_matching_lease=Exists(lease_filter))
+            if property_id or unit_id:
+                queryset = queryset.filter(has_matching_lease=True)
+            else:
+                queryset = queryset.filter(Q(has_matching_lease=True) | Q(interested_in__isnull=False)).distinct()
 
         return queryset.order_by('first_name', 'last_name')
 
+    def _attach_lease_totals(self, tenants):
+        leases = []
+        for tenant in tenants:
+            lease = tenant.current_lease
+            if lease:
+                leases.append(lease)
+
+        lease_ids = [lease.id for lease in leases]
+        if not lease_ids:
+            return
+
+        zero = Decimal('0.00')
+        decimal_field = DecimalField(max_digits=12, decimal_places=2)
+        zero_db = Value(zero, output_field=decimal_field)
+
+        invoice_totals = {
+            row['lease_id']: row['total'] or zero
+            for row in (
+                Invoice.objects
+                .filter(lease_id__in=lease_ids)
+                .values('lease_id')
+                .annotate(total=Coalesce(Sum('amount'), zero_db))
+            )
+        }
+
+        payment_totals = {
+            row['lease_id']: row['total'] or zero
+            for row in (
+                Payment.objects
+                .filter(lease_id__in=lease_ids)
+                .values('lease_id')
+                .annotate(
+                    total=Coalesce(
+                        Sum(
+                            Case(
+                                When(allocation__isnull=False, then=F('allocation__lease_amount')),
+                                default=F('amount'),
+                                output_field=decimal_field,
+                            )
+                        ),
+                        zero_db,
+                    )
+                )
+            )
+        }
+
+        security_rows = (
+            SecurityDepositTransaction.objects
+            .filter(lease_id__in=lease_ids, type__in=['PAYMENT', 'ADJUST'])
+            .values('lease_id', 'type')
+            .annotate(total=Coalesce(Sum('amount'), zero_db))
+        )
+        security_totals = {}
+        for row in security_rows:
+            security_totals.setdefault(row['lease_id'], {})[row['type']] = row['total'] or zero
+
+        for lease in leases:
+            balance = invoice_totals.get(lease.id, zero) - payment_totals.get(lease.id, zero)
+            paid_in = security_totals.get(lease.id, {}).get('PAYMENT', zero)
+            adjust = security_totals.get(lease.id, {}).get('ADJUST', zero)
+            security_due = max((lease.security_deposit or zero) - paid_in - adjust, zero)
+            lease._cached_get_balance = balance
+            lease._cached_security_due = security_due
+
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        # This template renders its own HTML table, so skip SingleTableView's
+        # unused table context and avoid a second pagination/count query.
+        context = ListView.get_context_data(self, **kwargs)
         property_id = self.request.GET.get('property')
+        page_tenants = list(context.get('object_list') or context.get('tenants') or [])
+        self._attach_lease_totals(page_tenants)
 
         # Add all tenants for the tenant dropdown
-        context['all_tenants'] = Tenant.objects.all().order_by(
-            'first_name', 'last_name')
+        context['all_tenants'] = (
+            Tenant.objects
+            .only('id', 'first_name', 'last_name')
+            .order_by('first_name', 'last_name')
+        )
 
         # Add all properties for the property dropdown
-        context['properties'] = Property.objects.all().order_by('property_name')
+        context['properties'] = (
+            Property.objects
+            .only('id', 'property_name')
+            .order_by('property_name')
+        )
 
         # Add all units (for when no property is selected)
-        context['all_units'] = Unit.objects.all().order_by('unit_number')
+        context['all_units'] = (
+            Unit.objects
+            .only('id', 'unit_number')
+            .order_by('unit_number')
+        )
 
         # Add filtered units (for when a property is selected)
         context['filtered_units'] = (
             Unit.objects.filter(
-                property_id=property_id).order_by('unit_number')
+                property_id=property_id).only('id', 'unit_number').order_by('unit_number')
             if property_id else []
         )
 
@@ -1183,6 +1487,20 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         context['current_property'] = property_id
         context['current_unit'] = self.request.GET.get('unit')
         context['show_inactive'] = bool(self.request.GET.get('show_inactive'))
+        context['interest_types'] = apps.get_model("tenants", "TenantInterestType").objects.filter(is_active=True).order_by("sort_order", "name")
+        context['current_interested_in'] = self.request.GET.getlist('interested_in')
+        context['pre_registration_form'] = TenantPreRegistrationLinkForm()
+        context['registration_link_days'] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
+        context['pending_registration_count'] = TenantRegistrationSubmission.objects.filter(status="pending").count()
+        new_registration_id = self.request.GET.get("new_registration")
+        if new_registration_id:
+            try:
+                context["new_registration_payload"] = _registration_link_payload(
+                    self.request,
+                    Tenant.objects.get(pk=new_registration_id),
+                )
+            except Tenant.DoesNotExist:
+                context["new_registration_payload"] = None
 
         return context
 
@@ -1457,3 +1775,43 @@ def tenant_ajax_update(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
+
+
+@login_required
+@require_POST
+def tenant_lead_inline_update(request, pk):
+    tenant = get_object_or_404(Tenant.objects.prefetch_related("interested_in"), pk=pk)
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON."}, status=400)
+
+    field = data.get("field")
+    if field not in {"phone", "interested_in"}:
+        return JsonResponse({"success": False, "error": "Field is not editable."}, status=400)
+
+    if field == "phone":
+        tenant.phone = (data.get("value") or "").strip()[:20]
+        tenant.save(update_fields=["phone"])
+    else:
+        raw_ids = data.get("value") or []
+        try:
+            interest_ids = [int(value) for value in raw_ids if str(value).strip()]
+        except (TypeError, ValueError):
+            return JsonResponse({"success": False, "error": "Invalid interest type."}, status=400)
+        TenantInterestType = apps.get_model("tenants", "TenantInterestType")
+        interests = TenantInterestType.objects.filter(pk__in=interest_ids, is_active=True)
+        tenant.interested_in.set(interests)
+
+    tenant = Tenant.objects.prefetch_related("interested_in").get(pk=tenant.pk)
+    return JsonResponse({
+        "success": True,
+        "tenant": {
+            "id": tenant.pk,
+            "phone": tenant.phone or "",
+            "interested_in": [
+                {"id": item.pk, "name": item.name}
+                for item in tenant.interested_in.all()
+            ],
+        },
+    })

@@ -28,7 +28,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Q
 from .models import Payment
-from .forms import PaymentForm
+from .forms import PaymentAllocationForm, PaymentForm
 from .tables import PaymentTable
 from notifications.utils import send_payment_receipt
 from django.urls import reverse_lazy
@@ -304,6 +304,13 @@ class PaymentDetailView(LoginRequiredMixin, DetailView):
     template_name = 'payments/allocation_detail.html'
     context_object_name = 'payment'
 
+    def get_queryset(self):
+        return super().get_queryset().select_related(
+            "lease__tenant",
+            "lease__unit__property",
+            "payment_method",
+        ).prefetch_related("security_deposit_movements")
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         payment = self.object
@@ -419,7 +426,6 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        # 1) Save Payment
         payment = form.save(commit=False)
         resolved_lease = self.get_lease() or payment.lease
         if not resolved_lease:
@@ -427,47 +433,24 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             return self.form_invalid(form)
 
         payment.lease = resolved_lease
+
+        allocation_form = PaymentAllocationForm(
+            self.request.POST,
+            payment_total=payment.amount,
+        )
+        if not allocation_form.is_valid():
+            form.add_error(None, allocation_form.errors.as_text())
+            return self.form_invalid(form)
+
         payment.save()
         self.object = payment
-
-        # 2) Read allocation fields from POST
-        mode = (self.request.POST.get("allocation_mode") or "LEASE").upper()
-        sec_type = (self.request.POST.get("security_type") or "PAYMENT").upper()
-
-        lease_amt = _dec(self.request.POST.get("lease_amount"), "0.00")
-        sec_amt   = _dec(self.request.POST.get("security_amount"), "0.00")
-
-        # Normalize by mode
-        if mode == "LEASE":
-            lease_amt = payment.amount
-            sec_amt = Decimal("0.00")
-        elif mode == "SECURITY":
-            lease_amt = Decimal("0.00")
-            sec_amt = payment.amount
-        else:  # SPLIT
-            # if user didn't fill lease/security amounts properly, fall back to "all lease"
-            if lease_amt <= 0 and sec_amt <= 0:
-                lease_amt = payment.amount
-                sec_amt = Decimal("0.00")
-
-            # Ensure split does not exceed total; if it does, clamp security
-            total = _dec(payment.amount, "0.00")
-            if lease_amt + sec_amt > total:
-                sec_amt = max(total - lease_amt, Decimal("0.00"))
-
-        # 3) Rebuild derived records (allocation + security tx)
-        rebuild_allocation(
-            payment=payment,
-            lease_amount=lease_amt,
-            security_amount=sec_amt,
-            security_type=sec_type,
-        )
-
         alloc = rebuild_allocation(
             payment=payment,
-            lease_amount=lease_amt,
-            security_amount=sec_amt,
-            security_type=sec_type,
+            lease_amount=allocation_form.cleaned_data["lease_amount"],
+            security_amount=allocation_form.cleaned_data["security_amount"],
+            security_type=allocation_form.cleaned_data["security_type"],
+            user=self.request.user,
+            reason="Created payment",
         )
 
         messages.success(self.request, "Payment recorded successfully.")
@@ -504,6 +487,10 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         context["properties"] = Property.objects.all().order_by("property_name")
         context["today"] = timezone.now().date()
         context["nocache"] = timezone.now().timestamp()
+        context["allocation_form"] = PaymentAllocationForm(
+            self.request.POST or None,
+            payment_total=_dec(self.request.POST.get("amount"), "0.00") if self.request.method == "POST" else None,
+        )
 
         return context
 
@@ -521,40 +508,51 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
     template_name = "payments/payment_form.html"
 
     def get_success_url(self):
-        return reverse_lazy("payments:allocation_detail", kwargs={"pk": self.object.pk})
+        allocation = getattr(self.object, "allocation", None)
+        if allocation:
+            return reverse_lazy("payments:allocation_detail", kwargs={"pk": allocation.pk})
+        return self.object.get_absolute_url()
 
     @transaction.atomic
     def form_valid(self, form):
-        payment = form.save()
+        payment = form.save(commit=False)
         self.object = payment
 
-        # Read allocation fields (same as create)
-        mode = (self.request.POST.get("allocation_mode") or "LEASE").upper()
-        sec_type = (self.request.POST.get("security_type") or "PAYMENT").upper()
+        allocation = getattr(payment, "allocation", None)
+        allocation_form = PaymentAllocationForm(
+            self.request.POST,
+            instance=allocation,
+            payment_total=payment.amount,
+        )
+        if not allocation_form.is_valid():
+            form.add_error(None, allocation_form.errors.as_text())
+            return self.form_invalid(form)
 
-        lease_amt = _dec(self.request.POST.get("lease_amount"), "0.00")
-        sec_amt   = _dec(self.request.POST.get("security_amount"), "0.00")
-
-        if mode == "LEASE":
-            lease_amt = payment.amount
-            sec_amt = Decimal("0.00")
-        elif mode == "SECURITY":
-            lease_amt = Decimal("0.00")
-            sec_amt = payment.amount
-        else:  # SPLIT
-            total = _dec(payment.amount, "0.00")
-            if lease_amt + sec_amt > total:
-                sec_amt = max(total - lease_amt, Decimal("0.00"))
-
-        rebuild_allocation(
+        payment.save()
+        alloc = rebuild_allocation(
             payment=payment,
-            lease_amount=lease_amt,
-            security_amount=sec_amt,
-            security_type=sec_type,
+            lease_amount=allocation_form.cleaned_data["lease_amount"],
+            security_amount=allocation_form.cleaned_data["security_amount"],
+            security_type=allocation_form.cleaned_data["security_type"],
+            user=self.request.user,
+            reason="Updated payment",
         )
 
         messages.success(self.request, "Payment updated successfully.")
-        return redirect(payment.get_absolute_url())
+        return redirect("payments:allocation_detail", pk=alloc.pk)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        allocation = getattr(self.object, "allocation", None)
+        if self.request.method == "POST":
+            context["allocation_form"] = PaymentAllocationForm(
+                self.request.POST,
+                instance=allocation,
+                payment_total=_dec(self.request.POST.get("amount"), "0.00"),
+            )
+        else:
+            context["allocation_form"] = PaymentAllocationForm(instance=allocation)
+        return context
 
 
 @require_GET
@@ -663,7 +661,10 @@ class PaymentDeleteView(LoginRequiredMixin, DeleteView):
 
 
 def send_receipt(request, payment_id):
-    payment = get_object_or_404(Payment, id=payment_id)
+    payment = get_object_or_404(
+        Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+        id=payment_id,
+    )
 
     if request.method == 'POST':
         # Generate PDF
@@ -744,7 +745,10 @@ def invoice_list(request):
 def payment_pdf_view1(request, pk):
     try:
         print("=== Starting PDF generation ===")  # Debug
-        payment = get_object_or_404(Payment, pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+            pk=pk,
+        )
         print(f"Payment found: {payment}")  # Debug
 
         # Generate PDF using the new class
@@ -772,7 +776,10 @@ logger = logging.getLogger(__name__)
 
 def payment_pdf_view2(request, pk):
     try:
-        payment = get_object_or_404(Payment, pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+            pk=pk,
+        )
 
         # Render HTML template
         context = {
@@ -822,7 +829,10 @@ logger = logging.getLogger(__name__)
 
 def payment_pdf_view(request, pk):
     try:
-        payment = get_object_or_404(Payment, pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+            pk=pk,
+        )
 
         # Get absolute URL for static files
         static_url = request.build_absolute_uri(static(''))
@@ -878,7 +888,10 @@ def send_payment_email(request, pk):
     if request.method != 'POST':
         return HttpResponseBadRequest("Invalid request")
 
-    payment = get_object_or_404(Payment, pk=pk)
+    payment = get_object_or_404(
+        Payment.objects.select_related("lease__tenant", "lease__unit__property", "payment_method"),
+        pk=pk,
+    )
     tenant = payment.lease.tenant
 
     if not tenant.email:

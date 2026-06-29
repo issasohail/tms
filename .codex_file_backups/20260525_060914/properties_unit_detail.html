@@ -1,0 +1,214 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ unit }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Unit: {{ unit.unit_number }}</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-secondary me-2" onclick="history.back()">Go Back</button>
+        {% if unit.pk %}
+            <a href="{% url 'properties:unit_update' unit.pk %}" class="btn btn-secondary me-2">Edit</a>
+            <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-outline-primary me-2">Media</a>
+            <a href="{% url 'properties:unit_vacancy_whatsapp' unit.pk %}" class="btn btn-success me-2">Vacancy WhatsApp</a>
+            <a href="{% url 'properties:unit_delete' unit.pk %}" class="btn btn-danger">Delete</a>
+        {% else %}
+            <span class="text-muted">No Unit ID</span>
+        {% endif %}
+    </div>
+</div>
+
+
+<div class="row">
+    <!-- Basic Information Column -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Property:</strong><br>
+                        <a href="{% url 'properties:property_detail' unit.property.pk %}">{{ unit.property }}</a></p>
+                        
+                        <p><strong>Status:</strong><br>
+                        <span class="badge bg-{% if unit.status == 'vacant' %}warning{% elif unit.status == 'occupied' %}success{% else %}info{% endif %}">
+                            {{ unit.get_status_display }}
+                        </span></p>
+                        
+                        <p><strong>Monthly Rent:</strong><br>
+                        ${{ unit.monthly_rent }}</p>
+                        
+                        <p><strong>Security Deposit:</strong><br>
+                        {{ unit.security_requires }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Electric Meter:</strong><br>
+                        {{ unit.electric_meter_num }}</p>
+                        
+                        <p><strong>Gas Meter:</strong><br>
+                        {{ unit.gas_meter_num }}</p>
+                        
+                        <p><strong>Society Maintenance:</strong><br>
+                        ${{ unit.society_maintenance }}</p>
+                        
+                        <p><strong>Water Charges:</strong><br>
+                        ${{ unit.water_charges }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Amenities Column -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Amenities & Inventory</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Ceiling Fans:</strong> {{ unit.ceiling_fan }}</p>
+                        <p><strong>Exhaust Fans:</strong> {{ unit.exhaust_fan }}</p>
+                        <p><strong>Ceiling Lights:</strong> {{ unit.ceiling_lights }}</p>
+                        <p><strong>Stove:</strong> {{ unit.stove }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Wardrobes:</strong> {{ unit.wardrobes }}</p>
+                        <p><strong>Keys:</strong> {{ unit.keys }}</p>
+                        <p><strong>Paint Condition:</strong><br>
+                        {{ unit.paint_condition }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Current Meters</h5>
+        <span class="text-muted small">Install/change actions are available from meter workflows.</span>
+    </div>
+    <div class="card-body p-0">
+        {% with current_installations=unit.meter_installations.all %}
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Meter</th>
+                            <th>Type</th>
+                            <th>Start Date</th>
+                            <th class="text-end">Start Reading</th>
+                            <th class="text-end">Current / Last Reading</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for installation in current_installations %}
+                            {% if installation.is_active %}
+                                <tr>
+                                    <td><a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}">{{ installation.meter.meter_number }}</a></td>
+                                    <td>{{ installation.meter.get_meter_type_display }}</td>
+                                    <td>{{ installation.start_date|date:"M d, Y" }}</td>
+                                    <td class="text-end">{{ installation.start_reading }}</td>
+                                    <td class="text-end">{{ installation.meter.latest_live.total_energy|default:"-" }}</td>
+                                    <td><span class="badge bg-success">Active</span></td>
+                                </tr>
+                            {% endif %}
+                        {% empty %}
+                            <tr><td colspan="6" class="text-muted text-center py-3">No meters installed.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endwith %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Meter History</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Meter</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th class="text-end">Start</th>
+                        <th class="text-end">End</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for installation in unit.meter_installations.all %}
+                        <tr>
+                            <td><a href="{% url 'smart_meter:meter_detail' installation.meter.pk %}">{{ installation.meter.meter_number }}</a></td>
+                            <td>{{ installation.start_date|date:"M d, Y" }}</td>
+                            <td>{{ installation.end_date|date:"M d, Y"|default:"Current" }}</td>
+                            <td class="text-end">{{ installation.start_reading }}</td>
+                            <td class="text-end">{{ installation.end_reading|default:"-" }}</td>
+                            <td>{{ installation.reason|default:"-" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-muted text-center py-3">No meter history recorded.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Unit Media</h5>
+        <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-sm btn-primary">Manage Media</a>
+    </div>
+    <div class="card-body">
+        {% if media_files %}
+            <div class="row g-2">
+                {% for media in media_files %}
+                <div class="col-6 col-md-2">
+                    {% if media.file_type == "image" %}
+                        <a href="{{ media.display_url }}" target="_blank" rel="noopener">
+                            <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border" alt="{{ media.description|default:media.original_filename }}" style="height:90px; width:100%; object-fit:cover;">
+                        </a>
+                    {% else %}
+                        <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="d-flex align-items-center justify-content-center border rounded text-decoration-none small" style="height:90px;">
+                            {{ media.get_file_type_display }}
+                        </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted mb-0">No media uploaded.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Tenant Information -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Tenant Information</h5>
+    </div>
+    <div class="card-body">
+        {% if unit.tenants.exists %}
+            <a href="{% url 'tenants:tenant_detail' unit.tenants.first.pk %}" class="btn btn-primary">
+                View Tenant Details
+            </a>
+        {% else %}
+            <p class="text-muted">No current tenant</p>
+            <a href="{% url 'tenants:tenant_create' %}?unit={{ unit.pk }}" class="btn btn-success">
+                Add Tenant
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

@@ -53,6 +53,12 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment of {self.amount} by {self.lease_id} on {self.payment_date}"
 
+    def clean_fields(self, exclude=None):
+        exclude = list(exclude or [])
+        if (self.amount or Decimal("0.00")) < 0 and "amount" not in exclude:
+            exclude.append("amount")
+        super().clean_fields(exclude=exclude)
+
     def save(self, *args, **kwargs):
         self.full_clean()
 
@@ -99,6 +105,13 @@ class Payment(models.Model):
         if alloc:
             return alloc.lease_amount or Decimal("0.00")
         return self.amount or Decimal("0.00")
+
+    @property
+    def is_lease_refund(self) -> bool:
+        alloc = getattr(self, "allocation", None)
+        if alloc:
+            return (alloc.lease_amount or Decimal("0.00")) < 0
+        return (self.amount or Decimal("0.00")) < 0
 
     @property
     def security_effective_amount(self) -> Decimal:

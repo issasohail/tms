@@ -1,12 +1,31 @@
 from __future__ import annotations
 from django.views.decorators.http import require_http_methods
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout as auth_logout
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
+from django.db.models import ProtectedError
+from django.views.decorators.http import require_POST
 
-from .forms import LoginForm, AccountCreationForm, AccountChangeForm
+from .forms import (
+    LoginForm,
+    AccountCreationForm,
+    AccountChangeForm,
+    AccountAccessForm,
+    GroupAccessForm,
+    permission_groups,
+)
+
+Account = get_user_model()
+PERMISSION_ACTIONS = [
+    ("view", "View"),
+    ("add", "Add"),
+    ("change", "Update"),
+    ("delete", "Delete"),
+]
 
 
 class LoginView(auth_views.LoginView):
@@ -15,13 +34,24 @@ class LoginView(auth_views.LoginView):
 
 
 class LogoutView(auth_views.LogoutView):
+    http_method_names = ["get", "post", "options"]
     template_name = "accounts/logout.html"
+
+    def get(self, request, *args, **kwargs):
+        auth_logout(request)
+        messages.success(request, "You have been logged out.")
+        return redirect("login")
+
+    def post(self, request, *args, **kwargs):
+        auth_logout(request)
+        messages.success(request, "You have been logged out.")
+        return redirect("login")
 
 
 @require_http_methods(["GET", "POST"])
 def signup(request):
     if request.user.is_authenticated:
-        return redirect("profile")
+        return redirect("accounts:profile")
 
     if request.method == "POST":
         form = AccountCreationForm(request.POST)
@@ -34,7 +64,7 @@ def signup(request):
                 login(request, user)
             messages.success(
                 request, "Welcome! Your account has been created.")
-            return redirect("profile")
+            return redirect("accounts:profile")
     else:
         form = AccountCreationForm()
     return render(request, "accounts/signup.html", {"form": form})
@@ -48,7 +78,192 @@ def profile(request):
         if form.is_valid():
             form.save()
             messages.success(request, "Profile updated.")
-            return redirect("profile")
+            return redirect("accounts:profile")
     else:
         form = AccountChangeForm(instance=request.user)
     return render(request, "accounts/profile.html", {"form": form})
+
+
+def _staff_required(user):
+    return user.is_authenticated and user.is_staff
+
+
+@login_required
+def user_access_list(request):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage users.")
+        return redirect("dashboard:home")
+    users = Account.objects.order_by("username")
+    return render(request, "accounts/user_access_list.html", {"users": users})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def user_access_create(request):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage users.")
+        return redirect("dashboard:home")
+    user = Account()
+    form = AccountAccessForm(request.POST or None, instance=user)
+    selected_permissions = set()
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        selected_ids = request.POST.getlist("permissions")
+        user.user_permissions.set(Permission.objects.filter(id__in=selected_ids))
+        messages.success(request, "User created.")
+        return redirect("accounts:user_access_list")
+    return render(request, "accounts/user_access_form.html", {
+        "form": form,
+        "managed_user": user,
+        "permission_groups": permission_groups(),
+        "permission_actions": PERMISSION_ACTIONS,
+        "selected_permissions": selected_permissions,
+        "is_create": True,
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def user_access_update(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage users.")
+        return redirect("dashboard:home")
+    user = get_object_or_404(Account, pk=pk)
+    form = AccountAccessForm(request.POST or None, instance=user)
+    selected_permissions = set(user.user_permissions.values_list("id", flat=True))
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        selected_ids = request.POST.getlist("permissions")
+        user.user_permissions.set(Permission.objects.filter(id__in=selected_ids))
+        messages.success(request, "User access updated.")
+        return redirect("accounts:user_access_list")
+    return render(request, "accounts/user_access_form.html", {
+        "form": form,
+        "managed_user": user,
+        "permission_groups": permission_groups(),
+        "permission_actions": PERMISSION_ACTIONS,
+        "selected_permissions": selected_permissions,
+        "is_create": False,
+    })
+
+
+@login_required
+@require_POST
+def user_access_delete(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage users.")
+        return redirect("dashboard:home")
+    user = get_object_or_404(Account, pk=pk)
+    if user.pk == request.user.pk:
+        messages.error(request, "You cannot delete the account you are currently using.")
+        return redirect("accounts:user_access_list")
+    username = user.username
+    try:
+        user.delete()
+    except ProtectedError:
+        messages.error(request, f"{username} cannot be deleted because related records protect it.")
+    else:
+        messages.success(request, f"Deleted user {username}.")
+    return redirect("accounts:user_access_list")
+
+
+@login_required
+def group_access_list(request):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    groups = (
+        Group.objects
+        .prefetch_related("permissions", "user_set")
+        .order_by("name")
+    )
+    return render(request, "accounts/group_access_list.html", {"groups": groups})
+
+
+def _selected_permission_ids(form, group):
+    if form.is_bound:
+        return {int(pk) for pk in form.data.getlist("permissions") if pk.isdigit()}
+    if group.pk:
+        return set(group.permissions.values_list("id", flat=True))
+    return set()
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def group_access_create(request):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    group = Group()
+    form = GroupAccessForm(request.POST or None, instance=group)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Group created.")
+        return redirect("accounts:group_access_list")
+    return render(request, "accounts/group_access_form.html", {
+        "form": form,
+        "managed_group": group,
+        "permission_groups": permission_groups(),
+        "permission_actions": PERMISSION_ACTIONS,
+        "selected_permissions": _selected_permission_ids(form, group),
+        "is_create": True,
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def group_access_update(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    group = get_object_or_404(Group, pk=pk)
+    form = GroupAccessForm(request.POST or None, instance=group)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Group access updated.")
+        return redirect("accounts:group_access_list")
+    return render(request, "accounts/group_access_form.html", {
+        "form": form,
+        "managed_group": group,
+        "permission_groups": permission_groups(),
+        "permission_actions": PERMISSION_ACTIONS,
+        "selected_permissions": _selected_permission_ids(form, group),
+        "is_create": False,
+    })
+
+
+@login_required
+@require_POST
+def group_access_delete(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to manage groups.")
+        return redirect("dashboard:home")
+    group = get_object_or_404(Group, pk=pk)
+    name = group.name
+    group.delete()
+    messages.success(request, f"Deleted group {name}.")
+    return redirect("accounts:group_access_list")
+
+
+@login_required
+@require_POST
+def impersonate_start(request, pk):
+    if not _staff_required(request.user):
+        messages.error(request, "You do not have permission to impersonate users.")
+        return redirect("dashboard:home")
+    target = get_object_or_404(Account, pk=pk, is_active=True)
+    if target.pk == request.user.pk:
+        messages.info(request, "You are already using this account.")
+        return redirect("accounts:user_access_list")
+    request.session["impersonator_user_id"] = request.user.pk
+    request.session["impersonate_user_id"] = target.pk
+    messages.success(request, f"Now viewing as {target.username}.")
+    return redirect("dashboard:home")
+
+
+@login_required
+def impersonate_stop(request):
+    request.session.pop("impersonate_user_id", None)
+    request.session.pop("impersonator_user_id", None)
+    messages.success(request, "Stopped impersonating.")
+    return redirect("accounts:user_access_list")

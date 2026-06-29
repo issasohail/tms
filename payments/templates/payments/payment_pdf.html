@@ -1,11 +1,11 @@
 {% extends "payments/base_pdf.html" %}
-{% load static humanize %}
+{% load static humanize money_tags %}
 
 {% block content %}
 <div class="receipt-container">
     <!-- Header -->
     <div class="receipt-header">
-        <h1>PAYMENT RECEIPT-testing</h1>
+        <h1>{% if payment.is_lease_refund %}LEASE REFUND RECEIPT{% elif payment.allocation.security_type == "REFUND" %}SECURITY REFUND RECEIPT{% else %}PAYMENT RECEIPT{% endif %}</h1>
         <p class="receipt-number">#{{ payment.reference|default:"-" }}</p>
     </div>
 
@@ -14,7 +14,7 @@
         <div class="payment-meta">
             <p><strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}</p>
             <p><strong>Method:</strong> {{ payment.get_payment_method_display }}</p>
-            <p><strong>Amount:</strong> ${{ payment.amount|floatformat:2|intcomma }}</p>
+            <p><strong>Amount:</strong> {{ payment.amount|money:2 }}</p>
         </div>
     </div>
 
@@ -40,7 +40,7 @@
             </tr>
             <tr>
                 <td><strong>Balance:</strong></td>
-                <td>${{ payment.lease.get_balance|floatformat:2|intcomma }}</td>
+                <td>{{ payment.lease.get_balance|money:2 }}</td>
             </tr>
         </table>
     </div>
@@ -57,8 +57,8 @@
             </thead>
             <tbody>
                 <tr>
-                    <td>Payment for {{ payment.get_payment_method_display }}</td>
-                    <td class="text-right">${{ payment.amount|floatformat:2|intcomma }}</td>
+                    <td>{% if payment.is_lease_refund %}Lease refund{% elif payment.allocation.security_type == "REFUND" %}Security refund{% else %}Payment for {{ payment.get_payment_method_display }}{% endif %}</td>
+                    <td class="text-right">{{ payment.amount|money:2 }}</td>
                 </tr>
                 {% if payment.notes %}
                 <tr>
@@ -71,7 +71,7 @@
 
     <!-- Footer -->
     <div class="receipt-footer">
-        <p>Thank you for your payment!</p>
+        <p>{% if payment.is_lease_refund %}Lease refund recorded.{% elif payment.allocation.security_type == "REFUND" %}Security refund recorded.{% else %}Thank you for your payment!{% endif %}</p>
         <p class="generated-date">Generated on {% now "M d, Y" %}</p>
     </div>
 </div>

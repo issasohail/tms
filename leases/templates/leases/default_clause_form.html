@@ -27,6 +27,11 @@
               {{ form.clause_number.errors }}
             </div>
             <div class="col-12 col-md-4">
+              <label class="form-label mb-1" for="{{ form.category.id_for_label }}">Category</label>
+              {{ form.category }}
+              {{ form.category.errors }}
+            </div>
+            <div class="col-12 col-md-4">
               <div class="form-check mt-3">
                 {{ form.is_active }}
                 <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label>

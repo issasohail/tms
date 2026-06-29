@@ -1,5 +1,5 @@
 from .models_pcr import PropertyConditionReport, PCRPhoto
-from .models import Lease, LeaseAgreementClause, LeaseTemplate
+from .models import Lease, LeaseAgreementClause, LeaseDocument, LeaseDocumentCategory, LeaseFamilyMember, LeaseFileShareLink, LeaseRelationshipType, LeaseTemplate, LeaseUnitOccupancy
 from django.db.models import F
 from django.contrib import admin
 from django.urls import reverse
@@ -20,6 +20,42 @@ from django.http import HttpResponse
 from django.contrib import admin
 from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause
 from .models_renewal import LeaseRenewal, LeaseRenewalClause
+
+
+@admin.register(LeaseUnitOccupancy)
+class LeaseUnitOccupancyAdmin(admin.ModelAdmin):
+    list_display = ("lease", "unit", "move_in_date", "move_out_date", "is_active")
+    list_filter = ("move_in_date", "move_out_date", "unit__property__property_name")
+    search_fields = (
+        "lease__tenant__first_name",
+        "lease__tenant__last_name",
+        "unit__unit_number",
+        "unit__property__property_name",
+        "notes",
+    )
+    raw_id_fields = ("lease", "unit")
+
+
+@admin.register(LeaseFamilyMember)
+class LeaseFamilyMemberAdmin(admin.ModelAdmin):
+    list_display = ("lease", "primary_tenant", "family_member", "relationship_type", "relationship", "is_adult", "lives_with_tenant")
+    list_filter = ("relationship_type", "relationship", "is_adult", "lives_with_tenant")
+    search_fields = (
+        "primary_tenant__first_name",
+        "primary_tenant__last_name",
+        "family_member__first_name",
+        "family_member__last_name",
+        "family_member__cnic",
+    )
+    raw_id_fields = ("lease", "primary_tenant", "family_member")
+
+
+@admin.register(LeaseRelationshipType)
+class LeaseRelationshipTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "is_active", "sort_order")
+    list_editable = ("is_active", "sort_order")
+    search_fields = ("name", "code")
+    ordering = ("sort_order", "name")
 
 
 @admin.register(DefaultClause)
@@ -366,7 +402,7 @@ class LeaseRenewalAdmin(admin.ModelAdmin):
 class PCRPhotoInline(admin.TabularInline):
     model = PCRPhoto
     extra = 0
-    fields = ("thumbnail", "room", "comment", "taken_at", "order")
+    fields = ("thumbnail", "room", "comment", "taken_at", "sort_order", "order")
     readonly_fields = ("thumbnail", "taken_at")
 
 
@@ -374,3 +410,34 @@ class PCRPhotoInline(admin.TabularInline):
 class PCRAdmin(admin.ModelAdmin):
     list_display = ("lease", "title", "created_at", "locked")
     inlines = [PCRPhotoInline]
+
+
+@admin.register(LeaseDocument)
+class LeaseDocumentAdmin(admin.ModelAdmin):
+    list_display = ("id", "lease", "display_name", "category", "uploaded_by", "uploaded_at", "is_active")
+    list_filter = ("category", "is_active", "uploaded_at")
+    search_fields = (
+        "display_name",
+        "original_filename",
+        "description",
+        "lease__tenant__first_name",
+        "lease__tenant__last_name",
+        "lease__unit__unit_number",
+    )
+    raw_id_fields = ("lease", "lease_history", "uploaded_by")
+
+
+@admin.register(LeaseDocumentCategory)
+class LeaseDocumentCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "is_active", "sort_order")
+    list_editable = ("is_active", "sort_order")
+    search_fields = ("name", "code")
+    ordering = ("sort_order", "name")
+
+
+@admin.register(LeaseFileShareLink)
+class LeaseFileShareLinkAdmin(admin.ModelAdmin):
+    list_display = ("id", "lease", "document", "expires_at", "created_by", "is_active", "created_at")
+    list_filter = ("is_active", "expires_at", "created_at")
+    search_fields = ("token", "lease__tenant__first_name", "lease__tenant__last_name", "document__display_name")
+    raw_id_fields = ("lease", "document", "created_by")

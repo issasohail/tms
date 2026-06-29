@@ -1,5 +1,6 @@
 # leases/views_lease_photos.py
 from .services.export_lease_photos_pdf import export_lease_photos_pdf
+from .services.export_lease_photos_docx import export_lease_photos_docx
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
@@ -7,6 +8,9 @@ from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, File
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
+from django.db import transaction
+from django.db.models import Max
+import json
 import mimetypes
 import os
 from urllib.parse import quote as urlquote
@@ -86,7 +90,7 @@ def _export_pdf_for_lease(lease, layout: str | None = None, history=None):
         return
 
     folder = _folder_name_for_lease(lease)
-    base_dir = f"leases/lease_photos/{folder}"
+    base_dir = f"lease/{folder}"
     pdf_name = f"history-{history.pk}-{folder}.pdf" if history else f"{folder}.pdf"
     pdf_path = f"{base_dir}/{pdf_name}"
 
@@ -121,7 +125,7 @@ def _media_queryset(lease, history=None):
         qs = qs.filter(lease_history=history)
     else:
         qs = qs.filter(lease_history__isnull=True)
-    return qs.order_by("sort_order", "-created_at")
+    return qs.order_by("sort_order", "created_at", "id")
 
 
 def _grid_response(request, lease, history=None):
@@ -189,14 +193,14 @@ def photo_add(request, lease_id):
     if not files:
         return HttpResponseBadRequest("No files uploaded")
 
-    for f in files:
-        next_order = (_media_queryset(lease, history).count() + 1)
+    next_order = (_media_queryset(lease, history).aggregate(max_order=Max("sort_order"))["max_order"] or 0) + 1
+    for index, f in enumerate(files):
         lm = LeaseMedia(
             lease=lease,
             lease_history=history,
             title=title,
             description=description,
-            sort_order=next_order,
+            sort_order=next_order + index,
             uploaded_by=request.user if request.user.is_authenticated else None,
             original_filename=getattr(f, "name", "")[:255],
         )
@@ -227,10 +231,17 @@ def photo_update(request, photo_id):
 
     p.title = (request.POST.get("title") or "").strip()[:120]
     p.description = (request.POST.get("description") or "").strip()[:300]
-    p.save(update_fields=["title", "description"])
+    try:
+        p.sort_order = max(0, int(request.POST.get("sort_order") or p.sort_order or 0))
+    except (TypeError, ValueError):
+        pass
+    p.save(update_fields=["title", "description", "sort_order"])
 
-    if p.media_type == "image":
-        p.reburn_from_stamped()
+    if p.media_type == "image" and p.file_exists:
+        try:
+            p.reburn_from_stamped()
+        except Exception as exc:
+            logger.exception("Photo reburn failed for media %s: %s", p.pk, exc)
 
     try:
         _export_pdf_for_lease(p.lease, layout=None)
@@ -245,6 +256,39 @@ def photo_update(request, photo_id):
     return resp
 
 
+@login_required
+@require_POST
+def photo_reorder(request, lease_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    history = _history_from_request(request, lease)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("Invalid JSON")
+
+    ids = payload.get("photo_ids")
+    if not isinstance(ids, list):
+        return HttpResponseBadRequest("Missing photo_ids")
+
+    clean_ids = []
+    for value in ids:
+        try:
+            clean_ids.append(int(value))
+        except (TypeError, ValueError):
+            return HttpResponseBadRequest("Invalid photo id")
+
+    qs = _media_queryset(lease, history)
+    owned_ids = set(qs.filter(id__in=clean_ids).values_list("id", flat=True))
+    if owned_ids != set(clean_ids):
+        return HttpResponseBadRequest("Invalid photo list")
+
+    with transaction.atomic():
+        for index, photo_id in enumerate(clean_ids, start=1):
+            LeaseMedia.objects.filter(pk=photo_id, lease=lease).update(sort_order=index)
+
+    return JsonResponse({"ok": True})
+
+
 
 @login_required
 @require_POST
@@ -252,7 +296,10 @@ def photo_delete(request, photo_id):
     p = get_object_or_404(LeaseMedia, pk=photo_id)
     lease = p.lease
     history = p.lease_history
-    p.delete()
+    try:
+        p.delete()
+    except (FileNotFoundError, OSError):
+        LeaseMedia.objects.filter(pk=photo_id).delete()
     lease.refresh_from_db()
     return _grid_response(request, lease, history)
 
@@ -262,7 +309,7 @@ def photo_delete(request, photo_id):
 @login_required
 def deleted_photos_view(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
-    base_path = f"leases/lease_photos/{_folder_name_for_lease(lease)}/deleted_photos"
+    base_path = f"lease/{_folder_name_for_lease(lease)}/deleted_photos"
     files = []
     if default_storage.exists(base_path):
         _, filenames = default_storage.listdir(base_path)
@@ -276,7 +323,7 @@ def deleted_photos_view(request, lease_id):
 def deleted_photos_delete(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
     names = request.POST.getlist("files")
-    base_path = f"leases/lease_photos/{_folder_name_for_lease(lease)}/deleted_photos"
+    base_path = f"lease/{_folder_name_for_lease(lease)}/deleted_photos"
     for n in names:
         path = f"{base_path}/{n}"
         if default_storage.exists(path):
@@ -287,7 +334,7 @@ def deleted_photos_delete(request, lease_id):
 @login_required
 def deleted_photos_delete_all(request, lease_id):
     lease = get_object_or_404(Lease, pk=lease_id)
-    base_path = f"leases/lease_photos/{_folder_name_for_lease(lease)}/deleted_photos"
+    base_path = f"lease/{_folder_name_for_lease(lease)}/deleted_photos"
     if default_storage.exists(base_path):
         _, filenames = default_storage.listdir(base_path)
         for f in filenames:
@@ -351,6 +398,29 @@ def photos_export_pdf_stream(request, lease_id):
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = (
         f'{disposition}; filename="{name}"; filename*=UTF-8\'\'{urlquote(name)}'
+    )
+    return response
+
+
+@login_required
+def photos_export_docx_stream(request, lease_id):
+    lease = get_object_or_404(Lease, pk=lease_id)
+    history = _history_from_request(request, lease)
+    layout = _normalize_layout_param(request)
+    photos_qs = _media_queryset(lease, history).filter(media_type="image")
+    name, fileobj = export_lease_photos_docx(lease, layout=layout, photos_qs=photos_qs)
+
+    if not fileobj:
+        messages.error(request, "No photos to export.")
+        return redirect(request.META.get("HTTP_REFERER", "/"))
+
+    docx_bytes = fileobj.read()
+    response = HttpResponse(
+        docx_bytes,
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="{name}"; filename*=UTF-8\'\'{urlquote(name)}'
     )
     return response
 

@@ -3,7 +3,6 @@
 # ==========================================================
 __pycache__/
 *.py[cod]
-*.pyo
 *$py.class
 *.so
 .Python
@@ -24,12 +23,11 @@ db.sqlite3-journal
 
 # Django generated files
 staticfiles/
-static/
 media/
-tms_media/
 uploads/
-*/media/
-*/uploads/
+
+# Collected static
+/static/
 
 # Local settings
 local_settings.py
@@ -70,7 +68,6 @@ logs/
 htmlcov/
 .tox/
 .cache/
-.mypy_cache/
 
 # ==========================================================
 # JUPYTER
@@ -78,32 +75,15 @@ htmlcov/
 .ipynb_checkpoints/
 
 # ==========================================================
-# ZIP / ARCHIVES (DO NOT SYNC)
-# ==========================================================
-*.zip
-*.rar
-*.7z
-*.tar
-*.gz
-*.bz2
-
-# ==========================================================
-# MYSQL / DATABASE DUMPS / BACKUPS
+# MYSQL DUMPS / BACKUPS
 # ==========================================================
 *.sql
 *.sqlite3
 *.bak
+*.bak*
 *.backup
 *.old
-*.orig
-*.dump
-
-# ==========================================================
-# CODEX / BACKUPS
-# ==========================================================
-.codex_file_backups/
-backups/
-backup/
+*.zip
 
 # ==========================================================
 # TEMP FILES
@@ -111,4 +91,23 @@ backup/
 *.tmp
 *.temp
 ~$*
-*.swp
+
+__pycache__/
+*.py[cod]
+*.pyo
+
+.venv/
+venv/
+
+media/
+tms_media/
+
+staticfiles/
+
+.env
+.env.*
+
+.vscode/
+.DS_Store
+Thumbs.db
+.env

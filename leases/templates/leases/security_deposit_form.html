@@ -21,6 +21,11 @@
     <div class="card">
       <div class="card-body">
         {{ form.non_field_errors }}
+        <div class="alert alert-info py-2 px-3 small mb-2">
+          <strong>Currently held:</strong> Rs {{ security_totals.currently_held|floatformat:0|intcomma }}.
+          For a refund, enter the cash returned in <strong>Amount</strong>. Use
+          <strong>Deduction Amount</strong> only for renovation, damage, or other final deductions.
+        </div>
         <div class="row g-2">
           <div class="col-md-3">
             <label class="form-label">Date</label>

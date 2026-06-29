@@ -46,6 +46,16 @@ def number_to_words(n):
     return " ".join(parts)
 
 
+def inventory_wardrobes(lease):
+    if not lease:
+        return 0
+    lease_value = getattr(lease, "inventory_wardrobes", None)
+    if lease_value is not None:
+        return lease_value
+    unit = getattr(lease, "unit", None)
+    return getattr(unit, "wardrobes", 0) if unit else 0
+
+
 # Define the placeholder registry
 PLACEHOLDER_REGISTRY = {
     # Rent and Maintenance
@@ -97,8 +107,8 @@ PLACEHOLDER_REGISTRY = {
     "INVENTORY_LIGHTS": lambda lease: lease.unit.ceiling_lights if lease.unit else 0,
     "INVENTORY_EXHAUST_FANS": lambda lease: lease.unit.exhaust_fan if lease.unit else 0,
     "INVENTORY_STOVE": lambda lease: lease.unit.stove if lease.unit else 0,
-    "INVENTORY_WARDROBE": lambda lease: lease.unit.wardrobe if lease.unit else 0,
-    "WARDROBE": lambda lease: lease.unit.wardrobe if lease.unit else 0,
+    "INVENTORY_WARDROBE": inventory_wardrobes,
+    "WARDROBE": inventory_wardrobes,
 
     "PAINT_CONDIDTION": lambda lease: lease.unit.paint_condition if lease.unit else 0,
 
@@ -139,6 +149,25 @@ def _lease_bank_account(lease):
     return property_bank or unit_bank
 
 
+def _db_placeholders_for_lease(AgreementPlaceholder, lease=None):
+    cache_attr = "_active_db_agreement_placeholders"
+    if lease is not None and hasattr(lease, cache_attr):
+        return getattr(lease, cache_attr)
+
+    placeholders = list(
+        AgreementPlaceholder.objects.filter(
+            is_active=True,
+            source_type__in=[
+                AgreementPlaceholder.SOURCE_CUSTOM,
+                AgreementPlaceholder.SOURCE_MANUAL,
+            ],
+        )
+    )
+    if lease is not None:
+        setattr(lease, cache_attr, placeholders)
+    return placeholders
+
+
 def replace_db_placeholders(text, lease=None):
     """
     Replace UI-managed custom/manual placeholders after system placeholders.
@@ -149,13 +178,7 @@ def replace_db_placeholders(text, lease=None):
     except Exception:
         return text
 
-    placeholders = AgreementPlaceholder.objects.filter(
-        is_active=True,
-        source_type__in=[
-            AgreementPlaceholder.SOURCE_CUSTOM,
-            AgreementPlaceholder.SOURCE_MANUAL,
-        ],
-    )
+    placeholders = _db_placeholders_for_lease(AgreementPlaceholder, lease)
     for placeholder in placeholders:
         token = f"[{placeholder.key}]"
         if token in text:

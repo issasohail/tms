@@ -1,9 +1,10 @@
 # payments/views/allocation_api.py
 from decimal import Decimal
-from django.http import JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 
 from payments.models import PaymentAllocation
 from payments.services.allocation import rebuild_allocation
@@ -28,20 +29,28 @@ def update_allocation(request):
       security_type
     """
     alloc_id = request.POST.get("allocation_id")
-    alloc = PaymentAllocation.objects.select_related("payment").get(pk=alloc_id)
+    if not alloc_id:
+        return HttpResponseBadRequest("allocation_id required")
+
+    alloc = get_object_or_404(PaymentAllocation.objects.select_related("payment"), pk=alloc_id)
 
     lease_amt = D(request.POST.get("lease_amount"))
     sec_amt = D(request.POST.get("security_amount"))
     sec_type = (request.POST.get("security_type") or "PAYMENT").upper()
+    payment = alloc.payment
 
-    alloc.lease_amount = lease_amt
-    alloc.security_amount = sec_amt
-    alloc.security_type = sec_type
-    alloc.updated_by = request.user
-    alloc.save()
+    if sec_amt < 0:
+        return JsonResponse({"ok": False, "error": "Security allocation amount cannot be negative."}, status=400)
 
-    rebuild_allocation(
-        payment=alloc.payment,
+    total = lease_amt + sec_amt
+    if total != (payment.amount or Decimal("0.00")):
+        return JsonResponse(
+            {"ok": False, "error": f"Split total {total} must equal payment amount {payment.amount}."},
+            status=400,
+        )
+
+    alloc = rebuild_allocation(
+        payment=payment,
         lease_amount=lease_amt,
         security_amount=sec_amt,
         security_type=sec_type,
@@ -53,7 +62,7 @@ def update_allocation(request):
         "ok": True,
         "allocation_id": alloc.pk,
         "payment_id": alloc.payment_id,
-        "total": float(lease_amt + sec_amt),
+        "total": float(total),
     })
 
 from django.contrib.auth.decorators import login_required

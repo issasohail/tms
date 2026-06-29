@@ -31,7 +31,7 @@ from decimal import Decimal
 from django.db.models import DecimalField, Value, Sum
 from django.db.models.functions import Coalesce
 
-from payments.forms import PaymentForm
+from payments.forms import PaymentForm, optimize_lease_dropdown_queryset
 from payments.tables import PaymentTable
 from notifications.utils import send_payment_receipt
 from django.urls import reverse_lazy
@@ -122,7 +122,7 @@ class PaymentListView(SingleTableView):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
-            'lease__tenant', 'lease__unit', 'lease__unit__property')
+            'lease__tenant', 'lease__unit', 'lease__unit__property', 'allocation')
 
         # Get filter parameters
         property_id = self.request.GET.get('property')
@@ -193,57 +193,13 @@ class PaymentListView(SingleTableView):
 
         queryset = queryset.order_by('-payment_date')
 
-        # Efficient balance annotation
-        lease_ids = queryset.values_list('lease_id', flat=True).distinct()
-
-        DECIMAL = DecimalField(max_digits=12, decimal_places=2)
-        ZERO = Value(Decimal("0.00"), output_field=DECIMAL)
-
-        invoice_totals = (
-            Invoice.objects
-            .filter(lease_id__in=lease_ids)
-            .values("lease_id")
-            .annotate(
-                total=Coalesce(Sum("amount", output_field=DECIMAL), ZERO)
-            )
-        )
-
-
-        payment_totals = (
-            Payment.objects
-            .filter(lease_id__in=lease_ids)
-            .values("lease_id")
-            .annotate(
-                total=Coalesce(
-                    Sum(
-                        Case(
-                            When(allocation__isnull=False, then=F("allocation__lease_amount")),
-                            default=F("amount"),
-                            output_field=DECIMAL,
-                        ),
-                        output_field=DECIMAL,   # IMPORTANT: force Sum output type
-                    ),
-                    ZERO,  # IMPORTANT: Decimal default, not 0
-                )
-            )
-        )
-
-
-
-        invoice_map = {row["lease_id"]: row["total"] for row in invoice_totals}
-        payment_map = {row["lease_id"]: row["total"] for row in payment_totals}
-
-
-        for payment in queryset:
-            lease_id = payment.lease_id
-            total_invoiced = invoice_map.get(lease_id, Decimal("0.00"))
-            total_paid = payment_map.get(lease_id, Decimal("0.00"))
-            payment.lease_balance = (total_invoiced - total_paid)
-
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        page_obj = context.get("page_obj")
+        page_payments = getattr(page_obj, "object_list", None) or context.get("object_list", [])
+        _attach_cached_lease_balances(page_payments)
         # Get all properties for dropdown
         context['all_properties'] = Property.objects.all()
 
@@ -255,7 +211,16 @@ class PaymentListView(SingleTableView):
         ZERO = Value(Decimal("0.00"), output_field=DECIMAL)
 
         total_amount = queryset.aggregate(
-            total=Coalesce(Sum("amount", output_field=DECIMAL), ZERO)
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__security_type="REFUND", then=-F("amount")),
+                        default=F("amount"),
+                        output_field=DECIMAL,
+                    )
+                ),
+                ZERO,
+            )
         )["total"]
 
 
@@ -306,7 +271,16 @@ class PaymentListView(SingleTableView):
         # Handle AJAX requests for total amount
         if request.GET.get("ajax") == "1":
             total_amount = queryset.aggregate(
-                total=Coalesce(Sum("amount", output_field=DECIMAL), ZERO_DB)
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(allocation__security_type="REFUND", then=-F("amount")),
+                            default=F("amount"),
+                            output_field=DECIMAL,
+                        )
+                    ),
+                    ZERO_DB,
+                )
             )["total"]
 
             return JsonResponse({"total_amount": float(total_amount)})
@@ -371,6 +345,108 @@ def _dec(v, default="0.00"):
         return Decimal(default)
 
 
+def _attach_cached_lease_balances(payments):
+    payments = list(payments)
+    lease_ids = {payment.lease_id for payment in payments if payment.lease_id}
+    if not lease_ids:
+        return payments
+
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    zero = Value(Decimal("0.00"), output_field=money_field)
+
+    invoice_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Invoice.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), zero))
+    }
+    payment_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Payment.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                zero,
+            )
+        )
+    }
+
+    for payment in payments:
+        lease = getattr(payment, "lease", None)
+        if lease:
+            cached_balance = (
+                invoice_totals.get(lease.pk, Decimal("0.00"))
+                - payment_totals.get(lease.pk, Decimal("0.00"))
+            )
+            lease._cached_get_balance = cached_balance
+            payment.cached_lease_balance = cached_balance
+
+    return payments
+
+
+def _attach_cached_lease_financials(leases):
+    leases = list(leases)
+    lease_ids = {lease.pk for lease in leases}
+    if not lease_ids:
+        return leases
+
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    zero = Value(Decimal("0.00"), output_field=money_field)
+
+    invoice_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Invoice.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), zero))
+    }
+    payment_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Payment.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                zero,
+            )
+        )
+    }
+    security_paid_or_adjusted = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in SecurityDepositTransaction.objects.filter(
+            lease_id__in=lease_ids,
+            type__in=("PAYMENT", "ADJUST"),
+        )
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), zero))
+    }
+
+    for lease in leases:
+        lease._cached_get_balance = (
+            invoice_totals.get(lease.pk, Decimal("0.00"))
+            - payment_totals.get(lease.pk, Decimal("0.00"))
+        )
+        lease._cached_security_due = max(
+            (lease.security_deposit or Decimal("0.00"))
+            - security_paid_or_adjusted.get(lease.pk, Decimal("0.00")),
+            Decimal("0.00"),
+        )
+
+    return leases
+
+
 class PaymentCreateView(LoginRequiredMixin, CreateView):
     model = Payment
     form_class = PaymentForm
@@ -380,13 +456,23 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         return reverse_lazy("payments:payment_detail", kwargs={"pk": self.object.pk})
 
     def get_lease(self):
+        if hasattr(self, "_selected_lease"):
+            return self._selected_lease
+
         lease_id = (
             self.request.POST.get("lease")
             or self.request.GET.get("lease")
             or self.request.GET.get("lease_id")
         )
         if lease_id:
-            return get_object_or_404(Lease, id=lease_id)
+            lease = get_object_or_404(
+                optimize_lease_dropdown_queryset(Lease.objects.all()),
+                id=lease_id,
+            )
+            lease._cached_get_balance = lease.cached_balance
+            self._selected_lease = lease
+            return lease
+        self._selected_lease = None
         return None
 
     def get_initial(self):
@@ -428,13 +514,12 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             else:
                 lease_qs = lease_qs.filter(status="active")
 
-        form.fields["lease"].queryset = lease_qs
+        form.fields["lease"].queryset = optimize_lease_dropdown_queryset(
+            lease_qs
+        ).order_by("tenant__first_name", "tenant__last_name")
 
         if selected_lease_id:
-            try:
-                form.fields["lease"].initial = lease_qs.model.objects.only("id").get(pk=selected_lease_id).pk
-            except lease_qs.model.DoesNotExist:
-                pass
+            form.fields["lease"].initial = selected_lease_id
 
         return form
 
@@ -444,7 +529,10 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
     @transaction.atomic
     def form_valid(self, form):
         # Validate allocation subform (so lease_amount/security_amount errors show nicely if any)
-        allocation_form = PaymentAllocationForm(self.request.POST)
+        allocation_form = PaymentAllocationForm(
+            self.request.POST,
+            payment_total=form.cleaned_data.get("amount"),
+        )
         if not allocation_form.is_valid():
             return self.form_invalid(form)
 
@@ -472,10 +560,17 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         if mode == "LEASE":
             lease_amt = payment_total
             sec_amt = Decimal("0.00")
+        elif mode == "LEASE_REFUND":
+            lease_amt = payment_total
+            sec_amt = Decimal("0.00")
 
         elif mode == "SECURITY":
             lease_amt = Decimal("0.00")
             sec_amt = payment_total
+        elif mode == "REFUND":
+            lease_amt = Decimal("0.00")
+            sec_amt = payment_total
+            sec_type = "REFUND"
 
         else:  # SPLIT
             # If user left both blank/zero, default all to lease
@@ -530,7 +625,15 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
         context["recent_size"] = size
         context["recent_size_options"] = [10, 20, 50]
-        context["recent_payments"] = Payment.objects.all().order_by("-id")[:size]
+        recent_payments = Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+            "payment_method",
+            "allocation",
+        ).order_by("-id")[:size]
+        context["recent_payments"] = _attach_cached_lease_balances(recent_payments)
         context["allocation_form"] = PaymentAllocationForm(initial={
             "allocation_mode": "LEASE",
             "lease_amount": "0.00",
@@ -539,11 +642,11 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         })
         include_inactive = self.request.GET.get("include_inactive") == "on"
         if include_inactive:
-            context["active_tenants"] = Tenant.objects.all().distinct().order_by("first_name")
-            context["tenants"] = Tenant.objects.all().distinct().order_by("first_name")
+            tenant_qs = Tenant.objects.all().distinct().order_by("first_name")
         else:
-            context["active_tenants"] = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
-            context["tenants"] = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
+            tenant_qs = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
+        context["active_tenants"] = tenant_qs
+        context["tenants"] = tenant_qs
 
         context["properties"] = Property.objects.all().order_by("property_name")
         context["today"] = timezone.now().date()
@@ -570,7 +673,10 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        allocation_form = PaymentAllocationForm(self.request.POST)
+        allocation_form = PaymentAllocationForm(
+            self.request.POST,
+            payment_total=form.cleaned_data.get("amount"),
+        )
         if not allocation_form.is_valid():
             return self.form_invalid(form)
 
@@ -589,9 +695,16 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         if mode == "LEASE":
             lease_amt = payment_total
             sec_amt = Decimal("0.00")
+        elif mode == "LEASE_REFUND":
+            lease_amt = payment_total
+            sec_amt = Decimal("0.00")
         elif mode == "SECURITY":
             lease_amt = Decimal("0.00")
             sec_amt = payment_total
+        elif mode == "REFUND":
+            lease_amt = Decimal("0.00")
+            sec_amt = payment_total
+            sec_type = "REFUND"
         else:
             if lease_amt <= 0 and sec_amt <= 0:
                 lease_amt = payment_total
@@ -676,7 +789,10 @@ def get_filtered_leases(request):
             qs = qs.filter(status='active')
 
     leases_data = []
-    for l in qs.order_by('tenant__first_name', 'tenant__last_name'):
+    leases = _attach_cached_lease_financials(
+        qs.order_by('tenant__first_name', 'tenant__last_name')
+    )
+    for l in leases:
         tenant_full = l.tenant.get_full_name()
         tenant_short = cut(tenant_full, 20)   # 20 chars for Tenant
         prop_full = l.unit.property.property_name
@@ -684,7 +800,7 @@ def get_filtered_leases(request):
         unit_no = l.unit.unit_number
         bal = float(l.get_balance)
         bal_fmt = "{:,.2f}".format(bal)
-        sec_bal = float(l.security_balance_to_collect)
+        sec_bal = float(l.security_due)
         sec_bal_fmt = "{:,.2f}".format(sec_bal)
 
         # What shows in the dropdown (single, compact line)
@@ -1055,6 +1171,9 @@ def build_payment_receipt_message(request, pay):
     payment_date = getattr(pay, "payment_date", None)
     amount = getattr(pay, "amount", 0) or 0
     balance = lease.get_balance if lease else 0
+    alloc = getattr(pay, "allocation", None)
+    is_refund = (getattr(alloc, "security_type", "") or "").upper() == "REFUND"
+    is_lease_refund = (getattr(alloc, "lease_amount", amount) or Decimal("0.00")) < 0
 
     # 🔹 NEW: security deposit summary using your helper
     sec_required = 0
@@ -1069,7 +1188,7 @@ def build_payment_receipt_message(request, pay):
 
     lines = [
         f"Dear {first_name},",
-        f"*Payment received* for {property_name}.",
+        f"{'*Lease payment refunded*' if is_lease_refund else '*Security deposit refunded*' if is_refund else '*Payment received*'} for {property_name}.",
         f"Unit: {unit_number}",
         (
             f"Period: {start_date:%b %d, %Y} – {end_date:%b %d, %Y}"
@@ -1094,7 +1213,7 @@ def build_payment_receipt_message(request, pay):
         lines.append(f"Date: {payment_date:%b %d, %Y}")
 
     lines.extend([
-        f"*Amount: Rs. {float(amount):,.2f}*",
+        f"*{'Refund Amount' if (is_refund or is_lease_refund) else 'Amount'}: Rs. {abs(float(amount)):,.2f}*",
         f"Balance: Rs. {float(balance):,.2f}",
         "",
         "Thank you!",

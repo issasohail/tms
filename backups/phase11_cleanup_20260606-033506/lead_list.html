@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid px-2 px-md-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+        <div>
+            <h3 class="mb-0">Potential Tenant Leads</h3>
+            <div class="text-muted small">Track interested tenants and send vacancy WhatsApp messages.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'tenants:tenant_list' %}" class="btn btn-outline-secondary btn-sm">Tenants</a>
+            <a href="{% url 'tenants:lead_create' %}" class="btn btn-primary btn-sm">Add Lead</a>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Interested In</label>
+                    <div class="d-flex flex-wrap gap-2 small">
+                        {% for item in interest_types %}
+                            <label class="form-check-label">
+                                <input type="checkbox" class="form-check-input" name="interested_in" value="{{ item.id }}" {% if item.id|stringformat:"s" in current_interested_in %}checked{% endif %}>
+                                {{ item.name }}
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-primary btn-sm">Filter</button>
+                    <a href="{% url 'tenants:lead_list' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Lead Interest</th>
+                            <th>Notes</th>
+                            <th style="width:210px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lead in leads %}
+                        <tr>
+                            <td><a href="{% url 'tenants:lead_detail' lead.pk %}">{{ lead.get_full_name }}</a></td>
+                            <td>{{ lead.phone|default:"-" }}</td>
+                            <td>
+                                {% for item in lead.interested_in.all %}
+                                    <span class="badge bg-info text-dark">{{ item.name }}</span>
+                                {% empty %}
+                                    -
+                                {% endfor %}
+                            </td>
+                            <td>{{ lead.notes|default:"-"|truncatechars:60 }}</td>
+                            <td>
+                                <a href="{% url 'tenants:lead_detail' lead.pk %}" class="btn btn-outline-primary btn-sm">View</a>
+                                <a href="{% url 'tenants:lead_update' lead.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+                                <a href="{% url 'tenants:lead_vacancy_whatsapp' lead.pk %}" class="btn btn-success btn-sm">WhatsApp</a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No leads yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

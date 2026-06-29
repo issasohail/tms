@@ -1,0 +1,18 @@
+/* Tenant table styles */
+.tenant-table {
+    width: 100%;
+}
+
+.tenant-table th,
+.tenant-table td {
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.tenant-photo,
+.tenant-cnic-img {
+    max-width: 72px;
+    max-height: 72px;
+    object-fit: cover;
+    border-radius: 8px;
+}

@@ -2,9 +2,12 @@ from .models_lease_photos import LeaseMedia
 from .storage import OverwriteStorage
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.core.validators import FileExtensionValidator
 import io
 from PIL import Image
 import os
+import uuid
 from django.utils.text import slugify
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -16,12 +19,14 @@ from .models_lease_photos import LeaseMedia
 from invoices.services import security_deposit_balance
 
 from decimal import Decimal
+from collections import defaultdict
 
 from django.db import models
 from django.db.models import Sum
 from tenants.models import Tenant
 from properties.models import Unit
 from django.urls import reverse
+from django.utils.functional import cached_property
 from datetime import timedelta
 from django.utils import timezone
 from decimal import Decimal
@@ -33,6 +38,7 @@ from django.template import Template, Context
 from decimal import Decimal
 from django.db.models import Sum, Case, When, F, DecimalField
 from django.db.models.functions import Coalesce
+from core.utils.text import normalize_title_fields, smart_title
 
 
 def default_lease_terms():
@@ -117,6 +123,10 @@ class Lease(models.Model):
     witness2_name = models.CharField(max_length=100, null=True, blank=True)
     witness2_cnic = models.CharField(max_length=20, null=True, blank=True)
     electric_unit_rate = models.IntegerField(blank=True, null=True, default=50)
+    electricity_bill_by_owner = models.BooleanField(
+        default=True,
+        help_text="Include owner-billed electricity clauses and charge electricity by unit rate.",
+    )
     electricity_meter_reading = models.CharField(max_length=20, null=True, blank=True)
     gas_meter_reading = models.CharField(max_length=20, null=True, blank=True)
     signed_agreement = models.FileField(
@@ -248,9 +258,7 @@ class Lease(models.Model):
         if self.clauses.exists():
             return  # already initialized
 
-        default_clauses = DefaultClause.objects.filter(is_active=True).order_by(
-            "clause_number"
-        )
+        default_clauses = DefaultClause.included_for_lease(self)
 
         for dc in default_clauses:
             LeaseAgreementClause.objects.create(
@@ -314,13 +322,15 @@ class Lease(models.Model):
         ]
 
     class Meta:
+        ordering = ["-start_date"]
         indexes = [
-            models.Index(fields=["tenant", "is_active", "start_date"]),
+            models.Index(fields=["tenant", "status", "start_date"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["unit"]),
         ]
 
-    # leases/models.py
-
     def save(self, *args, **kwargs):
+        normalize_title_fields(self, ("witness1_name", "witness2_name"))
         is_new = self.pk is None
         old_file = None
         if not is_new:
@@ -420,7 +430,42 @@ class Lease(models.Model):
     @property
     def total_rent_due(self):
         """Calculate total rent due from all invoices"""
-        return self.invoices.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        return self.financial_summary["invoice_total"]
+
+    @cached_property
+    def invoices_qs(self):
+        # PERF: reuse prefetched invoices instead of aggregating the same lease repeatedly.
+        if hasattr(self, "_prefetched_objects_cache") and "invoices" in self._prefetched_objects_cache:
+            return list(self._prefetched_objects_cache["invoices"])
+        return list(self.invoices.all())
+
+    @cached_property
+    def payments_qs(self):
+        # PERF: reuse prefetched payments and allocations for balance calculations.
+        if hasattr(self, "_prefetched_objects_cache") and "payments" in self._prefetched_objects_cache:
+            return list(self._prefetched_objects_cache["payments"])
+        from payments.models import Payment
+
+        return list(Payment.objects.filter(lease=self).select_related("allocation"))
+
+    @cached_property
+    def financial_summary(self):
+        zero = Decimal("0.00")
+        invoices_total = sum((invoice.amount or zero for invoice in self.invoices_qs), zero)
+
+        payments_total = zero
+        for payment in self.payments_qs:
+            allocation = getattr(payment, "allocation", None)
+            if allocation:
+                payments_total += allocation.lease_amount or zero
+            else:
+                payments_total += payment.amount or zero
+
+        return {
+            "invoice_total": invoices_total,
+            "payment_total": payments_total,
+            "balance": invoices_total - payments_total,
+        }
 
     # === Security Deposit computed properties ===
 
@@ -429,76 +474,106 @@ class Lease(models.Model):
         """Total agreed security deposit (from field)."""
         return self.security_deposit or Decimal("0.00")
 
+    @cached_property
+    def security_transactions_qs(self):
+        # PERF: reuse prefetched security transactions instead of filtering by type repeatedly.
+        if hasattr(self, "_prefetched_objects_cache") and "security_transactions" in self._prefetched_objects_cache:
+            return list(self._prefetched_objects_cache["security_transactions"])
+        from invoices.models import SecurityDepositTransaction
+
+        return list(
+            SecurityDepositTransaction.objects.filter(lease=self).select_related(
+                "payment",
+                "allocation",
+            )
+        )
+
+    @cached_property
+    def security_summary(self):
+        zero = Decimal("0.00")
+        grouped = defaultdict(lambda: zero)
+        refund_deductions = zero
+
+        for tx in self.security_transactions_qs:
+            tx_type = tx.type or ""
+            grouped[tx_type] += tx.amount or zero
+            if tx_type == "REFUND":
+                refund_deductions += tx.deduction_amount or zero
+
+        paid_in = grouped["PAYMENT"]
+        refunded = grouped["REFUND"]
+        damages = grouped["DAMAGE"]
+        adjust = grouped["ADJUST"]
+        required = self.security_required
+
+        return {
+            "required": required,
+            "paid_in": paid_in,
+            "refunded": refunded,
+            "refund_deductions": refund_deductions,
+            "damages": damages,
+            "adjust": adjust,
+            "balance_to_collect": max(required - paid_in, zero),
+            "currently_held": max(
+                paid_in - refunded - refund_deductions - damages,
+                zero,
+            ),
+        }
+
     @property
     def security_paid_in(self):
         """How much deposit has actually been paid in (via ledger)."""
-        return security_deposit_totals(self)["paid_in"]
+        # PERF: repeated security_deposit_totals() calls duplicate SecurityDepositTransaction queries.
+        return self.security_summary["paid_in"]
 
     @property
     def security_refunded(self):
         """Total refunded back to tenant."""
-        return security_deposit_totals(self)["refunded"]
+        return self.security_summary["refunded"]
 
     @property
     def security_damages(self):
         """Total consumed for damages/adjustments."""
-        return security_deposit_totals(self)["damages"]
+        return self.security_summary["damages"]
 
     @property
     def security_balance_to_collect(self):
         """
         How much deposit is still owed by tenant (positive = they owe).
         """
-        return security_deposit_totals(self)["balance_to_collect"]
+        return self.security_summary["balance_to_collect"]
 
     @property
     def security_currently_held(self):
         """
         How much deposit you currently hold (paid - refunded - damages).
         """
-        return security_deposit_totals(self)["currently_held"]
+        return self.security_summary["currently_held"]
 
     @property
     def security_due(self):
         """
         Alias used in tables: 'Sec. Due' column.
         """
+        if hasattr(self, "_cached_security_due"):
+            return self._cached_security_due
         return self.security_balance_to_collect
 
     @property
     def total_payments(self):
         """Calculate total payments made against this lease"""
-        from payments.models import Payment
-
-        return Payment.objects.filter(lease=self).aggregate(total=Sum("amount"))[
-            "total"
-        ] or Decimal("0.00")
+        # PERF: template/table loops can call this per row; replace with cached financial summary.
+        if hasattr(self, "_cached_total_payments"):
+            return self._cached_total_payments
+        return self.financial_summary["payment_total"]
 
     @property
     def get_balance(self):
-        invoices_total = self.invoices.aggregate(
-            t=Coalesce(Sum("amount"), Decimal("0.00"))
-        )["t"]
+        if hasattr(self, "_cached_get_balance"):
+            return self._cached_get_balance
 
-        # IMPORTANT: only count the portion allocated to lease
-        payments_total = self.payments.aggregate(
-            t=Coalesce(
-                Sum(
-                    Case(
-                        When(
-                            allocation__isnull=False, then=F("allocation__lease_amount")
-                        ),
-                        default=F(
-                            "amount"
-                        ),  # legacy fallback when allocation row missing
-                        output_field=DecimalField(max_digits=12, decimal_places=2),
-                    )
-                ),
-                Decimal("0.00"),
-            )
-        )["t"]
-
-        return invoices_total - payments_total
+        # PERF: avoids N+1 target; repeated invoice/payment aggregates for same lease should be cached.
+        return self.financial_summary["balance"]
 
     def return_security_deposit(self, return_amount=None, notes=""):
         """
@@ -530,9 +605,6 @@ class Lease(models.Model):
         # Here you would add actual payment/refund logic & notifications
         return True
 
-    class Meta:
-        ordering = ["-start_date"]
-
     def get_lease_duration(self):
         """Calculate lease duration in months"""
         delta = self.end_date - self.start_date
@@ -552,6 +624,21 @@ class Lease(models.Model):
     def __str__(self):
         return f"Lease #{self.id} - {self.tenant}"
 
+    @property
+    def current_unit(self):
+        if hasattr(self, "_prefetched_objects_cache") and "unit_occupancies" in self._prefetched_objects_cache:
+            for occupancy in self._prefetched_objects_cache["unit_occupancies"]:
+                if occupancy.move_out_date is None:
+                    return occupancy.unit
+            return self.unit
+        occupancy = (
+            self.unit_occupancies
+            .filter(move_out_date__isnull=True)
+            .select_related("unit")
+            .first()
+        )
+        return occupancy.unit if occupancy else self.unit
+
     def generate_invoice(self):
         from invoices.models import Invoice
 
@@ -568,6 +655,72 @@ class Lease(models.Model):
 
     def get_print_url(self):
         return reverse("leases:print", args=[self.id])
+
+
+class LeaseUnitOccupancy(models.Model):
+    lease = models.ForeignKey(
+        Lease,
+        on_delete=models.CASCADE,
+        related_name="unit_occupancies",
+    )
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.PROTECT,
+        related_name="lease_occupancies",
+    )
+    move_in_date = models.DateField()
+    move_out_date = models.DateField(null=True, blank=True)
+    active_lease_key = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        editable=False,
+        unique=True,
+        help_text="Internal DB guard: lease id while active, NULL when closed.",
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-move_in_date", "-id"]
+        indexes = [
+            models.Index(fields=["lease", "move_in_date"]),
+            models.Index(fields=["unit", "move_in_date"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(move_out_date__isnull=True) | models.Q(move_out_date__gte=models.F("move_in_date")),
+                name="lease_occupancy_out_after_in",
+            ),
+        ]
+
+    @property
+    def is_active(self):
+        return self.move_out_date is None
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.move_out_date and self.move_out_date < self.move_in_date:
+            raise ValidationError({"move_out_date": "Move-out date cannot be before move-in date."})
+        if self.move_out_date is None:
+            clash = LeaseUnitOccupancy.objects.filter(
+                lease=self.lease,
+                move_out_date__isnull=True,
+            )
+            if self.pk:
+                clash = clash.exclude(pk=self.pk)
+            if clash.exists():
+                raise ValidationError("This lease already has an active unit occupancy.")
+
+    def save(self, *args, **kwargs):
+        self.active_lease_key = self.lease_id if self.move_out_date is None else None
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        end = self.move_out_date or "current"
+        return f"{self.lease_id}: {self.unit} ({self.move_in_date} to {end})"
 
     @property
     def property_info(self):
@@ -785,6 +938,7 @@ class LeaseTemplate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
         if self.is_default:
             LeaseTemplate.objects.filter(is_default=True).update(is_default=False)
         super().save(*args, **kwargs)
@@ -926,7 +1080,7 @@ Generated at: {{ now_string }}
 
 class LeaseFamily(models.Model):
     lease = models.ForeignKey(
-        "Lease", on_delete=models.CASCADE, related_name="family_members"
+        "Lease", on_delete=models.CASCADE, related_name="legacy_family_members"
     )
     tenant = models.ForeignKey(
         Tenant, on_delete=models.CASCADE, related_name="lease_families"
@@ -943,13 +1097,97 @@ class LeaseFamily(models.Model):
         return f"{self.tenant} ({self.relation or 'family'})"
 
 
+class LeaseRelationshipType(models.Model):
+    name = models.CharField(max_length=80)
+    code = models.SlugField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
+
+
+class LeaseFamilyMember(models.Model):
+    lease = models.ForeignKey(
+        "Lease",
+        on_delete=models.CASCADE,
+        related_name="family_members",
+    )
+    primary_tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="primary_family_relationships",
+    )
+    family_member = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="family_member_relationships",
+    )
+    relationship = models.CharField(max_length=30, default="other")
+    relationship_type = models.ForeignKey(
+        LeaseRelationshipType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="family_members",
+    )
+    is_adult = models.BooleanField(default=True)
+    lives_with_tenant = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "family_member__first_name", "family_member__last_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lease", "primary_tenant", "family_member"],
+                name="uniq_lease_primary_family_member",
+            )
+        ]
+
+    @property
+    def tenant(self):
+        return self.family_member
+
+    @property
+    def relation(self):
+        if self.relationship_type:
+            return self.relationship_type.name
+        return (self.relationship or "Other").replace("_", " ").replace("-", " ").title()
+
+    def __str__(self):
+        return f"{self.family_member} ({self.relation})"
+
+
 class DefaultClause(models.Model):
     """
     Global default clauses for new leases.
     Edit these in Admin or a custom UI.
     """
 
+    CATEGORY_GENERAL = "general"
+    CATEGORY_ELECTRICITY = "electricity"
+    CATEGORY_CHOICES = [
+        (CATEGORY_GENERAL, "General"),
+        (CATEGORY_ELECTRICITY, "Electricity billed by owner"),
+    ]
+
     clause_number = models.PositiveIntegerField()
+    category = models.CharField(
+        max_length=30,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_GENERAL,
+        help_text="Electricity clauses are copied only when electricity is billed by owner.",
+    )
     body = models.TextField(
         help_text="Use {{ }} variables like {{ monthly_rent }}, {{ tenant.full_name }}, etc."
     )
@@ -964,6 +1202,13 @@ class DefaultClause(models.Model):
 
     def __str__(self):
         return f"Default Clause {self.clause_number}"
+
+    @classmethod
+    def included_for_lease(cls, lease):
+        queryset = cls.objects.filter(is_active=True).order_by("clause_number")
+        if not getattr(lease, "electricity_bill_by_owner", True):
+            queryset = queryset.exclude(category=cls.CATEGORY_ELECTRICITY)
+        return queryset
 
 
 # leases/models.py
@@ -1090,6 +1335,10 @@ class AgreementPlaceholder(models.Model):
     def __str__(self):
         return f"[{self.key}]"
 
+    def save(self, *args, **kwargs):
+        normalize_title_fields(self, ("label", "category"))
+        super().save(*args, **kwargs)
+
 
 class WhatsAppTemplate(models.Model):
     TEMPLATE_TENANT_WELCOME = "tenant_welcome"
@@ -1131,6 +1380,169 @@ class WhatsAppTemplate(models.Model):
 
     def __str__(self):
         return self.name or self.get_template_type_display()
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
+
+
+def lease_document_upload_to(instance, filename):
+    ext = os.path.splitext(filename or "")[1].lower() or ".bin"
+    tenant = getattr(getattr(instance, "lease", None), "tenant", None)
+    unit = getattr(getattr(instance, "lease", None), "unit", None)
+    prop = getattr(unit, "property", None)
+    tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else str(tenant or "tenant")
+    tenant_part = slugify(tenant_name)[:40] or "tenant"
+    property_part = slugify(getattr(prop, "property_name", "") or "property")[:35] or "property"
+    unit_part = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
+    category_part = slugify(getattr(instance, "category", "") or "other") or "other"
+    date_part = timezone.localdate().strftime("%Y%m%d")
+    token = uuid.uuid4().hex[:8]
+    return f"leases/files/{instance.lease_id or 'new'}/{tenant_part}-{property_part}-{unit_part}-{category_part}-{date_part}-{token}{ext}"
+
+
+def lease_file_share_token():
+    return uuid.uuid4().hex + uuid.uuid4().hex
+
+
+class LeaseDocumentCategory(models.Model):
+    code = models.SlugField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = smart_title(self.name)
+        super().save(*args, **kwargs)
+
+
+class LeaseDocument(models.Model):
+    CATEGORY_CHOICES = [
+        ("tenant_photo", "Tenant Photo"),
+        ("cnic_front", "CNIC Front"),
+        ("cnic_back", "CNIC Back"),
+        ("lease_agreement", "Lease Agreement"),
+        ("lease_renewal_agreement", "Lease Renewal Agreement"),
+        ("police_verification", "Police Verification"),
+        ("property_condition_report", "Property Condition Report"),
+        ("utility_bill", "Utility Bill"),
+        ("income_proof", "Income Proof"),
+        ("employment_letter", "Employment Letter"),
+        ("reference_letter", "Reference Letter"),
+        ("other", "Other"),
+    ]
+    SAFE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "xls", "xlsx", "doc", "docx"]
+
+    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="documents")
+    lease_history = models.ForeignKey(
+        "leases.LeaseRenewal",
+        on_delete=models.SET_NULL,
+        related_name="documents",
+        null=True,
+        blank=True,
+    )
+    file = models.FileField(
+        upload_to=lease_document_upload_to,
+        max_length=255,
+        validators=[FileExtensionValidator(SAFE_EXTENSIONS)],
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
+    display_name = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default="other")
+    description = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lease_documents_uploaded",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    share_token = models.CharField(max_length=64, blank=True, db_index=True)
+    share_expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-uploaded_at", "-id"]
+        indexes = [
+            models.Index(fields=["lease", "is_active", "uploaded_at"]),
+            models.Index(fields=["category"]),
+        ]
+
+    def __str__(self):
+        return self.display_name or self.original_filename or os.path.basename(self.file.name)
+
+    @property
+    def file_exists(self):
+        return bool(self.file and self.file.name and default_storage.exists(self.file.name))
+
+    @property
+    def file_url(self):
+        if not self.file_exists:
+            return ""
+        try:
+            return self.file.url
+        except Exception:
+            return ""
+
+    @property
+    def extension(self):
+        return os.path.splitext(self.file.name or self.original_filename or "")[1].lower().lstrip(".")
+
+    @property
+    def category_label(self):
+        category = LeaseDocumentCategory.objects.filter(code=self.category).first()
+        if category:
+            return category.name
+        return dict(self.CATEGORY_CHOICES).get(self.category, self.category.replace("_", " ").title())
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_filename:
+            self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
+        if not self.display_name:
+            self.display_name = self.original_filename or os.path.basename(getattr(self.file, "name", "") or "Lease file")
+        super().save(*args, **kwargs)
+
+
+class LeaseFileShareLink(models.Model):
+    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="file_share_links")
+    document = models.ForeignKey(
+        LeaseDocument,
+        on_delete=models.CASCADE,
+        related_name="share_links",
+        null=True,
+        blank=True,
+    )
+    token = models.CharField(max_length=64, unique=True, default=lease_file_share_token)
+    expires_at = models.DateTimeField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lease_file_share_links_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["token", "expires_at", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"Lease #{self.lease_id} share {self.document_id or 'all files'}"
+
+    @property
+    def is_valid(self):
+        return self.is_active and self.expires_at >= timezone.now()
 
 
 from .models_renewal import LeaseRenewal, LeaseRenewalClause  # noqa: E402,F401

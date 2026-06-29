@@ -1,12 +1,14 @@
 from decimal import Decimal
 
+from django.core.paginator import EmptyPage, Paginator
+from django.db.models import Case, DecimalField, F, Sum, When
 from django.http import JsonResponse
+from django.shortcuts import redirect
 from django.urls import reverse
 from django_tables2.views import SingleTableView
 
 from core.utils.date_filters import apply_date_range_filter
-from invoices.models import SecurityDepositTransaction
-from invoices.services import security_deposit_totals
+from invoices.models import Invoice, SecurityDepositTransaction
 from leases.models import Lease
 from payments.ledger import CashLedgerRow
 from payments.models import Payment
@@ -25,6 +27,43 @@ def _dec(v):
     return Decimal(v or 0)
 
 
+def _bulk_lease_balances(lease_ids):
+    if not lease_ids:
+        return {}
+
+    invoice_totals = {
+        row["lease_id"]: _dec(row["total"])
+        for row in (
+            Invoice.objects.filter(lease_id__in=lease_ids)
+            .values("lease_id")
+            .annotate(total=Sum("amount"))
+        )
+    }
+
+    payment_totals = {
+        row["lease_id"]: _dec(row["total"])
+        for row in (
+            Payment.objects.filter(lease_id__in=lease_ids)
+            .values("lease_id")
+            .annotate(
+                total=Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=DecimalField(max_digits=12, decimal_places=2),
+                    )
+                )
+            )
+        )
+    }
+
+    return {
+        lease_id: invoice_totals.get(lease_id, Decimal("0.00"))
+        - payment_totals.get(lease_id, Decimal("0.00"))
+        for lease_id in lease_ids
+    }
+
+
 class CashLedgerView(SingleTableView):
     table_class = CashLedgerTable
     template_name = "payments/cash_ledger.html"
@@ -34,10 +73,32 @@ class CashLedgerView(SingleTableView):
         return Payment.objects.none()
 
     def get_table_data(self):
+        if hasattr(self, "_cash_ledger_rows"):
+            return self._cash_ledger_rows
+
         request = self.request
 
         # ---------- Lease base filters ----------
-        leases = Lease.objects.select_related("tenant", "unit", "unit__property")
+        leases = (
+            Lease.objects
+            .select_related("tenant", "unit", "unit__property")
+            .only(
+                "id",
+                "tenant_id",
+                "unit_id",
+                "security_deposit",
+                "status",
+                "start_date",
+                "tenant__id",
+                "tenant__first_name",
+                "tenant__last_name",
+                "unit__id",
+                "unit__property_id",
+                "unit__unit_number",
+                "unit__property__id",
+                "unit__property__property_name",
+            )
+        )
 
         property_id = request.GET.get("property")
         tenant_id = request.GET.get("tenant")
@@ -53,19 +114,45 @@ class CashLedgerView(SingleTableView):
         if unit_id:
             leases = leases.filter(unit_id=unit_id)
 
-        lease_ids = list(leases.values_list("id", flat=True))
+        leases_list = list(leases)
+        lease_ids = [lease.id for lease in leases_list]
+        lease_map = {lease.id: lease for lease in leases_list}
+        lease_balance_map = _bulk_lease_balances(lease_ids)
 
         # ---------- Querysets ----------
         payments = (
             Payment.objects.filter(lease_id__in=lease_ids)
-            .select_related("lease__tenant", "lease__unit", "lease__unit__property", "payment_method")
-            .select_related("allocation")
+            .select_related("payment_method", "allocation")
+            .only(
+                "id",
+                "lease_id",
+                "payment_date",
+                "amount",
+                "description",
+                "notes",
+                "payment_method_id",
+                "payment_method__id",
+                "payment_method__name",
+                "allocation__id",
+                "allocation__payment_id",
+                "allocation__lease_amount",
+                "allocation__security_amount",
+                "allocation__security_type",
+            )
         )
 
         sec_qs = (
             SecurityDepositTransaction.objects.filter(lease_id__in=lease_ids)
             .exclude(type="REQUIRED")
-            .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
+            .only(
+                "id",
+                "lease_id",
+                "allocation_id",
+                "date",
+                "type",
+                "amount",
+                "notes",
+            )
         )
 
         # ---------- Date filters ----------
@@ -90,7 +177,38 @@ class CashLedgerView(SingleTableView):
         sec_qs = sec_qs.filter(allocation__isnull=True)
 
         # ---------- Precompute security totals per lease ----------
-        sec_totals_map = {l.id: security_deposit_totals(l) for l in leases}
+        sec_summary = (
+            SecurityDepositTransaction.objects
+            .filter(lease_id__in=lease_ids)
+            .values("lease_id", "type")
+            .annotate(total=Sum("amount"))
+        )
+
+        sec_by_lease = {}
+        for row in sec_summary:
+            lease_id = row["lease_id"]
+            tx_type = row["type"]
+            sec_by_lease.setdefault(lease_id, {})[tx_type] = row["total"] or Decimal("0.00")
+
+        sec_totals_map = {}
+        for lease in leases_list:
+            tx = sec_by_lease.get(lease.id, {})
+
+            required = Decimal(lease.security_deposit or 0)
+            paid = Decimal(tx.get("PAYMENT", 0) or 0)
+            adjusted = Decimal(tx.get("ADJUST", 0) or 0)
+            refunded = Decimal(tx.get("REFUND", 0) or 0)
+            damaged = Decimal(tx.get("DAMAGE", 0) or 0)
+
+            balance_to_collect = required - paid - adjusted
+            if balance_to_collect < 0:
+                balance_to_collect = Decimal("0.00")
+
+            sec_totals_map[lease.id] = {
+                "balance_to_collect": balance_to_collect,
+            }
+            lease._cached_get_balance = lease_balance_map.get(lease.id, Decimal("0.00"))
+            lease._cached_security_due = balance_to_collect
 
         rows = []
 
@@ -114,12 +232,20 @@ class CashLedgerView(SingleTableView):
             sec_amt = Decimal("0.00")
 
             description = (p.description or p.notes or "").strip()
+            row_source_type = "PAYMENT"
+            row_amount = Decimal(p.amount or 0)
 
             if alloc:
                 allocation_id = alloc.id
                 lease_amt = Decimal(getattr(alloc, "lease_amount", 0) or 0)
                 sec_amt = Decimal(getattr(alloc, "security_amount", 0) or 0)
+                sec_type = (getattr(alloc, "security_type", "") or "PAYMENT").upper()
+                row_source_type = sec_type if sec_amt > 0 else "PAYMENT"
                 is_split = (sec_amt != Decimal("0.00"))  # treat true split only when sec portion exists
+                if sec_type == "REFUND":
+                    row_amount = lease_amt - sec_amt
+                elif lease_amt < 0:
+                    row_source_type = "LEASE_REFUND"
 
                 # Allocation routes override
                 view_url = reverse("payments:allocation_detail", args=[allocation_id])
@@ -129,14 +255,14 @@ class CashLedgerView(SingleTableView):
 
             rows.append(CashLedgerRow(
                 source="PAYMENT",
-                source_type="PAYMENT",
+                source_type=row_source_type,
                 source_id=p.id,
-                lease=p.lease,
+                lease=lease_map[p.lease_id],
                 date=p.payment_date,
                 description=description,
-                amount=Decimal(p.amount or 0),
+                amount=row_amount,
                 method=str(p.payment_method) if p.payment_method else "N/A",
-                lease_balance=Decimal(_lease_balance(p.lease) or 0),
+                lease_balance=lease_balance_map.get(p.lease_id, Decimal("0.00")),
                 security_balance=Decimal(sec_totals.get("balance_to_collect") or 0),
 
                 view_url=view_url,
@@ -170,12 +296,12 @@ class CashLedgerView(SingleTableView):
                     source="SECURITY",
                     source_type=tx.type,
                     source_id=tx.id,
-                    lease=tx.lease,
+                    lease=lease_map[tx.lease_id],
                     date=tx.date,
                     amount=amt,
                     method="Security Deposit",
                     description = (getattr(tx, "description", "") or getattr(tx, "notes", "") or "").strip(),
-                    lease_balance=_dec(_lease_balance(tx.lease)),
+                    lease_balance=lease_balance_map.get(tx.lease_id, Decimal("0.00")),
                     security_balance=_dec(sec_totals.get("balance_to_collect")),
                     view_url=reverse("leases:lease_security_list", args=[tx.lease_id]),
                     edit_url=sec_edit_url,
@@ -185,16 +311,21 @@ class CashLedgerView(SingleTableView):
             )
 
         rows.sort(key=lambda r: (r.date, r.source_id), reverse=True)
+        self._cash_ledger_rows = rows
         return rows
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        ctx["all_properties"] = Property.objects.all()
-        ctx["tenant_list"] = Tenant.objects.all().order_by("first_name", "last_name")
+        ctx["all_properties"] = Property.objects.only("id", "property_name")
+        ctx["tenant_list"] = Tenant.objects.only("id", "first_name", "last_name").order_by("first_name", "last_name")
 
         property_id = self.request.GET.get("property")
-        ctx["filtered_units"] = Unit.objects.filter(property_id=property_id) if property_id else Unit.objects.none()
+        ctx["filtered_units"] = (
+            Unit.objects.only("id", "property_id", "unit_number").filter(property_id=property_id)
+            if property_id
+            else Unit.objects.none()
+        )
 
         ctx["current_property"] = self.request.GET.get("property", "")
         ctx["current_unit"] = self.request.GET.get("unit", "")
@@ -226,10 +357,9 @@ class CashLedgerView(SingleTableView):
                 paginator = Paginator(rows, self.paginate_by)
                 paginator.page(page)  # validate
             except EmptyPage:
-                url = request.build_absolute_uri()
-                u = URL(url)
-                u = u.update_query(page=str(paginator.num_pages or 1))
-                return redirect(str(u))
+                query = request.GET.copy()
+                query["page"] = str(paginator.num_pages or 1)
+                return redirect(f"{request.path}?{query.urlencode()}")
             except Exception:
                 pass
 

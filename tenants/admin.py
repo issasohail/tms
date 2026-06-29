@@ -3,10 +3,17 @@ from django import forms
 from django.utils.html import format_html
 from django.urls import reverse, path
 from django.shortcuts import render, get_object_or_404
-from .models import Tenant
+from .models import Tenant, TenantInterestType
 from image_cropping import ImageCroppingMixin
 from django.urls import path
 from django.http import JsonResponse
+
+
+@admin.register(TenantInterestType)
+class TenantInterestTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "is_active", "sort_order")
+    list_editable = ("is_active", "sort_order")
+    search_fields = ("name", "code")
 
 
 class TenantAdminForm(forms.ModelForm):

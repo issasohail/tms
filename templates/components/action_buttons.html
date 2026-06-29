@@ -35,6 +35,7 @@
            title="Send WhatsApp"
            onclick="return window.sendWhatsAppSingleInvoiceFromList(this);"
            data-phone="{{ record.lease.tenant.phone|default:'' }}"
+           data-object-id="{{ record.pk }}"
            data-fname="{{ record.lease.tenant.first_name|default:'' }}"
            data-lname="{{ record.lease.tenant.last_name|default:'' }}"
            data-invno="{{ record.invoice_number|default:'' }}"
@@ -43,7 +44,9 @@
            data-property="{{ record.lease.unit.property.property_name|default:'' }}"
            data-unit="{{ record.lease.unit.unit_number|default:'' }}"
            data-status="{{ record.get_status_display|default:'' }}"
-           data-leasebal="{{ record.lease.get_balance|floatformat:2|intcomma }}"
+           data-leasebal="{% if record.dashboard_lease_balance is not None %}{{ record.dashboard_lease_balance|floatformat:2|intcomma }}{% else %}{{ record.lease.get_balance|floatformat:2|intcomma }}{% endif %}"
+           data-securitybal="{% if record.dashboard_security_balance is not None %}{{ record.dashboard_security_balance|floatformat:2|intcomma }}{% else %}{{ record.lease.security_balance_to_collect|floatformat:2|intcomma }}{% endif %}"
+           data-totalbal="{% if record.dashboard_total_balance is not None %}{{ record.dashboard_total_balance|floatformat:2|intcomma }}{% endif %}"
            data-total="{{ record.amount|floatformat:2|intcomma }}"
            data-items='[{% for item in record.items.all %}{"cat":"{{ item.category.name|default:item.category|default_if_none:''|escapejs }}","desc":"{{ item.description|default:''|escapejs }}","amount":"{{ item.amount|floatformat:2|intcomma|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>
           <i class="fab fa-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span>
@@ -86,6 +89,7 @@
       <button type="button"
               class="btn btn-sm btn-success action-btn btn-wa-receipt"
               data-wa-url="{% url 'payments:api_payment_receipt_whatsapp' record.pk %}"
+              data-object-id="{{ record.pk }}"
               title="Send WhatsApp Receipt">
         <i class="fab fa-whatsapp"></i><span class="btn-text ms-1">Receipt</span>
       </button>

@@ -17,8 +17,8 @@ from properties import views as property_views
 from django.urls import path
 from leases import views
 from .views import edit_clauses
-from .views_pcr import pcr_gallery, pcr_photo_upload, pcr_photo_delete
-from .views_pcr_export import export_photos_to_pdf_and_attach
+from .views_pcr import pcr_gallery, pcr_photo_delete, pcr_photo_reorder, pcr_photo_upload
+from .views_pcr_export import export_photos_to_pdf_and_attach, export_photos_to_word
 from django.urls import path
 from . import views_lease_photos as lpv  # <- import the file that has the view
 
@@ -40,6 +40,7 @@ from .views_renewal import (
     generate_renewal_agreement,
     upload_renewal_signed_copy,
 )
+from . import views_lease_files
 app_name = 'leases'
 
 urlpatterns = [
@@ -67,6 +68,8 @@ urlpatterns = [
     # Printing and PDF
     path('<int:pk>/print/', PrintLeaseView.as_view(), name='lease_print'),
     path('<int:pk>/pdf/', generate_lease_pdf, name='lease-pdf'),
+    path('<int:pk>/police-verification/pdf/',
+         views.police_verification_summary_pdf, name='police_verification_summary_pdf'),
 
     # Email
     path('<int:pk>/email/', lease_email, name='lease_email'),
@@ -138,14 +141,41 @@ urlpatterns = [
          views.tenant_quick_search, name="tenant_quick_search"),
     path("leases/<int:pk>/family/add/",
          views.lease_family_add, name="lease_family_add"),
+    path("leases/<int:pk>/family/<int:member_id>/remove/",
+         views.lease_family_remove, name="lease_family_remove"),
 
     path("lease/<int:lease_id>/pcr/gallery/", pcr_gallery, name="pcr_gallery"),
     path("lease/<int:lease_id>/pcr/upload/",
          pcr_photo_upload, name="pcr_photo_upload"),
     path("pcr/photo/<int:photo_id>/delete/",
          pcr_photo_delete, name="pcr_photo_delete"),
+    path("lease/<int:lease_id>/pcr/reorder/",
+         pcr_photo_reorder, name="pcr_photo_reorder"),
     path("lease/<int:lease_id>/pcr/export-photos-pdf/", export_photos_to_pdf_and_attach,
          name="pcr_export_photos_pdf"),
+    path("lease/<int:lease_id>/pcr/export-photos-docx/", export_photos_to_word,
+         name="pcr_export_photos_docx"),
+
+    path("lease/<int:lease_id>/files/upload/",
+         views_lease_files.lease_file_upload, name="lease_file_upload"),
+    path("lease-file/<int:document_id>/view/",
+         views_lease_files.lease_file_view, name="lease_file_view"),
+    path("lease-file/<int:document_id>/download/",
+         views_lease_files.lease_file_download, name="lease_file_download"),
+    path("lease-file/<int:document_id>/deactivate/",
+         views_lease_files.lease_file_deactivate, name="lease_file_deactivate"),
+    path("lease/<int:lease_id>/files/share/",
+         views_lease_files.lease_files_share_all, name="lease_files_share_all"),
+    path("lease-file/<int:document_id>/share/",
+         views_lease_files.lease_file_share_one, name="lease_file_share_one"),
+    path("public/files/<str:token>/",
+         views_lease_files.public_lease_files_share, name="public_lease_files_share"),
+    path("public/file/<str:token>/",
+         views_lease_files.public_lease_file_share, name="public_lease_file_share"),
+    path("public/file/<str:token>/download/",
+         views_lease_files.public_lease_file_download, name="public_lease_file_download"),
+    path("public/files/<str:token>/<int:document_id>/download/",
+         views_lease_files.public_lease_shared_document_download, name="public_lease_shared_document_download"),
 
     path("lease/<int:lease_id>/photos/grid/", photos_grid, name="photos_grid"),
 
@@ -157,6 +187,7 @@ urlpatterns = [
     path("lease/<int:lease_id>/history/<int:renewal_id>/media/grid/",
          history_media_grid, name="history_media_grid"),
     path("lease/<int:lease_id>/photos/add/", photo_add, name="photo_add"),
+    path("lease/<int:lease_id>/photos/reorder/", lpv.photo_reorder, name="photo_reorder"),
     path("photo/<int:photo_id>/delete/", photo_delete, name="photo_delete"),
     path("photo/<int:photo_id>/update/", photo_update, name="photo_update"),
     path("lease/<int:lease_id>/photos/export/",
@@ -171,6 +202,11 @@ urlpatterns = [
         "lease/<int:lease_id>/photos/export/stream/",
         lpv.photos_export_pdf_stream,
         name="photos_export_pdf_stream",
+    ),
+    path(
+        "lease/<int:lease_id>/photos/export/docx/",
+        lpv.photos_export_docx_stream,
+        name="photos_export_docx_stream",
     ),
     path("photo/<int:photo_id>/view/", lpv.photo_viewer, name="photo_viewer"),
     path("photo/<int:photo_id>/download/",

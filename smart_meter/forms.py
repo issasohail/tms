@@ -21,10 +21,13 @@ from properties.models import Unit  # adjust if your Unit lives elsewhere
 # smart_meter/forms.py
 from decimal import Decimal
 from django import forms
+from leases.models import Lease
+from leases.models import LeaseUnitOccupancy
 
 
 from .models import (
-    MeterSettings, Meter, LiveReading, MeterReading, Tariff, Bill, MeterBalance
+    MeterSettings, Meter, LiveReading, MeterReading, Tariff, Bill, MeterBalance,
+    MeterInstallation,
 )
 
 
@@ -193,10 +196,12 @@ class ReadingManualForm(forms.ModelForm):
             .order_by("unit__property__property_name", "unit__unit_number", "meter_number")
         )
 
-        # Friendly labels: "Property / Unit X — Meter Y"
-        self.fields["meter"].label_from_instance = (
-            lambda m: f"{m.unit.property.property_name} / Unit {m.unit.unit_number} — Meter {m.meter_number}"
-        )
+        def meter_label(m):
+            if m.unit_id and getattr(m.unit, "property_id", None):
+                return f"{m.unit.property.property_name} / Unit {m.unit.unit_number} - Meter {m.meter_number}"
+            return f"Uninstalled - Meter {m.meter_number}"
+
+        self.fields["meter"].label_from_instance = meter_label
 
         # Bootstrap classes
         for name, field in self.fields.items():
@@ -226,4 +231,165 @@ class ReadingManualForm(forms.ModelForm):
         pf = cleaned.get("pf_total")
         if pf is not None and not (0 <= pf <= 1.0):
             self.add_error("pf_total", "Power factor must be between 0 and 1.")
+        return cleaned
+
+
+class InstallMeterToUnitForm(forms.ModelForm):
+    class Meta:
+        model = MeterInstallation
+        fields = [
+            "meter",
+            "unit",
+            "lease",
+            "start_date",
+            "start_reading",
+            "reason",
+            "notes",
+        ]
+        widgets = {
+            "meter": forms.Select(attrs={"class": "form-select"}),
+            "unit": forms.Select(attrs={"class": "form-select"}),
+            "lease": forms.Select(attrs={"class": "form-select"}),
+            "start_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "start_reading": forms.NumberInput(attrs={"class": "form-control", "step": "0.001"}),
+            "reason": forms.TextInput(attrs={"class": "form-control"}),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+
+    def __init__(self, *args, unit=None, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        self.fields["meter"].queryset = (
+            Meter.objects
+            .exclude(installations__is_active=True, installations__end_date__isnull=True)
+            .order_by("meter_number")
+            .distinct()
+        )
+        self.fields["unit"].queryset = Unit.objects.select_related("property").order_by(
+            "property__property_name", "unit_number"
+        )
+        self.fields["lease"].queryset = Lease.objects.select_related("tenant", "unit").order_by("-start_date")
+        self.fields["lease"].required = False
+        if unit:
+            self.fields["unit"].initial = unit
+            self.fields["lease"].queryset = self.fields["lease"].queryset.filter(unit=unit)
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.is_active = True
+        obj.end_date = None
+        obj.end_reading = None
+        obj.installed_by = self.user if getattr(self.user, "is_authenticated", False) else None
+        if commit:
+            obj.save()
+        return obj
+
+
+class SwitchMeterForm(forms.Form):
+    old_installation = forms.ModelChoiceField(
+        queryset=MeterInstallation.objects.none(),
+        label="Current Meter",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    new_meter = forms.ModelChoiceField(
+        queryset=Meter.objects.none(),
+        label="New Meter",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    lease = forms.ModelChoiceField(
+        queryset=Lease.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    switch_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}))
+    old_end_reading = forms.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.001"}),
+    )
+    new_start_reading = forms.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        initial=0,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.001"}),
+    )
+    reason = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control"}))
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}))
+
+    def __init__(self, *args, unit=None, **kwargs):
+        self.unit = unit
+        super().__init__(*args, **kwargs)
+        active = MeterInstallation.objects.filter(
+            is_active=True,
+            end_date__isnull=True,
+        ).select_related("meter", "unit")
+        if unit:
+            active = active.filter(unit=unit)
+        self.fields["old_installation"].queryset = active.order_by("meter__meter_number")
+        self.fields["new_meter"].queryset = (
+            Meter.objects
+            .exclude(installations__is_active=True, installations__end_date__isnull=True)
+            .order_by("meter_number")
+            .distinct()
+        )
+        lease_qs = Lease.objects.select_related("tenant", "unit").order_by("-start_date")
+        if unit:
+            lease_qs = lease_qs.filter(unit=unit)
+        self.fields["lease"].queryset = lease_qs
+
+    def clean(self):
+        cleaned = super().clean()
+        old_installation = cleaned.get("old_installation")
+        switch_date = cleaned.get("switch_date")
+        if old_installation and switch_date and switch_date < old_installation.start_date:
+            self.add_error("switch_date", "Switch date cannot be before the current installation start date.")
+        return cleaned
+
+
+class CloseMeterInstallationForm(forms.Form):
+    end_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}))
+    end_reading = forms.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        required=False,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.001"}),
+    )
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}))
+
+    def __init__(self, *args, installation=None, **kwargs):
+        self.installation = installation
+        super().__init__(*args, **kwargs)
+
+    def clean_end_date(self):
+        end_date = self.cleaned_data["end_date"]
+        if self.installation and end_date < self.installation.start_date:
+            raise forms.ValidationError("End date cannot be before the installation start date.")
+        return end_date
+
+
+class MoveLeaseUnitForm(forms.Form):
+    new_unit = forms.ModelChoiceField(
+        queryset=Unit.objects.none(),
+        label="New Unit / Room",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    move_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}))
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}))
+
+    def __init__(self, *args, lease=None, **kwargs):
+        self.lease = lease
+        super().__init__(*args, **kwargs)
+        self.fields["new_unit"].queryset = Unit.objects.select_related("property").order_by(
+            "property__property_name", "unit_number"
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        new_unit = cleaned.get("new_unit")
+        move_date = cleaned.get("move_date")
+        current_unit_id = getattr(getattr(self.lease, "current_unit", None), "pk", None)
+        if self.lease and new_unit and current_unit_id == new_unit.pk:
+            self.add_error("new_unit", "The lease is already assigned to this unit.")
+        if self.lease and move_date and move_date < self.lease.start_date:
+            self.add_error("move_date", "Move date cannot be before the lease start date.")
         return cleaned

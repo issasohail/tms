@@ -5,6 +5,17 @@
   .ticket-page { margin: 0 auto; max-width: 1100px; }
   .ticket-table-card { width: max-content; max-width: 100%; margin: 0 auto; }
   .ticket-table { white-space: nowrap; }
+  .ticket-title-cell {
+    max-width: 320px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .ticket-title-cell a {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   @media (max-width: 576px) {
     .ticket-page { padding-left: .25rem; padding-right: .25rem; }
     .ticket-hdr h5 { font-size: 1rem; }
@@ -68,14 +79,15 @@
             <th>Status</th>
             <th>User</th>
             <th>Date</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
           {% for t in tickets %}
-            <tr>
+            <tr data-ticket-row="{{ t.id }}">
               <td>{{ forloop.counter }}</td>
               <td>{{ t.get_ticket_type_display }}</td>
-              <td>
+              <td class="ticket-title-cell">
                 <a href="{% url 'core:suggestion_detail' t.id %}" class="fw-semibold text-decoration-none">
                   {{ t.title }}
                 </a>
@@ -95,10 +107,19 @@
               </td>
               <td>{{ t.user_name_snapshot }}</td>
               <td>{{ t.created_at }}</td>
+              <td>
+                {% if request.user.is_staff or request.user.is_superuser or t.user_name_snapshot == request.user.get_username %}
+                  <button type="button"
+                          class="btn btn-outline-danger btn-sm js-ticket-delete"
+                          data-url="{% url 'core:suggestion_delete' t.id %}">
+                    Delete
+                  </button>
+                {% endif %}
+              </td>
             </tr>
           {% empty %}
             <tr>
-              <td colspan="7" class="text-center text-muted py-4">No records found.</td>
+              <td colspan="8" class="text-center text-muted py-4">No records found.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -210,6 +231,32 @@ document.addEventListener("change", function (e) {
     }
   })
   .catch(err => alert(err && err.message ? err.message : "Status update failed."));
+});
+
+document.addEventListener("click", function (e) {
+  const button = e.target.closest(".js-ticket-delete");
+  if (!button) return;
+  if (!confirm("Delete this suggestion?")) return;
+  const csrftoken = suggestionGetCookie("csrftoken") || "{{ csrf_token }}";
+  const formData = new FormData();
+  formData.append("csrfmiddlewaretoken", csrftoken);
+  fetch(button.dataset.url, {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      "X-CSRFToken": csrftoken
+    },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data || !data.success) {
+      throw new Error((data && data.error) || "Could not delete suggestion.");
+    }
+    button.closest("tr")?.remove();
+  })
+  .catch(err => alert(err && err.message ? err.message : "Delete failed."));
 });
 </script>
 <script>

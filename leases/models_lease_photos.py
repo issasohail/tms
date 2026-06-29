@@ -25,6 +25,7 @@ try:
     from core.models import GlobalSettings
 except Exception:
     GlobalSettings = None
+from core.upload_utils import IMAGE_UPLOAD_EXTENSIONS
 from PIL import Image, ImageDraw, ImageFont, ExifTags, ImageOps
 
 from PIL import Image, ImageDraw, ImageFont, ExifTags, ImageOps
@@ -33,7 +34,7 @@ from PIL import Image, ImageDraw, ImageFont, ExifTags, ImageOps
 PIL_SIDE_LIMIT = 65500
 
 # Your safety caps (tunable via settings if you like)
-MAX_STAMP_SIDE   = getattr(settings, "LEASE_MAX_STAMP_SIDE", 12000)       # max width/height before stamping
+MAX_STAMP_SIDE   = getattr(settings, "LEASE_MAX_STAMP_SIDE", 1600)       # max width/height before stamping
 MAX_STAMP_PIXELS = getattr(settings, "LEASE_MAX_STAMP_PIXELS", 80_000_000)  # 80 MP guard
 MAX_THUMB_SIDE   = getattr(settings, "LEASE_MAX_THUMB_SIDE", 512)
 
@@ -83,7 +84,7 @@ STAMP_MIN_PX = getattr(settings, "LEASE_STAMP_MIN_PX",       12)
 
 def _fs_part(s: str) -> str:
     s = (s or "").strip()
-    s = re.sub(r'[^A-Za-z0-9._-]+', "-", s)
+    s = re.sub(r'[^A-Za-z0-9._-]+', "_", s)
     return s.strip(".-_ ") or "item"
 
 
@@ -105,7 +106,7 @@ def _folder_name_for_lease(lease) -> str:
     tenant10 = _fs_part(tenant_name)[:28] or "tenant"
     end = getattr(lease, "end_date", None)
     end_str = end.strftime("%Y-%m-%d") if end else "unknown"
-    return f"{prop}-{unit}-{tenant10}-{end_str}"
+    return f"{prop}_{unit}_{tenant10}_{end_str}"
 
 
 def _date_for_media(i: "LeaseMedia") -> str:
@@ -119,7 +120,7 @@ def _lease_media_stem(i: "LeaseMedia", token: str | None = None) -> str:
 
 
 def _base_dir(i: "LeaseMedia") -> str:
-    return f"leases/lease_photos/{_folder_name_for_lease(i.lease)}"
+    return f"lease/{_folder_name_for_lease(i.lease)}"
 
 
 def _photo_filename(i: "LeaseMedia", ext: str) -> str:
@@ -314,7 +315,7 @@ class LeaseMedia(models.Model):
         max_length=255,
         upload_to=_upload_tmp,
         validators=[FileExtensionValidator(
-            ["jpg", "jpeg", "png", "webp", "gif", "pdf", "mp4", "mov", "avi", "mkv"])],
+            ["jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "pdf", "mp4", "mov", "avi", "mkv"])],
     )
     # single-file strategy: no originals field
     thumbnail = models.ImageField(
@@ -349,6 +350,32 @@ class LeaseMedia(models.Model):
     class Meta:
         ordering = ["sort_order", "created_at"]
 
+    @property
+    def file_exists(self):
+        return bool(self.file and self.file.name and default_storage.exists(self.file.name))
+
+    @property
+    def thumbnail_exists(self):
+        return bool(self.thumbnail and self.thumbnail.name and default_storage.exists(self.thumbnail.name))
+
+    @property
+    def display_file_url(self):
+        if not self.file_exists:
+            return ""
+        try:
+            return self.file.url
+        except Exception:
+            return ""
+
+    @property
+    def display_thumbnail_url(self):
+        try:
+            if self.thumbnail_exists:
+                return self.thumbnail.url
+            return self.display_file_url
+        except Exception:
+            return ""
+
     def build_friendly_filename(self, force_ext: str | None = None) -> str:
         base = f"{_folder_name_for_lease(self.lease)}-{self.pk or 'new'}"
         ext = (force_ext or os.path.splitext(self.file.name)[1] or ".jpg")
@@ -358,7 +385,12 @@ class LeaseMedia(models.Model):
 
     def delete(self, *args, **kwargs):
         def _move(src_path: str, suffix: str):
-            if not src_path or not default_storage.exists(src_path):
+            if not src_path:
+                return
+            try:
+                if not default_storage.exists(src_path):
+                    return
+            except (FileNotFoundError, OSError):
                 return
             base_dir = f"{_base_dir(self)}/deleted_photos"
             base = os.path.splitext(os.path.basename(src_path))[0]
@@ -371,16 +403,24 @@ class LeaseMedia(models.Model):
                         default_storage.path(dst)), exist_ok=True)
                 except Exception:
                     pass
-                src_abs = default_storage.path(src_path)
-                dst_abs = default_storage.path(dst)
+                try:
+                    src_abs = default_storage.path(src_path)
+                    dst_abs = default_storage.path(dst)
+                except (FileNotFoundError, OSError):
+                    return
                 for i in range(5):
                     try:
                         os.replace(src_abs, dst_abs)
                         return
+                    except FileNotFoundError:
+                        return
                     except PermissionError:
                         if i == 4:
-                            with default_storage.open(src_path, "rb") as fh:
-                                _write_bytes_exact(dst, fh.read())
+                            try:
+                                with default_storage.open(src_path, "rb") as fh:
+                                    _write_bytes_exact(dst, fh.read())
+                            except (FileNotFoundError, OSError):
+                                return
                             try:
                                 default_storage.delete(src_path)
                             except Exception:
@@ -388,8 +428,11 @@ class LeaseMedia(models.Model):
                             return
                         time.sleep(0.25)
             else:
-                with default_storage.open(src_path, "rb") as fh:
-                    _write_bytes_exact(dst, fh.read())
+                try:
+                    with default_storage.open(src_path, "rb") as fh:
+                        _write_bytes_exact(dst, fh.read())
+                except (FileNotFoundError, OSError):
+                    return
                 try:
                     default_storage.delete(src_path)
                 except Exception:
@@ -610,7 +653,7 @@ class LeaseMedia(models.Model):
         file_name = (self.file.name or "")
         ext = os.path.splitext(file_name)[1].lower() or ".jpg"
         is_video = ext in [".mp4", ".mov", ".avi", ".mkv"]
-        is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+        is_image = ext in IMAGE_UPLOAD_EXTENSIONS or ext == ".gif"
         self.media_type = "video" if is_video else ("image" if is_image else "file")
         if was_adding and not self.original_filename:
             self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
@@ -634,10 +677,6 @@ class LeaseMedia(models.Model):
             with default_storage.open(file_name, "rb") as fh:
                 raw = fh.read()
             base_img = _prepare_base_for_stamp(raw)
-
-            
-            base_img = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
-
 
             # immutable footer & compose stamped bytes
             static_line = self._compose_static_footer_text()
@@ -782,7 +821,7 @@ def _auto_export_pdf(sender, instance, **kwargs):
         return
 
     folder = _folder_name_for_lease(lease)
-    base_dir = f"leases/lease_photos/{folder}"
+    base_dir = f"lease/{folder}"
     pdf_path = f"{base_dir}/{folder}.pdf"
 
     try:

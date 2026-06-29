@@ -21,6 +21,8 @@ from smart_meter.switch_OnOff import frame_command as build_switch_frame  # add 
 # add at top (same helpers used in views)
 from smart_meter.utils.commands import send_via_listener, refresh_live
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 
 class Meter(models.Model):
@@ -28,10 +30,34 @@ class Meter(models.Model):
         ("postpaid", "Postpaid"),
         ("prepaid", "Prepaid"),
     ]
+    METER_TYPE_ELECTRIC = "electric"
+    METER_TYPE_GAS = "gas"
+    METER_TYPE_WATER = "water"
+    METER_TYPE_SUB = "sub_meter"
+    METER_TYPE_OTHER = "other"
+    METER_TYPE_CHOICES = [
+        (METER_TYPE_ELECTRIC, "Electric"),
+        (METER_TYPE_GAS, "Gas"),
+        (METER_TYPE_WATER, "Water"),
+        (METER_TYPE_SUB, "Sub Meter"),
+        (METER_TYPE_OTHER, "Other"),
+    ]
 
-    unit = models.OneToOneField("properties.Unit", on_delete=models.CASCADE)
+    unit = models.ForeignKey(
+        "properties.Unit",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="current_meters",
+        help_text="Cached current unit only. Billing uses MeterInstallation history.",
+    )
     meter_number = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=100, blank=True, null=True)
+    meter_type = models.CharField(
+        max_length=20,
+        choices=METER_TYPE_CHOICES,
+        default=METER_TYPE_ELECTRIC,
+    )
     billing_mode = models.CharField(
         max_length=20,
         choices=BILLING_MODE_CHOICES,
@@ -69,9 +95,20 @@ class Meter(models.Model):
 
     @property
     def current_lease(self):
+        installation = (
+            self.installations
+            .filter(is_active=True, end_date__isnull=True)
+            .select_related("lease", "unit")
+            .first()
+        )
+        if installation and installation.lease:
+            return installation.lease
+        unit = installation.unit if installation else self.unit
+        if not unit:
+            return None
         return (
             Lease.objects
-            .filter(unit=self.unit, status="active")
+            .filter(unit=unit, status="active")
             .order_by("-start_date")
             .first()
         )
@@ -111,6 +148,98 @@ class Meter(models.Model):
         indexes = [
             models.Index(fields=['meter_number']),
         ]
+
+
+class MeterInstallation(models.Model):
+    meter = models.ForeignKey(
+        Meter,
+        on_delete=models.PROTECT,
+        related_name="installations",
+    )
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.PROTECT,
+        related_name="meter_installations",
+    )
+    lease = models.ForeignKey(
+        Lease,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meter_installations",
+    )
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    start_reading = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    end_reading = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    active_meter_key = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        editable=False,
+        unique=True,
+        help_text="Internal DB guard: meter id while active, NULL when closed.",
+    )
+    installed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meter_installations",
+    )
+    reason = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-start_date", "-id"]
+        indexes = [
+            models.Index(fields=["meter", "is_active", "start_date"]),
+            models.Index(fields=["unit", "is_active", "start_date"]),
+            models.Index(fields=["lease", "start_date"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(end_date__isnull=True) | Q(end_date__gte=models.F("start_date")),
+                name="meter_installation_end_after_start",
+            ),
+        ]
+
+    def clean(self):
+        if self.end_date and self.end_date < self.start_date:
+            raise ValidationError({"end_date": "End date cannot be before start date."})
+        if self.is_active and self.end_date:
+            raise ValidationError({"is_active": "Closed installations cannot remain active."})
+        if self.is_active:
+            clash = MeterInstallation.objects.filter(
+                meter=self.meter,
+                is_active=True,
+                end_date__isnull=True,
+            )
+            if self.pk:
+                clash = clash.exclude(pk=self.pk)
+            if clash.exists():
+                raise ValidationError("This meter already has an active installation.")
+
+    def save(self, *args, **kwargs):
+        self.active_meter_key = self.meter_id if self.is_active and self.end_date is None else None
+        self.full_clean()
+        super().save(*args, **kwargs)
+        if self.is_active and self.end_date is None and self.meter.unit_id != self.unit_id:
+            Meter.objects.filter(pk=self.meter_id).update(unit=self.unit)
+
+    def close(self, *, end_date, end_reading=None, notes=""):
+        self.end_date = end_date
+        self.end_reading = end_reading
+        self.is_active = False
+        if notes:
+            self.notes = (self.notes + "\n" + notes).strip()
+        self.save()
+
+    def __str__(self):
+        end = self.end_date or "current"
+        return f"{self.meter.meter_number} @ {self.unit} ({self.start_date} to {end})"
 
 
 class MeterAssignmentHistory(models.Model):

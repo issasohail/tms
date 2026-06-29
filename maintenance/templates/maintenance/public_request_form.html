@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maintenance Request</title>
+  <style>
+    :root { color-scheme: light; --border:#d9e0e8; --text:#172033; --muted:#667085; --blue:#0d6efd; --bg:#f5f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Arial, sans-serif; background:var(--bg); color:var(--text); }
+    .page { width:100%; max-width:680px; margin:0 auto; padding:18px 12px 32px; }
+    .panel { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .head { padding:18px 16px; border-bottom:1px solid var(--border); }
+    h1 { margin:0; font-size:22px; line-height:1.2; }
+    .sub { color:var(--muted); font-size:14px; margin-top:6px; line-height:1.4; }
+    .body { padding:16px; }
+    .info { display:grid; grid-template-columns:1fr; gap:8px; margin-bottom:16px; }
+    .info-row { border:1px solid var(--border); border-radius:7px; padding:10px 12px; background:#fbfcff; }
+    .label { display:block; color:var(--muted); font-size:12px; font-weight:700; text-transform:uppercase; margin-bottom:4px; }
+    .value { font-size:15px; overflow-wrap:anywhere; }
+    .field { margin-bottom:14px; }
+    label { display:block; font-size:14px; font-weight:700; margin-bottom:6px; }
+    input[type="text"], textarea { width:100%; border:1px solid var(--border); border-radius:7px; padding:12px; font-size:16px; min-height:46px; }
+    textarea { min-height:130px; resize:vertical; }
+    .upload { display:block; width:100%; border:2px dashed #98b6e8; border-radius:8px; background:#f4f8ff; padding:18px 12px; text-align:center; cursor:pointer; }
+    .upload span { display:block; color:var(--blue); font-size:16px; font-weight:700; }
+    .upload small { color:var(--muted); display:block; margin-top:6px; line-height:1.35; }
+    input[type="file"] { width:100%; margin-top:10px; font-size:15px; }
+    .btn { width:100%; min-height:50px; border:0; border-radius:7px; background:var(--blue); color:#fff; font-size:17px; font-weight:700; cursor:pointer; }
+    .error { background:#fff3f3; color:#b42318; border:1px solid #f3b6b6; border-radius:7px; padding:10px 12px; margin-bottom:14px; }
+    .invalid { text-align:center; padding:28px 16px; }
+    @media (min-width:560px) { .info { grid-template-columns:1fr 1fr; } .page { padding-top:28px; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="panel">
+      {% if invalid_link %}
+        <div class="invalid">
+          <h1>Maintenance link unavailable</h1>
+          <p class="sub">Please contact management for a fresh maintenance request link.</p>
+        </div>
+      {% else %}
+        <div class="head">
+          <h1>Maintenance Request</h1>
+          <div class="sub">Describe the issue and attach photos, videos, PDFs, or related files.</div>
+        </div>
+        <div class="body">
+          <div class="info">
+            <div class="info-row"><span class="label">Property</span><span class="value">{{ lease.unit.property.property_name }}</span></div>
+            <div class="info-row"><span class="label">Unit</span><span class="value">{{ lease.unit.unit_number }}</span></div>
+            <div class="info-row"><span class="label">Tenant</span><span class="value">{{ lease.tenant.get_full_name }}</span></div>
+            <div class="info-row"><span class="label">Phone</span><span class="value">{{ tenant_phone|default:"-" }}</span></div>
+          </div>
+          {% if form_error %}<div class="error">{{ form_error }}</div>{% endif %}
+          <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="submission_key" value="{{ submission_key }}">
+            <div class="field">
+              <label for="id_title">Request title</label>
+              <input id="id_title" type="text" name="title" maxlength="160" required autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="id_description">Description</label>
+              <textarea id="id_description" name="description" placeholder="What is happening? Where is it located?"></textarea>
+            </div>
+            <div class="field">
+              <label for="id_files" class="upload">
+                <span>Choose files to upload</span>
+                <small>JPG, JPEG, PNG, WEBP, PDF, MP4, MOV, or WEBM. Multiple files allowed.</small>
+              </label>
+              <input id="id_files" type="file" name="files" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.mp4,.mov,.webm,image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime,video/webm">
+            </div>
+            <button class="btn" type="submit">Submit Request</button>
+          </form>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

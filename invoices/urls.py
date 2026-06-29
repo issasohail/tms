@@ -31,12 +31,20 @@ from . import views
 app_name = 'invoices'
 
 urlpatterns = [
+    path("monthly-billing/", views.MonthlyBillingRunListView.as_view(), name="monthly_billing_run_list"),
+    path("monthly-billing/create/", views.monthly_billing_run_create, name="monthly_billing_run_create"),
+    path("monthly-billing/<int:pk>/", views.MonthlyBillingRunDetailView.as_view(), name="monthly_billing_run_detail"),
+    path("monthly-billing/<int:pk>/action/", views.monthly_billing_run_action, name="monthly_billing_run_action"),
+    path("monthly-billing/<int:pk>/export/", views.monthly_billing_run_export, name="monthly_billing_run_export"),
+    path("monthly-billing/items/<int:pk>/water/", views.monthly_billing_water_update, name="monthly_billing_water_update"),
+
     # List/Create
     path('', InvoiceListView.as_view(), name='invoice_list'),
     path('create/', InvoiceCreateView.as_view(), name='invoice_create'),
 
     # Detail/Update/Delete
     path('<int:pk>/', InvoiceDetailView.as_view(), name='invoice_detail'),
+    path('public/<path:token>/', views.public_invoice_detail, name='public_invoice_detail'),
     path('<int:pk>/update/', InvoiceUpdateView.as_view(), name='invoice_update'),
     path('<int:pk>/delete/', InvoiceDeleteView.as_view(), name='invoice_delete'),
 

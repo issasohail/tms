@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% load account_access_tags %}
+
+{% block title %}{% if is_create %}New Group{% else %}Edit Group{% endif %}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h2 class="fs-5 mb-0">{% if is_create %}New Group{% else %}Edit Group: {{ managed_group.name }}{% endif %}</h2>
+  <a href="{% url 'accounts:group_access_list' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+</div>
+
+<form method="post" class="card">
+  {% csrf_token %}
+  <div class="card-body">
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
+      <div class="col-md-8">
+        <label class="form-label">Extra Group Fields</label>
+        <div class="form-control form-control-sm text-muted bg-light">
+          Built-in groups store only name and permissions. Extra fields require a Group Profile model/migration.
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="mb-0">Permissions</h6>
+      <span class="small text-muted">View / Add / Update / Delete by app table</span>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mb-2 permission-toolbar">
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="view">Select All View</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="add">Select All Add</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="change">Select All Change</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="delete">Select All Delete</button>
+      <button type="button" class="btn btn-outline-danger btn-sm js-clear-all">Clear All</button>
+      <div class="vr d-none d-md-block"></div>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="admin">Admin Full</button>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="manager">Manager</button>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="data-entry">Data Entry</button>
+      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="viewer">Viewer</button>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle permission-table">
+        <thead class="table-light">
+          <tr>
+            <th>App</th>
+            <th>Table</th>
+            <th class="text-center">All</th>
+            <th class="text-center">View</th>
+            <th class="text-center">Add</th>
+            <th class="text-center">Update</th>
+            <th class="text-center">Delete</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in permission_groups %}
+            <tr>
+              <td class="text-muted">{{ group.app_label }}</td>
+              <td>{{ group.label }}</td>
+              <td class="text-center">
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-row-all">All</button>
+              </td>
+              {% for action, action_label in permission_actions %}
+                <td class="text-center">
+                  {% with perm=group.permissions|get_item:action %}
+                    {% if perm %}
+                      <input type="checkbox" name="permissions" value="{{ perm.id }}" data-action="{{ action }}" {% if perm.id in selected_permissions %}checked{% endif %}>
+                    {% endif %}
+                  {% endwith %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-muted p-3">No permissions found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer d-flex justify-content-end gap-2">
+    <a href="{% url 'accounts:group_access_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+    <button type="submit" class="btn btn-primary btn-sm">Save Group</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .permission-table th,
+  .permission-table td {
+    white-space: nowrap;
+  }
+  @media (max-width: 576px) {
+    .permission-table { font-size: .75rem; }
+    .permission-toolbar .btn { font-size: .72rem; }
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const checks = () => Array.from(document.querySelectorAll('input[name="permissions"]'));
+  const setActions = actions => {
+    checks().forEach(input => { input.checked = actions.includes(input.dataset.action); });
+  };
+
+  document.querySelectorAll('.js-select-action').forEach(button => {
+    button.addEventListener('click', () => {
+      checks().filter(input => input.dataset.action === button.dataset.action)
+        .forEach(input => { input.checked = true; });
+    });
+  });
+
+  document.querySelector('.js-clear-all')?.addEventListener('click', () => {
+    checks().forEach(input => { input.checked = false; });
+  });
+
+  document.querySelectorAll('.js-row-all').forEach(button => {
+    button.addEventListener('click', () => {
+      const rowChecks = Array.from(button.closest('tr').querySelectorAll('input[name="permissions"]'));
+      const shouldCheck = rowChecks.some(input => !input.checked);
+      rowChecks.forEach(input => { input.checked = shouldCheck; });
+    });
+  });
+
+  document.querySelectorAll('.js-preset').forEach(button => {
+    button.addEventListener('click', () => {
+      const preset = button.dataset.preset;
+      if (preset === 'admin') {
+        checks().forEach(input => { input.checked = true; });
+      } else if (preset === 'manager') {
+        setActions(['view', 'add', 'change']);
+      } else if (preset === 'data-entry') {
+        setActions(['view', 'add', 'change']);
+        checks().filter(input => input.dataset.action === 'delete')
+          .forEach(input => { input.checked = false; });
+      } else if (preset === 'viewer') {
+        setActions(['view']);
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

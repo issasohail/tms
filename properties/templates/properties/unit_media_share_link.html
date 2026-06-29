@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-1">Unit Photo Share Link</h2>
-        <div class="text-muted small">{{ unit.property.property_name }} - Unit {{ unit.unit_number }}</div>
+        <div class="text-muted small">{{ owner_label }}</div>
     </div>
     <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">Back</a>
 </div>
@@ -22,9 +22,6 @@
             <input type="text" class="form-control" value="{{ share_url }}" readonly>
             <a href="{{ share_url }}" target="_blank" rel="noopener" class="btn btn-primary">Open</a>
         </div>
-        <form method="get" action="{% url 'properties:unit_media_share_link' unit.pk %}" class="mt-3">
-            <button type="submit" class="btn btn-outline-primary btn-sm">Regenerate Link</button>
-        </form>
     </div>
 </div>
 {% endblock %}

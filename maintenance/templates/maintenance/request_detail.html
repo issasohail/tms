@@ -9,6 +9,7 @@
       <a href="{% url 'maintenance:request_list' %}" class="btn btn-secondary btn-sm">List</a>
       <a href="{% url 'maintenance:request_edit' request_obj.id %}" class="btn btn-primary btn-sm">Edit</a>
       <a href="{% url 'maintenance:request_delete' request_obj.id %}" class="btn btn-danger btn-sm">Delete</a>
+      {% include "whatsapp/_dropdown.html" with phone=request_obj.lease_tenant.phone object_type="maintenance" object_id=request_obj.pk %}
     </div>
   </div>
 
@@ -23,8 +24,8 @@
           <div class="row g-2 small mb-3">
             <div class="col-md-4"><span class="text-muted">Building:</span> {{ request_obj.building|default:"-" }}</div>
             <div class="col-md-4"><span class="text-muted">Unit:</span> {{ request_obj.unit|default:"-" }}</div>
-            <div class="col-md-4"><span class="text-muted">Tenant:</span> {{ request_obj.tenant|default:"-" }}</div>
-            <div class="col-md-4"><span class="text-muted">Category:</span> {{ request_obj.get_category_display }}</div>
+            <div class="col-md-4"><span class="text-muted">Tenant:</span> {% if request_obj.lease %}{{ request_obj.lease.tenant|default:"-" }}{% else %}-{% endif %}</div>
+            <div class="col-md-4"><span class="text-muted">Category:</span> {{ request_obj.category_ref|default:request_obj.category|default:"-" }}</div>
             <div class="col-md-4"><span class="text-muted">Priority:</span> {{ request_obj.get_priority_display }}</div>
             <div class="col-md-4"><span class="text-muted">Assigned:</span> {{ request_obj.assigned_to|default:"-" }}</div>
             <div class="col-md-4"><span class="text-muted">Reported:</span> {{ request_obj.reported_date|date:"M d, Y" }}</div>

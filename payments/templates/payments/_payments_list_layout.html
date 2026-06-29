@@ -10,6 +10,10 @@
   <h2>{{ heading|default:"Records" }}</h2>
   <div class="d-flex gap-2">
     {% block header_buttons %}{% endblock %}
+    <label class="form-check form-check-inline small mb-0 align-self-center" title="Use WhatsApp Cloud API instead of opening WhatsApp links">
+      <input class="form-check-input" type="checkbox" id="payment-use-whatsapp-api" data-whatsapp-api-toggle="payment-list">
+      <span class="form-check-label">Use WhatsApp API</span>
+    </label>
     {% include "includes/export_buttons.html" %}
   </div>
 </div>
@@ -568,6 +572,25 @@ document.addEventListener("DOMContentLoaded", function () {
 <script>
   const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
 
+  function paymentListCsrfToken() {
+    const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : "";
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll("[data-whatsapp-api-toggle]").forEach(function(input) {
+      const key = "tms:" + input.dataset.whatsappApiToggle;
+      input.checked = localStorage.getItem(key) === "1";
+      input.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      input.addEventListener("change", function(event) {
+        event.preventDefault();
+        localStorage.setItem(key, input.checked ? "1" : "0");
+      });
+    });
+  });
+
   function normalizePhone(rawPhone, defaultCountryCodeRaw) {
     if (!rawPhone) return null;
     let raw = String(rawPhone).trim();
@@ -599,6 +622,18 @@ document.addEventListener("DOMContentLoaded", function () {
     e.preventDefault();
 
     try {
+      if (document.getElementById("payment-use-whatsapp-api")?.checked && btn.dataset.objectId) {
+        const apiUrl = `/tms/whatsapp/send/payment/${btn.dataset.objectId}/receipt/`;
+        const apiRes = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "X-CSRFToken": paymentListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin"
+        });
+        if (!apiRes.ok) throw new Error("API send failed");
+        alert("Receipt sent via WhatsApp API.");
+        return;
+      }
+
       const url = btn.dataset.waUrl;
       const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) throw new Error("Failed to fetch receipt payload");

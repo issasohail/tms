@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static humanize %}
+{% load static humanize money_tags %}
 
 {% block title %}Invoice #{{ invoice.invoice_number }}{% endblock %}
 
@@ -31,6 +31,7 @@
         onclick="sendWhatsAppSingleInvoice('{{ invoice.lease.tenant.phone|default:''|escapejs }}')">
         <i class="fab fa-whatsapp me-1"></i> WhatsApp
       </button>
+      {% include "whatsapp/_dropdown.html" with phone=invoice.lease.tenant.phone object_type="invoice" object_id=invoice.pk %}
     </div>
 
     {# Right cluster: record actions #}
@@ -89,7 +90,7 @@
           <div class="row g-1">
             <div class="col-6">
               <p class="mb-0 text-muted inv-field-label">Lease Balance</p>
-              <p class="mb-0 fw-semibold">{{ invoice.lease.get_balance|money:2 }}</p>
+              <p class="mb-0 fw-semibold">{{ lease_balance|money:2 }}</p>
             </div>
             <div class="col-6">
               <p class="mb-0 text-muted inv-field-label">Lease End</p>
@@ -543,7 +544,7 @@ function sendEmail() {
     `Invoice Number: {{ invoice.invoice_number }}\n` +
     `Amount: {{ computed_total|money:2 }}\n` +
     `Due Date: {{ invoice.due_date|date:"M d, Y" }}\n` +
-    `Lease Balance: {{ invoice.lease.get_balance|money:2 }}\n` +
+    `Lease Balance: {{ lease_balance|money:2 }}\n` +
     `Property: {{ invoice.lease.unit.property.property_name }}\n` +
     `Unit: {{ invoice.lease.unit.unit_number }}\n\nThank you!`;
   window.location.href = `mailto:{{ invoice.lease.tenant.email }}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -557,7 +558,7 @@ function sendSMS() {
     `Invoice #{{ invoice.invoice_number }}\n` +
     `Amount: {{ computed_total|money:2 }}\n` +
     `Due: {{ invoice.due_date|date:"M d, Y" }}\n` +
-    `Balance: {{ invoice.lease.get_balance|money:2 }}\n` +
+    `Balance: {{ lease_balance|money:2 }}\n` +
     `{{ invoice.lease.unit.property.property_name }} – {{ invoice.lease.unit.unit_number }}`;
   if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
     window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`, '_blank');
@@ -579,7 +580,7 @@ function sendWhatsAppSingleInvoice(phone) {
   const tenantFull    = '{{ invoice.lease.tenant.first_name|default:""|add:" "|add:invoice.lease.tenant.last_name|default:""|escapejs }}'.slice(0, 25);
   const propertyName  = '{{ invoice.lease.unit.property.property_name|default:""|escapejs }}';
   const unitNumber    = '{{ invoice.lease.unit.unit_number|default:""|escapejs }}';
-  const leaseBalFmt   = '{{ invoice.lease.get_balance|floatformat:2|intcomma|escapejs }}';
+  const leaseBalFmt   = '{{ lease_balance|floatformat:2|intcomma|escapejs }}';
   const totalFmt      = '{{ computed_total|floatformat:2|intcomma|escapejs }}';
   const secBalFmt     = '{{ sec_totals.balance_to_collect|floatformat:2|intcomma|escapejs }}';
 

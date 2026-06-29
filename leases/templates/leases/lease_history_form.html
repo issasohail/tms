@@ -2,35 +2,334 @@
 {% load humanize %}
 
 {% block content %}
-<div class="container mt-3">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <h2 class="mb-0">Edit Lease History #{{ history.renewal_number }}</h2>
-    <a href="{% url 'leases:lease_history_detail' lease.pk history.pk %}" class="btn btn-secondary btn-sm">Cancel</a>
+<style>
+/* =====================================================
+   Lease History Form
+   Compact professional admin layout
+   ===================================================== */
+.lhf-shell {
+  width: min(100%, 1320px);
+  margin: 0 auto;
+  padding: 14px 12px 24px;
+  font-size: .86rem;
+}
+
+.lhf-header {
+  background: #fff;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+}
+.lhf-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.lhf-title-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: #1a1f35;
+  color: #7eb3f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+.lhf-title {
+  margin: 0;
+  color: #172033;
+  font-size: 1.08rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+.lhf-subtitle {
+  margin-top: 2px;
+  color: #7a869f;
+  font-size: .76rem;
+}
+.lhf-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.lhf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lhf-badge-active { background: #dcfce7; color: #166534; }
+.lhf-badge-archived { background: #e8eef8; color: #475569; }
+
+.lhf-summary {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.lhf-stat {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.lhf-stat-label {
+  color: #8a96b4;
+  font-size: .64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.lhf-stat-value {
+  margin-top: 3px;
+  color: #1a1f35;
+  font-size: .84rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lhf-alert {
+  margin-top: 10px;
+  border-radius: 8px;
+  padding: 9px 12px;
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  border: 1px solid;
+}
+.lhf-alert i {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.lhf-alert-title {
+  font-weight: 750;
+  color: #172033;
+  margin-bottom: 2px;
+}
+.lhf-alert-text {
+  color: #5f6b82;
+  font-size: .78rem;
+}
+.lhf-alert-warning {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+.lhf-alert-warning i { color: #c2410c; }
+.lhf-alert-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.lhf-alert-info i { color: #1d4ed8; }
+.lhf-alert-danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.lhf-alert-danger i { color: #dc2626; }
+
+.lhf-card {
+  margin-top: 10px;
+  background: #fff;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+}
+.lhf-card-head {
+  background: #1a1f35;
+  color: #c8d4f0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.lhf-card-head i { color: #7eb3f5; font-size: 14px; }
+.lhf-card-body { padding: 12px; }
+.lhf-card-footer {
+  background: #f8fafc;
+  border-top: 1px solid #e2e6f0;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lhf-preview-table {
+  margin: 0;
+  font-size: .8rem;
+}
+.lhf-preview-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+.lhf-preview-table td,
+.lhf-preview-table th {
+  padding: .45rem .55rem;
+  vertical-align: middle;
+}
+
+.lhf-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.lhf-field-wide { grid-column: 1 / -1; }
+.lhf-field label {
+  color: #8a96b4;
+  font-size: .66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 3px;
+}
+.lhf-field input,
+.lhf-field select,
+.lhf-field textarea {
+  width: 100%;
+  font-size: .84rem;
+  border-color: #dbe3ef;
+  border-radius: 6px;
+  background-color: #f8fafc;
+}
+.lhf-field input:focus,
+.lhf-field select:focus,
+.lhf-field textarea:focus {
+  border-color: #2856c8;
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(40, 86, 200, .12);
+}
+.lhf-field textarea {
+  min-height: 86px;
+}
+.lhf-errors {
+  margin-top: 4px;
+  color: #dc2626;
+  font-size: .74rem;
+}
+
+@media (max-width: 991px) {
+  .lhf-summary,
+  .lhf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 576px) {
+  .lhf-shell { padding: 10px 8px 18px; }
+  .lhf-header { align-items: flex-start; }
+  .lhf-actions { width: 100%; justify-content: flex-start; }
+  .lhf-summary,
+  .lhf-grid { grid-template-columns: 1fr; }
+  .lhf-card-footer { align-items: stretch; }
+  .lhf-card-footer .d-flex { width: 100%; }
+  .lhf-card-footer .btn { flex: 1; }
+}
+</style>
+
+<div class="lhf-shell">
+  <div class="lhf-header">
+    <div class="lhf-title-wrap">
+      <div class="lhf-title-icon"><i class="ti ti-history"></i></div>
+      <div>
+        <h2 class="lhf-title">Edit Lease History #{{ history.renewal_number }}</h2>
+        <div class="lhf-subtitle">
+          Lease #{{ lease.id }}{% if lease.tenant %} • {{ lease.tenant.get_full_name }}{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="lhf-actions">
+      {% if is_active_history %}
+        <span class="lhf-badge lhf-badge-active"><i class="ti ti-circle-check"></i> Active History</span>
+      {% else %}
+        <span class="lhf-badge lhf-badge-archived"><i class="ti ti-archive"></i> Archived History</span>
+      {% endif %}
+      <a href="{% url 'leases:lease_history_detail' lease.pk history.pk %}" class="btn btn-outline-secondary btn-sm">
+        <i class="ti ti-arrow-left"></i> Back
+      </a>
+    </div>
+  </div>
+
+  <div class="lhf-summary">
+    <div class="lhf-stat">
+      <div class="lhf-stat-label">Property / Unit</div>
+      <div class="lhf-stat-value">
+        {% if lease.unit %}{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}{% else %}-{% endif %}
+      </div>
+    </div>
+    <div class="lhf-stat">
+      <div class="lhf-stat-label">History Period</div>
+      <div class="lhf-stat-value">{{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }}</div>
+    </div>
+    <div class="lhf-stat">
+      <div class="lhf-stat-label">Monthly Rent</div>
+      <div class="lhf-stat-value">Rs {{ history.monthly_rent|default:0|floatformat:0|intcomma }}</div>
+    </div>
+    <div class="lhf-stat">
+      <div class="lhf-stat-label">Agreement Date</div>
+      <div class="lhf-stat-value">{{ history.agreement_date|date:"M d, Y"|default:"-" }}</div>
+    </div>
   </div>
 
   {% if is_active_history %}
-    <div class="alert alert-warning py-2">
-      This is the active/current history. Saving financial or date changes will also update the master lease and recurring charges after confirmation.
+    <div class="lhf-alert lhf-alert-warning">
+      <i class="ti ti-alert-triangle"></i>
+      <div>
+        <div class="lhf-alert-title">Active lease history</div>
+        <div class="lhf-alert-text">Saving financial or date changes will also update the master lease and recurring charges after confirmation.</div>
+      </div>
     </div>
   {% else %}
-    <div class="alert alert-info py-2">
-      This is an old/inactive history. Saving changes here will not update the master lease or recurring charges.
+    <div class="lhf-alert lhf-alert-info">
+      <i class="ti ti-info-circle"></i>
+      <div>
+        <div class="lhf-alert-title">Archived lease history</div>
+        <div class="lhf-alert-text">Saving changes here will not update the master lease or recurring charges.</div>
+      </div>
     </div>
   {% endif %}
 
   {% if requires_active_confirmation %}
-    <div class="alert alert-danger">
-      <div class="fw-bold mb-1">Confirm active financial update</div>
-      Review the recurring charge preview below. Paid invoices will not be changed unless you explicitly update existing invoice items.
+    <div class="lhf-alert lhf-alert-danger">
+      <i class="ti ti-shield-exclamation"></i>
+      <div>
+        <div class="lhf-alert-title">Confirm active financial update</div>
+        <div class="lhf-alert-text">Review the recurring charge preview below. Paid invoices will not be changed unless you explicitly update existing invoice items.</div>
+      </div>
     </div>
   {% endif %}
 
   {% if billing_plan %}
-    <div class="card mb-3">
-      <div class="card-header bg-dark text-white py-2 px-3">Recurring Charge Preview</div>
-      <div class="card-body p-0">
-        <table class="table table-sm table-bordered mb-0">
-          <thead class="table-light">
+    <div class="lhf-card">
+      <div class="lhf-card-head">
+        <i class="ti ti-receipt"></i>
+        Recurring Charge Preview
+      </div>
+      <div class="table-responsive">
+        <table class="table table-bordered lhf-preview-table">
+          <thead>
             <tr>
               <th>Category</th>
               <th class="text-end">Before</th>
@@ -42,9 +341,9 @@
           <tbody>
             {% for row in billing_plan.recurring %}
               <tr>
-                <td>{{ row.category }}</td>
+                <td class="fw-semibold">{{ row.category }}</td>
                 <td class="text-end">Rs {{ row.before.amount|default:0|floatformat:0|intcomma }}</td>
-                <td class="text-end">Rs {{ row.after.amount|default:0|floatformat:0|intcomma }}</td>
+                <td class="text-end fw-semibold text-primary">Rs {{ row.after.amount|default:0|floatformat:0|intcomma }}</td>
                 <td>{{ row.after.start_date|date:"M d, Y" }}</td>
                 <td>{{ row.after.end_date|date:"M d, Y"|default:"-" }}</td>
               </tr>
@@ -66,29 +365,39 @@
       {% endfor %}
     {% endif %}
 
-    <div class="card">
-      <div class="card-header bg-dark text-white py-2 px-3">History Terms</div>
-      <div class="card-body">
+    <div class="lhf-card">
+      <div class="lhf-card-head">
+        <i class="ti ti-file-pencil"></i>
+        History Terms
+      </div>
+      <div class="lhf-card-body">
         {% if form.non_field_errors %}
-          <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
         {% endif %}
-        <div class="row g-3">
+
+        <div class="lhf-grid">
           {% for field in form %}
-            <div class="{% if field.name == 'notes' %}col-12{% else %}col-md-4{% endif %}">
-              <label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            <div class="lhf-field {% if field.name == 'notes' %}lhf-field-wide{% endif %}">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
               {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
               {% for error in field.errors %}
-                <div class="text-danger small">{{ error }}</div>
+                <div class="lhf-errors">{{ error }}</div>
               {% endfor %}
             </div>
           {% endfor %}
         </div>
       </div>
-      <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="text-muted small">Existing invoice items are not changed from this screen.</div>
+      <div class="lhf-card-footer">
+        <div class="text-muted small">
+          Existing invoice items are not changed from this screen.
+        </div>
         <div class="d-flex gap-2">
-          <a href="{% url 'leases:lease_history_detail' lease.pk history.pk %}" class="btn btn-secondary btn-sm">Cancel</a>
+          <a href="{% url 'leases:lease_history_detail' lease.pk history.pk %}" class="btn btn-outline-secondary btn-sm">
+            Cancel
+          </a>
           <button type="submit" class="btn btn-primary btn-sm">
+            <i class="ti ti-device-floppy"></i>
             {% if requires_active_confirmation %}Confirm & Save{% else %}Save History{% endif %}
           </button>
         </div>

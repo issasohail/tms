@@ -4,6 +4,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import DetailView, UpdateView
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Case, DecimalField, F, Prefetch, Sum, When
+from django.db.models.functions import Coalesce
 from django.urls import reverse_lazy
 
 from payments.models import PaymentAllocation
@@ -18,6 +20,7 @@ from django.views.generic import DetailView
 from payments.models import PaymentAllocation
 #from leases.utils.billing import security_deposit_totals  # adjust import if different
 from core.models import GlobalSettings  # adjust import if different
+from core.currency import format_money
 from leases.models import Lease
 from invoices.services import security_deposit_totals
 from decimal import Decimal
@@ -32,12 +35,80 @@ from django.views.generic import DetailView, UpdateView, DeleteView
 from payments.models import PaymentAllocation
 from payments.forms import PaymentAllocationForm
 from payments.services.allocation import rebuild_allocation
-from invoices.models import SecurityDepositTransaction
+from invoices.models import Invoice, SecurityDepositTransaction
+
+
+def attach_cached_lease_balances(payments):
+    payments = list(payments)
+    lease_ids = {payment.lease_id for payment in payments if payment.lease_id}
+    if not lease_ids:
+        return payments
+
+    invoice_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Invoice.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(total=Coalesce(Sum("amount"), Decimal("0.00")))
+    }
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    payment_totals = {
+        row["lease_id"]: row["total"] or Decimal("0.00")
+        for row in Payment.objects.filter(lease_id__in=lease_ids)
+        .values("lease_id")
+        .annotate(
+            total=Coalesce(
+                Sum(
+                    Case(
+                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        default=F("amount"),
+                        output_field=money_field,
+                    )
+                ),
+                Decimal("0.00"),
+            )
+        )
+    }
+
+    for payment in payments:
+        lease = getattr(payment, "lease", None)
+        if lease:
+            cached_balance = (
+                invoice_totals.get(lease.pk, Decimal("0.00"))
+                - payment_totals.get(lease.pk, Decimal("0.00"))
+            )
+            lease._cached_get_balance = cached_balance
+            payment.cached_lease_balance = cached_balance
+    return payments
+
 
 class AllocationDetailView(LoginRequiredMixin, DetailView):
     model = PaymentAllocation
     template_name = "payments/allocation_detail.html"
     context_object_name = "allocation"
+
+    def get_queryset(self):
+        # PERF: avoids N+1 on allocation->payment->lease->tenant/unit/property.
+        return super().get_queryset().select_related(
+            "payment",
+            "payment__lease",
+            "payment__lease__tenant",
+            "payment__lease__unit",
+            "payment__lease__unit__property",
+            "payment__payment_method",
+        ).prefetch_related(
+            Prefetch(
+                "payment__lease__security_transactions",
+                queryset=SecurityDepositTransaction.objects.select_related(
+                    "payment",
+                    "allocation",
+                ),
+            ),
+            "payment__lease__invoices",
+            Prefetch(
+                "payment__lease__payments",
+                queryset=Payment.objects.select_related("allocation"),
+            ),
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -50,6 +121,7 @@ class AllocationDetailView(LoginRequiredMixin, DetailView):
         ctx["payment"] = payment
         ctx["lease"] = lease
 
+        # PERF: security totals currently group via repeated aggregate queries; reuse cached lease summary after Phase 4.
         # Security totals (your template expects sec_totals)
         if lease:
             ctx["sec_totals"] = security_deposit_totals(lease)
@@ -97,12 +169,26 @@ class AllocationUpdateView(UpdateView):
         pk = self.kwargs["pk"]
 
         # 1) Try pk as Allocation ID
-        alloc = PaymentAllocation.objects.select_related("payment", "payment__lease").filter(pk=pk).first()
+        alloc = PaymentAllocation.objects.select_related(
+            "payment",
+            "payment__lease",
+            "payment__lease__tenant",
+            "payment__lease__unit",
+            "payment__lease__unit__property",
+        ).filter(pk=pk).first()
         if alloc:
             return alloc, alloc.payment
 
         # 2) Fallback: pk is actually Payment ID
-        payment = get_object_or_404(Payment.objects.select_related("lease"), pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_related(
+                "lease",
+                "lease__tenant",
+                "lease__unit",
+                "lease__unit__property",
+            ),
+            pk=pk,
+        )
 
         # Ensure allocation exists (if missing, create via rebuild)
         existing_alloc = getattr(payment, "allocation", None)
@@ -128,6 +214,7 @@ class AllocationUpdateView(UpdateView):
         context = super().get_context_data(**kwargs)
         context["allocation_form"] = PaymentAllocationForm(instance=self.allocation)
 
+        # PERF: recent payments template accesses payment->lease->tenant/unit/property and lease balance.
         # ---- recent payments selector (same behavior as PaymentCreateView) ----
         size = 10
         try:
@@ -138,29 +225,29 @@ class AllocationUpdateView(UpdateView):
 
         context["recent_size"] = size
         context["recent_size_options"] = [10, 20, 50]
-        context["recent_payments"] = Payment.objects.all().order_by("-id")[:size]
+        context["recent_payments"] = attach_cached_lease_balances(Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+            "payment_method",
+            "allocation",
+        ).order_by("-id")[:size])
 
         # ---- tenants/properties (same as create) ----
         include_inactive = self.request.GET.get("include_inactive") == "on"
         if include_inactive:
             context["active_tenants"] = Tenant.objects.all().distinct().order_by("first_name")
-            context["tenants"] = Tenant.objects.all().distinct().order_by("first_name")
+            context["tenants"] = context["active_tenants"]
         else:
             context["active_tenants"] = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
-            context["tenants"] = Tenant.objects.filter(leases__status="active").distinct().order_by("first_name")
+            context["tenants"] = context["active_tenants"]
 
         context["properties"] = Property.objects.all().order_by("property_name")
         context["today"] = timezone.now().date()
         context["nocache"] = timezone.now().timestamp()
 
-        # IMPORTANT:
-        # Your payment_form.html uses BOTH `form` (payment form) and `allocation_form`.
-        # On allocation edit, `form` is PaymentAllocationForm, so keep `allocation_form` too:
-        context["allocation_form"] = context["form"]
-
-        # Provide a "payment-like" object for template blocks that refer to payment fields
-        # (optional: only if your template accesses form.instance.payment)
-        context["payment"] = getattr(self.object, "payment", None)
+        context["payment"] = self.object
 
         return context
 
@@ -172,22 +259,28 @@ class AllocationUpdateView(UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        payment = form.save()
+        payment = form.save(commit=False)
 
-        alloc_form = PaymentAllocationForm(self.request.POST, instance=self.allocation)
+        alloc_form = PaymentAllocationForm(
+            self.request.POST,
+            instance=self.allocation,
+            payment_total=payment.amount,
+        )
         if not alloc_form.is_valid():
+            form.add_error(None, alloc_form.errors.as_text())
             return self.form_invalid(form)
 
-        alloc = alloc_form.save(commit=False)
+        payment.save()
 
-        rebuild_allocation(
+        alloc = rebuild_allocation(
             payment=payment,
-            lease_amount=alloc.lease_amount,
-            security_amount=alloc.security_amount,
-            security_type=alloc.security_type,
+            lease_amount=alloc_form.cleaned_data["lease_amount"],
+            security_amount=alloc_form.cleaned_data["security_amount"],
+            security_type=alloc_form.cleaned_data["security_type"],
             user=self.request.user,
             reason="Edited allocation",
         )
+        self.allocation = alloc
 
         messages.success(self.request, "Payment + Allocation updated successfully.")
         return redirect(self.get_success_url())
@@ -216,6 +309,10 @@ def _dec(v, default="0.00"):
         return Decimal(str(v or default))
     except (InvalidOperation, ValueError, TypeError):
         return Decimal(default)
+
+
+def _money(value):
+    return format_money(value, GlobalSettings.get_solo())
 
 class AllocationEditView(LoginRequiredMixin, UpdateView):
     """
@@ -251,7 +348,11 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
         # allocation form prefilled from allocation
         if self.request.method == "POST":
-            ctx["allocation_form"] = PaymentAllocationForm(self.request.POST, instance=self.allocation)
+            ctx["allocation_form"] = PaymentAllocationForm(
+                self.request.POST,
+                instance=self.allocation,
+                payment_total=_dec(self.request.POST.get("amount"), "0.00"),
+            )
         else:
             ctx["allocation_form"] = PaymentAllocationForm(instance=self.allocation)
 
@@ -265,7 +366,14 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
         ctx["recent_size"] = size
         ctx["recent_size_options"] = [10, 20, 50]
-        ctx["recent_payments"] = Payment.objects.all().order_by("-id")[:size]
+        ctx["recent_payments"] = attach_cached_lease_balances(Payment.objects.select_related(
+            "lease",
+            "lease__tenant",
+            "lease__unit",
+            "lease__unit__property",
+            "payment_method",
+            "allocation",
+        ).order_by("-id")[:size])
 
         include_inactive = str(self.request.GET.get("include_inactive", "")).lower() in ("on","1","true","yes")
         lease_qs = Lease.objects.all()
@@ -281,32 +389,28 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        payment = form.save()
-        alloc_form = PaymentAllocationForm(self.request.POST, instance=self.allocation)
+        payment = form.save(commit=False)
+        alloc_form = PaymentAllocationForm(
+            self.request.POST,
+            instance=self.allocation,
+            payment_total=payment.amount,
+        )
 
         if not alloc_form.is_valid():
+            form.add_error(None, alloc_form.errors.as_text())
             return self.form_invalid(form)
 
-        alloc = alloc_form.save(commit=False)
-        lease_amt = _dec(self.request.POST.get("lease_amount"), "0.00")
-        sec_amt   = _dec(self.request.POST.get("security_amount"), "0.00")
-        total = lease_amt + sec_amt
+        payment.save()
 
-        if total != payment.amount:
-            form.add_error(None, f"Allocation total ({total}) must equal Payment amount ({payment.amount}).")
-            return self.form_invalid(form)
-
-        alloc.updated_by = self.request.user
-        alloc.save()
-
-        rebuild_allocation(
+        alloc = rebuild_allocation(
             payment=payment,
-            lease_amount=lease_amt,
-            security_amount=sec_amt,
-            security_type=alloc.security_type,
+            lease_amount=alloc_form.cleaned_data["lease_amount"],
+            security_amount=alloc_form.cleaned_data["security_amount"],
+            security_type=alloc_form.cleaned_data["security_type"],
             user=self.request.user,
             reason="Edited via AllocationEditView",
         )
+        self.allocation = alloc
 
         messages.success(self.request, "Allocation updated successfully.")
         return redirect(self.get_success_url())
@@ -384,7 +488,6 @@ class AllocationDeleteView(LoginRequiredMixin, DeleteView):
 
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from decimal import Decimal, InvalidOperation
 
@@ -420,6 +523,9 @@ def allocation_update_api(request):
 
     payment = alloc.payment
     total = lease_amt + sec_amt
+
+    if sec_amt < 0:
+        return JsonResponse({"error": "Security allocation amount cannot be negative."}, status=400)
 
     if total != payment.amount:
         return JsonResponse({
@@ -472,20 +578,19 @@ def build_allocation_receipt_message(request, alloc: PaymentAllocation) -> str:
     ]
 
     if sec_required:
-        lines.append(f"Security Deposit: Rs. {float(sec_required):,.2f} ({sec_status})")
+        lines.append(f"Security Deposit: {_money(sec_required)} ({sec_status})")
         if sec_balance > 0:
-            lines.append(f"*Security Deposit Balance: Rs. {float(sec_balance):,.2f}*")
+            lines.append(f"*Security Deposit Balance: {_money(sec_balance)}*")
 
     if getattr(pay, "payment_date", None):
         lines.append(f"Date: {pay.payment_date:%b %d, %Y}")
 
-    lines.extend([
-        f"*Total Amount Received: Rs. {float(pay.amount or 0):,.2f}*",
-        f"Lease Portion: Rs. {float(alloc.lease_amount or 0):,.2f}",
-        f"Security Portion: Rs. {float(alloc.security_amount or 0):,.2f}",
-        "",
-        "Thank you!",
-    ])
+    lines.append(f"*Total Amount Received: {_money(pay.amount)}*")
+    if (alloc.lease_amount or 0) > 0:
+        lines.append(f"Lease Portion: {_money(alloc.lease_amount)}")
+    if (alloc.security_amount or 0) > 0:
+        lines.append(f"Security Portion: {_money(alloc.security_amount)}")
+    lines.extend(["", "Thank you!"])
 
     return "\n".join([l for l in lines if l])
 
@@ -582,6 +687,9 @@ def allocation_update_api(request):
 
     # Must equal payment amount
     total = lease_amt + sec_amt
+    if sec_amt < 0:
+        return JsonResponse({"ok": False, "error": "Security allocation amount cannot be negative."}, status=400)
+
     if total != (payment.amount or Decimal("0.00")):
         return JsonResponse({"ok": False, "error": f"Split total {total} must equal payment amount {payment.amount}."}, status=400)
 
@@ -615,17 +723,40 @@ def api_allocation_receipt_whatsapp(request, pk: int):
     sec_totals = security_deposit_totals(lease) if lease else {"balance_to_collect": 0, "required": 0}
     sec_status = "Pending" if (sec_totals.get("balance_to_collect") or 0) > 0 else "Paid"
 
-    # Message includes total payment + both portions
+    is_security_refund = (alloc.security_type or "").upper() == "REFUND"
+    is_lease_refund = (alloc.lease_amount or 0) < 0
+    heading = (
+        "*Lease payment refunded*"
+        if is_lease_refund
+        else "*Security deposit refunded*"
+        if is_security_refund
+        else "*Payment received*"
+    )
+    amount_line = (
+        f"*Refund Amount: {_money(abs(alloc.lease_amount))}*"
+        if is_lease_refund
+        else f"*Refund Amount: {_money(alloc.security_amount)}*"
+        if is_security_refund
+        else f"*Total Amount Received: {_money(pay.amount)}*"
+    )
+    security_line = ""
+    if (alloc.security_amount or 0) > 0:
+        security_line = (
+            f"Security Refund: {_money(alloc.security_amount)}\n"
+            if is_security_refund
+            else f"Security Portion: {_money(alloc.security_amount)}\n"
+        )
+
     msg = (
         f"Dear {getattr(tenant,'first_name','')},\n"
-        f"*Payment received* for {lease.unit.property.property_name if lease and lease.unit and lease.unit.property else ''}.\n"
+        f"{heading} for {lease.unit.property.property_name if lease and lease.unit and lease.unit.property else ''}.\n"
         f"Unit: {lease.unit.unit_number if lease and lease.unit else ''}\n"
-        f"Period: {lease.start_date:%b %d, %Y} – {lease.end_date:%b %d, %Y}\n"
-        f"Security Deposit: Rs. {sec_totals.get('required',0):,.2f} ({sec_status})\n"
+        f"Period: {lease.start_date:%b %d, %Y} - {lease.end_date:%b %d, %Y}\n"
+        f"Security Deposit: {_money(sec_totals.get('required', 0))} ({sec_status})\n"
         f"Date: {pay.payment_date:%b %d, %Y}\n"
-        f"*Total Amount Received: Rs. {(pay.amount or 0):,.2f}*\n"
-        f"Lease Portion: Rs. {(alloc.lease_amount or 0):,.2f}\n"
-        f"Security Portion: Rs. {(alloc.security_amount or 0):,.2f}\n"
+        f"{amount_line}\n" +
+        (f"Lease Portion: {_money(alloc.lease_amount)}\n" if (alloc.lease_amount or 0) > 0 else "") +
+        security_line +
         f"Thank you!"
     )
 

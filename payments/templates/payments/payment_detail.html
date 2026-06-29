@@ -42,6 +42,7 @@
             <button onclick="sendWhatsApp()" class="btn btn-success btn-sm me-1">
                 <i class="fab fa-whatsapp me-1"></i> WhatsApp
             </button>
+            {% include "whatsapp/_dropdown.html" with phone=payment.lease.tenant.phone object_type="payment" object_id=payment.pk %}
 
             
         </div>
@@ -56,7 +57,9 @@
                 <div class="card-body p-3"> <!-- Reduced padding -->
                     <div class="d-flex justify-content-between mb-2">
                         <div>
-                            <h4 class="mb-1">PAYMENT RECEIPT</h4>
+                            <h4 class="mb-1">
+                                {% if payment.is_lease_refund %}LEASE REFUND RECEIPT{% elif payment.allocation.security_type == "REFUND" %}SECURITY REFUND RECEIPT{% else %}PAYMENT RECEIPT{% endif %}
+                            </h4>
                             <p class="mb-0 text-muted small">#{{ payment.reference_number|default:"-" }}</p>
                          
                         </div>
@@ -108,7 +111,7 @@
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>Payment for {{ payment.payment_method.name }}</td>
+                                    <td>{% if payment.is_lease_refund %}Lease refund{% elif payment.allocation.security_type == "REFUND" %}Security refund{% else %}Payment for {{ payment.payment_method.name }}{% endif %}</td>
                                     <td class="text-end" >{{ payment.amount|money:2 }}</td>
                                 </tr>
                                 {% if payment.notes %}
@@ -126,7 +129,7 @@
                     <div class="border-top pt-2 mb-2">
                         <div class="row">
                             <div class="col-6 text-end">
-                                <p class="mb-1"><strong>Amount Paid:</strong></p>
+                                <p class="mb-1"><strong>{% if payment.is_lease_refund or payment.allocation.security_type == "REFUND" %}Amount Refunded:{% else %}Amount Paid:{% endif %}</strong></p>
                                 {% if payment.related_invoice %}
                                 <p class="mb-1"><strong>Applied to Invoice:</strong></p>
                                 {% endif %}
@@ -142,7 +145,7 @@
 
                     <!-- Footer -->
                     <div class="text-center p-1 mt-2 small text-muted">
-                        <p class="mb-0">Thank you for your payment!</p>
+                        <p class="mb-0">{% if payment.is_lease_refund %}Lease refund recorded.{% elif payment.allocation.security_type == "REFUND" %}Security refund recorded.{% else %}Thank you for your payment!{% endif %}</p>
                         <p class="mb-0">Receipt generated on {% now "M d, Y" %}</p>
                     </div>
                 </div>
@@ -476,7 +479,7 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         // Build message as lines (Django controls whether sec balance line appears)
         const lines = [
             `Dear {{ payment.lease.tenant.first_name|escapejs }},`,
-            `*Payment received* for {{ payment.lease.unit.property.property_name|escapejs }}.`,
+            `{% if payment.is_lease_refund %}*Lease payment refunded*{% elif payment.allocation.security_type == "REFUND" %}*Security deposit refunded*{% else %}*Payment received*{% endif %} for {{ payment.lease.unit.property.property_name|escapejs }}.`,
             `Unit: {{ payment.lease.unit.unit_number|escapejs }}`,
             `Period: {{ payment.lease.start_date|date:"M d, Y"|escapejs }} – {{ payment.lease.end_date|date:"M d, Y"|escapejs }}`,
             `Security Deposit: ${securityRequired} (${securityStatus})`,
@@ -484,7 +487,7 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
             `Security Deposit Balance: {{ CURRENCY_SYMBOL }} ${secBalStr}`,
             {% endif %}
             `Date: {{ payment.payment_date|date:"M d, Y"|escapejs }}`,
-            `*Amount: {{ payment.amount|money:2|escapejs }}*`,
+            `{% if payment.is_lease_refund or payment.allocation.security_type == "REFUND" %}*Refund Amount: {{ payment.amount|money:2|escapejs }}*{% else %}*Amount: {{ payment.amount|money:2|escapejs }}*{% endif %}`,
             `Lease Balance: {{ CURRENCY_SYMBOL }} ${leaseBalStr}`,
             `*Total Balance: {{ CURRENCY_SYMBOL }} ${totalWithSecStr}*`,
             ``,

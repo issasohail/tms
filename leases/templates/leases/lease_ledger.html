@@ -73,6 +73,12 @@
       <a href="{% url 'leases:send_ledger_email' lease.id %}" class="btn btn-info btn-slim">
         <i class="fas fa-envelope"></i> Email
       </a>
+      {% if security_currently_held > 0 %}
+      <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_currently_held }}"
+         class="btn btn-danger btn-slim">
+        <i class="fas fa-undo"></i> Refund Security
+      </a>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -170,60 +176,83 @@
   </div>
 </div>
 {% endif %}
-<h4>Security Deposit Summary</h4>
-<table class="table table-sm table-bordered w-auto ms-auto">
-  <tr>
-    <th>Required</th>
-    <td>{{ security_required|intcomma }}</td>
-  </tr>
-  <tr>
-    <th>Paid In</th>
-    <td>{{ security_paid_in|intcomma }}</td>
-  </tr>
-  <tr>
-    <th>Refunded</th>
-    <td>{{ security_refunded|intcomma }}</td>
-  </tr>
-  <tr>
-    <th>Used for Damages</th>
-    <td>{{ security_damages|intcomma }}</td>
-  </tr>
-  <tr class="table-warning">
-    <th>Balance to Collect</th>
-    <td>{{ security_balance_to_collect|intcomma }}</td>
-  </tr>
-  <tr class="table-success">
-    <th>Currently Held</th>
-    <td>{{ security_currently_held|intcomma }}</td>
-  </tr>
-</table>
+{% if lease %}
+<div class="deposit-section">
+  <div class="deposit-summary-panel">
+    <h4 class="section-title">Security Deposit Summary</h4>
+    <table class="table table-sm table-bordered deposit-summary-table mb-0">
+      <tr>
+        <th>Required</th>
+        <td>{{ security_required|intcomma }}</td>
+      </tr>
+      <tr>
+        <th>Paid In</th>
+        <td>{{ security_paid_in|intcomma }}</td>
+      </tr>
+      <tr>
+        <th>Refunded</th>
+        <td>{{ security_refunded|intcomma }}</td>
+      </tr>
+      <tr>
+        <th>Used for Damages</th>
+        <td>{{ security_damages|intcomma }}</td>
+      </tr>
+      <tr class="table-warning">
+        <th>Balance to Collect</th>
+        <td>{{ security_balance_to_collect|intcomma }}</td>
+      </tr>
+      <tr class="table-success">
+        <th>Currently Held</th>
+        <td>{{ security_currently_held|intcomma }}</td>
+      </tr>
+    </table>
+  </div>
 
-<h5>Security Deposit Ledger</h5>
-{% if deposit_transactions %}
-<table class="table table-sm table-striped">
-  <thead>
-    <tr>
-      <th>Date</th>
-      <th>Type</th>
-      <th>Description</th>
-      <th class="text-end">Amount</th>
-      <th class="text-end">Deposit Balance</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for t in deposit_transactions %}
-    <tr>
-      <td>{{ t.date|date:"M d, Y" }}</td>
-      <td>{{ t.type }}</td>
-      <td>{{ t.description }}</td>
-      <td class="text-end">{{ t.amount|intcomma }}</td>
-      <td class="text-end">{{ t.balance|intcomma }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p class="text-muted">No security deposit transactions yet.</p>
+  <div class="deposit-ledger-panel">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <h5 class="section-title mb-0">Security Deposit Ledger</h5>
+      <div class="d-flex gap-1">
+        {% if security_currently_held > 0 %}
+        <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_currently_held }}"
+           class="btn btn-danger btn-slim">
+          Refund
+        </a>
+        {% endif %}
+        <a href="{% url 'leases:lease_security_add' lease.id %}" class="btn btn-secondary btn-slim">
+          Manual Entry
+        </a>
+      </div>
+    </div>
+    {% if deposit_transactions %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped deposit-ledger-table mb-0">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th class="text-end">Amount</th>
+            <th class="text-end">Deposit Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in deposit_transactions %}
+          <tr>
+            <td>{{ t.date|date:"M d, Y" }}</td>
+            <td>{{ t.type }}</td>
+            <td>{{ t.description }}</td>
+            <td class="text-end">{{ t.amount|intcomma }}</td>
+            <td class="text-end">{{ t.balance|intcomma }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">No security deposit transactions yet.</p>
+    {% endif %}
+  </div>
+</div>
 {% endif %}
 
 {# ===================== TRANSACTIONS ===================== #}
@@ -520,6 +549,46 @@
     line-height: 1;
   }
 
+  .section-title {
+    margin: 0 0 .35rem;
+    font-weight: 700;
+  }
+
+  .deposit-section {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    margin: .75rem 0 1rem;
+  }
+
+  .deposit-summary-table,
+  .deposit-ledger-table {
+    font-size: var(--table-fs);
+  }
+
+  .deposit-summary-table th,
+  .deposit-summary-table td,
+  .deposit-ledger-table th,
+  .deposit-ledger-table td {
+    padding: .3rem .45rem !important;
+    vertical-align: middle;
+  }
+
+  .deposit-summary-table th {
+    white-space: nowrap;
+  }
+
+  .deposit-ledger-table th,
+  .deposit-ledger-table td {
+    white-space: nowrap;
+  }
+
+  .deposit-ledger-table td:nth-child(3) {
+    min-width: 260px;
+    white-space: normal;
+  }
+
   .cursor-pointer {
     cursor: pointer;
   }
@@ -529,6 +598,18 @@
   .compact-table td {
     padding: .3rem .5rem !important;
     font-size: var(--table-fs);
+  }
+
+  .compact-table th:nth-child(2),
+  .compact-table td:nth-child(2) {
+    min-width: 82px;
+    white-space: nowrap;
+  }
+
+  .compact-table th:nth-child(3),
+  .compact-table td:nth-child(3) {
+    min-width: 72px;
+    white-space: nowrap;
   }
 
   .compact-table td a {
@@ -610,6 +691,15 @@
     .heading-period {
       display: inline-block;
       margin-top: .1rem;
+    }
+
+    .deposit-section {
+      grid-template-columns: 1fr;
+      gap: .75rem;
+    }
+
+    .deposit-ledger-table td:nth-child(3) {
+      min-width: 180px;
     }
   }
 

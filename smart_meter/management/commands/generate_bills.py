@@ -23,9 +23,12 @@ class Command(BaseCommand):
             raise CommandError("Invalid --month. Use YYYY-MM.")
 
         count_ok = 0
-        for unit in Unit.objects.all():
-            meter = getattr(unit, "meter", None)
-            if not meter:
+        for unit in Unit.objects.prefetch_related("meter_installations"):
+            has_active_meter = unit.meter_installations.filter(
+                is_active=True,
+                end_date__isnull=True,
+            ).exists()
+            if not has_active_meter:
                 continue
             try:
                 generate_bill_for_unit(unit, period_start, period_end)

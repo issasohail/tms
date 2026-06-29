@@ -1,0 +1,35 @@
+import logging
+import threading
+
+from whatsapp.services.ai_config import get_whatsapp_ai_config
+
+logger = logging.getLogger(__name__)
+
+
+def enqueue_whatsapp_ai_message(message_log_id):
+    config = get_whatsapp_ai_config()
+    if not config.enabled:
+        return "disabled"
+
+    if config.use_celery:
+        try:
+            from whatsapp.tasks import process_whatsapp_ai_message_task
+
+            process_whatsapp_ai_message_task.delay(message_log_id)
+            return "celery"
+        except Exception:
+            logger.exception("Could not queue WhatsApp AI message %s with Celery; using thread fallback.", message_log_id)
+
+    def runner():
+        try:
+            from whatsapp.models import WhatsAppMessageLog
+            from whatsapp.services.whatsapp_ai import process_inbound_whatsapp_message
+
+            message_log = WhatsAppMessageLog.objects.get(pk=message_log_id)
+            process_inbound_whatsapp_message(message_log)
+        except Exception:
+            logger.exception("Failed to process WhatsApp AI message %s", message_log_id)
+
+    thread = threading.Thread(target=runner, daemon=True)
+    thread.start()
+    return "thread"

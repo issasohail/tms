@@ -4,90 +4,95 @@
 {% block title %}{% if is_create %}New User{% else %}Edit User{% endif %}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-2">
-  <h2 class="fs-5 mb-0">{% if is_create %}New User{% else %}Edit User: {{ managed_user.username }}{% endif %}</h2>
-  <a href="{% url 'accounts:user_access_list' %}" class="btn btn-outline-secondary btn-sm">Back</a>
-</div>
-
-<form method="post" class="card">
+<form method="post" id="user-access-form">
   {% csrf_token %}
-  <div class="card-body">
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
-    {% endif %}
-
-    <div class="row g-2 mb-3">
-      <div class="col-md-3">{{ form.username.label_tag }}{{ form.username }}{{ form.username.errors }}</div>
-      <div class="col-md-3">{{ form.first_name.label_tag }}{{ form.first_name }}{{ form.first_name.errors }}</div>
-      <div class="col-md-3">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
-      <div class="col-md-3">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
-      <div class="col-md-3">{{ form.whatsapp_number.label_tag }}{{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}</div>
-      <div class="col-md-6">{{ form.groups.label_tag }}{{ form.groups }}{{ form.groups.errors }}</div>
-      <div class="col-md-3">{{ form.password1.label_tag }}{{ form.password1 }}{{ form.password1.errors }}</div>
-      <div class="col-md-3">{{ form.password2.label_tag }}{{ form.password2 }}{{ form.password2.errors }}</div>
-      <div class="col-md-3 d-flex align-items-end gap-3">
-        <label class="form-check mb-1">{{ form.is_active }} Active</label>
-        <label class="form-check mb-1">{{ form.is_staff }} Staff</label>
-      </div>
-    </div>
-
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h6 class="mb-0">Permissions</h6>
-      <span class="small text-muted">View / Add / Update / Delete by app table</span>
-    </div>
-    <div class="d-flex flex-wrap gap-2 mb-2 permission-toolbar">
-      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="view">Select All View</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="add">Select All Add</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="change">Select All Change</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="delete">Select All Delete</button>
-      <button type="button" class="btn btn-outline-danger btn-sm js-clear-all">Clear All</button>
-      <div class="vr d-none d-md-block"></div>
-      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="admin">Admin Full</button>
-      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="manager">Manager</button>
-      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="data-entry">Data Entry</button>
-      <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="viewer">Viewer</button>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-sm table-bordered align-middle permission-table">
-        <thead class="table-light">
-          <tr>
-            <th>App</th>
-            <th>Table</th>
-            <th class="text-center">All</th>
-            <th class="text-center">View</th>
-            <th class="text-center">Add</th>
-            <th class="text-center">Update</th>
-            <th class="text-center">Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for group in permission_groups %}
-            <tr>
-              <td class="text-muted">{{ group.app_label }}</td>
-              <td>{{ group.label }}</td>
-              <td class="text-center">
-                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-row-all">All</button>
-              </td>
-              {% for action, action_label in permission_actions %}
-                <td class="text-center">
-                  {% with perm=group.permissions|get_item:action %}
-                    {% if perm %}
-                      <input type="checkbox" name="permissions" value="{{ perm.id }}" data-action="{{ action }}" {% if perm.id in selected_permissions %}checked{% endif %}>
-                    {% endif %}
-                  {% endwith %}
-                </td>
-              {% endfor %}
-            </tr>
-          {% empty %}
-            <tr><td colspan="7" class="text-muted p-3">No permissions found.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="fs-5 mb-0">{% if is_create %}New User{% else %}Edit User: {{ managed_user.username }}{% endif %}</h2>
+    <div class="d-flex gap-2">
+      <a href="{% url 'accounts:user_access_list' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+      <button type="submit" class="btn btn-primary btn-sm">Save User</button>
     </div>
   </div>
-  <div class="card-footer d-flex justify-content-end gap-2">
-    <a href="{% url 'accounts:user_access_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
-    <button type="submit" class="btn btn-primary btn-sm">Save User</button>
+
+  <div class="card">
+    <div class="card-body">
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">{{ form.username.label_tag }}{{ form.username }}{{ form.username.errors }}</div>
+        <div class="col-md-3">{{ form.first_name.label_tag }}{{ form.first_name }}{{ form.first_name.errors }}</div>
+        <div class="col-md-3">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
+        <div class="col-md-3">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
+        <div class="col-md-3">{{ form.whatsapp_number.label_tag }}{{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}</div>
+        <div class="col-md-6">{{ form.groups.label_tag }}{{ form.groups }}{{ form.groups.errors }}</div>
+        <div class="col-md-3">{{ form.password1.label_tag }}{{ form.password1 }}{{ form.password1.errors }}</div>
+        <div class="col-md-3">{{ form.password2.label_tag }}{{ form.password2 }}{{ form.password2.errors }}</div>
+        <div class="col-md-3 d-flex align-items-end gap-3">
+          <label class="form-check mb-1">{{ form.is_active }} Active</label>
+          <label class="form-check mb-1">{{ form.is_staff }} Staff</label>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">Permissions</h6>
+        {% if not is_create %}<span class="small text-muted js-permission-save-status">Auto-save enabled</span>{% else %}<span class="small text-muted">View / Add / Update / Delete by app table</span>{% endif %}
+      </div>
+      <div class="d-flex flex-wrap gap-2 mb-2 permission-toolbar">
+        <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="view">Select All View</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="add">Select All Add</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="change">Select All Change</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="delete">Select All Delete</button>
+        <button type="button" class="btn btn-outline-danger btn-sm js-clear-all">Clear All</button>
+        <div class="vr d-none d-md-block"></div>
+        <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="admin">Admin Full</button>
+        <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="manager">Manager</button>
+        <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="data-entry">Data Entry</button>
+        <button type="button" class="btn btn-outline-primary btn-sm js-preset" data-preset="viewer">Viewer</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle permission-table">
+          <thead class="table-light">
+            <tr>
+              <th>App</th>
+              <th>Table</th>
+              <th class="text-center">All</th>
+              <th class="text-center">View</th>
+              <th class="text-center">Add</th>
+              <th class="text-center">Update</th>
+              <th class="text-center">Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for group in permission_groups %}
+              <tr>
+                <td class="text-muted">{{ group.app_label }}</td>
+                <td>{{ group.label }}</td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 js-row-all">All</button>
+                </td>
+                {% for action, action_label in permission_actions %}
+                  <td class="text-center">
+                    {% with perm=group.permissions|get_item:action %}
+                      {% if perm %}
+                        <input type="checkbox" name="permissions" value="{{ perm.id }}" data-action="{{ action }}" {% if perm.id in selected_permissions %}checked{% endif %}>
+                      {% endif %}
+                    {% endwith %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="text-muted p-3">No permissions found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      <a href="{% url 'accounts:user_access_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+      <button type="submit" class="btn btn-primary btn-sm">Save User</button>
+    </div>
   </div>
 </form>
 {% endblock %}
@@ -114,6 +119,36 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const table = document.querySelector('.permission-table');
   const checks = () => Array.from(document.querySelectorAll('input[name="permissions"]'));
+  const status = document.querySelector('.js-permission-save-status');
+  const autosaveUrl = {% if not is_create %}"{% url 'accounts:user_permission_autosave' managed_user.pk %}"{% else %}""{% endif %};
+  let saveTimer = null;
+  const setStatus = (message, className) => {
+    if (!status) return;
+    status.textContent = message;
+    status.className = `small js-permission-save-status ${className || 'text-muted'}`;
+  };
+  const savePermissions = () => {
+    if (!autosaveUrl) return;
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => {
+      const data = new FormData();
+      data.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+      checks().filter(input => input.checked).forEach(input => data.append('permissions', input.value));
+      setStatus('Saving...', 'text-muted');
+      fetch(autosaveUrl, {
+        method: 'POST',
+        body: data,
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        credentials: 'same-origin'
+      })
+        .then(response => {
+          if (!response.ok) throw new Error('Permission save failed');
+          return response.json();
+        })
+        .then(() => setStatus('Saved', 'text-success'))
+        .catch(() => setStatus('Save failed', 'text-danger'));
+    }, 300);
+  };
   const setActions = actions => {
     checks().forEach(input => { input.checked = actions.includes(input.dataset.action); });
   };
@@ -122,11 +157,13 @@ document.addEventListener('DOMContentLoaded', function () {
     button.addEventListener('click', () => {
       checks().filter(input => input.dataset.action === button.dataset.action)
         .forEach(input => { input.checked = true; });
+      savePermissions();
     });
   });
 
   document.querySelector('.js-clear-all')?.addEventListener('click', () => {
     checks().forEach(input => { input.checked = false; });
+    savePermissions();
   });
 
   document.querySelectorAll('.js-row-all').forEach(button => {
@@ -134,7 +171,12 @@ document.addEventListener('DOMContentLoaded', function () {
       const rowChecks = Array.from(button.closest('tr').querySelectorAll('input[name="permissions"]'));
       const shouldCheck = rowChecks.some(input => !input.checked);
       rowChecks.forEach(input => { input.checked = shouldCheck; });
+      savePermissions();
     });
+  });
+
+  checks().forEach(input => {
+    input.addEventListener('change', savePermissions);
   });
 
   document.querySelectorAll('.js-preset').forEach(button => {
@@ -153,6 +195,7 @@ document.addEventListener('DOMContentLoaded', function () {
       } else if (preset === 'viewer') {
         setActions(['view']);
       }
+      savePermissions();
     });
   });
 });

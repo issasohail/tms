@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 12mm 10mm 15mm; @bottom-center { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; } }
+    body { font-family: Arial, sans-serif; font-size: 9.5px; color: #111; }
+    h1 { font-size: 17px; margin: 0 0 3px; }
+    .muted { color:#666; }
+    .grid { display: table; width:100%; margin: 7px 0 10px; }
+    .row { display: table-row; }
+    .cell { display: table-cell; padding: 2px 8px 2px 0; width: 25%; }
+    .label { color:#666; font-size:8px; text-transform:uppercase; }
+    .sheet-columns { column-count: 2; column-gap: 7mm; column-rule: 1px solid #bbb; }
+    .inspection-line { break-inside: avoid; page-break-inside: avoid; border-bottom: 1px solid #ddd; padding: 4px 0; min-height: 28px; }
+    .line-top { display: table; width: 100%; }
+    .sn { display: table-cell; width: 22px; font-weight: bold; color:#333; }
+    .line-main { display: table-cell; }
+    .cat { color:#666; font-size:8px; text-transform:uppercase; }
+    .item { font-weight:bold; font-size:10px; }
+    .status { display:inline-block; border:1px solid #777; border-radius:10px; padding:1px 5px; margin-top:2px; font-size:8px; }
+    .remarks { margin-top:2px; color:#333; }
+    .footer-box { border:1px solid #bbb; padding:7px; min-height:35px; margin-top:7px; break-inside: avoid; }
+    .sig { height: 42px; border-bottom: 1px solid #333; margin-bottom:4px; }
+    .sig-grid { display: table; width:100%; margin-top:12px; }
+    .sig-cell { display: table-cell; width:33%; padding-right:12px; }
+  </style>
+</head>
+<body>
+  <h1>Lease Inspection Sheet</h1>
+  <div class="muted">{{ inspection.inspection_type }} - Printed {{ printed_at|date:"M d, Y H:i" }}</div>
+  <div class="grid">
+    <div class="row">
+      <div class="cell"><div class="label">Property</div>{{ inspection.property.property_name }}</div>
+      <div class="cell"><div class="label">Unit</div>{{ inspection.unit.unit_number }}</div>
+      <div class="cell"><div class="label">Tenant</div>{{ inspection.tenant.get_full_name }}</div>
+      <div class="cell"><div class="label">Lease</div>#{{ inspection.lease.pk }}</div>
+    </div>
+    <div class="row">
+      <div class="cell"><div class="label">Inspector</div>{{ inspection.inspector_display|default:"-" }}</div>
+      <div class="cell"><div class="label">Date</div>{{ inspection.inspection_date }}</div>
+      <div class="cell"><div class="label">Status</div>{{ inspection.get_status_display }}</div>
+      <div class="cell"><div class="label">Condition</div>{{ inspection.overall_condition|default:"-" }}</div>
+    </div>
+  </div>
+
+  <div class="sheet-columns">
+    {% for row in inspection.details.all %}
+      <div class="inspection-line">
+        <div class="line-top">
+          <div class="sn">{{ forloop.counter }}</div>
+          <div class="line-main">
+            <div class="cat">{{ row.category }}</div>
+            <div class="item">{{ row.item_name }}</div>
+            {% if row.status_name %}<span class="status">{{ row.status_name }}</span>{% endif %}
+            {% if row.remarks %}<div class="remarks">{{ row.remarks }}</div>{% endif %}
+            {% if row.photos.count %}<div class="muted">Photos: {{ row.photos.count }}</div>{% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="footer-box"><div class="label">Overall Condition</div>{{ inspection.overall_condition|default:"" }}</div>
+  <div class="footer-box"><div class="label">Tenant Comments</div>{{ inspection.tenant_comments|default:"" }}</div>
+  <div class="footer-box"><div class="label">Inspector Comments</div>{{ inspection.inspector_comments|default:"" }}</div>
+  <div class="footer-box"><div class="label">Manager Comments</div>{{ inspection.manager_comments|default:"" }}</div>
+  <div class="sig-grid">
+    <div class="sig-cell"><div class="sig">{{ inspection.tenant_signature }}</div><strong>Tenant Signature</strong><br><span class="muted">{{ inspection.tenant_signed_at|date:"M d, Y H:i" }}</span></div>
+    <div class="sig-cell"><div class="sig">{{ inspection.inspector_signature }}</div><strong>Inspector Signature</strong><br><span class="muted">{{ inspection.inspector_signed_at|date:"M d, Y H:i" }}</span></div>
+    <div class="sig-cell"><div class="sig">{{ inspection.manager_signature }}</div><strong>Manager Signature</strong><br><span class="muted">{{ inspection.manager_signed_at|date:"M d, Y H:i" }}</span></div>
+  </div>
+</body>
+</html>

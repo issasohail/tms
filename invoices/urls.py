@@ -35,8 +35,12 @@ urlpatterns = [
     path("monthly-billing/create/", views.monthly_billing_run_create, name="monthly_billing_run_create"),
     path("monthly-billing/<int:pk>/", views.MonthlyBillingRunDetailView.as_view(), name="monthly_billing_run_detail"),
     path("monthly-billing/<int:pk>/action/", views.monthly_billing_run_action, name="monthly_billing_run_action"),
+    path("monthly-billing/<int:pk>/enqueue/", views.monthly_billing_run_enqueue, name="monthly_billing_run_enqueue"),
+    path("monthly-billing/<int:pk>/dry-run.json", views.monthly_billing_dry_run_json, name="monthly_billing_dry_run_json"),
     path("monthly-billing/<int:pk>/export/", views.monthly_billing_run_export, name="monthly_billing_run_export"),
+    path("monthly-billing/jobs/<int:pk>/status.json", views.monthly_billing_job_status, name="monthly_billing_job_status"),
     path("monthly-billing/items/<int:pk>/water/", views.monthly_billing_water_update, name="monthly_billing_water_update"),
+    path("monthly-billing/items/<int:pk>/action/", views.monthly_billing_item_action, name="monthly_billing_item_action"),
 
     # List/Create
     path('', InvoiceListView.as_view(), name='invoice_list'),

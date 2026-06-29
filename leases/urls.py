@@ -41,16 +41,44 @@ from .views_renewal import (
     upload_renewal_signed_copy,
 )
 from . import views_lease_files
+from . import views_inspections
 app_name = 'leases'
 
 urlpatterns = [
     path('', LeaseListView.as_view(), name='lease_list'),
     path('new/', LeaseCreateView.as_view(), name='lease_create'),
 
+    path("inspection-settings/<str:kind>/", views_inspections.inspection_settings_list, name="inspection_settings"),
+    path("inspection-settings/<str:kind>/add/", views_inspections.inspection_settings_create, name="inspection_settings_create"),
+    path("inspection-settings/<str:kind>/<int:pk>/edit/", views_inspections.inspection_settings_edit, name="inspection_settings_edit"),
+    path("inspection-settings/<str:kind>/<int:pk>/inline/", views_inspections.inspection_settings_inline_update, name="inspection_settings_inline_update"),
+    path("inspection-settings/templates/<int:pk>/items/", views_inspections.inspection_template_items_update, name="inspection_template_items_update"),
+
     # Lease CRUD operations
     path('<int:pk>/', LeaseDetailView.as_view(), name='lease_detail'),
     path('<int:pk>/edit/', LeaseUpdateView.as_view(), name='lease_update'),
     path('<int:pk>/delete/', LeaseDeleteView.as_view(), name='lease_delete'),
+    path("<int:lease_id>/inspections/", views_inspections.lease_inspection_list, name="lease_inspection_list"),
+    path("<int:lease_id>/inspections/new/", views_inspections.lease_inspection_create, name="lease_inspection_create"),
+    path("<int:lease_id>/inspections/compare/", views_inspections.inspection_compare, name="inspection_compare"),
+    path("inspection/<int:inspection_id>/", views_inspections.inspection_detail, name="inspection_detail"),
+    path("inspection/<int:inspection_id>/edit/", views_inspections.inspection_edit, name="inspection_edit"),
+    path("inspection/<int:inspection_id>/pdf/", views_inspections.inspection_pdf, name="inspection_pdf"),
+    path("inspection/<int:inspection_id>/pdf/attach/", views_inspections.inspection_pdf_attach, name="inspection_pdf_attach"),
+    path("inspection/<int:inspection_id>/public-link/", views_inspections.inspection_public_link, name="inspection_public_link"),
+    path("inspection/<int:inspection_id>/approve/", views_inspections.inspection_approve, name="inspection_approve"),
+    path("inspection/<int:inspection_id>/damage-invoice/", views_inspections.inspection_generate_damage_invoice, name="inspection_damage_invoice"),
+    path("inspection/<int:inspection_id>/ajax/mark-all/", views_inspections.inspection_mark_all_ajax, name="inspection_mark_all_ajax"),
+    path("inspection/<int:inspection_id>/ajax/add-row/", views_inspections.inspection_row_add_ajax, name="inspection_row_add_ajax"),
+    path("inspection/ajax/category/add/", views_inspections.inspection_category_create_ajax, name="inspection_category_create_ajax"),
+    path("inspection/ajax/item/add/", views_inspections.inspection_item_create_ajax, name="inspection_item_create_ajax"),
+    path("inspection-detail/<int:detail_id>/ajax/update/", views_inspections.inspection_detail_update_ajax, name="inspection_detail_update_ajax"),
+    path("inspection-detail/<int:detail_id>/photos/add/", views_inspections.inspection_photo_add, name="inspection_photo_add"),
+    path("inspection-photo/<int:photo_id>/download/", views_inspections.inspection_photo_download, name="inspection_photo_download"),
+    path("inspection-photo/<int:photo_id>/delete/", views_inspections.inspection_photo_delete, name="inspection_photo_delete"),
+    path("public/inspection/<str:token>/", views_inspections.public_inspection_sign, name="public_inspection_sign"),
+    path("public/inspection/<str:token>/detail/<int:detail_id>/update/", views_inspections.public_inspection_detail_update_ajax, name="public_inspection_detail_update_ajax"),
+    path("public/inspection/<str:token>/detail/<int:detail_id>/photo/", views_inspections.public_inspection_photo_add_ajax, name="public_inspection_photo_add_ajax"),
     path('<int:pk>/renew/', RenewLeaseView.as_view(), name='lease_renew'),
     path('<int:pk>/whatsapp/welcome/',
          views.lease_welcome_whatsapp, name='lease_welcome_whatsapp'),

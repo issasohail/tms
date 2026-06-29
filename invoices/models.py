@@ -295,7 +295,9 @@ class MonthlyBillingRun(models.Model):
     STATUS_READY = "ready"
     STATUS_PARTIAL = "partial"
     STATUS_SENT = "sent"
+    STATUS_COMPLETED = "completed"
     STATUS_FAILED = "failed"
+    STATUS_ROLLED_BACK = "rolled_back"
 
     STATUS_CHOICES = [
         (STATUS_DRAFT, "Draft"),
@@ -304,7 +306,9 @@ class MonthlyBillingRun(models.Model):
         (STATUS_READY, "Ready"),
         (STATUS_PARTIAL, "Partial"),
         (STATUS_SENT, "Sent"),
+        (STATUS_COMPLETED, "Completed"),
         (STATUS_FAILED, "Failed"),
+        (STATUS_ROLLED_BACK, "Rolled Back"),
     ]
 
     billing_month = models.DateField(help_text="First day of the month being billed.")
@@ -315,11 +319,16 @@ class MonthlyBillingRun(models.Model):
     missing_recurring_count = models.PositiveIntegerField(default=0)
     electric_ready_count = models.PositiveIntegerField(default=0)
     electric_pending_count = models.PositiveIntegerField(default=0)
+    manual_electric_count = models.PositiveIntegerField(default=0)
     water_missing_count = models.PositiveIntegerField(default=0)
     ready_to_send_count = models.PositiveIntegerField(default=0)
+    pdf_generating_count = models.PositiveIntegerField(default=0)
+    sending_count = models.PositiveIntegerField(default=0)
     pending_attention_count = models.PositiveIntegerField(default=0)
     sent_count = models.PositiveIntegerField(default=0)
     failed_count = models.PositiveIntegerField(default=0)
+    excluded_count = models.PositiveIntegerField(default=0)
+    rolled_back_count = models.PositiveIntegerField(default=0)
     skipped_count = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -330,6 +339,9 @@ class MonthlyBillingRun(models.Model):
     )
     created_by_label = models.CharField(max_length=120, blank=True)
     notes = models.TextField(blank=True)
+    audit_log = models.JSONField(default=list, blank=True)
+    dry_run_summary = models.JSONField(default=dict, blank=True)
+    created_invoice_ids = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -350,6 +362,8 @@ class MonthlyBillingRunItem(models.Model):
     STATUS_SENT = "sent"
     STATUS_FAILED = "failed"
     STATUS_SKIPPED = "skipped"
+    STATUS_EXCLUDED = "excluded"
+    STATUS_ROLLED_BACK = "rolled_back"
 
     STATUS_CHOICES = [
         (STATUS_DRAFT, "Draft"),
@@ -358,6 +372,8 @@ class MonthlyBillingRunItem(models.Model):
         (STATUS_SENT, "Sent"),
         (STATUS_FAILED, "Failed"),
         (STATUS_SKIPPED, "Skipped"),
+        (STATUS_EXCLUDED, "Excluded"),
+        (STATUS_ROLLED_BACK, "Rolled Back"),
     ]
 
     ISSUE_INACTIVE_LEASE = "inactive_lease"
@@ -366,6 +382,7 @@ class MonthlyBillingRunItem(models.Model):
     ISSUE_DUPLICATE_INVOICE = "duplicate_invoice_exists"
     ISSUE_METER_MISSING = "latest_meter_reading_missing"
     ISSUE_METER_OFFLINE = "meter_offline"
+    ISSUE_MANUAL_ELECTRIC = "manual_electric_billing"
     ISSUE_ELECTRIC_UNVERIFIED = "electric_billing_not_verified"
     ISSUE_WATER_MISSING = "water_charge_missing"
     ISSUE_PHONE_MISSING = "tenant_phone_missing"
@@ -381,6 +398,7 @@ class MonthlyBillingRunItem(models.Model):
         (ISSUE_DUPLICATE_INVOICE, "Duplicate invoice exists"),
         (ISSUE_METER_MISSING, "Latest meter reading missing"),
         (ISSUE_METER_OFFLINE, "Meter offline"),
+        (ISSUE_MANUAL_ELECTRIC, "Manual electric billing"),
         (ISSUE_ELECTRIC_UNVERIFIED, "Electric billing not verified"),
         (ISSUE_WATER_MISSING, "Water charge missing"),
         (ISSUE_PHONE_MISSING, "Tenant phone missing"),
@@ -407,7 +425,10 @@ class MonthlyBillingRunItem(models.Model):
     recurring_invoice_created = models.BooleanField(default=False)
     electric_required = models.BooleanField(default=False)
     electric_ready = models.BooleanField(default=False)
+    manual_electric = models.BooleanField(default=False)
     electric_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    electric_period_start = models.DateField(null=True, blank=True)
+    electric_period_end = models.DateField(null=True, blank=True)
     latest_meter_reading_date = models.DateField(null=True, blank=True)
     water_required = models.BooleanField(default=False)
     water_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -418,6 +439,20 @@ class MonthlyBillingRunItem(models.Model):
     whatsapp_status = models.CharField(max_length=30, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     error_text = models.TextField(blank=True)
+    excluded_reason = models.TextField(blank=True)
+    excluded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="excluded_monthly_billing_items",
+    )
+    excluded_at = models.DateTimeField(null=True, blank=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+    rollback_message = models.TextField(blank=True)
+    created_invoice_ids = models.JSONField(default=list, blank=True)
+    created_invoice_item_ids = models.JSONField(default=list, blank=True)
+    dry_run_data = models.JSONField(default=dict, blank=True)
     log = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -434,3 +469,81 @@ class MonthlyBillingRunItem(models.Model):
 
     def __str__(self):
         return f"{self.billing_run_id} lease {self.lease_id} {self.get_status_display()}"
+
+
+class BillingProgressJob(models.Model):
+    ACTION_RUN_BILLING = "run_billing"
+    ACTION_PREFLIGHT = "preflight"
+    ACTION_RECURRING = "generate_recurring"
+    ACTION_ELECTRIC = "generate_electric"
+    ACTION_READY = "prepare_ready"
+    ACTION_PDFS = "generate_pdfs"
+    ACTION_SEND = "send_ready"
+    ACTION_RETRY = "retry_failed"
+    ACTION_ROLLBACK = "rollback_run"
+
+    ACTION_CHOICES = [
+        (ACTION_RUN_BILLING, "Run Billing"),
+        (ACTION_PREFLIGHT, "Preflight"),
+        (ACTION_RECURRING, "Generate Recurring"),
+        (ACTION_ELECTRIC, "Generate Electric"),
+        (ACTION_READY, "Prepare Ready"),
+        (ACTION_PDFS, "Generate PDFs"),
+        (ACTION_SEND, "Send WhatsApp"),
+        (ACTION_RETRY, "Retry Failed"),
+        (ACTION_ROLLBACK, "Rollback Run"),
+    ]
+
+    STATUS_QUEUED = "queued"
+    STATUS_RUNNING = "running"
+    STATUS_COMPLETED = "completed"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    billing_run = models.ForeignKey(
+        MonthlyBillingRun,
+        on_delete=models.CASCADE,
+        related_name="progress_jobs",
+    )
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED)
+    rq_job_id = models.CharField(max_length=120, blank=True)
+    current_step = models.CharField(max_length=120, blank=True)
+    current_tenant = models.CharField(max_length=160, blank=True)
+    current_property = models.CharField(max_length=160, blank=True)
+    current_unit = models.CharField(max_length=80, blank=True)
+    current_index = models.PositiveIntegerField(default=0)
+    total_count = models.PositiveIntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    elapsed_seconds = models.PositiveIntegerField(default=0)
+    average_seconds = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    estimated_remaining_seconds = models.PositiveIntegerField(default=0)
+    message = models.TextField(blank=True)
+    error_text = models.TextField(blank=True)
+    result = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="billing_progress_jobs",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["billing_run", "status"]),
+            models.Index(fields=["rq_job_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_action_display()} for run {self.billing_run_id}: {self.get_status_display()}"

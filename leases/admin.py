@@ -14,6 +14,20 @@ from .models import Unit
 from properties.models import Property
 from leases.utils.agreement_generator import generate_lease_agreement
 from django.http import HttpResponse
+from .models_inspections import (
+    InspectionAppliance,
+    InspectionCategory,
+    InspectionDamageCharge,
+    InspectionDetail,
+    InspectionItem,
+    InspectionKey,
+    InspectionMeterReading,
+    InspectionPhoto,
+    InspectionStatus,
+    InspectionTemplate,
+    InspectionType,
+    LeaseInspection,
+)
 
 # Define ClauseInline first
 
@@ -441,3 +455,81 @@ class LeaseFileShareLinkAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "expires_at", "created_at")
     search_fields = ("token", "lease__tenant__first_name", "lease__tenant__last_name", "document__display_name")
     raw_id_fields = ("lease", "document", "created_by")
+
+
+@admin.register(InspectionType)
+class InspectionTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "display_order", "active")
+    list_editable = ("display_order", "active")
+    search_fields = ("name",)
+
+
+@admin.register(InspectionCategory)
+class InspectionCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "display_order", "active")
+    list_editable = ("display_order", "active")
+    search_fields = ("name",)
+
+
+@admin.register(InspectionStatus)
+class InspectionStatusAdmin(admin.ModelAdmin):
+    list_display = ("name", "badge_color", "display_order", "active")
+    list_editable = ("badge_color", "display_order", "active")
+    search_fields = ("name",)
+
+
+@admin.register(InspectionItem)
+class InspectionItemAdmin(admin.ModelAdmin):
+    list_display = ("category", "item_name", "display_order", "required", "allow_photos", "allow_damage_cost", "allow_notes", "active")
+    list_filter = ("category", "required", "allow_photos", "allow_damage_cost", "allow_notes", "active")
+    list_editable = ("display_order", "active")
+    search_fields = ("item_name", "category__name")
+
+
+@admin.register(InspectionTemplate)
+class InspectionTemplateAdmin(admin.ModelAdmin):
+    list_display = ("name", "display_order", "active", "updated_at")
+    list_editable = ("display_order", "active")
+    filter_horizontal = ("items",)
+    search_fields = ("name", "description")
+
+
+class InspectionPhotoInline(admin.TabularInline):
+    model = InspectionPhoto
+    extra = 0
+
+
+class InspectionDetailInline(admin.TabularInline):
+    model = InspectionDetail
+    extra = 0
+    fields = ("category", "item_name", "status_name", "remarks", "damage_cost", "display_order")
+    readonly_fields = ("category", "item_name", "display_order")
+
+
+class InspectionMeterInline(admin.TabularInline):
+    model = InspectionMeterReading
+    extra = 0
+
+
+class InspectionKeyInline(admin.TabularInline):
+    model = InspectionKey
+    extra = 0
+
+
+class InspectionApplianceInline(admin.TabularInline):
+    model = InspectionAppliance
+    extra = 0
+
+
+class InspectionDamageInline(admin.TabularInline):
+    model = InspectionDamageCharge
+    extra = 0
+
+
+@admin.register(LeaseInspection)
+class LeaseInspectionAdmin(admin.ModelAdmin):
+    list_display = ("id", "lease", "inspection_type", "inspection_date", "status", "inspector", "approved_at")
+    list_filter = ("status", "inspection_type", "inspection_date")
+    search_fields = ("lease__tenant__first_name", "lease__tenant__last_name", "unit__unit_number")
+    raw_id_fields = ("lease", "property", "unit", "tenant", "inspector", "approved_by", "created_by")
+    inlines = [InspectionDetailInline, InspectionMeterInline, InspectionKeyInline, InspectionApplianceInline, InspectionDamageInline]

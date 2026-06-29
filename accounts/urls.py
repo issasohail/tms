@@ -14,6 +14,7 @@ urlpatterns = [
     path("users/", views.user_access_list, name="user_access_list"),
     path("users/new/", views.user_access_create, name="user_access_create"),
     path("users/<int:pk>/", views.user_access_update, name="user_access_update"),
+    path("users/<int:pk>/permissions/", views.user_permission_autosave, name="user_permission_autosave"),
     path("users/<int:pk>/delete/", views.user_access_delete, name="user_access_delete"),
     path("users/<int:pk>/impersonate/", views.impersonate_start, name="impersonate_start"),
     path("groups/", views.group_access_list, name="group_access_list"),

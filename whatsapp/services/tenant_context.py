@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db.models import Q, Sum
+from django.utils import timezone
 
 from invoices.models import Invoice
 from leases.models import Lease
@@ -37,7 +38,12 @@ def normalize_phone(value):
 
 
 def active_leases():
-    return Lease.objects.select_related("tenant", "unit", "unit__property").filter(status="active")
+    today = timezone.localdate()
+    return Lease.objects.select_related("tenant", "unit", "unit__property").filter(
+        status="active",
+        start_date__lte=today,
+        end_date__gte=today,
+    )
 
 
 def find_active_leases_for_phone(phone_number):

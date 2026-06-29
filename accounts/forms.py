@@ -54,8 +54,8 @@ class AccountChangeForm(UserChangeForm):
 
 
 class AccountAccessForm(forms.ModelForm):
-    password1 = forms.CharField(required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
-    password2 = forms.CharField(required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
+    password1 = forms.CharField(label="Password", required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
+    password2 = forms.CharField(label="Reconfirm Password", required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
     groups = forms.ModelMultipleChoiceField(
         queryset=Group.objects.order_by("name"),
         required=False,
@@ -150,6 +150,7 @@ def permission_groups():
             "smart_meter",
             "reports",
             "core",
+            "whatsapp",
         ])
         .order_by("content_type__app_label", "content_type__model", "codename")
     )

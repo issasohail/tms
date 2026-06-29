@@ -55,6 +55,9 @@
       <a class="settings-tab-card" href="#settings-tool-whatsapp-templates" data-settings-target="settings-tool-whatsapp-templates">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fab fa-whatsapp"></i></span><span>WhatsApp Templates</span>
       </a>
+      <a class="settings-tab-card" href="#settings-tool-inspections" data-settings-target="settings-tool-inspections">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-clipboard-check"></i></span><span>Inspections</span>
+      </a>
       <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Logs</span>
       </a>
@@ -242,6 +245,36 @@
           <span class="btn btn-sm btn-outline-success">Open Templates</span>
         </div>
       </a>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-inspections">
+      <div class="row g-2">
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'types' %}">
+            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-list"></i></div><h5 class="mb-1">Inspection Types</h5><p class="text-muted small mb-3">Move In, Move Out, routine, annual, and future inspection types.</p><span class="btn btn-sm btn-outline-success">Open Types</span></div>
+          </a>
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'categories' %}">
+            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-layer-group"></i></div><h5 class="mb-1">Categories</h5><p class="text-muted small mb-3">Manage rooms and inspection sections with display order.</p><span class="btn btn-sm btn-outline-success">Open Categories</span></div>
+          </a>
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'statuses' %}">
+            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-tags"></i></div><h5 class="mb-1">Statuses</h5><p class="text-muted small mb-3">Configure colored pills like Good, Damaged, or Missing.</p><span class="btn btn-sm btn-outline-success">Open Statuses</span></div>
+          </a>
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'items' %}">
+            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-check-square"></i></div><h5 class="mb-1">Items</h5><p class="text-muted small mb-3">Manage configurable inspection items and item behavior.</p><span class="btn btn-sm btn-outline-success">Open Items</span></div>
+          </a>
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'templates' %}">
+            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-clipboard-list"></i></div><h5 class="mb-1">Templates</h5><p class="text-muted small mb-3">Build reusable templates that copy items into new inspections.</p><span class="btn btn-sm btn-outline-success">Open Templates</span></div>
+          </a>
+        </div>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-webhook-logs">

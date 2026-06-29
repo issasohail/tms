@@ -11,9 +11,13 @@ from .models import (
     PendingWhatsAppMaintenance,
     PendingWhatsAppMedia,
     PendingWhatsAppPayment,
+    TrustedDeviceRegistry,
     WhatsAppAIInteractionLog,
     WhatsAppConversation,
+    WhatsAppExternalLinkToken,
     WhatsAppMessageLog,
+    WhatsAppStaffActionLog,
+    WhatsAppStaffPropertyAccess,
     WhatsAppWebhookLog,
 )
 
@@ -53,10 +57,10 @@ class WhatsAppWebhookLogAdmin(admin.ModelAdmin):
 
 @admin.register(WhatsAppConversation)
 class WhatsAppConversationAdmin(admin.ModelAdmin):
-    list_display = ("phone_number", "selected_lease", "pending_state", "status", "last_message_at", "updated_at")
-    list_filter = ("status", "pending_state", "updated_at")
+    list_display = ("phone_number", "selected_mode", "staff_user", "tenant", "selected_lease", "pending_state", "status", "last_message_at", "updated_at")
+    list_filter = ("selected_mode", "status", "pending_state", "updated_at")
     search_fields = ("phone_number", "selected_lease__tenant__first_name", "selected_lease__tenant__last_name")
-    raw_id_fields = ("selected_lease", "selected_property", "selected_unit")
+    raw_id_fields = ("staff_user", "tenant", "selected_lease", "selected_property", "selected_unit")
     readonly_fields = ("created_at", "updated_at")
 
 
@@ -240,6 +244,54 @@ class PendingWhatsAppMaintenanceAdmin(admin.ModelAdmin):
             updated_at=timezone.now(),
         )
         self.message_user(request, f"Rejected {updated} maintenance submission(s).")
+
+
+@admin.register(WhatsAppStaffPropertyAccess)
+class WhatsAppStaffPropertyAccessAdmin(admin.ModelAdmin):
+    list_display = ("staff_user", "property", "is_active", "updated_at")
+    list_filter = ("is_active", "property")
+    search_fields = ("staff_user__username", "staff_user__first_name", "staff_user__last_name", "property__property_name")
+    raw_id_fields = ("staff_user", "property")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(WhatsAppStaffActionLog)
+class WhatsAppStaffActionLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "staff_user", "phone_number", "role_name", "action", "status", "property", "created_at")
+    list_filter = ("status", "role_name", "selected_mode", "created_at", "property")
+    search_fields = ("phone_number", "staff_user__username", "action", "details")
+    raw_id_fields = ("staff_user", "property", "tenant", "lease")
+    readonly_fields = (
+        "staff_user",
+        "phone_number",
+        "role_name",
+        "selected_mode",
+        "action",
+        "property",
+        "tenant",
+        "lease",
+        "status",
+        "details",
+        "created_at",
+    )
+
+
+@admin.register(WhatsAppExternalLinkToken)
+class WhatsAppExternalLinkTokenAdmin(admin.ModelAdmin):
+    list_display = ("id", "link_type", "phone_number", "tenant", "staff_user", "expires_at", "used_at", "is_active", "created_at")
+    list_filter = ("link_type", "is_active", "created_at", "expires_at")
+    search_fields = ("token", "phone_number", "tenant__first_name", "tenant__last_name", "staff_user__username")
+    raw_id_fields = ("tenant", "staff_user")
+    readonly_fields = ("token", "created_at")
+
+
+@admin.register(TrustedDeviceRegistry)
+class TrustedDeviceRegistryAdmin(admin.ModelAdmin):
+    list_display = ("id", "user_type", "phone_number", "tenant", "staff_user", "trusted_status", "otp_verified", "last_seen")
+    list_filter = ("user_type", "trusted_status", "otp_verified", "last_seen")
+    search_fields = ("phone_number", "whatsapp_id", "browser_fingerprint", "tenant__first_name", "tenant__last_name", "staff_user__username")
+    raw_id_fields = ("tenant", "staff_user")
+    readonly_fields = ("first_seen", "last_seen")
 
 
 def _attach_pending_media(pending, user):

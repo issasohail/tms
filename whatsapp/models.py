@@ -1,11 +1,16 @@
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+import uuid
 
 
 def whatsapp_pending_upload_to(instance, filename):
     folder = timezone.localtime().strftime("%Y/%m")
     return f"whatsapp/pending/{folder}/{filename}"
+
+
+def whatsapp_external_link_token():
+    return uuid.uuid4().hex + uuid.uuid4().hex
 
 
 class WhatsAppMessageLog(models.Model):
@@ -153,8 +158,32 @@ class WhatsAppConversation(models.Model):
         (STATUS_PENDING_ADMIN, "Pending admin"),
         (STATUS_ARCHIVED, "Archived"),
     ]
+    MODE_GUEST = "guest"
+    MODE_TENANT = "tenant"
+    MODE_STAFF = "staff"
+    MODE_CHOICES = [
+        (MODE_GUEST, "Guest"),
+        (MODE_TENANT, "Tenant"),
+        (MODE_STAFF, "Staff"),
+    ]
 
     phone_number = models.CharField(max_length=32, unique=True, db_index=True)
+    selected_mode = models.CharField(max_length=20, choices=MODE_CHOICES, blank=True)
+    mode_expires_at = models.DateTimeField(null=True, blank=True)
+    staff_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_conversations",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_conversations",
+    )
     selected_lease = models.ForeignKey(
         "leases.Lease",
         on_delete=models.SET_NULL,
@@ -188,6 +217,10 @@ class WhatsAppConversation(models.Model):
 
     def __str__(self):
         return self.phone_number
+
+    @property
+    def selected_mode_is_valid(self):
+        return bool(self.selected_mode and self.mode_expires_at and self.mode_expires_at > timezone.now())
 
 
 class WhatsAppAIInteractionLog(models.Model):
@@ -388,3 +421,175 @@ class PendingWhatsAppMaintenance(models.Model):
 
     def __str__(self):
         return f"Pending maintenance {self.phone or '-'} {self.issue_type or 'issue'}"
+
+
+class WhatsAppStaffPropertyAccess(models.Model):
+    staff_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="whatsapp_property_access",
+    )
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.CASCADE,
+        related_name="whatsapp_staff_access",
+    )
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("staff_user", "property")]
+        ordering = ["staff_user__username", "property__property_name"]
+
+    def __str__(self):
+        return f"{self.staff_user} - {self.property}"
+
+
+class WhatsAppStaffActionLog(models.Model):
+    ACTION_STATUS_ALLOWED = "allowed"
+    ACTION_STATUS_BLOCKED = "blocked"
+    ACTION_STATUS_PENDING = "pending"
+    ACTION_STATUS_CHOICES = [
+        (ACTION_STATUS_ALLOWED, "Allowed"),
+        (ACTION_STATUS_BLOCKED, "Blocked"),
+        (ACTION_STATUS_PENDING, "Pending"),
+    ]
+
+    staff_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_staff_action_logs",
+    )
+    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    role_name = models.CharField(max_length=80, blank=True)
+    selected_mode = models.CharField(max_length=20, blank=True)
+    action = models.CharField(max_length=120)
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_staff_action_logs",
+    )
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
+    lease = models.ForeignKey("leases.Lease", on_delete=models.SET_NULL, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=ACTION_STATUS_CHOICES, default=ACTION_STATUS_PENDING)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["staff_user", "created_at"]),
+            models.Index(fields=["phone_number", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.staff_user or self.phone_number} {self.action} ({self.status})"
+
+
+class WhatsAppExternalLinkToken(models.Model):
+    LINK_TENANT_REGISTRATION = "tenant_registration"
+    LINK_LEASE_CREATION = "lease_creation"
+    LINK_AGREEMENT_VIEW = "agreement_view"
+    LINK_AGREEMENT_EDIT = "agreement_edit"
+    LINK_INVOICE_VIEW = "invoice_view"
+    LINK_INVOICE_PDF = "invoice_pdf"
+    LINK_PAYMENT_RECEIPT_UPLOAD = "payment_receipt_upload"
+    LINK_MAINTENANCE_PHOTO_UPLOAD = "maintenance_photo_upload"
+    LINK_TYPE_CHOICES = [
+        (LINK_TENANT_REGISTRATION, "Tenant registration form"),
+        (LINK_LEASE_CREATION, "Lease creation form"),
+        (LINK_AGREEMENT_VIEW, "Agreement view link"),
+        (LINK_AGREEMENT_EDIT, "Agreement edit link"),
+        (LINK_INVOICE_VIEW, "Invoice view link"),
+        (LINK_INVOICE_PDF, "Invoice PDF link"),
+        (LINK_PAYMENT_RECEIPT_UPLOAD, "Payment receipt upload"),
+        (LINK_MAINTENANCE_PHOTO_UPLOAD, "Maintenance photo upload"),
+    ]
+
+    token = models.CharField(max_length=64, unique=True, default=whatsapp_external_link_token)
+    link_type = models.CharField(max_length=40, choices=LINK_TYPE_CHOICES)
+    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
+    staff_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="whatsapp_external_links_created",
+    )
+    target_app_label = models.CharField(max_length=80, blank=True)
+    target_model = models.CharField(max_length=80, blank=True)
+    target_object_id = models.PositiveBigIntegerField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["token", "expires_at", "is_active"]),
+            models.Index(fields=["link_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.link_type} {self.token[:8]}"
+
+    @property
+    def is_valid(self):
+        return self.is_active and self.expires_at >= timezone.now()
+
+
+class TrustedDeviceRegistry(models.Model):
+    USER_TYPE_TENANT = "tenant"
+    USER_TYPE_STAFF = "staff"
+    USER_TYPE_GUEST = "guest"
+    USER_TYPE_CHOICES = [
+        (USER_TYPE_TENANT, "Tenant"),
+        (USER_TYPE_STAFF, "Staff"),
+        (USER_TYPE_GUEST, "Guest"),
+    ]
+    TRUSTED_PENDING = "pending"
+    TRUSTED_ACTIVE = "active"
+    TRUSTED_BLOCKED = "blocked"
+    TRUSTED_STATUS_CHOICES = [
+        (TRUSTED_PENDING, "Pending"),
+        (TRUSTED_ACTIVE, "Active"),
+        (TRUSTED_BLOCKED, "Blocked"),
+    ]
+
+    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default=USER_TYPE_GUEST)
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
+    staff_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    whatsapp_id = models.CharField(max_length=80, blank=True, db_index=True)
+    device_name = models.CharField(max_length=120, blank=True)
+    mac_address = models.CharField(max_length=80, blank=True, null=True)
+    browser_fingerprint = models.CharField(max_length=160, blank=True, null=True, db_index=True)
+    operating_system = models.CharField(max_length=120, blank=True)
+    browser = models.CharField(max_length=120, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    otp_verified = models.BooleanField(default=False)
+    trusted_status = models.CharField(max_length=20, choices=TRUSTED_STATUS_CHOICES, default=TRUSTED_PENDING)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-last_seen"]
+        indexes = [
+            models.Index(fields=["phone_number", "last_seen"]),
+            models.Index(fields=["trusted_status", "last_seen"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user_type} {self.phone_number or self.whatsapp_id or self.pk}"

@@ -1,8 +1,10 @@
 import logging
 import time
+from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.urls import reverse
 from django.utils import timezone
 
 from properties.models import Unit
@@ -16,6 +18,17 @@ from whatsapp.services.ai_config import get_whatsapp_ai_config
 from whatsapp.services.maintenance_ai import create_pending_maintenance, detect_maintenance_issue
 from whatsapp.services.media_processor import create_pending_media, run_payment_ocr
 from whatsapp.services.payment_matching import extract_payment_text_fields, match_payment_to_active_lease
+from whatsapp.services.role_mode import (
+    guest_menu_text,
+    identify_sender,
+    log_staff_action,
+    mode_selection_text,
+    resolve_mode,
+    staff_menu_text,
+    staff_submenu_text,
+    tenant_menu_text,
+    upload_type_menu_text,
+)
 from whatsapp.services.tenant_context import (
     build_lease_context,
     find_active_leases_for_phone,
@@ -27,9 +40,16 @@ logger = logging.getLogger(__name__)
 
 
 CENTRAL_ASSISTANT_PROMPT = """
-You are the TMS WhatsApp tenant assistant. Only use active lease context unless a tenant explicitly asks for history.
-Never auto-post payments. Stage payments, maintenance, and media for admin review.
-Keep replies short, specific, and safe for WhatsApp.
+You are the Sonaz Property Management WhatsApp Assistant.
+Always identify the sender by WhatsApp phone number first.
+Tenant Mode is allowed only when the tenant has a current active approved lease and today's date is between lease start date and lease end date.
+If the sender has more than one valid role, ask them to choose mode using numbered options.
+Always prefer numbered menus and keep replies short, clear, and action-based.
+Never guess balances, invoices, leases, payments, maintenance status, meter readings, or billing status. Use only TMS data.
+Never expose internal database IDs or data from properties the staff member is not allowed to access.
+Tenant actions are self-service and limited to their own active lease.
+Staff actions require role and property permission checks and must be logged.
+Sensitive write actions must create drafts or pending approval records unless the role explicitly allows direct approval.
 """
 
 
@@ -76,6 +96,18 @@ class WhatsAppAIAssistant:
         payload = message_log.payload or {}
         message_type = payload.get("type") or message_log.message_type
         text = _payload_text(payload)
+        identity = identify_sender(message_log.phone_number)
+        mode = resolve_mode(conversation, text, identity)
+
+        if mode == "choose_mode":
+            return mode_selection_text(), "mode_selection", {"staff_user": identity.staff_user, "tenant": identity.tenant}
+        if mode == WhatsAppConversation.MODE_GUEST:
+            return self._handle_guest_message(text), "guest", {}
+        if mode == WhatsAppConversation.MODE_STAFF:
+            return self._handle_staff_message(message_log, conversation, text, message_type, identity), "staff", {
+                "staff_user": identity.staff_user,
+            }
+
         selected_lease = self._selected_active_lease(conversation)
 
         if self._consume_lease_selection(text, conversation):
@@ -151,7 +183,7 @@ class WhatsAppAIAssistant:
             return self._lease_reply(intent, lease), intent, {"lease": lease, "tenant": lease.tenant}
 
         return (
-            "Thanks. I can help with rent balance, lease details, payment screenshots, maintenance, and available units. Please tell me what you need.",
+            tenant_menu_text(),
             "general",
             {"lease": lease, "tenant": getattr(lease, "tenant", None)},
         )
@@ -188,9 +220,127 @@ class WhatsAppAIAssistant:
 
     def _selected_active_lease(self, conversation):
         lease = conversation.selected_lease
-        if lease and lease.status == "active":
+        today = timezone.localdate()
+        if lease and lease.status == "active" and lease.start_date <= today <= lease.end_date:
             return lease
         return None
+
+    def _handle_guest_message(self, text):
+        intent = detect_intent(text)
+        lowered = (text or "").strip().lower()
+        if lowered in {"menu", "hi", "hello", "start", ""}:
+            return guest_menu_text()
+        if lowered in {"1", "vacant", "vacancy", "available"} or intent == "availability":
+            return self._available_units_reply()
+        if lowered in {"2", "registration", "tenant registration"}:
+            return (
+                "Tenant Registration\n\n"
+                "1. Ask staff for registration link\n"
+                "2. Contact office\n\n"
+                "Reply with a number or type your request."
+            )
+        return guest_menu_text()
+
+    def _handle_staff_message(self, message_log, conversation, text, message_type, identity):
+        staff_user = identity.staff_user
+        lowered = (text or "").strip().lower()
+        if message_type in {"image", "document", "video"}:
+            log_staff_action(
+                staff_user,
+                message_log.phone_number,
+                "upload_menu_requested",
+                "pending",
+                message_type=message_type,
+            )
+            return upload_type_menu_text()
+        if lowered in {"menu", "staff", "hi", "hello", "start", ""}:
+            log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
+            return staff_menu_text(staff_user)
+        if lowered in {"add tenant", "new tenant"}:
+            conversation.pending_state = "staff_add_tenant"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "add_tenant_menu", "allowed")
+            return _add_tenant_menu_text()
+        if conversation.pending_state == "staff_tenant_management" and lowered in {"1", "add tenant", "add new tenant"}:
+            conversation.pending_state = "staff_add_tenant"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "add_tenant_menu", "allowed")
+            return _add_tenant_menu_text()
+        if conversation.pending_state == "staff_add_tenant" and lowered in {"1", "public link", "send public tenant registration link"}:
+            return self._create_registration_link_for_staff(message_log, conversation, staff_user)
+        if lowered in {"1", "tenant", "tenant management"}:
+            conversation.pending_state = "staff_tenant_management"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "tenant_management_menu", "allowed")
+            return staff_submenu_text(text)
+        if lowered in {"add lease", "create lease"}:
+            conversation.pending_state = "staff_add_lease_tenant_id"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "add_lease_started", "allowed")
+            return (
+                "Create Lease\n\n"
+                "Please enter Tenant ID Number.\n\n"
+                "Example:\n"
+                "35202-1234567-8\n\n"
+                "Reply CANCEL to stop."
+            )
+        if lowered == "cancel":
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return staff_menu_text(staff_user)
+        if lowered in {"9", "switch mode"}:
+            conversation.selected_mode = ""
+            conversation.mode_expires_at = None
+            conversation.pending_state = "mode_selection"
+            conversation.save(update_fields=["selected_mode", "mode_expires_at", "pending_state", "updated_at"])
+            return mode_selection_text()
+        log_staff_action(staff_user, message_log.phone_number, "staff_menu_request", "allowed", text=text[:200])
+        return staff_submenu_text(text)
+
+    def _create_registration_link_for_staff(self, message_log, conversation, staff_user):
+        from tenants.models import Tenant
+        from tenants.views import tenant_registration_token
+        from whatsapp.models import WhatsAppExternalLinkToken
+
+        tenant = Tenant.objects.create(
+            first_name="New",
+            last_name="Registration",
+            phone="",
+            email="",
+            cnic=f"NEW{timezone.now().strftime('%y%m%d%H%M%S')}",
+            is_active=False,
+            notes=f"Created from WhatsApp registration link by {staff_user or 'staff'}.",
+        )
+        path = reverse("tenants:tenant_public_registration", args=[tenant_registration_token(tenant)])
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        link = f"{base_url.rstrip('/')}{path}"
+        WhatsAppExternalLinkToken.objects.create(
+            link_type=WhatsAppExternalLinkToken.LINK_TENANT_REGISTRATION,
+            phone_number=message_log.phone_number,
+            tenant=tenant,
+            staff_user=staff_user,
+            target_app_label="tenants",
+            target_model="tenant",
+            target_object_id=tenant.pk,
+            metadata={"generated_link": link},
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        conversation.pending_state = ""
+        conversation.save(update_fields=["pending_state", "updated_at"])
+        log_staff_action(
+            staff_user,
+            message_log.phone_number,
+            "tenant_registration_link_created",
+            "allowed",
+            tenant=tenant,
+            link=link,
+        )
+        return (
+            "Tenant registration link created.\n\n"
+            f"Link:\n{link}\n\n"
+            "After submission:\n"
+            "Pending Approval"
+        )
 
     def _consume_lease_selection(self, text, conversation):
         if conversation.pending_state != "lease_selection":
@@ -307,6 +457,15 @@ def detect_intent(text):
     if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues")):
         return "balance"
     return "general"
+
+
+def _add_tenant_menu_text():
+    return (
+        "Add Tenant\n\n"
+        "1. Send public tenant registration link\n"
+        "2. Create tenant draft by WhatsApp\n"
+        "3. Back"
+    )
 
 
 def _payload_text(payload):

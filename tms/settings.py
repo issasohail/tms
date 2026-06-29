@@ -140,6 +140,16 @@ WHATSAPP_AI_ENABLED = os.getenv("WHATSAPP_AI_ENABLED", "true").lower() in {"1", 
 WHATSAPP_AI_PROVIDER = os.getenv("WHATSAPP_AI_PROVIDER", "rules")
 WHATSAPP_AI_OCR_PROVIDER = os.getenv("WHATSAPP_AI_OCR_PROVIDER", "basic")
 WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in {"1", "true", "yes", "on"}
+WHATSAPP_PUBLIC_BASE_URL = os.getenv("WHATSAPP_PUBLIC_BASE_URL", "https://tms.sonazconsultancy.online")
+WHATSAPP_MODE_SESSION_MINUTES = int(os.getenv("WHATSAPP_MODE_SESSION_MINUTES", "60"))
+WHATSAPP_ROLE_GROUP_NAMES = [
+    "Guest",
+    "Tenant",
+    "Staff",
+    "Billing Staff",
+    "Property Manager",
+    "Administrator",
+]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_WHATSAPP_AI_MODEL = os.getenv("OPENAI_WHATSAPP_AI_MODEL", "gpt-4o-mini")
 
@@ -277,6 +287,10 @@ CELERY_BROKER_URL = "redis://localhost:6379/0"  # Using Redis as the broker
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_BACKEND = "redis://localhost:6379/0"  # Storing results in Redis
+
+# Local RQ queue for monthly billing background jobs.
+BILLING_RQ_REDIS_URL = os.getenv("BILLING_RQ_REDIS_URL", "redis://localhost:6379/1")
+BILLING_RQ_QUEUE = os.getenv("BILLING_RQ_QUEUE", "billing")
 
 
 # Password validation

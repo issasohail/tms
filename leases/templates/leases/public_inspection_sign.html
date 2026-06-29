@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Review Inspection{% endblock %}
+{% block content %}
+<style>
+  .public-status-pill { border-width:1px; border-style:solid; border-radius:999px; padding:2px 8px; font-size:11px; background:#fff; cursor:pointer; white-space:nowrap; }
+  .public-status-wrap { display:flex; flex-wrap:wrap; gap:4px; min-width:220px; }
+  .public-saving { opacity:.65; }
+</style>
+<div class="container py-3" id="publicInspectionRoot">
+  <h4 class="mb-1">{{ inspection.inspection_type }} Inspection</h4>
+  <div class="text-muted small mb-3">{{ inspection.property.property_name }} {{ inspection.unit.unit_number }} - {{ inspection.inspection_date }}</div>
+  <div class="card shadow-sm mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead class="table-light"><tr><th style="width:48px;">SN</th><th>Category</th><th>Item</th><th>Status</th><th>Remarks</th><th>Photos</th></tr></thead>
+        <tbody>
+          {% for row in inspection.details.all %}
+            <tr data-detail-id="{{ row.pk }}" data-update-url="{% url 'leases:public_inspection_detail_update_ajax' inspection.public_token row.pk %}">
+              <td>{{ forloop.counter }}</td>
+              <td>{{ row.category }}</td>
+              <td>{{ row.item_name }}</td>
+              <td>
+                <div class="public-status-wrap">
+                  {% for status in statuses %}
+                    <button type="button" class="public-status-pill {% if row.status_name == status.name %}btn-{{ status.badge_color }} text-white active{% else %}btn-outline-{{ status.badge_color }}{% endif %}" data-status-id="{{ status.pk }}" data-status-color="{{ status.badge_color }}">{{ status.name }}</button>
+                  {% endfor %}
+                </div>
+              </td>
+              <td><textarea class="form-control form-control-sm public-remarks" rows="1">{{ row.remarks }}</textarea></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1 mb-1">
+                  {% for photo in row.photos.all %}
+                    <a href="{{ photo.image.url }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">View</a>
+                  {% empty %}
+                    <span class="text-muted small">No photos</span>
+                  {% endfor %}
+                </div>
+                {% if row.allow_photos %}
+                  <form method="post" enctype="multipart/form-data" action="{% url 'leases:public_inspection_photo_add_ajax' inspection.public_token row.pk %}" class="public-photo-form d-flex gap-1">
+                    {% csrf_token %}
+                    <input type="file" name="image" class="public-file-input d-none" accept="image/*,video/*" multiple>
+                    <button class="btn btn-sm btn-primary public-upload-btn" type="button">Upload More</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    <div class="card-body">
+      <label class="form-label small fw-semibold">Tenant Comments</label>
+      <textarea name="tenant_comments" class="form-control form-control-sm mb-2" rows="3">{{ inspection.tenant_comments }}</textarea>
+      <label class="form-label small fw-semibold">Tenant Signature</label>
+      <input name="tenant_signature" class="form-control form-control-sm" required placeholder="Type full name as signature">
+    </div>
+    <div class="card-footer d-flex justify-content-end">
+      <button class="btn btn-sm btn-primary" type="submit">Submit Signature</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+  const root = document.getElementById('publicInspectionRoot');
+  if (!root) return;
+  const csrftoken = document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1] || '';
+  function post(url, data) {
+    return fetch(url, {method:'POST', headers:{'X-CSRFToken': csrftoken, 'X-Requested-With':'XMLHttpRequest'}, body:data}).then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || 'Request failed'); });
+      return r.json();
+    });
+  }
+  function setPillSolid(btn) {
+    const wrap = btn.closest('.public-status-wrap');
+    wrap.querySelectorAll('.public-status-pill').forEach(pill => {
+      const color = pill.dataset.statusColor || 'secondary';
+      pill.className = 'public-status-pill btn-outline-' + color;
+      pill.classList.remove('active', 'text-white');
+    });
+    const color = btn.dataset.statusColor || 'secondary';
+    btn.className = 'public-status-pill btn-' + color + ' text-white active';
+  }
+  document.addEventListener('click', function (event) {
+    const pill = event.target.closest('.public-status-pill');
+    if (!pill) return;
+    const tr = pill.closest('tr[data-detail-id]');
+    const data = new FormData();
+    data.append('field', 'status');
+    data.append('value', pill.dataset.statusId);
+    tr.classList.add('public-saving');
+    post(tr.dataset.updateUrl, data).then(() => setPillSolid(pill)).finally(() => tr.classList.remove('public-saving'));
+  });
+  let timer = null;
+  document.addEventListener('input', function (event) {
+    if (!event.target.classList.contains('public-remarks')) return;
+    const tr = event.target.closest('tr[data-detail-id]');
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const data = new FormData();
+      data.append('field', 'remarks');
+      data.append('value', event.target.value);
+      tr.classList.add('public-saving');
+      post(tr.dataset.updateUrl, data).finally(() => tr.classList.remove('public-saving'));
+    }, 600);
+  });
+  async function imageToFile(file) {
+    if (!file.type.startsWith('image/')) return file;
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = URL.createObjectURL(file);
+    });
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const caption = prompt('Caption to burn on image (optional)', '') || '';
+    if (caption) {
+      ctx.fillStyle = 'rgba(0,0,0,.65)';
+      ctx.fillRect(0, canvas.height - 34, canvas.width, 34);
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px Arial';
+      ctx.fillText(caption, 12, canvas.height - 11);
+    }
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.72));
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', {type:'image/jpeg'});
+  }
+  document.addEventListener('click', function (event) {
+    const btn = event.target.closest('.public-upload-btn');
+    if (btn) btn.closest('form').querySelector('.public-file-input').click();
+  });
+  document.addEventListener('change', async function (event) {
+    const input = event.target.closest('.public-file-input');
+    if (!input || !input.files.length) return;
+    const form = input.closest('form');
+    const data = new FormData();
+    data.append('csrfmiddlewaretoken', csrftoken);
+    for (const file of input.files) data.append('image', await imageToFile(file));
+    post(form.action, data).then(() => window.location.reload()).catch(err => alert(err.message));
+  });
+})();
+</script>
+{% endblock %}

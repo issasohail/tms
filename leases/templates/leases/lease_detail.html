@@ -350,6 +350,7 @@
       <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success"><i class="fas fa-sync-alt"></i> Renew</a>
       <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
+      <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-clipboard-check"></i> Inspections</a>
       <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
       {% include "whatsapp/_dropdown.html" with phone=lease.tenant.phone object_type="lease" object_id=lease.pk %}
       {% if lease.status == "active" %}
@@ -680,6 +681,7 @@
       <button class="ld-tab-btn" data-tab="notes">Terms &amp; Notes</button>
       <button class="ld-tab-btn" data-tab="activity">Activity</button>
       <button class="ld-tab-btn" data-tab="docs">Documents</button>
+      <button class="ld-tab-btn" data-tab="inspections">Inspection Sheet</button>
     </div>
 
     <div class="ld-tab-content-wrap">
@@ -1011,6 +1013,61 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- ======== INSPECTION SHEETS ======== -->
+      <div class="ld-tab-pane" id="ld-tab-inspections">
+        <div class="ld-inner-card">
+          <div class="ld-inner-head">
+            <span>Lease Inspection Sheets</span>
+            <div class="d-flex flex-wrap gap-1 no-print">
+              <a class="btn btn-sm btn-primary" href="{% url 'leases:lease_inspection_create' lease.pk %}">Create Inspection</a>
+              <a class="btn btn-sm btn-outline-dark" href="{% url 'leases:inspection_compare' lease.pk %}">Compare</a>
+            </div>
+          </div>
+          <div class="ld-tw">
+            <table class="ld-tbl">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Template</th>
+                  <th>Status</th>
+                  <th>Complete</th>
+                  <th class="no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for inspection in lease.inspections.all %}
+                  <tr>
+                    <td>{{ inspection.inspection_date }}</td>
+                    <td>{{ inspection.inspection_type }}</td>
+                    <td>{{ inspection.inspection_template|default:"&mdash;" }}</td>
+                    <td><span class="ld-badge ld-badge-gray">{{ inspection.get_status_display }}</span></td>
+                    <td>{{ inspection.completion_percent }}%</td>
+                    <td class="no-print">
+                      <div class="d-flex flex-wrap gap-1">
+                        <a class="btn btn-sm btn-outline-dark" href="{% url 'leases:inspection_detail' inspection.pk %}">View</a>
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:inspection_edit' inspection.pk %}">Edit</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'leases:inspection_pdf' inspection.pk %}">Print</a>
+                        <form method="post" action="{% url 'leases:inspection_public_link' inspection.pk %}">
+                          {% csrf_token %}
+                          <button class="btn btn-sm btn-outline-success" type="submit">Public Link</button>
+                        </form>
+                        <form method="post" action="{% url 'leases:inspection_approve' inspection.pk %}">
+                          {% csrf_token %}
+                          <button class="btn btn-sm btn-success" type="submit">Approve</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="6" class="ld-empty">No inspection sheets yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
     </div><!-- /ld-tab-content-wrap -->

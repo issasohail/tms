@@ -7,7 +7,9 @@ from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import PermissionDenied
 from django.db.models import ProtectedError
+from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
 from .forms import (
@@ -88,11 +90,26 @@ def _staff_required(user):
     return user.is_authenticated and user.is_staff
 
 
+def _has_account_perm(user, action):
+    return user.is_authenticated and (
+        user.is_superuser or user.has_perm(f"accounts.{action}_account")
+    )
+
+
+def _account_perm_required(request, action, message="You do not have permission to manage users."):
+    if _has_account_perm(request.user, action):
+        return None
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        raise PermissionDenied(message)
+    messages.error(request, message)
+    return redirect("dashboard:home")
+
+
 @login_required
 def user_access_list(request):
-    if not _staff_required(request.user):
-        messages.error(request, "You do not have permission to manage users.")
-        return redirect("dashboard:home")
+    denied = _account_perm_required(request, "view")
+    if denied:
+        return denied
     users = Account.objects.order_by("username")
     return render(request, "accounts/user_access_list.html", {"users": users})
 
@@ -100,9 +117,9 @@ def user_access_list(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def user_access_create(request):
-    if not _staff_required(request.user):
-        messages.error(request, "You do not have permission to manage users.")
-        return redirect("dashboard:home")
+    denied = _account_perm_required(request, "add")
+    if denied:
+        return denied
     user = Account()
     form = AccountAccessForm(request.POST or None, instance=user)
     selected_permissions = set()
@@ -125,9 +142,9 @@ def user_access_create(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def user_access_update(request, pk):
-    if not _staff_required(request.user):
-        messages.error(request, "You do not have permission to manage users.")
-        return redirect("dashboard:home")
+    denied = _account_perm_required(request, "change")
+    if denied:
+        return denied
     user = get_object_or_404(Account, pk=pk)
     form = AccountAccessForm(request.POST or None, instance=user)
     selected_permissions = set(user.user_permissions.values_list("id", flat=True))
@@ -149,10 +166,23 @@ def user_access_update(request, pk):
 
 @login_required
 @require_POST
+def user_permission_autosave(request, pk):
+    denied = _account_perm_required(request, "change")
+    if denied:
+        return denied
+    user = get_object_or_404(Account, pk=pk)
+    selected_ids = [pk for pk in request.POST.getlist("permissions") if pk.isdigit()]
+    permissions = Permission.objects.filter(id__in=selected_ids)
+    user.user_permissions.set(permissions)
+    return JsonResponse({"ok": True, "saved_count": permissions.count()})
+
+
+@login_required
+@require_POST
 def user_access_delete(request, pk):
-    if not _staff_required(request.user):
-        messages.error(request, "You do not have permission to manage users.")
-        return redirect("dashboard:home")
+    denied = _account_perm_required(request, "delete")
+    if denied:
+        return denied
     user = get_object_or_404(Account, pk=pk)
     if user.pk == request.user.pk:
         messages.error(request, "You cannot delete the account you are currently using.")

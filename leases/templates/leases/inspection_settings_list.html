@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Inspection Settings{% endblock %}
+{% block content %}
+<style>
+  .inspection-settings-shell { max-width:1600px; margin:0 auto; font-size:12px; }
+  .inspection-settings-shell .table th, .inspection-settings-shell .table td { padding:4px 6px; vertical-align:middle; }
+  .inspection-settings-shell input, .inspection-settings-shell select, .inspection-settings-shell textarea { font-size:12px; padding:3px 6px; }
+  .settings-template-item { display:flex; gap:6px; align-items:center; border:1px solid #dee2e6; border-radius:5px; padding:4px 6px; margin-bottom:4px; background:#fff; }
+  .settings-template-item .item-label { flex:1; }
+  .settings-template-items { max-height:260px; overflow:auto; }
+</style>
+<div class="container-fluid py-2">
+<div class="inspection-settings-shell">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div>
+      <h4 class="mb-0">Inspection Settings</h4>
+      <div class="text-muted small">Inline editable settings. New inspections copy these values into historical rows.</div>
+    </div>
+    <div class="d-flex gap-1">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'core:settings' %}#settings-tool-inspections">System Settings</a>
+      <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_settings_create' 'types' %}">Add Type</a>
+      <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_settings_create' 'categories' %}">Add Category</a>
+      <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_settings_create' 'statuses' %}">Add Status</a>
+      <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_settings_create' 'items' %}">Add Item</a>
+      <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_settings_create' 'templates' %}">Add Template</a>
+    </div>
+  </div>
+
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-types" type="button">Types</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-categories" type="button">Categories</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-statuses" type="button">Statuses</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-items" type="button">Items</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-templates" type="button">Templates</button></li>
+  </ul>
+
+  <div class="tab-content bg-white border border-top-0 p-2 shadow-sm">
+    <div class="tab-pane fade show active" id="tab-types">
+      <div class="table-responsive"><table class="table table-sm table-bordered mb-0">
+        <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Name</th><th style="width:120px;">Order</th><th style="width:90px;">Active</th></tr></thead>
+        <tbody>{% for row in types %}<tr data-kind="types" data-pk="{{ row.pk }}">
+          <td>{{ forloop.counter }}</td>
+          <td><input class="form-control form-control-sm js-setting" data-field="name" value="{{ row.name }}"></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-categories">
+      <div class="table-responsive"><table class="table table-sm table-bordered mb-0">
+        <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Name</th><th style="width:120px;">Order</th><th style="width:90px;">Active</th></tr></thead>
+        <tbody>{% for row in categories %}<tr data-kind="categories" data-pk="{{ row.pk }}">
+          <td>{{ forloop.counter }}</td>
+          <td><input class="form-control form-control-sm js-setting" data-field="name" value="{{ row.name }}"></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-statuses">
+      <div class="table-responsive"><table class="table table-sm table-bordered mb-0">
+        <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Name</th><th style="width:150px;">Badge Color</th><th style="width:120px;">Order</th><th style="width:90px;">Active</th></tr></thead>
+        <tbody>{% for row in statuses %}<tr data-kind="statuses" data-pk="{{ row.pk }}">
+          <td>{{ forloop.counter }}</td>
+          <td><input class="form-control form-control-sm js-setting" data-field="name" value="{{ row.name }}"></td>
+          <td>
+            <select class="form-select form-select-sm js-setting" data-field="badge_color">
+              <option value="success" {% if row.badge_color == "success" %}selected{% endif %}>success</option>
+              <option value="primary" {% if row.badge_color == "primary" %}selected{% endif %}>primary</option>
+              <option value="warning" {% if row.badge_color == "warning" %}selected{% endif %}>warning</option>
+              <option value="info" {% if row.badge_color == "info" %}selected{% endif %}>info</option>
+              <option value="danger" {% if row.badge_color == "danger" %}selected{% endif %}>danger</option>
+              <option value="dark" {% if row.badge_color == "dark" %}selected{% endif %}>dark</option>
+              <option value="secondary" {% if row.badge_color == "secondary" %}selected{% endif %}>secondary</option>
+            </select>
+          </td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-items">
+      <div class="table-responsive"><table class="table table-sm table-bordered mb-0">
+        <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Category</th><th>Item</th><th style="width:90px;">Order</th><th>Required</th><th>Photos</th><th>Cost</th><th>Notes</th><th>Active</th></tr></thead>
+        <tbody>{% for row in items %}<tr data-kind="items" data-pk="{{ row.pk }}">
+          <td>{{ forloop.counter }}</td>
+          <td><select class="form-select form-select-sm js-setting select2" data-field="category">{% for cat in categories %}<option value="{{ cat.pk }}" {% if row.category_id == cat.pk %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
+          <td><input class="form-control form-control-sm js-setting" data-field="item_name" value="{{ row.item_name }}"></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="required" {% if row.required %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="allow_photos" {% if row.allow_photos %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="allow_damage_cost" {% if row.allow_damage_cost %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="allow_notes" {% if row.allow_notes %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-templates">
+      {% for template in templates %}
+        <div class="card mb-2" data-template-id="{{ template.pk }}" data-template-url="{% url 'leases:inspection_template_items_update' template.pk %}">
+          <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <div class="d-flex gap-2 align-items-center flex-wrap" data-kind="templates" data-pk="{{ template.pk }}">
+              <span class="badge bg-secondary">{{ forloop.counter }}</span>
+              <input class="form-control form-control-sm js-setting" data-field="name" value="{{ template.name }}" style="width:220px;">
+              <input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ template.display_order }}" style="width:90px;">
+              <label class="small mb-0"><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if template.active %}checked{% endif %}> Active</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-primary js-template-save">Save Items</button>
+          </div>
+          <div class="card-body">
+            <textarea class="form-control form-control-sm js-setting mb-2" data-kind="templates" data-pk="{{ template.pk }}" data-field="description" rows="2">{{ template.description }}</textarea>
+            <div class="row g-2">
+              <div class="col-12 col-lg-5">
+                <div class="small fw-semibold mb-1">Available Items</div>
+                <select class="form-select form-select-sm js-template-add-select select2">
+                  <option value="">Add item...</option>
+                  {% for item in items %}
+                    <option value="{{ item.pk }}">{{ item.category.name }} - {{ item.item_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 col-lg-7">
+                <div class="small fw-semibold mb-1">Template Order</div>
+                <div class="settings-template-items">
+                  {% for item in template.ordered_items %}
+                    <div class="settings-template-item" data-item-id="{{ item.pk }}">
+                      <span class="item-label">{{ forloop.counter }}. {{ item.category.name }} - {{ item.item_name }}</span>
+                      <button type="button" class="btn btn-sm btn-outline-secondary js-item-up">Up</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary js-item-down">Down</button>
+                      <button type="button" class="btn btn-sm btn-danger js-item-remove">Remove</button>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const csrftoken = document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1] || '';
+  function postForm(url, data) {
+    return fetch(url, {method:'POST', headers:{'X-CSRFToken': csrftoken, 'X-Requested-With':'XMLHttpRequest'}, body:data}).then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || 'Save failed'); });
+      return r.json();
+    });
+  }
+  function debounce(fn, wait) {
+    let timer = null;
+    return function (...args) { clearTimeout(timer); timer = setTimeout(() => fn.apply(this, args), wait); };
+  }
+  function inlineUrl(kind, pk) {
+    return `/tms/leases/inspection-settings/${kind}/${pk}/inline/`;
+  }
+  function saveInput(input) {
+    const row = input.closest('[data-kind][data-pk]');
+    const data = new FormData();
+    data.append('field', input.dataset.field);
+    data.append('value', input.type === 'checkbox' ? (input.checked ? '1' : '0') : input.value);
+    row.classList.add('opacity-50');
+    postForm(inlineUrl(row.dataset.kind, row.dataset.pk), data).finally(() => row.classList.remove('opacity-50'));
+  }
+  const debouncedSave = debounce(saveInput, 500);
+  document.addEventListener('input', e => { if (e.target.classList.contains('js-setting')) debouncedSave(e.target); });
+  document.addEventListener('change', e => {
+    if (e.target.classList.contains('js-setting') || e.target.classList.contains('js-setting-check')) saveInput(e.target);
+  });
+  if (window.jQuery && jQuery.fn.select2) jQuery('.select2').select2({width:'100%'});
+
+  function refreshLabels(list) {
+    list.querySelectorAll('.settings-template-item').forEach((row, idx) => {
+      const label = row.querySelector('.item-label');
+      label.textContent = (idx + 1) + '. ' + label.textContent.replace(/^\d+\.\s*/, '');
+    });
+  }
+  document.addEventListener('click', function (event) {
+    const remove = event.target.closest('.js-item-remove');
+    if (remove) { const list = remove.closest('.settings-template-items'); remove.closest('.settings-template-item').remove(); refreshLabels(list); return; }
+    const up = event.target.closest('.js-item-up');
+    if (up) { const row = up.closest('.settings-template-item'); if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); refreshLabels(row.parentNode); return; }
+    const down = event.target.closest('.js-item-down');
+    if (down) { const row = down.closest('.settings-template-item'); if (row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row); refreshLabels(row.parentNode); return; }
+    const save = event.target.closest('.js-template-save');
+    if (save) {
+      const card = save.closest('[data-template-id]');
+      const ids = [...card.querySelectorAll('.settings-template-item')].map(row => row.dataset.itemId);
+      fetch(card.dataset.templateUrl, {method:'POST', headers:{'X-CSRFToken': csrftoken, 'Content-Type':'application/json'}, body: JSON.stringify({item_ids: ids})})
+        .then(r => { if (!r.ok) throw new Error('Could not save template items.'); return r.json(); })
+        .then(() => { save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Items', 1200); })
+        .catch(err => alert(err.message));
+    }
+  });
+  document.addEventListener('change', function (event) {
+    const select = event.target.closest('.js-template-add-select');
+    if (!select || !select.value) return;
+    const card = select.closest('[data-template-id]');
+    const list = card.querySelector('.settings-template-items');
+    if (list.querySelector('[data-item-id="' + select.value + '"]')) { select.value = ''; return; }
+    const row = document.createElement('div');
+    row.className = 'settings-template-item';
+    row.dataset.itemId = select.value;
+    row.innerHTML = '<span class="item-label">' + (list.children.length + 1) + '. ' + select.options[select.selectedIndex].text + '</span><button type="button" class="btn btn-sm btn-outline-secondary js-item-up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary js-item-down">Down</button><button type="button" class="btn btn-sm btn-danger js-item-remove">Remove</button>';
+    list.appendChild(row);
+    select.value = '';
+    if (window.jQuery && jQuery.fn.select2) jQuery(select).trigger('change.select2');
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Compare Inspections{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h4 class="mb-0">Compare Inspections</h4>
+      <div class="text-muted small">Lease #{{ lease.pk }} - {{ lease.tenant.get_full_name }}</div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'leases:lease_inspection_list' lease.pk %}">Inspection Sheets</a>
+  </div>
+  <form method="get" class="card shadow-sm mb-3">
+    <div class="card-body row g-2 align-items-end">
+      <div class="col-12 col-md-5"><label class="form-label small fw-semibold">Move In / Left</label><select name="left" class="form-select form-select-sm">{% for i in inspections %}<option value="{{ i.pk }}" {% if left.pk == i.pk %}selected{% endif %}>{{ i.inspection_date }} - {{ i.inspection_type }}</option>{% endfor %}</select></div>
+      <div class="col-12 col-md-5"><label class="form-label small fw-semibold">Move Out / Right</label><select name="right" class="form-select form-select-sm">{% for i in inspections %}<option value="{{ i.pk }}" {% if right.pk == i.pk %}selected{% endif %}>{{ i.inspection_date }} - {{ i.inspection_type }}</option>{% endfor %}</select></div>
+      <div class="col-12 col-md-2"><button class="btn btn-sm btn-primary w-100" type="submit">Compare</button></div>
+    </div>
+  </form>
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead class="table-light"><tr><th>Category</th><th>Item</th><th>Move In Status</th><th>Move Out Status</th><th>Difference</th><th>Remarks</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+            <tr class="{% if row.difference == 'No Change' %}table-success{% elif row.difference == 'Damaged' %}table-danger{% else %}table-warning{% endif %}">
+              <td>{{ row.left.category|default:row.right.category }}</td>
+              <td>{{ row.left.item_name|default:row.right.item_name }}</td>
+              <td>{{ row.left.status_name|default:"-" }}</td>
+              <td>{{ row.right.status_name|default:"-" }}</td>
+              <td><strong>{{ row.difference }}</strong></td>
+              <td>{{ row.right.remarks|default:row.left.remarks|default:"-" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-muted py-3">Select two inspections to compare.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

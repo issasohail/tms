@@ -138,6 +138,7 @@ APP_MODEL_DEFAULTS = {
     "reports": "report",
     "core": "globalsettings",
     "accounts": "account",
+    "whatsapp": "whatsappmessagelog",
 }
 
 URL_MODEL_HINTS = {
@@ -206,6 +207,26 @@ URL_MODEL_HINTS = {
         "financial": "financialreport",
         "report": "report",
         "reports": "report",
+    },
+    "whatsapp": {
+        "conversation": "whatsappconversation",
+        "conversations": "whatsappconversation",
+        "message": "whatsappmessagelog",
+        "messages": "whatsappmessagelog",
+        "webhook": "whatsappwebhooklog",
+        "logs": "whatsappstaffactionlog",
+        "action": "whatsappstaffactionlog",
+        "actions": "whatsappstaffactionlog",
+        "device": "trusteddeviceregistry",
+        "devices": "trusteddeviceregistry",
+        "external": "whatsappexternallinktoken",
+        "link": "whatsappexternallinktoken",
+        "links": "whatsappexternallinktoken",
+        "property": "whatsappstaffpropertyaccess",
+        "access": "whatsappstaffpropertyaccess",
+        "payment": "pendingwhatsapppayment",
+        "media": "pendingwhatsappmedia",
+        "maintenance": "pendingwhatsappmaintenance",
     },
     "core": {
         "payment": "paymentmethod",

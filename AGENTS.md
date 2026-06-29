@@ -49,6 +49,20 @@
   - changing nginx/docker/systemd
   - altering permissions
 
+## Local Monthly Billing Automation Approval
+
+- Approved local deployment-related changes for completing monthly billing automation.
+- You may modify:
+  - `requirements.txt`
+  - Django settings
+  - task/worker files
+  - local worker scripts
+  - local documentation
+  - templates, views, URLs, services, models, and migrations
+- Use RQ + Redis locally for background billing automation.
+- Do not modify nginx, systemd, production server files, or `.env` secrets without asking again.
+- If MySQL test database creation is blocked locally, configure and use SQLite for local tests.
+
 ## Debugging Rules
 
 - Fix root cause, not symptoms.

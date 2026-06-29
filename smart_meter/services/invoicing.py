@@ -289,7 +289,7 @@ def _next_month_start(d: date) -> date:
 
 
 @transaction.atomic
-def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7) -> Invoice:
+def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7, posting_month: date | None = None) -> Invoice:
     """
     Accepts ElectricBillContext **or** any object with:
       lease, meter, period_start, period_end, beg_kwh, end_kwh, units, unit_rate, service_charges
@@ -321,10 +321,9 @@ def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7) -> Invo
             f"total={line_total}."
         )
 
-    # Find an invoice for the same lease & month; else create a new one (draft)
+    # Find an invoice for the posting month; default keeps the legacy smart-meter behavior.
     month_start = ctx.period_start.replace(day=1)
-    posting_month = _next_month_start(
-        month_start)  # <-- bill goes on next month
+    posting_month = (posting_month or _next_month_start(month_start)).replace(day=1)
     month_end = period_end
 
     inv = (Invoice.objects

@@ -5,19 +5,25 @@
 
 {% block content %}
 <style>
-  .mbill-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:.5rem; }
-  .mbill-stat { border:1px solid rgba(0,0,0,.08); background:#fff; border-radius:6px; padding:.65rem .75rem; }
-  .mbill-stat .label { color:#6b7280; font-size:.78rem; }
-  .mbill-stat .value { font-size:1.2rem; font-weight:700; line-height:1.1; }
+  .mbill-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:.5rem; }
+  .mbill-stat { border:1px solid rgba(0,0,0,.08); background:#fff; border-radius:6px; padding:.65rem .75rem; text-align:left; }
+  .mbill-stat .label { color:#6b7280; font-size:.76rem; }
+  .mbill-stat .value { font-size:1.18rem; font-weight:700; line-height:1.1; }
+  .mbill-stat.active { border-color:#0d6efd; box-shadow:0 0 0 .12rem rgba(13,110,253,.12); }
   .mbill-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
   .mbill-table th, .mbill-table td { white-space:nowrap; }
-  .mbill-table .issue-cell { white-space:normal; min-width:220px; }
+  .mbill-table th.sortable { cursor:pointer; user-select:none; }
+  .mbill-table .issue-cell, .mbill-table .actions-cell { white-space:normal; min-width:210px; }
+  .mbill-muted { color:#6b7280; font-size:.78rem; }
+  .mbill-toolbar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; justify-content:space-between; }
 </style>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div>
-    <h4 class="mb-1">Monthly Billing: {{ run.billing_month|date:"F Y" }}</h4>
-    <div class="text-muted small">Run date {{ run.run_date }} · {{ run.get_status_display }}</div>
+    <h4 class="mb-1">Billing Control Center: {{ run.billing_month|date:"F Y" }}</h4>
+    <div class="text-muted small">
+      Recurring/Water: {{ run.billing_month|date:"F Y" }} · Electric usage: {{ run.billing_month|date:"F Y" }} invoice includes previous month usage · {{ run.get_status_display }}
+    </div>
   </div>
   <div class="d-flex gap-2">
     <a href="{% url 'invoices:monthly_billing_run_export' run.pk %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-file-export me-1"></i>Export</a>
@@ -25,86 +31,138 @@
   </div>
 </div>
 
-<div class="mbill-summary mb-3">
-  <div class="mbill-stat"><div class="label">Active leases</div><div class="value">{{ run.total_active_leases|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Recurring created</div><div class="value">{{ run.recurring_created_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Missing recurring</div><div class="value">{{ run.missing_recurring_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Electric ready</div><div class="value">{{ run.electric_ready_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Meter pending</div><div class="value">{{ run.electric_pending_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Water missing</div><div class="value">{{ run.water_missing_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Ready to send</div><div class="value">{{ run.ready_to_send_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Pending</div><div class="value">{{ run.pending_attention_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Sent</div><div class="value">{{ run.sent_count|intcomma }}</div></div>
-  <div class="mbill-stat"><div class="label">Failed</div><div class="value">{{ run.failed_count|intcomma }}</div></div>
+<div class="mbill-summary mb-3" id="kpiFilters">
+  <button class="mbill-stat" data-filter=""><div class="label">Active Leases</div><div class="value">{{ run.total_active_leases|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="recurring-created"><div class="label">Recurring Created</div><div class="value">{{ run.recurring_created_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="missing-recurring"><div class="label">Missing Recurring</div><div class="value">{{ run.missing_recurring_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="electric-ready"><div class="label">Electric Ready</div><div class="value">{{ run.electric_ready_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="meter-pending"><div class="label">Meter Pending</div><div class="value">{{ run.electric_pending_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="manual-electric"><div class="label">Manual Electric</div><div class="value">{{ run.manual_electric_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="water-missing"><div class="label">Water Missing</div><div class="value">{{ run.water_missing_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="ready"><div class="label">Ready</div><div class="value">{{ run.ready_to_send_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="pending"><div class="label">Pending</div><div class="value">{{ run.pending_attention_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="sending"><div class="label">Sending</div><div class="value">{{ run.sending_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="sent"><div class="label">Sent</div><div class="value">{{ run.sent_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="failed"><div class="label">Failed</div><div class="value">{{ run.failed_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="excluded"><div class="label">Excluded</div><div class="value">{{ run.excluded_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="rolled-back"><div class="label">Rolled Back</div><div class="value">{{ run.rolled_back_count|intcomma }}</div></button>
 </div>
 
-<form method="post" action="{% url 'invoices:monthly_billing_run_action' run.pk %}" class="mbill-actions mb-3">
+<form method="post" action="{% url 'invoices:monthly_billing_run_action' run.pk %}" data-enqueue-url="{% url 'invoices:monthly_billing_run_enqueue' run.pk %}" class="mbill-actions mb-3 billing-run-action-form">
   {% csrf_token %}
-  <button class="btn btn-sm btn-outline-primary" name="action" value="preflight" type="submit"><i class="fas fa-search me-1"></i>Run Preflight</button>
-  <button class="btn btn-sm btn-outline-primary" name="action" value="generate_recurring" type="submit"><i class="fas fa-redo me-1"></i>Generate Recurring Invoices</button>
-  <button class="btn btn-sm btn-outline-primary" name="action" value="generate_electric" type="submit"><i class="fas fa-bolt me-1"></i>Generate Electric Billing</button>
-  <button class="btn btn-sm btn-outline-primary" name="action" value="prepare_ready" type="submit"><i class="fas fa-check me-1"></i>Prepare Ready</button>
+  <button class="btn btn-sm btn-outline-secondary" id="dryRunPreviewBtn" data-url="{% url 'invoices:monthly_billing_dry_run_json' run.pk %}" type="button"><i class="fas fa-eye me-1"></i>Preview Billing</button>
+  <button class="btn btn-sm btn-outline-secondary" name="action" value="dry_run" type="submit"><i class="fas fa-clipboard-list me-1"></i>Save Dry Run</button>
+  <button class="btn btn-sm btn-primary" name="action" value="run_billing" type="submit"><i class="fas fa-play me-1"></i>Run Billing</button>
+  <button class="btn btn-sm btn-outline-primary" name="action" value="preflight" type="submit"><i class="fas fa-search me-1"></i>Preflight</button>
+  <button class="btn btn-sm btn-outline-primary" name="action" value="generate_recurring" type="submit"><i class="fas fa-redo me-1"></i>Recurring</button>
+  <button class="btn btn-sm btn-outline-primary" name="action" value="generate_electric" type="submit"><i class="fas fa-bolt me-1"></i>Electric</button>
+  <button class="btn btn-sm btn-outline-primary" name="action" value="prepare_ready" type="submit"><i class="fas fa-check me-1"></i>Ready Validation</button>
   <button class="btn btn-sm btn-outline-primary" name="action" value="generate_pdfs" type="submit"><i class="fas fa-file-pdf me-1"></i>Generate PDFs</button>
-  <button class="btn btn-sm btn-success" name="action" value="send_ready" type="submit"><i class="fab fa-whatsapp me-1"></i>Send Ready Invoices</button>
+  <button class="btn btn-sm btn-success" name="action" value="send_ready" type="submit"><i class="fab fa-whatsapp me-1"></i>Send WhatsApp</button>
   <button class="btn btn-sm btn-outline-danger" name="action" value="retry_failed" type="submit"><i class="fas fa-sync me-1"></i>Retry Failed</button>
+  <button class="btn btn-sm btn-outline-danger" name="action" value="rollback_run" type="submit"><i class="fas fa-undo me-1"></i>Rollback Run</button>
 </form>
 
+<div class="mbill-toolbar mb-3">
+  <input id="billingSearch" type="search" class="form-control form-control-sm" style="max-width:22rem" placeholder="Search tenant, property, unit, invoice, status">
+  <div class="text-muted small">Click table headers to sort. KPI cards filter without page reload.</div>
+</div>
+
+{% if run.dry_run_summary %}
+<div class="alert alert-light border py-2 small">
+  Dry run: {{ run.dry_run_summary.active_leases|default:0 }} active, {{ run.dry_run_summary.would_send|default:0 }} would send,
+  {{ run.dry_run_summary.manual_electric|default:0 }} manual electric, {{ run.dry_run_summary.water_missing|default:0 }} water missing.
+</div>
+{% endif %}
+
 {% for key, label, items in tabs %}
-<div class="mb-4">
+<div class="mb-4 billing-section">
   <h6 class="border-bottom pb-2 mb-2">{{ label }} <span class="text-muted">({{ items|length }})</span></h6>
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mbill-table">
       <thead class="table-light">
         <tr>
-          <th>Tenant</th>
-          <th>Property</th>
-          <th>Unit</th>
-          <th>Invoice</th>
-          <th class="text-end">Total</th>
-          <th>Issue</th>
-          <th>Meter Date</th>
+          <th class="sortable" data-sort="number">#</th>
+          <th class="sortable">Tenant</th>
+          <th class="sortable">Property</th>
+          <th class="sortable">Unit</th>
+          <th class="sortable">Invoice</th>
+          <th class="sortable">Recurring</th>
+          <th class="sortable">Electric</th>
           <th>Water</th>
-          <th>WhatsApp</th>
+          <th class="sortable">Status</th>
+          <th class="sortable">WhatsApp</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for item in items %}
-        <tr>
+        <tr class="billing-row"
+            data-status="{{ item.status }}"
+            data-recurring-created="{{ item.recurring_invoice_created|yesno:'1,0' }}"
+            data-missing-recurring="{% if item.issue_code == 'missing_recurring_invoice_setup' %}1{% else %}0{% endif %}"
+            data-electric-ready="{{ item.electric_ready|yesno:'1,0' }}"
+            data-meter-pending="{% if item.issue_code == 'latest_meter_reading_missing' or item.issue_code == 'meter_offline' %}1{% else %}0{% endif %}"
+            data-manual-electric="{{ item.manual_electric|yesno:'1,0' }}"
+            data-water-missing="{% if item.issue_code == 'water_charge_missing' %}1{% else %}0{% endif %}">
+          <td>{{ forloop.counter }}</td>
           <td>{{ item.tenant.first_name }} {{ item.tenant.last_name }}</td>
           <td>{{ item.property.property_name|default:"-" }}</td>
           <td>{{ item.unit.unit_number|default:"-" }}</td>
           <td>
             {% if item.invoice %}
               <a href="{% url 'invoices:invoice_detail' item.invoice.pk %}">{{ item.invoice.invoice_number }}</a>
+              <div class="mbill-muted">Rs. {{ item.invoice_total|default:0|floatformat:2|intcomma }}</div>
             {% else %}-{% endif %}
           </td>
-          <td class="text-end">Rs. {{ item.invoice_total|default:0|floatformat:2|intcomma }}</td>
+          <td>{% if item.recurring_invoice_found %}<span class="badge bg-success">Found</span>{% else %}<span class="badge bg-warning text-dark">Missing</span>{% endif %}</td>
+          <td>
+            {% if item.manual_electric %}
+              <span class="badge bg-info text-dark">Manual Electric</span>
+              <div class="mbill-muted">Unit is not enrolled in Smart Meter billing.</div>
+            {% elif item.electric_required %}
+              <span class="badge {% if item.electric_ready %}bg-success{% else %}bg-warning text-dark{% endif %}">{% if item.electric_ready %}Ready{% else %}Pending{% endif %}</span>
+              <div class="mbill-muted">{{ item.electric_period_start|date:"M d" }} - {{ item.electric_period_end|date:"M d, Y" }}</div>
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{% url 'invoices:monthly_billing_water_update' item.pk %}" class="d-flex flex-column gap-1">
+              {% csrf_token %}
+              <div class="d-flex gap-1">
+                <input name="water_charge" type="number" min="0" step="0.01" value="{{ item.water_charge|default:'' }}" class="form-control form-control-sm" style="width:7rem">
+                <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+              </div>
+              <input name="water_description" type="text" class="form-control form-control-sm" placeholder="Water description" value="{% if item.water_resolved %}Water charges {{ run.billing_month|date:'M Y' }}{% endif %}">
+              <label class="small text-muted mb-0"><input type="checkbox" name="apply_property" value="1"> Apply to property occupied units</label>
+              <button class="btn btn-sm btn-outline-secondary align-self-start" type="submit" name="not_applicable" value="1">N/A</button>
+            </form>
+          </td>
           <td class="issue-cell">
             {% if item.issue_message %}
               <span class="badge bg-warning text-dark">{{ item.get_issue_code_display }}</span>
               <div class="small text-muted">{{ item.issue_message }}</div>
-              {% if item.error_text %}<div class="small text-danger">{{ item.error_text|truncatechars:120 }}</div>{% endif %}
             {% else %}
               <span class="badge bg-light text-dark">{{ item.get_status_display }}</span>
             {% endif %}
-          </td>
-          <td>{{ item.latest_meter_reading_date|default:"-" }}</td>
-          <td>
-            {% if item.water_required and not item.water_resolved %}
-            <form method="post" action="{% url 'invoices:monthly_billing_water_update' item.pk %}" class="d-flex gap-1">
-              {% csrf_token %}
-              <input name="water_charge" type="number" min="0" step="0.01" class="form-control form-control-sm" style="width:7rem">
-              <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
-              <button class="btn btn-sm btn-outline-secondary" type="submit" name="not_applicable" value="1">N/A</button>
-            </form>
-            {% elif item.water_resolved %}
-              Rs. {{ item.water_charge|default:0|floatformat:2|intcomma }}
-            {% else %}-{% endif %}
+            {% if item.excluded_reason %}<div class="small text-danger">{{ item.excluded_reason }}</div>{% endif %}
+            {% if item.error_text %}<div class="small text-danger">{{ item.error_text|truncatechars:120 }}</div>{% endif %}
           </td>
           <td>{{ item.whatsapp_status|default:"-" }}{% if item.sent_at %}<div class="small text-muted">{{ item.sent_at|date:"Y-m-d H:i" }}</div>{% endif %}</td>
+          <td class="actions-cell">
+            <form method="post" action="{% url 'invoices:monthly_billing_item_action' item.pk %}" class="d-flex flex-wrap gap-1">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-primary" name="action" value="regenerate_pdf" type="submit">PDF</button>
+          <button class="btn btn-sm btn-outline-success" name="action" value="resend_whatsapp" type="submit">Resend</button>
+              <button class="btn btn-sm btn-outline-danger" name="action" value="rollback" type="submit">Rollback</button>
+              <input name="reason" class="form-control form-control-sm" placeholder="Exclude reason" style="width:10rem">
+              <button class="btn btn-sm btn-outline-secondary" name="action" value="exclude" type="submit">Exclude</button>
+            </form>
+          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="9" class="text-center text-muted py-3">No items.</td></tr>
+        <tr><td colspan="11" class="text-center text-muted py-3">No items.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -112,10 +170,206 @@
 </div>
 {% endfor %}
 
+{% if electric_audit_rows %}
+<div class="alert alert-warning small">
+  Electric posting audit found {{ electric_audit_rows|length }} historical inconsistency row(s). This is read-only; no historical invoice data was changed.
+</div>
+{% endif %}
+
 {% if run.notes %}
 <div class="mt-3">
-  <h6>Run Log</h6>
+  <h6>Billing Log</h6>
   <pre class="small bg-light border rounded p-2">{{ run.notes }}</pre>
 </div>
 {% endif %}
+
+<div class="modal fade" id="billingProgressModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="progressTitle">Billing Progress</h6>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3" style="height:.6rem;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:10%"></div>
+        </div>
+        <div class="fw-semibold" id="progressStep">Starting...</div>
+        <div class="small text-muted" id="progressMessage"></div>
+        <div class="small text-muted mt-2">
+          <div>Tenant: <span id="progressTenant">Preparing rows</span></div>
+          <div>Property: <span id="progressProperty">-</span></div>
+          <div>Unit: <span id="progressUnit">-</span></div>
+          <div>Counter: <span id="progressCounter">0 / {{ all_items|length }}</span></div>
+          <div>Elapsed: <span id="progressElapsed">0s</span> · Average: <span id="progressAverage">calculating</span> · Remaining: <span id="progressRemaining">calculating</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="dryRunModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Preview Billing / Dry Run</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="dryRunSummary" class="alert alert-light border py-2 small">Loading preview...</div>
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead class="table-light">
+              <tr><th>#</th><th>Tenant</th><th>Property</th><th>Unit</th><th>Invoice</th><th>Would</th><th>Reason</th></tr>
+            </thead>
+            <tbody id="dryRunRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const buttons = document.querySelectorAll('#kpiFilters .mbill-stat');
+    const rows = document.querySelectorAll('.billing-row');
+    const search = document.getElementById('billingSearch');
+    let activeFilter = '';
+    function matches(row, filter) {
+      if (!filter) return true;
+      if (filter === 'recurring-created') return row.dataset.recurringCreated === '1';
+      if (filter === 'missing-recurring') return row.dataset.missingRecurring === '1';
+      if (filter === 'electric-ready') return row.dataset.electricReady === '1';
+      if (filter === 'meter-pending') return row.dataset.meterPending === '1';
+      if (filter === 'manual-electric') return row.dataset.manualElectric === '1';
+      if (filter === 'water-missing') return row.dataset.waterMissing === '1';
+      if (filter === 'ready') return row.dataset.status === 'ready_to_send';
+      if (filter === 'pending') return row.dataset.status === 'pending_attention';
+      if (filter === 'sending') return row.dataset.status === 'ready_to_send';
+      if (filter === 'sent') return row.dataset.status === 'sent';
+      if (filter === 'failed') return row.dataset.status === 'failed';
+      if (filter === 'excluded') return row.dataset.status === 'excluded';
+      if (filter === 'rolled-back') return row.dataset.status === 'rolled_back';
+      return true;
+    }
+    function applyFilters() {
+      const query = (search ? search.value : '').toLowerCase().trim();
+      rows.forEach((row) => {
+        const textOk = !query || row.textContent.toLowerCase().includes(query);
+        row.style.display = (matches(row, activeFilter) && textOk) ? '' : 'none';
+      });
+    }
+    buttons.forEach((button) => {
+      button.addEventListener('click', function () {
+        activeFilter = button.dataset.filter || '';
+        buttons.forEach((b) => b.classList.toggle('active', b === button));
+        applyFilters();
+      });
+    });
+    if (search) search.addEventListener('input', applyFilters);
+
+    document.querySelectorAll('.mbill-table th.sortable').forEach((header, idx) => {
+      header.addEventListener('click', function () {
+        const table = header.closest('table');
+        const tbody = table.querySelector('tbody');
+        const bodyRows = Array.from(tbody.querySelectorAll('tr.billing-row'));
+        const asc = header.dataset.asc !== '1';
+        header.dataset.asc = asc ? '1' : '0';
+        bodyRows.sort((a, b) => {
+          const av = (a.children[idx] ? a.children[idx].innerText : '').trim();
+          const bv = (b.children[idx] ? b.children[idx].innerText : '').trim();
+          if (header.dataset.sort === 'number') return asc ? Number(av) - Number(bv) : Number(bv) - Number(av);
+          return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        bodyRows.forEach((row) => tbody.appendChild(row));
+      });
+    });
+
+    const jobStatusUrlTemplate = "{% url 'invoices:monthly_billing_job_status' 0 %}";
+    function showProgress(actionLabel, jobId) {
+      const modalEl = document.getElementById('billingProgressModal');
+      if (!modalEl || !window.bootstrap) return;
+      const modal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+      document.getElementById('progressTitle').textContent = actionLabel;
+      document.getElementById('progressStep').textContent = 'Queued';
+      document.getElementById('progressMessage').textContent = '';
+      document.getElementById('progressBar').style.width = '5%';
+      modal.show();
+      const statusUrl = jobStatusUrlTemplate.replace('/0/', '/' + jobId + '/');
+      const timer = window.setInterval(function () {
+        fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById('progressStep').textContent = data.current_step || data.status;
+            document.getElementById('progressMessage').textContent = data.error_text || data.message || '';
+            document.getElementById('progressTenant').textContent = data.tenant || '-';
+            document.getElementById('progressProperty').textContent = data.property || '-';
+            document.getElementById('progressUnit').textContent = data.unit || '-';
+            document.getElementById('progressCounter').textContent = (data.current || 0) + ' / ' + (data.total || 0);
+            document.getElementById('progressElapsed').textContent = (data.elapsed_seconds || 0) + 's';
+            document.getElementById('progressAverage').textContent = (data.average_seconds || '0.00') + 's';
+            document.getElementById('progressRemaining').textContent = (data.estimated_remaining_seconds || 0) + 's';
+            document.getElementById('progressBar').style.width = Math.max(5, data.percent || 0) + '%';
+            if (data.status === 'completed' || data.status === 'failed') {
+              window.clearInterval(timer);
+              if (data.status === 'completed') {
+                document.getElementById('progressBar').style.width = '100%';
+                window.setTimeout(function () { window.location.reload(); }, 900);
+              }
+            }
+          });
+      }, 1000);
+    }
+    document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((button) => {
+      button.addEventListener('click', function (event) {
+        if (button.value === 'dry_run') return;
+        event.preventDefault();
+        const form = button.closest('form');
+        const data = new FormData(form);
+        data.set('action', button.value);
+        fetch(form.dataset.enqueueUrl, {
+          method: 'POST',
+          body: data,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+          .then((response) => response.json().then((payload) => ({ ok: response.ok, payload: payload })))
+          .then(({ ok, payload }) => {
+            if (!ok || !payload.ok) {
+              alert(payload.error || 'Could not queue billing job.');
+              return;
+            }
+            showProgress(button.innerText.trim(), payload.job_id);
+          })
+          .catch(() => alert('Could not queue billing job. Make sure Redis is running.'));
+      });
+    });
+
+    const dryBtn = document.getElementById('dryRunPreviewBtn');
+    if (dryBtn) {
+      dryBtn.addEventListener('click', function () {
+        const modalEl = document.getElementById('dryRunModal');
+        const summaryEl = document.getElementById('dryRunSummary');
+        const rowsEl = document.getElementById('dryRunRows');
+        const modal = new bootstrap.Modal(modalEl);
+        rowsEl.innerHTML = '';
+        summaryEl.textContent = 'Loading preview...';
+        modal.show();
+        fetch(dryBtn.dataset.url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then((response) => response.json())
+          .then((data) => {
+            summaryEl.textContent = `${data.active_leases || 0} active leases · ${data.would_send || 0} would send · ${data.missing_recurring || 0} missing recurring · ${data.manual_electric || 0} manual electric · ${data.water_missing || 0} water missing`;
+            (data.rows || []).forEach((row, index) => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `<td>${index + 1}</td><td>${row.tenant || ''}</td><td>${row.property || ''}</td><td>${row.unit || ''}</td><td>${row.invoice || '-'}</td><td>${row.status || ''}</td><td>${(row.reasons || []).join('<br>')}</td>`;
+              rowsEl.appendChild(tr);
+            });
+            if (!rowsEl.children.length) rowsEl.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No preview rows.</td></tr>';
+          })
+          .catch(() => {
+            summaryEl.textContent = 'Preview failed. Use Save Dry Run to run the server-side preview.';
+          });
+      });
+    }
+  }());
+</script>
 {% endblock %}

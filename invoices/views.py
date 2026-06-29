@@ -3066,16 +3066,25 @@ def api_security_receipt_whatsapp(request, pk: int):
 # ---------- Monthly billing run review ----------
 from invoices.services import (
     _tenant_name,
+    audit_electric_posting_inconsistencies,
+    exclude_monthly_billing_item,
+    generate_monthly_billing_pdf_for_item,
     generate_monthly_billing_electric,
     generate_monthly_billing_invoices,
     generate_monthly_billing_pdfs,
     parse_billing_month,
     prepare_monthly_billing_ready,
     resolve_monthly_billing_water,
+    rollback_monthly_billing_item,
+    rollback_monthly_billing_run,
+    run_monthly_billing_dry_run,
+    run_monthly_billing_full,
     run_monthly_billing_preflight,
+    send_monthly_billing_item,
     send_monthly_billing_ready,
 )
-from invoices.models import MonthlyBillingRun, MonthlyBillingRunItem
+from invoices.billing_queue import enqueue_billing_job
+from invoices.models import BillingProgressJob, MonthlyBillingRun, MonthlyBillingRunItem
 
 
 class MonthlyBillingRunListView(LoginRequiredMixin, ListView):
@@ -3104,13 +3113,17 @@ class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         items = self.object.items.select_related("lease__tenant", "lease__unit__property", "invoice")
         ctx["tabs"] = [
+            ("needs_attention", "Needs Attention", items.filter(status=MonthlyBillingRunItem.STATUS_PENDING)),
             ("ready_to_send", "Ready to Send", items.filter(status=MonthlyBillingRunItem.STATUS_READY)),
-            ("pending_attention", "Pending Attention", items.filter(status=MonthlyBillingRunItem.STATUS_PENDING)),
+            ("sending", "Sending / PDF Ready", items.filter(status=MonthlyBillingRunItem.STATUS_READY).exclude(invoice_pdf="")),
             ("sent", "Sent", items.filter(status=MonthlyBillingRunItem.STATUS_SENT)),
             ("failed", "Failed", items.filter(status=MonthlyBillingRunItem.STATUS_FAILED)),
+            ("excluded", "Excluded", items.filter(status=MonthlyBillingRunItem.STATUS_EXCLUDED)),
+            ("rolled_back", "Rolled Back", items.filter(status=MonthlyBillingRunItem.STATUS_ROLLED_BACK)),
             ("skipped", "Skipped", items.filter(status=MonthlyBillingRunItem.STATUS_SKIPPED)),
         ]
         ctx["all_items"] = items
+        ctx["electric_audit_rows"] = audit_electric_posting_inconsistencies(self.object.billing_month)
         return ctx
 
 
@@ -3129,7 +3142,13 @@ def monthly_billing_run_action(request, pk):
     run = get_object_or_404(MonthlyBillingRun, pk=pk)
     action = request.POST.get("action")
     try:
-        if action == "preflight":
+        if action == "dry_run":
+            summary = run_monthly_billing_dry_run(run.billing_month, run=run)
+            messages.success(request, f"Dry run completed: {summary.get('would_send', 0)} would send, {summary.get('manual_electric', 0)} manual electric.")
+        elif action == "run_billing":
+            run_monthly_billing_full(run, created_by=request.user)
+            messages.success(request, "Billing run completed through ready validation.")
+        elif action == "preflight":
             run_monthly_billing_preflight(run.billing_month, created_by=request.user)
             messages.success(request, "Preflight completed.")
         elif action == "generate_recurring":
@@ -3150,11 +3169,77 @@ def monthly_billing_run_action(request, pk):
         elif action == "retry_failed":
             send_monthly_billing_ready(run, created_by=request.user, retry_failed=True)
             messages.success(request, "Failed invoices retried.")
+        elif action == "rollback_run":
+            blocked = rollback_monthly_billing_run(run, user=request.user)
+            if blocked:
+                messages.warning(request, f"Rollback finished with {len(blocked)} blocked item(s).")
+            else:
+                messages.success(request, "Billing run rolled back.")
         else:
             messages.error(request, "Unknown billing action.")
     except Exception as exc:
         messages.error(request, f"Monthly billing action failed: {exc}")
     return redirect("invoices:monthly_billing_run_detail", pk=run.pk)
+
+
+@login_required
+@require_POST
+def monthly_billing_run_enqueue(request, pk):
+    run = get_object_or_404(MonthlyBillingRun, pk=pk)
+    action = request.POST.get("action")
+    valid_actions = {choice[0] for choice in BillingProgressJob.ACTION_CHOICES}
+    if action not in valid_actions:
+        return JsonResponse({"ok": False, "error": "Unknown billing action."}, status=400)
+
+    progress_job = BillingProgressJob.objects.create(
+        billing_run=run,
+        action=action,
+        created_by=request.user if request.user.is_authenticated else None,
+        current_step="Queued",
+        message="Queued",
+    )
+    try:
+        enqueue_billing_job(progress_job)
+    except Exception as exc:
+        progress_job.status = BillingProgressJob.STATUS_FAILED
+        progress_job.error_text = str(exc)
+        progress_job.completed_at = timezone.now()
+        progress_job.save(update_fields=["status", "error_text", "completed_at", "updated_at"])
+        return JsonResponse({"ok": False, "job_id": progress_job.pk, "error": str(exc)}, status=503)
+
+    return JsonResponse({"ok": True, "job_id": progress_job.pk})
+
+
+@login_required
+def monthly_billing_job_status(request, pk):
+    progress_job = get_object_or_404(BillingProgressJob.objects.select_related("billing_run"), pk=pk)
+    total = progress_job.total_count or 0
+    current = progress_job.current_index or 0
+    percent = 0
+    if total:
+        percent = min(100, int((current / total) * 100))
+    elif progress_job.status == BillingProgressJob.STATUS_COMPLETED:
+        percent = 100
+    return JsonResponse({
+        "ok": True,
+        "job_id": progress_job.pk,
+        "run_id": progress_job.billing_run_id,
+        "action": progress_job.action,
+        "status": progress_job.status,
+        "current_step": progress_job.current_step,
+        "tenant": progress_job.current_tenant,
+        "property": progress_job.current_property,
+        "unit": progress_job.current_unit,
+        "current": current,
+        "total": total,
+        "percent": percent,
+        "elapsed_seconds": progress_job.elapsed_seconds,
+        "average_seconds": str(progress_job.average_seconds),
+        "estimated_remaining_seconds": progress_job.estimated_remaining_seconds,
+        "message": progress_job.message,
+        "error_text": progress_job.error_text,
+        "result": progress_job.result,
+    })
 
 
 @login_required
@@ -3166,12 +3251,48 @@ def monthly_billing_water_update(request, pk):
             resolve_monthly_billing_water(item, not_applicable=True)
             messages.success(request, "Water marked not applicable.")
         else:
-            resolve_monthly_billing_water(item, amount=request.POST.get("water_charge"))
+            resolve_monthly_billing_water(
+                item,
+                amount=request.POST.get("water_charge"),
+                description=request.POST.get("water_description") or None,
+                apply_property=request.POST.get("apply_property") == "1",
+            )
             messages.success(request, "Water charge saved.")
         prepare_monthly_billing_ready(item.billing_run)
     except Exception as exc:
         messages.error(request, f"Water update failed: {exc}")
     return redirect("invoices:monthly_billing_run_detail", pk=item.billing_run_id)
+
+
+@login_required
+@require_POST
+def monthly_billing_item_action(request, pk):
+    item = get_object_or_404(MonthlyBillingRunItem.objects.select_related("billing_run"), pk=pk)
+    action = request.POST.get("action")
+    try:
+        if action == "exclude":
+            exclude_monthly_billing_item(item, reason=request.POST.get("reason") or "", user=request.user)
+            messages.success(request, "Item excluded from this billing run.")
+        elif action == "rollback":
+            rollback_monthly_billing_item(item, user=request.user)
+            messages.success(request, "Item rolled back.")
+        elif action == "regenerate_pdf":
+            generate_monthly_billing_pdf_for_item(item)
+            messages.success(request, "PDF regenerated.")
+        elif action == "resend_whatsapp":
+            send_monthly_billing_item(item, created_by=request.user)
+            messages.success(request, "Invoice resend attempted.")
+        else:
+            messages.error(request, "Unknown item action.")
+    except Exception as exc:
+        messages.error(request, f"Item action failed: {exc}")
+    return redirect("invoices:monthly_billing_run_detail", pk=item.billing_run_id)
+
+
+@login_required
+def monthly_billing_dry_run_json(request, pk):
+    run = get_object_or_404(MonthlyBillingRun, pk=pk)
+    return JsonResponse(run_monthly_billing_dry_run(run.billing_month, run=run))
 
 
 @login_required

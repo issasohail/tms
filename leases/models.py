@@ -1546,3 +1546,17 @@ class LeaseFileShareLink(models.Model):
 
 
 from .models_renewal import LeaseRenewal, LeaseRenewalClause  # noqa: E402,F401
+from .models_inspections import (  # noqa: E402,F401
+    InspectionAppliance,
+    InspectionCategory,
+    InspectionDamageCharge,
+    InspectionDetail,
+    InspectionItem,
+    InspectionKey,
+    InspectionMeterReading,
+    InspectionPhoto,
+    InspectionStatus,
+    InspectionTemplate,
+    InspectionType,
+    LeaseInspection,
+)

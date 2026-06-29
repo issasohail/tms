@@ -142,17 +142,6 @@
                   </div>
                   <div class="col-12 col-md-6">
                     <div class="border rounded p-2 h-100">
-                      <div class="small fw-semibold mb-1">WhatsApp Cloud API</div>
-                      {% if whatsapp_ai_status.whatsapp_api_ok %}
-                        <span class="badge bg-success">Ready</span>
-                      {% else %}
-                        <span class="badge bg-warning text-dark">Missing setting</span>
-                        <div class="text-muted small mt-1">{{ whatsapp_ai_status.whatsapp_missing|join:", " }}</div>
-                      {% endif %}
-                    </div>
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">Worker Mode</div>
                       <span class="badge bg-info text-dark">{{ whatsapp_ai_status.runtime }}</span>
                     </div>
@@ -407,38 +396,32 @@
   <div class="card shadow-sm settings-tab-panel d-none" id="settings-doc-categories">
     <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h4 class="mb-0"><i class="fas fa-folder-open me-2"></i>Lease Document Categories</h4>
-      <div class="d-flex flex-wrap gap-1">
-        <a class="btn btn-sm {% if doc_cat_sort == 'name' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?doc_cat_sort=name#settings-doc-categories">Sort By Name</a>
-        <button class="btn btn-sm btn-primary" id="btn-add-doc-category" type="button">
-          + Add Category
-        </button>
-      </div>
+      <button class="btn btn-sm btn-primary" id="btn-add-doc-category" type="button">
+        + Add Category
+      </button>
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
           <thead class="table-light">
             <tr>
-              <th style="width:6%">SN</th>
-              <th style="width:28%">Name</th>
-              <th style="width:22%">Code</th>
-              <th style="width:13%">Sort</th>
-              <th style="width:13%">Active</th>
-              <th style="width:18%">Actions</th>
+              <th style="width:38%">Name</th>
+              <th style="width:27%">Code</th>
+              <th style="width:15%">Active</th>
+              <th style="width:20%">Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for cat in lease_document_categories %}
             <tr>
-              <td>{{ forloop.counter }}</td>
-              <td><input class="form-control form-control-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="name" value="{{ cat.name }}"></td>
-              <td><input class="form-control form-control-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="code" value="{{ cat.code }}"></td>
-              <td><input class="form-control form-control-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="sort_order" type="number" value="{{ cat.sort_order }}"></td>
+              <td>{{ cat.name }}</td>
+              <td>{{ cat.code }}</td>
               <td>
-                <select class="form-select form-select-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="is_active">
-                  <option value="1" {% if cat.is_active %}selected{% endif %}>Active</option>
-                  <option value="0" {% if not cat.is_active %}selected{% endif %}>Inactive</option>
-                </select>
+                {% if cat.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
               </td>
               <td>
                 <div class="d-flex flex-wrap gap-1">
@@ -452,7 +435,7 @@
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="6" class="text-center py-3 text-muted">No lease document categories added.</td></tr>
+            <tr><td colspan="4" class="text-center py-3 text-muted">No lease document categories added.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -1036,26 +1019,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnAddInterestType = document.getElementById("btn-add-interest-type");
   const relationshipTypeForm = document.getElementById("relationship-type-form");
   const btnAddRelationshipType = document.getElementById("btn-add-relationship-type");
-
-  document.querySelectorAll(".js-doc-cat-inline").forEach(field => {
-    field.addEventListener("change", function () {
-      const formData = new FormData();
-      formData.append("field", this.dataset.field);
-      formData.append("value", this.value);
-      this.classList.add("opacity-50");
-      fetch(this.dataset.url, {
-        method: "POST",
-        headers: {"X-CSRFToken": csrftoken, "X-Requested-With": "XMLHttpRequest"},
-        body: formData,
-      })
-      .then(r => {
-        if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
-        return r.json();
-      })
-      .catch(err => alert("Could not update category: " + err.message))
-      .finally(() => this.classList.remove("opacity-50"));
-    });
-  });
 
   // Open empty modal for Add
   btnAdd.addEventListener("click", function () {

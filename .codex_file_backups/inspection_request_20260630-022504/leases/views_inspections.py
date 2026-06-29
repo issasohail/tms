@@ -237,19 +237,6 @@ def lease_inspection_list(request, lease_id):
     selected_lease = request.GET.get("lease")
     if selected_lease and str(selected_lease) != str(lease_id):
         return redirect("leases:lease_inspection_list", lease_id=selected_lease)
-    selected_unit = request.GET.get("unit")
-    if selected_unit:
-        target_lease = (
-            Lease.objects.filter(unit_id=selected_unit, status="active")
-            .order_by("-start_date", "-id")
-            .first()
-        )
-        if target_lease and target_lease.pk != lease_id:
-            query = request.GET.copy()
-            query.pop("lease", None)
-            url = reverse("leases:lease_inspection_list", args=[target_lease.pk])
-            query_string = query.urlencode()
-            return redirect(f"{url}?{query_string}" if query_string else url)
     lease = get_object_or_404(
         Lease.objects.select_related("tenant", "unit", "unit__property"),
         pk=lease_id,
@@ -351,9 +338,6 @@ def _lease_filter_context(request):
     units_qs = Unit.objects.select_related("property").order_by("property__property_name", "unit_number")
     if selected_property:
         units_qs = units_qs.filter(property_id=selected_property)
-    selected_active_lease = leases_qs.filter(pk=selected_lease).first() if selected_lease else None
-    if not selected_active_lease and selected_unit:
-        selected_active_lease = leases_qs.filter(unit_id=selected_unit).first()
     return {
         "filter_properties": Property.objects.order_by("property_name"),
         "filter_units": units_qs,
@@ -361,7 +345,6 @@ def _lease_filter_context(request):
         "filter_selected_property": str(selected_property),
         "filter_selected_unit": str(selected_unit),
         "filter_selected_lease": str(selected_lease),
-        "filter_active_lease": selected_active_lease,
         "filter_active_only": active_only,
     }
 
@@ -530,16 +513,6 @@ def public_inspection_sign(request, token):
             inspection.tenant_signed_at = timezone.now()
         inspection.public_is_active = False
         inspection.save(update_fields=["tenant_comments", "tenant_signature", "tenant_signed_at", "public_is_active", "updated_at"])
-        pdf = _inspection_pdf_bytes(request, inspection)
-        date_part = timezone.localdate().strftime("%Y%m%d")
-        filename = f"signed-inspection-{inspection.pk}-{slugify(str(inspection.inspection_type))}-{date_part}.pdf"
-        document = LeaseDocument(
-            lease=inspection.lease,
-            display_name=f"Signed {inspection.inspection_type} Inspection #{inspection.pk}",
-            category="property_condition_report",
-            description=f"Tenant-signed inspection sheet generated from public inspection #{inspection.pk}.",
-        )
-        document.file.save(filename, ContentFile(pdf), save=True)
         inspection.add_audit("tenant_public_signed")
         return render(request, "leases/public_inspection_signed.html", {"inspection": inspection})
     return render(
@@ -665,15 +638,8 @@ def inspection_detail_update_ajax(request, detail_id):
 def inspection_mark_all_ajax(request, inspection_id):
     inspection = get_object_or_404(LeaseInspection, pk=inspection_id)
     status = get_object_or_404(InspectionStatus, pk=request.POST.get("status_id"), active=True)
-    details = inspection.details.all()
-    category = (request.POST.get("category") or "").strip()
-    if category:
-        details = details.filter(category=category)
-    details.update(status_name=status.name, status_badge_color=status.badge_color)
-    payload = _status_payload(status)
-    if category:
-        payload["category"] = category
-    inspection.add_audit("mark_category_status" if category else "mark_all_status", request.user, payload)
+    inspection.details.update(status_name=status.name, status_badge_color=status.badge_color)
+    inspection.add_audit("mark_all_status", request.user, _status_payload(status))
     return JsonResponse({"ok": True, "status": _status_payload(status), "completion_percent": inspection.completion_percent})
 
 

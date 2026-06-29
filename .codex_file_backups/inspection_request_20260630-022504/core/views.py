@@ -27,48 +27,6 @@ from django.contrib.auth.decorators import login_required
 METER_ONLINE_MINUTES = 3
 
 
-@login_required
-def pending_approvals(request):
-    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
-
-    pending_payments = PendingWhatsAppPayment.objects.filter(
-        status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
-        approved=False,
-        rejected=False,
-    ).select_related("tenant", "lease", "property", "unit")[:50]
-    pending_media = PendingWhatsAppMedia.objects.filter(
-        status=PendingWhatsAppMedia.STATUS_PENDING,
-    ).select_related("tenant", "lease", "property", "unit")[:50]
-    pending_maintenance = PendingWhatsAppMaintenance.objects.filter(
-        status=PendingWhatsAppMaintenance.STATUS_PENDING,
-    ).select_related("tenant", "lease", "property", "unit")[:50]
-    sections = [
-        {
-            "title": "WhatsApp Payments",
-            "admin_url": "admin:whatsapp_pendingwhatsapppayment_changelist",
-            "items": pending_payments,
-            "count": PendingWhatsAppPayment.objects.filter(
-                status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
-                approved=False,
-                rejected=False,
-            ).count(),
-        },
-        {
-            "title": "WhatsApp Documents / Media",
-            "admin_url": "admin:whatsapp_pendingwhatsappmedia_changelist",
-            "items": pending_media,
-            "count": PendingWhatsAppMedia.objects.filter(status=PendingWhatsAppMedia.STATUS_PENDING).count(),
-        },
-        {
-            "title": "WhatsApp Maintenance",
-            "admin_url": "admin:whatsapp_pendingwhatsappmaintenance_changelist",
-            "items": pending_maintenance,
-            "count": PendingWhatsAppMaintenance.objects.filter(status=PendingWhatsAppMaintenance.STATUS_PENDING).count(),
-        },
-    ]
-    return render(request, "core/pending_approvals.html", {"sections": sections})
-
-
 def _annotate_dashboard_lease_financials(queryset):
     money_field = DecimalField(max_digits=12, decimal_places=2)
     zero = Value(Decimal("0.00"), output_field=money_field)
@@ -538,10 +496,9 @@ class SettingsView(FormView):
         ctx["payment_methods"] = PaymentMethod.objects.order_by(
             "sort_order", "name"
         )
-        doc_cat_sort = self.request.GET.get("doc_cat_sort")
-        ctx["doc_cat_sort"] = doc_cat_sort
-        doc_cat_ordering = ("name", "sort_order") if doc_cat_sort == "name" else ("sort_order", "name")
-        ctx["lease_document_categories"] = LeaseDocumentCategory.objects.order_by(*doc_cat_ordering)
+        ctx["lease_document_categories"] = LeaseDocumentCategory.objects.order_by(
+            "sort_order", "name"
+        )
         ctx["tenant_interest_types"] = TenantInterestType.objects.order_by(
             "sort_order", "name"
         )
@@ -550,18 +507,13 @@ class SettingsView(FormView):
         )
         try:
             from whatsapp.services.ai_config import get_whatsapp_ai_config
-            from whatsapp.services.whatsapp import WhatsAppService
 
             ai_config = get_whatsapp_ai_config()
-            whatsapp_config = WhatsAppService().configuration_status()
         except Exception:
             ai_config = None
-            whatsapp_config = {}
         ctx["whatsapp_ai_status"] = {
             "openai_key_configured": bool(getattr(settings, "OPENAI_API_KEY", "")),
             "whatsapp_token_configured": bool(getattr(settings, "WHATSAPP_ACCESS_TOKEN", "")),
-            "whatsapp_api_ok": bool(whatsapp_config.get("ok")),
-            "whatsapp_missing": whatsapp_config.get("missing", []),
             "celery_broker": getattr(settings, "CELERY_BROKER_URL", ""),
             "runtime": "Celery" if ai_config and ai_config.use_celery else "Local thread fallback",
             "provider": getattr(ai_config, "provider", ""),
@@ -615,32 +567,6 @@ def lease_document_category_save(request):
     category.sort_order = sort_order
     category.is_active = is_active
     category.save()
-    return JsonResponse({"ok": True})
-
-
-@require_POST
-def lease_document_category_inline_update(request, pk):
-    category = get_object_or_404(LeaseDocumentCategory, pk=pk)
-    field = request.POST.get("field")
-    value = (request.POST.get("value") or "").strip()
-    if field == "name":
-        if not value:
-            return HttpResponseBadRequest("Name required")
-        category.name = value
-    elif field == "code":
-        if not value:
-            return HttpResponseBadRequest("Code required")
-        category.code = value
-    elif field == "sort_order":
-        try:
-            category.sort_order = int(value or 0)
-        except ValueError:
-            return HttpResponseBadRequest("Invalid sort order")
-    elif field == "is_active":
-        category.is_active = value in ("1", "true", "on", "yes")
-    else:
-        return HttpResponseBadRequest("Invalid field")
-    category.save(update_fields=[field])
     return JsonResponse({"ok": True})
 
 

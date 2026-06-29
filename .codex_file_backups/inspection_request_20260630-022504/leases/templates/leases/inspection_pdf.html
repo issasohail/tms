@@ -12,36 +12,14 @@
     .cell { display: table-cell; padding: 2px 8px 2px 0; width: 25%; }
     .label { color:#666; font-size:8px; text-transform:uppercase; }
     .sheet-columns { column-count: 2; column-gap: 7mm; column-rule: 1px solid #bbb; }
-    .line-heading,
-    .inspection-line {
-      display: grid;
-      grid-template-columns: 18px 58px 1fr 46px 1.2fr 38px;
-      gap: 3px;
-      align-items: center;
-    }
-    .line-heading {
-      break-inside: avoid;
-      page-break-inside: avoid;
-      border-bottom: 1px solid #888;
-      padding: 3px 0;
-      font-weight: bold;
-      color: #555;
-      font-size: 7.5px;
-      text-transform: uppercase;
-    }
-    .inspection-line {
-      break-inside: avoid;
-      page-break-inside: avoid;
-      border-bottom: 1px solid #ddd;
-      padding: 3px 0;
-      min-height: 15px;
-    }
-    .sn { font-weight: bold; color:#333; }
-    .cat { color:#666; font-size:7.5px; text-transform:uppercase; overflow-wrap:anywhere; }
-    .item { font-weight:bold; font-size:8.5px; overflow-wrap:anywhere; }
-    .status { font-size:8px; }
-    .remarks { color:#333; font-size:8px; overflow-wrap:anywhere; }
-    .damage { text-align:right; font-size:8px; }
+    .inspection-line { break-inside: avoid; page-break-inside: avoid; border-bottom: 1px solid #ddd; padding: 4px 0; min-height: 28px; }
+    .line-top { display: table; width: 100%; }
+    .sn { display: table-cell; width: 22px; font-weight: bold; color:#333; }
+    .line-main { display: table-cell; }
+    .cat { color:#666; font-size:8px; text-transform:uppercase; }
+    .item { font-weight:bold; font-size:10px; }
+    .status { display:inline-block; border:1px solid #777; border-radius:10px; padding:1px 5px; margin-top:2px; font-size:8px; }
+    .remarks { margin-top:2px; color:#333; }
     .footer-box { border:1px solid #bbb; padding:7px; min-height:35px; margin-top:7px; break-inside: avoid; }
     .sig { height: 42px; border-bottom: 1px solid #333; margin-bottom:4px; }
     .sig-grid { display: table; width:100%; margin-top:12px; }
@@ -66,18 +44,19 @@
     </div>
   </div>
 
-  <div class="line-heading">
-    <div>SN</div><div>Category</div><div>Item</div><div>Status</div><div>Remarks</div><div>Damage</div>
-  </div>
   <div class="sheet-columns">
     {% for row in inspection.details.all %}
       <div class="inspection-line">
-        <div class="sn">{{ forloop.counter }}</div>
-        <div class="cat">{{ row.category }}</div>
-        <div class="item">{{ row.item_name }}</div>
-        <div class="status">{{ row.status_name|default:"-" }}</div>
-        <div class="remarks">{{ row.remarks|default:"-" }}{% if row.photos.count %} (Photos: {{ row.photos.count }}){% endif %}</div>
-        <div class="damage">{{ row.damage_cost|default:"0.00" }}</div>
+        <div class="line-top">
+          <div class="sn">{{ forloop.counter }}</div>
+          <div class="line-main">
+            <div class="cat">{{ row.category }}</div>
+            <div class="item">{{ row.item_name }}</div>
+            {% if row.status_name %}<span class="status">{{ row.status_name }}</span>{% endif %}
+            {% if row.remarks %}<div class="remarks">{{ row.remarks }}</div>{% endif %}
+            {% if row.photos.count %}<div class="muted">Photos: {{ row.photos.count }}</div>{% endif %}
+          </div>
+        </div>
       </div>
     {% endfor %}
   </div>

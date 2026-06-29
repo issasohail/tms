@@ -40,23 +40,6 @@ class WhatsAppService:
         }
         return self._send(payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT, **context)
 
-    def configuration_status(self):
-        missing = []
-        if not self.access_token:
-            missing.append("WHATSAPP_ACCESS_TOKEN")
-        if not self.phone_number_id:
-            missing.append("WHATSAPP_PHONE_NUMBER_ID")
-        if not self.business_account_id:
-            missing.append("WHATSAPP_BUSINESS_ACCOUNT_ID")
-        return {
-            "ok": not missing,
-            "missing": missing,
-            "api_version": self.api_version,
-            "phone_number_id_configured": bool(self.phone_number_id),
-            "business_account_id_configured": bool(self.business_account_id),
-            "access_token_configured": bool(self.access_token),
-        }
-
     def send_template(self, phone_number, template_name, language_code="en_US", components=None, **context):
         payload = {
             "messaging_product": "whatsapp",

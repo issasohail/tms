@@ -190,6 +190,8 @@ urlpatterns = [
          views_lease_files.lease_file_view, name="lease_file_view"),
     path("lease-file/<int:document_id>/download/",
          views_lease_files.lease_file_download, name="lease_file_download"),
+    path("lease-file/<int:document_id>/category/",
+         views_lease_files.lease_file_category_update, name="lease_file_category_update"),
     path("lease-file/<int:document_id>/deactivate/",
          views_lease_files.lease_file_deactivate, name="lease_file_deactivate"),
     path("lease/<int:lease_id>/files/share/",

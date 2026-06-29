@@ -5,7 +5,7 @@ from urllib.parse import quote as urlquote
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
-from django.http import FileResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.http import FileResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -104,6 +104,18 @@ def lease_file_deactivate(request, document_id):
     document.save(update_fields=["is_active"])
     messages.success(request, "Lease file deleted.")
     return redirect("leases:lease_detail", pk=lease_pk)
+
+
+@login_required
+@require_POST
+def lease_file_category_update(request, document_id):
+    document = get_object_or_404(LeaseDocument, pk=document_id, is_active=True)
+    category = request.POST.get("category") or "other"
+    if not LeaseDocumentCategory.objects.filter(code=category, is_active=True).exists():
+        return JsonResponse({"ok": False, "error": "Invalid category."}, status=400)
+    document.category = category
+    document.save(update_fields=["category"])
+    return JsonResponse({"ok": True, "category": document.category, "category_label": document.category_label})
 
 
 def _tenant_share_phone(lease):

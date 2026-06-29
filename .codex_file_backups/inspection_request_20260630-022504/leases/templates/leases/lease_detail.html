@@ -140,16 +140,15 @@
 
 /* ---- Tab nav ---- */
 .ld-tab-nav {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
   gap: 5px;
   margin-bottom: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
+@media (min-width:480px) { .ld-tab-nav { grid-template-columns: repeat(3,1fr); } }
+@media (min-width:768px) { .ld-tab-nav { grid-template-columns: repeat(6,1fr); } }
 
 .ld-tab-btn {
-  flex: 1 0 135px;
   padding: 10px 8px;
   font-size: 13px; font-weight: 500; color: #6b7280;
   background: #f3f4f6; border: 1px solid #e5e7eb;
@@ -237,7 +236,7 @@
   border:1px solid #e5e7eb; border-radius:7px; padding:9px; background:#fff;
 }
 .ld-file-serial { font-size:12px; font-weight:700; color:#6b7280; }
-@media (min-width:860px) { .ld-file-row { grid-template-columns:34px minmax(220px, 1.5fr) 150px minmax(120px, .9fr) 115px auto; align-items:center; } }
+@media (min-width:860px) { .ld-file-row { grid-template-columns:34px minmax(220px, 1.5fr) 110px minmax(120px, .9fr) 115px auto; align-items:center; } }
 .ld-file-name { font-size:13px; font-weight:700; overflow-wrap:anywhere; }
 .ld-file-sub { font-size:11px; color:#6b7280; overflow-wrap:anywhere; }
 .ld-file-actions { display:flex; flex-wrap:nowrap; gap:3px; justify-content:flex-end; white-space:nowrap; }
@@ -246,7 +245,6 @@
 .ld-file-icon-download { color:#0d6efd; }
 .ld-file-icon-whatsapp { color:#198754; }
 .ld-file-missing { font-size:10px; }
-.ld-file-category-select { font-size:11px; padding:2px 5px; min-height:26px; }
 
 /* ============================================================
    PRINT
@@ -973,12 +971,7 @@
                     <div class="ld-file-sub">{{ doc.original_filename }}</div>
                   </div>
                   <div>
-                    <select class="form-select form-select-sm ld-file-category-select no-print" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
-                      {% for category in lease_document_categories %}
-                        <option value="{{ category.code }}" {% if doc.category == category.code %}selected{% endif %}>{{ category.name }}</option>
-                      {% endfor %}
-                    </select>
-                    <span class="ld-badge ld-badge-gray d-none d-print-inline">{{ doc.category_label }}</span>
+                      <span class="ld-badge ld-badge-gray">{{ doc.category_label }}</span>
                     {% if doc.lease_history %}<div class="ld-file-sub">{{ doc.lease_history.history_label }}</div>{% endif %}
                   </div>
                   <div class="ld-file-sub">{{ doc.description|default:"No description" }}</div>
@@ -1149,28 +1142,6 @@ document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', fun
     setTimeout(() => { this.innerHTML = original; }, 1600);
   }).catch(() => {
     window.prompt('Copy maintenance link:', link);
-  });
-});
-
-document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
-  select.addEventListener('change', function () {
-    const data = new FormData();
-    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-    data.append('category', this.value);
-    this.disabled = true;
-    fetch(this.dataset.docCategoryUrl, {
-      method: 'POST',
-      headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
-      body: data
-    }).then(function (response) {
-      if (!response.ok) throw new Error('Category update failed.');
-      return response.json();
-    }).catch(function (error) {
-      alert(error.message);
-      window.location.reload();
-    }).finally(() => {
-      this.disabled = false;
-    });
   });
 });
 </script>

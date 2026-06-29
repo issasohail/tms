@@ -8,7 +8,6 @@ app_name = "core"
 urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("settings/", SettingsView.as_view(), name="settings"),
-    path("pending-approvals/", views.pending_approvals, name="pending_approvals"),
     path("settings/backup-restore/", BackupCenterView.as_view(), name="backup_center"),
     path("settings/backup-restore/download/<path:backup_id>/", BackupDownloadView.as_view(), name="backup_download"),
     path("settings/backup-restore/delete/<path:backup_id>/", BackupDeleteView.as_view(), name="backup_delete"),
@@ -57,11 +56,6 @@ urlpatterns = [
         "lease-document-categories/save/",
         views.lease_document_category_save,
         name="lease_document_category_save",
-    ),
-    path(
-        "lease-document-categories/<int:pk>/inline/",
-        views.lease_document_category_inline_update,
-        name="lease_document_category_inline_update",
     ),
     path(
         "tenant-interest-types/get/<int:pk>/",

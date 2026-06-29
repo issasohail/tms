@@ -71,6 +71,9 @@
       <a class="btn btn-sm btn-secondary" href="{% url 'leases:lease_detail' inspection.lease.pk %}">Lease</a>
       <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_edit' inspection.pk %}">Edit</a>
       <a class="btn btn-sm btn-dark" href="{% url 'leases:inspection_pdf' inspection.pk %}">PDF</a>
+      <form method="post" action="{% url 'leases:inspection_pdf_attach' inspection.pk %}">{% csrf_token %}
+        <button class="btn btn-sm btn-info" type="submit">Add PDF To Docs</button>
+      </form>
       <form method="post" action="{% url 'leases:inspection_public_link' inspection.pk %}">{% csrf_token %}
         <button class="btn btn-sm btn-success" type="submit">Public Link</button>
       </form>
@@ -98,15 +101,6 @@
             <option value="">All units</option>
             {% for unit in filter_units %}
               <option value="{{ unit.pk }}" data-property="{{ unit.property_id }}" {% if filter_selected_unit == unit.pk|stringformat:"s" %}selected{% endif %}>{{ unit.property.property_name }} - {{ unit.unit_number }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label small mb-1">Lease</label>
-          <select name="lease" id="filterLease" class="form-select form-select-sm select2">
-            <option value="">Select lease</option>
-            {% for lease_option in filter_leases %}
-              <option value="{{ lease_option.pk }}" data-unit="{{ lease_option.unit_id }}" {% if inspection.lease_id == lease_option.pk %}selected{% endif %}>{{ lease_option.tenant.get_full_name }} - {{ lease_option.unit.property.property_name }} {{ lease_option.unit.unit_number }} - Ends {{ lease_option.end_date }}</option>
             {% endfor %}
           </select>
         </div>
@@ -523,7 +517,7 @@
   }
   categorySelect?.addEventListener('change', filterItems);
   filterItems();
-  if (window.jQuery && jQuery.fn.select2) jQuery('#inspectionAddCategory, #inspectionAddItem, #filterProperty, #filterUnit, #filterLease').select2({width:'100%'});
+  if (window.jQuery && jQuery.fn.select2) jQuery('#inspectionAddCategory, #inspectionAddItem, #filterProperty, #filterUnit').select2({width:'100%'});
   document.getElementById('inspectionAddCategoryBtn')?.addEventListener('click', function () {
     const name = prompt('Category name');
     if (!name) return;
@@ -575,10 +569,8 @@
     submitUnitFilter();
   });
   document.getElementById('filterActive')?.addEventListener('change', () => filterForm.submit());
-  document.getElementById('filterLease')?.addEventListener('change', () => filterForm.submit());
   if (window.jQuery && jQuery.fn.select2) {
     jQuery('#filterUnit').on('select2:select', submitUnitFilter);
-    jQuery('#filterLease').on('select2:select', () => filterForm.submit());
   }
   renumberRows();
 })();

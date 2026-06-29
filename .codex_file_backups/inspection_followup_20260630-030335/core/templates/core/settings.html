@@ -59,9 +59,9 @@
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-clipboard-check"></i></span><span>Inspections</span>
       </a>
       <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
-        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Webhook Logs</span>
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Logs</span>
       </a>
-      <a class="settings-tab-card" href="{% url 'core:pending_approvals' %}">
+      <a class="settings-tab-card" href="#settings-tool-whatsapp-ai-review" data-settings-target="settings-tool-whatsapp-ai-review">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-inboxes"></i></span><span>AI Review</span>
       </a>
       <a class="settings-tab-card" href="#settings-payments" data-settings-target="settings-payments">
@@ -118,27 +118,6 @@
                   </div>
                 {% endfor %}
               </div>
-              {% if group_title == "WhatsApp / Twilio" %}
-                <div class="row g-2 mt-2">
-                  <div class="col-12 col-md-6">
-                    <div class="border rounded p-2 h-100">
-                      <div class="small fw-semibold mb-1">WhatsApp Cloud API</div>
-                      {% if whatsapp_ai_status.whatsapp_api_ok %}
-                        <span class="badge bg-success">Ready</span>
-                      {% else %}
-                        <span class="badge bg-warning text-dark">Missing setting</span>
-                        <div class="text-muted small mt-1">{{ whatsapp_ai_status.whatsapp_missing|join:", " }}</div>
-                      {% endif %}
-                    </div>
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="{% url 'whatsapp:webhook_log_list' %}">
-                      <div class="small fw-semibold mb-1">Webhook Logs</div>
-                      <span class="badge bg-info text-dark">Open WhatsApp Webhook Logs</span>
-                    </a>
-                  </div>
-                </div>
-              {% endif %}
               {% if group_title == "WhatsApp AI Assistant" %}
                 <div class="row g-2 mt-2">
                   <div class="col-12 col-md-6">
@@ -282,8 +261,8 @@
     <div class="settings-tab-panel d-none" id="settings-tool-inspections">
       <div class="row g-2">
         <div class="col-12 col-md-6 col-xl-4">
-          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'all' %}">
-            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-clipboard-check"></i></div><h5 class="mb-1">Inspection Settings</h5><p class="text-muted small mb-3">Manage types, categories, statuses, items, and templates in one tabbed sheet.</p><span class="btn btn-sm btn-outline-success">Open Inspection Settings</span></div>
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'types' %}">
+            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-list"></i></div><h5 class="mb-1">Inspection Types</h5><p class="text-muted small mb-3">Move In, Move Out, routine, annual, and future inspection types.</p><span class="btn btn-sm btn-outline-success">Open Types</span></div>
           </a>
         </div>
         <div class="col-12 col-md-6 col-xl-4">
@@ -313,22 +292,46 @@
       <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'whatsapp:webhook_log_list' %}">
         <div class="card-body">
           <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-chat-dots"></i></div>
-          <h5 class="mb-1">WhatsApp Webhook Logs</h5>
+          <h5 class="mb-1">WhatsApp Logs</h5>
           <p class="text-muted small mb-3">View sent and received WhatsApp messages, reply to tenants, and inspect raw webhook payloads.</p>
-          <span class="btn btn-sm btn-outline-success">Open WhatsApp Webhook Logs</span>
+          <span class="btn btn-sm btn-outline-success">Open WhatsApp Logs</span>
         </div>
       </a>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-ai-review">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'core:pending_approvals' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-inboxes"></i></div>
-          <h5 class="mb-1">Pending Approvals</h5>
-          <p class="text-muted small mb-3">Review pending WhatsApp payment, document, and maintenance submissions in one place.</p>
-          <span class="btn btn-sm btn-outline-success">Open Pending Approvals</span>
+      <div class="row g-2">
+        <div class="col-12 col-md-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'admin:whatsapp_pendingwhatsapppayment_changelist' %}">
+            <div class="card-body">
+              <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-receipt"></i></div>
+              <h5 class="mb-1">Pending Payments</h5>
+              <p class="text-muted small mb-3">Review WhatsApp payment screenshots, OCR, confidence, and suggested lease matches.</p>
+              <span class="btn btn-sm btn-outline-success">Open Payments</span>
+            </div>
+          </a>
         </div>
-      </a>
+        <div class="col-12 col-md-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'admin:whatsapp_pendingwhatsappmaintenance_changelist' %}">
+            <div class="card-body">
+              <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-tools"></i></div>
+              <h5 class="mb-1">Pending Maintenance</h5>
+              <p class="text-muted small mb-3">Approve tenant maintenance submissions before creating official tickets.</p>
+              <span class="btn btn-sm btn-outline-success">Open Maintenance</span>
+            </div>
+          </a>
+        </div>
+        <div class="col-12 col-md-4">
+          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'admin:whatsapp_pendingwhatsappmedia_changelist' %}">
+            <div class="card-body">
+              <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-images"></i></div>
+              <h5 class="mb-1">Pending Media</h5>
+              <p class="text-muted small mb-3">Approve WhatsApp photos, videos, and documents before attaching them to records.</p>
+              <span class="btn btn-sm btn-outline-success">Open Media</span>
+            </div>
+          </a>
+        </div>
+      </div>
     </div>
   </div>
 

@@ -47,6 +47,7 @@ app_name = 'leases'
 urlpatterns = [
     path('', LeaseListView.as_view(), name='lease_list'),
     path('new/', LeaseCreateView.as_view(), name='lease_create'),
+    path("inspections/", views_inspections.inspection_sheet_home, name="inspection_sheet_home"),
 
     path("inspection-settings/<str:kind>/", views_inspections.inspection_settings_list, name="inspection_settings"),
     path("inspection-settings/<str:kind>/add/", views_inspections.inspection_settings_create, name="inspection_settings_create"),

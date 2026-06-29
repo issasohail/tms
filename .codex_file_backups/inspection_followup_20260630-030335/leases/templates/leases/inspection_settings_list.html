@@ -5,11 +5,6 @@
   .inspection-settings-shell { max-width:1600px; margin:0 auto; font-size:12px; }
   .inspection-settings-shell .table th, .inspection-settings-shell .table td { padding:4px 6px; vertical-align:middle; }
   .inspection-settings-shell input, .inspection-settings-shell select, .inspection-settings-shell textarea { font-size:12px; padding:3px 6px; }
-  .js-setting-display { cursor:pointer; display:inline-block; min-height:22px; padding:2px 4px; border-radius:4px; }
-  .js-setting-display:hover { background:#f1f5f9; }
-  .js-setting-editor { display:none; }
-  .is-editing .js-setting-display { display:none; }
-  .is-editing .js-setting-editor { display:block; }
   .settings-template-item { display:flex; gap:6px; align-items:center; border:1px solid #dee2e6; border-radius:5px; padding:4px 6px; margin-bottom:4px; background:#fff; }
   .settings-template-item .item-label { flex:1; }
   .settings-template-items { max-height:260px; overflow:auto; }
@@ -45,9 +40,9 @@
         <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Name</th><th style="width:120px;">Order</th><th style="width:90px;">Active</th></tr></thead>
         <tbody>{% for row in types %}<tr data-kind="types" data-pk="{{ row.pk }}">
           <td>{{ forloop.counter }}</td>
-          <td><span class="js-setting-display">{{ row.name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="name" value="{{ row.name }}"></td>
-          <td><span class="js-setting-display">{{ row.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ row.display_order }}"></td>
-          <td><span class="js-setting-display">{% if row.active %}Active{% else %}Inactive{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="active" {% if row.active %}checked{% endif %}></td>
+          <td><input class="form-control form-control-sm js-setting" data-field="name" value="{{ row.name }}"></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
         </tr>{% endfor %}</tbody>
       </table></div>
     </div>
@@ -57,9 +52,9 @@
         <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Name</th><th style="width:120px;">Order</th><th style="width:90px;">Active</th></tr></thead>
         <tbody>{% for row in categories %}<tr data-kind="categories" data-pk="{{ row.pk }}">
           <td>{{ forloop.counter }}</td>
-          <td><span class="js-setting-display">{{ row.name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="name" value="{{ row.name }}"></td>
-          <td><span class="js-setting-display">{{ row.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ row.display_order }}"></td>
-          <td><span class="js-setting-display">{% if row.active %}Active{% else %}Inactive{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="active" {% if row.active %}checked{% endif %}></td>
+          <td><input class="form-control form-control-sm js-setting" data-field="name" value="{{ row.name }}"></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
         </tr>{% endfor %}</tbody>
       </table></div>
     </div>
@@ -69,10 +64,9 @@
         <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Name</th><th style="width:150px;">Badge Color</th><th style="width:120px;">Order</th><th style="width:90px;">Active</th></tr></thead>
         <tbody>{% for row in statuses %}<tr data-kind="statuses" data-pk="{{ row.pk }}">
           <td>{{ forloop.counter }}</td>
-          <td><span class="js-setting-display">{{ row.name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="name" value="{{ row.name }}"></td>
+          <td><input class="form-control form-control-sm js-setting" data-field="name" value="{{ row.name }}"></td>
           <td>
-            <span class="js-setting-display">{{ row.badge_color }}</span>
-            <select class="form-select form-select-sm js-setting js-setting-editor" data-field="badge_color">
+            <select class="form-select form-select-sm js-setting" data-field="badge_color">
               <option value="success" {% if row.badge_color == "success" %}selected{% endif %}>success</option>
               <option value="primary" {% if row.badge_color == "primary" %}selected{% endif %}>primary</option>
               <option value="warning" {% if row.badge_color == "warning" %}selected{% endif %}>warning</option>
@@ -82,8 +76,8 @@
               <option value="secondary" {% if row.badge_color == "secondary" %}selected{% endif %}>secondary</option>
             </select>
           </td>
-          <td><span class="js-setting-display">{{ row.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ row.display_order }}"></td>
-          <td><span class="js-setting-display">{% if row.active %}Active{% else %}Inactive{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="active" {% if row.active %}checked{% endif %}></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
         </tr>{% endfor %}</tbody>
       </table></div>
     </div>
@@ -93,14 +87,14 @@
         <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Category</th><th>Item</th><th style="width:90px;">Order</th><th>Required</th><th>Photos</th><th>Cost</th><th>Notes</th><th>Active</th></tr></thead>
         <tbody>{% for row in items %}<tr data-kind="items" data-pk="{{ row.pk }}">
           <td>{{ forloop.counter }}</td>
-          <td><span class="js-setting-display">{{ row.category.name }}</span><select class="form-select form-select-sm js-setting select2 js-setting-editor" data-field="category">{% for cat in categories %}<option value="{{ cat.pk }}" {% if row.category_id == cat.pk %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
-          <td><span class="js-setting-display">{{ row.item_name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="item_name" value="{{ row.item_name }}"></td>
-          <td><span class="js-setting-display">{{ row.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ row.display_order }}"></td>
-          <td><span class="js-setting-display">{% if row.required %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="required" {% if row.required %}checked{% endif %}></td>
-          <td><span class="js-setting-display">{% if row.allow_photos %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="allow_photos" {% if row.allow_photos %}checked{% endif %}></td>
-          <td><span class="js-setting-display">{% if row.allow_damage_cost %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="allow_damage_cost" {% if row.allow_damage_cost %}checked{% endif %}></td>
-          <td><span class="js-setting-display">{% if row.allow_notes %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="allow_notes" {% if row.allow_notes %}checked{% endif %}></td>
-          <td><span class="js-setting-display">{% if row.active %}Active{% else %}Inactive{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="active" {% if row.active %}checked{% endif %}></td>
+          <td><select class="form-select form-select-sm js-setting select2" data-field="category">{% for cat in categories %}<option value="{{ cat.pk }}" {% if row.category_id == cat.pk %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
+          <td><input class="form-control form-control-sm js-setting" data-field="item_name" value="{{ row.item_name }}"></td>
+          <td><input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ row.display_order }}"></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="required" {% if row.required %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="allow_photos" {% if row.allow_photos %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="allow_damage_cost" {% if row.allow_damage_cost %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="allow_notes" {% if row.allow_notes %}checked{% endif %}></td>
+          <td><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if row.active %}checked{% endif %}></td>
         </tr>{% endfor %}</tbody>
       </table></div>
     </div>
@@ -111,17 +105,14 @@
           <div class="card-header py-2 d-flex justify-content-between align-items-center">
             <div class="d-flex gap-2 align-items-center flex-wrap" data-kind="templates" data-pk="{{ template.pk }}">
               <span class="badge bg-secondary">{{ forloop.counter }}</span>
-              <span class="js-setting-field"><span class="js-setting-display">{{ template.name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="name" value="{{ template.name }}" style="width:220px;"></span>
-              <span class="js-setting-field"><span class="js-setting-display">{{ template.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ template.display_order }}" style="width:90px;"></span>
-              <label class="small mb-0 js-setting-field"><span class="js-setting-display">{% if template.active %}Active{% else %}Inactive{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="active" {% if template.active %}checked{% endif %}></label>
+              <input class="form-control form-control-sm js-setting" data-field="name" value="{{ template.name }}" style="width:220px;">
+              <input type="number" class="form-control form-control-sm js-setting" data-field="display_order" value="{{ template.display_order }}" style="width:90px;">
+              <label class="small mb-0"><input type="checkbox" class="form-check-input js-setting-check" data-field="active" {% if template.active %}checked{% endif %}> Active</label>
             </div>
             <button type="button" class="btn btn-sm btn-primary js-template-save">Save Items</button>
           </div>
           <div class="card-body">
-            <div data-kind="templates" data-pk="{{ template.pk }}" class="mb-2 js-setting-field">
-              <div class="js-setting-display">{{ template.description|default:"No description" }}</div>
-              <textarea class="form-control form-control-sm js-setting js-setting-editor" data-field="description" rows="2">{{ template.description }}</textarea>
-            </div>
+            <textarea class="form-control form-control-sm js-setting mb-2" data-kind="templates" data-pk="{{ template.pk }}" data-field="description" rows="2">{{ template.description }}</textarea>
             <div class="row g-2">
               <div class="col-12 col-lg-5">
                 <div class="small fw-semibold mb-1">Available Items</div>
@@ -174,39 +165,13 @@
   }
   function saveInput(input) {
     const row = input.closest('[data-kind][data-pk]');
-    const cell = input.closest('.js-setting-field') || input.closest('td, .card-header, .card-body');
     const data = new FormData();
     data.append('field', input.dataset.field);
     data.append('value', input.type === 'checkbox' ? (input.checked ? '1' : '0') : input.value);
     row.classList.add('opacity-50');
-    postForm(inlineUrl(row.dataset.kind, row.dataset.pk), data).then(() => {
-      const display = cell?.querySelector('.js-setting-display');
-      if (display) {
-        if (input.type === 'checkbox') display.textContent = input.checked ? (input.dataset.field === 'active' ? 'Active' : 'Yes') : (input.dataset.field === 'active' ? 'Inactive' : 'No');
-        else if (input.tagName === 'SELECT') display.textContent = input.options[input.selectedIndex]?.text || input.value;
-        else display.textContent = input.value || '-';
-      }
-      cell?.classList.remove('is-editing');
-    }).finally(() => row.classList.remove('opacity-50'));
+    postForm(inlineUrl(row.dataset.kind, row.dataset.pk), data).finally(() => row.classList.remove('opacity-50'));
   }
   const debouncedSave = debounce(saveInput, 500);
-  document.addEventListener('click', e => {
-    const display = e.target.closest('.js-setting-display');
-    if (!display) return;
-    const cell = display.closest('.js-setting-field') || display.closest('td, .card-header, .card-body');
-    cell.classList.add('is-editing');
-    const editor = cell.querySelector('.js-setting-editor');
-    if (editor && editor.type !== 'checkbox') editor.focus();
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    const editor = e.target.closest('.js-setting-editor');
-    if (editor) (editor.closest('.js-setting-field') || editor.closest('td, .card-header, .card-body'))?.classList.remove('is-editing');
-  });
-  document.addEventListener('blur', e => {
-    const editor = e.target.closest('.js-setting-editor');
-    if (editor && !editor.classList.contains('select2')) (editor.closest('.js-setting-field') || editor.closest('td, .card-header, .card-body'))?.classList.remove('is-editing');
-  }, true);
   document.addEventListener('input', e => { if (e.target.classList.contains('js-setting')) debouncedSave(e.target); });
   document.addEventListener('change', e => {
     if (e.target.classList.contains('js-setting') || e.target.classList.contains('js-setting-check')) saveInput(e.target);

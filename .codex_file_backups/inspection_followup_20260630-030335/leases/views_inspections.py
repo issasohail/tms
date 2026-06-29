@@ -233,35 +233,6 @@ def _inspection_queryset():
 
 @login_required
 @permission_required("leases.view_leaseinspection", raise_exception=True)
-def inspection_sheet_home(request):
-    selected_lease = request.GET.get("lease")
-    if selected_lease:
-        return redirect("leases:lease_inspection_list", lease_id=selected_lease)
-    lease = (
-        Lease.objects.select_related("tenant", "unit", "unit__property")
-        .filter(status="active")
-        .order_by("tenant__first_name", "unit__unit_number")
-        .first()
-        or Lease.objects.select_related("tenant", "unit", "unit__property")
-        .order_by("tenant__first_name", "unit__unit_number")
-        .first()
-    )
-    if not lease:
-        return render(
-            request,
-            "leases/inspection_list.html",
-            {"lease": None, "inspections": [], **_lease_filter_context(request)},
-        )
-    inspections = _inspection_queryset().filter(lease=lease)
-    return render(
-        request,
-        "leases/inspection_list.html",
-        {"lease": lease, "inspections": inspections, **_lease_filter_context(request)},
-    )
-
-
-@login_required
-@permission_required("leases.view_leaseinspection", raise_exception=True)
 def lease_inspection_list(request, lease_id):
     selected_lease = request.GET.get("lease")
     if selected_lease and str(selected_lease) != str(lease_id):
@@ -559,6 +530,16 @@ def public_inspection_sign(request, token):
             inspection.tenant_signed_at = timezone.now()
         inspection.public_is_active = False
         inspection.save(update_fields=["tenant_comments", "tenant_signature", "tenant_signed_at", "public_is_active", "updated_at"])
+        pdf = _inspection_pdf_bytes(request, inspection)
+        date_part = timezone.localdate().strftime("%Y%m%d")
+        filename = f"signed-inspection-{inspection.pk}-{slugify(str(inspection.inspection_type))}-{date_part}.pdf"
+        document = LeaseDocument(
+            lease=inspection.lease,
+            display_name=f"Signed {inspection.inspection_type} Inspection #{inspection.pk}",
+            category="property_condition_report",
+            description=f"Tenant-signed inspection sheet generated from public inspection #{inspection.pk}.",
+        )
+        document.file.save(filename, ContentFile(pdf), save=True)
         inspection.add_audit("tenant_public_signed")
         return render(request, "leases/public_inspection_signed.html", {"inspection": inspection})
     return render(

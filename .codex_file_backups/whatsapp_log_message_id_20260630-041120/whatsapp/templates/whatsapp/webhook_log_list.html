@@ -61,15 +61,9 @@
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <strong>Conversation{% if selected_phone %}: {{ selected_phone }}{% endif %}</strong>
-        <div class="d-flex align-items-center flex-wrap gap-2">
-          <label class="form-check form-check-inline small mb-0">
-            <input class="form-check-input" type="checkbox" id="showMessageIds">
-            <span class="form-check-label">Show Message ID</span>
-          </label>
-          {% if selected_phone %}
-            <span class="badge bg-secondary">{{ conversation_messages|length }} entries</span>
-          {% endif %}
-        </div>
+        {% if selected_phone %}
+          <span class="badge bg-secondary">{{ conversation_messages|length }} entries</span>
+        {% endif %}
       </div>
       <div class="card-body">
         {% if selected_phone %}
@@ -93,7 +87,7 @@
                     <div class="text-danger small mt-1">{{ row.error_text }}</div>
                   {% endif %}
                   {% if row.wa_message_id %}
-                    <div class="text-muted small mt-1 whatsapp-message-id d-none">Message ID: {{ row.wa_message_id }}</div>
+                    <div class="text-muted small mt-1">Message ID: {{ row.wa_message_id }}</div>
                   {% endif %}
                 </div>
               </div>
@@ -214,11 +208,4 @@
     </div>
   </div>
 </div>
-<script>
-document.getElementById('showMessageIds')?.addEventListener('change', function () {
-  document.querySelectorAll('.whatsapp-message-id').forEach(function (item) {
-    item.classList.toggle('d-none', !this.checked);
-  }, this);
-});
-</script>
 {% endblock %}

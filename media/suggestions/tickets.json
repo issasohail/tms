@@ -1,5 +1,5 @@
 {
-  "last_id": 18,
+  "last_id": 19,
   "tickets": [
     {
       "id": 1,
@@ -281,6 +281,21 @@
       "phone_snapshot": "",
       "created_at": "2026-06-07T03:13:07.409529+05:00",
       "updated_at": "2026-06-07T03:13:07.409529+05:00",
+      "photos": [],
+      "replies": []
+    },
+    {
+      "id": 19,
+      "ticket_type": "SUGGESTION",
+      "title": "lease list expiring soon should show its result with click on it",
+      "description": "lease list expiring soon should show its result with click on it",
+      "status": "PENDING",
+      "priority": "NORMAL",
+      "screen_name": "",
+      "user_name_snapshot": "admin",
+      "phone_snapshot": "",
+      "created_at": "2026-06-30T04:16:14.958697+05:00",
+      "updated_at": "2026-06-30T04:16:14.958697+05:00",
       "photos": [],
       "replies": []
     }

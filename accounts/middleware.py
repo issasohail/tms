@@ -79,6 +79,8 @@ EXEMPT_URL_NAMES = {
     "unit_media_public_file",
     "media_public_share",
     "media_public_file",
+    "webhook",
+    "whatsapp_webhook",
 }
 
 ACTION_WORDS = {

@@ -32,7 +32,6 @@ app_name = 'invoices'
 
 urlpatterns = [
     path("monthly-billing/", views.MonthlyBillingRunListView.as_view(), name="monthly_billing_run_list"),
-    path("monthly-billing/list-action/", views.monthly_billing_invoice_list_action, name="monthly_billing_invoice_list_action"),
     path("monthly-billing/create/", views.monthly_billing_run_create, name="monthly_billing_run_create"),
     path("monthly-billing/<int:pk>/", views.MonthlyBillingRunDetailView.as_view(), name="monthly_billing_run_detail"),
     path("monthly-billing/<int:pk>/action/", views.monthly_billing_run_action, name="monthly_billing_run_action"),

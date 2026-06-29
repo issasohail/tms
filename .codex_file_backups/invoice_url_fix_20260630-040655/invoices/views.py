@@ -3138,42 +3138,6 @@ def monthly_billing_run_create(request):
 
 @login_required
 @require_POST
-def monthly_billing_invoice_list_action(request):
-    month = parse_billing_month(request.POST.get("month"))
-    action = request.POST.get("action")
-    run = None
-    try:
-        if action == "preflight":
-            run = run_monthly_billing_preflight(month, created_by=request.user)
-            messages.success(request, f"Monthly billing preflight created for {month:%B %Y}.")
-        else:
-            run = (
-                MonthlyBillingRun.objects.filter(billing_month=month)
-                .order_by("-created_at", "-id")
-                .first()
-            )
-            if not run:
-                run = run_monthly_billing_preflight(month, created_by=request.user)
-            if action == "generate":
-                run_monthly_billing_full(run, created_by=request.user)
-                messages.success(request, f"Monthly billing generated for {month:%B %Y}.")
-            elif action == "send_ready":
-                send_monthly_billing_ready(run, created_by=request.user)
-                messages.success(request, f"Ready invoices sent for {month:%B %Y}.")
-            elif action == "retry_failed":
-                send_monthly_billing_ready(run, created_by=request.user, retry_failed=True)
-                messages.success(request, f"Failed invoice sends retried for {month:%B %Y}.")
-            else:
-                messages.error(request, "Unknown billing action.")
-    except Exception as exc:
-        messages.error(request, f"Monthly billing action failed: {exc}")
-    if run:
-        return redirect("invoices:monthly_billing_run_detail", pk=run.pk)
-    return redirect("invoices:invoice_list")
-
-
-@login_required
-@require_POST
 def monthly_billing_run_action(request, pk):
     run = get_object_or_404(MonthlyBillingRun, pk=pk)
     action = request.POST.get("action")

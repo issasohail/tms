@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp Webhook Logs{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h3 class="mb-0"><i class="fab fa-whatsapp me-2"></i>WhatsApp Webhook Logs</h3>
+    <div class="text-muted small">Raw webhook POST payloads received from Meta.</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'core:settings' %}#settings-tool-whatsapp-webhook-logs">
+    <i class="bi bi-arrow-left me-1"></i> Settings
+  </a>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-5">
+    <div class="card shadow-sm">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong>Latest Webhook POSTs</strong>
+        <span class="badge bg-secondary">{{ page_obj.paginator.count }}</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Event</th>
+                <th>Remote</th>
+                <th>Received</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for log in page_obj.object_list %}
+                <tr class="{% if selected_log and selected_log.id == log.id %}table-primary{% endif %}">
+                  <td><a href="?log={{ log.id }}&page={{ page_obj.number }}">{{ log.id }}</a></td>
+                  <td>{{ log.event_type|default:"webhook" }}</td>
+                  <td>{{ log.remote_addr|default:"-" }}</td>
+                  <td class="text-nowrap">{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-4">No webhook POSTs logged yet.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer py-2 d-flex justify-content-between align-items-center">
+          <div class="small text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+          <div class="btn-group btn-group-sm">
+            {% if page_obj.has_previous %}
+              <a class="btn btn-outline-secondary" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <a class="btn btn-outline-secondary" href="?page={{ page_obj.next_page_number }}">Next</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-7">
+    <div class="card shadow-sm">
+      <div class="card-header py-2">
+        <strong>Webhook Payload</strong>
+        {% if selected_log %}
+          <span class="text-muted small ms-2">#{{ selected_log.id }} - {{ selected_log.created_at|date:"Y-m-d H:i:s" }}</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if selected_log %}
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3">
+              <div class="small text-muted">Event</div>
+              <div class="fw-semibold">{{ selected_log.event_type|default:"webhook" }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="small text-muted">Method</div>
+              <div class="fw-semibold">{{ selected_log.method|default:"-" }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="small text-muted">Remote Address</div>
+              <div class="fw-semibold">{{ selected_log.remote_addr|default:"-" }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="small text-muted">Created</div>
+              <div class="fw-semibold">{{ selected_log.created_at|date:"Y-m-d H:i:s" }}</div>
+            </div>
+          </div>
+
+          <h6 class="mb-2">Message / Status Payload</h6>
+          <pre class="bg-light border rounded p-2 small" style="white-space: pre-wrap; max-height: 52vh; overflow:auto;">{{ selected_payload }}</pre>
+
+          <h6 class="mb-2 mt-3">Headers</h6>
+          <pre class="bg-light border rounded p-2 small" style="white-space: pre-wrap; max-height: 28vh; overflow:auto;">{{ selected_headers }}</pre>
+        {% else %}
+          <div class="text-muted">No webhook log selected.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

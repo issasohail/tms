@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import WhatsAppMessageLog
+from .models import WhatsAppMessageLog, WhatsAppWebhookLog
 
 
 @admin.register(WhatsAppMessageLog)
@@ -26,3 +26,11 @@ class WhatsAppMessageLogAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("created_at", "updated_at")
     raw_id_fields = ("tenant", "lease", "invoice", "payment", "maintenance_request", "created_by")
+
+
+@admin.register(WhatsAppWebhookLog)
+class WhatsAppWebhookLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "event_type", "method", "remote_addr", "created_at")
+    list_filter = ("event_type", "method", "created_at")
+    search_fields = ("event_type", "remote_addr")
+    readonly_fields = ("event_type", "payload", "headers", "method", "remote_addr", "created_at")

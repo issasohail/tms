@@ -118,3 +118,21 @@ class WhatsAppMessageLog(models.Model):
 
     def __str__(self):
         return f"{self.direction} {self.message_type} to {self.phone_number or '-'} ({self.status})"
+
+
+class WhatsAppWebhookLog(models.Model):
+    event_type = models.CharField(max_length=80, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    headers = models.JSONField(default=dict, blank=True)
+    method = models.CharField(max_length=10, blank=True)
+    remote_addr = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["event_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.method or 'POST'} {self.event_type or 'webhook'} at {self.created_at}"

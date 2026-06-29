@@ -52,6 +52,9 @@
       <a class="settings-tab-card" href="#settings-tool-whatsapp-templates" data-settings-target="settings-tool-whatsapp-templates">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fab fa-whatsapp"></i></span><span>WhatsApp Templates</span>
       </a>
+      <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-journal-text"></i></span><span>Webhook Logs</span>
+      </a>
       <a class="settings-tab-card" href="#settings-payments" data-settings-target="settings-payments">
         <span class="settings-tab-icon"><i class="fas fa-money-bill-wave"></i></span><span>Payment Methods</span>
       </a>
@@ -195,6 +198,17 @@
           <h5 class="mb-1">WhatsApp Templates</h5>
           <p class="text-muted small mb-3">Edit reusable WhatsApp messages for tenant, vacancy, rent, payment, repair, police, and agreement workflows.</p>
           <span class="btn btn-sm btn-outline-success">Open Templates</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-webhook-logs">
+      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'whatsapp:webhook_log_list' %}">
+        <div class="card-body">
+          <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-journal-text"></i></div>
+          <h5 class="mb-1">WhatsApp Webhook Logs</h5>
+          <p class="text-muted small mb-3">View raw Meta webhook POST payloads, headers, and parsed message/status audit entries.</p>
+          <span class="btn btn-sm btn-outline-success">Open Webhook Logs</span>
         </div>
       </a>
     </div>

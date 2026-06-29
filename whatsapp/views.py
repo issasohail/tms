@@ -3,14 +3,21 @@ import logging
 
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.paginator import Paginator
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .models import WhatsAppMessageLog
+from .models import WhatsAppMessageLog, WhatsAppWebhookLog
 from .services.whatsapp import WhatsAppService
 
 logger = logging.getLogger(__name__)
+
+
+def _can_view_whatsapp_logs(user):
+    return user.is_staff or user.has_perm("core.view_globalsettings")
 
 
 @csrf_exempt
@@ -24,8 +31,23 @@ def webhook(request):
             return HttpResponse(challenge or "")
         return HttpResponse("Forbidden", status=403)
 
+    logger.info("WhatsApp webhook POST received")
+    body_text = request.body.decode("utf-8", errors="replace")
     try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
+        raw_payload = json.loads(body_text or "{}")
+    except json.JSONDecodeError:
+        raw_payload = {"raw_body": body_text}
+
+    WhatsAppWebhookLog.objects.create(
+        event_type=_webhook_event_type(raw_payload),
+        payload=raw_payload,
+        headers=_request_headers(request),
+        method=request.method,
+        remote_addr=_remote_addr(request),
+    )
+
+    try:
+        payload = json.loads(body_text or "{}")
     except json.JSONDecodeError:
         logger.warning("Invalid WhatsApp webhook JSON received.")
         return HttpResponse(status=200)
@@ -36,6 +58,39 @@ def webhook(request):
         logger.exception("Failed to log WhatsApp webhook payload.")
 
     return HttpResponse(status=200)
+
+
+def _request_headers(request):
+    headers = {}
+    for key, value in request.META.items():
+        if key.startswith("HTTP_"):
+            header = key[5:].replace("_", "-").title()
+            headers[header] = value
+        elif key in {"CONTENT_TYPE", "CONTENT_LENGTH"}:
+            headers[key.replace("_", "-").title()] = value
+    return headers
+
+
+def _remote_addr(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+    return request.META.get("REMOTE_ADDR") or None
+
+
+def _webhook_event_type(payload):
+    if not isinstance(payload, dict):
+        return "unknown"
+    for entry in payload.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            value = change.get("value", {}) or {}
+            if value.get("statuses"):
+                return "status"
+            if value.get("messages"):
+                return "message"
+            if change.get("field"):
+                return change.get("field")
+    return payload.get("object", "") or "webhook"
 
 
 def _log_webhook_payload(payload):
@@ -100,6 +155,38 @@ def _status_error_text(status):
     title = first_error.get("title") or first_error.get("message") or "WhatsApp delivery failed"
     code = first_error.get("code")
     return f"{title}" + (f" (code {code})" if code else "")
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
+def webhook_log_list(request):
+    logs = WhatsAppWebhookLog.objects.order_by("-created_at")
+    paginator = Paginator(logs, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    selected_log = None
+    selected_payload = ""
+    selected_headers = ""
+
+    selected_id = request.GET.get("log")
+    if selected_id:
+        selected_log = get_object_or_404(WhatsAppWebhookLog, pk=selected_id)
+    elif page_obj.object_list:
+        selected_log = page_obj.object_list[0]
+
+    if selected_log:
+        selected_payload = json.dumps(selected_log.payload, indent=2, ensure_ascii=False)
+        selected_headers = json.dumps(selected_log.headers, indent=2, ensure_ascii=False)
+
+    return render(
+        request,
+        "whatsapp/webhook_log_list.html",
+        {
+            "page_obj": page_obj,
+            "selected_log": selected_log,
+            "selected_payload": selected_payload,
+            "selected_headers": selected_headers,
+        },
+    )
 
 
 @staff_member_required

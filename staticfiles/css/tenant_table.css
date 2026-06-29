@@ -1,0 +1,41 @@
+/* static/css/tenant_table.css */
+.btn-xs {
+    padding: 0.15rem 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1;
+    border-radius: 0.2rem;
+}
+
+.lease-info {
+    background-color: #f8f9fa;
+}
+
+.lease-info div {
+    margin-right: 1rem;
+}
+
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tooltip {
+    font-size: 0.8rem;
+}
+
+.table th {
+    vertical-align: middle !important;
+    text-align: center;
+}
+
+.table td {
+    vertical-align: middle !important;
+}
+
+/* Responsive fixes */
+@media (max-width: 768px) {
+    .table-responsive {
+        overflow-x: auto;
+    }
+}

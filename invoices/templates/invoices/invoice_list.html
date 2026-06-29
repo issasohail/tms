@@ -20,6 +20,32 @@
       <i class="fas fa-file-invoice-dollar"></i><span class="btn-label"> Generate Billing</span>
     </a>
 
+    <form method="post" action="{% url 'invoices:monthly_billing_invoice_list_action' %}" class="d-inline-flex align-items-center gap-1">
+      {% csrf_token %}
+      <div class="input-group input-group-sm invoice-auto-billing-group">
+        <span class="input-group-text">Auto</span>
+        <input type="month" name="month" class="form-control" required title="Billing month">
+        <button type="submit" name="action" value="preflight" class="btn btn-outline-primary" title="Run monthly billing preflight">
+          <i class="fas fa-search"></i><span class="btn-label"> Preflight</span>
+        </button>
+        <button type="submit" name="action" value="generate" class="btn btn-outline-success" title="Generate monthly billing run">
+          <i class="fas fa-cogs"></i><span class="btn-label"> Generate</span>
+        </button>
+        <button type="submit" name="action" value="send_ready" class="btn btn-outline-success" title="Generate PDFs and send ready invoices"
+                onclick="return confirm('Send all Ready to Send invoices for the selected month through WhatsApp?');">
+          <i class="fab fa-whatsapp"></i><span class="btn-label"> Send Ready</span>
+        </button>
+        <button type="submit" name="action" value="retry_failed" class="btn btn-outline-danger" title="Retry failed WhatsApp sends"
+                onclick="return confirm('Retry failed WhatsApp invoice sends for the selected month?');">
+          <i class="fas fa-sync-alt"></i><span class="btn-label"> Retry</span>
+        </button>
+      </div>
+    </form>
+
+    <a href="{% url 'invoices:monthly_billing_run_list' %}" class="btn btn-outline-primary">
+      <i class="fas fa-tasks"></i><span class="btn-label"> Review Runs</span>
+    </a>
+
     <form method="post" action="{% url 'invoices:apply_late_fees' %}" class="d-inline">
       {% csrf_token %}
       <button type="submit" class="btn btn-warning" onclick="return confirm('Apply configured late fees to overdue unpaid invoices? Paid invoices will not be changed.');">

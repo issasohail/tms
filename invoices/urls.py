@@ -37,6 +37,7 @@ urlpatterns = [
     path("monthly-billing/<int:pk>/action/", views.monthly_billing_run_action, name="monthly_billing_run_action"),
     path("monthly-billing/<int:pk>/export/", views.monthly_billing_run_export, name="monthly_billing_run_export"),
     path("monthly-billing/items/<int:pk>/water/", views.monthly_billing_water_update, name="monthly_billing_water_update"),
+    path("monthly-billing/invoice-list-action/", views.monthly_billing_invoice_list_action, name="monthly_billing_invoice_list_action"),
 
     # List/Create
     path('', InvoiceListView.as_view(), name='invoice_list'),

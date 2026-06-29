@@ -19,6 +19,7 @@ from whatsapp.services.payment_matching import extract_payment_text_fields, matc
 from whatsapp.services.tenant_context import (
     build_lease_context,
     find_active_leases_for_phone,
+    find_active_leases_for_text,
     lease_option_lines,
 )
 from whatsapp.services.whatsapp import WhatsAppService
@@ -77,12 +78,15 @@ class WhatsAppAIAssistant:
         message_type = payload.get("type") or message_log.message_type
         text = _payload_text(payload)
         selected_lease = self._selected_active_lease(conversation)
+        if text and not selected_lease:
+            previous_lookup = conversation.context.get("last_lookup_text", "")
+            conversation.context["last_lookup_text"] = f"{previous_lookup} {text}".strip()[-240:]
+            conversation.save(update_fields=["context", "updated_at"])
 
         if self._consume_lease_selection(text, conversation):
             selected_lease = conversation.selected_lease
-            ctx = build_lease_context(selected_lease)
             return (
-                f"Thanks. I found your active lease for {ctx.property.property_name} - Unit {ctx.unit.unit_number}. How can I help?",
+                _tenant_menu_text(selected_lease),
                 "lease_selected",
                 {"lease": selected_lease, "tenant": selected_lease.tenant},
             )
@@ -132,12 +136,19 @@ class WhatsAppAIAssistant:
             )
 
         intent = detect_intent(text)
+        if selected_lease and _menu_choice(text):
+            intent = _menu_choice(text)
+
         lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
         if isinstance(lease, str):
             return lease, "lease_lookup", {}
 
         if intent == "payment":
-            return self._stage_payment(message_log, conversation, lease, None, text)
+            return (
+                "Please send your payment screenshot here. I will stage it for admin review before posting.",
+                "payment_instructions",
+                {"lease": lease, "tenant": lease.tenant},
+            )
         if intent == "maintenance":
             pending = create_pending_maintenance(message_log, conversation, lease)
             return (
@@ -147,11 +158,17 @@ class WhatsAppAIAssistant:
             )
         if intent == "availability":
             return self._available_units_reply(), "availability", {}
+        if intent == "office":
+            return (
+                "Thanks. I have noted that you want office support. Our team will review this chat and reply shortly.",
+                "office_support",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
         if intent in {"balance", "lease", "payments"} and lease:
             return self._lease_reply(intent, lease), intent, {"lease": lease, "tenant": lease.tenant}
 
         return (
-            "Thanks. I can help with rent balance, lease details, payment screenshots, maintenance, and available units. Please tell me what you need.",
+            _tenant_menu_text(lease) if lease else _lease_lookup_help_text(),
             "general",
             {"lease": lease, "tenant": getattr(lease, "tenant", None)},
         )
@@ -175,16 +192,32 @@ class WhatsAppAIAssistant:
             conversation.selected_lease = leases[0]
             conversation.selected_property = leases[0].unit.property
             conversation.selected_unit = leases[0].unit
-            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "updated_at"])
+            conversation.context.pop("last_lookup_text", None)
+            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "context", "updated_at"])
             return leases[0]
         if len(leases) > 1:
             conversation.context["lease_options"] = [lease.pk for lease in leases]
             conversation.pending_state = "lease_selection"
             conversation.save(update_fields=["context", "pending_state", "updated_at"])
             return lease_option_lines(leases)
+        text_matches = list(find_active_leases_for_text(conversation.context.get("last_lookup_text", ""), phone_number))
+        if len(text_matches) == 1:
+            lease = text_matches[0]
+            conversation.selected_lease = lease
+            conversation.selected_property = lease.unit.property
+            conversation.selected_unit = lease.unit
+            conversation.pending_state = ""
+            conversation.context.pop("last_lookup_text", None)
+            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "pending_state", "context", "updated_at"])
+            return lease
+        if len(text_matches) > 1:
+            conversation.context["lease_options"] = [lease.pk for lease in text_matches]
+            conversation.pending_state = "lease_selection"
+            conversation.save(update_fields=["context", "pending_state", "updated_at"])
+            return lease_option_lines(text_matches)
         conversation.pending_state = "manual_identification"
         conversation.save(update_fields=["pending_state", "updated_at"])
-        return "Please send Property, Unit, Contact Number, and Tenant Name so we can find your active lease."
+        return _lease_lookup_help_text()
 
     def _selected_active_lease(self, conversation):
         lease = conversation.selected_lease
@@ -307,6 +340,55 @@ def detect_intent(text):
     if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues")):
         return "balance"
     return "general"
+
+
+def _menu_choice(text):
+    value = (text or "").strip().lower().lstrip("#")
+    choices = {
+        "1": "balance",
+        "2": "lease",
+        "3": "payment",
+        "4": "maintenance",
+        "5": "availability",
+        "6": "office",
+    }
+    return choices.get(value)
+
+
+def _tenant_menu_text(lease):
+    ctx = build_lease_context(lease)
+    tenant_name = _tenant_display_name(ctx.tenant)
+    lease_end = ctx.lease.end_date.strftime("%d-%m-%Y") if ctx.lease.end_date else "-"
+    return (
+        f"Welcome {tenant_name},\n"
+        f"{ctx.property.property_name} - Unit {ctx.unit.unit_number}\n"
+        f"Rent: Rs. {ctx.lease.monthly_rent}\n"
+        f"Lease expires on {lease_end}.\n\n"
+        "How can I help you?\n"
+        "1. Rent balance\n"
+        "2. Lease details\n"
+        "3. Send payment screenshot\n"
+        "4. Maintenance request\n"
+        "5. Available units\n"
+        "6. Talk to office\n\n"
+        "Reply with a number, for example 1."
+    )
+
+
+def _tenant_display_name(tenant):
+    name = " ".join(filter(None, [getattr(tenant, "first_name", ""), getattr(tenant, "last_name", "")])).strip()
+    return name or getattr(tenant, "name", "") or "Tenant"
+
+
+def _lease_lookup_help_text():
+    return (
+        "I could not find your active lease yet.\n\n"
+        "Please reply with any one short detail:\n"
+        "1. Unit or flat, for example F35#1\n"
+        "2. Your mobile number\n"
+        "3. Tenant name\n\n"
+        "You can send only the short detail. No full sentence needed."
+    )
 
 
 def _payload_text(payload):

@@ -3228,3 +3228,35 @@ def monthly_billing_run_export(request, pk):
             item.error_text,
         ])
     return response
+
+
+@login_required
+@require_POST
+def monthly_billing_invoice_list_action(request):
+    month = parse_billing_month(request.POST.get("month"))
+    action = request.POST.get("action")
+    try:
+        if action == "preflight":
+            run = run_monthly_billing_preflight(month, created_by=request.user)
+            messages.success(request, f"Monthly billing preflight completed for {month:%B %Y}.")
+        elif action == "generate":
+            run = run_monthly_billing_preflight(month, created_by=request.user)
+            generate_monthly_billing_invoices(run)
+            generate_monthly_billing_electric(run)
+            prepare_monthly_billing_ready(run)
+            messages.success(request, f"Monthly billing generated for {month:%B %Y}. Review pending items before sending.")
+        elif action in ("send_ready", "retry_failed"):
+            run = MonthlyBillingRun.objects.filter(billing_month=month).first()
+            if not run:
+                messages.error(request, f"No monthly billing run exists for {month:%B %Y}. Run Preflight or Generate first.")
+                return redirect("invoices:invoice_list")
+            generate_monthly_billing_pdfs(run)
+            send_monthly_billing_ready(run, created_by=request.user, retry_failed=(action == "retry_failed"))
+            messages.success(request, f"Monthly billing WhatsApp send completed for {month:%B %Y}.")
+        else:
+            messages.error(request, "Unknown monthly billing action.")
+            return redirect("invoices:invoice_list")
+    except Exception as exc:
+        messages.error(request, f"Monthly billing action failed: {exc}")
+        return redirect("invoices:invoice_list")
+    return redirect("invoices:monthly_billing_run_detail", pk=run.pk)

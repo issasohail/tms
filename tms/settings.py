@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     "weasyprint",
     "dal_select2",
     "maintenance",
+    "whatsapp.apps.WhatsappConfig",
     "django_extensions",
     "django_filters",
     "widget_tweaks",
@@ -125,6 +126,14 @@ CKEDITOR_5_CONFIGS = {
         "language": "en",
     },
 }
+
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "1186798447852753")
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "4573255446332475")
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "TMS_WHATSAPP_VERIFY_2026")
+WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v23.0")
+WHATSAPP_DEFAULT_COUNTRY_CODE = os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "+92")
+WHATSAPP_REQUEST_TIMEOUT = int(os.getenv("WHATSAPP_REQUEST_TIMEOUT", "20"))
 
 
 INSTALLED_APPS += ["easy_thumbnails", "image_cropping"]

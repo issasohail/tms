@@ -14,6 +14,7 @@ from leases.views import UnitAutocomplete
 from leases import views_lease_files
 from core.views import SettingsView
 from accounts.views import LogoutView as AccountsLogoutView
+from whatsapp.views import webhook as whatsapp_webhook
 
 
 def plain_include(module_path):
@@ -92,6 +93,17 @@ app_patterns = [
     )),
 
     path(
+        "whatsapp/webhook/",
+        whatsapp_webhook,
+        name="whatsapp_webhook",
+    ),
+
+    path('whatsapp/', include(
+        ('whatsapp.urls', 'whatsapp'),
+        namespace='whatsapp'
+    )),
+
+    path(
         'unit-autocomplete/',
         UnitAutocomplete.as_view(),
         name='unit-autocomplete'
@@ -131,6 +143,8 @@ root_app_patterns = [
     path('leases/', plain_include('leases.urls')),
     path('invoices/', plain_include('invoices.urls')),
     path('maintenance/', plain_include('maintenance.urls')),
+    path("whatsapp/webhook/", whatsapp_webhook, name="whatsapp_webhook"),
+    path('whatsapp/', plain_include('whatsapp.urls')),
 
     path(
         'unit-autocomplete/',

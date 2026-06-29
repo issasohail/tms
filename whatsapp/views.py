@@ -4,9 +4,10 @@ import logging
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -160,6 +161,21 @@ def _status_error_text(status):
 @login_required
 @user_passes_test(_can_view_whatsapp_logs)
 def webhook_log_list(request):
+    if request.method == "POST":
+        phone_number = (request.POST.get("phone_number") or "").strip()
+        message_text = (request.POST.get("message_text") or "").strip()
+        if not phone_number or not message_text:
+            messages.error(request, "Phone number and message are required.")
+            return redirect("whatsapp:webhook_log_list")
+
+        result = WhatsAppService(created_by=request.user).send_text(phone_number, message_text)
+        if result.get("ok"):
+            messages.success(request, "WhatsApp message sent.")
+        else:
+            messages.error(request, result.get("error") or "WhatsApp message failed.")
+        return redirect(f"{request.path}?phone={phone_number}")
+
+    selected_phone = (request.GET.get("phone") or "").strip()
     logs = WhatsAppWebhookLog.objects.order_by("-created_at")
     paginator = Paginator(logs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
@@ -177,6 +193,11 @@ def webhook_log_list(request):
         selected_payload = json.dumps(selected_log.payload, indent=2, ensure_ascii=False)
         selected_headers = json.dumps(selected_log.headers, indent=2, ensure_ascii=False)
 
+    conversation_summary = _conversation_summary()
+    if not selected_phone and conversation_summary:
+        selected_phone = conversation_summary[0]["phone_number"]
+    conversation_messages = _conversation_messages(selected_phone) if selected_phone else []
+
     return render(
         request,
         "whatsapp/webhook_log_list.html",
@@ -185,8 +206,75 @@ def webhook_log_list(request):
             "selected_log": selected_log,
             "selected_payload": selected_payload,
             "selected_headers": selected_headers,
+            "conversation_summary": conversation_summary,
+            "conversation_messages": conversation_messages,
+            "selected_phone": selected_phone,
         },
     )
+
+
+def _conversation_summary():
+    summary = []
+    seen = set()
+    logs = WhatsAppMessageLog.objects.exclude(phone_number="").order_by("-created_at")[:300]
+    for log in logs:
+        if log.phone_number in seen:
+            continue
+        seen.add(log.phone_number)
+        summary.append(
+            {
+                "phone_number": log.phone_number,
+                "last_direction": log.direction,
+                "last_status": log.status,
+                "last_message": _message_text(log),
+                "last_at": log.created_at,
+            }
+        )
+    return summary
+
+
+def _conversation_messages(phone_number):
+    rows = []
+    logs = WhatsAppMessageLog.objects.filter(phone_number=phone_number).order_by("created_at")
+    for log in logs:
+        rows.append(
+            {
+                "id": log.id,
+                "direction": log.direction,
+                "status": log.status,
+                "message_type": log.message_type,
+                "message": _message_text(log),
+                "created_at": log.created_at,
+                "wa_message_id": log.wa_message_id,
+                "error_text": log.error_text,
+            }
+        )
+    return rows
+
+
+def _message_text(log):
+    payload = log.payload or {}
+    if log.direction == WhatsAppMessageLog.DIRECTION_STATUS:
+        return f"Status update: {log.status}"
+
+    text_payload = payload.get("text") or {}
+    if isinstance(text_payload, dict) and text_payload.get("body"):
+        return text_payload.get("body")
+
+    if payload.get("type") == "button":
+        return (payload.get("button") or {}).get("text", "")
+    if payload.get("type") == "interactive":
+        interactive = payload.get("interactive") or {}
+        reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+        return reply.get("title") or reply.get("id") or "Interactive reply"
+    if payload.get("type") == "image":
+        return (payload.get("image") or {}).get("caption") or "Image message"
+    if payload.get("type") == "document":
+        document = payload.get("document") or {}
+        return document.get("caption") or document.get("filename") or "Document message"
+    if payload.get("type"):
+        return f"{payload.get('type').title()} message"
+    return ""
 
 
 @staff_member_required

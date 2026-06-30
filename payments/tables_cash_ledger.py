@@ -198,11 +198,13 @@ class CashLedgerTable(tables.Table):
 
         if wa_url:
             # JS will read data-wa-url and open it
+            api_object_id = record.source_id if getattr(record, "source", "") == "PAYMENT" else ""
             btns.append(format_html(
                 '<button type="button" class="btn btn-sm btn-success btn-wa-receipt" '
-                'data-wa-url="{}" title="WhatsApp Receipt">'
+                'data-wa-url="{}" data-api-object-id="{}" title="WhatsApp Receipt">'
                 '<i class="fab fa-whatsapp"></i></button>',
-                wa_url
+                wa_url,
+                api_object_id,
             ))
 
         # Inline split edit button (modal)

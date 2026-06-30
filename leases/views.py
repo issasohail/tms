@@ -579,6 +579,7 @@ class LeaseListView(SingleTableView):
         tenant_id = self.request.GET.get("tenant")
         status = self.request.GET.get("status", "active")
         nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
+        summary_filter = self.request.GET.get("summary", "")
 
         queryset = self._annotate_list_financials(queryset)
 
@@ -593,6 +594,15 @@ class LeaseListView(SingleTableView):
             queryset = queryset.filter(status=status)
         if nonzero_balance:
             queryset = queryset.filter(list_balance__gt=0)
+
+        self._lease_list_base_queryset = queryset
+
+        if summary_filter == "expiring_soon":
+            today = timezone.localdate()
+            queryset = queryset.filter(
+                end_date__gte=today,
+                end_date__lte=today + timedelta(days=60),
+            )
 
         return queryset.order_by("unit__unit_number")
 
@@ -688,12 +698,28 @@ class LeaseListView(SingleTableView):
         context["current_status"] = self.request.GET.get("status", "active")
         context["nonzero_balance"] = self.request.GET.get("nonzero_balance", "")
         context["current_layout"] = self.request.GET.get("layout", "1")
-        context["lease_count"] = self.object_list.count()
+        context["current_summary"] = self.request.GET.get("summary", "")
+        base_queryset = getattr(self, "_lease_list_base_queryset", self.object_list)
+        context["lease_count"] = base_queryset.count()
         today = timezone.localdate()
-        context["expiring_soon_count"] = self.object_list.filter(
+        context["expiring_soon_count"] = base_queryset.filter(
             end_date__gte=today,
             end_date__lte=today + timedelta(days=60),
         ).count()
+
+        def summary_url(**updates):
+            params = self.request.GET.copy()
+            for key, value in updates.items():
+                if value in (None, ""):
+                    params.pop(key, None)
+                else:
+                    params[key] = value
+            querystring = params.urlencode()
+            return f"?{querystring}" if querystring else "?"
+
+        context["total_leases_url"] = summary_url(summary="")
+        context["expiring_soon_url"] = summary_url(summary="expiring_soon")
+
         money_field = DecimalField(max_digits=12, decimal_places=2)
         zero = Value(Decimal("0.00"), output_field=money_field)
         totals = self.object_list.aggregate(

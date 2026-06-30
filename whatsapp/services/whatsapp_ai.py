@@ -363,6 +363,8 @@ class WhatsAppAIAssistant:
         lowered = (text or "").strip().lower()
         if lowered in {"menu", "hi", "hello", "start", ""}:
             return guest_menu_text()
+        if intent in {"payments", "balance", "lease"}:
+            return "Please send Property, Unit, Contact Number, and Tenant Name so we can find the correct lease/ledger."
         if lowered in {"1", "vacant", "vacancy", "available"} or intent == "availability":
             return self._available_units_reply()
         if lowered in {"2", "registration", "tenant registration"}:
@@ -417,6 +419,8 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
             return staff_menu_text(staff_user)
+        if "ledger" in lowered or "statement" in lowered:
+            return self._start_staff_search(conversation, "tenant_ledger", "Send tenant name, phone, CNIC, property, or unit for ledger.")
         if lowered in {"add tenant", "new tenant"}:
             conversation.pending_state = "staff_add_tenant"
             conversation.save(update_fields=["pending_state", "updated_at"])
@@ -1586,11 +1590,17 @@ class WhatsAppAIAssistant:
     def _lease_reply(self, intent, lease):
         ctx = build_lease_context(lease)
         if intent == "payments":
+            base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+            ledger_link = f"{base_url.rstrip('/')}{reverse('leases:lease_ledger_by_pk', args=[lease.pk])}"
             if not ctx.recent_payments:
-                return "No recent payments are recorded for your active lease."
+                return (
+                    "No recent payments are recorded for your active lease.\n\n"
+                    f"Full ledger:\n{ledger_link}"
+                )
             lines = ["Recent payments:"]
             for payment in ctx.recent_payments:
                 lines.append(f"{payment.payment_date}: Rs. {payment.amount} ({payment.reference_number or 'no reference'})")
+            lines.extend(["", "Full ledger:", ledger_link])
             return "\n".join(lines)
         if intent == "lease":
             return (

@@ -726,18 +726,18 @@ def api_allocation_receipt_whatsapp(request, pk: int):
     is_security_refund = (alloc.security_type or "").upper() == "REFUND"
     is_lease_refund = (alloc.lease_amount or 0) < 0
     heading = (
-        "*Lease payment refunded*"
+        "Lease payment refunded"
         if is_lease_refund
-        else "*Security deposit refunded*"
+        else "Security deposit refunded"
         if is_security_refund
-        else "*Payment received*"
+        else "Payment received"
     )
     amount_line = (
-        f"*Refund Amount: {_money(abs(alloc.lease_amount))}*"
+        f"Refund Amount: {_money(abs(alloc.lease_amount))}"
         if is_lease_refund
-        else f"*Refund Amount: {_money(alloc.security_amount)}*"
+        else f"Refund Amount: {_money(alloc.security_amount)}"
         if is_security_refund
-        else f"*Total Amount Received: {_money(pay.amount)}*"
+        else f"Total Amount Received: {_money(pay.amount)}"
     )
     security_line = ""
     if (alloc.security_amount or 0) > 0:
@@ -757,7 +757,7 @@ def api_allocation_receipt_whatsapp(request, pk: int):
         f"{amount_line}\n" +
         (f"Lease Portion: {_money(alloc.lease_amount)}\n" if (alloc.lease_amount or 0) > 0 else "") +
         security_line +
-        f"Thank you!"
+        f"Thank you"
     )
 
     return JsonResponse({"phone": phone, "message": msg, "allocation_id": alloc.id})

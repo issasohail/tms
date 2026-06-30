@@ -70,6 +70,10 @@
       <span class="form-check-label">Use WhatsApp API</span>
     </label>
 
+    <button type="button" class="btn btn-success" id="invoice-bulk-whatsapp">
+      <i class="fab fa-whatsapp"></i><span class="btn-label"> Bulk Invoice</span>
+    </button>
+
     <form method="get" action="{% url 'invoices:invoices_bulk_delete_preview' %}" class="d-inline-flex align-items-center gap-1">
       <div class="input-group" style="max-width: 300px;">
         <span class="input-group-text">Month</span>
@@ -2490,10 +2494,34 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
 </script>
 
 <script>
+  const INVOICE_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'invoice' 0 'invoice' %}";
+
   // Same phone cleanup used in your detail page
   function invoiceListCsrfToken() {
     const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[2]) : '';
+  }
+
+  function invoiceWhatsAppApiUrl(objectId) {
+    return INVOICE_WHATSAPP_API_URL_TEMPLATE.replace('/0/', '/' + encodeURIComponent(objectId) + '/');
+  }
+
+  async function postInvoiceWhatsAppApi(objectId) {
+    const response = await fetch(invoiceWhatsAppApiUrl(objectId), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': invoiceListCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin'
+    });
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || 'API send failed');
+    }
+    return payload;
   }
 
   document.addEventListener('DOMContentLoaded', function() {
@@ -2525,12 +2553,7 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
       if (!phone) { alert('No phone number available for WhatsApp.'); return false; }
       const useApi = document.getElementById('invoice-use-whatsapp-api')?.checked;
       if (useApi && el.dataset.objectId) {
-        fetch(`/tms/whatsapp/send/invoice/${el.dataset.objectId}/invoice/`, {
-          method: 'POST',
-          headers: { 'X-CSRFToken': invoiceListCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
-          credentials: 'same-origin'
-        }).then(function(response) {
-          if (!response.ok) throw new Error('API send failed');
+        postInvoiceWhatsAppApi(el.dataset.objectId).then(function() {
           alert('Invoice sent via WhatsApp API.');
         }).catch(function(error) {
           alert('Failed to send via WhatsApp API: ' + error.message);
@@ -2604,7 +2627,115 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
       return false;
     }
   };
+
+  function invoiceBulkRows() {
+    return Array.from(document.querySelectorAll('.btn-wa-invoice[data-object-id]'))
+      .map(btn => ({
+        id: btn.dataset.objectId,
+        phone: normalizePkPhone(btn.dataset.phone),
+        invoiceNumber: btn.dataset.invno || btn.dataset.objectId,
+        tenant: ((btn.dataset.fname || '') + ' ' + (btn.dataset.lname || '')).trim() || 'Tenant',
+        propertyName: btn.dataset.property || '',
+        unitNumber: btn.dataset.unit || '',
+        dueDate: btn.dataset.due || '',
+        amount: btn.dataset.total || '0.00',
+        status: btn.dataset.status || ''
+      }))
+      .filter(row => row.id);
+  }
+
+  function openInvoiceBulkModal() {
+    const rows = invoiceBulkRows();
+    if (!rows.length) {
+      alert('No invoices found on this filtered page.');
+      return;
+    }
+    const tbody = document.getElementById('invoice-bulk-selection-body');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="text-center"><input type="checkbox" class="form-check-input invoice-bulk-select" data-index="${index}" ${row.phone ? 'checked' : ''} ${row.phone ? '' : 'disabled'}></td>
+        <td>${row.invoiceNumber}</td>
+        <td>${row.tenant}</td>
+        <td>${row.propertyName} / ${row.unitNumber}</td>
+        <td>${row.dueDate || '-'}</td>
+        <td class="text-end">${row.amount}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    window.invoiceBulkSelection = rows;
+    const sendButton = document.getElementById('send-selected-invoices');
+    if (sendButton) {
+      sendButton.onclick = sendSelectedInvoices;
+    }
+    const modalEl = document.getElementById('invoiceBulkSelectionModal');
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else {
+      modalEl.style.display = 'block';
+    }
+  }
+
+  async function sendSelectedInvoices() {
+    const rows = window.invoiceBulkSelection || [];
+    const selected = Array.from(document.querySelectorAll('.invoice-bulk-select:checked'))
+      .map(input => rows[parseInt(input.dataset.index, 10)])
+      .filter(Boolean);
+    if (!selected.length) {
+      alert('Please select at least one invoice.');
+      return;
+    }
+    let sent = 0;
+    let failed = 0;
+    for (const row of selected) {
+      try {
+        await postInvoiceWhatsAppApi(row.id);
+        sent += 1;
+      } catch (error) {
+        failed += 1;
+        console.error('Invoice WhatsApp send failed', row, error);
+      }
+    }
+    alert(`Bulk invoice send complete.\nSent: ${sent}\nFailed: ${failed}`);
+  }
+
+  document.getElementById('invoice-bulk-whatsapp')?.addEventListener('click', openInvoiceBulkModal);
 </script>
+
+<div class="modal fade" id="invoiceBulkSelectionModal" tabindex="-1" aria-labelledby="invoiceBulkSelectionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="invoiceBulkSelectionModalLabel">Select Invoices To Send</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th class="text-center">Send</th>
+                <th>Invoice</th>
+                <th>Tenant</th>
+                <th>Property / Unit</th>
+                <th>Due</th>
+                <th class="text-end">Amount</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-bulk-selection-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="send-selected-invoices">
+          <i class="fab fa-whatsapp"></i> Send Selected
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 
 <script>

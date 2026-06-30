@@ -204,6 +204,7 @@ class SuggestionTicketForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "form-control"}),
     )
     description = forms.CharField(
+        required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
     )
     priority = forms.ChoiceField(

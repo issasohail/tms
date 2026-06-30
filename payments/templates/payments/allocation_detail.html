@@ -32,6 +32,9 @@
             <button onclick="window.print()" class="btn btn-primary btn-sm me-1">
                 <i class="fas fa-print me-1"></i> Print
             </button>
+            <button type="button" onclick="downloadReceiptJPG()" class="btn btn-secondary btn-sm me-1">
+                <i class="fas fa-image me-1"></i> JPG
+            </button>
             <button onclick="sendEmail()" class="btn btn-info btn-sm me-1">
                 <i class="fas fa-envelope me-1"></i> Email
             </button>
@@ -398,6 +401,25 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
   .card { border:none !important; box-shadow:none !important; margin:0 !important; }
   .table { page-break-inside: avoid; margin-bottom: .25rem !important; }
 }
+body.exporting-receipt-jpg .no-print {
+  display: none !important;
+}
+body.exporting-receipt-jpg .printable-content {
+  width: 470px !important;
+  max-width: 470px !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  padding: 10px !important;
+  background: #ffffff !important;
+}
+body.exporting-receipt-jpg .printable-content .col-md-8 {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 0 0 100% !important;
+}
+body.exporting-receipt-jpg .printable-content .card {
+  box-shadow: none !important;
+}
 </style>
 
 
@@ -452,6 +474,51 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         return def ? def + cleaned : cleaned;
     }
 
+    function loadReceiptHtml2Canvas() {
+        if (window.html2canvas) return Promise.resolve(window.html2canvas);
+        return new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+            script.onload = () => resolve(window.html2canvas);
+            script.onerror = () => reject(new Error("Could not load JPG export tool."));
+            document.head.appendChild(script);
+        });
+    }
+
+    async function downloadReceiptJPG() {
+        const target = document.querySelector(".printable-content");
+        if (!target) {
+            alert("Receipt content not found.");
+            return;
+        }
+        document.body.classList.add("exporting-receipt-jpg");
+        try {
+            const html2canvas = await loadReceiptHtml2Canvas();
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            const width = Math.ceil(target.scrollWidth) + 20;
+            const height = Math.ceil(target.scrollHeight) + 20;
+            const canvas = await html2canvas(target, {
+                backgroundColor: "#ffffff",
+                scale: 2,
+                useCORS: true,
+                windowWidth: Math.max(520, width),
+                windowHeight: Math.max(760, height),
+                width: width,
+                height: height
+            });
+            const link = document.createElement("a");
+            link.href = canvas.toDataURL("image/jpeg", 0.95);
+            link.download = "Payment_Receipt_{{ allocation.pk }}.jpg";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            alert(error && error.message ? error.message : "Could not export JPG.");
+        } finally {
+            document.body.classList.remove("exporting-receipt-jpg");
+        }
+    }
+
     function sendWhatsApp() {
         let rawPhone = "{{ allocation.payment.lease.tenant.phone|default:''|escapejs }}";
 
@@ -494,25 +561,23 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         // Build message as lines (Django controls whether sec balance line appears)
         const lines = [
             `Dear {{ allocation.payment.lease.tenant.first_name|escapejs }},`,
-            `{% if allocation.lease_amount < 0 %}*Lease payment refunded*{% elif allocation.security_type == "REFUND" %}*Security deposit refunded*{% else %}*Payment received*{% endif %} for {{ allocation.payment.lease.unit.property.property_name|escapejs }}.`,
+            `{% if allocation.lease_amount < 0 %}Lease payment refunded{% elif allocation.security_type == "REFUND" %}Security deposit refunded{% else %}Payment received{% endif %} for {{ allocation.payment.lease.unit.property.property_name|escapejs }}.`,
             `Unit: {{ allocation.payment.lease.unit.unit_number|escapejs }}`,
-            `Period: {{ allocation.payment.lease.start_date|date:"M d, Y"|escapejs }} – {{ allocation.payment.lease.end_date|date:"M d, Y"|escapejs }}`,
+            `Period: {{ allocation.payment.lease.start_date|date:"M d, Y"|escapejs }} - {{ allocation.payment.lease.end_date|date:"M d, Y"|escapejs }}`,
             `Security Deposit: ${securityRequired} (${securityStatus})`,
             {% if sec_totals.balance_to_collect > 0 %}
             `Security Deposit Balance: {{ CURRENCY_SYMBOL|escapejs }} ${secBalStr}`,
             {% endif %}
             `Date: {{ allocation.payment.payment_date|date:"M d, Y"|escapejs }}`,
-            `{% if allocation.lease_amount < 0 or allocation.security_type == "REFUND" %}*Refund Amount: {{ allocation.payment.amount|money:2|escapejs }}*{% else %}*Total Amount Received: {{ allocation.payment.amount|money:2|escapejs }}*{% endif %}`,
+            `{% if allocation.lease_amount < 0 or allocation.security_type == "REFUND" %}Refund Amount: {{ allocation.payment.amount|money:2|escapejs }}{% else %}Total Amount Received: {{ allocation.payment.amount|money:2|escapejs }}{% endif %}`,
             {% if allocation.lease_amount > 0 %}
-            '{{ allocation.lease_amount|money:0 }} applied toward lease balance.',
+            `Lease Portion: {{ allocation.lease_amount|money:2|escapejs }}`,
             {% endif %}
             {% if allocation.security_amount > 0 %}
-            '{% if allocation.security_type == "REFUND" %}{{ allocation.security_amount|money:0 }} refunded from Security Deposit.{% else %}{{ allocation.security_amount|money:0 }} applied towards Security balance.{% endif %}',
+            `{% if allocation.security_type == "REFUND" %}Security Refund{% else %}Security Portion{% endif %}: {{ allocation.security_amount|money:2|escapejs }}`,
             {% endif %}
-            `Lease Balance: {{ CURRENCY_SYMBOL|escapejs }} ${leaseBalStr}`,
-            `*Total Balance: {{ CURRENCY_SYMBOL|escapejs }} ${totalWithSecStr}*`,
             ``,
-            `Thank you!`
+            `Thank you`
         ];
 
         const message = lines.join('\n');

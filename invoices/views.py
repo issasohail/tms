@@ -2874,29 +2874,54 @@ def build_invoice_whatsapp_message(request, inv):
     lease_balance = getattr(lease, "get_balance", Decimal("0.00")) if lease else Decimal("0.00")
     security_balance = getattr(lease, "security_balance_to_collect", Decimal("0.00")) if lease else Decimal("0.00")
     total_balance = (lease_balance or Decimal("0.00")) + (security_balance or Decimal("0.00"))
+    status = inv.get_status_display() if hasattr(inv, "get_status_display") else getattr(inv, "status", "")
     due = getattr(inv, "due_date", None)
+    issue = getattr(inv, "issue_date", None)
+    currency_symbol = getattr(settings, "CURRENCY_SYMBOL", "Rs.")
+    if not currency_symbol:
+        currency_symbol = "Rs."
 
-    detail_url = request.build_absolute_uri(
-        reverse("invoices:invoice_detail", args=[inv.pk]))
+    items = []
+    for index, item in enumerate(inv.items.select_related("category").all(), start=1):
+        category = getattr(getattr(item, "category", None), "name", "") or ""
+        description = (getattr(item, "description", "") or "").strip()
+        label = category or description or "Item"
+        detail = description or category or "Item"
+        item_amount = getattr(item, "amount", 0) or 0
+        items.append(f"{index}. {label} — {detail} — {currency_symbol} {float(item_amount):,.2f}")
+    items_text = "\n".join(items) if items else "—"
+
+    security_lines = []
+    if security_balance:
+        security_lines.append(f"Security Deposit Balance: {currency_symbol} {float(security_balance or 0):,.2f}")
 
     lines = [
         f"Dear {tenant_name},",
-        "",
-        f"*Invoice #{num}*",
-        f"Amount: Rs.{float(amount):,.2f}",
-        f"Lease Balance: Rs.{float(lease_balance or 0):,.2f}",
-        f"Security Deposit Balance: Rs.{float(security_balance or 0):,.2f}" if security_balance else "",
-        f"New Balance: Rs.{float(total_balance or 0):,.2f}",
-        f"Due Date: {due:%b %d, %Y}" if due else "",
-        f"Property: {getattr(prop, 'property_name', '')}",
-        f"Unit: {getattr(unit, 'unit_number', '')}",
-        "",
-        "View invoice:",
-        detail_url,
-        "",
-        "Thank you!"
+        f"INVOICE #{num}",
     ]
-    return "\n".join([l for l in lines if l])
+    date_line = " | ".join([part for part in [
+        f"Date: {issue:%b %d, %Y}" if issue else "",
+        f"Due: {due:%b %d, %Y}" if due else "",
+    ] if part])
+    if date_line:
+        lines.append(date_line)
+    lines.extend([
+        "",
+        f"Property / Unit: {getattr(prop, 'property_name', '')}-{getattr(unit, 'unit_number', '')}",
+        f"Status: {status} | Lease Bal: {currency_symbol} {float(lease_balance or 0):,.2f}",
+    ])
+    lines.extend(security_lines)
+    lines.extend([
+        "",
+        "Items:",
+        items_text,
+        "",
+        f"Total: {currency_symbol} {float(amount):,.2f}",
+        f"New Balance: * {currency_symbol} {float(total_balance or 0):,.2f}*",
+        "",
+        "Thank you!",
+    ])
+    return "\n".join(lines)
 
 
 @login_required

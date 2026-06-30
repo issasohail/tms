@@ -122,6 +122,22 @@ class WhatsAppService:
         }
         return self._send(payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context)
 
+    def send_image_bytes(self, phone_number, image_bytes, filename="image.jpg", mime_type="image/jpeg", caption=None, **context):
+        media_result = self._upload_media(image_bytes, filename, mime_type)
+        if not media_result.get("ok"):
+            return media_result
+
+        image = {"id": media_result["media_id"]}
+        if caption:
+            image["caption"] = caption
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": self.normalize_phone_number(phone_number),
+            "type": "image",
+            "image": image,
+        }
+        return self._send(payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context)
+
     def send_pdf(self, phone_number, pdf_url, filename=None, caption=None, **context):
         filename = filename or self._filename_from_url(pdf_url) or "document.pdf"
         return self.send_document(

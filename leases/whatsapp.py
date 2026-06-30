@@ -79,6 +79,7 @@ def lease_whatsapp_context(lease, request=None):
         "UNIT_NUMBER": getattr(unit, "unit_number", "") or "",
         "LEASE_START_DATE": _date(getattr(lease, "start_date", None)),
         "LEASE_END_DATE": _date(getattr(lease, "end_date", None)),
+        "DUE_DATE": getattr(lease, "due_date", "") or "",
         "MONTHLY_RENT": _money(getattr(lease, "monthly_rent", 0)),
         "SECURITY_DEPOSIT": _money(getattr(lease, "security_deposit", 0)),
         "BALANCE_AMOUNT": _money(_lease_balance(lease)),

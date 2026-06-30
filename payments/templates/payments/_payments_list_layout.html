@@ -6,6 +6,9 @@
 {% block title %}{{ page_title|default:"Records" }}{% endblock %}
 
 {% block content %}
+<script>
+  window.PAYMENT_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'payment' 0 'receipt' %}";
+</script>
 <div class="d-flex justify-content-between align-items-center mb-4 payment-page-compact payment-list-dense">
   <h2>{{ heading|default:"Records" }}</h2>
   <div class="d-flex gap-2">
@@ -616,6 +619,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  function paymentWhatsAppApiUrl(objectId) {
+    return window.PAYMENT_WHATSAPP_API_URL_TEMPLATE.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
+  }
+
   document.addEventListener("click", async (e) => {
     const btn = e.target.closest(".btn-wa-receipt");
     if (!btn) return;
@@ -623,13 +630,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
     try {
       if (document.getElementById("payment-use-whatsapp-api")?.checked && btn.dataset.objectId) {
-        const apiUrl = `/tms/whatsapp/send/payment/${btn.dataset.objectId}/receipt/`;
+        const apiUrl = paymentWhatsAppApiUrl(btn.dataset.objectId);
         const apiRes = await fetch(apiUrl, {
           method: "POST",
           headers: { "X-CSRFToken": paymentListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
           credentials: "same-origin"
         });
-        if (!apiRes.ok) throw new Error("API send failed");
+        let apiPayload = {};
+        try { apiPayload = await apiRes.json(); } catch (_) { apiPayload = {}; }
+        if (!apiRes.ok || apiPayload.ok === false) throw new Error(apiPayload.error || "API send failed");
         alert("Receipt sent via WhatsApp API.");
         return;
       }

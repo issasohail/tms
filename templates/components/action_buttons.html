@@ -103,7 +103,21 @@
   {# Lease reminder WA #}
   {% if is_lease_row %}
     {% if has_balance and whatsapp_url %}
-      <button onclick="{{ whatsapp_url }}" class="btn btn-sm btn-success action-btn btn-wa-remind" title="Send WhatsApp Reminder">
+      <button onclick="{{ whatsapp_url }}"
+              class="btn btn-sm btn-success action-btn btn-wa-remind"
+              title="Send WhatsApp Reminder"
+              data-object-id="{{ lease_reminder_lease_id|default:record.pk }}"
+              data-phone="{{ lease_reminder_phone|default:'' }}"
+              data-first-name="{{ lease_reminder_first_name|default:'' }}"
+              data-property="{{ lease_reminder_property|default:'' }}"
+              data-unit="{{ lease_reminder_unit|default:'' }}"
+              data-balance="{{ lease_reminder_balance|default:'0' }}"
+              data-period-start="{{ lease_reminder_period_start|default:'' }}"
+              data-period-end="{{ lease_reminder_period_end|default:'' }}"
+              data-security-required="{{ lease_reminder_security_required|default:'' }}"
+              data-security-status="{{ lease_reminder_security_status|default:'' }}"
+              data-security-balance="{{ lease_reminder_security_balance|default:'' }}"
+              data-due-date="{{ lease_reminder_due_date|default:'' }}">
         <i class="fab fa-whatsapp"></i><span class="btn-text ms-1">Remind</span>
       </button>
     {% else %}

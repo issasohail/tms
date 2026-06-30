@@ -229,6 +229,12 @@ class LeaseTable(ExportableTable):
 
         has_balance = total_due > Decimal("0.00")
         tenant_phone = record.tenant.phone or ""
+        period_start = ""
+        period_end = ""
+        security_required = ""
+        security_balance = ""
+        security_status = ""
+        due_date = record.due_date or ""
 
         whatsapp_url = None
         if has_balance:
@@ -250,7 +256,6 @@ class LeaseTable(ExportableTable):
                 else ""
             )
             security_status = "Pending" if sec_balance_dec > 0 else "Paid"
-
             whatsapp_url = (
                 "sendWhatsAppReminder("
                 f"{json.dumps(tenant_phone)}, "
@@ -263,7 +268,8 @@ class LeaseTable(ExportableTable):
                 f"{json.dumps(security_required)}, "
                 f"{json.dumps(security_status)}, "
                 f"{json.dumps(security_balance)}, "
-                f"{record.pk}"
+                f"{record.pk}, "
+                f"{json.dumps(due_date)}"
                 ")"
             )
 
@@ -279,6 +285,18 @@ class LeaseTable(ExportableTable):
                 "whatsapp_url": whatsapp_url,
                 "has_balance": has_balance,
                 "is_lease_row": True,
+                "lease_reminder_phone": tenant_phone,
+                "lease_reminder_first_name": record.tenant.first_name,
+                "lease_reminder_property": record.unit.property.property_name,
+                "lease_reminder_unit": record.unit.unit_number,
+                "lease_reminder_balance": float(total_due),
+                "lease_reminder_period_start": period_start,
+                "lease_reminder_period_end": period_end,
+                "lease_reminder_security_required": security_required,
+                "lease_reminder_security_status": security_status,
+                "lease_reminder_security_balance": security_balance,
+                "lease_reminder_due_date": due_date,
+                "lease_reminder_lease_id": record.pk,
             },
         )
 

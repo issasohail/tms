@@ -67,6 +67,9 @@
       <a href="{% url 'leases:lease_ledger_pdf' lease.id %}" class="btn btn-primary btn-slim" target="_blank">
         <i class="fas fa-file-pdf"></i> PDF
       </a>
+      <button type="button" class="btn btn-secondary btn-slim" onclick="downloadLeaseLedgerJPG()">
+        <i class="fas fa-image"></i> JPG
+      </button>
       <a href="{% url 'leases:export_ledger_excel' lease.id %}" class="btn btn-success btn-slim">
         <i class="fas fa-file-excel"></i> Excel
       </a>
@@ -734,6 +737,15 @@
       display: none;
     }
   }
+  body.exporting-ledger-jpg #lease-filter-form,
+  body.exporting-ledger-jpg .btn-row,
+  body.exporting-ledger-jpg .no-print {
+    display: none !important;
+  }
+  body.exporting-ledger-jpg {
+    background: #ffffff !important;
+    padding: 16px !important;
+  }
 </style>
 {% endblock %}
 
@@ -796,5 +808,54 @@
       }
     });
   });
+</script>
+<script>
+function loadLedgerHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    script.onload = () => resolve(window.html2canvas);
+    script.onerror = () => reject(new Error("Could not load JPG export tool."));
+    document.head.appendChild(script);
+  });
+}
+
+async function downloadLeaseLedgerJPG() {
+  const target = document.body;
+  if (!target) {
+    alert("Ledger content not found.");
+    return;
+  }
+  document.body.classList.add("exporting-ledger-jpg");
+  try {
+    const html2canvas = await loadLedgerHtml2Canvas();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const doc = document.documentElement;
+    const width = Math.ceil(Math.max(target.scrollWidth, doc.scrollWidth, target.offsetWidth)) + 80;
+    const height = Math.ceil(Math.max(target.scrollHeight, doc.scrollHeight, target.offsetHeight)) + 120;
+    const canvas = await html2canvas(target, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: Math.max(1280, width),
+      windowHeight: Math.max(900, height),
+      width: width,
+      height: height
+    });
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/jpeg", 0.95);
+    link.download = "Lease_Ledger_{{ lease.id|default:'export' }}.jpg";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    alert(error && error.message ? error.message : "Could not export JPG.");
+  } finally {
+    document.body.classList.remove("exporting-ledger-jpg");
+  }
+}
 </script>
 {% endblock %}

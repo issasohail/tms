@@ -1161,7 +1161,6 @@ def build_payment_receipt_message(request, pay):
     unit = getattr(lease, "unit", None)
     prop = getattr(unit, "property", None)
 
-    # parts used in the detail template
     first_name = getattr(tenant, "first_name", "") or "Customer"
     property_name = getattr(prop, "property_name", "") or ""
     unit_number = getattr(unit, "unit_number", "") or ""
@@ -1169,13 +1168,13 @@ def build_payment_receipt_message(request, pay):
     end_date = getattr(lease, "end_date", None)
 
     payment_date = getattr(pay, "payment_date", None)
-    amount = getattr(pay, "amount", 0) or 0
-    balance = lease.get_balance if lease else 0
+    amount = getattr(pay, "amount", 0) or Decimal("0.00")
     alloc = getattr(pay, "allocation", None)
     is_refund = (getattr(alloc, "security_type", "") or "").upper() == "REFUND"
     is_lease_refund = (getattr(alloc, "lease_amount", amount) or Decimal("0.00")) < 0
+    lease_portion = getattr(alloc, "lease_amount", None) if alloc else None
+    security_portion = getattr(alloc, "security_amount", None) if alloc else None
 
-    # 🔹 NEW: security deposit summary using your helper
     sec_required = 0
     sec_balance_to_collect = 0
     sec_status = "Pending"
@@ -1186,41 +1185,32 @@ def build_payment_receipt_message(request, pay):
         sec_balance_to_collect = totals["balance_to_collect"] or 0
         sec_status = "Paid" if sec_balance_to_collect <= 0 else "Pending"
 
+    heading = "Lease payment refunded" if is_lease_refund else "Security deposit refunded" if is_refund else "Payment received"
     lines = [
         f"Dear {first_name},",
-        f"{'*Lease payment refunded*' if is_lease_refund else '*Security deposit refunded*' if is_refund else '*Payment received*'} for {property_name}.",
+        f"{heading} for {property_name}.",
         f"Unit: {unit_number}",
-        (
-            f"Period: {start_date:%b %d, %Y} – {end_date:%b %d, %Y}"
-            if start_date and end_date else ""
-        ),
+        f"Period: {start_date:%b %d, %Y} - {end_date:%b %d, %Y}" if start_date and end_date else "",
     ]
 
-    # 🔹 Security deposit lines
     if sec_required:
-        # Always show required + status
-        lines.append(
-            f"Security Deposit: Rs. {float(sec_required):,.2f} ({sec_status})"
-        )
-        # Only show balance if still pending
+        lines.append(f"Security Deposit: Rs. {float(sec_required):,.2f} ({sec_status})")
         if sec_balance_to_collect > 0:
-            lines.append(
-                f"*Security Deposit Balance: Rs. {float(sec_balance_to_collect):,.2f}*"
-            )
+            lines.append(f"Security Deposit Balance: Rs. {float(sec_balance_to_collect):,.2f}")
 
-    # Payment info
     if payment_date:
         lines.append(f"Date: {payment_date:%b %d, %Y}")
 
-    lines.extend([
-        f"*{'Refund Amount' if (is_refund or is_lease_refund) else 'Amount'}: Rs. {abs(float(amount)):,.2f}*",
-        f"Balance: Rs. {float(balance):,.2f}",
-        "",
-        "Thank you!",
-    ])
+    amount_label = "Refund Amount" if (is_refund or is_lease_refund) else "Total Amount Received"
+    lines.append(f"{amount_label}: Rs. {abs(float(amount)):,.2f}")
+    if lease_portion and lease_portion > 0:
+        lines.append(f"Lease Portion: Rs. {float(lease_portion):,.2f}")
+    if security_portion and security_portion > 0:
+        security_label = "Security Refund" if is_refund else "Security Portion"
+        lines.append(f"{security_label}: Rs. {float(security_portion):,.2f}")
+    lines.extend(["", "Thank you"])
 
-    # Remove any empty strings
-    return "\n".join([l for l in lines if l])
+    return "\n".join([line for line in lines if line])
 
 
 @login_required

@@ -1,5 +1,6 @@
 import json
 import logging
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
@@ -440,11 +441,12 @@ def _send_action(request, service, obj, object_type, action, phone, message_text
         )
     if object_type == "invoice" and action == "invoice":
         message_text = _invoice_message(request, obj)
-        pdf_bytes, filename = _invoice_pdf_attachment(obj)
-        return service.send_invoice(obj, phone_number=phone, message=message_text, pdf_bytes=pdf_bytes, filename=filename)
+        image_bytes, filename = _invoice_jpg_attachment(obj)
+        return service.send_image_bytes(phone, image_bytes, filename=filename, caption=message_text, tenant=tenant, lease=lease, invoice=obj)
     if object_type == "payment" and action in {"receipt", "payment_confirmation"}:
-        pdf_bytes, filename = _payment_pdf_attachment(obj, request)
-        return service.send_receipt(obj, phone_number=phone, message=message_text, pdf_bytes=pdf_bytes, filename=filename)
+        message_text = _payment_receipt_message(obj)
+        image_bytes, filename = _payment_jpg_attachment(obj)
+        return service.send_image_bytes(phone, image_bytes, filename=filename, caption=message_text, tenant=tenant, lease=lease, payment=obj)
     if object_type == "lease" and action == "lease":
         return service.send_lease(obj, message=message_text)
     if object_type == "maintenance" and action == "maintenance_update":
@@ -458,6 +460,76 @@ def _invoice_pdf_attachment(invoice):
     pdf_bytes = render_to_pdf("invoices/invoice_pdf.html", _invoice_pdf_context(invoice))
     filename = f"Invoice_{getattr(invoice, 'invoice_number', invoice.pk)}.pdf"
     return pdf_bytes, filename
+
+
+def _invoice_jpg_attachment(invoice):
+    import fitz
+    from django.core.cache import cache
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from invoices.models import ItemCategory
+    from invoices.services import security_deposit_totals
+
+    items = list(invoice.items.select_related("category").all())
+    parts = []
+    for item in items:
+        category_name = item.category.name if item.category_id else ""
+        description = item.description or ""
+        if category_name and description:
+            parts.append(f"{category_name}: {description}")
+        elif category_name:
+            parts.append(category_name)
+        elif description:
+            parts.append(description)
+
+    categories = cache.get("invoices.active_item_categories")
+    if categories is None:
+        categories = list(
+            ItemCategory.objects.filter(is_active=True)
+            .order_by("name")
+            .values("id", "name")
+        )
+        cache.set("invoices.active_item_categories", categories, 60)
+
+    lease = getattr(invoice, "lease", None)
+    context = {
+        "invoice": invoice,
+        "items": items,
+        "combined_description": ", ".join(parts),
+        "computed_total": sum((item.amount for item in items), Decimal("0.00")),
+        "lease_balance": lease.get_balance if lease else Decimal("0.00"),
+        "sec_totals": security_deposit_totals(lease) if lease else {
+            "required": 0,
+            "paid_in": 0,
+            "refunded": 0,
+            "damages": 0,
+            "balance_to_collect": 0,
+            "currently_held": 0,
+        },
+        "categories": categories,
+    }
+    html_fragment = render_to_string("invoices/invoice_detail.html", context)
+    html = f"<!doctype html><html><body class='exporting-jpg'>{html_fragment}</body></html>"
+    pdf_bytes = HTML(string=html).write_pdf()
+    document = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        page = document.load_page(0)
+        content_rect = page.get_bboxlog()
+        crop_rect = None
+        for item in content_rect:
+            if len(item) >= 2 and item[0] != "ignore-text":
+                rect = fitz.Rect(item[1])
+                crop_rect = rect if crop_rect is None else crop_rect | rect
+        if crop_rect and not crop_rect.is_empty:
+            crop_rect = crop_rect + (-12, -12, 12, 12)
+            crop_rect &= page.rect
+            page.set_cropbox(crop_rect)
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        image_bytes = pixmap.tobytes("jpg", jpg_quality=88)
+    finally:
+        document.close()
+    filename = f"Invoice_{getattr(invoice, 'invoice_number', invoice.pk)}.jpg"
+    return image_bytes, filename
 
 
 def _invoice_message(request, invoice):
@@ -482,6 +554,9 @@ def _lease_reminder_message(lease):
         request=None,
     )
     if rendered:
+        due_date = getattr(lease, "due_date", "") or ""
+        if due_date and due_date not in rendered:
+            rendered = f"{rendered.rstrip()}\nDue Date: {due_date}"
         return rendered
 
     tenant = getattr(lease, "tenant", None)
@@ -493,19 +568,23 @@ def _lease_reminder_message(lease):
     balance = getattr(lease, "get_balance", 0)
     if callable(balance):
         balance = balance()
+    due_date = getattr(lease, "due_date", "") or ""
 
-    return "\n".join(
-        [
-            f"Dear {first_name},",
-            "",
-            "Payment Reminder:",
-            f"Property: {property_name}",
-            f"Unit: {unit_number}",
-            f"Balance Due: Rs. {float(balance or 0):,.2f}",
-            "",
-            "Please pay at your earliest convenience.",
-        ]
-    )
+    lines = [
+        f"Dear {first_name},",
+        "",
+        "Payment Reminder:",
+        f"Property: {property_name}",
+        f"Unit: {unit_number}",
+    ]
+    if due_date:
+        lines.append(f"Due Date: {due_date}")
+    lines.extend([
+        f"Balance Due: Rs. {float(balance or 0):,.2f}",
+        "",
+        "Please pay at your earliest convenience.",
+    ])
+    return "\n".join(lines)
 
 
 def _tenant_reminder_lease(tenant):
@@ -526,6 +605,33 @@ def _payment_pdf_attachment(payment, request):
     from payments.pdf_utils import generate_payment_pdf
 
     return generate_payment_pdf(payment, request=request)
+
+
+def _payment_jpg_attachment(payment):
+    import fitz
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+
+    html = render_to_string("payments/payment_pdf.html", {"payment": payment, "is_pdf": True})
+    pdf_bytes = HTML(string=html).write_pdf()
+    document = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        page = document.load_page(0)
+        crop_rect = None
+        for item in page.get_bboxlog():
+            if len(item) >= 2 and item[0] != "ignore-text":
+                rect = fitz.Rect(item[1])
+                crop_rect = rect if crop_rect is None else crop_rect | rect
+        if crop_rect and not crop_rect.is_empty:
+            crop_rect = crop_rect + (-14, -14, 14, 14)
+            crop_rect &= page.rect
+            page.set_cropbox(crop_rect)
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        image_bytes = pixmap.tobytes("jpg", jpg_quality=90)
+    finally:
+        document.close()
+    filename = f"Payment_Receipt_{getattr(payment, 'pk', 'receipt')}.jpg"
+    return image_bytes, filename
 
 
 @staff_member_required

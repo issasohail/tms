@@ -30,6 +30,7 @@ METER_ONLINE_MINUTES = 3
 @login_required
 def pending_approvals(request):
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
+    from leases.models import PendingAgreementApproval
 
     pending_payments = PendingWhatsAppPayment.objects.filter(
         status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
@@ -42,7 +43,23 @@ def pending_approvals(request):
     pending_maintenance = PendingWhatsAppMaintenance.objects.filter(
         status=PendingWhatsAppMaintenance.STATUS_PENDING,
     ).select_related("tenant", "lease", "property", "unit")[:50]
+    pending_leases = Lease.objects.filter(status="pending_approval").select_related("tenant", "unit__property")[:50]
+    pending_agreements = PendingAgreementApproval.objects.filter(
+        status=PendingAgreementApproval.STATUS_PENDING,
+    ).select_related("lease__tenant", "lease__unit__property", "submitted_by")[:50]
     sections = [
+        {
+            "title": "Pending Leases",
+            "admin_url": "admin:leases_lease_changelist",
+            "items": pending_leases,
+            "count": Lease.objects.filter(status="pending_approval").count(),
+        },
+        {
+            "title": "Pending Agreement Edits",
+            "admin_url": "admin:leases_pendingagreementapproval_changelist",
+            "items": pending_agreements,
+            "count": PendingAgreementApproval.objects.filter(status=PendingAgreementApproval.STATUS_PENDING).count(),
+        },
         {
             "title": "WhatsApp Payments",
             "admin_url": "admin:whatsapp_pendingwhatsapppayment_changelist",

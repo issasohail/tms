@@ -349,6 +349,12 @@
       {% endif %}
 
       <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</a>
+      {% if lease.status == "pending_approval" %}
+        <form method="post" action="{% url 'leases:approve_pending_lease' lease.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-success"><i class="fas fa-check"></i> Approve Lease</button>
+        </form>
+      {% endif %}
       <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success"><i class="fas fa-sync-alt"></i> Renew</a>
       <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>

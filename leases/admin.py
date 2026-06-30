@@ -32,8 +32,22 @@ from .models_inspections import (
 # Define ClauseInline first
 
 from django.contrib import admin
-from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause
+from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause, PendingAgreementApproval
 from .models_renewal import LeaseRenewal, LeaseRenewalClause
+
+
+@admin.register(PendingAgreementApproval)
+class PendingAgreementApprovalAdmin(admin.ModelAdmin):
+    list_display = ("id", "lease", "status", "submitted_by", "reviewed_by", "created_at", "reviewed_at")
+    list_filter = ("status", "created_at", "reviewed_at")
+    search_fields = (
+        "lease__tenant__first_name",
+        "lease__tenant__last_name",
+        "lease__unit__unit_number",
+        "proposed_terms",
+    )
+    raw_id_fields = ("lease", "submitted_by", "reviewed_by")
+    readonly_fields = ("created_at", "reviewed_at")
 
 
 @admin.register(LeaseUnitOccupancy)

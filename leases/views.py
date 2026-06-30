@@ -42,7 +42,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Concat, Greatest, Lower
-from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
@@ -74,8 +74,8 @@ from weasyprint import HTML
 from invoices.models import Invoice, SecurityDepositTransaction
 from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
-from leases.forms import LeaseForm
-from leases.models import Lease
+from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
+from leases.models import Lease, PendingAgreementApproval
 from maintenance.public_links import make_public_maintenance_token
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
@@ -84,6 +84,8 @@ from payments.models import Payment
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant
+from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
+from whatsapp.services.external_links import record_external_link_access
 from utils.pdf_export import handle_export
 
 # leases/views.py
@@ -123,6 +125,155 @@ from .utils.email_service import send_lease_agreement_email
 
 
 ZERO = Decimal("0.00")
+
+
+def _get_valid_whatsapp_link(token, link_type):
+    link = get_object_or_404(
+        WhatsAppExternalLinkToken,
+        token=token,
+        link_type=link_type,
+        is_active=True,
+    )
+    if not link.is_valid:
+        raise Http404("This link has expired.")
+    return link
+
+
+def _link_object(link, model, metadata_key):
+    object_id = link.metadata.get(metadata_key) or link.target_object_id
+    if not object_id:
+        return None
+    return model.objects.filter(pk=object_id).first()
+
+
+def _can_approve_leases(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    group_names = set(user.groups.values_list("name", flat=True))
+    return bool(group_names & {"Administrator", "Property Manager"})
+
+
+def public_lease_create(request, token):
+    link = _get_valid_whatsapp_link(token, WhatsAppExternalLinkToken.LINK_LEASE_CREATION)
+    record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_STAFF)
+
+    tenant = link.tenant or _link_object(link, Tenant, "tenant_id")
+    property_obj = _link_object(link, Property, "property_id")
+    unit = _link_object(link, Unit, "unit_id")
+    if not tenant or not property_obj:
+        return render(request, "leases/public_link_status.html", {"title": "Invalid Link", "message": "This lease link is missing tenant or property details."}, status=404)
+    if not tenant.is_active:
+        return render(request, "leases/public_link_status.html", {"title": "Tenant Pending Approval", "message": "This tenant is not approved yet. Approve the tenant before creating a lease."}, status=403)
+    if unit and unit.property_id != property_obj.pk:
+        return render(request, "leases/public_link_status.html", {"title": "Invalid Unit", "message": "The selected unit does not belong to this property."}, status=400)
+
+    initial = {}
+    if unit:
+        initial.update({
+            "monthly_rent": unit.monthly_rent,
+            "society_maintenance": unit.society_maintenance,
+            "water_charges": getattr(unit, "water_charges", None),
+        })
+    if request.method == "POST":
+        form = PublicLeaseCreationForm(request.POST)
+        if form.is_valid():
+            lease = form.save(commit=False)
+            lease.tenant = tenant
+            lease.unit = unit
+            lease.status = "pending_approval"
+            lease.save()
+            lease.initialize_clauses()
+            link.target_app_label = "leases"
+            link.target_model = "lease"
+            link.target_object_id = lease.pk
+            link.save(update_fields=["target_app_label", "target_model", "target_object_id"])
+            return render(request, "leases/public_link_status.html", {
+                "title": "Lease Submitted",
+                "message": "Lease saved as Pending Approval. A Property Manager or Administrator can approve it from TMS.",
+                "lease": lease,
+            })
+    else:
+        form = PublicLeaseCreationForm(initial=initial)
+
+    return render(request, "leases/public_lease_form.html", {
+        "form": form,
+        "tenant": tenant,
+        "property": property_obj,
+        "unit": unit,
+    })
+
+
+def public_agreement_view(request, token):
+    link = _get_valid_whatsapp_link(token, WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW)
+    record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_STAFF)
+    lease = _link_object(link, Lease, "lease_id")
+    if not lease:
+        return render(request, "leases/public_link_status.html", {"title": "Agreement Not Found", "message": "This agreement link is not attached to a lease."}, status=404)
+    return render(request, "leases/public_agreement_view.html", {
+        "lease": lease,
+        "agreement_date": lease.agreement_date or lease.start_date,
+        "clauses": _lease_clauses_for_agreement(lease),
+    })
+
+
+def public_agreement_edit(request, token):
+    link = _get_valid_whatsapp_link(token, WhatsAppExternalLinkToken.LINK_AGREEMENT_EDIT)
+    record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_STAFF)
+    lease = _link_object(link, Lease, "lease_id")
+    if not lease:
+        return render(request, "leases/public_link_status.html", {"title": "Agreement Not Found", "message": "This agreement edit link is not attached to a lease."}, status=404)
+    if request.method == "POST":
+        form = PublicAgreementEditForm(request.POST)
+        if form.is_valid():
+            PendingAgreementApproval.objects.create(
+                lease=lease,
+                proposed_terms=form.cleaned_data["proposed_terms"],
+                submitted_by=link.staff_user,
+            )
+            return render(request, "leases/public_link_status.html", {
+                "title": "Agreement Edit Submitted",
+                "message": "Your agreement change was saved as Pending Agreement Approval.",
+                "lease": lease,
+            })
+    else:
+        form = PublicAgreementEditForm(initial={"proposed_terms": lease.terms or ""})
+    return render(request, "leases/public_agreement_edit.html", {"form": form, "lease": lease})
+
+
+@login_required
+@require_POST
+def approve_pending_lease(request, pk):
+    if not _can_approve_leases(request.user):
+        return HttpResponse("Permission denied", status=403)
+    lease = get_object_or_404(Lease, pk=pk, status="pending_approval")
+    lease.status = "active"
+    lease.save(update_fields=["status", "updated_at"])
+    messages.success(request, "Lease approved and activated.")
+    return redirect("leases:lease_detail", pk=lease.pk)
+
+
+@login_required
+@require_POST
+def review_pending_agreement(request, pk):
+    if not _can_approve_leases(request.user):
+        return HttpResponse("Permission denied", status=403)
+    pending = get_object_or_404(PendingAgreementApproval, pk=pk, status=PendingAgreementApproval.STATUS_PENDING)
+    action = request.POST.get("action")
+    pending.reviewed_by = request.user
+    pending.reviewed_at = timezone.now()
+    if action == "approve":
+        pending.status = PendingAgreementApproval.STATUS_APPROVED
+        pending.lease.terms = pending.proposed_terms
+        pending.lease.save(update_fields=["terms", "updated_at"])
+        messages.success(request, "Agreement edit approved and applied.")
+    else:
+        pending.status = PendingAgreementApproval.STATUS_REJECTED
+        pending.review_notes = request.POST.get("review_notes", "")
+        messages.success(request, "Agreement edit rejected.")
+    pending.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_notes"])
+    return redirect("leases:lease_detail", pk=pending.lease_id)
 
 
 def _relationship_type_from_value(value):

@@ -7,10 +7,12 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
-from properties.models import Unit
+from properties.models import Property, Unit
+from tenants.models import Tenant, normalize_cnic
 from whatsapp.models import (
     PendingWhatsAppMedia,
     PendingWhatsAppPayment,
+    WhatsAppExternalLinkToken,
     WhatsAppAIInteractionLog,
     WhatsAppConversation,
 )
@@ -24,6 +26,7 @@ from whatsapp.services.role_mode import (
     log_staff_action,
     mode_selection_text,
     resolve_mode,
+    staff_can_access_property,
     staff_menu_text,
     staff_submenu_text,
     tenant_menu_text,
@@ -297,25 +300,28 @@ class WhatsAppAIAssistant:
             return _add_tenant_menu_text()
         if conversation.pending_state == "staff_add_tenant" and lowered in {"1", "public link", "send public tenant registration link"}:
             return self._create_registration_link_for_staff(message_log, conversation, staff_user)
+        lease_flow_response = self._consume_staff_add_lease_flow(message_log, conversation, text, staff_user)
+        if lease_flow_response:
+            return lease_flow_response
         if lowered in {"1", "tenant", "tenant management"}:
             conversation.pending_state = "staff_tenant_management"
             conversation.save(update_fields=["pending_state", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "tenant_management_menu", "allowed")
             return staff_submenu_text(text)
-        if lowered in {"add lease", "create lease"}:
-            conversation.pending_state = "staff_add_lease_tenant_id"
+        if lowered in {"2", "lease", "lease management"}:
+            conversation.pending_state = "staff_lease_management"
             conversation.save(update_fields=["pending_state", "updated_at"])
-            log_staff_action(staff_user, message_log.phone_number, "add_lease_started", "allowed")
-            return (
-                "Create Lease\n\n"
-                "Please enter Tenant ID Number.\n\n"
-                "Example:\n"
-                "35202-1234567-8\n\n"
-                "Reply CANCEL to stop."
-            )
+            log_staff_action(staff_user, message_log.phone_number, "lease_management_menu", "allowed")
+            return staff_submenu_text(text)
+        agreement_response = self._handle_staff_agreement_link(message_log, text, staff_user)
+        if agreement_response:
+            return agreement_response
+        if lowered in {"add lease", "create lease"}:
+            return self._start_staff_add_lease(message_log, conversation, staff_user)
         if lowered == "cancel":
             conversation.pending_state = ""
-            conversation.save(update_fields=["pending_state", "updated_at"])
+            conversation.context.pop("staff_add_lease", None)
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return staff_menu_text(staff_user)
         if lowered in {"9", "switch mode"}:
             conversation.selected_mode = ""
@@ -370,6 +376,209 @@ class WhatsAppAIAssistant:
             "After submission:\n"
             "Pending Approval"
         )
+
+    def _start_staff_add_lease(self, message_log, conversation, staff_user):
+        conversation.pending_state = "staff_add_lease_tenant_id"
+        conversation.context["staff_add_lease"] = {}
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        log_staff_action(staff_user, message_log.phone_number, "add_lease_started", "allowed")
+        return (
+            "Create Lease\n\n"
+            "Please enter Tenant ID Number.\n\n"
+            "Example:\n"
+            "35202-1234567-8\n\n"
+            "Reply CANCEL to stop."
+        )
+
+    def _consume_staff_add_lease_flow(self, message_log, conversation, text, staff_user):
+        state = conversation.pending_state
+        lowered = (text or "").strip().lower()
+        if state == "staff_lease_management" and lowered in {"1", "create lease", "add lease"}:
+            return self._start_staff_add_lease(message_log, conversation, staff_user)
+        if state == "staff_lease_management" and lowered in {"8", "agreement", "agreement view", "agreement edit"}:
+            return (
+                "Agreement Links\n\n"
+                "Reply with:\n"
+                "agreement view TENANT_ID_NUMBER\n"
+                "agreement edit TENANT_ID_NUMBER"
+            )
+        if state == "staff_add_lease_tenant_id":
+            return self._staff_add_lease_select_tenant(message_log, conversation, text, staff_user)
+        if state == "staff_add_lease_property":
+            return self._staff_add_lease_select_property(message_log, conversation, text, staff_user)
+        if state == "staff_add_lease_unit":
+            return self._staff_add_lease_select_unit(message_log, conversation, text, staff_user)
+        return None
+
+    def _staff_add_lease_select_tenant(self, message_log, conversation, text, staff_user):
+        cnic_digits = normalize_cnic(text)
+        tenant = None
+        if cnic_digits:
+            tenant = Tenant.objects.filter(cnic_digits=cnic_digits).first()
+            if not tenant:
+                tenant = next((item for item in Tenant.objects.all() if normalize_cnic(item.cnic) == cnic_digits), None)
+        if not tenant:
+            log_staff_action(staff_user, message_log.phone_number, "add_lease_tenant_not_found", "blocked", tenant_id_number=text[:80])
+            return (
+                "Tenant not found.\n\n"
+                "1. Send public tenant registration link\n"
+                "2. Enter another Tenant ID Number\n"
+                "3. Back"
+            )
+        if not tenant.is_active:
+            log_staff_action(staff_user, message_log.phone_number, "add_lease_pending_tenant_blocked", "blocked", tenant=tenant)
+            return (
+                "This tenant is still Pending Approval or inactive, so a lease cannot be created yet.\n\n"
+                "Approve the tenant first, then try Add Lease again."
+            )
+
+        properties = self._staff_accessible_properties(staff_user)
+        if not properties:
+            log_staff_action(staff_user, message_log.phone_number, "add_lease_no_property_access", "blocked", tenant=tenant)
+            return "No WhatsApp property access is assigned to your staff user."
+
+        conversation.context["staff_add_lease"] = {
+            "tenant_id": tenant.pk,
+            "property_options": [item.pk for item in properties],
+        }
+        conversation.pending_state = "staff_add_lease_property"
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return self._property_options_text(tenant, properties)
+
+    def _staff_add_lease_select_property(self, message_log, conversation, text, staff_user):
+        data = conversation.context.get("staff_add_lease") or {}
+        option_ids = data.get("property_options") or []
+        property_obj = self._option_from_number(text, Property, option_ids)
+        if not property_obj or not staff_can_access_property(staff_user, property_obj):
+            log_staff_action(staff_user, message_log.phone_number, "add_lease_property_blocked", "blocked", property=property_obj)
+            return "Invalid property selection or you do not have WhatsApp access to that property."
+
+        units = list(Unit.objects.filter(property=property_obj, status="vacant").order_by("unit_number")[:30])
+        if not units:
+            return f"No vacant units found for {property_obj.property_name}."
+        data["property_id"] = property_obj.pk
+        data["unit_options"] = [unit.pk for unit in units]
+        conversation.context["staff_add_lease"] = data
+        conversation.pending_state = "staff_add_lease_unit"
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return self._unit_options_text(property_obj, units)
+
+    def _staff_add_lease_select_unit(self, message_log, conversation, text, staff_user):
+        data = conversation.context.get("staff_add_lease") or {}
+        tenant = Tenant.objects.filter(pk=data.get("tenant_id"), is_active=True).first()
+        property_obj = Property.objects.filter(pk=data.get("property_id")).first()
+        unit = self._option_from_number(text, Unit, data.get("unit_options") or [])
+        if not tenant or not property_obj or not unit or unit.property_id != property_obj.pk:
+            return "Invalid unit selection. Please start Add Lease again."
+        if not staff_can_access_property(staff_user, property_obj):
+            log_staff_action(staff_user, message_log.phone_number, "add_lease_property_blocked", "blocked", property=property_obj, tenant=tenant)
+            return "You do not have WhatsApp access to that property."
+
+        link = self._create_lease_creation_link(message_log, staff_user, tenant, property_obj, unit)
+        conversation.pending_state = ""
+        conversation.context.pop("staff_add_lease", None)
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        log_staff_action(staff_user, message_log.phone_number, "lease_creation_link_created", "allowed", property=property_obj, tenant=tenant, link=link)
+        return (
+            "Lease form link created.\n\n"
+            f"Tenant:\n{tenant}\n\n"
+            f"Property:\n{property_obj.property_name}\n\n"
+            f"Unit:\n{unit.unit_number}\n\n"
+            f"Link:\n{link}\n\n"
+            "After saving:\nPending Approval"
+        )
+
+    def _create_lease_creation_link(self, message_log, staff_user, tenant, property_obj, unit):
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        token = WhatsAppExternalLinkToken.objects.create(
+            link_type=WhatsAppExternalLinkToken.LINK_LEASE_CREATION,
+            phone_number=message_log.phone_number,
+            tenant=tenant,
+            staff_user=staff_user,
+            target_app_label="leases",
+            target_model="lease",
+            metadata={
+                "tenant_id": tenant.pk,
+                "property_id": property_obj.pk,
+                "unit_id": unit.pk,
+            },
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        path = reverse("leases:public_lease_create", args=[token.token])
+        return f"{base_url.rstrip('/')}{path}"
+
+    def _staff_accessible_properties(self, staff_user):
+        if staff_user.is_superuser:
+            return list(Property.objects.order_by("property_name"))
+        return [
+            access.property
+            for access in staff_user.whatsapp_property_access.filter(is_active=True).select_related("property").order_by("property__property_name")
+        ]
+
+    def _option_from_number(self, text, model, option_ids):
+        try:
+            selected_index = int((text or "").strip()) - 1
+        except ValueError:
+            return None
+        if selected_index < 0 or selected_index >= len(option_ids):
+            return None
+        return model.objects.filter(pk=option_ids[selected_index]).first()
+
+    def _property_options_text(self, tenant, properties):
+        lines = [f"Tenant found:\n{tenant}\n\nSelect Property"]
+        for index, property_obj in enumerate(properties, start=1):
+            lines.append(f"{index}. {property_obj.property_name}")
+        lines.append(f"{len(properties) + 1}. Back")
+        return "\n".join(lines)
+
+    def _unit_options_text(self, property_obj, units):
+        lines = [f"Select Unit for {property_obj.property_name}"]
+        for index, unit in enumerate(units, start=1):
+            lines.append(f"{index}. {unit.unit_number}")
+        lines.append(f"{len(units) + 1}. Back")
+        return "\n".join(lines)
+
+    def _handle_staff_agreement_link(self, message_log, text, staff_user):
+        lowered = (text or "").strip().lower()
+        if not (lowered.startswith("agreement view ") or lowered.startswith("agreement edit ")):
+            return None
+        link_type = WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW if lowered.startswith("agreement view ") else WhatsAppExternalLinkToken.LINK_AGREEMENT_EDIT
+        raw_identifier = text.split(" ", 2)[2] if len(text.split(" ", 2)) == 3 else ""
+        cnic_digits = normalize_cnic(raw_identifier)
+        tenant = Tenant.objects.filter(cnic_digits=cnic_digits).first()
+        if not tenant:
+            tenant = next((item for item in Tenant.objects.all() if normalize_cnic(item.cnic) == cnic_digits), None)
+        if not tenant:
+            return "Tenant not found for that ID number."
+        lease = (
+            tenant.leases.select_related("unit__property")
+            .filter(status="active")
+            .order_by("-start_date", "-id")
+            .first()
+        )
+        if not lease:
+            return "No approved active lease found for that tenant."
+        property_obj = lease.unit.property
+        if not staff_can_access_property(staff_user, property_obj):
+            log_staff_action(staff_user, message_log.phone_number, "agreement_link_property_blocked", "blocked", property=property_obj, tenant=tenant, lease=lease)
+            return "You do not have WhatsApp access to that property's agreement."
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        token = WhatsAppExternalLinkToken.objects.create(
+            link_type=link_type,
+            phone_number=message_log.phone_number,
+            tenant=tenant,
+            staff_user=staff_user,
+            target_app_label="leases",
+            target_model="lease",
+            target_object_id=lease.pk,
+            metadata={"lease_id": lease.pk, "property_id": property_obj.pk},
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        url_name = "leases:public_agreement_view" if link_type == WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW else "leases:public_agreement_edit"
+        link = f"{base_url.rstrip('/')}{reverse(url_name, args=[token.token])}"
+        log_staff_action(staff_user, message_log.phone_number, "agreement_link_created", "allowed", property=property_obj, tenant=tenant, lease=lease, link_type=link_type)
+        label = "Agreement view link" if link_type == WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW else "Agreement edit link"
+        return f"{label} created.\n\nLink:\n{link}"
 
     def _consume_tenant_upload_type(self, message_log, conversation, text, selected_lease):
         if conversation.pending_state != "tenant_upload_type":

@@ -5,7 +5,7 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
       <h4 class="mb-0">Pending Approvals</h4>
-      <div class="text-muted small">Review pending WhatsApp payment, document, and maintenance submissions.</div>
+      <div class="text-muted small">Review pending leases, agreement edits, WhatsApp payments, documents, and maintenance submissions.</div>
     </div>
   </div>
 
@@ -36,12 +36,19 @@
                     <td>{{ forloop.counter }}</td>
                     <td>{{ item.created_at|date:"M d, Y H:i" }}</td>
                     <td>{{ item.phone|default:"-" }}</td>
-                    <td>{{ item.tenant|default:"-" }}</td>
-                    <td>{{ item.property|default:"-" }}{% if item.unit %} / {{ item.unit }}{% endif %}</td>
+                    <td>
+                      {% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}
+                    </td>
+                    <td>
+                      {% if item.property %}{{ item.property }}{% elif item.unit %}{{ item.unit.property }}{% elif item.lease %}{{ item.lease.unit.property }}{% else %}-{% endif %}
+                      {% if item.unit %} / {{ item.unit }}{% elif item.lease %} / {{ item.lease.unit }}{% endif %}
+                    </td>
                     <td>
                       {% if item.amount %}Rs. {{ item.amount }}{% endif %}
                       {% if item.issue_type %}{{ item.issue_type }}{% endif %}
                       {% if item.purpose %}{{ item.get_purpose_display }}{% endif %}
+                      {% if item.proposed_terms %}<span class="text-muted">{{ item.proposed_terms|truncatechars:90 }}</span>{% endif %}
+                      {% if item.monthly_rent %}Rent: Rs. {{ item.monthly_rent }}{% endif %}
                       {% if item.description %}<span class="text-muted">{{ item.description|truncatechars:90 }}</span>{% endif %}
                     </td>
                     <td><span class="badge bg-secondary">{{ item.get_status_display }}</span></td>

@@ -47,6 +47,11 @@ app_name = 'leases'
 urlpatterns = [
     path('', LeaseListView.as_view(), name='lease_list'),
     path('new/', LeaseCreateView.as_view(), name='lease_create'),
+    path("public/lease/<str:token>/", views.public_lease_create, name="public_lease_create"),
+    path("public/agreement/<str:token>/", views.public_agreement_view, name="public_agreement_view"),
+    path("public/agreement/<str:token>/edit/", views.public_agreement_edit, name="public_agreement_edit"),
+    path("<int:pk>/approve-pending/", views.approve_pending_lease, name="approve_pending_lease"),
+    path("pending-agreement/<int:pk>/review/", views.review_pending_agreement, name="review_pending_agreement"),
     path("inspections/", views_inspections.inspection_sheet_home, name="inspection_sheet_home"),
 
     path("inspection-settings/<str:kind>/", views_inspections.inspection_settings_list, name="inspection_settings"),

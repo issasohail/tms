@@ -151,6 +151,56 @@ class LeaseForm(forms.ModelForm):
         return file
 
 
+class PublicLeaseCreationForm(forms.ModelForm):
+    class Meta:
+        model = Lease
+        fields = [
+            "agreement_date",
+            "start_date",
+            "end_date",
+            "monthly_rent",
+            "society_maintenance",
+            "water_charges",
+            "internet_charges",
+            "agreement_charges",
+            "security_deposit",
+            "electricity_meter_reading",
+            "gas_meter_reading",
+            "terms",
+            "notes",
+        ]
+        widgets = {
+            "agreement_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "start_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "end_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "monthly_rent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "society_maintenance": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "water_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "internet_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "agreement_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "security_deposit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "electricity_meter_reading": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "gas_meter_reading": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "terms": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 5}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_date = cleaned_data.get("start_date")
+        end_date = cleaned_data.get("end_date")
+        if start_date and end_date and end_date < start_date:
+            raise forms.ValidationError("End date cannot be before start date")
+        return cleaned_data
+
+
+class PublicAgreementEditForm(forms.Form):
+    proposed_terms = forms.CharField(
+        label="Agreement Terms",
+        widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 12}),
+    )
+
+
 class CustomRenewForm(forms.Form):
     rent_increase_percent = forms.DecimalField(
         label="Rent Increase Percentage",

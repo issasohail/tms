@@ -24,6 +24,8 @@ from django.http import JsonResponse
 from properties.forms import PropertyForm, UnitForm
 from .forms import TenantForm, TenantPreRegistrationLinkForm, TenantPublicRegistrationForm, TenantRegistrationSubmissionReviewForm
 from leases.models import Lease
+from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
+from whatsapp.services.external_links import record_external_link_access
 from .forms import LeaseForm
 from django.http import HttpResponse
 from reportlab.pdfgen import canvas
@@ -444,6 +446,18 @@ def tenant_public_registration_update(request, token):
         return render(request, "tenants/public_registration_expired.html", status=410)
     except BadSignature:
         raise Http404("Invalid registration link")
+
+    whatsapp_link = (
+        WhatsAppExternalLinkToken.objects.filter(
+            link_type=WhatsAppExternalLinkToken.LINK_TENANT_REGISTRATION,
+            tenant=tenant,
+            is_active=True,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if whatsapp_link and whatsapp_link.is_valid:
+        record_external_link_access(request, whatsapp_link, TrustedDeviceRegistry.USER_TYPE_TENANT)
 
     initial = {
         "prefix": tenant.prefix,

@@ -56,9 +56,11 @@ def signed_agreement_upload_path(instance, filename):
 
 class Lease(models.Model):
     STATUS_CHOICES = [
+        ("pending_approval", "Pending Approval"),
         ("active", "Active"),
         ("ended", "Ended"),
         ("terminated", "Terminated"),
+        ("rejected", "Rejected"),
     ]
 
     # Your model fields here
@@ -1284,6 +1286,52 @@ class AgreementClause(models.Model):
 
     def __str__(self):
         return f"Clause {self.clause_number} (v{self.agreement_version.version})"
+
+
+class PendingAgreementApproval(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    lease = models.ForeignKey(
+        "leases.Lease",
+        related_name="pending_agreement_approvals",
+        on_delete=models.CASCADE,
+    )
+    proposed_terms = models.TextField()
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="submitted_agreement_approvals",
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_agreement_approvals",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    review_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["lease", "status", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Agreement approval for lease #{self.lease_id} ({self.status})"
 
 
 class DefaultLeaseClause(models.Model):

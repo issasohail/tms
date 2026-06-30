@@ -177,35 +177,67 @@ class UnitTable(ExportableTable):
             end_date = getattr(
                 record, "active_lease_history_end_date", None
             ) or getattr(record, "active_lease_end_date", None)
-            if end_date:
-                label = f"Lease ending soon ({end_date:%b %d, %Y})"
-            else:
-                label = "Lease ending soon"
+
+            date_text = end_date.strftime("%b %d, %Y") if end_date else ""
+
+            badge = format_html(
+                '<span class="badge bg-warning text-dark text-wrap" style="line-height:1.2;">'
+                "<strong>Ending Soon</strong><br>"
+                "<small>{}</small>"
+                "</span>",
+                date_text,
+            )
+
             lease_id = getattr(
                 record, "active_lease_history_lease_id", None
             ) or getattr(record, "active_lease_id", None)
+
             if lease_id:
                 return format_html(
-                    '<a href="{}">{}</a>',
+                    '<a href="{}" class="text-decoration-none">{}</a>',
                     reverse("leases:lease_detail", args=[lease_id]),
-                    label,
+                    badge,
                 )
-            return label
+
+            return badge
+
         if getattr(record, "has_active_lease_history", False) or getattr(
             record, "has_active_lease", False
         ):
             lease_id = getattr(
                 record, "active_lease_history_lease_id", None
             ) or getattr(record, "active_lease_id", None)
+
+            badge = format_html('<span class="badge bg-success">Occupied</span>')
+
             if lease_id:
                 return format_html(
-                    '<a href="{}">Occupied</a>',
+                    '<a href="{}" class="text-decoration-none">{}</a>',
                     reverse("leases:lease_detail", args=[lease_id]),
+                    badge,
                 )
-            return "Occupied"
+
+            return badge
+
         if record.status == "maintenance":
-            return "Maintenance"
-        return "Vacant"
+            return format_html('<span class="badge bg-danger">Maintenance</span>')
+
+        return format_html('<span class="badge bg-primary">Vacant</span>')
+
+    def render_show_publicly(self, value, record):
+        label = "Yes" if value else "No"
+        css = "badge bg-success" if value else "badge bg-secondary"
+        return format_html(
+            '<span class="unit-public-edit {}" '
+            'data-unit-id="{}" data-current-value="{}" tabindex="0">{}</span>',
+            css,
+            record.pk,
+            "true" if value else "false",
+            label,
+        )
+
+    def value_show_publicly(self, value, record):
+        return "Yes" if value else "No"
 
     # Add PDF-specific column widths
     pdf_export_attrs = {

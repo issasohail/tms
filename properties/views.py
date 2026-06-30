@@ -12,7 +12,15 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core import signing
 from django.core.exceptions import ValidationError
-from django.db.models import Count, DateField, Exists, IntegerField, OuterRef, Q, Subquery
+from django.db.models import (
+    Count,
+    DateField,
+    Exists,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+)
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -47,35 +55,6 @@ from .tables import PropertyTable, UnitTable
 logger = logging.getLogger(__name__)
 UNIT_MEDIA_SHARE_MAX_AGE = 60 * 60 * 48
 UNIT_MEDIA_SHARE_SALT = "properties.unit-media-share"
-
-
-@login_required
-@require_POST
-def unit_inline_update(request):
-    if not request.user.has_perm("properties.change_unit"):
-        return JsonResponse({"success": False, "error": "Permission denied"}, status=403)
-    allowed_fields = {
-        "unit_number", "electric_meter_num", "gas_meter_num", "society_maintenance",
-        "water_charges", "monthly_rent", "security_requires", "status", "comments",
-        "bedrooms", "bathrooms", "kitchens", "hall", "square_footage", "interest_type_id",
-    }
-    try:
-        data = json.loads(request.body)
-        unit_id = data.get("id")
-        field = data.get("field")
-        value = data.get("value")
-        if field not in allowed_fields:
-            return JsonResponse({"success": False, "error": "Invalid field"}, status=400)
-
-        unit = Unit.objects.get(pk=unit_id)
-        setattr(unit, field, value)
-        unit.save(update_fields=[field])
-        return JsonResponse({"success": True, "new_value": getattr(unit, field)})
-    except Exception as e:
-        return JsonResponse({"success": False, "error": str(e)}, status=400)
-
-
-logger = logging.getLogger(__name__)
 
 
 class PropertyListView(SingleTableView):
@@ -145,7 +124,9 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
             for unit in units
             if unit.status == "vacant" and unit.id not in active_unit_ids
         )
-        maintenance_units_count = sum(1 for unit in units if unit.status == "maintenance")
+        maintenance_units_count = sum(
+            1 for unit in units if unit.status == "maintenance"
+        )
 
         context["units"] = units
         context["actual_total_units"] = actual_total_units
@@ -265,9 +246,7 @@ class UnitListView(SingleTableMixin, FilterView):
                 active_lease_end_date=Subquery(
                     active_lease_end, output_field=DateField()
                 ),
-                active_lease_id=Subquery(
-                    active_lease_id, output_field=IntegerField()
-                ),
+                active_lease_id=Subquery(active_lease_id, output_field=IntegerField()),
                 active_lease_history_end_date=Subquery(
                     active_lease_history_end, output_field=DateField()
                 ),
@@ -420,8 +399,7 @@ def _unit_meter_rows(unit):
     from smart_meter.models import Meter, MeterInstallation, MeterReading
 
     installation_rows = list(
-        MeterInstallation.objects
-        .filter(unit=unit)
+        MeterInstallation.objects.filter(unit=unit)
         .select_related("meter")
         .order_by("-is_active", "-start_date", "-id")
     )
@@ -430,8 +408,7 @@ def _unit_meter_rows(unit):
 
     for installation in installation_rows:
         last_reading = (
-            MeterReading.objects
-            .filter(meter=installation.meter)
+            MeterReading.objects.filter(meter=installation.meter)
             .order_by("-ts")
             .first()
         )
@@ -448,19 +425,20 @@ def _unit_meter_rows(unit):
         if display_end_reading is None and last_reading:
             display_end_reading = last_reading.total_energy
         seen_meter_ids.add(installation.meter_id)
-        history_rows.append({
-            "meter": installation.meter,
-            "start_date": installation.start_date,
-            "end_date": display_end_date,
-            "start_reading": installation.start_reading,
-            "end_reading": display_end_reading,
-            "reason": installation.reason or "installation",
-            "is_active": display_is_active,
-        })
+        history_rows.append(
+            {
+                "meter": installation.meter,
+                "start_date": installation.start_date,
+                "end_date": display_end_date,
+                "start_reading": installation.start_reading,
+                "end_reading": display_end_reading,
+                "reason": installation.reason or "installation",
+                "is_active": display_is_active,
+            }
+        )
 
     cached_unit_meters = (
-        Meter.objects
-        .filter(unit=unit)
+        Meter.objects.filter(unit=unit)
         .select_related("unit")
         .order_by("-is_active", "-installed_at", "meter_number")
     )
@@ -468,8 +446,7 @@ def _unit_meter_rows(unit):
         if meter.pk in seen_meter_ids:
             continue
         assignment = (
-            meter.assignment_history
-            .filter(new_unit=unit)
+            meter.assignment_history.filter(new_unit=unit)
             .order_by("-change_date", "-id")
             .first()
         )
@@ -477,46 +454,55 @@ def _unit_meter_rows(unit):
             start_dt = timezone.localtime(assignment.change_date)
             start_date = start_dt.date()
             start_reading_obj = (
-                MeterReading.objects
-                .filter(meter=meter, ts__lte=assignment.change_date)
+                MeterReading.objects.filter(meter=meter, ts__lte=assignment.change_date)
                 .order_by("-ts")
                 .first()
             )
-            start_reading = start_reading_obj.total_energy if start_reading_obj else None
+            start_reading = (
+                start_reading_obj.total_energy if start_reading_obj else None
+            )
             reason = "assignment"
         else:
-            start_date = timezone.localtime(meter.installed_at).date() if meter.installed_at else None
+            start_date = (
+                timezone.localtime(meter.installed_at).date()
+                if meter.installed_at
+                else None
+            )
             start_reading = None
             reason = "cached unit"
 
         display_is_active = bool(meter.is_active and meter.unit_id == unit.id)
-        last_reading = (
-            MeterReading.objects
-            .filter(meter=meter)
-            .order_by("-ts")
-            .first()
+        last_reading = MeterReading.objects.filter(meter=meter).order_by("-ts").first()
+        history_rows.append(
+            {
+                "meter": meter,
+                "start_date": start_date,
+                "end_date": None
+                if display_is_active
+                else (
+                    timezone.localtime(last_reading.ts).date() if last_reading else None
+                ),
+                "start_reading": start_reading,
+                "end_reading": getattr(meter.latest_live, "total_energy", None)
+                or (last_reading.total_energy if last_reading else None),
+                "reason": reason,
+                "is_active": display_is_active,
+            }
         )
-        history_rows.append({
-            "meter": meter,
-            "start_date": start_date,
-            "end_date": None if display_is_active else (
-                timezone.localtime(last_reading.ts).date() if last_reading else None
-            ),
-            "start_reading": start_reading,
-            "end_reading": getattr(meter.latest_live, "total_energy", None) or (
-                last_reading.total_energy if last_reading else None
-            ),
-            "reason": reason,
-            "is_active": display_is_active,
-        })
 
     history_rows.sort(
-        key=lambda row: (row["is_active"], row["start_date"] or timezone.datetime.min.date()),
+        key=lambda row: (
+            row["is_active"],
+            row["start_date"] or timezone.datetime.min.date(),
+        ),
         reverse=True,
     )
     current_rows = [
-        row for row in history_rows
-        if row["is_active"] and row["meter"].unit_id == unit.id and row["meter"].is_active
+        row
+        for row in history_rows
+        if row["is_active"]
+        and row["meter"].unit_id == unit.id
+        and row["meter"].is_active
     ]
     return current_rows, history_rows
 
@@ -797,7 +783,13 @@ def unit_vacant_summary_message(request):
         )
     ending_rows.sort(key=lambda row: (row[0], row[1], row[2]))
     if ending_rows:
-        for index, (end_date, property_name, unit_number, rent, maintenance) in enumerate(ending_rows, start=1):
+        for index, (
+            end_date,
+            property_name,
+            unit_number,
+            rent,
+            maintenance,
+        ) in enumerate(ending_rows, start=1):
             lines.append(
                 f"{index}. Property: {property_name} | Unit: {unit_number} | Status: Lease ending soon ({end_date:%Y-%m-%d}) | Rent: {rent} | Maintenance: {maintenance}"
             )
@@ -805,9 +797,11 @@ def unit_vacant_summary_message(request):
         lines.append("1. None")
 
     message = "\n".join(lines)
-    whatsapp_url = build_whatsapp_url(
-        user_phone, message, country_code=country_code
-    ) if user_phone else f"https://wa.me/?text={quote(message)}"
+    whatsapp_url = (
+        build_whatsapp_url(user_phone, message, country_code=country_code)
+        if user_phone
+        else f"https://wa.me/?text={quote(message)}"
+    )
     return JsonResponse(
         {
             "success": True,
@@ -834,7 +828,9 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
 
 
 def unit_detail(request, pk):
-    unit = get_object_or_404(Unit.objects.select_related("property", "interest_type"), pk=pk)
+    unit = get_object_or_404(
+        Unit.objects.select_related("property", "interest_type"), pk=pk
+    )
     return render(
         request,
         "properties/unit_detail.html",
@@ -879,7 +875,23 @@ def unit_inline_update(request):
         field = data.get("field")
         value = data.get("value")
 
+        allowed_fields = {
+            "interest_type",
+            "monthly_rent",
+            "society_maintenance",
+            "water_charges",
+            "security_requires",
+            "show_publicly",
+        }
+
+        if field not in allowed_fields:
+            return JsonResponse(
+                {"success": False, "error": "This field cannot be edited inline."},
+                status=400,
+            )
+
         unit = get_object_or_404(Unit, pk=unit_id)
+
         if field == "interest_type":
             if value:
                 interest_type = get_object_or_404(
@@ -898,6 +910,19 @@ def unit_inline_update(request):
                     "interest_type_id": unit.interest_type_id or "",
                 }
             )
+
+        if field == "show_publicly":
+            bool_value = str(value).lower() in {"true", "1", "yes", "on"}
+            unit.show_publicly = bool_value
+            unit.save(update_fields=["show_publicly"])
+            return JsonResponse(
+                {
+                    "success": True,
+                    "new_value": "Yes" if bool_value else "No",
+                    "value": bool_value,
+                }
+            )
+
         if field in {
             "monthly_rent",
             "society_maintenance",
@@ -912,9 +937,7 @@ def unit_inline_update(request):
                 else getattr(unit, field)
             )
             return JsonResponse({"success": True, "new_value": new_value or ""})
-        setattr(unit, field, value)
-        unit.save()
-        return JsonResponse({"success": True, "new_value": value})
+
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
 

@@ -77,6 +77,12 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
+    @media (min-width: 1200px) {
+        body:has(.unit-page-header) main.container,
+        body:has(.unit-page-header) .container {
+            max-width: 1500px !important;
+        }
+    }
     .unit-page-header {
         gap: 12px;
     }
@@ -137,7 +143,7 @@
     }
     .unit-table-wrap table {
         margin-bottom: 0;
-        min-width: 1180px;
+        min-width: 1280px;
         table-layout: auto;
         font-size: 14px !important;
     }
@@ -228,14 +234,26 @@
     }
     .unit-table-wrap th:nth-child(11),
     .unit-table-wrap td:nth-child(11) {
-        width: 96px;
-        min-width: 96px;
-        max-width: 96px;
+        width: 90px;
+        min-width: 90px;
+        max-width: 90px;
         text-align: center;
-        white-space: nowrap;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        line-height: 1.15;
     }
     .unit-table-wrap th:nth-child(12),
     .unit-table-wrap td:nth-child(12) {
+        width: 72px;
+        min-width: 60px;
+        max-width: 60px;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    .unit-table-wrap th:nth-child(13),
+    .unit-table-wrap td:nth-child(13) {
         width: 168px;
         min-width: 168px;
         max-width: 168px;
@@ -556,8 +574,8 @@
         }
 
         /* Action column: force fixed width so Django Tables2 / Bootstrap cannot shrink it */
-        .unit-table-wrap th:nth-child(12),
-        .unit-table-wrap td:nth-child(12),
+        .unit-table-wrap th:nth-child(13),
+        .unit-table-wrap td:nth-child(13),
         .table th.unit-actions-cell,
         .table td.unit-actions-cell {
             position: static !important;
@@ -596,7 +614,7 @@
             content: "STATUS";
             font-size: 0.52rem;
         }
-        .unit-table-wrap th:nth-child(12)::after {
+        .unit-table-wrap th:nth-child(13)::after {
             content: "ACTION";
             font-size: 0.52rem;
         }
@@ -745,7 +763,14 @@ document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
         new bootstrap.Tooltip(el);
     });
-
+    document.querySelectorAll(".unit-public-edit").forEach(function (span) {
+        span.addEventListener("click", function () {
+            togglePublicStatus(span);
+        });
+        span.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") togglePublicStatus(span);
+        });
+    });
     document.querySelectorAll(".unit-building-type-edit").forEach(function (span) {
         span.addEventListener("click", function () {
             startBuildingTypeEdit(span);
@@ -879,6 +904,28 @@ document.addEventListener("DOMContentLoaded", function () {
             if (event.key === "Enter") finish(true);
             if (event.key === "Escape") finish(false);
         });
+    }
+
+    function togglePublicStatus(span) {
+        if (span.dataset.editing === "1") return;
+        span.dataset.editing = "1";
+
+        const currentValue = span.dataset.currentValue === "true";
+        const newValue = !currentValue;
+
+        saveUnitField(span.dataset.unitId, "show_publicly", newValue ? "true" : "false")
+            .then(function () {
+                span.dataset.currentValue = newValue ? "true" : "false";
+                span.textContent = newValue ? "Yes" : "No";
+                span.classList.toggle("bg-success", newValue);
+                span.classList.toggle("bg-secondary", !newValue);
+            })
+            .catch(function (error) {
+                alert(error.message);
+            })
+            .finally(function () {
+                span.dataset.editing = "0";
+            });
     }
 
     function saveUnitField(id, field, value) {

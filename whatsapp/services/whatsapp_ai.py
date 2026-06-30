@@ -133,11 +133,18 @@ class WhatsAppAIAssistant:
                     "maintenance_media",
                     {"lease": selected_lease, "pending_maintenance_id": pending.pk},
                 )
+            conversation.pending_state = "tenant_upload_type"
+            conversation.context["pending_media_id"] = media.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return (
                 _media_confirmation_text(media),
                 "media_pending",
                 {"lease": selected_lease, "pending_media_id": media.pk},
             )
+
+        upload_response = self._consume_tenant_upload_type(message_log, conversation, text, selected_lease)
+        if upload_response:
+            return upload_response
 
         if _looks_like_yes(text) and conversation.context.get("pending_payment_id"):
             pending = PendingWhatsAppPayment.objects.filter(
@@ -167,6 +174,20 @@ class WhatsAppAIAssistant:
         lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
         if isinstance(lease, str):
             return lease, "lease_lookup", {}
+
+        lowered = (text or "").strip().lower()
+        if lowered in {"5", "meter", "meter reading", "meter readings", "utility", "utility bills"}:
+            return (
+                "Please send your latest meter reading or utility bill photo. Our team will review it.",
+                "meter_reading",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
+        if lowered in {"6", "upload", "photo", "upload receipt", "upload photo"}:
+            return (
+                "Please upload the payment receipt or maintenance photo here, and I will attach it to your active lease for admin review.",
+                "upload_prompt",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
 
         if intent == "payment":
             return self._stage_payment(message_log, conversation, lease, None, text)
@@ -245,14 +266,22 @@ class WhatsAppAIAssistant:
         staff_user = identity.staff_user
         lowered = (text or "").strip().lower()
         if message_type in {"image", "document", "video"}:
+            media = create_pending_media(message_log, conversation)
+            conversation.pending_state = "staff_upload_type"
+            conversation.context["pending_media_id"] = media.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(
                 staff_user,
                 message_log.phone_number,
                 "upload_menu_requested",
                 "pending",
                 message_type=message_type,
+                pending_media_id=media.pk,
             )
             return upload_type_menu_text()
+        upload_response = self._consume_staff_upload_type(message_log, conversation, text, staff_user)
+        if upload_response:
+            return upload_response
         if lowered in {"menu", "staff", "hi", "hello", "start", ""}:
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
             return staff_menu_text(staff_user)
@@ -340,6 +369,96 @@ class WhatsAppAIAssistant:
             f"Link:\n{link}\n\n"
             "After submission:\n"
             "Pending Approval"
+        )
+
+    def _consume_tenant_upload_type(self, message_log, conversation, text, selected_lease):
+        if conversation.pending_state != "tenant_upload_type":
+            return None
+        media = PendingWhatsAppMedia.objects.filter(
+            pk=conversation.context.get("pending_media_id"),
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+        ).first()
+        if not media:
+            conversation.pending_state = ""
+            conversation.context.pop("pending_media_id", None)
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return None
+
+        purpose = _upload_purpose_from_text(text)
+        if not purpose:
+            return (
+                "Please reply with a number:\n\n"
+                "1 Property Photos\n2 Unit Photos\n3 Lease Documents\n4 Maintenance\n5 Payment\n6 Other",
+                "upload_type_retry",
+                {"lease": selected_lease, "pending_media_id": media.pk},
+            )
+
+        media.purpose = purpose
+        media.lease = selected_lease or media.lease
+        media.tenant = getattr(media.lease, "tenant", None)
+        media.property = getattr(getattr(media.lease, "unit", None), "property", None)
+        media.unit = getattr(media.lease, "unit", None)
+        media.save(update_fields=["purpose", "lease", "tenant", "property", "unit", "updated_at"])
+        conversation.pending_state = ""
+        conversation.context.pop("pending_media_id", None)
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+
+        if purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT:
+            return self._stage_payment(message_log, conversation, selected_lease, media, text)
+        if purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
+            pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
+            return (
+                "We received your maintenance photo. Please share the issue type and urgency if not already included.",
+                "maintenance_media",
+                {"lease": selected_lease, "pending_maintenance_id": pending.pk},
+            )
+        if purpose == PendingWhatsAppMedia.PURPOSE_OTHER:
+            return (
+                "Thanks. Your upload is staged for admin review.",
+                "media_pending",
+                {"lease": selected_lease, "pending_media_id": media.pk},
+            )
+        return (
+            "Thanks. Your upload is staged for admin review before attaching it to your lease.",
+            "media_pending",
+            {"lease": selected_lease, "pending_media_id": media.pk},
+        )
+
+    def _consume_staff_upload_type(self, message_log, conversation, text, staff_user):
+        if conversation.pending_state != "staff_upload_type":
+            return None
+        media = PendingWhatsAppMedia.objects.filter(
+            pk=conversation.context.get("pending_media_id"),
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+        ).first()
+        if not media:
+            conversation.pending_state = ""
+            conversation.context.pop("pending_media_id", None)
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return None
+
+        purpose = _upload_purpose_from_text(text)
+        if not purpose:
+            return upload_type_menu_text(), "upload_type_retry", {"pending_media_id": media.pk}
+
+        media.purpose = purpose
+        media.save(update_fields=["purpose", "updated_at"])
+        conversation.pending_state = ""
+        conversation.context.pop("pending_media_id", None)
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        log_staff_action(
+            staff_user,
+            message_log.phone_number,
+            "upload_type_selected",
+            "pending",
+            pending_media_id=media.pk,
+            purpose=purpose,
+        )
+        return (
+            "Upload type saved. The file is staged for admin review and attachment.\n\n"
+            f"Type: {media.get_purpose_display()}",
+            "staff_upload_type",
+            {"pending_media_id": media.pk},
         )
 
     def _consume_lease_selection(self, text, conversation):
@@ -442,7 +561,15 @@ class WhatsAppAIAssistant:
 
 
 def detect_intent(text):
-    lowered = (text or "").lower()
+    lowered = (text or "").strip().lower()
+    tenant_menu_number_map = {
+        "1": "balance",
+        "2": "payments",
+        "3": "maintenance",
+        "4": "lease",
+    }
+    if lowered in tenant_menu_number_map:
+        return tenant_menu_number_map[lowered]
     if any(word in lowered for word in ("available", "vacancy", "vacant", "room", "flat available", "rent available")):
         return "availability"
     if any(word in lowered for word in ("payment", "paid", "receipt", "screenshot", "transfer", "easypaisa", "jazzcash", "raast")):
@@ -530,6 +657,34 @@ def _media_confirmation_text(media):
             "1 Property Photos\n2 Unit Photos\n3 Lease Documents\n4 Maintenance\n5 Payment\n6 Other"
         )
     return "We received your media and staged it for admin review before attaching it to any record."
+
+
+def _upload_purpose_from_text(text):
+    lowered = (text or "").strip().lower()
+    choices = {
+        "1": PendingWhatsAppMedia.PURPOSE_PROPERTY,
+        "property": PendingWhatsAppMedia.PURPOSE_PROPERTY,
+        "property photo": PendingWhatsAppMedia.PURPOSE_PROPERTY,
+        "property photos": PendingWhatsAppMedia.PURPOSE_PROPERTY,
+        "2": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "unit": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "unit photo": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "unit photos": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "3": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease document": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease documents": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "4": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "maintenance": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "maintenance photo": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "5": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "payment": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "payment receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "6": PendingWhatsAppMedia.PURPOSE_OTHER,
+        "other": PendingWhatsAppMedia.PURPOSE_OTHER,
+    }
+    return choices.get(lowered)
 
 
 def _json_safe(value):

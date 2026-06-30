@@ -1,13 +1,13 @@
-import os
 import builtins
+import os
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.core.validators import FileExtensionValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.utils import timezone
-
 from PIL import Image, ImageDraw, ImageFont
+
 from core.upload_utils import compress_instance_file_field
 from core.utils.text import normalize_title_fields, smart_title
 
@@ -26,33 +26,34 @@ class ExpenseDistribution(models.Model):
 
 class Property(models.Model):
     PROPERTY_TYPES = (
-        ('apartment', 'Apartment'),
-        ('house', 'House'),
-        ('condo', 'Condo'),
-        ('commercial', 'Commercial'),
+        ("apartment", "Apartment"),
+        ("house", "House"),
+        ("condo", "Condo"),
+        ("commercial", "Commercial"),
     )
 
     property_name = models.CharField(
-        max_length=100, verbose_name='Property Name', db_column='name')
-    owner_prefix = models.CharField(
-        max_length=5, null=True, blank=True, default="Mr.")
+        max_length=100, verbose_name="Property Name", db_column="name"
+    )
+    owner_prefix = models.CharField(max_length=5, null=True, blank=True, default="Mr.")
     owner_name = models.CharField(max_length=100)
     owner_father_name = models.CharField(max_length=100, blank=True, null=True)
-    relation = models.CharField(
-        max_length=10, null=True, blank=True, default="S/O")
+    relation = models.CharField(max_length=10, null=True, blank=True, default="S/O")
     owner_phone = models.CharField(max_length=20, blank=True, null=True)
     owner_address = models.CharField(max_length=200, blank=True, null=True)
     owner_cnic = models.CharField(max_length=15)
     owner_phone = models.CharField(max_length=25, blank=True, null=True)
     caretaker_prefix = models.CharField(
-        max_length=5, null=True, blank=True, default="Mr.")
+        max_length=5, null=True, blank=True, default="Mr."
+    )
     caretaker_prefix = models.CharField(
-        max_length=5, null=True, blank=True, default="Mr.")
+        max_length=5, null=True, blank=True, default="Mr."
+    )
     caretaker_name = models.CharField(max_length=100, blank=True, null=True)
-    caretaker_father_name = models.CharField(
-        max_length=100, blank=True, null=True)
+    caretaker_father_name = models.CharField(max_length=100, blank=True, null=True)
     caretaker_relation = models.CharField(
-        max_length=10, null=True, blank=True, default="S/O")
+        max_length=10, null=True, blank=True, default="S/O"
+    )
     caretaker_address = models.CharField(max_length=200, blank=True, null=True)
     caretaker_cnic = models.CharField(max_length=15, blank=True, null=True)
     caretaker_phone = models.CharField(max_length=25, blank=True, null=True)
@@ -67,7 +68,7 @@ class Property(models.Model):
         help_text="Default bank account/payment instructions for this property.",
     )
 
-    type = models.CharField(max_length=50)      # with exactly these names
+    type = models.CharField(max_length=50)  # with exactly these names
     property_type = models.CharField(max_length=20, choices=PROPERTY_TYPES)
     total_units = models.PositiveIntegerField()
     description = models.CharField(max_length=1000, blank=True, null=True)
@@ -90,31 +91,35 @@ class Property(models.Model):
         return ", ".join(parts)
 
     def save(self, *args, **kwargs):
-        normalize_title_fields(self, (
-            "property_name",
-            "owner_name",
-            "owner_father_name",
-            "caretaker_name",
-            "caretaker_father_name",
-            "property_city",
-            "property_state",
-        ))
+        normalize_title_fields(
+            self,
+            (
+                "property_name",
+                "owner_name",
+                "owner_father_name",
+                "caretaker_name",
+                "caretaker_father_name",
+                "property_city",
+                "property_state",
+            ),
+        )
         super().save(*args, **kwargs)
 
     class Meta:
-        ordering = ['property_name']
+        ordering = ["property_name"]
         verbose_name_plural = "Properties"
 
 
 class Unit(models.Model):
     UNIT_STATUS = [
-        ('vacant', 'Vacant'),
-        ('occupied', 'Occupied'),
-        ('maintenance', 'Maintenance'),
+        ("vacant", "Vacant"),
+        ("occupied", "Occupied"),
+        ("maintenance", "Maintenance"),
     ]
 
     property = models.ForeignKey(
-        'Property', on_delete=models.CASCADE, related_name='units')
+        "Property", on_delete=models.CASCADE, related_name="units"
+    )
     interest_type = models.ForeignKey(
         "tenants.TenantInterestType",
         on_delete=models.SET_NULL,
@@ -124,15 +129,19 @@ class Unit(models.Model):
         help_text="Used to match vacant units with interested tenants.",
     )
     unit_number = models.CharField(max_length=20)
-    electric_meter_num = models.CharField(max_length=20,
-                                          null=True, blank=True, default="0000000000")
+    electric_meter_num = models.CharField(
+        max_length=20, null=True, blank=True, default="0000000000"
+    )
     is_smart_meter = models.BooleanField(default=False)
     gas_meter_num = models.CharField(
-        max_length=20, null=True, blank=True, default="12345")
+        max_length=20, null=True, blank=True, default="12345"
+    )
     society_maintenance = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True, default="1200.00")
+        max_digits=10, decimal_places=2, null=True, blank=True, default="1200.00"
+    )
     water_charges = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True, default="6000.00")
+        max_digits=10, decimal_places=2, null=True, blank=True, default="6000.00"
+    )
     use_property_bank_account = models.BooleanField(
         default=True,
         help_text="Use the property's default bank account/payment instructions.",
@@ -144,16 +153,24 @@ class Unit(models.Model):
     )
     monthly_rent = models.DecimalField(
         # Add this if missing
-        decimal_places=2, default="25000.00", max_digits=10)
+        decimal_places=2,
+        default="25000.00",
+        max_digits=10,
+    )
     security_requires = models.CharField(
-        max_length=20, null=True, blank=True, default="Two Months")
+        max_length=20, null=True, blank=True, default="Two Months"
+    )
     ceiling_fan = models.IntegerField(blank=True, null=True, default=3)
     exhaust_fan = models.IntegerField(blank=True, null=True, default=3)
     ceiling_lights = models.IntegerField(blank=True, null=True, default=16)
     stove = models.IntegerField(blank=True, null=True, default=0)
     keys = models.IntegerField(blank=True, null=True, default=2)
     paint_condition = models.CharField(
-        max_length=100, null=True, blank=True, default="New Paint with no marks or water seapage")
+        max_length=100,
+        null=True,
+        blank=True,
+        default="New Paint with no marks or water seapage",
+    )
     wardrobes = models.IntegerField(blank=True, null=True, default=2)
     bedrooms = models.IntegerField(blank=True, null=True, default=2)
     bathrooms = models.IntegerField(blank=True, null=True, default=2)
@@ -161,16 +178,33 @@ class Unit(models.Model):
     hall = models.IntegerField(blank=True, null=True, default=1)
     square_footage = models.IntegerField(null=True, blank=True)
     comments = models.CharField(
-        max_length=100, null=True, blank=True, default="Good Condition.")
+        max_length=100, null=True, blank=True, default="Good Condition."
+    )
     status = models.CharField(
-        max_length=20, choices=UNIT_STATUS, default='vacant')  # Add this if missing
+        max_length=20, choices=UNIT_STATUS, default="vacant"
+    )  # Add this if missing
+    show_publicly = models.BooleanField(
+        default=True,
+        verbose_name="Show in Public Vacancy List",
+        help_text="If unchecked, this unit will not appear in WhatsApp/public vacancy lists.",
+    )
 
     def __str__(self):
         return f"{self.property.property_name}-{self.unit_number}"
 
 
 MEDIA_FILE_EXTENSIONS = [
-    "jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "mp4", "mov", "avi", "mkv"
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "heic",
+    "heif",
+    "pdf",
+    "mp4",
+    "mov",
+    "avi",
+    "mkv",
 ]
 IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
@@ -331,19 +365,24 @@ class BasePropertyMedia(models.Model):
 
             stamped_buffer = ContentFile(b"")
             import io
+
             buffer = io.BytesIO()
             stamped.save(buffer, format="JPEG", quality=90)
             stamped_buffer = ContentFile(buffer.getvalue())
             base_filename = _media_base_filename(self)
             self.stamped_file.save(
-                f"{base_filename}-stamped.jpg", stamped_buffer, save=False)
+                f"{base_filename}-stamped.jpg", stamped_buffer, save=False
+            )
 
             thumb = stamped.copy()
             thumb.thumbnail((360, 260))
             thumb_buffer = io.BytesIO()
             thumb.save(thumb_buffer, format="JPEG", quality=85)
             self.thumbnail.save(
-                f"{base_filename}-thumb.jpg", ContentFile(thumb_buffer.getvalue()), save=False)
+                f"{base_filename}-thumb.jpg",
+                ContentFile(thumb_buffer.getvalue()),
+                save=False,
+            )
 
     @property
     def footer_text(self):
@@ -356,9 +395,13 @@ class BasePropertyMedia(models.Model):
         compress_instance_file_field(self, "file")
         self._set_file_type()
         super().save(*args, **kwargs)
-        if self.file_type == "image" and (adding or not self.stamped_file or not self.thumbnail):
+        if self.file_type == "image" and (
+            adding or not self.stamped_file or not self.thumbnail
+        ):
             self._build_image_derivatives()
-            super().save(update_fields=["stamped_file", "thumbnail", "file_type", "updated_at"])
+            super().save(
+                update_fields=["stamped_file", "thumbnail", "file_type", "updated_at"]
+            )
 
     def refresh_image_derivatives(self):
         if self.file_type != "image":

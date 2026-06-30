@@ -10,7 +10,15 @@ from payments.models import Payment
 from whatsapp.services.whatsapp import WhatsAppService
 
 
-PHONE_FIELDS = ("phone", "phone2", "phone3", "emergency_contact_phone")
+TENANT_PHONE_FIELDS = (
+    "phone",
+    "phone2",
+    "phone3",
+    "employer_phone",
+    "reference_phone_1",
+    "reference_phone_2",
+    "emergency_contact_phone",
+)
 
 
 @dataclass
@@ -52,38 +60,22 @@ def find_active_leases_for_phone(phone_number):
     if not digits:
         return Lease.objects.none()
 
-    tenant_phone_query = Q()
-    for field in PHONE_FIELDS:
-        tenant_phone_query |= Q(**{f"tenant__{field}__icontains": digits[-10:]})
+    suffix = digits[-10:]
+    tenant_phone_query = _phone_q("tenant__", suffix)
+    family_phone_query = _phone_q("family_members__family_member__", suffix)
+    legacy_family_phone_query = _phone_q("legacy_family_members__tenant__", suffix)
 
-    lease_ids = set(
-        active_leases()
-        .filter(tenant_phone_query)
-        .values_list("id", flat=True)
-    )
-
-    lease_ids.update(
-        Lease.objects.filter(
-            status="active",
-            family_members__family_member__phone__icontains=digits[-10:],
-        ).values_list("id", flat=True)
-    )
-    lease_ids.update(
-        Lease.objects.filter(
-            status="active",
-            legacy_family_members__tenant__phone__icontains=digits[-10:],
-        ).values_list("id", flat=True)
-    )
+    lease_ids = set(active_leases().filter(tenant_phone_query).values_list("id", flat=True))
+    lease_ids.update(active_leases().filter(family_phone_query).values_list("id", flat=True))
+    lease_ids.update(active_leases().filter(legacy_family_phone_query).values_list("id", flat=True))
 
     for lease in active_leases().prefetch_related("family_members__family_member", "legacy_family_members__tenant"):
         phones = []
-        tenant = lease.tenant
-        for field in PHONE_FIELDS:
-            phones.append(getattr(tenant, field, ""))
+        phones.extend(_tenant_phone_values(lease.tenant))
         for member in lease.family_members.all():
-            phones.append(getattr(member.family_member, "phone", ""))
+            phones.extend(_tenant_phone_values(member.family_member))
         for member in lease.legacy_family_members.all():
-            phones.append(getattr(member.tenant, "phone", ""))
+            phones.extend(_tenant_phone_values(member.tenant))
         if any(_phone_matches(digits, candidate) for candidate in phones):
             lease_ids.add(lease.pk)
 
@@ -128,6 +120,19 @@ def lease_option_lines(leases):
 
 def _digits(value):
     return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _phone_q(prefix, suffix):
+    query = Q()
+    for field in TENANT_PHONE_FIELDS:
+        query |= Q(**{f"{prefix}{field}__icontains": suffix})
+    return query
+
+
+def _tenant_phone_values(tenant):
+    if tenant is None:
+        return []
+    return [getattr(tenant, field, "") for field in TENANT_PHONE_FIELDS]
 
 
 def _phone_matches(target_digits, candidate):

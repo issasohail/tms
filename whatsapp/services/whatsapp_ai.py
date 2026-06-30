@@ -4,9 +4,14 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
+from invoices.models import Invoice
+from invoices.public_links import make_public_invoice_token
+from leases.models import Lease
+from maintenance.models import MaintenanceRequest
 from properties.models import Property, Unit
 from tenants.models import Tenant, normalize_cnic
 from whatsapp.models import (
@@ -61,6 +66,10 @@ class WhatsAppAIAssistant:
         self.service = service or WhatsAppService()
         self.ai_config = get_whatsapp_ai_config()
 
+    def _clear_context_keys(self, conversation, *keys):
+        for key in keys:
+            conversation.context.pop(key, None)
+
     def handle_inbound_message(self, message_log):
         started = time.monotonic()
         conversation = self._conversation_for(message_log)
@@ -100,6 +109,14 @@ class WhatsAppAIAssistant:
         message_type = payload.get("type") or message_log.message_type
         text = _payload_text(payload)
         identity = identify_sender(message_log.phone_number)
+
+        if message_type in {"image", "document", "video"}:
+            return self._handle_media_message(message_log, conversation, text, message_type, identity)
+
+        state_response = self._consume_global_pending_state(message_log, conversation, text, identity)
+        if state_response:
+            return state_response
+
         mode = resolve_mode(conversation, text, identity)
 
         if mode == "choose_mode":
@@ -158,6 +175,9 @@ class WhatsAppAIAssistant:
                 pending.confirmed_by_tenant = True
                 pending.status = PendingWhatsAppPayment.STATUS_CONFIRMED
                 pending.save(update_fields=["confirmed_by_tenant", "status", "updated_at"])
+                conversation.pending_state = ""
+                self._clear_context_keys(conversation, "pending_payment_id", "pending_media_id")
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
                 return (
                     "Thanks. Your payment is confirmed and is waiting for admin approval. We will notify you after posting.",
                     "payment_confirmed",
@@ -179,6 +199,23 @@ class WhatsAppAIAssistant:
             return lease, "lease_lookup", {}
 
         lowered = (text or "").strip().lower()
+        if lowered in {"7", "vacant", "vacancy", "available", "vacant units"}:
+            return self._available_units_reply(), "availability", {}
+        if lowered in {"8", "registration", "tenant registration"}:
+            return (
+                "Tenant Registration\n\n"
+                "1. Ask staff for registration link\n"
+                "2. Contact office\n\n"
+                "Reply with a number or type your request.",
+                "tenant_registration",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
+        if lowered in {"9", "contact", "contact office", "office"}:
+            return (
+                "Please tell me what you need, and our office team will follow up.",
+                "contact_office",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
         if lowered in {"5", "meter", "meter reading", "meter readings", "utility", "utility bills"}:
             return (
                 "Please send your latest meter reading or utility bill photo. Our team will review it.",
@@ -212,6 +249,69 @@ class WhatsAppAIAssistant:
             {"lease": lease, "tenant": getattr(lease, "tenant", None)},
         )
 
+    def _handle_media_message(self, message_log, conversation, text, message_type, identity):
+        selected_lease = self._selected_active_lease(conversation)
+        if not selected_lease and identity.active_leases and len(identity.active_leases) == 1:
+            selected_lease = identity.active_leases[0]
+            conversation.selected_lease = selected_lease
+            conversation.selected_property = selected_lease.unit.property
+            conversation.selected_unit = selected_lease.unit
+            conversation.tenant = selected_lease.tenant
+            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "tenant", "updated_at"])
+
+        media = create_pending_media(message_log, conversation, selected_lease)
+        ocr_json = run_payment_ocr(media, self.ai_config) if message_type == "image" else {"engine": "skipped", "confidence": 0}
+        if media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT or _ocr_looks_like_payment(ocr_json):
+            media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
+            media.ai_confidence = max(media.ai_confidence or 0, int(ocr_json.get("confidence") or 0), 85 if ocr_json.get("amount") else 0)
+            media.ai_notes = f"{media.ai_notes} AI classified this upload as a payment receipt.".strip()
+            media.save(update_fields=["purpose", "ai_confidence", "ai_notes", "updated_at"])
+            if selected_lease:
+                return self._stage_payment(message_log, conversation, selected_lease, media, text, ocr_json=ocr_json)
+            return self._stage_unassigned_payment(message_log, conversation, media, text, ocr_json)
+
+        if media.purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
+            pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
+            conversation.pending_state = "pending_maintenance"
+            conversation.context["pending_maintenance_id"] = pending.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                "I read this as maintenance media. Please share the issue type and urgency if not already included.",
+                "maintenance_media",
+                {"lease": selected_lease, "pending_maintenance_id": pending.pk},
+            )
+
+        state = "staff_upload_type" if identity.has_staff and not identity.has_active_tenant else "tenant_upload_type"
+        conversation.pending_state = state
+        conversation.context["pending_media_id"] = media.pk
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            _media_confirmation_text(media),
+            "media_pending",
+            {"lease": selected_lease, "pending_media_id": media.pk, "ocr": ocr_json},
+        )
+
+    def _consume_global_pending_state(self, message_log, conversation, text, identity):
+        lowered = (text or "").strip().lower()
+        if conversation.pending_state in {"payment_apply_lookup", "payment_apply_lease_selection"}:
+            if lowered in {"cancel", "back", "menu", "main menu"}:
+                conversation.pending_state = ""
+                self._clear_context_keys(
+                    conversation,
+                    "payment_apply_lease_options",
+                    "payment_apply_retry_count",
+                    "pending_payment_id",
+                    "pending_media_id",
+                )
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                return (
+                    "Payment receipt kept for admin review.\n\n" + self._menu_for_identity(identity),
+                    "payment_apply_cancelled",
+                    {},
+                )
+            return self._consume_payment_apply_lookup(message_log, conversation, text, identity)
+        return None
+
     def _conversation_for(self, message_log):
         conversation, _ = WhatsAppConversation.objects.get_or_create(
             phone_number=message_log.phone_number,
@@ -220,6 +320,15 @@ class WhatsAppAIAssistant:
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=["last_message_at", "updated_at"])
         return conversation
+
+    def _menu_for_identity(self, identity):
+        if identity.has_staff and identity.has_active_tenant:
+            return mode_selection_text()
+        if identity.has_staff:
+            return staff_menu_text(identity.staff_user)
+        if identity.has_active_tenant:
+            return tenant_menu_text()
+        return guest_menu_text()
 
     def _resolve_or_request_lease(self, phone_number, conversation):
         selected = self._selected_active_lease(conversation)
@@ -285,7 +394,27 @@ class WhatsAppAIAssistant:
         upload_response = self._consume_staff_upload_type(message_log, conversation, text, staff_user)
         if upload_response:
             return upload_response
+        if lowered in {"cancel", "back"}:
+            conversation.pending_state = ""
+            self._clear_context_keys(
+                conversation,
+                "staff_add_lease",
+                "staff_search_action",
+                "staff_search_options",
+                "staff_upload_hint",
+            )
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return staff_menu_text(staff_user)
         if lowered in {"menu", "staff", "hi", "hello", "start", ""}:
+            conversation.pending_state = ""
+            self._clear_context_keys(
+                conversation,
+                "staff_add_lease",
+                "staff_search_action",
+                "staff_search_options",
+                "staff_upload_hint",
+            )
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
             return staff_menu_text(staff_user)
         if lowered in {"add tenant", "new tenant"}:
@@ -303,6 +432,9 @@ class WhatsAppAIAssistant:
         lease_flow_response = self._consume_staff_add_lease_flow(message_log, conversation, text, staff_user)
         if lease_flow_response:
             return lease_flow_response
+        staff_state_response = self._consume_staff_menu_state(message_log, conversation, text, staff_user)
+        if staff_state_response:
+            return staff_state_response
         if lowered in {"1", "tenant", "tenant management"}:
             conversation.pending_state = "staff_tenant_management"
             conversation.save(update_fields=["pending_state", "updated_at"])
@@ -313,16 +445,34 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "lease_management_menu", "allowed")
             return staff_submenu_text(text)
+        if lowered in {"3", "billing"}:
+            conversation.pending_state = "staff_billing_management"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "billing_menu", "allowed")
+            return staff_submenu_text(text)
+        if lowered in {"4", "maintenance"}:
+            return self._staff_maintenance_summary(message_log, staff_user)
+        if lowered in {"5", "photos", "property photos", "unit photos"}:
+            conversation.pending_state = "staff_property_media_menu"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "property_media_menu", "allowed")
+            return staff_submenu_text("5")
+        if lowered in {"6", "reports"}:
+            return self._staff_reports_summary(message_log, staff_user)
+        if lowered in {"7", "upload", "upload documents", "documents"}:
+            conversation.pending_state = "staff_waiting_upload"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "upload_documents_prompt", "pending")
+            return "Please send the image or document you want to upload. I will ask what it is for after receiving it."
+        if lowered in {"8", "search"}:
+            conversation.pending_state = "staff_search_category"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return _staff_search_menu_text()
         agreement_response = self._handle_staff_agreement_link(message_log, text, staff_user)
         if agreement_response:
             return agreement_response
         if lowered in {"add lease", "create lease"}:
             return self._start_staff_add_lease(message_log, conversation, staff_user)
-        if lowered == "cancel":
-            conversation.pending_state = ""
-            conversation.context.pop("staff_add_lease", None)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return staff_menu_text(staff_user)
         if lowered in {"9", "switch mode"}:
             conversation.selected_mode = ""
             conversation.mode_expires_at = None
@@ -377,9 +527,520 @@ class WhatsAppAIAssistant:
             "Pending Approval"
         )
 
+    def _consume_staff_menu_state(self, message_log, conversation, text, staff_user):
+        state = conversation.pending_state
+        lowered = (text or "").strip().lower()
+        if state == "staff_tenant_management":
+            if lowered in {"2", "search tenant", "search"}:
+                return self._start_staff_search(conversation, "tenant_search", "Send tenant name, phone, CNIC, property, or unit.")
+            if lowered in {"3", "tenant balance", "balance"}:
+                return self._start_staff_search(conversation, "tenant_balance", "Send tenant name, phone, CNIC, property, or unit for balance.")
+            if lowered in {"4", "tenant ledger", "ledger"}:
+                return self._start_staff_search(conversation, "tenant_ledger", "Send tenant name, phone, CNIC, property, or unit for ledger.")
+            if lowered in {"5", "tenant documents", "documents"}:
+                return self._start_staff_search(conversation, "tenant_documents", "Send tenant name, phone, CNIC, property, or unit for documents.")
+            if lowered in {"6", "send whatsapp", "send message"}:
+                return self._start_staff_search(conversation, "tenant_message", "Send tenant name, phone, CNIC, property, or unit to draft a WhatsApp message.")
+            if lowered in {"7", "view tenant", "view"}:
+                return self._start_staff_search(conversation, "tenant_view", "Send tenant name, phone, CNIC, property, or unit to view tenant.")
+            if lowered in {"8", "back"}:
+                conversation.pending_state = ""
+                conversation.save(update_fields=["pending_state", "updated_at"])
+                return staff_menu_text(staff_user)
+            return "Please choose a Tenant Management option by number, or type BACK."
+
+        if state == "staff_lease_management":
+            if lowered in {"2", "renew lease", "renew"}:
+                return self._start_staff_search(conversation, "lease_renew", "Send tenant, property, unit, or CNIC for the lease to renew.")
+            if lowered in {"3", "end lease", "terminate"}:
+                return self._start_staff_search(conversation, "lease_end", "Send tenant, property, unit, or CNIC for the lease to end.")
+            if lowered in {"4", "view lease", "view"}:
+                return self._start_staff_search(conversation, "lease_view", "Send tenant, property, unit, or CNIC to view lease.")
+            if lowered in {"5", "upload lease document", "upload"}:
+                conversation.pending_state = "staff_waiting_upload"
+                conversation.context["staff_upload_hint"] = "lease"
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                return "Please send the lease document now. I will stage it for admin review."
+            if lowered in {"6", "lease ledger", "ledger"}:
+                return self._start_staff_search(conversation, "lease_ledger", "Send tenant, property, unit, or CNIC for lease ledger.")
+            if lowered in {"7", "lease balance", "balance"}:
+                return self._start_staff_search(conversation, "lease_balance", "Send tenant, property, unit, or CNIC for lease balance.")
+            if lowered in {"8", "agreement", "agreement view", "agreement edit"}:
+                return (
+                    "Agreement Links\n\n"
+                    "Reply with:\n"
+                    "agreement view TENANT_ID_NUMBER\n"
+                    "agreement edit TENANT_ID_NUMBER"
+                )
+            if lowered in {"9", "back"}:
+                conversation.pending_state = ""
+                conversation.save(update_fields=["pending_state", "updated_at"])
+                return staff_menu_text(staff_user)
+            return "Please choose a Lease Management option by number, or type BACK."
+
+        if state == "staff_billing_management":
+            if lowered in {"1", "outstanding tenants", "outstanding"}:
+                return self._staff_outstanding_tenants(message_log, staff_user)
+            if lowered in {"2", "invoice link", "invoice"}:
+                return self._start_staff_search(conversation, "invoice_link", "Send invoice number, tenant, property, or unit.")
+            if lowered in {"3", "monthly billing status", "monthly"}:
+                return self._staff_monthly_billing_status(message_log, staff_user)
+            if lowered in {"4", "electric billing", "electric"}:
+                return self._staff_electric_billing_status(message_log, staff_user)
+            if lowered in {"5", "missing meter readings", "missing readings"}:
+                return self._staff_missing_meter_readings(message_log, staff_user)
+            if lowered in {"6", "payment verification", "payments"}:
+                return self._staff_payment_verification(message_log, staff_user)
+            if lowered in {"7", "water charges", "water"}:
+                log_staff_action(staff_user, message_log.phone_number, "water_charge_requested", "pending")
+                return "Water charge changes are sensitive. Please send Property, Unit, Amount, and Month. I will leave it for admin review."
+            if lowered in {"8", "back"}:
+                conversation.pending_state = ""
+                conversation.save(update_fields=["pending_state", "updated_at"])
+                return staff_menu_text(staff_user)
+            return "Please choose a Billing option by number, or type BACK."
+
+        if state == "staff_property_media_menu":
+            if lowered in {"1", "property photo", "property photos", "2", "unit photo", "unit photos", "3", "lease photo", "lease photos", "4", "tenant document", "tenant documents"}:
+                conversation.pending_state = "staff_waiting_upload"
+                conversation.context["staff_upload_hint"] = lowered
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                return "Please send the image or document now. I will stage it for admin review."
+            if lowered in {"5", "view photos"}:
+                return self._staff_property_media_summary(message_log, staff_user)
+            if lowered in {"6", "back"}:
+                conversation.pending_state = ""
+                conversation.save(update_fields=["pending_state", "updated_at"])
+                return staff_menu_text(staff_user)
+            return "Please choose a Property Menu option by number, or type BACK."
+
+        if state == "staff_search_category":
+            category_map = {
+                "1": "tenant_search",
+                "tenant": "tenant_search",
+                "search tenant": "tenant_search",
+                "2": "lease_view",
+                "lease": "lease_view",
+                "3": "invoice_link",
+                "invoice": "invoice_link",
+                "4": "property_search",
+                "property": "property_search",
+                "5": "unit_search",
+                "unit": "unit_search",
+            }
+            action = category_map.get(lowered)
+            if action:
+                return self._start_staff_search(conversation, action, "Send your search text.")
+            if lowered in {"6", "back"}:
+                conversation.pending_state = ""
+                conversation.save(update_fields=["pending_state", "updated_at"])
+                return staff_menu_text(staff_user)
+            return _staff_search_menu_text()
+
+        if state == "staff_search_query":
+            return self._consume_staff_search_query(message_log, conversation, text, staff_user)
+        if state == "staff_search_selection":
+            return self._consume_staff_search_selection(message_log, conversation, text, staff_user)
+        return None
+
+    def _start_staff_search(self, conversation, action, prompt):
+        conversation.pending_state = "staff_search_query"
+        conversation.context["staff_search_action"] = action
+        self._clear_context_keys(conversation, "staff_add_lease", "staff_search_options", "staff_upload_hint")
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return f"{prompt}\n\nReply BACK to return to the Staff Menu."
+
+    def _consume_staff_search_query(self, message_log, conversation, text, staff_user):
+        action = conversation.context.get("staff_search_action") or "tenant_search"
+        if action in {"tenant_search", "tenant_balance", "tenant_ledger", "tenant_documents", "tenant_message", "tenant_view"}:
+            tenants = self._staff_search_tenants(staff_user, text)
+            if not tenants:
+                log_staff_action(staff_user, message_log.phone_number, f"{action}_no_results", "allowed", text=text[:120])
+                return "No matching tenant found in properties you can access. Send another search term or type BACK."
+            if len(tenants) == 1:
+                return self._staff_tenant_action_reply(message_log, staff_user, tenants[0], action)
+            conversation.pending_state = "staff_search_selection"
+            conversation.context["staff_search_options"] = [{"type": "tenant", "id": item.pk} for item in tenants[:9]]
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            lines = ["Tenant Search Results"]
+            for index, tenant in enumerate(tenants[:9], start=1):
+                lease = self._staff_latest_accessible_lease(staff_user, tenant)
+                suffix = f" - {lease.unit.property.property_name} / {lease.unit.unit_number}" if lease else ""
+                lines.append(f"{index}. {tenant.get_full_name()}{suffix}")
+            lines.append("\nReply with a number.")
+            return "\n".join(lines)
+
+        if action in {"lease_view", "lease_renew", "lease_end", "lease_ledger", "lease_balance"}:
+            leases = self._staff_search_leases(staff_user, text)
+            if not leases:
+                log_staff_action(staff_user, message_log.phone_number, f"{action}_no_results", "allowed", text=text[:120])
+                return "No matching lease found in properties you can access. Send another search term or type BACK."
+            if len(leases) == 1:
+                return self._staff_lease_action_reply(message_log, staff_user, leases[0], action)
+            conversation.pending_state = "staff_search_selection"
+            conversation.context["staff_search_options"] = [{"type": "lease", "id": item.pk} for item in leases[:9]]
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            lines = ["Lease Search Results"]
+            for index, lease in enumerate(leases[:9], start=1):
+                lines.append(f"{index}. {lease.tenant.get_full_name()} - {lease.unit.property.property_name} / {lease.unit.unit_number} - {lease.get_status_display()}")
+            lines.append("\nReply with a number.")
+            return "\n".join(lines)
+
+        if action == "invoice_link":
+            invoices = self._staff_search_invoices(staff_user, text)
+            if not invoices:
+                return "No matching invoice found in properties you can access. Send another search term or type BACK."
+            if len(invoices) == 1:
+                return self._staff_invoice_link_reply(message_log, staff_user, invoices[0])
+            conversation.pending_state = "staff_search_selection"
+            conversation.context["staff_search_options"] = [{"type": "invoice", "id": item.pk} for item in invoices[:9]]
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            lines = ["Invoice Search Results"]
+            for index, invoice in enumerate(invoices[:9], start=1):
+                lines.append(f"{index}. {invoice.invoice_number} - {invoice.lease.tenant.get_full_name()} - Rs. {invoice.amount} - {invoice.get_status_display()}")
+            lines.append("\nReply with a number.")
+            return "\n".join(lines)
+
+        if action == "property_search":
+            properties = [item for item in self._staff_accessible_properties(staff_user) if text.lower() in item.property_name.lower()]
+            if not properties:
+                return "No matching property found in your WhatsApp access list."
+            lines = ["Property Results"]
+            for index, property_obj in enumerate(properties[:9], start=1):
+                vacant = property_obj.units.filter(status="vacant").count()
+                lines.append(f"{index}. {property_obj.property_name} - Vacant units: {vacant}")
+            return "\n".join(lines)
+
+        if action == "unit_search":
+            units = self._staff_search_units(staff_user, text)
+            if not units:
+                return "No matching unit found in properties you can access."
+            lines = ["Unit Results"]
+            for index, unit in enumerate(units[:9], start=1):
+                lines.append(f"{index}. {unit.property.property_name} / {unit.unit_number} - {unit.get_status_display()} - Rent Rs. {unit.monthly_rent}")
+            return "\n".join(lines)
+
+        return "Search action is not available. Type MENU to return to the Staff Menu."
+
+    def _consume_staff_search_selection(self, message_log, conversation, text, staff_user):
+        try:
+            selected_index = int((text or "").strip()) - 1
+        except ValueError:
+            return "Please reply with one of the result numbers, or type BACK."
+        options = conversation.context.get("staff_search_options") or []
+        if selected_index < 0 or selected_index >= len(options):
+            return "That result number is not in the list. Please choose again or type BACK."
+        selected = options[selected_index]
+        action = conversation.context.get("staff_search_action") or ""
+        conversation.pending_state = ""
+        self._clear_context_keys(conversation, "staff_search_action", "staff_search_options")
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        if selected["type"] == "tenant":
+            tenant = Tenant.objects.filter(pk=selected["id"]).first()
+            return self._staff_tenant_action_reply(message_log, staff_user, tenant, action)
+        if selected["type"] == "lease":
+            lease = Lease.objects.select_related("tenant", "unit__property").filter(pk=selected["id"]).first()
+            return self._staff_lease_action_reply(message_log, staff_user, lease, action)
+        if selected["type"] == "invoice":
+            invoice = Invoice.objects.select_related("lease__tenant", "lease__unit__property").filter(pk=selected["id"]).first()
+            return self._staff_invoice_link_reply(message_log, staff_user, invoice)
+        return "Selected result is no longer available."
+
+    def _staff_accessible_leases(self, staff_user):
+        leases = Lease.objects.select_related("tenant", "unit__property")
+        if staff_user.is_superuser:
+            return leases
+        property_ids = [item.pk for item in self._staff_accessible_properties(staff_user)]
+        return leases.filter(unit__property_id__in=property_ids)
+
+    def _staff_search_tenants(self, staff_user, text):
+        leases = self._staff_search_leases(staff_user, text)
+        tenant_ids = {lease.tenant_id for lease in leases}
+        query = (text or "").strip()
+        digits = "".join(ch for ch in query if ch.isdigit())
+        cnic_digits = normalize_cnic(query)
+        tenant_query = Q()
+        if query:
+            for token in [item for item in query.lower().replace(",", " ").split() if len(item) >= 2]:
+                tenant_query |= Q(first_name__icontains=token) | Q(last_name__icontains=token)
+        if cnic_digits:
+            tenant_query |= Q(cnic_digits=cnic_digits) | Q(cnic__icontains=query)
+        if digits:
+            suffix = digits[-10:]
+            tenant_query |= Q(phone__icontains=suffix) | Q(phone2__icontains=suffix) | Q(phone3__icontains=suffix)
+        if tenant_query:
+            scoped_lease_tenant_ids = set(self._staff_accessible_leases(staff_user).values_list("tenant_id", flat=True))
+            tenant_ids.update(Tenant.objects.filter(tenant_query, pk__in=scoped_lease_tenant_ids).values_list("pk", flat=True))
+        return list(Tenant.objects.filter(pk__in=tenant_ids).order_by("first_name", "last_name")[:10])
+
+    def _staff_search_leases(self, staff_user, text):
+        query_text = (text or "").strip()
+        lowered = query_text.lower()
+        digits = "".join(ch for ch in query_text if ch.isdigit())
+        cnic_digits = normalize_cnic(query_text)
+        query = Q()
+        if cnic_digits:
+            query |= Q(tenant__cnic_digits=cnic_digits) | Q(tenant__cnic__icontains=query_text)
+        if digits:
+            suffix = digits[-10:]
+            query |= Q(tenant__phone__icontains=suffix) | Q(tenant__phone2__icontains=suffix) | Q(tenant__phone3__icontains=suffix)
+            query |= Q(unit__unit_number__icontains=query_text)
+        for token in [item for item in lowered.replace(",", " ").split() if len(item) >= 2]:
+            query |= Q(tenant__first_name__icontains=token) | Q(tenant__last_name__icontains=token)
+            query |= Q(unit__property__property_name__icontains=token) | Q(unit__unit_number__icontains=token)
+        if not query:
+            return []
+        return list(self._staff_accessible_leases(staff_user).filter(query).distinct().order_by("-start_date", "-id")[:10])
+
+    def _staff_search_invoices(self, staff_user, text):
+        leases = self._staff_accessible_leases(staff_user)
+        query = (text or "").strip()
+        invoice_query = Q(invoice_number__icontains=query)
+        for token in [item for item in query.lower().replace(",", " ").split() if len(item) >= 2]:
+            invoice_query |= Q(lease__tenant__first_name__icontains=token) | Q(lease__tenant__last_name__icontains=token)
+            invoice_query |= Q(lease__unit__property__property_name__icontains=token) | Q(lease__unit__unit_number__icontains=token)
+        return list(Invoice.objects.select_related("lease__tenant", "lease__unit__property").filter(invoice_query, lease__in=leases).order_by("-issue_date", "-id")[:10])
+
+    def _staff_search_units(self, staff_user, text):
+        property_ids = [item.pk for item in self._staff_accessible_properties(staff_user)]
+        units = Unit.objects.select_related("property")
+        if not staff_user.is_superuser:
+            units = units.filter(property_id__in=property_ids)
+        query = (text or "").strip()
+        unit_query = Q(unit_number__icontains=query)
+        for token in [item for item in query.lower().replace(",", " ").split() if len(item) >= 2]:
+            unit_query |= Q(property__property_name__icontains=token) | Q(unit_number__icontains=token)
+        return list(units.filter(unit_query).order_by("property__property_name", "unit_number")[:10])
+
+    def _staff_latest_accessible_lease(self, staff_user, tenant):
+        return self._staff_accessible_leases(staff_user).filter(tenant=tenant).order_by("-start_date", "-id").first()
+
+    def _staff_tenant_action_reply(self, message_log, staff_user, tenant, action):
+        if not tenant:
+            return "Selected tenant is no longer available."
+        lease = self._staff_latest_accessible_lease(staff_user, tenant)
+        if not lease:
+            log_staff_action(staff_user, message_log.phone_number, f"{action}_blocked", "blocked", tenant=tenant)
+            return "You do not have WhatsApp access to this tenant's property data."
+        if action == "tenant_balance":
+            return self._staff_lease_action_reply(message_log, staff_user, lease, "lease_balance")
+        if action == "tenant_ledger":
+            return self._staff_lease_action_reply(message_log, staff_user, lease, "lease_ledger")
+        if action == "tenant_documents":
+            log_staff_action(staff_user, message_log.phone_number, "tenant_documents_requested", "allowed", tenant=tenant, lease=lease, property=lease.unit.property)
+            docs_count = getattr(tenant, "photo", None) and 1 or 0
+            return (
+                f"Tenant Documents\n\n"
+                f"Tenant: {tenant.get_full_name()}\n"
+                f"CNIC Front: {'Available' if tenant.cnic_front else 'Not uploaded'}\n"
+                f"CNIC Back: {'Available' if tenant.cnic_back else 'Not uploaded'}\n"
+                f"Photo: {'Available' if tenant.photo else 'Not uploaded'}"
+            )
+        if action == "tenant_message":
+            log_staff_action(staff_user, message_log.phone_number, "tenant_message_draft_requested", "pending", tenant=tenant, lease=lease, property=lease.unit.property)
+            return (
+                f"Message draft target selected:\n{tenant.get_full_name()} - {lease.unit.property.property_name} / {lease.unit.unit_number}\n\n"
+                "Please type the message you want to send. It will be staged for review in this chat; it is not sent automatically."
+            )
+        log_staff_action(staff_user, message_log.phone_number, "tenant_viewed", "allowed", tenant=tenant, lease=lease, property=lease.unit.property)
+        return (
+            f"Tenant Summary\n\n"
+            f"Name: {tenant.get_full_name()}\n"
+            f"Phone: {tenant.phone or '-'}\n"
+            f"Property: {lease.unit.property.property_name}\n"
+            f"Unit: {lease.unit.unit_number}\n"
+            f"Lease: {lease.start_date} to {lease.end_date}\n"
+            f"Status: {lease.get_status_display()}"
+        )
+
+    def _staff_lease_action_reply(self, message_log, staff_user, lease, action):
+        if not lease:
+            return "Selected lease is no longer available."
+        if not staff_can_access_property(staff_user, lease.unit.property):
+            log_staff_action(staff_user, message_log.phone_number, f"{action}_blocked", "blocked", lease=lease, property=lease.unit.property)
+            return "You do not have WhatsApp access to that property's lease data."
+        ctx = build_lease_context(lease)
+        if action == "lease_balance":
+            log_staff_action(staff_user, message_log.phone_number, "lease_balance_viewed", "allowed", lease=lease, property=ctx.property, tenant=ctx.tenant)
+            return f"Lease Balance\n\n{ctx.property.property_name} / {ctx.unit.unit_number}\nTenant: {ctx.tenant.get_full_name()}\nOutstanding: Rs. {ctx.balance}"
+        if action == "lease_ledger":
+            log_staff_action(staff_user, message_log.phone_number, "lease_ledger_viewed", "allowed", lease=lease, property=ctx.property, tenant=ctx.tenant)
+            lines = [f"Lease Ledger\n\n{ctx.property.property_name} / {ctx.unit.unit_number}", f"Outstanding: Rs. {ctx.balance}", "", "Recent payments:"]
+            if ctx.recent_payments:
+                for payment in ctx.recent_payments[:5]:
+                    lines.append(f"- {payment.payment_date}: Rs. {payment.amount} ({payment.reference_number or 'no reference'})")
+            else:
+                lines.append("- No recent payments")
+            return "\n".join(lines)
+        if action == "lease_renew":
+            log_staff_action(staff_user, message_log.phone_number, "lease_renew_requested", "pending", lease=lease, property=ctx.property, tenant=ctx.tenant)
+            return f"Renew Lease\n\nSelected: {ctx.tenant.get_full_name()} - {ctx.property.property_name} / {ctx.unit.unit_number}\n\nRenewal is a sensitive action. Please open TMS Lease Detail to complete it."
+        if action == "lease_end":
+            log_staff_action(staff_user, message_log.phone_number, "lease_end_requested", "pending", lease=lease, property=ctx.property, tenant=ctx.tenant)
+            return f"End Lease\n\nSelected: {ctx.tenant.get_full_name()} - {ctx.property.property_name} / {ctx.unit.unit_number}\n\nLease termination was not applied automatically. It is staged for admin review."
+        log_staff_action(staff_user, message_log.phone_number, "lease_viewed", "allowed", lease=lease, property=ctx.property, tenant=ctx.tenant)
+        return (
+            f"Lease Summary\n\n"
+            f"Tenant: {ctx.tenant.get_full_name()}\n"
+            f"Property: {ctx.property.property_name}\n"
+            f"Unit: {ctx.unit.unit_number}\n"
+            f"Rent: Rs. {lease.monthly_rent}\n"
+            f"Deposit: Rs. {lease.security_deposit or Decimal('0.00')}\n"
+            f"Dates: {lease.start_date} to {lease.end_date}\n"
+            f"Status: {lease.get_status_display()}"
+        )
+
+    def _staff_invoice_link_reply(self, message_log, staff_user, invoice):
+        if not invoice:
+            return "Selected invoice is no longer available."
+        lease = invoice.lease
+        if not staff_can_access_property(staff_user, lease.unit.property):
+            log_staff_action(staff_user, message_log.phone_number, "invoice_link_blocked", "blocked", lease=lease, property=lease.unit.property, tenant=lease.tenant)
+            return "You do not have WhatsApp access to that invoice's property."
+        token = make_public_invoice_token(invoice.pk)
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
+        log_staff_action(staff_user, message_log.phone_number, "invoice_link_created", "allowed", lease=lease, property=lease.unit.property, tenant=lease.tenant, invoice_id=invoice.pk)
+        return (
+            f"Invoice Link\n\n"
+            f"Invoice: {invoice.invoice_number}\n"
+            f"Tenant: {lease.tenant.get_full_name()}\n"
+            f"Amount: Rs. {invoice.amount}\n"
+            f"Status: {invoice.get_status_display()}\n\n"
+            f"Link:\n{link}"
+        )
+
+    def _staff_outstanding_tenants(self, message_log, staff_user):
+        lines = ["Outstanding Tenants"]
+        count = 0
+        for lease in self._staff_accessible_leases(staff_user).filter(status="active").order_by("unit__property__property_name", "unit__unit_number")[:50]:
+            ctx = build_lease_context(lease)
+            if ctx.balance > 0:
+                count += 1
+                lines.append(f"{count}. {ctx.tenant.get_full_name()} - {ctx.property.property_name} / {ctx.unit.unit_number} - Rs. {ctx.balance}")
+            if count >= 10:
+                break
+        log_staff_action(staff_user, message_log.phone_number, "billing_outstanding_requested", "allowed")
+        if count == 0:
+            return "No outstanding active tenant balances found in properties you can access."
+        return "\n".join(lines)
+
+    def _staff_monthly_billing_status(self, message_log, staff_user):
+        today = timezone.localdate()
+        invoices = Invoice.objects.filter(
+            lease__in=self._staff_accessible_leases(staff_user),
+            issue_date__year=today.year,
+            issue_date__month=today.month,
+        )
+        total = invoices.count()
+        by_status = {status: invoices.filter(status=status).count() for status, _ in Invoice.INVOICE_STATUS}
+        log_staff_action(staff_user, message_log.phone_number, "monthly_billing_status_requested", "allowed")
+        return (
+            f"Monthly Billing Status ({today:%B %Y})\n\n"
+            f"Total invoices: {total}\n"
+            f"Draft: {by_status.get('draft', 0)}\n"
+            f"Sent: {by_status.get('sent', 0)}\n"
+            f"Paid: {by_status.get('paid', 0)}\n"
+            f"Overdue: {by_status.get('overdue', 0)}\n"
+            f"Cancelled: {by_status.get('cancelled', 0)}"
+        )
+
+    def _staff_electric_billing_status(self, message_log, staff_user):
+        units = Unit.objects.select_related("property")
+        if not staff_user.is_superuser:
+            units = units.filter(property__in=self._staff_accessible_properties(staff_user))
+        total = units.count()
+        smart = units.filter(is_smart_meter=True).count()
+        non_smart = total - smart
+        log_staff_action(staff_user, message_log.phone_number, "electric_billing_status_requested", "allowed")
+        return (
+            "Electric Billing Status\n\n"
+            f"Units in your access: {total}\n"
+            f"Smart-meter units: {smart}\n"
+            f"Non-smart units: {non_smart}\n\n"
+            "Use Missing Meter Readings to see units needing attention."
+        )
+
+    def _staff_missing_meter_readings(self, message_log, staff_user):
+        from smart_meter.models import MeterInstallation, LiveReading
+
+        units = Unit.objects.select_related("property").filter(is_smart_meter=True)
+        if not staff_user.is_superuser:
+            units = units.filter(property__in=self._staff_accessible_properties(staff_user))
+        active_installations = MeterInstallation.objects.filter(unit__in=units, is_active=True, end_date__isnull=True).select_related("unit__property", "meter")
+        missing = []
+        for installation in active_installations[:100]:
+            if not LiveReading.objects.filter(meter=installation.meter).exists():
+                missing.append(installation)
+        log_staff_action(staff_user, message_log.phone_number, "missing_meter_readings_requested", "allowed")
+        if not missing:
+            return "No missing smart-meter live readings found in properties you can access."
+        lines = ["Missing Meter Readings"]
+        for index, installation in enumerate(missing[:10], start=1):
+            lines.append(f"{index}. {installation.unit.property.property_name} / {installation.unit.unit_number} - Meter {installation.meter.meter_number}")
+        return "\n".join(lines)
+
+    def _staff_payment_verification(self, message_log, staff_user):
+        payments = PendingWhatsAppPayment.objects.filter(
+            status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
+            approved=False,
+            rejected=False,
+        ).select_related("tenant", "lease", "property", "unit").order_by("-created_at")
+        if not staff_user.is_superuser:
+            property_ids = [item.pk for item in self._staff_accessible_properties(staff_user)]
+            payments = payments.filter(Q(property_id__in=property_ids) | Q(property__isnull=True))
+        log_staff_action(staff_user, message_log.phone_number, "payment_verification_listed", "allowed")
+        if not payments.exists():
+            return "No pending WhatsApp payment verifications found."
+        lines = ["Payment Verification Queue"]
+        for index, payment in enumerate(payments[:10], start=1):
+            target = f"{payment.property.property_name} / {payment.unit.unit_number}" if payment.property and payment.unit else "Unmatched"
+            lines.append(f"{index}. Rs. {payment.amount or 'Not detected'} - {target} - {payment.get_status_display()}")
+        return "\n".join(lines)
+
+    def _staff_maintenance_summary(self, message_log, staff_user):
+        requests = MaintenanceRequest.objects.select_related("tenant", "lease", "unit__property").exclude(status__in=["completed", "cancelled"]).order_by("-reported_date", "-id")
+        if not staff_user.is_superuser:
+            requests = requests.filter(unit__property__in=self._staff_accessible_properties(staff_user))
+        log_staff_action(staff_user, message_log.phone_number, "maintenance_summary_requested", "allowed")
+        if not requests.exists():
+            return "No open maintenance requests found in properties you can access."
+        lines = ["Open Maintenance"]
+        for index, item in enumerate(requests[:10], start=1):
+            unit = f"{item.unit.property.property_name} / {item.unit.unit_number}" if item.unit else "No unit"
+            lines.append(f"{index}. {unit} - {item.title} - {item.get_status_display()}")
+        return "\n".join(lines)
+
+    def _staff_reports_summary(self, message_log, staff_user):
+        active_leases = self._staff_accessible_leases(staff_user).filter(status="active")
+        properties = self._staff_accessible_properties(staff_user)
+        vacant_units = Unit.objects.filter(property__in=properties, status="vacant").count() if not staff_user.is_superuser else Unit.objects.filter(status="vacant").count()
+        pending_payments = PendingWhatsAppPayment.objects.filter(status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED], approved=False, rejected=False).count()
+        log_staff_action(staff_user, message_log.phone_number, "reports_summary_requested", "allowed")
+        return (
+            "Reports Summary\n\n"
+            f"Properties in WhatsApp access: {len(properties)}\n"
+            f"Active leases: {active_leases.count()}\n"
+            f"Vacant units: {vacant_units}\n"
+            f"Pending WhatsApp payments: {pending_payments}\n\n"
+            "For full reports, open TMS Reports."
+        )
+
+    def _staff_property_media_summary(self, message_log, staff_user):
+        properties = self._staff_accessible_properties(staff_user)
+        units = Unit.objects.filter(property__in=properties) if not staff_user.is_superuser else Unit.objects.all()
+        log_staff_action(staff_user, message_log.phone_number, "property_media_summary_requested", "allowed")
+        return (
+            "Property / Unit Photos\n\n"
+            f"Properties in access: {len(properties)}\n"
+            f"Units in access: {units.count()}\n\n"
+            "Send an image/document to stage a new upload."
+        )
+
     def _start_staff_add_lease(self, message_log, conversation, staff_user):
         conversation.pending_state = "staff_add_lease_tenant_id"
         conversation.context["staff_add_lease"] = {}
+        self._clear_context_keys(conversation, "staff_search_action", "staff_search_options", "staff_upload_hint")
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         log_staff_action(staff_user, message_log.phone_number, "add_lease_started", "allowed")
         return (
@@ -589,15 +1250,20 @@ class WhatsAppAIAssistant:
         ).first()
         if not media:
             conversation.pending_state = ""
-            conversation.context.pop("pending_media_id", None)
+            self._clear_context_keys(conversation, "pending_media_id")
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return None
 
         purpose = _upload_purpose_from_text(text)
+        if purpose == "cancel":
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "pending_media_id")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return "Upload cancelled. The file remains staged for admin review.", "upload_cancelled", {"pending_media_id": media.pk}
         if not purpose:
             return (
                 "Please reply with a number:\n\n"
-                "1 Property Photos\n2 Unit Photos\n3 Lease Documents\n4 Maintenance\n5 Payment\n6 Other",
+                "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Cancel",
                 "upload_type_retry",
                 {"lease": selected_lease, "pending_media_id": media.pk},
             )
@@ -609,7 +1275,7 @@ class WhatsAppAIAssistant:
         media.unit = getattr(media.lease, "unit", None)
         media.save(update_fields=["purpose", "lease", "tenant", "property", "unit", "updated_at"])
         conversation.pending_state = ""
-        conversation.context.pop("pending_media_id", None)
+        self._clear_context_keys(conversation, "pending_media_id")
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
 
         if purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT:
@@ -642,18 +1308,24 @@ class WhatsAppAIAssistant:
         ).first()
         if not media:
             conversation.pending_state = ""
-            conversation.context.pop("pending_media_id", None)
+            self._clear_context_keys(conversation, "pending_media_id", "staff_upload_hint")
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return None
 
         purpose = _upload_purpose_from_text(text)
+        if purpose == "cancel":
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "pending_media_id", "staff_upload_hint")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            log_staff_action(staff_user, message_log.phone_number, "upload_type_cancelled", "pending", pending_media_id=media.pk)
+            return "Upload cancelled. The file remains staged for admin review.", "staff_upload_cancelled", {"pending_media_id": media.pk}
         if not purpose:
             return upload_type_menu_text(), "upload_type_retry", {"pending_media_id": media.pk}
 
         media.purpose = purpose
         media.save(update_fields=["purpose", "updated_at"])
         conversation.pending_state = ""
-        conversation.context.pop("pending_media_id", None)
+        self._clear_context_keys(conversation, "pending_media_id", "staff_upload_hint")
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         log_staff_action(
             staff_user,
@@ -693,8 +1365,158 @@ class WhatsAppAIAssistant:
         conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "pending_state", "context", "updated_at"])
         return True
 
-    def _stage_payment(self, message_log, conversation, lease, media, text):
-        ocr_json = run_payment_ocr(media, self.ai_config) if media else extract_payment_text_fields(text)
+    def _consume_payment_apply_lookup(self, message_log, conversation, text, identity):
+        pending = PendingWhatsAppPayment.objects.filter(
+            pk=conversation.context.get("pending_payment_id"),
+            status=PendingWhatsAppPayment.STATUS_PENDING,
+        ).first()
+        if not pending:
+            conversation.pending_state = ""
+            self._clear_context_keys(
+                conversation,
+                "pending_payment_id",
+                "pending_media_id",
+                "payment_apply_lease_options",
+                "payment_apply_retry_count",
+            )
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                "I could not find the pending payment receipt anymore. Please send the receipt again if needed.",
+                "payment_apply_missing",
+                {},
+            )
+
+        if conversation.pending_state == "payment_apply_lease_selection":
+            lease = self._payment_apply_option_from_number(text, conversation)
+            if not lease:
+                return (
+                    "Please reply with one of the lease numbers shown, or type CANCEL to keep this for admin review.",
+                    "payment_apply_selection_retry",
+                    {"pending_payment_id": pending.pk},
+                )
+            return self._assign_pending_payment_to_lease(conversation, pending, lease)
+
+        matches = self._find_leases_for_payment_lookup(text, identity)
+        if len(matches) == 1:
+            return self._assign_pending_payment_to_lease(conversation, pending, matches[0])
+        if len(matches) > 1:
+            conversation.pending_state = "payment_apply_lease_selection"
+            conversation.context["payment_apply_lease_options"] = [lease.pk for lease in matches[:9]]
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            lines = ["I found more than one possible lease.", "", "Where should this payment be applied?"]
+            for index, lease in enumerate(matches[:9], start=1):
+                lines.append(f"{index}. {lease.tenant.get_full_name()} - {lease.unit.property.property_name} / {lease.unit.unit_number}")
+            lines.append("")
+            lines.append("Reply with a number, or CANCEL for admin review.")
+            return "\n".join(lines), "payment_apply_selection", {"pending_payment_id": pending.pk}
+
+        retry_count = int(conversation.context.get("payment_apply_retry_count") or 0) + 1
+        conversation.context["payment_apply_retry_count"] = retry_count
+        if retry_count >= 2:
+            pending.ai_notes = (pending.ai_notes + "\nCould not resolve tenant/lease from sender reply; left for manual admin review.").strip()
+            pending.save(update_fields=["ai_notes", "updated_at"])
+            conversation.pending_state = ""
+            self._clear_context_keys(
+                conversation,
+                "pending_payment_id",
+                "pending_media_id",
+                "payment_apply_lease_options",
+                "payment_apply_retry_count",
+            )
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                "I could not match that receipt to a lease. It is saved for admin review.\n\n"
+                "Please send Property, Unit, Tenant Name, and Contact Number if you want to add more detail.",
+                "payment_apply_manual_review",
+                {"pending_payment_id": pending.pk},
+            )
+        conversation.save(update_fields=["context", "updated_at"])
+        return (
+            "I could not find a matching active lease from that reply.\n\n"
+            "Please send Tenant Name, CNIC, Property + Unit, or Contact Number.\n"
+            "Reply CANCEL to keep it for admin review.",
+            "payment_apply_retry",
+            {"pending_payment_id": pending.pk},
+        )
+
+    def _assign_pending_payment_to_lease(self, conversation, pending, lease):
+        pending.tenant = lease.tenant
+        pending.lease = lease
+        pending.property = lease.unit.property
+        pending.unit = lease.unit
+        pending.ai_notes = (pending.ai_notes + "\nSender identified the lease for this pending payment.").strip()
+        pending.save(update_fields=["tenant", "lease", "property", "unit", "ai_notes", "updated_at"])
+        conversation.selected_lease = lease
+        conversation.selected_property = lease.unit.property
+        conversation.selected_unit = lease.unit
+        conversation.tenant = lease.tenant
+        conversation.pending_state = "pending_payment_confirmation"
+        self._clear_context_keys(
+            conversation,
+            "pending_media_id",
+            "payment_apply_lease_options",
+            "payment_apply_retry_count",
+        )
+        conversation.context["pending_payment_id"] = pending.pk
+        conversation.save(update_fields=[
+            "selected_lease",
+            "selected_property",
+            "selected_unit",
+            "tenant",
+            "pending_state",
+            "context",
+            "updated_at",
+        ])
+        return _payment_confirmation_text(pending), "payment_pending", {"lease": lease, "tenant": lease.tenant, "pending_payment_id": pending.pk}
+
+    def _payment_apply_option_from_number(self, text, conversation):
+        try:
+            selected_index = int((text or "").strip()) - 1
+        except ValueError:
+            return None
+        option_ids = conversation.context.get("payment_apply_lease_options") or []
+        if selected_index < 0 or selected_index >= len(option_ids):
+            return None
+        return Lease.objects.select_related("tenant", "unit__property").filter(pk=option_ids[selected_index]).first()
+
+    def _find_leases_for_payment_lookup(self, text, identity):
+        query_text = (text or "").strip()
+        digits = "".join(ch for ch in query_text if ch.isdigit())
+        cnic_digits = normalize_cnic(query_text)
+        lowered = query_text.lower()
+        today = timezone.localdate()
+        leases = Lease.objects.select_related("tenant", "unit__property").filter(
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        query = Q()
+        if cnic_digits:
+            query |= Q(tenant__cnic_digits=cnic_digits) | Q(tenant__cnic__icontains=query_text)
+        if digits:
+            suffix = digits[-10:]
+            query |= (
+                Q(tenant__phone__icontains=suffix)
+                | Q(tenant__phone2__icontains=suffix)
+                | Q(tenant__phone3__icontains=suffix)
+                | Q(tenant__employer_phone__icontains=suffix)
+                | Q(tenant__reference_phone_1__icontains=suffix)
+                | Q(tenant__reference_phone_2__icontains=suffix)
+                | Q(tenant__emergency_contact_phone__icontains=suffix)
+                | Q(unit__unit_number__icontains=query_text)
+            )
+        for token in [item for item in lowered.replace(",", " ").split() if len(item) >= 2]:
+            query |= Q(tenant__first_name__icontains=token) | Q(tenant__last_name__icontains=token)
+            query |= Q(unit__property__property_name__icontains=token) | Q(unit__unit_number__icontains=token)
+        if not query:
+            return []
+        matches = list(leases.filter(query).distinct().order_by("unit__property__property_name", "unit__unit_number")[:10])
+        if not matches and identity.active_leases:
+            return list(identity.active_leases)
+        return matches
+
+    def _stage_payment(self, message_log, conversation, lease, media, text, ocr_json=None):
+        ocr_json = ocr_json or (run_payment_ocr(media, self.ai_config) if media else extract_payment_text_fields(text))
         if not ocr_json.get("amount"):
             extracted = extract_payment_text_fields((ocr_json.get("text") or "") + "\n" + (text or ""))
             ocr_json.update(extracted)
@@ -718,9 +1540,48 @@ class WhatsAppAIAssistant:
             conversation=conversation,
         )
         conversation.pending_state = "pending_payment_confirmation"
+        self._clear_context_keys(
+            conversation,
+            "pending_media_id",
+            "payment_apply_lease_options",
+            "payment_apply_retry_count",
+        )
         conversation.context["pending_payment_id"] = pending.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return _payment_confirmation_text(pending), "payment_pending", {"lease": matched_lease, "tenant": getattr(matched_lease, "tenant", None), "pending_payment_id": pending.pk}
+
+    def _stage_unassigned_payment(self, message_log, conversation, media, text, ocr_json):
+        pending = PendingWhatsAppPayment.objects.create(
+            phone=message_log.phone_number,
+            screenshot=getattr(media, "file", None),
+            ocr_json=_json_safe(ocr_json),
+            amount=ocr_json.get("amount"),
+            date=ocr_json.get("date"),
+            reference=ocr_json.get("reference", ""),
+            bank_information=ocr_json.get("bank_information") or {"channel": _payment_channel(text or ocr_json.get("raw_text", ""))},
+            ai_confidence=int(ocr_json.get("confidence") or 0),
+            ai_notes="AI classified this upload as a payment receipt, but no lease was matched automatically.",
+            original_whatsapp_message=message_log,
+            conversation=conversation,
+        )
+        conversation.pending_state = "payment_apply_lookup"
+        conversation.context["pending_payment_id"] = pending.pk
+        conversation.context["pending_media_id"] = media.pk
+        conversation.context["payment_apply_retry_count"] = 0
+        conversation.context.pop("payment_apply_lease_options", None)
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        channel = (pending.bank_information or {}).get("channel") or "Not detected"
+        return (
+            "I read this image as a payment receipt.\n\n"
+            f"Amount: {pending.amount or 'Not detected'}\n"
+            f"Date: {pending.date or 'Not detected'}\n"
+            f"Payment Channel: {channel}\n"
+            f"Reference: {pending.reference or 'Not detected'}\n\n"
+            "Where should this payment be applied?\n"
+            "Reply with tenant name, CNIC, property/unit, or lease details.",
+            "payment_apply_lookup",
+            {"pending_payment_id": pending.pk, "pending_media_id": media.pk},
+        )
 
     def _lease_reply(self, intent, lease):
         ctx = build_lease_context(lease)
@@ -779,18 +1640,18 @@ def detect_intent(text):
     }
     if lowered in tenant_menu_number_map:
         return tenant_menu_number_map[lowered]
-    if any(word in lowered for word in ("available", "vacancy", "vacant", "room", "flat available", "rent available")):
+    if any(word in lowered for word in ("available", "availability", "vacancy", "vacant", "room", "flat available", "rent available", "khali", "khaali", "empty flat")):
         return "availability"
-    if any(word in lowered for word in ("payment", "paid", "receipt", "screenshot", "transfer", "easypaisa", "jazzcash", "raast")):
+    if any(word in lowered for word in ("payment", "paid", "receipt", "screenshot", "transfer", "easypaisa", "jazzcash", "raast", "bank transfer", "rent paid", "kiraya", "kiraya jama", "jama", "remaining rent")):
         return "payment"
     issue, _, confidence = detect_maintenance_issue(lowered)
-    if issue != "Other" or confidence >= 75 or "maintenance" in lowered or "repair" in lowered:
+    if issue != "Other" or confidence >= 75 or any(word in lowered for word in ("maintenance", "repair", "pani", "water", "bijli", "electric", "light", "leak", "not working", "kharab")):
         return "maintenance"
-    if any(word in lowered for word in ("history", "payments", "paid before")):
+    if any(word in lowered for word in ("history", "payments", "paid before", "payment history", "ledger", "statement")):
         return "payments"
-    if any(word in lowered for word in ("lease", "expiry", "expire", "renewal", "deposit")):
+    if any(word in lowered for word in ("lease", "agreement", "contract", "expiry", "expire", "renewal", "deposit", "kiraya nama")):
         return "lease"
-    if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues")):
+    if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues", "baqaya", "remaining", "pending rent")):
         return "balance"
     return "general"
 
@@ -801,6 +1662,19 @@ def _add_tenant_menu_text():
         "1. Send public tenant registration link\n"
         "2. Create tenant draft by WhatsApp\n"
         "3. Back"
+    )
+
+
+def _staff_search_menu_text():
+    return (
+        "Search\n\n"
+        "1. Search Tenant\n"
+        "2. Search Lease\n"
+        "3. Search Invoice\n"
+        "4. Search Property\n"
+        "5. Search Unit\n"
+        "6. Back\n\n"
+        "Reply with a number."
     )
 
 
@@ -841,6 +1715,28 @@ def _payment_channel(text):
     return ""
 
 
+def _ocr_looks_like_payment(ocr_json):
+    if not ocr_json:
+        return False
+    bank_info = ocr_json.get("bank_information") or {}
+    text = " ".join(
+        str(value or "")
+        for value in [
+            ocr_json.get("text"),
+            ocr_json.get("raw_text"),
+            ocr_json.get("description"),
+            ocr_json.get("reference"),
+            bank_info.get("bank"),
+            bank_info.get("channel"),
+            bank_info.get("receiver_account"),
+            bank_info.get("receiver_name"),
+        ]
+    ).lower()
+    payment_words = ("payment", "receipt", "sent", "amount", "easypaisa", "jazzcash", "raast", "bank", "account", "transaction")
+    has_payment_words = any(word in text for word in payment_words)
+    return bool(ocr_json.get("amount") and (has_payment_words or int(ocr_json.get("confidence") or 0) >= 50))
+
+
 def _payment_confirmation_text(pending):
     prop = getattr(pending.property, "property_name", "") or "Not detected"
     unit = getattr(pending.unit, "unit_number", "") or "Not detected"
@@ -863,7 +1759,7 @@ def _media_confirmation_text(media):
     if media.purpose == PendingWhatsAppMedia.PURPOSE_OTHER:
         return (
             "We received your media. What would you like to do?\n\n"
-            "1 Property Photos\n2 Unit Photos\n3 Lease Documents\n4 Maintenance\n5 Payment\n6 Other"
+            "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Cancel"
         )
     return "We received your media and staged it for admin review before attaching it to any record."
 
@@ -881,16 +1777,23 @@ def _upload_purpose_from_text(text):
         "unit photos": PendingWhatsAppMedia.PURPOSE_UNIT,
         "3": PendingWhatsAppMedia.PURPOSE_LEASE,
         "lease": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease photo": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease photos": PendingWhatsAppMedia.PURPOSE_LEASE,
         "lease document": PendingWhatsAppMedia.PURPOSE_LEASE,
         "lease documents": PendingWhatsAppMedia.PURPOSE_LEASE,
-        "4": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "4": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "tenant document": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "tenant documents": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "5": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
         "maintenance": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
         "maintenance photo": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
-        "5": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "maintenance photos": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "6": PendingWhatsAppMedia.PURPOSE_PAYMENT,
         "payment": PendingWhatsAppMedia.PURPOSE_PAYMENT,
         "payment receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
         "receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
-        "6": PendingWhatsAppMedia.PURPOSE_OTHER,
+        "7": "cancel",
+        "cancel": "cancel",
         "other": PendingWhatsAppMedia.PURPOSE_OTHER,
     }
     return choices.get(lowered)

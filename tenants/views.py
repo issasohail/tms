@@ -682,6 +682,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
 
         # PERF: this detail page repeats tenant lease/invoice/payment lookups; reuse selected querysets.
         all_leases = list(tenant.leases.all())
+        lease_ids = [item.id for item in all_leases]
 
         # Get active lease if available
         lease = next((item for item in all_leases if item.status == 'active'), None)
@@ -691,16 +692,63 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         invoices = Invoice.objects.none()
         payments = Payment.objects.none()
 
-        total_invoices_all = Invoice.objects.filter(
-            lease__tenant=tenant
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        zero = Decimal("0.00")
+        invoice_totals = {}
+        payment_totals = {}
+        security_totals = {}
+        if lease_ids:
+            invoice_totals = {
+                row["lease_id"]: row["total"] or zero
+                for row in (
+                    Invoice.objects.filter(lease_id__in=lease_ids)
+                    .values("lease_id")
+                    .annotate(total=Coalesce(Sum("amount"), zero))
+                )
+            }
+            payment_totals = {
+                row["lease_id"]: row["total"] or zero
+                for row in (
+                    Payment.objects.filter(lease_id__in=lease_ids)
+                    .values("lease_id")
+                    .annotate(
+                        total=Coalesce(
+                            Sum(
+                                Case(
+                                    When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                                    default=F("amount"),
+                                    output_field=money_field,
+                                )
+                            ),
+                            zero,
+                        )
+                    )
+                )
+            }
+            for row in (
+                SecurityDepositTransaction.objects.filter(lease_id__in=lease_ids)
+                .values("lease_id", "type")
+                .annotate(total=Coalesce(Sum("amount"), zero))
+            ):
+                security_totals.setdefault(row["lease_id"], {})[row["type"]] = row["total"] or zero
 
-        total_payments_all = Payment.objects.filter(
-            lease__tenant=tenant
-        ).aggregate(total=Sum('amount'))['total'] or 0
-
-        tenant.current_balance = total_invoices_all - \
-            total_payments_all  # <-- keep this as the source of truth
+        tenant.current_balance = Decimal("0.00")
+        for item in all_leases:
+            lease_balance = invoice_totals.get(item.id, zero) - payment_totals.get(item.id, zero)
+            sd = security_totals.get(item.id, {})
+            security_balance = (
+                (getattr(item, "security_deposit", None) or zero)
+                - sd.get("PAYMENT", zero)
+                - sd.get("ADJUST", zero)
+            )
+            if security_balance < zero:
+                security_balance = zero
+            item.list_balance = lease_balance
+            item.list_security_due = security_balance
+            item.tenant_detail_lease_balance = lease_balance
+            item.tenant_detail_security_balance = security_balance
+            item.tenant_detail_total_balance = lease_balance + security_balance
+            tenant.current_balance += item.tenant_detail_total_balance
 
         # Defaults for the “active lease” tables
         invoices = Invoice.objects.none()
@@ -724,7 +772,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         # After you compute tenant.current_balance in TenantDetailView
         context['all_leases'] = all_leases
         context['leases'] = all_leases
-        context['leases_total_balance'] = tenant.current_balance  # <-- add this
+        context['leases_total_balance'] = tenant.current_balance  # all lease total balances, active and inactive
 
         context.update({
             'invoices': invoices,

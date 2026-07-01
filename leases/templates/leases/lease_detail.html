@@ -833,7 +833,44 @@
       <!-- ======== FAMILY ======== -->
       <div class="ld-tab-pane" id="ld-tab-family">
         <div class="ld-inner-card">
-          <div class="ld-inner-head">Family Members</div>
+          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Family Members</span>
+            <div class="d-flex flex-wrap gap-1">
+              <button type="button" class="btn btn-sm btn-outline-success" id="copyFamilyPublicLinkBtn" data-link-url="{% url 'leases:lease_family_public_link' lease.pk %}">
+                <i class="fas fa-link"></i> Public Link
+              </button>
+              <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#leaseFamilyAddBox">
+                <i class="fas fa-plus"></i> Add Family
+              </button>
+            </div>
+          </div>
+          <div class="collapse" id="leaseFamilyAddBox">
+            <div class="p-2 border-bottom bg-light">
+              <form id="leaseFamilyExistingForm" method="post" action="{% url 'leases:lease_family_add' lease.pk %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <div class="col-12 col-lg-6">
+                  <label class="form-label small fw-semibold mb-1" for="leaseFamilyTenantSelect">Find Existing Tenant</label>
+                  <select id="leaseFamilyTenantSelect" name="tenant_id" class="form-select form-select-sm" data-search-url="{% url 'leases:tenant_quick_search' %}">
+                    <option value=""></option>
+                  </select>
+                </div>
+                <div class="col-12 col-lg-3">
+                  <label class="form-label small fw-semibold mb-1" for="leaseFamilyRelation">Relationship</label>
+                  <select id="leaseFamilyRelation" name="relation" class="form-select form-select-sm" required>
+                    <option value="">Select relationship</option>
+                    {% for item in relationship_types %}
+                      <option value="{{ item.id }}">{{ item.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-12 col-lg-3 d-flex flex-wrap gap-1">
+                  <button type="submit" class="btn btn-sm btn-success flex-fill">Link Tenant</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary flex-fill" id="openNewFamilyModalBtn">Add New</button>
+                </div>
+              </form>
+              <div class="form-text" id="leaseFamilySearchHelp">Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.</div>
+            </div>
+          </div>
           <div class="ld-tw">
             <table class="ld-tbl">
               <thead>
@@ -847,7 +884,7 @@
                   <th class="no-print">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="leaseFamilyRows">
                 {% for member in family_members %}
                   <tr>
                     <td><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
@@ -1109,6 +1146,89 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="newFamilyMemberModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="newFamilyMemberForm" method="post" enctype="multipart/form-data" action="{% url 'leases:lease_family_create_and_add' lease.pk %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Add New Family Member</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small">
+            This person is not in the tenant list. Enter their details once; TMS will create the tenant record and link it to this lease.
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">Full Name</label>
+              <input class="form-control form-control-sm" name="full_name" id="newFamilyFullName">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small fw-semibold">First Name</label>
+              <input class="form-control form-control-sm" name="first_name" id="newFamilyFirstName">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small fw-semibold">Last Name</label>
+              <input class="form-control form-control-sm" name="last_name" id="newFamilyLastName">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Relationship</label>
+              <select class="form-select form-select-sm" name="relation" id="newFamilyRelation" required>
+                <option value="">Select relationship</option>
+                {% for item in relationship_types %}
+                  <option value="{{ item.id }}">{{ item.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">CNIC / ID</label>
+              <input class="form-control form-control-sm" name="cnic" required>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Phone</label>
+              <input class="form-control form-control-sm" name="phone">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">DOB</label>
+              <input class="form-control form-control-sm" type="date" name="date_of_birth">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Gender</label>
+              <select class="form-select form-select-sm" name="gender">
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="O">Other</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Photo</label>
+              <input class="form-control form-control-sm" type="file" name="photo" accept="image/*">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">ID Front</label>
+              <input class="form-control form-control-sm" type="file" name="cnic_front" accept="image/*">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">ID Back</label>
+              <input class="form-control form-control-sm" type="file" name="cnic_back" accept="image/*">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Notes</label>
+              <textarea class="form-control form-control-sm" name="notes" rows="2"></textarea>
+            </div>
+          </div>
+          <div class="text-danger small mt-2 d-none" id="newFamilyError"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="newFamilySaveBtn">Save Tenant & Add Family</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -1124,6 +1244,216 @@
     document.querySelectorAll('.ld-tab-pane').forEach(p => p.classList.remove('active'));
     const t = document.getElementById('ld-tab-' + btn.dataset.tab);
     if (t) t.classList.add('active');
+  });
+})();
+
+(function () {
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const existingForm = document.getElementById('leaseFamilyExistingForm');
+  const tenantSelect = document.getElementById('leaseFamilyTenantSelect');
+  const relationSelect = document.getElementById('leaseFamilyRelation');
+  const newModalEl = document.getElementById('newFamilyMemberModal');
+  const newForm = document.getElementById('newFamilyMemberForm');
+  const errorBox = document.getElementById('newFamilyError');
+  const searchHelp = document.getElementById('leaseFamilySearchHelp');
+  let lastNoResultTerm = '';
+
+  function esc(value) {
+    return String(value || '').replace(/[&<>"']/g, function (ch) {
+      return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]);
+    });
+  }
+
+  function addFamilyRow(data) {
+    const tbody = document.getElementById('leaseFamilyRows');
+    if (!tbody) return;
+    tbody.querySelectorAll('.ld-empty').forEach(row => row.closest('tr')?.remove());
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
+      <td>${esc(data.relation || '-')}</td>
+      <td>&mdash;</td>
+      <td>&mdash;</td>
+      <td>${esc(data.phone || '—')}</td>
+      <td>${esc(data.age || '—')}</td>
+      <td class="no-print">
+        <div class="d-flex flex-wrap gap-1">
+          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-outline-dark">View</a>
+          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-outline-primary">Edit</a>
+          <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
+            <input type="hidden" name="csrfmiddlewaretoken" value="${esc(csrf)}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+          </form>
+        </div>
+      </td>`;
+    tbody.appendChild(row);
+  }
+
+  function splitFamilyName(term) {
+    const clean = String(term || '').trim().replace(/\s+/g, ' ');
+    if (!clean) return {full: '', first: '', last: ''};
+    const parts = clean.split(' ');
+    return {
+      full: clean,
+      first: parts.shift() || '',
+      last: parts.join(' ') || ''
+    };
+  }
+
+  function openNewFamilyModalFromTerm(term, showNotFoundMessage) {
+    if (!newModalEl) return;
+    const names = splitFamilyName(term);
+    const selectedRelation = relationSelect?.value || '';
+    if (selectedRelation) {
+      document.getElementById('newFamilyRelation').value = selectedRelation;
+    }
+    document.getElementById('newFamilyFullName').value = names.full;
+    document.getElementById('newFamilyFirstName').value = names.first;
+    document.getElementById('newFamilyLastName').value = names.last;
+    if (errorBox) {
+      if (showNotFoundMessage && names.full) {
+        errorBox.textContent = `"${names.full}" is not in the tenant list. Would you like to add this tenant?`;
+        errorBox.classList.remove('d-none');
+      } else {
+        errorBox.classList.add('d-none');
+        errorBox.textContent = '';
+      }
+    }
+    new bootstrap.Modal(newModalEl).show();
+  }
+
+  if (tenantSelect && window.jQuery && jQuery.fn.select2) {
+    jQuery(tenantSelect).select2({
+      placeholder: 'Search tenant name, phone or CNIC',
+      allowClear: true,
+      width: '100%',
+      minimumInputLength: 1,
+      ajax: {
+        url: tenantSelect.dataset.searchUrl,
+        dataType: 'json',
+        delay: 250,
+        data: params => ({q: params.term || ''}),
+        processResults: data => ({
+          results: (data || []).map(item => ({
+            id: item.id,
+            text: [item.name, item.phone1, item.cnic].filter(Boolean).join(' - ')
+          }))
+        })
+      },
+      language: {
+        inputTooShort: function () {
+          return 'Type to search tenant.';
+        },
+        searching: function () {
+          return 'Searching tenants...';
+        },
+        noResults: function () {
+          const term = (jQuery('.select2-container--open .select2-search__field').val() || '').trim();
+          if (term && term !== lastNoResultTerm) {
+            lastNoResultTerm = term;
+            if (searchHelp) {
+              searchHelp.innerHTML = `<span class="text-danger">"${esc(term)}" is not in the list.</span> Add this person as a new family member.`;
+            }
+            window.setTimeout(function () {
+              openNewFamilyModalFromTerm(term, true);
+            }, 150);
+          }
+          return 'No tenant found. Opening Add New...';
+        }
+      }
+    }).on('select2:open', function () {
+      window.setTimeout(function () {
+        const input = document.querySelector('.select2-container--open .select2-search__field');
+        if (input) input.focus();
+      }, 0);
+    }).on('select2:select', function () {
+      if (searchHelp) {
+        searchHelp.textContent = 'Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.';
+      }
+      lastNoResultTerm = '';
+    });
+  }
+
+  document.getElementById('openNewFamilyModalBtn')?.addEventListener('click', function () {
+    let term = '';
+    if (tenantSelect && window.jQuery && jQuery.fn.select2) {
+      term = jQuery('.select2-container--open .select2-search__field').val() || '';
+    }
+    openNewFamilyModalFromTerm(term, false);
+  });
+
+  document.getElementById('copyFamilyPublicLinkBtn')?.addEventListener('click', function () {
+    const btn = this;
+    fetch(btn.dataset.linkUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+      .then(({ok, payload}) => {
+        if (!ok || !payload.ok) throw new Error(payload.error || 'Could not create public link.');
+        if (navigator.clipboard) {
+          return navigator.clipboard.writeText(payload.url).then(() => payload);
+        }
+        window.prompt('Copy public family link:', payload.url);
+        return payload;
+      })
+      .then(payload => {
+        alert('Public family link copied. It is valid for 48 hours.');
+      })
+      .catch(error => alert(error.message));
+  });
+
+  existingForm?.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const data = new FormData(existingForm);
+    fetch(existingForm.action, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+      body: data
+    })
+    .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+    .then(({ok, payload}) => {
+      if (!ok || !payload.ok) throw new Error(payload.error || 'Could not add family member.');
+      addFamilyRow({
+        ...payload,
+        detail_url: "{% url 'tenants:tenant_detail' 0 %}".replace('/0/', '/' + payload.tenant_id + '/'),
+        edit_url: "{% url 'tenants:tenant_update' 0 %}".replace('/0/', '/' + payload.tenant_id + '/'),
+        remove_url: "{% url 'leases:lease_family_remove' lease.pk 0 %}".replace('/0/remove/', '/' + payload.id + '/remove/')
+      });
+      existingForm.reset();
+      if (tenantSelect && window.jQuery && jQuery.fn.select2) jQuery(tenantSelect).val(null).trigger('change');
+    })
+    .catch(error => alert(error.message));
+  });
+
+  newForm?.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const saveBtn = document.getElementById('newFamilySaveBtn');
+    if (errorBox) {
+      errorBox.classList.add('d-none');
+      errorBox.textContent = '';
+    }
+    if (saveBtn) saveBtn.disabled = true;
+    fetch(newForm.action, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+      body: new FormData(newForm)
+    })
+    .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+    .then(({ok, payload}) => {
+      if (!ok || !payload.ok) throw new Error(payload.error || 'Could not save family member.');
+      addFamilyRow(payload);
+      bootstrap.Modal.getInstance(newModalEl)?.hide();
+      newForm.reset();
+    })
+    .catch(error => {
+      if (errorBox) {
+        errorBox.textContent = error.message;
+        errorBox.classList.remove('d-none');
+      } else {
+        alert(error.message);
+      }
+    })
+    .finally(() => {
+      if (saveBtn) saveBtn.disabled = false;
+    });
   });
 })();
 

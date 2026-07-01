@@ -1,10 +1,13 @@
 # core/views.py
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib import messages
-from django.urls import reverse_lazy
+from django.core.files.base import ContentFile
+from django.http import Http404, HttpResponseForbidden
+from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from datetime import timedelta
 from decimal import Decimal
 
@@ -27,10 +30,50 @@ from django.contrib.auth.decorators import login_required
 METER_ONLINE_MINUTES = 3
 
 
+PENDING_KIND_LABELS = {
+    "lease": "Pending Lease",
+    "agreement": "Pending Agreement Edit",
+    "payment": "WhatsApp Payment",
+    "media": "WhatsApp Document / Media",
+    "maintenance": "WhatsApp Maintenance",
+    "family": "Lease Family Member",
+}
+
+
+def _pending_item_urls(kind, item):
+    return {
+        "detail": reverse("core:pending_approval_detail", args=[kind, item.pk]),
+        "approve": reverse("core:pending_approval_approve", args=[kind, item.pk]),
+        "reject": reverse("core:pending_approval_reject", args=[kind, item.pk]),
+    }
+
+
+def _media_preview_kind(file_name, media_type=""):
+    name = (file_name or "").lower()
+    media_type = (media_type or "").lower()
+    if media_type.startswith("image/") or name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        return "image"
+    if media_type.startswith("video/") or name.endswith((".mp4", ".mov", ".webm")):
+        return "video"
+    if media_type == "application/pdf" or name.endswith(".pdf"):
+        return "pdf"
+    return "file"
+
+
+def _pending_media_context(media):
+    if not media or not getattr(media, "file", None):
+        return {"file_url": "", "preview_kind": "file"}
+    return {
+        "file_url": media.file.url,
+        "preview_kind": _media_preview_kind(media.file.name, media.media_type),
+        "filename": media.original_filename or media.file.name,
+    }
+
+
 @login_required
 def pending_approvals(request):
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
-    from leases.models import PendingAgreementApproval
+    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission
 
     pending_payments = PendingWhatsAppPayment.objects.filter(
         status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
@@ -47,22 +90,25 @@ def pending_approvals(request):
     pending_agreements = PendingAgreementApproval.objects.filter(
         status=PendingAgreementApproval.STATUS_PENDING,
     ).select_related("lease__tenant", "lease__unit__property", "submitted_by")[:50]
+    pending_family = PendingLeaseFamilyMemberSubmission.objects.filter(
+        status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+    ).select_related("lease__tenant", "lease__unit__property", "primary_tenant", "relationship_type")[:50]
     sections = [
         {
             "title": "Pending Leases",
-            "admin_url": "admin:leases_lease_changelist",
+            "kind": "lease",
             "items": pending_leases,
             "count": Lease.objects.filter(status="pending_approval").count(),
         },
         {
             "title": "Pending Agreement Edits",
-            "admin_url": "admin:leases_pendingagreementapproval_changelist",
+            "kind": "agreement",
             "items": pending_agreements,
             "count": PendingAgreementApproval.objects.filter(status=PendingAgreementApproval.STATUS_PENDING).count(),
         },
         {
             "title": "WhatsApp Payments",
-            "admin_url": "admin:whatsapp_pendingwhatsapppayment_changelist",
+            "kind": "payment",
             "items": pending_payments,
             "count": PendingWhatsAppPayment.objects.filter(
                 status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
@@ -72,18 +118,314 @@ def pending_approvals(request):
         },
         {
             "title": "WhatsApp Documents / Media",
-            "admin_url": "admin:whatsapp_pendingwhatsappmedia_changelist",
+            "kind": "media",
             "items": pending_media,
             "count": PendingWhatsAppMedia.objects.filter(status=PendingWhatsAppMedia.STATUS_PENDING).count(),
         },
         {
             "title": "WhatsApp Maintenance",
-            "admin_url": "admin:whatsapp_pendingwhatsappmaintenance_changelist",
+            "kind": "maintenance",
             "items": pending_maintenance,
             "count": PendingWhatsAppMaintenance.objects.filter(status=PendingWhatsAppMaintenance.STATUS_PENDING).count(),
         },
+        {
+            "title": "Lease Family Members",
+            "kind": "family",
+            "items": pending_family,
+            "count": PendingLeaseFamilyMemberSubmission.objects.filter(status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING).count(),
+        },
     ]
+    for section in sections:
+        section["items"] = [
+            {"object": item, "urls": _pending_item_urls(section["kind"], item)}
+            for item in section["items"]
+        ]
     return render(request, "core/pending_approvals.html", {"sections": sections})
+
+
+def _pending_item_for_kind(kind, pk):
+    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission
+    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
+
+    if kind == "lease":
+        return get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=pk)
+    if kind == "agreement":
+        return get_object_or_404(
+            PendingAgreementApproval.objects.select_related("lease__tenant", "lease__unit__property", "submitted_by"),
+            pk=pk,
+        )
+    if kind == "payment":
+        return get_object_or_404(
+            PendingWhatsAppPayment.objects.select_related("tenant", "lease", "property", "unit", "created_payment"),
+            pk=pk,
+        )
+    if kind == "media":
+        return get_object_or_404(
+            PendingWhatsAppMedia.objects.select_related("tenant", "lease", "property", "unit", "approved_by"),
+            pk=pk,
+        )
+    if kind == "maintenance":
+        return get_object_or_404(
+            PendingWhatsAppMaintenance.objects.select_related("tenant", "lease", "property", "unit", "created_request", "approved_by")
+            .prefetch_related("media"),
+            pk=pk,
+        )
+    if kind == "family":
+        return get_object_or_404(
+            PendingLeaseFamilyMemberSubmission.objects.select_related(
+                "lease__tenant",
+                "lease__unit__property",
+                "primary_tenant",
+                "relationship_type",
+                "created_tenant",
+                "created_family_member",
+                "reviewed_by",
+            ),
+            pk=pk,
+        )
+    raise Http404("Unknown pending approval type.")
+
+
+@login_required
+def pending_approval_detail(request, kind, pk):
+    item = _pending_item_for_kind(kind, pk)
+    media_items = []
+    media_preview = None
+    if kind == "media":
+        media_preview = _pending_media_context(item)
+    elif kind == "payment":
+        if getattr(item, "screenshot", None):
+            media_preview = {
+                "file_url": item.screenshot.url,
+                "preview_kind": _media_preview_kind(item.screenshot.name),
+                "filename": item.screenshot.name,
+            }
+    elif kind == "maintenance":
+        media_items = [
+            {"object": media, **_pending_media_context(media)}
+            for media in item.media.all()
+        ]
+    return render(
+        request,
+        "core/pending_approval_detail.html",
+        {
+            "kind": kind,
+            "kind_label": PENDING_KIND_LABELS.get(kind, "Pending Approval"),
+            "item": item,
+            "media_preview": media_preview,
+            "media_items": media_items,
+            "urls": _pending_item_urls(kind, item),
+        },
+    )
+
+
+def _attach_pending_media_from_core(pending, user):
+    from leases.models import LeaseDocument
+    from properties.models import PropertyMedia, UnitMedia
+    from whatsapp.models import PendingWhatsAppMedia
+
+    if not pending.file:
+        raise ValueError("No file is attached.")
+    pending.file.open("rb")
+    content = ContentFile(pending.file.read(), name=pending.original_filename or pending.file.name)
+    pending.file.close()
+    if pending.purpose == PendingWhatsAppMedia.PURPOSE_PROPERTY and pending.property_id:
+        PropertyMedia.objects.create(
+            property=pending.property,
+            file=content,
+            description=pending.ai_notes[:300],
+            uploaded_by=user,
+            original_filename=pending.original_filename,
+        )
+        return
+    if pending.purpose == PendingWhatsAppMedia.PURPOSE_UNIT and pending.unit_id:
+        UnitMedia.objects.create(
+            unit=pending.unit,
+            file=content,
+            description=pending.ai_notes[:300],
+            uploaded_by=user,
+            original_filename=pending.original_filename,
+        )
+        return
+    if pending.purpose == PendingWhatsAppMedia.PURPOSE_LEASE and pending.lease_id:
+        LeaseDocument.objects.create(
+            lease=pending.lease,
+            file=content,
+            original_filename=pending.original_filename,
+            display_name=pending.original_filename or "WhatsApp lease document",
+            category="other",
+            description=pending.ai_notes,
+            uploaded_by=user,
+        )
+        return
+    if pending.purpose in {
+        PendingWhatsAppMedia.PURPOSE_OTHER,
+        PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+    }:
+        return
+    raise ValueError("This media needs a Property, Unit, or Lease Document target before approval.")
+
+
+def _approve_pending_payment(pending, user):
+    from whatsapp.models import PendingWhatsAppPayment
+
+    if pending.approved or pending.rejected:
+        raise ValueError("This payment has already been reviewed.")
+    if not pending.lease_id or not pending.amount:
+        raise ValueError("Payment needs a lease and amount before approval.")
+    payment = Payment.objects.create(
+        lease=pending.lease,
+        payment_date=pending.date or timezone.localdate(),
+        amount=pending.amount,
+        reference_number=pending.reference or "",
+        notes=f"Created from WhatsApp pending payment #{pending.pk}. {pending.ai_notes}",
+    )
+    pending.created_payment = payment
+    pending.approved = True
+    pending.rejected = False
+    pending.status = PendingWhatsAppPayment.STATUS_APPROVED
+    pending.approved_by = user
+    pending.approved_at = timezone.now()
+    pending.save(update_fields=[
+        "created_payment", "approved", "rejected", "status", "approved_by", "approved_at", "updated_at"
+    ])
+
+
+def _approve_pending_maintenance(pending, user):
+    from maintenance.models import MaintenanceRequest, MaintenanceRequestMedia
+    from whatsapp.models import PendingWhatsAppMaintenance
+
+    if pending.status != PendingWhatsAppMaintenance.STATUS_PENDING:
+        raise ValueError("This maintenance submission has already been reviewed.")
+    if not pending.unit_id:
+        raise ValueError("Maintenance needs a unit before approval.")
+    ticket = MaintenanceRequest.objects.create(
+        lease=pending.lease,
+        unit=pending.unit,
+        tenant=pending.tenant,
+        title=pending.issue_type or "WhatsApp Maintenance",
+        description=pending.description,
+        source=MaintenanceRequest.SOURCE_MANUAL,
+        category=pending.issue_type or "General",
+        priority="urgent" if pending.urgency in {"urgent", "emergency"} else "normal",
+        created_by=user,
+    )
+    for media in pending.media.all():
+        if not media.file:
+            continue
+        media.file.open("rb")
+        MaintenanceRequestMedia.objects.create(
+            request=ticket,
+            file=ContentFile(media.file.read(), name=media.original_filename or media.file.name),
+            description=media.ai_notes[:255],
+            uploaded_by=user,
+            original_filename=media.original_filename,
+        )
+        media.file.close()
+    pending.created_request = ticket
+    pending.status = PendingWhatsAppMaintenance.STATUS_APPROVED
+    pending.approved_by = user
+    pending.approved_at = timezone.now()
+    pending.save(update_fields=["created_request", "status", "approved_by", "approved_at", "updated_at"])
+
+
+@login_required
+@require_POST
+def pending_approval_approve(request, kind, pk):
+    from leases.models import PendingAgreementApproval
+    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia
+
+    item = _pending_item_for_kind(kind, pk)
+    try:
+        if kind == "lease":
+            if item.status != "pending_approval":
+                raise ValueError("This lease is not pending approval.")
+            item.status = "active"
+            item.save(update_fields=["status", "updated_at"])
+            messages.success(request, "Lease approved and activated.")
+            return redirect("leases:lease_detail", pk=item.pk)
+        if kind == "agreement":
+            if item.status != PendingAgreementApproval.STATUS_PENDING:
+                raise ValueError("This agreement edit is not pending.")
+            item.status = PendingAgreementApproval.STATUS_APPROVED
+            item.reviewed_by = request.user
+            item.reviewed_at = timezone.now()
+            item.lease.terms = item.proposed_terms
+            item.lease.save(update_fields=["terms", "updated_at"])
+            item.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_notes"])
+            messages.success(request, "Agreement edit approved and applied.")
+            return redirect("leases:lease_detail", pk=item.lease_id)
+        if kind == "family":
+            from leases.views import approve_pending_family_submission
+            approve_pending_family_submission(item, request.user)
+            if getattr(item, "action", "") == "remove":
+                messages.success(request, "Family member removal approved.")
+            else:
+                messages.success(request, "Family member approved and added to lease.")
+            return redirect("leases:lease_detail", pk=item.lease_id)
+        if kind == "payment":
+            _approve_pending_payment(item, request.user)
+            messages.success(request, "WhatsApp payment approved and posted.")
+        elif kind == "media":
+            if item.status != PendingWhatsAppMedia.STATUS_PENDING:
+                raise ValueError("This media has already been reviewed.")
+            _attach_pending_media_from_core(item, request.user)
+            item.status = PendingWhatsAppMedia.STATUS_APPROVED
+            item.approved_by = request.user
+            item.approved_at = timezone.now()
+            item.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
+            messages.success(request, "WhatsApp media approved.")
+        elif kind == "maintenance":
+            _approve_pending_maintenance(item, request.user)
+            messages.success(request, "Maintenance request approved and created.")
+            if item.created_request_id:
+                return redirect("maintenance:request_detail", pk=item.created_request_id)
+        else:
+            raise Http404("Unknown pending approval type.")
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("core:pending_approval_detail", kind=kind, pk=pk)
+    return redirect("core:pending_approvals")
+
+
+@login_required
+@require_POST
+def pending_approval_reject(request, kind, pk):
+    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission
+    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
+
+    item = _pending_item_for_kind(kind, pk)
+    if kind == "agreement":
+        item.status = PendingAgreementApproval.STATUS_REJECTED
+        item.reviewed_by = request.user
+        item.reviewed_at = timezone.now()
+        item.review_notes = request.POST.get("review_notes", "")
+        item.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_notes"])
+    elif kind == "payment":
+        item.rejected = True
+        item.approved = False
+        item.status = PendingWhatsAppPayment.STATUS_REJECTED
+        item.save(update_fields=["rejected", "approved", "status", "updated_at"])
+    elif kind == "media":
+        item.status = PendingWhatsAppMedia.STATUS_REJECTED
+        item.save(update_fields=["status", "updated_at"])
+    elif kind == "maintenance":
+        item.status = PendingWhatsAppMaintenance.STATUS_REJECTED
+        item.save(update_fields=["status", "updated_at"])
+    elif kind == "lease":
+        item.status = "rejected"
+        item.save(update_fields=["status", "updated_at"])
+    elif kind == "family":
+        item.status = PendingLeaseFamilyMemberSubmission.STATUS_REJECTED
+        item.reviewed_by = request.user
+        item.reviewed_at = timezone.now()
+        item.review_notes = request.POST.get("review_notes", "")
+        item.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_notes", "updated_at"])
+    else:
+        raise Http404("Unknown pending approval type.")
+    messages.success(request, "Pending item rejected.")
+    return redirect("core:pending_approvals")
 
 
 def _annotate_dashboard_lease_financials(queryset):
@@ -562,9 +904,7 @@ class SettingsView(FormView):
         ctx["tenant_interest_types"] = TenantInterestType.objects.order_by(
             "sort_order", "name"
         )
-        ctx["lease_relationship_types"] = LeaseRelationshipType.objects.order_by(
-            "sort_order", "name"
-        )
+        ctx["lease_relationship_types"] = LeaseRelationshipType.objects.order_by("name")
         try:
             from whatsapp.services.ai_config import get_whatsapp_ai_config
             from whatsapp.services.whatsapp import WhatsAppService
@@ -754,6 +1094,27 @@ def lease_relationship_type_save(request):
     relationship_type.sort_order = sort_order
     relationship_type.is_active = is_active
     relationship_type.save()
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def lease_relationship_type_inline_update(request, pk):
+    relationship_type = get_object_or_404(LeaseRelationshipType, pk=pk)
+    field = request.POST.get("field")
+    value = (request.POST.get("value") or "").strip()
+    if field == "name":
+        if not value:
+            return HttpResponseBadRequest("Name required")
+        relationship_type.name = value
+    elif field == "code":
+        if not value:
+            return HttpResponseBadRequest("Code required")
+        relationship_type.code = value
+    elif field == "is_active":
+        relationship_type.is_active = value in ("1", "true", "on", "yes")
+    else:
+        return HttpResponseBadRequest("Invalid field")
+    relationship_type.save(update_fields=[field])
     return JsonResponse({"ok": True})
 
 

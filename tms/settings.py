@@ -393,6 +393,10 @@ LOGIN_URL = "/tms/accounts/login/"
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "login"
 
+# Settings embeds several same-site management pages in inline panels.
+# Keep clickjacking protection for other sites while allowing our own pages.
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
 WEASYPRINT_BASEURL = "http://localhost:8000"
 WEASYPRINT_DPI = 300
 

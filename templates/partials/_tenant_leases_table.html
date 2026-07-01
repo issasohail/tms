@@ -38,7 +38,7 @@
         <th style="width:20px;">Status</th>
         <th style="min-width:90px;">Start – End</th>
         <th class="text-end " style="min-width:85px;">Monthly Payment</th>
-        <th class="text-end " style="min-width:85px;">Balance</th>
+        <th class="text-end " style="min-width:85px;">Total Balance</th>
         <th class="text-center" style="width:240px;">Actions</th>
       </tr>
     </thead>
@@ -64,8 +64,12 @@
                             
 
         <td class="text-end">
-          
-          {{ lease.get_balance|default:0|money:2 }}
+          {{ lease.tenant_detail_total_balance|default:0|money:2 }}
+          {% if lease.tenant_detail_security_balance %}
+            <small class="text-muted d-block">
+              Lease {{ lease.tenant_detail_lease_balance|default:0|money:2 }} | Sec {{ lease.tenant_detail_security_balance|default:0|money:2 }}
+            </small>
+          {% endif %}
         </td>
         <td class="text-center">
           <div class="d-inline-flex  gap-1 justify-content-center">

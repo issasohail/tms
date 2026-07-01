@@ -793,6 +793,22 @@ def _refresh_run_counts(run):
     run.save()
 
 
+def _skip_stale_monthly_billing_items(run, active_lease_ids):
+    stale_items = run.items.exclude(lease_id__in=active_lease_ids).exclude(
+        status__in=[
+            MonthlyBillingRunItem.STATUS_SENT,
+            MonthlyBillingRunItem.STATUS_EXCLUDED,
+            MonthlyBillingRunItem.STATUS_ROLLED_BACK,
+        ]
+    )
+    for item in stale_items:
+        item.status = MonthlyBillingRunItem.STATUS_SKIPPED
+        item.issue_code = MonthlyBillingRunItem.ISSUE_INACTIVE_LEASE
+        item.issue_message = "Lease is not active for this billing month."
+        item.save(update_fields=["status", "issue_code", "issue_message", "updated_at"])
+        _item_log(item, "skipped because lease is not active for billing month")
+
+
 def _progress(progress_callback, item, index, total, step):
     if progress_callback:
         progress_callback(item=item, index=index, total=total, step=step)
@@ -823,10 +839,13 @@ def run_monthly_billing_preflight(billing_month: date, *, created_by=None, creat
                 reasons.append("Manual Electric Billing: unit is not enrolled in Smart Meter billing.")
             elif not installations or not latest or timezone.localtime(latest.ts).date() < electric_month_end:
                 meter_pending += 1
-                reasons.append(f"Would skip electric: latest meter reading missing for {electric_month:%B %Y}.")
+                if latest:
+                    reasons.append(f"Would skip electric: last reading at {timezone.localtime(latest.ts):%Y-%m-%d %H:%M}; period ends {electric_month_end:%Y-%m-%d}.")
+                else:
+                    reasons.append(f"Would skip electric: no meter reading found; period ends {electric_month_end:%Y-%m-%d}.")
             if water_required and not _invoice_has_water_item(existing_invoice):
                 water_missing += 1
-                reasons.append("Would need water amount before sending.")
+                reasons.append("Water charge missing for this lease invoice.")
             if reasons:
                 status = "would_skip"
             else:
@@ -856,6 +875,7 @@ def run_monthly_billing_preflight(billing_month: date, *, created_by=None, creat
     run = get_or_create_monthly_billing_run(billing_month, created_by=created_by, created_by_label=created_by_label)
     run.status = MonthlyBillingRun.STATUS_PREFLIGHT
     run.save(update_fields=["status", "updated_at"])
+    _skip_stale_monthly_billing_items(run, [lease.pk for lease in leases])
 
     for index, lease in enumerate(leases, start=1):
         tenant = getattr(lease, "tenant", None)
@@ -899,7 +919,9 @@ def run_monthly_billing_preflight(billing_month: date, *, created_by=None, creat
                 _set_pending(
                     item,
                     MonthlyBillingRunItem.ISSUE_METER_MISSING,
-                    f"Latest meter reading missing for electric period ending {electric_month_end:%Y-%m-%d}.",
+                    "Last reading at "
+                    + (f"{item.latest_meter_reading_date:%Y-%m-%d}" if item.latest_meter_reading_date else "not available")
+                    + f"; electric period ends {electric_month_end:%Y-%m-%d}.",
                 )
                 continue
             if any(not installation.meter.is_active for installation in installations):
@@ -918,7 +940,7 @@ def run_monthly_billing_preflight(billing_month: date, *, created_by=None, creat
             item.save(update_fields=["issue_code", "issue_message", "updated_at"])
             _item_log(item, "manual electric billing identified")
         if item.water_required and not item.water_resolved:
-            _set_pending(item, MonthlyBillingRunItem.ISSUE_WATER_MISSING, "Water charge missing.")
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_WATER_MISSING, "Water charge missing for this lease invoice.")
             continue
         item.status = MonthlyBillingRunItem.STATUS_DRAFT
         item.save(update_fields=["status", "updated_at"])
@@ -1114,7 +1136,7 @@ def prepare_monthly_billing_ready(run, *, progress_callback=None):
             _set_pending(item, MonthlyBillingRunItem.ISSUE_MISSING_RECURRING, "Active lease has no recurring invoice setup.")
             continue
         if item.water_required and not item.water_resolved:
-            _set_pending(item, MonthlyBillingRunItem.ISSUE_WATER_MISSING, "Water charge missing.")
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_WATER_MISSING, "Water charge missing for this lease invoice.")
             continue
         if not getattr(getattr(item.lease, "tenant", None), "phone", ""):
             _set_pending(item, MonthlyBillingRunItem.ISSUE_PHONE_MISSING, "Tenant phone missing.")

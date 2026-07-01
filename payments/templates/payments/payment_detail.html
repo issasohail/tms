@@ -29,6 +29,9 @@
             <button onclick="window.print()" class="btn btn-primary btn-sm me-1">
                 <i class="fas fa-print me-1"></i> Print
             </button>
+            <button type="button" onclick="downloadReceiptJPG()" class="btn btn-secondary btn-sm me-1">
+                <i class="fas fa-image me-1"></i> JPG
+            </button>
             <button onclick="sendEmail()" class="btn btn-info btn-sm me-1">
                 <i class="fas fa-envelope me-1"></i> Email
             </button>
@@ -548,6 +551,51 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         link.click();
         document.body.removeChild(link);
     };
+
+    function loadReceiptHtml2Canvas() {
+        if (window.html2canvas) return Promise.resolve(window.html2canvas);
+        return new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+            script.onload = () => resolve(window.html2canvas);
+            script.onerror = () => reject(new Error("Could not load JPG export tool."));
+            document.head.appendChild(script);
+        });
+    }
+
+    async function downloadReceiptJPG() {
+        const target = document.querySelector(".printable-content");
+        if (!target) {
+            alert("Receipt content not found.");
+            return;
+        }
+        document.body.classList.add("exporting-receipt-jpg");
+        try {
+            const html2canvas = await loadReceiptHtml2Canvas();
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            const width = Math.ceil(target.scrollWidth) + 20;
+            const height = Math.ceil(target.scrollHeight) + 20;
+            const canvas = await html2canvas(target, {
+                backgroundColor: "#ffffff",
+                scale: 2,
+                useCORS: true,
+                windowWidth: Math.max(520, width),
+                windowHeight: Math.max(760, height),
+                width: width,
+                height: height
+            });
+            const link = document.createElement("a");
+            link.href = canvas.toDataURL("image/jpeg", 0.95);
+            link.download = "Payment_Receipt_{{ payment.pk }}.jpg";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            alert(error && error.message ? error.message : "Could not export JPG.");
+        } finally {
+            document.body.classList.remove("exporting-receipt-jpg");
+        }
+    }
 
     // --- Send SMS ---
     window.sendSMS = function() {

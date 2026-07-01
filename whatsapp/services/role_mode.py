@@ -118,7 +118,8 @@ def guest_menu_text():
         "Guest Menu\n\n"
         "1. Vacant units\n"
         "2. Tenant registration\n"
-        "3. Contact office\n\n"
+        "3. Contact office\n"
+        "4. Suggestion / advice\n\n"
         "Reply with a number or type your request."
     )
 
@@ -134,7 +135,8 @@ def staff_menu_text(user=None):
         "6. Reports\n"
         "7. Upload Documents\n"
         "8. Search\n"
-        "9. Switch Mode\n\n"
+        "9. Switch Mode\n"
+        "10. Suggestion / advice\n\n"
         "Reply with a number or type your request."
     )
 
@@ -150,7 +152,8 @@ def tenant_menu_text():
         "6. Upload receipt or photo\n"
         "7. Vacant units\n"
         "8. Tenant registration\n"
-        "9. Contact office\n\n"
+        "9. Contact office\n"
+        "10. Suggestion / advice\n\n"
         "Reply with a number or type your request."
     )
 

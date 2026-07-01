@@ -71,6 +71,8 @@ EXEMPT_URL_NAMES = {
     "suggestion_detail",
     "suggestion_status_update",
     "tenant_public_registration",
+    "public_lease_family_add",
+    "public_lease_family_cnic_check",
     "public_lease_files_share",
     "public_lease_file_share",
     "public_lease_file_download",

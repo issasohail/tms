@@ -209,6 +209,33 @@ def create_ticket(cleaned_data, user, files=None):
     return ticket
 
 
+def create_whatsapp_ticket(message, phone_number="", user_name="", screen_name="WhatsApp", priority="NORMAL"):
+    data = _read_payload()
+    ticket_id = int(data.get("last_id") or 0) + 1
+    message = (message or "").strip()
+    title = message.splitlines()[0].strip()[:80] if message else "WhatsApp suggestion"
+    now = _now()
+    ticket = SuggestionTicket(
+        id=ticket_id,
+        ticket_type="SUGGESTION",
+        title=title or "WhatsApp suggestion",
+        description=message,
+        status="PENDING",
+        priority=priority or "NORMAL",
+        screen_name=screen_name or "WhatsApp",
+        user_name_snapshot=user_name or "WhatsApp",
+        phone_snapshot=phone_number or "",
+        created_at=now,
+        updated_at=now,
+        photos=[],
+        replies=[],
+    )
+    data["last_id"] = ticket_id
+    data["tickets"].append(ticket.to_dict())
+    _write_payload(data)
+    return ticket
+
+
 def update_status(ticket_id, status):
     ticket = get_ticket(ticket_id)
     if not ticket:

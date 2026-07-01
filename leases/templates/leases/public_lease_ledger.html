@@ -1,0 +1,99 @@
+{% load humanize %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lease Ledger</title>
+  <style>
+    body { margin:0; background:#f4f6f8; color:#111827; font-family:Arial, sans-serif; font-size:13px; }
+    .page { max-width:1120px; margin:0 auto; padding:18px; }
+    .sheet { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:18px; }
+    .head { display:flex; justify-content:space-between; gap:12px; border-bottom:2px solid #111827; padding-bottom:10px; margin-bottom:12px; }
+    h1 { font-size:20px; margin:0 0 4px; }
+    .muted { color:#6b7280; }
+    .summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px; margin:12px 0; }
+    .box { border:1px solid #e5e7eb; border-radius:6px; padding:8px; }
+    .box strong { display:block; font-size:14px; margin-top:3px; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:7px 8px; vertical-align:top; }
+    th { background:#f8fafc; color:#4b5563; text-transform:uppercase; font-size:11px; }
+    .num { text-align:right; white-space:nowrap; }
+    .credit { color:#059669; }
+    .debit { color:#dc2626; }
+    .footer { margin-top:14px; font-size:11px; color:#6b7280; text-align:center; }
+    @media print { body { background:#fff; } .page { padding:0; } .sheet { border:0; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="sheet">
+      <div class="head">
+        <div>
+          <h1>Lease Ledger for {{ tenant.get_full_name }}</h1>
+          <div class="muted">{{ lease.unit.property.property_name }} / {{ lease.unit.unit_number }}</div>
+        </div>
+        <div class="num">
+          <strong>Current Balance: Rs. {{ current_balance|floatformat:2|intcomma }}</strong><br>
+          <span class="muted">Generated {{ generated_on|date:"M d, Y H:i" }}</span><br>
+          <span class="muted">Link valid until {{ expires_at|date:"M d, Y H:i" }}</span>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="box">Lease Period<strong>{{ lease.start_date|date:"M d, Y" }} - {{ lease.end_date|date:"M d, Y" }}</strong></div>
+        <div class="box">Rent<strong>Rs. {{ lease.monthly_rent|floatformat:2|intcomma }}</strong></div>
+        <div class="box">Security Required<strong>Rs. {{ security_totals.required|floatformat:2|intcomma }}</strong></div>
+        <div class="box">Security Balance<strong>Rs. {{ security_totals.balance_to_collect|floatformat:2|intcomma }}</strong></div>
+      </div>
+
+      <h2 style="font-size:16px;margin:16px 0 6px;">Rent Ledger</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th><th class="num">Balance</th></tr>
+        </thead>
+        <tbody>
+          {% for row in transactions %}
+            <tr>
+              <td>{{ row.serial_no }}</td>
+              <td>{{ row.date|date:"M d, Y" }}</td>
+              <td>{{ row.type }}</td>
+              <td>{{ row.description|default:"-" }}</td>
+              <td class="num {% if row.is_credit %}credit{% else %}debit{% endif %}">
+                {% if row.is_credit %}+{% else %}-{% endif %}Rs. {{ row.display_amount|floatformat:2|intcomma }}
+              </td>
+              <td class="num">Rs. {{ row.balance|floatformat:2|intcomma }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="muted">No ledger entries found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <h2 style="font-size:16px;margin:18px 0 6px;">Security Deposit Ledger</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th><th class="num">Held Balance</th></tr>
+        </thead>
+        <tbody>
+          {% for row in security_rows %}
+            <tr>
+              <td>{{ row.serial_no }}</td>
+              <td>{{ row.date|date:"M d, Y" }}</td>
+              <td>{{ row.type }}</td>
+              <td>{{ row.description|default:"-" }}</td>
+              <td class="num {% if row.is_credit %}credit{% else %}debit{% endif %}">
+                {% if row.is_credit %}+{% else %}-{% endif %}Rs. {{ row.display_amount|floatformat:2|intcomma }}
+              </td>
+              <td class="num">Rs. {{ row.balance|floatformat:2|intcomma }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="muted">No security deposit entries found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="footer">This is a read-only public ledger link. Please contact the office for corrections.</div>
+    </section>
+  </main>
+</body>
+</html>

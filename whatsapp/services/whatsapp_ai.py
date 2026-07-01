@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from invoices.models import Invoice
 from invoices.public_links import make_public_invoice_token
+from leases.public_links import create_public_ledger_link, public_ledger_url
 from leases.models import Lease
 from maintenance.models import MaintenanceRequest
 from properties.models import Property, Unit
@@ -117,18 +118,29 @@ class WhatsAppAIAssistant:
         if state_response:
             return state_response
 
+        was_mode_selection = (
+            conversation.pending_state == "mode_selection"
+            or (not conversation.selected_mode_is_valid and identity.has_staff and identity.has_active_tenant)
+        )
         mode = resolve_mode(conversation, text, identity)
 
         if mode == "choose_mode":
             return mode_selection_text(), "mode_selection", {"staff_user": identity.staff_user, "tenant": identity.tenant}
         if mode == WhatsAppConversation.MODE_GUEST:
-            return self._handle_guest_message(text), "guest", {}
+            return self._handle_guest_message(message_log, conversation, text), "guest", {}
         if mode == WhatsAppConversation.MODE_STAFF:
             return self._handle_staff_message(message_log, conversation, text, message_type, identity), "staff", {
                 "staff_user": identity.staff_user,
             }
 
         selected_lease = self._selected_active_lease(conversation)
+        lowered = (text or "").strip().lower()
+
+        if was_mode_selection and lowered in {"2", "tenant", "continue as tenant"}:
+            lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
+            if isinstance(lease, str):
+                return lease, "lease_lookup", {}
+            return self._tenant_welcome_menu(lease), "tenant_welcome", {"lease": lease, "tenant": lease.tenant}
 
         if self._consume_lease_selection(text, conversation):
             selected_lease = conversation.selected_lease
@@ -193,12 +205,47 @@ class WhatsAppAIAssistant:
                 {},
             )
 
-        intent = detect_intent(text)
+        if lowered in {"hi", "hello", "start", "menu", "main menu", ""}:
+            lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
+            if isinstance(lease, str):
+                return lease, "lease_lookup", {}
+            if conversation.pending_state:
+                conversation.pending_state = ""
+                conversation.save(update_fields=["pending_state", "updated_at"])
+            return self._tenant_welcome_menu(lease), "tenant_welcome", {"lease": lease, "tenant": lease.tenant}
+
         lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
         if isinstance(lease, str):
             return lease, "lease_lookup", {}
 
-        lowered = (text or "").strip().lower()
+        invoice_payment_response = self._consume_tenant_invoice_payment_menu(conversation, text, lease)
+        if invoice_payment_response:
+            return invoice_payment_response
+
+        if any(word in lowered for word in ("ledger", "statement")):
+            return self._ledger_link_reply(lease), "ledger", {"lease": lease, "tenant": getattr(lease, "tenant", None)}
+        if any(word in lowered for word in ("family", "member", "members")):
+            return self._family_list_reply(lease, message_log.phone_number), "family_list", {"lease": lease, "tenant": getattr(lease, "tenant", None)}
+
+        if lowered in {
+            "2",
+            "invoice",
+            "invoices",
+            "payment",
+            "payments",
+            "payment history",
+            "recent payments",
+            "invoice / payment",
+        }:
+            conversation.pending_state = "tenant_invoice_payment_menu"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return (
+                _tenant_invoice_payment_menu_text(),
+                "tenant_invoice_payment_menu",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
+
+        intent = detect_intent(text)
         if lowered in {"7", "vacant", "vacancy", "available", "vacant units"}:
             return self._available_units_reply(), "availability", {}
         if lowered in {"8", "registration", "tenant registration"}:
@@ -214,6 +261,12 @@ class WhatsAppAIAssistant:
             return (
                 "Please tell me what you need, and our office team will follow up.",
                 "contact_office",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
+        if lowered in {"10", "suggestion", "suggestions", "advice", "advise", "feedback", "idea"}:
+            return (
+                self._start_suggestion_capture(conversation, "WhatsApp Tenant"),
+                "suggestion_prompt",
                 {"lease": lease, "tenant": getattr(lease, "tenant", None)},
             )
         if lowered in {"5", "meter", "meter reading", "meter readings", "utility", "utility bills"}:
@@ -240,7 +293,15 @@ class WhatsAppAIAssistant:
             )
         if intent == "availability":
             return self._available_units_reply(), "availability", {}
-        if intent in {"balance", "lease", "payments"} and lease:
+        if intent == "payments":
+            conversation.pending_state = "tenant_invoice_payment_menu"
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return (
+                _tenant_invoice_payment_menu_text(),
+                "tenant_invoice_payment_menu",
+                {"lease": lease, "tenant": getattr(lease, "tenant", None)},
+            )
+        if intent in {"balance", "lease"} and lease:
             return self._lease_reply(intent, lease), intent, {"lease": lease, "tenant": lease.tenant}
 
         return (
@@ -293,6 +354,25 @@ class WhatsAppAIAssistant:
 
     def _consume_global_pending_state(self, message_log, conversation, text, identity):
         lowered = (text or "").strip().lower()
+        if conversation.pending_state == "suggestion_capture":
+            if lowered in {"cancel", "back", "menu", "main menu"}:
+                conversation.pending_state = ""
+                self._clear_context_keys(conversation, "suggestion_source")
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                return (
+                    "Suggestion cancelled.\n\n" + self._menu_for_identity(identity),
+                    "suggestion_cancelled",
+                    {},
+                )
+            ticket = self._create_suggestion_ticket(message_log, conversation, text, identity)
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "suggestion_source")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                f"Thanks. Your suggestion has been saved for review.\nSuggestion #{ticket.id}",
+                "suggestion_saved",
+                {"suggestion_id": ticket.id},
+            )
         if conversation.pending_state in {"payment_apply_lookup", "payment_apply_lease_selection"}:
             if lowered in {"cancel", "back", "menu", "main menu"}:
                 conversation.pending_state = ""
@@ -311,6 +391,31 @@ class WhatsAppAIAssistant:
                 )
             return self._consume_payment_apply_lookup(message_log, conversation, text, identity)
         return None
+
+    def _start_suggestion_capture(self, conversation, source="WhatsApp"):
+        conversation.pending_state = "suggestion_capture"
+        conversation.context["suggestion_source"] = source
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            "Please send your suggestion or advice in one message.\n\n"
+            "You can type CANCEL to stop."
+        )
+
+    def _create_suggestion_ticket(self, message_log, conversation, text, identity):
+        from core.suggestion_store import create_whatsapp_ticket
+
+        user_name = "WhatsApp"
+        if identity.staff_user:
+            user_name = identity.staff_user.get_username()
+        elif identity.tenant:
+            user_name = identity.tenant.get_full_name() or str(identity.tenant)
+        screen_name = conversation.context.get("suggestion_source") or "WhatsApp"
+        return create_whatsapp_ticket(
+            text,
+            phone_number=message_log.phone_number,
+            user_name=user_name,
+            screen_name=screen_name,
+        )
 
     def _conversation_for(self, message_log):
         conversation, _ = WhatsAppConversation.objects.get_or_create(
@@ -358,11 +463,13 @@ class WhatsAppAIAssistant:
             return lease
         return None
 
-    def _handle_guest_message(self, text):
+    def _handle_guest_message(self, message_log, conversation, text):
         intent = detect_intent(text)
         lowered = (text or "").strip().lower()
         if lowered in {"menu", "hi", "hello", "start", ""}:
             return guest_menu_text()
+        if lowered in {"4", "suggestion", "suggestions", "advice", "advise", "feedback", "idea"}:
+            return self._start_suggestion_capture(conversation, "WhatsApp Guest")
         if intent in {"payments", "balance", "lease"}:
             return "Please send Property, Unit, Contact Number, and Tenant Name so we can find the correct lease/ledger."
         if lowered in {"1", "vacant", "vacancy", "available"} or intent == "availability":
@@ -374,6 +481,8 @@ class WhatsAppAIAssistant:
                 "2. Contact office\n\n"
                 "Reply with a number or type your request."
             )
+        if lowered in {"3", "contact", "contact office", "office"}:
+            return "Please tell me what you need, and our office team will follow up."
         return guest_menu_text()
 
     def _handle_staff_message(self, message_log, conversation, text, message_type, identity):
@@ -472,6 +581,9 @@ class WhatsAppAIAssistant:
             conversation.pending_state = "staff_search_category"
             conversation.save(update_fields=["pending_state", "updated_at"])
             return _staff_search_menu_text()
+        if lowered in {"10", "suggestion", "suggestions", "advice", "advise", "feedback", "idea"}:
+            log_staff_action(staff_user, message_log.phone_number, "suggestion_prompt", "allowed")
+            return self._start_suggestion_capture(conversation, "WhatsApp Staff")
         agreement_response = self._handle_staff_agreement_link(message_log, text, staff_user)
         if agreement_response:
             return agreement_response
@@ -869,7 +981,18 @@ class WhatsAppAIAssistant:
             return f"Lease Balance\n\n{ctx.property.property_name} / {ctx.unit.unit_number}\nTenant: {ctx.tenant.get_full_name()}\nOutstanding: Rs. {ctx.balance}"
         if action == "lease_ledger":
             log_staff_action(staff_user, message_log.phone_number, "lease_ledger_viewed", "allowed", lease=lease, property=ctx.property, tenant=ctx.tenant)
-            lines = [f"Lease Ledger\n\n{ctx.property.property_name} / {ctx.unit.unit_number}", f"Outstanding: Rs. {ctx.balance}", "", "Recent payments:"]
+            base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+            link = create_public_ledger_link(lease, phone_number=message_log.phone_number, staff_user=staff_user)
+            ledger_link = public_ledger_url(base_url, link)
+            lines = [
+                f"Lease Ledger\n\n{ctx.property.property_name} / {ctx.unit.unit_number}",
+                f"Outstanding: Rs. {ctx.balance}",
+                "",
+                "Public ledger link valid for 24 hours:",
+                ledger_link,
+                "",
+                "Recent payments:",
+            ]
             if ctx.recent_payments:
                 for payment in ctx.recent_payments[:5]:
                     lines.append(f"- {payment.payment_date}: Rs. {payment.amount} ({payment.reference_number or 'no reference'})")
@@ -1587,11 +1710,119 @@ class WhatsAppAIAssistant:
             {"pending_payment_id": pending.pk, "pending_media_id": media.pk},
         )
 
+    def _tenant_welcome_menu(self, lease):
+        ctx = build_lease_context(lease)
+        tenant_name = ctx.tenant.get_full_name() or str(ctx.tenant)
+        return (
+            f"Welcome {tenant_name}. Active lease: {ctx.property.property_name} / {ctx.unit.unit_number}.\n\n"
+            f"{tenant_menu_text()}"
+        )
+
+    def _consume_tenant_invoice_payment_menu(self, conversation, text, lease):
+        if conversation.pending_state != "tenant_invoice_payment_menu":
+            return None
+
+        lowered = (text or "").strip().lower()
+        if lowered in {"5", "back", "menu", "main menu"}:
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return self._tenant_welcome_menu(lease), "tenant_menu", {"lease": lease, "tenant": lease.tenant}
+        if lowered in {"1", "outstanding", "outstanding invoice", "outstanding invoices", "invoice", "invoices"}:
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return self._outstanding_invoices_reply(lease), "outstanding_invoices", {"lease": lease, "tenant": lease.tenant}
+        if lowered in {"2", "recent", "recent payments", "payments", "payment history"}:
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return self._lease_reply("payments", lease), "payments", {"lease": lease, "tenant": lease.tenant}
+        if lowered in {"3", "ledger", "full ledger", "statement"}:
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return self._ledger_link_reply(lease), "ledger", {"lease": lease, "tenant": lease.tenant}
+        if lowered in {"4", "upload", "upload receipt", "receipt", "photo"}:
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return (
+                "Please upload the payment receipt here, and I will attach it to your active lease for admin review.",
+                "upload_prompt",
+                {"lease": lease, "tenant": lease.tenant},
+            )
+
+        return (
+            "Please reply with a number from the Invoice / Payment menu.\n\n"
+            + _tenant_invoice_payment_menu_text(),
+            "tenant_invoice_payment_menu_retry",
+            {"lease": lease, "tenant": lease.tenant},
+        )
+
+    def _outstanding_invoices_reply(self, lease):
+        invoices = list(
+            Invoice.objects.filter(lease=lease)
+            .exclude(status__in=["paid", "cancelled"])
+            .order_by("-due_date", "-issue_date")[:5]
+        )
+        if not invoices:
+            return "No outstanding invoices are recorded for your active lease."
+        lines = ["Outstanding invoices:"]
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        for invoice in invoices:
+            amount = invoice.amount or Decimal("0.00")
+            token = make_public_invoice_token(invoice.pk)
+            link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
+            lines.append(
+                f"{invoice.invoice_number}: Rs. {amount} due {invoice.due_date} ({invoice.get_status_display()})\n{link}"
+            )
+        return "\n".join(lines)
+
+    def _ledger_link_reply(self, lease):
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        link = create_public_ledger_link(lease)
+        ledger_link = public_ledger_url(base_url, link)
+        return f"Full ledger:\n{ledger_link}"
+
+    def _family_public_link_reply_url(self, lease, phone_number=""):
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        link = WhatsAppExternalLinkToken.objects.create(
+            link_type=WhatsAppExternalLinkToken.LINK_LEASE_FAMILY_ADD,
+            phone_number=phone_number or "",
+            tenant=lease.tenant,
+            target_app_label="leases",
+            target_model="Lease",
+            target_object_id=lease.pk,
+            metadata={"purpose": "lease_family_member_add_or_remove", "source": "whatsapp"},
+            expires_at=timezone.now() + timedelta(hours=48),
+        )
+        return f"{base_url.rstrip('/')}{reverse('leases:public_lease_family_add', args=[link.token])}"
+
+    def _family_list_reply(self, lease, phone_number=""):
+        members = list(
+            lease.family_members.select_related("family_member", "relationship_type")
+            .order_by("sort_order", "family_member__first_name", "family_member__last_name")
+        )
+        lines = [
+            "Family members linked to your lease:",
+            f"Lease: {lease.unit.property.property_name} / {lease.unit.unit_number}",
+        ]
+        if members:
+            for index, member in enumerate(members, start=1):
+                tenant = member.family_member
+                relation = member.relationship_type.name if member.relationship_type else member.relationship
+                phone = f" - {tenant.phone}" if tenant.phone else ""
+                lines.append(f"{index}. {tenant.get_full_name()} ({relation}){phone}")
+        else:
+            lines.append("No family members are linked yet.")
+        lines.extend([
+            "",
+            "To add a family member or request removal, open this link:",
+            self._family_public_link_reply_url(lease, phone_number),
+            "Link is valid for 48 hours and changes need admin approval.",
+        ])
+        return "\n".join(lines)
+
     def _lease_reply(self, intent, lease):
         ctx = build_lease_context(lease)
         if intent == "payments":
-            base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
-            ledger_link = f"{base_url.rstrip('/')}{reverse('leases:lease_ledger_by_pk', args=[lease.pk])}"
+            ledger_link = self._ledger_link_reply(lease).split("\n", 1)[1]
             if not ctx.recent_payments:
                 return (
                     "No recent payments are recorded for your active lease.\n\n"
@@ -1644,7 +1875,6 @@ def detect_intent(text):
     lowered = (text or "").strip().lower()
     tenant_menu_number_map = {
         "1": "balance",
-        "2": "payments",
         "3": "maintenance",
         "4": "lease",
     }
@@ -1664,6 +1894,18 @@ def detect_intent(text):
     if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues", "baqaya", "remaining", "pending rent")):
         return "balance"
     return "general"
+
+
+def _tenant_invoice_payment_menu_text():
+    return (
+        "Invoice / Payment\n\n"
+        "1. Outstanding invoices\n"
+        "2. Recent payments\n"
+        "3. Full ledger link\n"
+        "4. Upload receipt\n"
+        "5. Back\n\n"
+        "Reply with a number."
+    )
 
 
 def _add_tenant_menu_text():

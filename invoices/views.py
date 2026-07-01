@@ -42,7 +42,7 @@ from properties.models import Property, Unit  # adjust imports
 
 from .forms import InvoiceForm
 from .models import Invoice, InvoiceItem, ItemCategory,SecurityDepositTransaction
-from .public_links import load_public_invoice_token
+from .public_links import load_public_invoice_token, make_public_invoice_token
 from django.db import transaction
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
@@ -2846,7 +2846,7 @@ def invoice_whatsapp_message(request, pk: int):
     # Prefer tenant phone on the lease; customize if you store phone elsewhere
     phone = getattr(getattr(getattr(inv, "lease", None),
                     "tenant", None), "phone", "")
-    message = build_invoice_whatsapp_message.__wrapped__(inv) if hasattr(build_invoice_whatsapp_message, "__wrapped__") else build_invoice_whatsapp_message(inv)  # noqa
+    message = build_invoice_whatsapp_message(request, inv)
 
     return JsonResponse({
         "phone": phone or "",
@@ -2880,6 +2880,10 @@ def build_invoice_whatsapp_message(request, inv):
     currency_symbol = getattr(settings, "CURRENCY_SYMBOL", "Rs.")
     if not currency_symbol:
         currency_symbol = "Rs."
+    public_token = make_public_invoice_token(inv.pk)
+    public_url = request.build_absolute_uri(
+        reverse("invoices:public_invoice_detail", args=[public_token])
+    )
 
     items = []
     for index, item in enumerate(inv.items.select_related("category").all(), start=1):
@@ -2918,6 +2922,9 @@ def build_invoice_whatsapp_message(request, inv):
         "",
         f"Total: {currency_symbol} {float(amount):,.2f}",
         f"New Balance: * {currency_symbol} {float(total_balance or 0):,.2f}*",
+        "",
+        "View invoice:",
+        public_url,
         "",
         "Thank you!",
     ])
@@ -3107,6 +3114,7 @@ from invoices.services import (
     run_monthly_billing_preflight,
     send_monthly_billing_item,
     send_monthly_billing_ready,
+    _latest_meter_reading_for_lease,
 )
 from invoices.billing_queue import enqueue_billing_job
 from invoices.models import BillingProgressJob, MonthlyBillingRun, MonthlyBillingRunItem
@@ -3136,16 +3144,42 @@ class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        items = self.object.items.select_related("lease__tenant", "lease__unit__property", "invoice")
+        items_qs = self.object.items.select_related("lease__tenant", "lease__unit__property", "invoice")
+        items = list(items_qs)
+        electric_period_end = None
+        for item in items:
+            if item.electric_required and item.lease_id and item.electric_period_end:
+                electric_period_end = item.electric_period_end
+                break
+        if electric_period_end:
+            for item in items:
+                if item.electric_required and item.lease_id:
+                    latest, _installations = _latest_meter_reading_for_lease(item.lease, electric_period_end)
+                    item.latest_meter_reading_at = timezone.localtime(latest.ts) if latest else None
+        billable_items = items_qs.exclude(status__in=[
+            MonthlyBillingRunItem.STATUS_SKIPPED,
+            MonthlyBillingRunItem.STATUS_EXCLUDED,
+        ])
+        electric_items = billable_items.filter(electric_required=True)
+        ctx["billing_kpis"] = {
+            "billable_count": billable_items.count(),
+            "recurring_found_count": billable_items.filter(recurring_invoice_found=True).count(),
+            "electric_total_count": electric_items.count(),
+            "electric_pending_count": electric_items.filter(
+                electric_ready=False,
+                status=MonthlyBillingRunItem.STATUS_PENDING,
+            ).count(),
+            "electric_ready_count": electric_items.filter(electric_ready=True).count(),
+        }
         ctx["tabs"] = [
-            ("needs_attention", "Needs Attention", items.filter(status=MonthlyBillingRunItem.STATUS_PENDING)),
-            ("ready_to_send", "Ready to Send", items.filter(status=MonthlyBillingRunItem.STATUS_READY)),
-            ("sending", "Sending / PDF Ready", items.filter(status=MonthlyBillingRunItem.STATUS_READY).exclude(invoice_pdf="")),
-            ("sent", "Sent", items.filter(status=MonthlyBillingRunItem.STATUS_SENT)),
-            ("failed", "Failed", items.filter(status=MonthlyBillingRunItem.STATUS_FAILED)),
-            ("excluded", "Excluded", items.filter(status=MonthlyBillingRunItem.STATUS_EXCLUDED)),
-            ("rolled_back", "Rolled Back", items.filter(status=MonthlyBillingRunItem.STATUS_ROLLED_BACK)),
-            ("skipped", "Skipped", items.filter(status=MonthlyBillingRunItem.STATUS_SKIPPED)),
+            ("needs_attention", "Needs Attention", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_PENDING]),
+            ("ready_to_send", "Ready to Send", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_READY]),
+            ("sending", "Sending / PDF Ready", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_READY and item.invoice_pdf]),
+            ("sent", "Sent", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_SENT]),
+            ("failed", "Failed", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_FAILED]),
+            ("excluded", "Excluded", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_EXCLUDED]),
+            ("rolled_back", "Rolled Back", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_ROLLED_BACK]),
+            ("skipped", "Skipped", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_SKIPPED]),
         ]
         ctx["all_items"] = items
         ctx["electric_audit_rows"] = audit_electric_posting_inconsistencies(self.object.billing_month)

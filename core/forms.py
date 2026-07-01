@@ -18,6 +18,7 @@ class GlobalSettingsForm(forms.ModelForm):
         fields = ["site_name", "logo", "favicon",
                   "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user", "smtp_password",
                   "whatsapp_number", "twilio_account_sid", "twilio_auth_token", "twilio_from_number",
+                  "whatsapp_media_retention_days",
                   "currency_code","country_code",  "unit_rate_per_kwh", "service_charge_flat",
                   "late_fee_enabled", "late_fee_type", "late_fee_amount",
                   "late_fee_percent", "late_fee_grace_days", "billing_cap_amount",
@@ -40,7 +41,7 @@ class GlobalSettingsForm(forms.ModelForm):
         ]),
         ("WhatsApp / Twilio", "fab fa-whatsapp", [
             "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
-            "twilio_from_number",
+            "twilio_from_number", "whatsapp_media_retention_days",
         ]),
         ("WhatsApp AI Assistant", "fas fa-robot", [
             "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
@@ -70,6 +71,8 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
+        self.fields["whatsapp_media_retention_days"].label = "WhatsApp media retention days"
+        self.fields["whatsapp_media_retention_days"].help_text = "Downloaded WhatsApp media files are kept for this many days. Raw webhook logs stay untouched."
         self.fields["whatsapp_ai_enabled"].label = "Enable WhatsApp AI assistant"
         self.fields["whatsapp_ai_provider"].label = "Assistant provider"
         self.fields["whatsapp_ai_model"].label = "OpenAI model"

@@ -333,16 +333,27 @@
       body { background: #fff; font-size: 11px; }
       .card { box-shadow: none; border: 1px solid #ddd; }
     }
+    body.tms-embedded-page {
+      background: transparent;
+      min-height: auto;
+      display: block;
+    }
+    body.tms-embedded-page .viewport-bar,
+    body.tms-embedded-page .tms-footer {
+      display: none !important;
+    }
   </style>
 
   {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="{% if request.GET.embed == '1' %}tms-embedded-page{% endif %}">
 
   <!-- ============================================================
        NAVBAR — partials/navbar.html owns all nav content
        ============================================================ -->
-  {% include 'partials/navbar.html' %}
+  {% if request.GET.embed != '1' %}
+    {% include 'partials/navbar.html' %}
+  {% endif %}
 
   <!-- Django flash messages -->
   {% if messages %}
@@ -360,7 +371,7 @@
        MAIN CONTENT
        ============================================================ -->
   <main class="tms-main">
-    <div class="{% block main_container_class %}container{% endblock %} mt-3 mb-4">
+    <div class="{% block main_container_class %}container{% endblock %} {% if request.GET.embed == '1' %}my-0{% else %}mt-3 mb-4{% endif %}">
       {% block content %}{% endblock %}
     </div>
   </main>
@@ -368,11 +379,13 @@
   <!-- ============================================================
        FOOTER
        ============================================================ -->
-  <footer class="tms-footer no-print">
-    <div class="container text-center">
-      <p>Tenant Management System &copy; {% now "Y" %}</p>
-    </div>
-  </footer>
+  {% if request.GET.embed != '1' %}
+    <footer class="tms-footer no-print">
+      <div class="container text-center">
+        <p>Tenant Management System &copy; {% now "Y" %}</p>
+      </div>
+    </footer>
+  {% endif %}
 
   <!-- Viewport debug bar -->
   <div class="viewport-bar no-print" aria-live="polite">

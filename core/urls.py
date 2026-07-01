@@ -9,6 +9,9 @@ urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("settings/", SettingsView.as_view(), name="settings"),
     path("pending-approvals/", views.pending_approvals, name="pending_approvals"),
+    path("pending-approvals/<str:kind>/<int:pk>/", views.pending_approval_detail, name="pending_approval_detail"),
+    path("pending-approvals/<str:kind>/<int:pk>/approve/", views.pending_approval_approve, name="pending_approval_approve"),
+    path("pending-approvals/<str:kind>/<int:pk>/reject/", views.pending_approval_reject, name="pending_approval_reject"),
     path("settings/backup-restore/", BackupCenterView.as_view(), name="backup_center"),
     path("settings/backup-restore/download/<path:backup_id>/", BackupDownloadView.as_view(), name="backup_download"),
     path("settings/backup-restore/delete/<path:backup_id>/", BackupDeleteView.as_view(), name="backup_delete"),
@@ -92,6 +95,11 @@ urlpatterns = [
         "lease-relationship-types/save/",
         views.lease_relationship_type_save,
         name="lease_relationship_type_save",
+    ),
+    path(
+        "lease-relationship-types/<int:pk>/inline/",
+        views.lease_relationship_type_inline_update,
+        name="lease_relationship_type_inline_update",
     ),
 
 ]

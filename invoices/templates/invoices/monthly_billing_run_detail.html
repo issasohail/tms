@@ -2,13 +2,15 @@
 {% load humanize %}
 
 {% block title %}Monthly Billing {{ run.billing_month|date:"F Y" }}{% endblock %}
+{% block main_container_class %}container-fluid{% endblock %}
 
 {% block content %}
 <style>
-  .mbill-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:.5rem; }
-  .mbill-stat { border:1px solid rgba(0,0,0,.08); background:#fff; border-radius:6px; padding:.65rem .75rem; text-align:left; }
-  .mbill-stat .label { color:#6b7280; font-size:.76rem; }
-  .mbill-stat .value { font-size:1.18rem; font-weight:700; line-height:1.1; }
+  .mbill-page { max-width:1600px; margin:0 auto; }
+  .mbill-summary { display:flex; flex-wrap:wrap; gap:.45rem; align-items:stretch; }
+  .mbill-stat { border:1px solid rgba(0,0,0,.08); background:#fff; border-radius:6px; padding:.5rem .65rem; text-align:left; min-width:126px; }
+  .mbill-stat .label { color:#6b7280; font-size:.76rem; display:inline; margin-right:.35rem; }
+  .mbill-stat .value { font-size:1.02rem; font-weight:700; line-height:1.1; display:inline; }
   .mbill-stat.active { border-color:#0d6efd; box-shadow:0 0 0 .12rem rgba(13,110,253,.12); }
   .mbill-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
   .mbill-table th, .mbill-table td { white-space:nowrap; }
@@ -16,8 +18,10 @@
   .mbill-table .issue-cell, .mbill-table .actions-cell { white-space:normal; min-width:210px; }
   .mbill-muted { color:#6b7280; font-size:.78rem; }
   .mbill-toolbar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; justify-content:space-between; }
+  .mbill-source-links { display:flex; flex-wrap:wrap; gap:.25rem; }
 </style>
 
+<div class="mbill-page">
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div>
     <h4 class="mb-1">Billing Control Center: {{ run.billing_month|date:"F Y" }}</h4>
@@ -32,20 +36,18 @@
 </div>
 
 <div class="mbill-summary mb-3" id="kpiFilters">
-  <button class="mbill-stat" data-filter=""><div class="label">Active Leases</div><div class="value">{{ run.total_active_leases|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="recurring-created"><div class="label">Recurring Created</div><div class="value">{{ run.recurring_created_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter=""><span class="label">Billable Leases</span><span class="value">{{ billing_kpis.billable_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="recurring-found"><span class="label">Recurring Found</span><span class="value">{{ billing_kpis.recurring_found_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="missing-recurring"><div class="label">Missing Recurring</div><div class="value">{{ run.missing_recurring_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="electric-ready"><div class="label">Electric Ready</div><div class="value">{{ run.electric_ready_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="meter-pending"><div class="label">Meter Pending</div><div class="value">{{ run.electric_pending_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="manual-electric"><div class="label">Manual Electric</div><div class="value">{{ run.manual_electric_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="water-missing"><div class="label">Water Missing</div><div class="value">{{ run.water_missing_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="ready"><div class="label">Ready</div><div class="value">{{ run.ready_to_send_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="pending"><div class="label">Pending</div><div class="value">{{ run.pending_attention_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="sending"><div class="label">Sending</div><div class="value">{{ run.sending_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="sent"><div class="label">Sent</div><div class="value">{{ run.sent_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="failed"><div class="label">Failed</div><div class="value">{{ run.failed_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="excluded"><div class="label">Excluded</div><div class="value">{{ run.excluded_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="rolled-back"><div class="label">Rolled Back</div><div class="value">{{ run.rolled_back_count|intcomma }}</div></button>
+  <button class="mbill-stat" data-filter="electric-all"><span class="label">Electric Readings</span><span class="value">{{ billing_kpis.electric_ready_count|intcomma }}/{{ billing_kpis.electric_total_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="meter-pending"><span class="label">Meter Pending</span><span class="value">{{ billing_kpis.electric_pending_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="water-missing"><span class="label">Water Charge Missing</span><span class="value">{{ run.water_missing_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="ready"><span class="label">Ready</span><span class="value">{{ run.ready_to_send_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="pending"><span class="label">Pending</span><span class="value">{{ run.pending_attention_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="sent"><span class="label">Sent</span><span class="value">{{ run.sent_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="failed"><span class="label">Failed</span><span class="value">{{ run.failed_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="excluded"><span class="label">Excluded</span><span class="value">{{ run.excluded_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="rolled-back"><span class="label">Rolled Back</span><span class="value">{{ run.rolled_back_count|intcomma }}</span></button>
 </div>
 
 <form method="post" action="{% url 'invoices:monthly_billing_run_action' run.pk %}" data-enqueue-url="{% url 'invoices:monthly_billing_run_enqueue' run.pk %}" class="mbill-actions mb-3 billing-run-action-form">
@@ -100,8 +102,10 @@
         <tr class="billing-row"
             data-status="{{ item.status }}"
             data-recurring-created="{{ item.recurring_invoice_created|yesno:'1,0' }}"
+            data-recurring-found="{{ item.recurring_invoice_found|yesno:'1,0' }}"
             data-missing-recurring="{% if item.issue_code == 'missing_recurring_invoice_setup' %}1{% else %}0{% endif %}"
             data-electric-ready="{{ item.electric_ready|yesno:'1,0' }}"
+            data-electric-required="{{ item.electric_required|yesno:'1,0' }}"
             data-meter-pending="{% if item.issue_code == 'latest_meter_reading_missing' or item.issue_code == 'meter_offline' %}1{% else %}0{% endif %}"
             data-manual-electric="{{ item.manual_electric|yesno:'1,0' }}"
             data-water-missing="{% if item.issue_code == 'water_charge_missing' %}1{% else %}0{% endif %}">
@@ -118,11 +122,13 @@
           <td>{% if item.recurring_invoice_found %}<span class="badge bg-success">Found</span>{% else %}<span class="badge bg-warning text-dark">Missing</span>{% endif %}</td>
           <td>
             {% if item.manual_electric %}
-              <span class="badge bg-info text-dark">Manual Electric</span>
               <div class="mbill-muted">Unit is not enrolled in Smart Meter billing.</div>
             {% elif item.electric_required %}
               <span class="badge {% if item.electric_ready %}bg-success{% else %}bg-warning text-dark{% endif %}">{% if item.electric_ready %}Ready{% else %}Pending{% endif %}</span>
-              <div class="mbill-muted">{{ item.electric_period_start|date:"M d" }} - {{ item.electric_period_end|date:"M d, Y" }}</div>
+              <div class="mbill-muted">
+                {% if item.latest_meter_reading_at %}Last reading at {{ item.latest_meter_reading_at|date:"M d, Y H:i" }}{% elif item.latest_meter_reading_date %}Last reading at {{ item.latest_meter_reading_date|date:"M d, Y" }}{% else %}No reading found{% endif %}
+                <br>Period ends {{ item.electric_period_end|date:"M d, Y" }}
+              </div>
             {% else %}
               <span class="text-muted">-</span>
             {% endif %}
@@ -151,6 +157,10 @@
           </td>
           <td>{{ item.whatsapp_status|default:"-" }}{% if item.sent_at %}<div class="small text-muted">{{ item.sent_at|date:"Y-m-d H:i" }}</div>{% endif %}</td>
           <td class="actions-cell">
+            <div class="mbill-source-links mb-1">
+              {% if item.lease_id %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'leases:lease_detail' item.lease_id %}">Lease</a>{% endif %}
+              {% if item.invoice_id %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'invoices:invoice_detail' item.invoice_id %}">Invoice</a>{% endif %}
+            </div>
             <form method="post" action="{% url 'invoices:monthly_billing_item_action' item.pk %}" class="d-flex flex-wrap gap-1">
               {% csrf_token %}
               <button class="btn btn-sm btn-outline-primary" name="action" value="regenerate_pdf" type="submit">PDF</button>
@@ -238,8 +248,10 @@
     function matches(row, filter) {
       if (!filter) return true;
       if (filter === 'recurring-created') return row.dataset.recurringCreated === '1';
+      if (filter === 'recurring-found') return row.dataset.recurringFound === '1';
       if (filter === 'missing-recurring') return row.dataset.missingRecurring === '1';
       if (filter === 'electric-ready') return row.dataset.electricReady === '1';
+      if (filter === 'electric-all') return row.dataset.electricRequired === '1';
       if (filter === 'meter-pending') return row.dataset.meterPending === '1';
       if (filter === 'manual-electric') return row.dataset.manualElectric === '1';
       if (filter === 'water-missing') return row.dataset.waterMissing === '1';
@@ -372,4 +384,5 @@
     }
   }());
 </script>
+</div>
 {% endblock %}

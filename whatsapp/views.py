@@ -19,7 +19,8 @@ from maintenance.models import MaintenanceRequest
 from payments.models import Payment
 from tenants.models import Tenant
 
-from .models import WhatsAppMessageLog, WhatsAppWebhookLog
+from .models import PendingWhatsAppMedia, WhatsAppConversation, WhatsAppMessageLog, WhatsAppWebhookLog
+from .services.tenant_context import find_active_leases_for_phone
 from .services.whatsapp import WhatsAppService
 
 logger = logging.getLogger(__name__)
@@ -231,14 +232,22 @@ def webhook_log_list(request):
 def _conversation_summary():
     summary = []
     seen = set()
-    logs = WhatsAppMessageLog.objects.exclude(phone_number="").order_by("-created_at")[:300]
-    for log in logs:
+    logs = (
+        WhatsAppMessageLog.objects.exclude(phone_number="")
+        .select_related("tenant", "lease__tenant", "lease__unit__property")
+        .order_by("-created_at")[:300]
+    )
+    for index, log in enumerate(logs, start=1):
         if log.phone_number in seen:
             continue
         seen.add(log.phone_number)
+        context = _conversation_context_for_phone(log.phone_number, log)
         summary.append(
             {
+                "sn": len(summary) + 1,
                 "phone_number": log.phone_number,
+                "tenant_name": context["tenant_name"],
+                "property_unit": context["property_unit"],
                 "last_direction": log.direction,
                 "last_status": log.status,
                 "last_message": _message_text(log),
@@ -250,10 +259,19 @@ def _conversation_summary():
 
 def _conversation_messages(phone_number):
     rows = []
-    logs = WhatsAppMessageLog.objects.filter(phone_number=phone_number).exclude(
-        direction=WhatsAppMessageLog.DIRECTION_STATUS
-    ).order_by("created_at")
+    logs = list(
+        WhatsAppMessageLog.objects.filter(phone_number=phone_number)
+        .exclude(direction=WhatsAppMessageLog.DIRECTION_STATUS)
+        .order_by("created_at")
+    )
+    media_by_message_id = {
+        media.original_whatsapp_message_id: media
+        for media in PendingWhatsAppMedia.objects.filter(
+            original_whatsapp_message_id__in=[log.id for log in logs]
+        )
+    }
     for log in logs:
+        media = media_by_message_id.get(log.id)
         rows.append(
             {
                 "id": log.id,
@@ -261,12 +279,93 @@ def _conversation_messages(phone_number):
                 "status": log.status,
                 "message_type": log.message_type,
                 "message": _message_text(log),
+                "media": _media_preview(media),
                 "created_at": log.created_at,
                 "wa_message_id": log.wa_message_id,
                 "error_text": log.error_text,
             }
         )
     return rows
+
+
+def _conversation_context_for_phone(phone_number, latest_log=None):
+    conversation = (
+        WhatsAppConversation.objects.select_related(
+            "tenant",
+            "selected_lease__tenant",
+            "selected_lease__unit__property",
+            "selected_property",
+            "selected_unit",
+        )
+        .filter(phone_number=phone_number)
+        .first()
+    )
+    lease = getattr(conversation, "selected_lease", None) if conversation else None
+    tenant = getattr(conversation, "tenant", None) if conversation else None
+    selected_property = getattr(conversation, "selected_property", None) if conversation else None
+    selected_unit = getattr(conversation, "selected_unit", None) if conversation else None
+
+    if not lease and latest_log:
+        lease = getattr(latest_log, "lease", None)
+    if not tenant and latest_log:
+        tenant = getattr(latest_log, "tenant", None)
+    if not lease:
+        lease = find_active_leases_for_phone(phone_number).first()
+    if lease:
+        tenant = tenant or lease.tenant
+        selected_property = getattr(lease.unit, "property", None)
+        selected_unit = lease.unit
+
+    tenant_name = tenant.get_full_name() if tenant else ""
+    property_unit = ""
+    if selected_property or selected_unit:
+        property_name = getattr(selected_property, "property_name", "") or "-"
+        unit_number = getattr(selected_unit, "unit_number", "") or "-"
+        property_unit = f"{property_name} / {unit_number}"
+
+    return {
+        "tenant_name": tenant_name,
+        "property_unit": property_unit,
+    }
+
+
+def _media_preview(media):
+    if not media:
+        return None
+
+    file_field = getattr(media, "file", None)
+    file_name = getattr(file_field, "name", "") or ""
+    unavailable = not file_name or "/unavailable/" in file_name.replace("\\", "/")
+    exists = False
+    if file_name and not unavailable:
+        try:
+            exists = file_field.storage.exists(file_name)
+        except Exception:
+            exists = False
+    if unavailable or not exists:
+        return {
+            "available": False,
+            "note": media.ai_notes or "Media unavailable or download failed.",
+        }
+
+    media_type = (media.media_type or "").lower()
+    lower_name = file_name.lower()
+    if media_type == "image" or lower_name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        kind = "image"
+    elif media_type == "video" or lower_name.endswith((".mp4", ".mov", ".webm")):
+        kind = "video"
+    elif lower_name.endswith(".pdf"):
+        kind = "pdf"
+    else:
+        kind = "file"
+
+    return {
+        "available": True,
+        "kind": kind,
+        "url": file_field.url,
+        "label": media.original_filename or file_name.rsplit("/", 1)[-1],
+        "purpose": media.get_purpose_display(),
+    }
 
 
 def _message_text(log):

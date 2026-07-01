@@ -41,7 +41,7 @@
   </div>
 
   <div class="row g-3">
-    <div class="col-12 col-xl-5">
+    <div class="col-12 col-xl-6">
       <div class="card shadow-sm h-100">
         <div class="card-header py-2"><strong>Backup Settings</strong></div>
         <div class="card-body">
@@ -55,7 +55,7 @@
                 <div class="text-danger small mt-1">{{ backup_settings_form.backup_root.errors }}</div>
               {% endif %}
             </div>
-            <div class="row g-2">
+            <div class="row g-2 align-items-end">
               <div class="col-md-6">
                 <label class="form-label small mb-1">Retention Count</label>
                 {{ backup_settings_form.retention_count }}
@@ -69,49 +69,57 @@
                 {{ backup_settings_form.mysql_path }}
               </div>
             </div>
-            <hr class="my-3">
-            <div class="mb-2 fw-semibold small">Full Backup Defaults</div>
-            <div class="form-check mb-1">
-              {{ backup_settings_form.include_db_in_full }}
-              <label class="form-check-label small" for="{{ backup_settings_form.include_db_in_full.id_for_label }}">Include DB in Full Backup</label>
-            </div>
-            <div class="form-check mb-1">
-              {{ backup_settings_form.include_media_in_full }}
-              <label class="form-check-label small" for="{{ backup_settings_form.include_media_in_full.id_for_label }}">Include Media in Full Backup</label>
-            </div>
-            <div class="form-check mb-2">
-              {{ backup_settings_form.include_code_in_full }}
-              <label class="form-check-label small" for="{{ backup_settings_form.include_code_in_full.id_for_label }}">Include Code in Full Backup</label>
-            </div>
-            <div class="mb-2 fw-semibold small mt-3">Behavior</div>
-            <div class="form-check mb-2">
-              {{ backup_settings_form.compress_backups }}
-              <label class="form-check-label small" for="{{ backup_settings_form.compress_backups.id_for_label }}">Compress Backups into ZIP</label>
-            </div>
-            <div class="mb-2 fw-semibold small mt-3">Enable / Disable Types</div>
-            <div class="form-check mb-1">
-              {{ backup_settings_form.enable_db_backup }}
-              <label class="form-check-label small" for="{{ backup_settings_form.enable_db_backup.id_for_label }}">Enable Database Backup</label>
-            </div>
-            <div class="form-check mb-1">
-              {{ backup_settings_form.enable_media_backup }}
-              <label class="form-check-label small" for="{{ backup_settings_form.enable_media_backup.id_for_label }}">Enable Media Backup</label>
-            </div>
-            <div class="form-check mb-1">
-              {{ backup_settings_form.enable_code_backup }}
-              <label class="form-check-label small" for="{{ backup_settings_form.enable_code_backup.id_for_label }}">Enable Code Backup</label>
-            </div>
-            <div class="form-check mb-1">
-              {{ backup_settings_form.enable_full_backup }}
-              <label class="form-check-label small" for="{{ backup_settings_form.enable_full_backup.id_for_label }}">Enable Full Backup</label>
-            </div>
-            <div class="form-check mb-3">
-              {{ backup_settings_form.fresh_reset_enabled }}
-              <label class="form-check-label small" for="{{ backup_settings_form.fresh_reset_enabled.id_for_label }}">Enable Fresh Reset</label>
+            <div class="row g-3 mt-1">
+              <div class="col-md-6">
+                <div class="border rounded p-2 h-100">
+                  <div class="mb-2 fw-semibold small">Full Backup Defaults</div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.include_db_in_full }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.include_db_in_full.id_for_label }}">Include DB in Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.include_media_in_full }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.include_media_in_full.id_for_label }}">Include Media in Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.include_code_in_full }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.include_code_in_full.id_for_label }}">Include Code in Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.compress_backups }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.compress_backups.id_for_label }}">Compress Backups into ZIP</label>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="border rounded p-2 h-100">
+                  <div class="mb-2 fw-semibold small">Enable / Disable Types</div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_db_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_db_backup.id_for_label }}">Enable Database Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_media_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_media_backup.id_for_label }}">Enable Media Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_code_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_code_backup.id_for_label }}">Enable Code Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_full_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_full_backup.id_for_label }}">Enable Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.fresh_reset_enabled }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.fresh_reset_enabled.id_for_label }}">Enable Fresh Reset</label>
+                  </div>
+                </div>
+              </div>
             </div>
             <button type="submit" class="btn btn-sm btn-primary">Save Backup Settings</button>
           </form>
-          <hr class="my-3">
+          <hr class="my-2">
           <div class="mb-2 fw-semibold small">Upload Backup for Restore</div>
           <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
@@ -132,7 +140,7 @@
       </div>
     </div>
 
-    <div class="col-12 col-xl-7">
+    <div class="col-12 col-xl-6">
       <div class="row g-3">
         <div class="col-md-6">
           <div class="card shadow-sm h-100">

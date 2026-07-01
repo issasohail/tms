@@ -15,7 +15,6 @@
         <div class="card shadow-sm">
           <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div class="fw-semibold">{{ section.title }} <span class="badge bg-warning text-dark">{{ section.count }}</span></div>
-            <a class="btn btn-sm btn-outline-primary" href="{% url section.admin_url %}">Open Review</a>
           </div>
           <div class="table-responsive">
             <table class="table table-sm table-bordered align-middle mb-0">
@@ -28,10 +27,12 @@
                   <th>Property / Unit</th>
                   <th>Details</th>
                   <th>Status</th>
+                  <th style="width:190px;">Review</th>
                 </tr>
               </thead>
               <tbody>
-                {% for item in section.items %}
+                {% for row in section.items %}
+                  {% with item=row.object %}
                   <tr>
                     <td>{{ forloop.counter }}</td>
                     <td>{{ item.created_at|date:"M d, Y H:i" }}</td>
@@ -50,11 +51,34 @@
                       {% if item.proposed_terms %}<span class="text-muted">{{ item.proposed_terms|truncatechars:90 }}</span>{% endif %}
                       {% if item.monthly_rent %}Rent: Rs. {{ item.monthly_rent }}{% endif %}
                       {% if item.description %}<span class="text-muted">{{ item.description|truncatechars:90 }}</span>{% endif %}
+                      {% if section.kind == "family" %}
+                        <span class="badge {% if item.action == 'remove' %}bg-danger{% else %}bg-primary{% endif %} me-1">{{ item.get_action_display }}</span>
+                        {{ item.first_name }} {{ item.last_name }}
+                        {% if item.relationship_type %}<span class="text-muted">({{ item.relationship_type.name }})</span>{% endif %}
+                      {% endif %}
                     </td>
-                    <td><span class="badge bg-secondary">{{ item.get_status_display }}</span></td>
+                    <td>
+                      <span class="badge bg-secondary">{{ item.get_status_display }}</span>
+                      {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
+                        <form method="post" action="{{ row.urls.approve }}" class="d-inline ms-1">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-xs btn-success py-0 px-1" onclick="return confirm('Approve this item?');">Approve</button>
+                        </form>
+                      {% endif %}
+                    </td>
+                    <td class="text-nowrap">
+                      <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">Detail</a>
+                      {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
+                        <form method="post" action="{{ row.urls.reject }}" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this item?');">Reject</button>
+                        </form>
+                      {% endif %}
+                    </td>
                   </tr>
+                  {% endwith %}
                 {% empty %}
-                  <tr><td colspan="7" class="text-muted text-center py-3">No pending items.</td></tr>
+                  <tr><td colspan="8" class="text-muted text-center py-3">No pending items.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

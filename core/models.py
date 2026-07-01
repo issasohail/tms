@@ -25,6 +25,10 @@ class GlobalSettings(models.Model):
     twilio_account_sid = models.CharField(max_length=128, blank=True)
     twilio_auth_token = models.CharField(max_length=128, blank=True)
     twilio_from_number = models.CharField(max_length=40, blank=True)
+    whatsapp_media_retention_days = models.PositiveIntegerField(
+        default=90,
+        help_text="Days to keep downloaded WhatsApp media files. Raw webhook logs are not deleted.",
+    )
 
     # Billing
     currency_code = models.CharField(max_length=8, default="PKR")

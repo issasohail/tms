@@ -658,6 +658,36 @@ class Lease(models.Model):
     def get_print_url(self):
         return reverse("leases:print", args=[self.id])
 
+    @property
+    def property_info(self):
+        """Access property through unit relationship."""
+        if hasattr(self, "unit") and hasattr(self.unit, "property"):
+            return self.unit.property
+        return None
+
+    @property
+    def is_active(self):
+        return self.status == "active"
+
+    @property
+    def lease_period(self):
+        return f"{self.start_date} to {self.end_date}"
+
+    @property
+    def get_total_payment(self):
+        """Returns sum of rent, maintenance, water, internet."""
+        return (
+            (self.monthly_rent or 0)
+            + (self.society_maintenance or 0)
+            + (self.water_charges or 0)
+            + (self.internet_charges or 0)
+        )
+
+    @property
+    def get_monthly_payment(self):
+        """Same as get_total_payment for monthly view."""
+        return self.get_total_payment
+
 
 class LeaseUnitOccupancy(models.Model):
     lease = models.ForeignKey(
@@ -1168,6 +1198,103 @@ class LeaseFamilyMember(models.Model):
 
     def __str__(self):
         return f"{self.family_member} ({self.relation})"
+
+
+class PendingLeaseFamilyMemberSubmission(models.Model):
+    ACTION_ADD = "add"
+    ACTION_REMOVE = "remove"
+    ACTION_CHOICES = [
+        (ACTION_ADD, "Add family member"),
+        (ACTION_REMOVE, "Remove family member"),
+    ]
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    lease = models.ForeignKey(
+        "Lease",
+        on_delete=models.CASCADE,
+        related_name="pending_family_submissions",
+    )
+    primary_tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="pending_family_submissions",
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default=ACTION_ADD)
+    existing_family_member = models.ForeignKey(
+        LeaseFamilyMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_removal_submissions",
+    )
+    first_name = models.CharField(max_length=50)
+    last_name = models.CharField(max_length=50)
+    relationship = models.CharField(max_length=30, default="other")
+    relationship_type = models.ForeignKey(
+        LeaseRelationshipType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_family_submissions",
+    )
+    cnic = models.CharField(max_length=15, blank=True)
+    cnic_digits = models.CharField(max_length=13, blank=True, db_index=True)
+    phone = models.CharField(max_length=20, blank=True)
+    gender = models.CharField(max_length=1, choices=Tenant.GENDER_CHOICES, default="M", blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    photo = models.ImageField(upload_to="lease_family_pending/photos/", blank=True, null=True)
+    cnic_front = models.ImageField(upload_to="lease_family_pending/cnic_front/", blank=True, null=True)
+    cnic_back = models.ImageField(upload_to="lease_family_pending/cnic_back/", blank=True, null=True)
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_family_submissions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_notes = models.TextField(blank=True)
+    created_tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_from_family_submissions",
+    )
+    created_family_member = models.ForeignKey(
+        LeaseFamilyMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approval_submission",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["token", "expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} ({self.get_status_display()})"
+
+    @property
+    def is_expired(self):
+        return self.expires_at <= timezone.now()
 
 
 class DefaultClause(models.Model):

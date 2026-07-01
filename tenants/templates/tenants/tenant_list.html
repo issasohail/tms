@@ -255,7 +255,7 @@
             </td>
 
             <td class="p-1 col-tenant">
-                <a href="{% url 'tenants:tenant_update' tenant.id %}" class="text-primary d-block text-truncate">
+                <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="text-primary d-block text-truncate">
                 <strong>{{ tenant.first_name }}</strong>
                 </a>
                 <span class="text-muted xsmall d-block">{{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}</span>
@@ -361,7 +361,7 @@
                     {% endif %}
                 </div>
                 <div class="tc-main">
-                    <a href="{% url 'tenants:tenant_update' tenant.id %}" class="text-primary d-block">
+                    <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="text-primary d-block">
                         <strong>{{ tenant.first_name }}</strong>
                     </a>
                     <span class="text-muted xsmall d-block">{{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}</span>

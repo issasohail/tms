@@ -13,7 +13,7 @@
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-12 col-xl-4">
+  <div class="col-12 col-xl-5">
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <strong>Conversations</strong>
@@ -24,7 +24,10 @@
           <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light">
               <tr>
+                <th>SN</th>
                 <th>Phone</th>
+                <th>Tenant</th>
+                <th>Property / Unit</th>
                 <th>Last Message</th>
                 <th>Status</th>
               </tr>
@@ -32,9 +35,12 @@
             <tbody>
               {% for item in conversation_summary %}
                 <tr class="{% if selected_phone == item.phone_number %}table-primary{% endif %}">
+                  <td>{{ item.sn }}</td>
                   <td class="text-nowrap">
                     <a href="?phone={{ item.phone_number }}">{{ item.phone_number }}</a>
                   </td>
+                  <td>{{ item.tenant_name|default:"-" }}</td>
+                  <td>{{ item.property_unit|default:"-" }}</td>
                   <td>
                     <div class="text-truncate" style="max-width: 220px;">{{ item.last_message|default:"-" }}</div>
                     <div class="text-muted small">{{ item.last_at|date:"Y-m-d H:i:s" }}</div>
@@ -47,7 +53,7 @@
                 </tr>
               {% empty %}
                 <tr>
-                  <td colspan="3" class="text-center text-muted py-4">No WhatsApp messages logged yet.</td>
+                  <td colspan="6" class="text-center text-muted py-4">No WhatsApp messages logged yet.</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -57,7 +63,7 @@
     </div>
   </div>
 
-  <div class="col-12 col-xl-8">
+  <div class="col-12 col-xl-7">
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <strong>Conversation{% if selected_phone %}: {{ selected_phone }}{% endif %}</strong>
@@ -89,6 +95,34 @@
                     - {{ row.status }}
                   </div>
                   <div>{{ row.message|default:"-"|linebreaksbr }}</div>
+                  {% if row.media %}
+                    <div class="mt-2">
+                      {% if row.media.available %}
+                        {% if row.media.kind == "image" %}
+                          <a href="{{ row.media.url }}" target="_blank" rel="noopener">
+                            <img src="{{ row.media.url }}" alt="{{ row.media.label }}" class="img-fluid rounded border" style="max-height: 260px;">
+                          </a>
+                        {% elif row.media.kind == "video" %}
+                          <video controls class="rounded border" style="max-width: 100%; max-height: 260px;">
+                            <source src="{{ row.media.url }}">
+                          </video>
+                        {% elif row.media.kind == "pdf" %}
+                          <a class="btn btn-sm btn-outline-primary" href="{{ row.media.url }}" target="_blank" rel="noopener">
+                            Open File
+                          </a>
+                        {% else %}
+                          <a class="btn btn-sm btn-outline-primary" href="{{ row.media.url }}" target="_blank" rel="noopener">
+                            Open File
+                          </a>
+                        {% endif %}
+                        <div class="small text-muted mt-1">{{ row.media.purpose }}{% if row.media.label %} - {{ row.media.label }}{% endif %}</div>
+                      {% else %}
+                        <div class="alert alert-warning py-1 px-2 small mb-0">
+                          {{ row.media.note|default:"Media unavailable or download failed." }}
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
                   {% if row.error_text %}
                     <div class="text-danger small mt-1">{{ row.error_text }}</div>
                   {% endif %}

@@ -40,7 +40,7 @@
       <a class="settings-tab-card" href="#settings-development-tools" data-settings-target="settings-development-tools">
         <span class="settings-tab-icon"><i class="fas fa-code"></i></span><span>Development Tools</span>
       </a>
-      <a class="settings-tab-card" href="{% url 'core:backup_center' %}">
+      <a class="settings-tab-card" href="#settings-tool-backup" data-settings-target="settings-tool-backup">
         <span class="settings-tab-icon"><i class="bi bi-database-lock"></i></span><span>Backup</span>
       </a>
       <a class="settings-tab-card" href="#settings-tool-suggestions" data-settings-target="settings-tool-suggestions">
@@ -61,7 +61,7 @@
       <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Webhook Logs</span>
       </a>
-      <a class="settings-tab-card" href="{% url 'core:pending_approvals' %}">
+      <a class="settings-tab-card" href="#settings-tool-whatsapp-ai-review" data-settings-target="settings-tool-whatsapp-ai-review">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-inboxes"></i></span><span>AI Review</span>
       </a>
       <a class="settings-tab-card" href="#settings-payments" data-settings-target="settings-payments">
@@ -132,7 +132,7 @@
                     </div>
                   </div>
                   <div class="col-12 col-md-6">
-                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="{% url 'whatsapp:webhook_log_list' %}">
+                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
                       <div class="small fw-semibold mb-1">Webhook Logs</div>
                       <span class="badge bg-info text-dark">Open WhatsApp Webhook Logs</span>
                     </a>
@@ -225,110 +225,89 @@
       </form>
 
     <div class="settings-tab-panel d-none" id="settings-tool-backup">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'core:backup_center' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon"><i class="bi bi-database-lock"></i></div>
-          <h5 class="mb-1">Backup &amp; Restore</h5>
-          <p class="text-muted small mb-3">Open the protected backup center for database, media, full backup, and restore actions.</p>
-          <span class="btn btn-sm btn-outline-primary">Open Backup Center</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-database-lock me-2"></i>Backup &amp; Restore</h4>
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'core:backup_center' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame" src="{% url 'core:backup_center' %}?embed=1" title="Backup and Restore"></iframe>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-suggestions">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'core:suggestion_list' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-warning"><i class="bi bi-lightbulb"></i></div>
-          <h5 class="mb-1">Suggestions / Report Errors</h5>
-          <p class="text-muted small mb-3">Review pending suggestions, report errors, update status, and reply from one compact list.</p>
-          <span class="btn btn-sm btn-outline-warning">Open Suggestions</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Suggestions / Report Errors</h4>
+          <a class="btn btn-sm btn-outline-warning" href="{% url 'core:suggestion_list' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame" src="{% url 'core:suggestion_list' %}?embed=1" title="Suggestions"></iframe>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-clauses">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'leases:default_clause_list' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-file-earmark-text"></i></div>
-          <h5 class="mb-1">Default Lease Clauses</h5>
-          <p class="text-muted small mb-3">Add, edit, activate, and reuse default clauses with placeholder buttons.</p>
-          <span class="btn btn-sm btn-outline-success">Open Clauses</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Default Lease Clauses</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:default_clause_list' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame" src="{% url 'leases:default_clause_list' %}?embed=1" title="Default Lease Clauses"></iframe>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-placeholders">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'leases:agreement_placeholder_list' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-braces"></i></div>
-          <h5 class="mb-1">Agreement Placeholders</h5>
-          <p class="text-muted small mb-3">Manage placeholder buttons used by agreement clause editors.</p>
-          <span class="btn btn-sm btn-outline-success">Open Placeholders</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-braces me-2"></i>Agreement Placeholders</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:agreement_placeholder_list' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame" src="{% url 'leases:agreement_placeholder_list' %}?embed=1" title="Agreement Placeholders"></iframe>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-templates">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'leases:whatsapp_template_list' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-success"><i class="fab fa-whatsapp"></i></div>
-          <h5 class="mb-1">WhatsApp Templates</h5>
-          <p class="text-muted small mb-3">Edit reusable WhatsApp messages for tenant, vacancy, rent, payment, repair, police, and agreement workflows.</p>
-          <span class="btn btn-sm btn-outline-success">Open Templates</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="fab fa-whatsapp me-2"></i>WhatsApp Templates</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:whatsapp_template_list' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame" src="{% url 'leases:whatsapp_template_list' %}?embed=1" title="WhatsApp Templates"></iframe>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-inspections">
-      <div class="row g-2">
-        <div class="col-12 col-md-6 col-xl-4">
-          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'all' %}">
-            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-clipboard-check"></i></div><h5 class="mb-1">Inspection Settings</h5><p class="text-muted small mb-3">Manage types, categories, statuses, items, and templates in one tabbed sheet.</p><span class="btn btn-sm btn-outline-success">Open Inspection Settings</span></div>
-          </a>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h4 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Inspection Settings</h4>
+          <div class="d-flex flex-wrap gap-1">
+            <a class="btn btn-sm btn-outline-success" href="{% url 'leases:inspection_settings' 'all' %}" target="_blank" rel="noopener">Open Full Page</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'categories' %}?embed=1" data-frame="settings-inspections-frame">Categories</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'statuses' %}?embed=1" data-frame="settings-inspections-frame">Statuses</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'items' %}?embed=1" data-frame="settings-inspections-frame">Items</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'templates' %}?embed=1" data-frame="settings-inspections-frame">Templates</a>
+          </div>
         </div>
-        <div class="col-12 col-md-6 col-xl-4">
-          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'categories' %}">
-            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-layer-group"></i></div><h5 class="mb-1">Categories</h5><p class="text-muted small mb-3">Manage rooms and inspection sections with display order.</p><span class="btn btn-sm btn-outline-success">Open Categories</span></div>
-          </a>
-        </div>
-        <div class="col-12 col-md-6 col-xl-4">
-          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'statuses' %}">
-            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-tags"></i></div><h5 class="mb-1">Statuses</h5><p class="text-muted small mb-3">Configure colored pills like Good, Damaged, or Missing.</p><span class="btn btn-sm btn-outline-success">Open Statuses</span></div>
-          </a>
-        </div>
-        <div class="col-12 col-md-6 col-xl-4">
-          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'items' %}">
-            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-check-square"></i></div><h5 class="mb-1">Items</h5><p class="text-muted small mb-3">Manage configurable inspection items and item behavior.</p><span class="btn btn-sm btn-outline-success">Open Items</span></div>
-          </a>
-        </div>
-        <div class="col-12 col-md-6 col-xl-4">
-          <a class="settings-tool-card card shadow-sm text-decoration-none h-100" href="{% url 'leases:inspection_settings' 'templates' %}">
-            <div class="card-body"><div class="settings-tool-icon settings-tool-icon-success"><i class="fas fa-clipboard-list"></i></div><h5 class="mb-1">Templates</h5><p class="text-muted small mb-3">Build reusable templates that copy items into new inspections.</p><span class="btn btn-sm btn-outline-success">Open Templates</span></div>
-          </a>
-        </div>
+        <iframe id="settings-inspections-frame" class="settings-inline-frame" src="{% url 'leases:inspection_settings' 'all' %}?embed=1" title="Inspection Settings"></iframe>
       </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-webhook-logs">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'whatsapp:webhook_log_list' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-chat-dots"></i></div>
-          <h5 class="mb-1">WhatsApp Webhook Logs</h5>
-          <p class="text-muted small mb-3">View sent and received WhatsApp messages, reply to tenants, and inspect raw webhook payloads.</p>
-          <span class="btn btn-sm btn-outline-success">Open WhatsApp Webhook Logs</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-chat-dots me-2"></i>WhatsApp Webhook Logs</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame settings-inline-frame-tall" src="{% url 'whatsapp:webhook_log_list' %}?embed=1" title="WhatsApp Webhook Logs"></iframe>
+      </div>
     </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-ai-review">
-      <a class="settings-tool-card card shadow-sm text-decoration-none" href="{% url 'core:pending_approvals' %}">
-        <div class="card-body">
-          <div class="settings-tool-icon settings-tool-icon-success"><i class="bi bi-inboxes"></i></div>
-          <h5 class="mb-1">Pending Approvals</h5>
-          <p class="text-muted small mb-3">Review pending WhatsApp payment, document, and maintenance submissions in one place.</p>
-          <span class="btn btn-sm btn-outline-success">Open Pending Approvals</span>
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-inboxes me-2"></i>Pending Approvals</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'core:pending_approvals' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
-      </a>
+        <iframe class="settings-inline-frame" src="{% url 'core:pending_approvals' %}?embed=1" title="Pending Approvals"></iframe>
+      </div>
     </div>
   </div>
 
@@ -345,15 +324,17 @@
         <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
           <thead class="table-light">
             <tr>
-              <th style="width:40%">Name</th>
-              <th style="width:25%">Code</th>
+              <th style="width:6%">SN</th>
+              <th style="width:36%">Name</th>
+              <th style="width:24%">Code</th>
               <th style="width:15%">Active</th>
-              <th style="width:20%">Actions</th>
+              <th style="width:19%">Actions</th>
             </tr>
           </thead>
           <tbody id="pm-table-body">
             {% for pm in payment_methods %}
             <tr data-id="{{ pm.id }}">
+              <td>{{ forloop.counter }}</td>
               <td class="pm-name">{{ pm.name }}</td>
               <td class="pm-code">{{ pm.code }}</td>
               <td class="pm-active">
@@ -393,7 +374,7 @@
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="4" class="text-center py-3 text-muted">No payment methods added.</td></tr>
+            <tr><td colspan="5" class="text-center py-3 text-muted">No payment methods added.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -428,9 +409,9 @@
             {% for cat in lease_document_categories %}
             <tr>
               <td>{{ forloop.counter }}</td>
-              <td><input class="form-control form-control-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="name" value="{{ cat.name }}"></td>
-              <td><input class="form-control form-control-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="code" value="{{ cat.code }}"></td>
-              <td><input class="form-control form-control-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="sort_order" type="number" value="{{ cat.sort_order }}"></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="name" data-value="{{ cat.name }}">{{ cat.name }}</span></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="code" data-value="{{ cat.code }}">{{ cat.code }}</span></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="sort_order" data-type="number" data-value="{{ cat.sort_order }}">{{ cat.sort_order }}</span></td>
               <td>
                 <select class="form-select form-select-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="is_active">
                   <option value="1" {% if cat.is_active %}selected{% endif %}>Active</option>
@@ -469,8 +450,9 @@
         <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
           <thead class="table-light">
             <tr>
-              <th style="width:38%">Name</th>
-              <th style="width:27%">Code</th>
+              <th style="width:6%">SN</th>
+              <th style="width:34%">Name</th>
+              <th style="width:25%">Code</th>
               <th style="width:15%">Active</th>
               <th style="width:20%">Actions</th>
             </tr>
@@ -528,14 +510,14 @@
           <tbody>
             {% for item in lease_relationship_types %}
             <tr>
-              <td>{{ item.name }}</td>
-              <td>{{ item.code }}</td>
+              <td>{{ forloop.counter }}</td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_relationship_type_inline_update' item.id %}" data-field="name" data-value="{{ item.name }}">{{ item.name }}</span></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_relationship_type_inline_update' item.id %}" data-field="code" data-value="{{ item.code }}">{{ item.code }}</span></td>
               <td>
-                {% if item.is_active %}
-                  <span class="badge bg-success">Active</span>
-                {% else %}
-                  <span class="badge bg-secondary">Inactive</span>
-                {% endif %}
+                <select class="form-select form-select-sm js-relationship-inline" data-url="{% url 'core:lease_relationship_type_inline_update' item.id %}" data-field="is_active">
+                  <option value="1" {% if item.is_active %}selected{% endif %}>Active</option>
+                  <option value="0" {% if not item.is_active %}selected{% endif %}>Inactive</option>
+                </select>
               </td>
               <td>
                 <div class="d-flex flex-wrap gap-1">
@@ -549,7 +531,7 @@
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="4" class="text-center py-3 text-muted">No family relationship types added.</td></tr>
+            <tr><td colspan="5" class="text-center py-3 text-muted">No family relationship types added.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -560,7 +542,7 @@
 
 <style>
 .settings-page {
-  max-width: 1180px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 .settings-header h3 {
@@ -674,6 +656,30 @@
 .settings-tool-icon-success {
   background: #eaf7ef;
   color: #198754;
+}
+.settings-embedded-panel {
+  overflow: hidden;
+}
+.settings-inline-frame {
+  display: block;
+  width: 100%;
+  min-height: 760px;
+  border: 0;
+  background: #fff;
+}
+.settings-inline-frame-tall {
+  min-height: 900px;
+}
+.settings-inline-text {
+  display: inline-block;
+  min-width: 4rem;
+  padding: .25rem .35rem;
+  border-radius: .25rem;
+  cursor: text;
+}
+.settings-inline-text:hover {
+  background: #f1f5f9;
+  box-shadow: inset 0 0 0 1px rgba(13, 110, 253, .22);
 }
 @media (max-width: 420px) {
   .settings-page h3 { font-size: 1.2rem; }
@@ -945,6 +951,23 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+  document.querySelectorAll("[data-settings-target]:not(.settings-tab-card)").forEach(link => {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      showSettingsPanel(this.dataset.settingsTarget, true);
+    });
+  });
+
+  document.querySelectorAll(".js-settings-frame-link").forEach(link => {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      const frame = document.getElementById(this.dataset.frame);
+      if (frame) {
+        frame.src = this.href;
+      }
+    });
+  });
+
   if (window.location.hash) {
     showSettingsPanel(window.location.hash.substring(1), false);
   }
@@ -1051,6 +1074,66 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .catch(err => alert("Could not update category: " + err.message))
       .finally(() => this.classList.remove("opacity-50"));
+    });
+  });
+
+  function postInlineUpdate(url, field, value, done) {
+    const formData = new FormData();
+    formData.append("field", field);
+    formData.append("value", value);
+    fetch(url, {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken, "X-Requested-With": "XMLHttpRequest"},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(() => done && done())
+    .catch(err => alert("Could not update: " + err.message));
+  }
+
+  document.querySelectorAll(".js-click-edit").forEach(cell => {
+    cell.addEventListener("click", function () {
+      if (this.querySelector("input")) return;
+      const original = this.dataset.value || this.textContent.trim();
+      const input = document.createElement("input");
+      input.type = this.dataset.type || "text";
+      input.className = "form-control form-control-sm";
+      input.value = original;
+      this.textContent = "";
+      this.appendChild(input);
+      input.focus();
+      input.select();
+      const save = () => {
+        const next = input.value.trim();
+        if (next === original) {
+          this.textContent = original;
+          return;
+        }
+        postInlineUpdate(this.dataset.url, this.dataset.field, next, () => {
+          this.dataset.value = next;
+          this.textContent = next;
+        });
+      };
+      input.addEventListener("blur", save, { once: true });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") input.blur();
+        if (event.key === "Escape") {
+          input.removeEventListener("blur", save);
+          this.textContent = original;
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll(".js-relationship-inline").forEach(field => {
+    field.addEventListener("change", function () {
+      this.classList.add("opacity-50");
+      postInlineUpdate(this.dataset.url, this.dataset.field, this.value, () => {
+        this.classList.remove("opacity-50");
+      });
     });
   });
 

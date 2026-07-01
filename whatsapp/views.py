@@ -247,7 +247,9 @@ def _conversation_summary():
                 "sn": len(summary) + 1,
                 "phone_number": log.phone_number,
                 "tenant_name": context["tenant_name"],
+                "tenant_id": context["tenant_id"],
                 "property_unit": context["property_unit"],
+                "lease_id": context["lease_id"],
                 "last_direction": log.direction,
                 "last_status": log.status,
                 "last_message": _message_text(log),
@@ -325,7 +327,9 @@ def _conversation_context_for_phone(phone_number, latest_log=None):
 
     return {
         "tenant_name": tenant_name,
+        "tenant_id": getattr(tenant, "pk", None),
         "property_unit": property_unit,
+        "lease_id": getattr(lease, "pk", None),
     }
 
 

@@ -1548,6 +1548,7 @@ class RecurringChargeListView(TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         today = date.today()
+        selected_lease = self.request.GET.get("lease", "")
 
         def calc_next_run(rc):
             # honor start/end window and clamp to month length
@@ -1566,6 +1567,15 @@ class RecurringChargeListView(TemplateView):
 
         qs = RecurringCharge.objects.select_related('lease__tenant', 'lease__unit', 'property', 'category')\
                                     .order_by('-active', 'scope', 'start_date')
+        if selected_lease:
+            qs = qs.filter(lease_id=selected_lease)
+        ctx['leases'] = Lease.objects.select_related('tenant', 'unit', 'unit__property').order_by(
+            'tenant__first_name',
+            'tenant__last_name',
+            'unit__property__property_name',
+            'unit__unit_number',
+        )
+        ctx['selected_lease'] = selected_lease
         ctx['rows'] = [{'rc': rc, 'next_run': calc_next_run(rc)} for rc in qs]
         return ctx
 
@@ -3161,6 +3171,12 @@ class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
             MonthlyBillingRunItem.STATUS_EXCLUDED,
         ])
         electric_items = billable_items.filter(electric_required=True)
+        ended_recently_start = self.object.billing_month - timedelta(days=30)
+        ended_recently_end = self.object.billing_month - timedelta(days=1)
+        ended_recently_leases = Lease.objects.filter(
+            end_date__gte=ended_recently_start,
+            end_date__lte=ended_recently_end,
+        ).select_related("tenant", "unit__property").order_by("end_date", "unit__property__property_name", "unit__unit_number")
         ctx["billing_kpis"] = {
             "billable_count": billable_items.count(),
             "recurring_found_count": billable_items.filter(recurring_invoice_found=True).count(),
@@ -3170,7 +3186,11 @@ class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
                 status=MonthlyBillingRunItem.STATUS_PENDING,
             ).count(),
             "electric_ready_count": electric_items.filter(electric_ready=True).count(),
+            "ended_recently_count": ended_recently_leases.count(),
         }
+        ctx["ended_recently_window_start"] = ended_recently_start
+        ctx["ended_recently_window_end"] = ended_recently_end
+        ctx["ended_recently_leases"] = ended_recently_leases
         ctx["tabs"] = [
             ("needs_attention", "Needs Attention", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_PENDING]),
             ("ready_to_send", "Ready to Send", [item for item in items if item.status == MonthlyBillingRunItem.STATUS_READY]),

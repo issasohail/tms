@@ -19,6 +19,7 @@
   .mbill-muted { color:#6b7280; font-size:.78rem; }
   .mbill-toolbar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; justify-content:space-between; }
   .mbill-source-links { display:flex; flex-wrap:wrap; gap:.25rem; }
+  .ended-recently-section { display:none; }
 </style>
 
 <div class="mbill-page">
@@ -37,6 +38,7 @@
 
 <div class="mbill-summary mb-3" id="kpiFilters">
   <button class="mbill-stat" data-filter=""><span class="label">Billable Leases</span><span class="value">{{ billing_kpis.billable_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="ended-recently"><span class="label">Lease Ending in Past 30 Days</span><span class="value">{{ billing_kpis.ended_recently_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="recurring-found"><span class="label">Recurring Found</span><span class="value">{{ billing_kpis.recurring_found_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="missing-recurring"><div class="label">Missing Recurring</div><div class="value">{{ run.missing_recurring_count|intcomma }}</div></button>
   <button class="mbill-stat" data-filter="electric-all"><span class="label">Electric Readings</span><span class="value">{{ billing_kpis.electric_ready_count|intcomma }}/{{ billing_kpis.electric_total_count|intcomma }}</span></button>
@@ -76,6 +78,49 @@
   {{ run.dry_run_summary.manual_electric|default:0 }} manual electric, {{ run.dry_run_summary.water_missing|default:0 }} water missing.
 </div>
 {% endif %}
+
+<div class="mb-4 billing-section ended-recently-section" id="endedRecentlySection">
+  <h6 class="border-bottom pb-2 mb-2">
+    Lease Ending in Past 30 Days
+    <span class="text-muted">({{ ended_recently_leases|length }})</span>
+    <span class="text-muted small ms-2">{{ ended_recently_window_start|date:"M d, Y" }} - {{ ended_recently_window_end|date:"M d, Y" }}</span>
+  </h6>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mbill-table">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Tenant</th>
+          <th>Property</th>
+          <th>Unit</th>
+          <th>Status</th>
+          <th>Start Date</th>
+          <th>End Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lease in ended_recently_leases %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ lease.tenant.first_name }} {{ lease.tenant.last_name }}</td>
+            <td>{{ lease.unit.property.property_name|default:"-" }}</td>
+            <td>{{ lease.unit.unit_number|default:"-" }}</td>
+            <td><span class="badge bg-secondary">{{ lease.get_status_display }}</span></td>
+            <td>{{ lease.start_date|date:"M d, Y" }}</td>
+            <td>{{ lease.end_date|date:"M d, Y" }}</td>
+            <td>
+              <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:lease_detail' lease.pk %}">Lease</a>
+              <a class="btn btn-sm btn-outline-success" href="{% url 'leases:lease_renew' lease.pk %}">Renew</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8" class="text-center text-muted py-3">No leases ended in this 30-day window.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
 {% for key, label, items in tabs %}
 <div class="mb-4 billing-section">
@@ -243,6 +288,7 @@
   (function () {
     const buttons = document.querySelectorAll('#kpiFilters .mbill-stat');
     const rows = document.querySelectorAll('.billing-row');
+    const endedRecentlySection = document.getElementById('endedRecentlySection');
     const search = document.getElementById('billingSearch');
     let activeFilter = '';
     function matches(row, filter) {
@@ -266,6 +312,9 @@
     }
     function applyFilters() {
       const query = (search ? search.value : '').toLowerCase().trim();
+      if (endedRecentlySection) {
+        endedRecentlySection.style.display = activeFilter === 'ended-recently' ? 'block' : 'none';
+      }
       rows.forEach((row) => {
         const textOk = !query || row.textContent.toLowerCase().includes(query);
         row.style.display = (matches(row, activeFilter) && textOk) ? '' : 'none';
@@ -276,6 +325,9 @@
         activeFilter = button.dataset.filter || '';
         buttons.forEach((b) => b.classList.toggle('active', b === button));
         applyFilters();
+        if (activeFilter === 'ended-recently' && endedRecentlySection) {
+          endedRecentlySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       });
     });
     if (search) search.addEventListener('input', applyFilters);

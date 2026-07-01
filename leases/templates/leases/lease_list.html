@@ -120,6 +120,13 @@
         <strong>{{ lease_count|default:"" }}</strong>
       </span>
     </a>
+    <a href="{{ ended_recently_url }}" class="ll-summary-card ll-summary-link {% if current_summary == 'ended_recently' %}is-active{% endif %}" title="Show leases ended in the past 60 days">
+      <span class="ll-summary-icon ll-summary-icon--purple"><i class="fas fa-history"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Past 60 Days</span>
+        <strong>{{ ended_recently_count|default:"0" }}</strong>
+      </span>
+    </a>
     <a href="{{ expiring_soon_url }}" class="ll-summary-card ll-summary-link {% if current_summary == 'expiring_soon' %}is-active{% endif %}" title="Show leases expiring soon">
       <span class="ll-summary-icon ll-summary-icon--green"><i class="fas fa-calendar-check"></i></span>
       <span class="ll-summary-text">
@@ -127,20 +134,20 @@
         <strong>{{ expiring_soon_count|default:"0" }}</strong>
       </span>
     </a>
-    <div class="ll-summary-card">
+    <a href="{{ balance_due_url }}" class="ll-summary-card ll-summary-link ll-summary-financial {% if current_summary == 'balance_due' %}is-active{% endif %}" title="Show leases with balance due">
       <span class="ll-summary-icon ll-summary-icon--orange"><i class="fas fa-balance-scale"></i></span>
       <span class="ll-summary-text">
         <span class="ll-summary-label">Total Balance</span>
         <strong>{{ total_balance|money:2 }}</strong>
       </span>
-    </div>
-    <div class="ll-summary-card">
+    </a>
+    <a href="{{ security_due_url }}" class="ll-summary-card ll-summary-link ll-summary-financial {% if current_summary == 'security_due' %}is-active{% endif %}" title="Show leases with security deposit due">
       <span class="ll-summary-icon ll-summary-icon--red"><i class="fas fa-lock"></i></span>
       <span class="ll-summary-text">
         <span class="ll-summary-label">Security Deposit Due</span>
         <strong>{{ total_security_due|money:2 }}</strong>
       </span>
-    </div>
+    </a>
   </div>
 
   <div class="ll-table-wrap">
@@ -320,7 +327,7 @@
 
 .ll-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   background: #fff;
   border: 1px solid var(--ll-border);
@@ -364,6 +371,7 @@
 .ll-summary-icon--green { background: #e9f8ef; color: var(--ll-green); }
 .ll-summary-icon--orange { background: #fff3e6; color: var(--ll-orange); }
 .ll-summary-icon--red { background: #ffecef; color: var(--ll-red); }
+.ll-summary-icon--purple { background: #f0ecff; color: #6f42c1; }
 .ll-summary-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ll-summary-label { color: var(--ll-muted); font-size: .76rem; }
 .ll-summary-text strong {
@@ -686,7 +694,7 @@
   .ll-check input { width: 13px; height: 13px; }
 
   .ll-summary {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 6px;
     border: 0;
     box-shadow: none;
@@ -695,6 +703,7 @@
     overflow: visible;
   }
   .ll-summary-card {
+    grid-column: span 2;
     min-height: 54px;
     padding: 8px;
     gap: 8px;
@@ -703,6 +712,7 @@
     border-radius: 9px;
     box-shadow: 0 1px 2px rgba(16,24,40,.05);
   }
+  .ll-summary-financial { grid-column: span 3; }
   .ll-summary-icon { width: 31px; height: 31px; border-radius: 9px; font-size: .85rem; }
   .ll-summary-text { gap: 1px; }
   .ll-summary-label { font-size: .58rem; line-height: 1.05; }

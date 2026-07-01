@@ -734,9 +734,11 @@ class LeaseListView(SingleTableView):
         property_id = self.request.GET.get("property")
         unit_id = self.request.GET.get("unit")
         tenant_id = self.request.GET.get("tenant")
-        status = self.request.GET.get("status", "active")
-        nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
         summary_filter = self.request.GET.get("summary", "")
+        status = self.request.GET.get("status", "active")
+        if summary_filter == "ended_recently" and "status" not in self.request.GET:
+            status = ""
+        nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
 
         queryset = self._annotate_list_financials(queryset).annotate(
             family_member_count=Count("family_members", distinct=True),
@@ -754,10 +756,13 @@ class LeaseListView(SingleTableView):
             queryset = queryset.filter(unit_id=unit_id)
         if tenant_id:
             queryset = queryset.filter(tenant_id=tenant_id)
-        if status:
-            queryset = queryset.filter(status=status)
         if nonzero_balance:
             queryset = queryset.filter(list_balance__gt=0)
+
+        self._lease_list_statusless_queryset = queryset
+
+        if status and summary_filter != "ended_recently":
+            queryset = queryset.filter(status=status)
 
         self._lease_list_base_queryset = queryset
 
@@ -767,6 +772,16 @@ class LeaseListView(SingleTableView):
                 end_date__gte=today,
                 end_date__lte=today + timedelta(days=60),
             )
+        elif summary_filter == "ended_recently":
+            today = timezone.localdate()
+            queryset = queryset.filter(
+                end_date__gte=today - timedelta(days=60),
+                end_date__lt=today,
+            )
+        elif summary_filter == "balance_due":
+            queryset = queryset.filter(list_balance__gt=0)
+        elif summary_filter == "security_due":
+            queryset = queryset.filter(list_security_due__gt=0)
 
         return queryset.order_by("unit__unit_number")
 
@@ -859,16 +874,23 @@ class LeaseListView(SingleTableView):
         context["current_property"] = self.request.GET.get("property", "")
         context["current_unit"] = self.request.GET.get("unit", "")
         context["current_tenant"] = self.request.GET.get("tenant", "")
+        context["current_summary"] = self.request.GET.get("summary", "")
         context["current_status"] = self.request.GET.get("status", "active")
+        if context["current_summary"] == "ended_recently" and "status" not in self.request.GET:
+            context["current_status"] = ""
         context["nonzero_balance"] = self.request.GET.get("nonzero_balance", "")
         context["current_layout"] = self.request.GET.get("layout", "1")
-        context["current_summary"] = self.request.GET.get("summary", "")
         base_queryset = getattr(self, "_lease_list_base_queryset", self.object_list)
         context["lease_count"] = base_queryset.count()
         today = timezone.localdate()
         context["expiring_soon_count"] = base_queryset.filter(
             end_date__gte=today,
             end_date__lte=today + timedelta(days=60),
+        ).count()
+        statusless_queryset = getattr(self, "_lease_list_statusless_queryset", base_queryset)
+        context["ended_recently_count"] = statusless_queryset.filter(
+            end_date__gte=today - timedelta(days=60),
+            end_date__lt=today,
         ).count()
 
         def summary_url(**updates):
@@ -882,7 +904,10 @@ class LeaseListView(SingleTableView):
             return f"?{querystring}" if querystring else "?"
 
         context["total_leases_url"] = summary_url(summary="")
+        context["ended_recently_url"] = summary_url(summary="ended_recently", status="")
         context["expiring_soon_url"] = summary_url(summary="expiring_soon")
+        context["balance_due_url"] = summary_url(summary="balance_due")
+        context["security_due_url"] = summary_url(summary="security_due")
 
         money_field = DecimalField(max_digits=12, decimal_places=2)
         zero = Value(Decimal("0.00"), output_field=money_field)

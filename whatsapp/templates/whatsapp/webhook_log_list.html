@@ -1,7 +1,23 @@
 {% extends "base.html" %}
 {% block title %}WhatsApp Logs{% endblock %}
+{% block main_container_class %}container-fluid{% endblock %}
 
 {% block content %}
+<style>
+  .whatsapp-log-page { max-width:1600px; margin:0 auto; }
+  .whatsapp-conversation-table th,
+  .whatsapp-conversation-table td { white-space:nowrap; }
+  .whatsapp-tenant-link,
+  .whatsapp-lease-link {
+    display:inline-block;
+    max-width:20ch;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    vertical-align:bottom;
+    white-space:nowrap;
+  }
+</style>
+<div class="whatsapp-log-page">
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
   <div>
     <h3 class="mb-0"><i class="fab fa-whatsapp me-2"></i>WhatsApp Logs</h3>
@@ -13,7 +29,7 @@
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-12 col-xl-5">
+  <div class="col-12 col-xl-6">
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <strong>Conversations</strong>
@@ -21,7 +37,7 @@
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0">
+          <table class="table table-sm table-hover align-middle mb-0 whatsapp-conversation-table">
             <thead class="table-light">
               <tr>
                 <th>SN</th>
@@ -39,8 +55,20 @@
                   <td class="text-nowrap">
                     <a href="?phone={{ item.phone_number }}">{{ item.phone_number }}</a>
                   </td>
-                  <td>{{ item.tenant_name|default:"-" }}</td>
-                  <td>{{ item.property_unit|default:"-" }}</td>
+                  <td>
+                    {% if item.tenant_id %}
+                      <a class="whatsapp-tenant-link" href="{% url 'tenants:tenant_detail' item.tenant_id %}" title="{{ item.tenant_name }}">{{ item.tenant_name|truncatechars:20 }}</a>
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if item.lease_id %}
+                      <a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' item.lease_id %}" title="{{ item.property_unit }}">{{ item.property_unit }}</a>
+                    {% else %}
+                      {{ item.property_unit|default:"-" }}
+                    {% endif %}
+                  </td>
                   <td>
                     <div class="text-truncate" style="max-width: 220px;">{{ item.last_message|default:"-" }}</div>
                     <div class="text-muted small">{{ item.last_at|date:"Y-m-d H:i:s" }}</div>
@@ -63,7 +91,7 @@
     </div>
   </div>
 
-  <div class="col-12 col-xl-7">
+  <div class="col-12 col-xl-6">
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <strong>Conversation{% if selected_phone %}: {{ selected_phone }}{% endif %}</strong>
@@ -154,7 +182,7 @@
 </div>
 
 <div class="row g-3">
-  <div class="col-12 col-xl-5">
+  <div class="col-12 col-xl-6">
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <strong>Raw Webhook POSTs</strong>
@@ -204,7 +232,7 @@
     </div>
   </div>
 
-  <div class="col-12 col-xl-7">
+  <div class="col-12 col-xl-6">
     <div class="card shadow-sm">
       <div class="card-header py-2">
         <strong>Raw Webhook Payload</strong>
@@ -262,4 +290,5 @@ document.getElementById('showMessageIds')?.addEventListener('change', function (
   }, this);
 });
 </script>
+</div>
 {% endblock %}

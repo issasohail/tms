@@ -10,6 +10,7 @@
   .js-setting-editor { display:none; }
   .is-editing .js-setting-display { display:none; }
   .is-editing .js-setting-editor { display:block; }
+  .inspection-category-cell .js-setting-display { min-width:120px; }
   .settings-template-item { display:flex; gap:6px; align-items:center; border:1px solid #dee2e6; border-radius:5px; padding:4px 6px; margin-bottom:4px; background:#fff; }
   .settings-template-item .item-label { flex:1; }
   .settings-template-items { max-height:260px; overflow:auto; }
@@ -93,7 +94,7 @@
         <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Category</th><th>Item</th><th style="width:90px;">Order</th><th>Required</th><th>Photos</th><th>Cost</th><th>Notes</th><th>Active</th></tr></thead>
         <tbody>{% for row in items %}<tr data-kind="items" data-pk="{{ row.pk }}">
           <td>{{ forloop.counter }}</td>
-          <td><span class="js-setting-display">{{ row.category.name }}</span><select class="form-select form-select-sm js-setting select2 js-setting-editor" data-field="category">{% for cat in categories %}<option value="{{ cat.pk }}" {% if row.category_id == cat.pk %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
+          <td class="inspection-category-cell"><span class="js-setting-display">{{ row.category.name }}</span><select class="form-select form-select-sm js-setting js-setting-editor" data-field="category">{% for cat in categories %}<option value="{{ cat.pk }}" {% if row.category_id == cat.pk %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
           <td><span class="js-setting-display">{{ row.item_name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="item_name" value="{{ row.item_name }}"></td>
           <td><span class="js-setting-display">{{ row.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ row.display_order }}"></td>
           <td><span class="js-setting-display">{% if row.required %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="required" {% if row.required %}checked{% endif %}></td>
@@ -205,7 +206,7 @@
   });
   document.addEventListener('blur', e => {
     const editor = e.target.closest('.js-setting-editor');
-    if (editor && !editor.classList.contains('select2')) (editor.closest('.js-setting-field') || editor.closest('td, .card-header, .card-body'))?.classList.remove('is-editing');
+    if (editor) (editor.closest('.js-setting-field') || editor.closest('td, .card-header, .card-body'))?.classList.remove('is-editing');
   }, true);
   document.addEventListener('input', e => { if (e.target.classList.contains('js-setting')) debouncedSave(e.target); });
   document.addEventListener('change', e => {

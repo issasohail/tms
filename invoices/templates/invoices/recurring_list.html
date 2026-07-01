@@ -12,6 +12,30 @@
   </div>
 </div>
 
+<form method="get" class="card shadow-sm mt-3 mb-2">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-8 col-lg-6">
+        <label for="id_recurring_lease" class="form-label small mb-1">Lease</label>
+        <select name="lease" id="id_recurring_lease" class="form-select form-select-sm select2">
+          <option value="">All leases</option>
+          {% for lease in leases %}
+            <option value="{{ lease.id }}" {% if selected_lease == lease.id|stringformat:"s" %}selected{% endif %}>
+              {{ lease.tenant.get_full_name }} - {{ lease.unit.property.property_name }} / {{ lease.unit.unit_number }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-auto">
+        <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+        {% if selected_lease %}
+          <a href="{% url 'invoices:recurring_list' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</form>
+
 <table class="table table-sm mt-3">
   <thead>
     <tr class="table-light">
@@ -61,4 +85,37 @@
     {% endfor %}
   </tbody>
 </table>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+  #id_recurring_lease + .select2-container { width: 100% !important; }
+  .select2-dropdown .select2-results__option { font-size: .78rem; padding: 4px 8px; line-height: 1.2; }
+  .select2-search__field { font-size: .78rem !important; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  if (!window.jQuery || !jQuery.fn.select2) return;
+  const $lease = jQuery('#id_recurring_lease');
+  $lease.select2({
+    placeholder: "Search lease...",
+    allowClear: true,
+    width: '100%'
+  });
+  $lease.on('select2:open', function () {
+    setTimeout(function () {
+      const input = document.querySelector('.select2-container--open .select2-search__field');
+      if (input) input.focus();
+    }, 0);
+  });
+  $lease.on('change', function () {
+    this.form.submit();
+  });
+});
+</script>
 {% endblock %}

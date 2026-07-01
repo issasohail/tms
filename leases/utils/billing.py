@@ -454,10 +454,16 @@ def preview_billing_on_change(lease, old_lease) -> Dict[str, Any]:
     maint_changed     = (old_maint != new_maint)
     water_changed     = (old_water != new_water)
     internet_changed  = (old_net != new_net)
+    start_date_changed = (old_lease.start_date != lease.start_date)
     end_date_changed  = (old_lease.end_date != lease.end_date)
 
     rent_or_term_changed = (
-        rent_changed or maint_changed or water_changed or internet_changed or end_date_changed
+        rent_changed
+        or maint_changed
+        or water_changed
+        or internet_changed
+        or start_date_changed
+        or end_date_changed
     )
 
 
@@ -481,6 +487,9 @@ def preview_billing_on_change(lease, old_lease) -> Dict[str, Any]:
         "old_rent_total": old_total,
         "new_rent_total": new_total,
 
+        "start_date_changed": start_date_changed,
+        "old_start_date": old_lease.start_date,
+        "new_start_date": lease.start_date,
         "end_date_changed": end_date_changed,
         "old_end_date": old_lease.end_date,
         "new_end_date": lease.end_date,
@@ -492,6 +501,8 @@ def preview_billing_on_change(lease, old_lease) -> Dict[str, Any]:
         recurring_start = _first_of_next_month(today)
         # don't start before lease start
         if lease.start_date and lease.start_date > recurring_start:
+            recurring_start = lease.start_date
+        if start_date_changed and lease.start_date:
             recurring_start = lease.start_date
 
         RecurringCharge = _get_model("invoices", "RecurringCharge")
@@ -630,10 +641,16 @@ def update_billing_on_change(
     maint_changed      = (old_maint != new_maint)
     water_changed      = (old_water != new_water)
     internet_changed   = (old_net != new_net)
+    start_date_changed = (old_lease.start_date != lease.start_date)
     end_date_changed   = (old_lease.end_date != lease.end_date)
 
     rent_or_term_changed = (
-        rent_changed or maint_changed or water_changed or internet_changed or end_date_changed
+        rent_changed
+        or maint_changed
+        or water_changed
+        or internet_changed
+        or start_date_changed
+        or end_date_changed
     )
 
 
@@ -673,6 +690,9 @@ def update_billing_on_change(
         recurring_start = _first_of_next_month(today)
         # but don't start before lease.start_date
         if lease.start_date and lease.start_date > recurring_start:
+            recurring_start = lease.start_date
+        # renewals move the master lease period forward; keep recurring rows aligned with that period.
+        if start_date_changed and lease.start_date:
             recurring_start = lease.start_date
 
         # if lease already ends before that start, don't create recurring at all

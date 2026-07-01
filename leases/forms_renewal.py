@@ -1,4 +1,5 @@
-from datetime import timedelta
+from calendar import monthrange
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
@@ -7,6 +8,10 @@ from .models_renewal import LeaseRenewal
 
 
 MONEY_QUANT = Decimal("0.01")
+
+
+def _end_of_month(value):
+    return date(value.year, value.month, monthrange(value.year, value.month)[1])
 
 
 class LeaseRenewalForm(forms.ModelForm):
@@ -63,7 +68,7 @@ class LeaseRenewalForm(forms.ModelForm):
 
         if lease and not self.is_bound:
             start_date = lease.end_date + timedelta(days=1)
-            end_date = start_date + timedelta(days=365) - timedelta(days=1)
+            end_date = _end_of_month(start_date + timedelta(days=365) - timedelta(days=1))
             increase = lease.rent_increase_percent or Decimal("10.00")
             current_rent = lease.monthly_rent or Decimal("0.00")
             proposed_rent = (

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-2 px-md-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">WhatsApp Utility Templates</h3>
+      <div class="text-muted small">Approved Meta template names, variables, language, and button token notes used for 24-hour-session fallback sends.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'core:settings' %}#settings-tool-whatsapp-templates" class="btn btn-outline-secondary btn-sm">Settings</a>
+      <a href="{% url 'leases:whatsapp_template_list' %}" class="btn btn-outline-secondary btn-sm">Free-form Templates</a>
+    </div>
+  </div>
+
+  <div class="alert alert-info py-2 small">
+    Meta must approve body text changes before they are used for business-initiated messages. TMS sends the approved template name and variables shown here; update Meta first if the body wording changes.
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header py-2">
+      <strong>Meta Utility Template Library</strong>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:52px">SN</th>
+              <th style="width:220px">Template</th>
+              <th style="width:90px">Lang</th>
+              <th>Variables</th>
+              <th style="width:180px">Button</th>
+              <th style="width:82px">Status</th>
+              <th style="width:90px">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for template in templates %}
+              <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>
+                  <div class="fw-semibold">{{ template.template_name }}</div>
+                  <div class="small text-muted">{{ template.get_key_display }}</div>
+                  <code class="small">{{ template.key }}</code>
+                </td>
+                <td>{{ template.language_code }}</td>
+                <td class="small">
+                  {% for variable in template.body_variables %}
+                    <span class="badge bg-light text-dark border me-1 mb-1">{{ forloop.counter }}. {{ variable }}</span>
+                  {% empty %}
+                    <span class="text-muted">No body variables.</span>
+                  {% endfor %}
+                  {% if template.body_text %}
+                    <div class="text-muted mt-1">{{ template.body_text|linebreaksbr }}</div>
+                  {% endif %}
+                </td>
+                <td class="small">
+                  <div>{{ template.button_label|default:"-" }}</div>
+                  {% if template.button_parameter_source %}
+                    <div class="text-muted">{{ template.button_parameter_source }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if template.is_active %}
+                    <span class="badge bg-success">Active</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <a href="{% url 'whatsapp:utility_template_edit' template.pk %}" class="btn btn-outline-primary btn-sm">Edit</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="text-center text-muted py-3">No Utility templates seeded yet. Run WhatsApp migrations.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

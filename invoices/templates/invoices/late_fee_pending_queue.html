@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load money_tags %}
+
+{% block title %}Pending Late Fees{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 page-header">
+  <h2 class="h4 mb-0">Pending Late Fee Approvals</h2>
+  <a href="{% url 'invoices:invoice_list' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="fas fa-arrow-left"></i> Back to Invoices
+  </a>
+</div>
+
+{% if not pending_reminders %}
+  <div class="alert alert-light border text-muted mb-0">
+    No late fees are waiting for approval.
+  </div>
+{% else %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Invoice</th>
+          <th>Tenant</th>
+          <th>Reminder</th>
+          <th>Sent</th>
+          <th class="text-end">Fee</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reminder in pending_reminders %}
+          <tr>
+            <td>
+              <a href="{% url 'invoices:invoice_detail' reminder.invoice.pk %}">
+                #{{ reminder.invoice.invoice_number }}
+              </a>
+            </td>
+            <td>{{ reminder.invoice.lease.tenant.get_full_name|default:"-" }}</td>
+            <td>#{{ reminder.reminder_number }}</td>
+            <td>{{ reminder.created_at|date:"Y-m-d H:i" }}</td>
+            <td class="text-end">{{ reminder.fee_amount|money:2 }}</td>
+            <td class="text-end">
+              <form method="post" action="{% url 'invoices:approve_late_fee_reminder' reminder.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success btn-sm">
+                  <i class="fas fa-check"></i> Approve
+                </button>
+              </form>
+              <form method="post" action="{% url 'invoices:reject_late_fee_reminder' reminder.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                  <i class="fas fa-times"></i> Dismiss
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

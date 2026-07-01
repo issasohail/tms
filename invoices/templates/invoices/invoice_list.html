@@ -53,6 +53,10 @@
       </button>
     </form>
 
+    <a href="{% url 'invoices:late_fee_pending_queue' %}" class="btn btn-outline-warning">
+      <i class="fas fa-hourglass-half"></i><span class="btn-label"> Pending Fees</span>
+    </a>
+
     <a href="{% url 'invoices:recurring_wizard' %}" class="btn btn-success">
       <i class="fas fa-redo-alt"></i><span class="btn-label"> Recurring Invoice</span>
     </a>

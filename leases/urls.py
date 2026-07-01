@@ -42,6 +42,7 @@ from .views_renewal import (
 )
 from . import views_lease_files
 from . import views_inspections
+from . import views_late_fee
 app_name = 'leases'
 
 urlpatterns = [
@@ -65,6 +66,7 @@ urlpatterns = [
 
     # Lease CRUD operations
     path('<int:pk>/', LeaseDetailView.as_view(), name='lease_detail'),
+    path('<int:pk>/late-fee-settings/', views_late_fee.lease_late_fee_settings, name='lease_late_fee_settings'),
     path('<int:pk>/edit/', LeaseUpdateView.as_view(), name='lease_update'),
     path('<int:pk>/delete/', LeaseDeleteView.as_view(), name='lease_delete'),
     path("<int:lease_id>/inspections/", views_inspections.lease_inspection_list, name="lease_inspection_list"),

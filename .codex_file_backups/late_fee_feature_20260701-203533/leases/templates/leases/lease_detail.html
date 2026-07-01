@@ -1,0 +1,1515 @@
+{% extends 'base.html' %}
+{% load humanize static %}
+
+{% block extra_css %}
+<style>
+/* ============================================================
+   LEASE DETAIL  v3  —  clean, spacious, readable
+   ============================================================ */
+
+.ld-page { padding: 16px 0 48px; font-size: 14px; }
+
+/* ---- title zone ---- */
+.ld-title-row {
+  display: flex; flex-wrap: wrap;
+  justify-content: space-between; align-items: flex-start;
+  gap: 10px; margin-bottom: 14px;
+}
+.ld-title {
+  font-size: 20px; font-weight: 700; color: #111827;
+  line-height: 1.3; margin: 0;
+}
+.ld-title .ld-occ { font-size: 14px; font-weight: 400; color: #6b7280; }
+.ld-subtitle {
+  font-size: 13px; color: #6b7280; margin-top: 4px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.ld-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.ld-tenant-doc-strip {
+  display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;
+}
+.ld-doc-tile {
+  width:96px; background:#eff6ff; border:2px solid #2563eb; border-radius:7px;
+  padding:5px; text-align:center;
+}
+.ld-doc-tile a { display:block; text-decoration:none; }
+.ld-doc-img {
+  width:100%; height:64px; object-fit:cover; border-radius:4px; background:#fff;
+}
+.ld-doc-label {
+  display:block; margin-top:4px; font-size:10px; font-weight:700; color:#1d4ed8;
+  text-transform:uppercase; letter-spacing:.3px;
+}
+.ld-doc-empty {
+  height:64px; display:flex; align-items:center; justify-content:center;
+  background:#fff; border-radius:4px; color:#94a3b8; font-size:10px;
+}
+
+/* ---- KPI strip ---- */
+.ld-kpi-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;
+}
+@media (min-width: 480px) { .ld-kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media (min-width: 860px) { .ld-kpi-grid { grid-template-columns: repeat(6,1fr); } }
+.ld-kpi {
+  background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:11px 13px;
+}
+.ld-kpi-label  { font-size:11px; color:#6b7280; font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:.4px; }
+.ld-kpi-value  { font-size:16px; font-weight:700; color:#111827; line-height:1.2; }
+.ld-kpi-sub    { font-size:10px; color:#9ca3af; margin-top:3px; }
+.kv-danger  { color:#dc2626 !important; }
+.kv-warning { color:#d97706 !important; }
+
+/* ---- Badges ---- */
+.ld-badge {
+  display:inline-block; padding:2px 9px; border-radius:20px;
+  font-size:11px; font-weight:600; letter-spacing:.2px;
+}
+.ld-badge-green  { background:#dcfce7; color:#15803d; }
+.ld-badge-red    { background:#fee2e2; color:#b91c1c; }
+.ld-badge-amber  { background:#fef9c3; color:#92400e; }
+.ld-badge-blue   { background:#dbeafe; color:#1d4ed8; }
+.ld-badge-gray   { background:#f3f4f6; color:#374151; }
+.ld-badge-purple { background:#ede9fe; color:#6d28d9; }
+.ld-police-verified    { background:#dcfce7; color:#15803d; }
+.ld-police-rejected    { background:#fee2e2; color:#b91c1c; }
+.ld-police-pending,
+.ld-police-follow_up   { background:#fef9c3; color:#92400e; }
+.ld-police-not_started { background:#f3f4f6; color:#6b7280; }
+
+/* ---- Overview card ---- */
+.ld-overview-card {
+  background:#fff; border:1px solid #e5e7eb; border-radius:10px;
+  margin-bottom:14px; overflow:hidden;
+}
+.ld-overview-card-header {
+  background:#f8fafc; border-bottom:1px solid #e5e7eb;
+  padding:9px 16px; font-size:13px; font-weight:700; color:#374151;
+}
+
+/* 8-col grid */
+.ld-ov-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+@media (min-width:640px)  { .ld-ov-grid { grid-template-columns: repeat(4,1fr); } }
+@media (min-width:900px)  { .ld-ov-grid { grid-template-columns: repeat(6,1fr); } }
+@media (min-width:1200px) { .ld-ov-grid { grid-template-columns: repeat(8,1fr); } }
+
+.ld-ov-col {
+  padding: 14px 14px 14px 16px;
+  border-right: 1px solid #f1f5f9;
+}
+.ld-ov-col:last-child { border-right: none; }
+
+.ld-ov-head {
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .6px;
+  padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* field rows inside each column */
+.ld-f {
+  margin-bottom: 9px;
+}
+.ld-f:last-child { margin-bottom: 0; }
+.ld-f-label {
+  font-size: 10px; color: #9ca3af; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .3px;
+  margin-bottom: 2px;
+}
+.ld-f-value {
+  font-size: 13px; color: #111827; font-weight: 500; line-height: 1.35;
+}
+.ld-f-value a { color: #2563eb; text-decoration: none; }
+.ld-f-value a:hover { text-decoration: underline; }
+.ld-f-value.val-danger  { color: #dc2626; font-weight: 700; }
+.ld-f-value.val-success { color: #15803d; }
+
+/* security deposit rows inside col 8 */
+.dep-row {
+  display:flex; justify-content:space-between;
+  font-size:12px; padding:4px 7px; border-radius:4px; margin-bottom:2px;
+}
+.dep-row.dep-warn { background:#fef9c3; }
+.dep-row.dep-ok   { background:#f0fdf4; }
+.dep-k { color:#6b7280; }
+.dep-v { font-weight:600; }
+
+/* ---- Tab nav ---- */
+.ld-tab-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  margin-bottom: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.ld-tab-btn {
+  flex: 1 0 135px;
+  padding: 10px 8px;
+  font-size: 13px; font-weight: 500; color: #6b7280;
+  background: #f3f4f6; border: 1px solid #e5e7eb;
+  border-bottom: none; border-radius: 7px 7px 0 0;
+  cursor: pointer; text-align: center;
+  transition: background .12s, color .12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: none;
+}
+.ld-tab-btn:hover  { background: #e5e7eb; color: #374151; }
+.ld-tab-btn.active {
+  background: #fff; color: #1d4ed8; font-weight: 700;
+  border-color: #e5e7eb; border-bottom-color: #fff;
+  position: relative; z-index: 1;
+}
+.ld-tab-content-wrap {
+  background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 0 0 10px 10px; padding: 16px;
+  margin-top: -1px; margin-bottom: 16px;
+}
+.ld-tab-pane        { display: none; }
+.ld-tab-pane.active { display: block; }
+
+/* ---- Inner cards (inside tabs) ---- */
+.ld-inner-card {
+  border: 1px solid #e5e7eb; border-radius: 7px;
+  overflow: hidden; margin-bottom: 12px;
+}
+.ld-inner-card:last-child { margin-bottom: 0; }
+.ld-inner-head {
+  background: #f8fafc; border-bottom: 1px solid #e5e7eb;
+  padding: 8px 13px; font-size: 12px; font-weight: 700; color: #374151;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.ld-inner-body { padding: 11px 13px; }
+
+/* ---- kv rows inside tabs ---- */
+.ld-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:4px 0; border-bottom:.5px solid #f1f5f9; font-size:13px; gap:8px;
+}
+.ld-row:last-child { border-bottom:none; }
+.ld-rk { color:#6b7280; font-weight:500; flex-shrink:0; min-width:130px; }
+.ld-rv { color:#111827; font-weight:500; text-align:right; }
+
+/* ---- layout helpers ---- */
+.ld-g2 { display:grid; grid-template-columns:1fr; gap:12px; }
+@media (min-width:576px) { .ld-g2 { grid-template-columns:1fr 1fr; } }
+.ld-g3 { display:grid; grid-template-columns:1fr; gap:12px; }
+@media (min-width:576px) { .ld-g3 { grid-template-columns:1fr 1fr; } }
+@media (min-width:992px) { .ld-g3 { grid-template-columns:repeat(3,1fr); } }
+
+/* ---- activity rows ---- */
+.ld-act {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:6px 0; border-bottom:.5px solid #f3f4f6; font-size:13px; gap:8px;
+}
+.ld-act:last-child { border-bottom:none; }
+.ld-act-d  { font-size:11px; color:#6b7280; }
+.ld-act-l  { color:#111827; }
+.ld-act-a  { font-weight:600; white-space:nowrap; }
+
+/* ---- tables ---- */
+.ld-tw { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.ld-tbl {
+  width:100%; border-collapse:collapse; font-size:13px; min-width:480px;
+}
+.ld-tbl th {
+  background:#f8fafc; padding:7px 10px; font-size:11px; font-weight:700;
+  color:#6b7280; border-bottom:1px solid #e5e7eb; text-align:left; white-space:nowrap;
+}
+.ld-tbl td { padding:7px 10px; border-bottom:.5px solid #f3f4f6; color:#111827; }
+.ld-tbl tr:last-child td { border-bottom:none; }
+
+.ld-empty { padding:14px 0; font-size:13px; color:#9ca3af; }
+.ld-sec-title {
+  font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;
+  text-transform:uppercase; letter-spacing:.4px;
+}
+.ld-file-form { display:grid; grid-template-columns:1fr; gap:8px; }
+@media (min-width:768px) { .ld-file-form { grid-template-columns:1.5fr .8fr 1.2fr auto; align-items:end; } }
+.ld-file-list { display:grid; gap:8px; }
+.ld-file-row {
+  display:grid; grid-template-columns:1fr; gap:8px;
+  border:1px solid #e5e7eb; border-radius:7px; padding:9px; background:#fff;
+}
+.ld-file-serial { font-size:12px; font-weight:700; color:#6b7280; }
+@media (min-width:860px) { .ld-file-row { grid-template-columns:34px minmax(220px, 1.5fr) 150px minmax(120px, .9fr) 115px auto; align-items:center; } }
+.ld-file-name { font-size:13px; font-weight:700; overflow-wrap:anywhere; }
+.ld-file-sub { font-size:11px; color:#6b7280; overflow-wrap:anywhere; }
+.ld-file-actions { display:flex; flex-wrap:nowrap; gap:3px; justify-content:flex-end; white-space:nowrap; }
+.ld-file-actions form { display:inline-flex; margin:0; }
+.ld-file-action-btn { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; padding:0; }
+.ld-file-icon-download { color:#0d6efd; }
+.ld-file-icon-whatsapp { color:#198754; }
+.ld-file-missing { font-size:10px; }
+.ld-file-category-select { font-size:11px; padding:2px 5px; min-height:26px; }
+
+/* ============================================================
+   PRINT
+   ============================================================ */
+@media print {
+  nav, footer, .ld-actions, .ld-tab-nav,
+  .viewport-bar, .no-print, .btn, button {
+    display: none !important;
+  }
+  * {
+    color: #000 !important;
+    background: #fff !important;
+    border-color: #bbb !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+  }
+  .ld-badge, .badge {
+    background: #eee !important; color: #000 !important;
+    border: 1px solid #999 !important;
+  }
+  .ld-tab-pane { display: block !important; }
+  .ld-tab-content-wrap { border: 1px solid #bbb !important; }
+  .ld-page { padding: 0 !important; }
+  a { color: #000 !important; }
+  a[href]:after { content: none; }
+  .ld-inner-card, .ld-overview-card { page-break-inside: avoid; }
+  .kv-danger, .kv-warning, .val-danger, .val-success { color: #000 !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ld-page">
+
+  <!-- ============================================================
+       TITLE + ACTIONS
+  ============================================================ -->
+  <div class="ld-title-row">
+    <div>
+      <h1 class="ld-title">
+        Lease #{{ lease.id }} &mdash; {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
+        <span class="ld-occ">(Occupancy: {{ occupancy_count }})</span>
+      </h1>
+      <div class="ld-subtitle">
+        <span>{{ lease.tenant.get_full_name }}</span>
+        <span>&middot;</span>
+        <span>{{ lease.start_date }} &ndash; {{ lease.end_date }}</span>
+        <span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">
+          {{ lease.get_status_display }}
+        </span>
+      </div>
+      <div class="ld-tenant-doc-strip">
+        <div class="ld-doc-tile">
+          {% if lease.tenant.photo %}
+            <a href="{{ lease.tenant.photo.url }}" target="_blank">
+              <img src="{{ lease.tenant.photo.url }}" alt="Tenant Photo" class="ld-doc-img">
+              <span class="ld-doc-label">Photo</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No photo</div>
+            <span class="ld-doc-label">Photo</span>
+          {% endif %}
+        </div>
+        <div class="ld-doc-tile">
+          {% if lease.tenant.cnic_front %}
+            <a href="{{ lease.tenant.cnic_front.url }}" target="_blank">
+              <img src="{{ lease.tenant.cnic_front.url }}" alt="CNIC Front" class="ld-doc-img">
+              <span class="ld-doc-label">CNIC Front</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No file</div>
+            <span class="ld-doc-label">CNIC Front</span>
+          {% endif %}
+        </div>
+        <div class="ld-doc-tile">
+          {% if lease.tenant.cnic_back %}
+            <a href="{{ lease.tenant.cnic_back.url }}" target="_blank">
+              <img src="{{ lease.tenant.cnic_back.url }}" alt="CNIC Back" class="ld-doc-img">
+              <span class="ld-doc-label">CNIC Back</span>
+            </a>
+          {% else %}
+            <div class="ld-doc-empty">No file</div>
+            <span class="ld-doc-label">CNIC Back</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="ld-actions no-print">
+      <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">&#8592; Back To Lease</a>
+
+      {% if lease.signed_agreement %}
+        <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-sm btn-success">
+          <i class="fas fa-file-signature"></i> Signed Agreement
+        </a>
+      {% else %}
+        <button class="btn btn-sm btn-secondary" disabled>
+          <i class="fas fa-file-signature"></i> No Signed Agreement
+        </button>
+      {% endif %}
+
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</a>
+      {% if lease.status == "pending_approval" %}
+        <form method="post" action="{% url 'leases:approve_pending_lease' lease.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-success"><i class="fas fa-check"></i> Approve Lease</button>
+        </form>
+      {% endif %}
+      <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success"><i class="fas fa-sync-alt"></i> Renew</a>
+      <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
+      <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
+      <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-clipboard-check"></i> Inspections</a>
+      <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
+      {% include "whatsapp/_dropdown.html" with phone=lease.tenant.phone object_type="lease" object_id=lease.pk %}
+      {% if lease.status == "active" %}
+        <button type="button" class="btn btn-sm btn-outline-primary" data-maintenance-link="{{ public_maintenance_url }}" id="copyMaintenanceLinkBtn">
+          <i class="fas fa-link"></i> Copy Maintenance Link
+        </button>
+        <a href="https://wa.me/?text={{ public_maintenance_whatsapp_text|urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">
+          <i class="fab fa-whatsapp"></i> Share Maintenance Link
+        </a>
+      {% endif %}
+      <a href="{% url 'leases:police_verification_summary_pdf' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-file-pdf"></i> Police PDF</a>
+      <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i> Print</a>
+      {% if lease.generated_agreement_pdf %}
+        <button onclick="sendEmail()" class="btn btn-sm btn-info"><i class="fas fa-envelope"></i> Email</button>
+        <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-sm btn-dark"><i class="fas fa-download"></i> PDF</a>
+      {% endif %}
+      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-eye"></i> View Agreement</a>
+      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete</a>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       KPI STRIP
+  ============================================================ -->
+  <div class="ld-kpi-grid">
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Monthly Rent</div>
+      <div class="ld-kpi-value">{{ lease.monthly_rent|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">+ {{ lease.society_maintenance|default:0|money:0 }} maint.</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Balance Due</div>
+      <div class="ld-kpi-value kv-danger">{{ balance_due|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">outstanding</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Security Required</div>
+      <div class="ld-kpi-value kv-warning">{{ security_required|default:0|money:0 }}</div>
+      <div class="ld-kpi-sub">{{ security_currently_held|default:0|money:0 }} held</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Lease Period</div>
+      <div class="ld-kpi-value" style="font-size:13px;">{{ lease.start_date }} &ndash; {{ lease.end_date }}</div>
+      <div class="ld-kpi-sub">Min {{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Police Verification</div>
+      <div class="ld-kpi-value" style="font-size:13px;">
+        <span class="ld-badge ld-police-{{ lease.police_verification_status|default:'not_started' }}">
+          {{ lease.get_police_verification_status_display }}
+        </span>
+      </div>
+      <div class="ld-kpi-sub">Follow-up: {{ lease.police_verification_follow_up_date|date:"M d, Y"|default:"&mdash;" }}</div>
+    </div>
+    <div class="ld-kpi">
+      <div class="ld-kpi-label">Documents</div>
+      <div class="ld-kpi-value" style="font-size:13px;">
+        {% if lease.signed_agreement and lease.generated_agreement_pdf %}
+          <span class="ld-badge ld-badge-green">All uploaded</span>
+        {% else %}
+          <span class="ld-badge ld-badge-red">
+            {% if not lease.signed_agreement and not lease.generated_agreement_pdf %}2{% else %}1{% endif %} missing
+          </span>
+        {% endif %}
+      </div>
+      <div class="ld-kpi-sub">
+        {% if not lease.signed_agreement %}Signed &middot; {% endif %}{% if not lease.generated_agreement_pdf %}Agreement PDF{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       OVERVIEW — 8 columns
+  ============================================================ -->
+  <div class="ld-overview-card">
+    <div class="ld-overview-card-header">Property, Tenant &amp; Lease Overview</div>
+    <div class="ld-ov-grid">
+
+      <!-- COL 1: Core / Property -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Core</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Property</div>
+          <div class="ld-f-value">{{ lease.unit.property.property_name }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Unit</div>
+          <div class="ld-f-value">{{ lease.unit.unit_number }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Status</div>
+          <div class="ld-f-value">
+            <span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">
+              {{ lease.get_status_display }}
+            </span>
+          </div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Min Occupancy</div>
+          <div class="ld-f-value">{{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Meter Reading</div>
+          <div class="ld-f-value">{{ lease.electricity_meter_reading|default:"&mdash;" }}</div>
+        </div>
+      </div>
+
+      <!-- COL 2: Lease Dates -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Lease</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Start Date</div>
+          <div class="ld-f-value">{{ lease.start_date }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">End Date</div>
+          <div class="ld-f-value">{{ lease.end_date }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Agreement Date</div>
+          <div class="ld-f-value">{{ lease.agreement_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Min Occupancy</div>
+          <div class="ld-f-value">{{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Police Follow-up</div>
+          <div class="ld-f-value">{{ lease.police_verification_follow_up_date|date:"M d, Y"|default:"&mdash;" }}</div>
+        </div>
+      </div>
+
+      <!-- COL 3: Tenant -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Tenant</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Full Name</div>
+          <div class="ld-f-value">{{ lease.tenant.get_full_name }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">CNIC</div>
+          <div class="ld-f-value">{{ lease.tenant.cnic|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Phone</div>
+          <div class="ld-f-value">
+            {% if lease.tenant.phone %}<a href="tel:{{ lease.tenant.phone }}">{{ lease.tenant.phone }}</a>{% else %}&mdash;{% endif %}
+          </div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Police Verification</div>
+          <div class="ld-f-value">
+            <span class="ld-badge ld-police-{{ lease.police_verification_status|default:'not_started' }}">
+              {{ lease.get_police_verification_status_display }}
+            </span>
+          </div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Police Verified Date</div>
+          <div class="ld-f-value">{{ lease.police_verification_date|date:"M d, Y"|default:"&mdash;" }}</div>
+        </div>
+        {% if lease.police_verification_document %}
+        <div class="ld-f">
+          <div class="ld-f-label">Police Document</div>
+          <div class="ld-f-value"><a href="{{ lease.police_verification_document.url }}" target="_blank">View</a></div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- COL 4: Rent & Financials -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Rent</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Monthly Rent</div>
+          <div class="ld-f-value">{{ lease.monthly_rent|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Society Maintenance</div>
+          <div class="ld-f-value">{{ lease.society_maintenance|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Security Deposit</div>
+          <div class="ld-f-value">{{ lease.security_deposit|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Balance</div>
+          <div class="ld-f-value val-danger">{{ balance_due|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Rent Due Day</div>
+          <div class="ld-f-value">{{ lease.due_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Late Fee</div>
+          <div class="ld-f-value">{{ lease.late_fee|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Rent Increase %</div>
+          <div class="ld-f-value">{{ lease.rent_increase_percent|default:0 }}%</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Total Payment</div>
+          <div class="ld-f-value">{{ lease_total_payment|default:0|money:0 }}</div>
+        </div>
+      </div>
+
+      <!-- COL 5: Installments & Return -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Installments / Return</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 1 Amount</div>
+          <div class="ld-f-value">{{ lease.security_installment_1_amount|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 1 Date</div>
+          <div class="ld-f-value">{{ lease.security_installment_1_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 2 Amount</div>
+          <div class="ld-f-value">{{ lease.security_installment_2_amount|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Installment 2 Date</div>
+          <div class="ld-f-value">{{ lease.security_installment_2_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Return Date</div>
+          <div class="ld-f-value">{{ lease.security_deposit_return_date|default:"&mdash;" }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Return Amount</div>
+          <div class="ld-f-value">{{ lease.security_deposit_return_amount|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Early Penalty</div>
+          <div class="ld-f-value">{{ lease.early_termination_penalty|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Deposit Paid</div>
+          <div class="ld-f-value">
+            {% if deposit_is_paid %}
+              <span class="ld-badge ld-badge-green">Yes</span>
+            {% else %}
+              <span class="ld-badge ld-badge-red">No</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- COL 6: Family -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Family</div>
+        {% if family_members %}
+          <div class="ld-f-label" style="font-size:10px;color:#9ca3af;margin-bottom:6px;">FAMILY</div>
+          {% for m in family_members %}
+            <div class="ld-f">
+              <div class="ld-f-label">{{ m.relation|default:"Member" }}</div>
+              <div class="ld-f-value">
+                <a href="{% url 'tenants:tenant_detail' m.tenant.pk %}">{{ m.tenant.get_full_name }}</a>
+                {% if m.tenant.phone %}<br><span style="font-size:11px;color:#6b7280;">{{ m.tenant.phone }}</span>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="ld-f">
+            <div class="ld-f-label">Family</div>
+            <div class="ld-f-value" style="color:#9ca3af;">None recorded</div>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- COL 7: Inventory -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Inventory</div>
+        <div class="ld-f"><div class="ld-f-label">Ceiling Fans</div><div class="ld-f-value">{{ lease.inventory_ceiling_fans|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Exhaust Fans</div><div class="ld-f-value">{{ lease.inventory_exhaust_fans|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Ceiling Lights</div><div class="ld-f-value">{{ lease.inventory_ceiling_lights|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Stove</div><div class="ld-f-value">{{ lease.inventory_stove|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Wardrobes</div><div class="ld-f-value">{{ lease.inventory_wardrobes|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Keys</div><div class="ld-f-value">{{ lease.inventory_keys|default:"&mdash;" }}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Paint Condition</div><div class="ld-f-value">{{ lease.paint_condition|default:"&mdash;" }}</div></div>
+      </div>
+
+      <!-- COL 8: Security Deposit Summary -->
+      <div class="ld-ov-col">
+        <div class="ld-ov-head">Security Summary</div>
+        <div class="ld-f">
+          <div class="ld-f-label">Security Deposit</div>
+          <div class="ld-f-value">{{ lease.security_deposit|default:0|money:0 }}</div>
+        </div>
+        <div style="margin-top:8px;">
+          <div class="dep-row"><span class="dep-k">Required</span><span class="dep-v">{{ security_required|default:0|money:0 }}</span></div>
+          <div class="dep-row"><span class="dep-k">Paid In</span><span class="dep-v">{{ security_paid_in|default:0|money:0 }}</span></div>
+          <div class="dep-row"><span class="dep-k">Refunded</span><span class="dep-v">{{ security_refunded|default:0|money:0 }}</span></div>
+          <div class="dep-row"><span class="dep-k">Damages</span><span class="dep-v">{{ security_damages|default:0|money:0 }}</span></div>
+          <div class="dep-row dep-warn">
+            <span class="dep-k" style="color:#92400e;font-weight:600;">To Collect</span>
+            <span class="dep-v" style="color:#92400e;">{{ security_balance_to_collect|default:0|money:0 }}</span>
+          </div>
+          <div class="dep-row dep-ok">
+            <span class="dep-k" style="color:#15803d;font-weight:600;">Currently Held</span>
+            <span class="dep-v" style="color:#15803d;">{{ security_currently_held|default:0|money:0 }}</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#6b7280;">
+          Deposit {% if deposit_is_paid %}<strong style="color:#15803d;">paid</strong>{% else %}<strong style="color:#b91c1c;">Not Paid</strong>{% endif %}.
+        </div>
+        {% if lease.police_verification_remarks %}
+        <div class="ld-f" style="margin-top:8px;">
+          <div class="ld-f-label">Police Remarks</div>
+          <div class="ld-f-value" style="font-size:12px;">{{ lease.police_verification_remarks }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+    </div><!-- /ld-ov-grid -->
+  </div><!-- /ld-overview-card -->
+
+  <!-- ============================================================
+       TABS  (5: Renewals · Unit & Meter · Terms & Notes · Activity · Documents)
+  ============================================================ -->
+  <div class="ld-tabs-wrapper">
+
+    <div class="ld-tab-nav no-print" id="ldTabNav">
+      <button class="ld-tab-btn active" data-tab="renewals">Lease Renewals</button>
+      <button class="ld-tab-btn" data-tab="unit">Unit &amp; Meter</button>
+      <button class="ld-tab-btn" data-tab="family">Family</button>
+      <button class="ld-tab-btn" data-tab="notes">Terms &amp; Notes</button>
+      <button class="ld-tab-btn" data-tab="activity">Activity</button>
+      <button class="ld-tab-btn" data-tab="docs">Documents</button>
+      <button class="ld-tab-btn" data-tab="inspections">Inspection Sheet</button>
+    </div>
+
+    <div class="ld-tab-content-wrap">
+
+      <!-- ======== RENEWALS ======== -->
+      <div class="ld-tab-pane active" id="ld-tab-renewals">
+        <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+          <span class="ld-sec-title mb-0">Lease Renewal History</span>
+          <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-primary">
+            <i class="fas fa-sync-alt me-1"></i> Renew Lease
+          </a>
+        </div>
+        <div class="ld-tw">
+          <table class="ld-tbl">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Rent</th>
+                <th>Total Monthly</th>
+                <th>Signed</th>
+                <th>Files</th>
+                <th class="no-print">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for renewal in renewals %}
+                <tr>
+                  <td>
+                    #{{ forloop.counter }}
+                    {% if forloop.first %}
+                      <span class="ld-badge ld-badge-blue ms-1">Original</span>
+                    {% else %}
+                      <span class="ld-badge ld-badge-purple ms-1">Renewal</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ renewal.start_date|date:"M d, Y" }}</td>
+                  <td>{{ renewal.end_date|date:"M d, Y" }}</td>
+                  <td>{{ renewal.monthly_rent|default:0|money:0 }}</td>
+                  <td>{{ renewal.total_monthly_amount|default:0|money:0 }}</td>
+                  <td>
+                    {% if renewal.is_agreement_signed %}
+                      <span class="ld-badge ld-badge-green">Signed</span>
+                    {% else %}
+                      <span class="ld-badge ld-badge-amber">Pending</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if renewal.generated_agreement_pdf %}
+                      <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                    {% endif %}
+                    {% if renewal.generated_agreement_docx %}
+                      <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                    {% endif %}
+                    {% if renewal.signed_copy %}
+                      <a href="{{ renewal.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                    {% endif %}
+                    {% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}
+                      &mdash;
+                    {% endif %}
+                  </td>
+                  <td class="no-print">
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                      <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
+                      <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-primary">Edit</a>
+                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-secondary">Clauses</a>
+                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-dark">Generate PDF</a>
+                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-success">Upload Signed</a>
+                      <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-outline-dark">Photos</a>
+                    </div>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="8" class="ld-empty">No renewal history recorded.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ======== UNIT & METER ======== -->
+      <div class="ld-tab-pane" id="ld-tab-unit">
+        <div class="ld-g2">
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">
+              Current Unit / Room
+              <a href="{% url 'smart_meter:move_lease_unit' lease.pk %}" class="btn btn-sm btn-primary py-0 px-2 no-print" style="font-size:11px;">Move Tenant</a>
+            </div>
+            <div class="ld-inner-body">
+              <div class="ld-row"><span class="ld-rk">Current Unit</span><span class="ld-rv"><a href="{% url 'properties:unit_detail' lease.current_unit.pk %}">{{ lease.current_unit.property.property_name }} {{ lease.current_unit.unit_number }}</a></span></div>
+              <div class="ld-row"><span class="ld-rk">Lease Start</span><span class="ld-rv">{{ lease.start_date|date:"M d, Y" }}</span></div>
+              <div class="ld-row"><span class="ld-rk">Lease End</span><span class="ld-rv">{{ lease.end_date|date:"M d, Y" }}</span></div>
+            </div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Unit Move History</div>
+            <div class="ld-tw">
+              <table class="ld-tbl" style="min-width:340px;">
+                <thead><tr><th>Unit</th><th>Move In</th><th>Move Out</th><th>Notes</th></tr></thead>
+                <tbody>
+                  {% for occ in lease.unit_occupancies.all %}
+                    <tr>
+                      <td><a href="{% url 'properties:unit_detail' occ.unit.pk %}">{{ occ.unit }}</a></td>
+                      <td>{{ occ.move_in_date|date:"M d, Y" }}</td>
+                      <td>{{ occ.move_out_date|date:"M d, Y"|default:"Current" }}</td>
+                      <td style="color:#6b7280;font-size:11px;">{{ occ.notes|default:"&mdash;" }}</td>
+                    </tr>
+                  {% empty %}
+                    <tr><td colspan="4" class="ld-empty">No move history.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="ld-inner-card" style="margin-top:12px;">
+          <div class="ld-inner-head">Meter Billing History / Usage Breakdown</div>
+          <div class="ld-tw">
+            <table class="ld-tbl">
+              <thead><tr><th>Meter</th><th>Unit</th><th>Installed</th><th>Removed</th><th class="text-end">Start Reading</th><th class="text-end">End Reading</th></tr></thead>
+              <tbody>
+                {% for inst in lease.meter_installations.all %}
+                  <tr>
+                    <td><a href="{% url 'smart_meter:meter_detail' inst.meter.pk %}">{{ inst.meter.meter_number }}</a></td>
+                    <td>{{ inst.unit }}</td>
+                    <td>{{ inst.start_date|date:"M d, Y" }}</td>
+                    <td>{{ inst.end_date|date:"M d, Y"|default:"Current" }}</td>
+                    <td class="text-end">{{ inst.start_reading }}</td>
+                    <td class="text-end">{{ inst.end_reading|default:"&mdash;" }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="6" class="ld-empty">No meter installations linked.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== FAMILY ======== -->
+      <div class="ld-tab-pane" id="ld-tab-family">
+        <div class="ld-inner-card">
+          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Family Members</span>
+            <div class="d-flex flex-wrap gap-1">
+              <button type="button" class="btn btn-sm btn-outline-success" id="copyFamilyPublicLinkBtn" data-link-url="{% url 'leases:lease_family_public_link' lease.pk %}">
+                <i class="fas fa-link"></i> Public Link
+              </button>
+              <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#leaseFamilyAddBox">
+                <i class="fas fa-plus"></i> Add Family
+              </button>
+            </div>
+          </div>
+          <div class="collapse" id="leaseFamilyAddBox">
+            <div class="p-2 border-bottom bg-light">
+              <form id="leaseFamilyExistingForm" method="post" action="{% url 'leases:lease_family_add' lease.pk %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <div class="col-12 col-lg-6">
+                  <label class="form-label small fw-semibold mb-1" for="leaseFamilyTenantSelect">Find Existing Tenant</label>
+                  <select id="leaseFamilyTenantSelect" name="tenant_id" class="form-select form-select-sm" data-search-url="{% url 'leases:tenant_quick_search' %}">
+                    <option value=""></option>
+                  </select>
+                </div>
+                <div class="col-12 col-lg-3">
+                  <label class="form-label small fw-semibold mb-1" for="leaseFamilyRelation">Relationship</label>
+                  <select id="leaseFamilyRelation" name="relation" class="form-select form-select-sm" required>
+                    <option value="">Select relationship</option>
+                    {% for item in relationship_types %}
+                      <option value="{{ item.id }}">{{ item.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-12 col-lg-3 d-flex flex-wrap gap-1">
+                  <button type="submit" class="btn btn-sm btn-success flex-fill">Link Tenant</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary flex-fill" id="openNewFamilyModalBtn">Add New</button>
+                </div>
+              </form>
+              <div class="form-text" id="leaseFamilySearchHelp">Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.</div>
+            </div>
+          </div>
+          <div class="ld-tw">
+            <table class="ld-tbl">
+              <thead>
+                <tr>
+                  <th>S.N</th>
+                  <th>Name</th>
+                  <th>Relationship</th>
+                  <th>CNIC</th>
+                  <th>DOB</th>
+                  <th>Phone</th>
+                  <th>Age</th>
+                  <th class="no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="leaseFamilyRows">
+                {% for member in family_members %}
+                  <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
+                    <td>{{ member.relation }}</td>
+                    <td>{{ member.family_member.cnic|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.phone|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.age|default:"&mdash;" }}</td>
+                    <td class="no-print">
+                      <div class="d-flex flex-wrap gap-1">
+                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">View</a>
+                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <form method="post" action="{% url 'leases:lease_family_remove' lease.pk member.pk %}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="7" class="ld-empty">No family members linked to this lease.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== TERMS & NOTES ======== -->
+      <div class="ld-tab-pane" id="ld-tab-notes">
+        <div class="ld-g3">
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Terms</div>
+            <div class="ld-inner-body" style="font-size:13px;">{{ lease.terms|default:"&mdash;" }}</div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Notes</div>
+            <div class="ld-inner-body" style="font-size:13px;">{{ lease.notes|default:"&mdash;" }}</div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Return Notes</div>
+            <div class="ld-inner-body" style="font-size:13px;">{{ lease.security_deposit_return_notes|default:"&mdash;" }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== ACTIVITY ======== -->
+      <div class="ld-tab-pane" id="ld-tab-activity">
+        <div class="ld-g2">
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Recent Payments</div>
+            <div class="ld-inner-body">
+              {% if recent_payments %}
+                {% for p in recent_payments %}
+                  <div class="ld-act">
+                    <div><div class="ld-act-d">{{ p.payment_date }}</div><div class="ld-act-l">{{ p.reference_number|default:"Payment" }}</div></div>
+                    <div class="ld-act-a" style="color:#15803d;">{{ p.amount|money:0 }}</div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="ld-empty">No payments yet.</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="ld-inner-card">
+            <div class="ld-inner-head">Invoices</div>
+            <div class="ld-inner-body">
+              {% if invoices %}
+                {% for inv in invoices %}
+                  <div class="ld-act">
+                    <div><div class="ld-act-d">{{ inv.issue_date }}</div><div class="ld-act-l">{{ inv.description|default:"Invoice" }}</div></div>
+                    <div class="ld-act-a" style="color:#dc2626;">{{ inv.amount|money:0 }}</div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="ld-empty">No invoices yet.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== DOCUMENTS ======== -->
+      <div class="ld-tab-pane" id="ld-tab-docs">
+        <div class="ld-inner-card">
+          <div class="ld-inner-head">Lease Files</div>
+          <div class="ld-inner-body">
+            <form method="post" enctype="multipart/form-data" action="{% url 'leases:lease_file_upload' lease.pk %}" class="ld-file-form no-print mb-3">
+              {% csrf_token %}
+              <div>
+                <label class="form-label small fw-semibold mb-1">Files</label>
+                <input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.heic,.heif">
+              </div>
+              <div>
+                <label class="form-label small fw-semibold mb-1">Category</label>
+                <select name="category" class="form-select form-select-sm">
+                  {% for category in lease_document_categories %}
+                    <option value="{{ category.code }}">{{ category.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label small fw-semibold mb-1">Description</label>
+                <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
+              </div>
+              <div>
+                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+              </div>
+            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3 no-print">
+              <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-primary" title="Share all active files on WhatsApp">
+                  <i class="fab fa-whatsapp"> Share All files</i>
+                </button>
+              </form>
+            </div>
+
+            <div class="ld-file-list">
+              {% for doc in lease_documents %}
+                <div class="ld-file-row">
+                  <div class="ld-file-serial">#{{ forloop.counter }}</div>
+                  <div>
+                    <div class="ld-file-name">
+                      <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
+                      {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
+                    </div>
+                    <div class="ld-file-sub">{{ doc.original_filename }}</div>
+                  </div>
+                  <div>
+                    <select class="form-select form-select-sm ld-file-category-select no-print" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
+                      {% for category in lease_document_categories %}
+                        <option value="{{ category.code }}" {% if doc.category == category.code %}selected{% endif %}>{{ category.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <span class="ld-badge ld-badge-gray d-none d-print-inline">{{ doc.category_label }}</span>
+                    {% if doc.lease_history %}<div class="ld-file-sub">{{ doc.lease_history.history_label }}</div>{% endif %}
+                  </div>
+                  <div class="ld-file-sub">{{ doc.description|default:"No description" }}</div>
+                  <div class="ld-file-sub">
+                    {{ doc.uploaded_at|date:"M d, Y H:i" }}<br>
+                    {{ doc.uploaded_by|default:"System" }}
+                  </div>
+                  <div class="ld-file-actions no-print">
+                    {% if doc.file_exists %}
+                      <a class="btn btn-sm btn-outline-secondary ld-file-action-btn" target="_blank" rel="noopener" href="{% url 'leases:lease_file_view' doc.pk %}" title="View">
+                        <i class="fas fa-eye"></i>
+                      </a>
+                      <a class="btn btn-sm btn-outline-success ld-file-action-btn" href="{% url 'leases:lease_file_download' doc.pk %}" title="Download">
+                        <i class="fas fa-download ld-file-icon-download"></i>
+                      </a>
+                    {% else %}
+                      <button class="btn btn-sm btn-outline-secondary ld-file-action-btn" type="button" disabled title="File missing">
+                        <i class="fas fa-exclamation-triangle"></i>
+                      </button>
+                    {% endif %}
+                    <form method="post" action="{% url 'leases:lease_file_share_one' doc.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-primary ld-file-action-btn" title="Share on WhatsApp">
+                        <i class="fab fa-whatsapp ld-file-icon-whatsapp"></i>
+                      </button>
+                    </form>
+                    <form method="post" action="{% url 'leases:lease_file_deactivate' doc.pk %}" onsubmit="return confirm('Delete this file from the active list?');">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger ld-file-action-btn" title="Delete">
+                        <i class="fas fa-trash-alt"></i>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% empty %}
+                <div class="ld-empty">No lease files uploaded yet.</div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ======== INSPECTION SHEETS ======== -->
+      <div class="ld-tab-pane" id="ld-tab-inspections">
+        <div class="ld-inner-card">
+          <div class="ld-inner-head">
+            <span>Lease Inspection Sheets</span>
+            <div class="d-flex flex-wrap gap-1 no-print">
+              <a class="btn btn-sm btn-primary" href="{% url 'leases:lease_inspection_create' lease.pk %}">Create Inspection</a>
+              <a class="btn btn-sm btn-outline-dark" href="{% url 'leases:inspection_compare' lease.pk %}">Compare</a>
+            </div>
+          </div>
+          <div class="ld-tw">
+            <table class="ld-tbl">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Template</th>
+                  <th>Status</th>
+                  <th>Complete</th>
+                  <th class="no-print">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for inspection in lease.inspections.all %}
+                  <tr>
+                    <td>{{ inspection.inspection_date }}</td>
+                    <td>{{ inspection.inspection_type }}</td>
+                    <td>{{ inspection.inspection_template|default:"&mdash;" }}</td>
+                    <td><span class="ld-badge ld-badge-gray">{{ inspection.get_status_display }}</span></td>
+                    <td>{{ inspection.completion_percent }}%</td>
+                    <td class="no-print">
+                      <div class="d-flex flex-wrap gap-1">
+                        <a class="btn btn-sm btn-outline-dark" href="{% url 'leases:inspection_detail' inspection.pk %}">View</a>
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:inspection_edit' inspection.pk %}">Edit</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'leases:inspection_pdf' inspection.pk %}">Print</a>
+                        <form method="post" action="{% url 'leases:inspection_public_link' inspection.pk %}">
+                          {% csrf_token %}
+                          <button class="btn btn-sm btn-outline-success" type="submit">Public Link</button>
+                        </form>
+                        <form method="post" action="{% url 'leases:inspection_approve' inspection.pk %}">
+                          {% csrf_token %}
+                          <button class="btn btn-sm btn-success" type="submit">Approve</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="6" class="ld-empty">No inspection sheets yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /ld-tab-content-wrap -->
+  </div><!-- /ld-tabs-wrapper -->
+
+</div><!-- /ld-page -->
+
+<!-- Renewal media modal -->
+<div class="modal fade" id="renewalMediaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-9">
+            <img id="renewalMediaMain" src="" alt="Media" class="img-fluid w-100 rounded border" style="max-height:75vh;object-fit:contain;">
+          </div>
+          <div class="col-12 col-md-3">
+            <div id="renewalMediaThumbs" class="d-flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <small class="text-muted">Click thumbnail to switch</small>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="newFamilyMemberModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="newFamilyMemberForm" method="post" enctype="multipart/form-data" action="{% url 'leases:lease_family_create_and_add' lease.pk %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Add New Family Member</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small">
+            This person is not in the tenant list. Enter their details once; TMS will create the tenant record and link it to this lease.
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">Full Name</label>
+              <input class="form-control form-control-sm" name="full_name" id="newFamilyFullName">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small fw-semibold">First Name</label>
+              <input class="form-control form-control-sm" name="first_name" id="newFamilyFirstName">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small fw-semibold">Last Name</label>
+              <input class="form-control form-control-sm" name="last_name" id="newFamilyLastName">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Relationship</label>
+              <select class="form-select form-select-sm" name="relation" id="newFamilyRelation" required>
+                <option value="">Select relationship</option>
+                {% for item in relationship_types %}
+                  <option value="{{ item.id }}">{{ item.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">CNIC / ID</label>
+              <input class="form-control form-control-sm" name="cnic" required>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Phone</label>
+              <input class="form-control form-control-sm" name="phone">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">DOB</label>
+              <input class="form-control form-control-sm" type="date" name="date_of_birth">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Gender</label>
+              <select class="form-select form-select-sm" name="gender">
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="O">Other</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">Photo</label>
+              <input class="form-control form-control-sm" type="file" name="photo" accept="image/*">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">ID Front</label>
+              <input class="form-control form-control-sm" type="file" name="cnic_front" accept="image/*">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">ID Back</label>
+              <input class="form-control form-control-sm" type="file" name="cnic_back" accept="image/*">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Notes</label>
+              <textarea class="form-control form-control-sm" name="notes" rows="2"></textarea>
+            </div>
+          </div>
+          <div class="text-danger small mt-2 d-none" id="newFamilyError"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="newFamilySaveBtn">Save Tenant & Add Family</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const nav = document.getElementById('ldTabNav');
+  if (!nav) return;
+  nav.addEventListener('click', function (e) {
+    const btn = e.target.closest('.ld-tab-btn');
+    if (!btn) return;
+    nav.querySelectorAll('.ld-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.ld-tab-pane').forEach(p => p.classList.remove('active'));
+    const t = document.getElementById('ld-tab-' + btn.dataset.tab);
+    if (t) t.classList.add('active');
+  });
+})();
+
+(function () {
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const existingForm = document.getElementById('leaseFamilyExistingForm');
+  const tenantSelect = document.getElementById('leaseFamilyTenantSelect');
+  const relationSelect = document.getElementById('leaseFamilyRelation');
+  const newModalEl = document.getElementById('newFamilyMemberModal');
+  const newForm = document.getElementById('newFamilyMemberForm');
+  const errorBox = document.getElementById('newFamilyError');
+  const searchHelp = document.getElementById('leaseFamilySearchHelp');
+  let lastNoResultTerm = '';
+
+  function esc(value) {
+    return String(value || '').replace(/[&<>"']/g, function (ch) {
+      return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]);
+    });
+  }
+
+  function addFamilyRow(data) {
+    const tbody = document.getElementById('leaseFamilyRows');
+    if (!tbody) return;
+    tbody.querySelectorAll('.ld-empty').forEach(row => row.closest('tr')?.remove());
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
+      <td>${esc(data.relation || '-')}</td>
+      <td>&mdash;</td>
+      <td>&mdash;</td>
+      <td>${esc(data.phone || '—')}</td>
+      <td>${esc(data.age || '—')}</td>
+      <td class="no-print">
+        <div class="d-flex flex-wrap gap-1">
+          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-outline-dark">View</a>
+          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-outline-primary">Edit</a>
+          <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
+            <input type="hidden" name="csrfmiddlewaretoken" value="${esc(csrf)}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+          </form>
+        </div>
+      </td>`;
+    tbody.appendChild(row);
+  }
+
+  function splitFamilyName(term) {
+    const clean = String(term || '').trim().replace(/\s+/g, ' ');
+    if (!clean) return {full: '', first: '', last: ''};
+    const parts = clean.split(' ');
+    return {
+      full: clean,
+      first: parts.shift() || '',
+      last: parts.join(' ') || ''
+    };
+  }
+
+  function openNewFamilyModalFromTerm(term, showNotFoundMessage) {
+    if (!newModalEl) return;
+    const names = splitFamilyName(term);
+    const selectedRelation = relationSelect?.value || '';
+    if (selectedRelation) {
+      document.getElementById('newFamilyRelation').value = selectedRelation;
+    }
+    document.getElementById('newFamilyFullName').value = names.full;
+    document.getElementById('newFamilyFirstName').value = names.first;
+    document.getElementById('newFamilyLastName').value = names.last;
+    if (errorBox) {
+      if (showNotFoundMessage && names.full) {
+        errorBox.textContent = `"${names.full}" is not in the tenant list. Would you like to add this tenant?`;
+        errorBox.classList.remove('d-none');
+      } else {
+        errorBox.classList.add('d-none');
+        errorBox.textContent = '';
+      }
+    }
+    new bootstrap.Modal(newModalEl).show();
+  }
+
+  if (tenantSelect && window.jQuery && jQuery.fn.select2) {
+    jQuery(tenantSelect).select2({
+      placeholder: 'Search tenant name, phone or CNIC',
+      allowClear: true,
+      width: '100%',
+      minimumInputLength: 1,
+      ajax: {
+        url: tenantSelect.dataset.searchUrl,
+        dataType: 'json',
+        delay: 250,
+        data: params => ({q: params.term || ''}),
+        processResults: data => ({
+          results: (data || []).map(item => ({
+            id: item.id,
+            text: [item.name, item.phone1, item.cnic].filter(Boolean).join(' - ')
+          }))
+        })
+      },
+      language: {
+        inputTooShort: function () {
+          return 'Type to search tenant.';
+        },
+        searching: function () {
+          return 'Searching tenants...';
+        },
+        noResults: function () {
+          const term = (jQuery('.select2-container--open .select2-search__field').val() || '').trim();
+          if (term && term !== lastNoResultTerm) {
+            lastNoResultTerm = term;
+            if (searchHelp) {
+              searchHelp.innerHTML = `<span class="text-danger">"${esc(term)}" is not in the list.</span> Add this person as a new family member.`;
+            }
+            window.setTimeout(function () {
+              openNewFamilyModalFromTerm(term, true);
+            }, 150);
+          }
+          return 'No tenant found. Opening Add New...';
+        }
+      }
+    }).on('select2:open', function () {
+      window.setTimeout(function () {
+        const input = document.querySelector('.select2-container--open .select2-search__field');
+        if (input) input.focus();
+      }, 0);
+    }).on('select2:select', function () {
+      if (searchHelp) {
+        searchHelp.textContent = 'Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.';
+      }
+      lastNoResultTerm = '';
+    });
+  }
+
+  document.getElementById('openNewFamilyModalBtn')?.addEventListener('click', function () {
+    let term = '';
+    if (tenantSelect && window.jQuery && jQuery.fn.select2) {
+      term = jQuery('.select2-container--open .select2-search__field').val() || '';
+    }
+    openNewFamilyModalFromTerm(term, false);
+  });
+
+  document.getElementById('copyFamilyPublicLinkBtn')?.addEventListener('click', function () {
+    const btn = this;
+    fetch(btn.dataset.linkUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+      .then(({ok, payload}) => {
+        if (!ok || !payload.ok) throw new Error(payload.error || 'Could not create public link.');
+        if (navigator.clipboard) {
+          return navigator.clipboard.writeText(payload.url).then(() => payload);
+        }
+        window.prompt('Copy public family link:', payload.url);
+        return payload;
+      })
+      .then(payload => {
+        alert('Public family link copied. It is valid for 48 hours.');
+      })
+      .catch(error => alert(error.message));
+  });
+
+  existingForm?.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const data = new FormData(existingForm);
+    fetch(existingForm.action, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+      body: data
+    })
+    .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+    .then(({ok, payload}) => {
+      if (!ok || !payload.ok) throw new Error(payload.error || 'Could not add family member.');
+      addFamilyRow({
+        ...payload,
+        detail_url: "{% url 'tenants:tenant_detail' 0 %}".replace('/0/', '/' + payload.tenant_id + '/'),
+        edit_url: "{% url 'tenants:tenant_update' 0 %}".replace('/0/', '/' + payload.tenant_id + '/'),
+        remove_url: "{% url 'leases:lease_family_remove' lease.pk 0 %}".replace('/0/remove/', '/' + payload.id + '/remove/')
+      });
+      existingForm.reset();
+      if (tenantSelect && window.jQuery && jQuery.fn.select2) jQuery(tenantSelect).val(null).trigger('change');
+    })
+    .catch(error => alert(error.message));
+  });
+
+  newForm?.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const saveBtn = document.getElementById('newFamilySaveBtn');
+    if (errorBox) {
+      errorBox.classList.add('d-none');
+      errorBox.textContent = '';
+    }
+    if (saveBtn) saveBtn.disabled = true;
+    fetch(newForm.action, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+      body: new FormData(newForm)
+    })
+    .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+    .then(({ok, payload}) => {
+      if (!ok || !payload.ok) throw new Error(payload.error || 'Could not save family member.');
+      addFamilyRow(payload);
+      bootstrap.Modal.getInstance(newModalEl)?.hide();
+      newForm.reset();
+    })
+    .catch(error => {
+      if (errorBox) {
+        errorBox.textContent = error.message;
+        errorBox.classList.remove('d-none');
+      } else {
+        alert(error.message);
+      }
+    })
+    .finally(() => {
+      if (saveBtn) saveBtn.disabled = false;
+    });
+  });
+})();
+
+function openRenewalMedia(btn) {
+  const urls = (btn.dataset.urls || '').split('|').filter(Boolean);
+  if (!urls.length) return;
+  const main   = document.getElementById('renewalMediaMain');
+  const thumbs = document.getElementById('renewalMediaThumbs');
+  main.src = urls[0];
+  thumbs.innerHTML = '';
+  urls.forEach(function(u) {
+    const img = document.createElement('img');
+    img.src = u;
+    img.className = 'img-thumbnail';
+    img.style.cssText = 'width:80px;height:80px;object-fit:cover;cursor:pointer;';
+    img.addEventListener('click', function() { main.src = u; });
+    thumbs.appendChild(img);
+  });
+  if (window.bootstrap && bootstrap.Modal)
+    new bootstrap.Modal(document.getElementById('renewalMediaModal')).show();
+}
+
+document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', function () {
+  const link = this.dataset.maintenanceLink || '';
+  if (!link) return;
+  navigator.clipboard.writeText(link).then(() => {
+    const original = this.innerHTML;
+    this.innerHTML = '<i class="fas fa-check"></i> Copied';
+    setTimeout(() => { this.innerHTML = original; }, 1600);
+  }).catch(() => {
+    window.prompt('Copy maintenance link:', link);
+  });
+});
+
+document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
+  select.addEventListener('change', function () {
+    const data = new FormData();
+    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    data.append('category', this.value);
+    this.disabled = true;
+    fetch(this.dataset.docCategoryUrl, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+      body: data
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Category update failed.');
+      return response.json();
+    }).catch(function (error) {
+      alert(error.message);
+      window.location.reload();
+    }).finally(() => {
+      this.disabled = false;
+    });
+  });
+});
+</script>
+{% endblock %}

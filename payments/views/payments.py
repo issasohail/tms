@@ -73,8 +73,10 @@ from django.templatetags.static import static
 from django.core.mail import EmailMessage
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.contrib.auth.decorators import login_required
+from django.core.signing import BadSignature, SignatureExpired
 import os
 from invoices.services import security_deposit_totals
+from payments.public_links import load_public_payment_receipt_token
 
 from django.db import transaction
 from django.views.decorators.http import require_POST
@@ -1061,6 +1063,21 @@ def payment_pdf_view(request, pk):
     except Exception as e:
         logger.error(f"Failed to generate PDF: {str(e)}", exc_info=True)
         return HttpResponse(f"Failed to generate PDF: {str(e)}", status=500)
+
+
+def public_payment_receipt(request, token):
+    try:
+        data = load_public_payment_receipt_token(token)
+    except SignatureExpired:
+        return HttpResponse("Receipt link has expired.", status=410)
+    except (BadSignature, KeyError, ValueError):
+        raise Http404("Invalid receipt link")
+
+    payment = get_object_or_404(
+        Payment.objects.select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property"),
+        pk=data["payment_id"],
+    )
+    return render(request, "payments/payment_pdf.html", {"payment": payment, "is_pdf": False})
 
 
 @login_required

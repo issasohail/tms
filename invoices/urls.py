@@ -27,6 +27,7 @@ from .views import api_units_for_property, api_tenants_for_property
 from .views import run_billing_current
 from django.urls import path
 from . import views
+from . import views_late_fee
 
 app_name = 'invoices'
 
@@ -60,6 +61,10 @@ urlpatterns = [
     # Bulk Operations
     path('generate-monthly/', generate_monthly_invoices, name='generate_monthly'),
     path('late-fees/apply/', views.apply_late_fees, name='apply_late_fees'),
+    path('late-fees/pending/', views_late_fee.late_fee_pending_queue, name='late_fee_pending_queue'),
+    path('late-fees/pending/<int:pk>/approve/', views_late_fee.approve_late_fee_reminder, name='approve_late_fee_reminder'),
+    path('late-fees/pending/<int:pk>/reject/', views_late_fee.reject_late_fee_reminder, name='reject_late_fee_reminder'),
+    path('<int:pk>/send-late-fee-reminder/', views_late_fee.send_late_fee_reminder, name='send_late_fee_reminder'),
 
     # Search
     path('search/', search_invoices_by_item_description, name='search'),

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-2 px-md-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">Edit Utility Template</h3>
+      <div class="text-muted small">{{ template_obj.get_key_display }} · <code>{{ template_obj.key }}</code></div>
+    </div>
+    <a href="{% url 'whatsapp:utility_template_list' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+  </div>
+
+  <div class="alert alert-warning py-2 small">
+    Change the body reference only after the same wording and variables are approved in Meta. TMS sends the template name, language, body variables, and button token.
+  </div>
+
+  <form method="post" class="row g-3">
+    {% csrf_token %}
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="form-label">Meta Template Name</label>
+              {{ form.template_name }}
+              {{ form.template_name.errors }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Language Code</label>
+              {{ form.language_code }}
+              {{ form.language_code.errors }}
+            </div>
+            <div class="col-12">
+              <label class="form-label">Approved Body Reference</label>
+              {{ form.body_text }}
+              <div class="form-text">{{ form.body_text.help_text }}</div>
+              {{ form.body_text.errors }}
+            </div>
+            <div class="col-12">
+              <label class="form-label">Body Variables JSON</label>
+              {{ form.body_variables }}
+              <div class="form-text">Keep this as a JSON list, for example ["tenant name", "property / unit"].</div>
+              {{ form.body_variables.errors }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Button Label</label>
+              {{ form.button_label }}
+              {{ form.button_label.errors }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Button Parameter Source</label>
+              {{ form.button_parameter_source }}
+              {{ form.button_parameter_source.errors }}
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              {{ form.notes }}
+              {{ form.notes.errors }}
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                {{ form.is_active }}
+                <label class="form-check-label">Active</label>
+              </div>
+              {{ form.is_active.errors }}
+            </div>
+          </div>
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-end gap-2">
+          <a href="{% url 'whatsapp:utility_template_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header py-2"><strong>Current Send Mapping</strong></div>
+        <div class="card-body small">
+          <div class="fw-semibold mb-1">Body variables</div>
+          {% for variable in template_obj.body_variables %}
+            <div><code>{% templatetag openvariable %}{{ forloop.counter }}{% templatetag closevariable %}</code> {{ variable }}</div>
+          {% empty %}
+            <div class="text-muted">No body variables.</div>
+          {% endfor %}
+          <hr>
+          <div class="fw-semibold mb-1">Button</div>
+          <div>{{ template_obj.button_label|default:"No button configured" }}</div>
+          {% if template_obj.button_parameter_source %}
+            <div class="text-muted">{{ template_obj.button_parameter_source }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

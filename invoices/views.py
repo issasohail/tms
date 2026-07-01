@@ -583,6 +583,7 @@ class InvoiceDetailView(DetailView):
         ).prefetch_related(
             Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
             "lease__invoices",
+            "late_fee_reminders",
             Prefetch("lease__payments", queryset=Payment.objects.select_related("allocation")),
             "lease__security_transactions",
         )

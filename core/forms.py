@@ -21,7 +21,10 @@ class GlobalSettingsForm(forms.ModelForm):
                   "whatsapp_media_retention_days",
                   "currency_code","country_code",  "unit_rate_per_kwh", "service_charge_flat",
                   "late_fee_enabled", "late_fee_type", "late_fee_amount",
-                  "late_fee_percent", "late_fee_grace_days", "billing_cap_amount",
+                  "late_fee_percent", "late_fee_grace_days",
+                  "late_fee_reminder_interval_days", "late_fee_max_reminders",
+                  "late_fee_auto_send_reminders", "late_fee_auto_apply",
+                  "billing_cap_amount",
                   "lease_file_share_valid_days",
                   "listener_host", "listener_port",
                   "time_zone",  # ← NEW
@@ -38,6 +41,8 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Late Fees", "fas fa-clock", [
             "late_fee_enabled", "late_fee_type", "late_fee_amount",
             "late_fee_percent", "late_fee_grace_days",
+            "late_fee_reminder_interval_days", "late_fee_max_reminders",
+            "late_fee_auto_send_reminders", "late_fee_auto_apply",
         ]),
         ("WhatsApp / Twilio", "fab fa-whatsapp", [
             "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
@@ -68,6 +73,14 @@ class GlobalSettingsForm(forms.ModelForm):
             else:
                 field.widget.attrs.update({"class": "form-control form-control-sm"})
 
+        self.fields["late_fee_reminder_interval_days"].label = "Reminder interval days"
+        self.fields["late_fee_reminder_interval_days"].help_text = "Days between late fee reminders after the grace period."
+        self.fields["late_fee_max_reminders"].label = "Max reminders"
+        self.fields["late_fee_max_reminders"].help_text = "Use 0 for unlimited reminder-based fees."
+        self.fields["late_fee_auto_send_reminders"].label = "Send reminders automatically"
+        self.fields["late_fee_auto_send_reminders"].help_text = "On = the daily late fee job sends WhatsApp reminders. Off = reminders are sent manually from invoice detail."
+        self.fields["late_fee_auto_apply"].label = "Apply fee automatically"
+        self.fields["late_fee_auto_apply"].help_text = "Off = reminder is sent, but the late fee waits in the pending approval queue."
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"

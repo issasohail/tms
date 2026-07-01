@@ -1,10 +1,18 @@
 from django.contrib import admin
-from .models import Invoice, InvoiceItem, MonthlyBillingRun, MonthlyBillingRunItem
+from .models import Invoice, InvoiceItem, InvoiceLateFeeReminder, MonthlyBillingRun, MonthlyBillingRunItem
 
 
 class InvoiceItemInline(admin.TabularInline):
     model = InvoiceItem
     extra = 1
+
+
+class InvoiceLateFeeReminderInline(admin.TabularInline):
+    model = InvoiceLateFeeReminder
+    extra = 0
+    fields = ("reminder_number", "sent_via", "status", "fee_amount", "created_at", "whatsapp_message", "late_fee_item")
+    readonly_fields = fields
+    can_delete = False
 
 
 @admin.register(Invoice)
@@ -13,7 +21,7 @@ class InvoiceAdmin(admin.ModelAdmin):
                     'due_date', 'status', 'total_amount')
     list_filter = ('status', 'issue_date')
     search_fields = ('invoice_number', 'lease__tenant__name')
-    inlines = [InvoiceItemInline]
+    inlines = [InvoiceItemInline, InvoiceLateFeeReminderInline]
     date_hierarchy = 'issue_date'
 
 
@@ -70,3 +78,15 @@ class MonthlyBillingRunItemAdmin(admin.ModelAdmin):
     list_filter = ("status", "issue_code", "billing_run__billing_month")
     search_fields = ("lease__tenant__first_name", "lease__tenant__last_name", "invoice__invoice_number", "issue_message")
     readonly_fields = ("log", "created_at", "updated_at")
+
+
+@admin.register(InvoiceLateFeeReminder)
+class InvoiceLateFeeReminderAdmin(admin.ModelAdmin):
+    list_display = ("invoice", "reminder_number", "sent_via", "status", "fee_amount", "created_at")
+    list_filter = ("status", "sent_via")
+    search_fields = (
+        "invoice__invoice_number",
+        "invoice__lease__tenant__first_name",
+        "invoice__lease__tenant__last_name",
+    )
+    readonly_fields = ("created_at", "whatsapp_message", "late_fee_item")

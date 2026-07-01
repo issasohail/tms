@@ -1,11 +1,13 @@
 import logging
+from datetime import timedelta
 from typing import Iterable
 
 import requests
 from django.conf import settings
+from django.utils import timezone
 
 from leases.whatsapp import normalize_whatsapp_phone
-from whatsapp.models import WhatsAppMessageLog
+from whatsapp.models import WhatsAppConversation, WhatsAppExternalLinkToken, WhatsAppMessageLog, WhatsAppUtilityTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +59,26 @@ class WhatsAppService:
             "access_token_configured": bool(self.access_token),
         }
 
-    def send_template(self, phone_number, template_name, language_code="en_US", components=None, **context):
+    def send_template(
+        self,
+        phone_number,
+        template_name,
+        language_code=None,
+        components=None,
+        body_parameters=None,
+        button_parameter=None,
+        **context,
+    ):
+        body_parameters = list(body_parameters or [])
+        if components is None:
+            components = self._template_components(body_parameters, button_parameter)
         payload = {
             "messaging_product": "whatsapp",
             "to": self.normalize_phone_number(phone_number),
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": language_code},
+                "language": {"code": language_code or getattr(settings, "WHATSAPP_DEFAULT_LANGUAGE", "en")},
             },
         }
         if components:
@@ -73,6 +87,38 @@ class WhatsAppService:
             payload,
             message_type=context.pop("message_type", WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE),
             template_name=template_name,
+            body_parameters=body_parameters,
+            button_parameter=button_parameter or "",
+            **context,
+        )
+
+    def send_utility_template(
+        self,
+        phone_number,
+        template_name,
+        body_parameters=None,
+        button_parameter=None,
+        language_code=None,
+        **context,
+    ):
+        configured_template = WhatsAppUtilityTemplate.objects.filter(key=template_name).first()
+        if configured_template:
+            if not configured_template.is_active:
+                return self._log_disabled_utility_template(
+                    phone_number,
+                    configured_template,
+                    body_parameters=body_parameters or [],
+                    button_parameter=button_parameter or "",
+                    **context,
+                )
+            template_name = configured_template.template_name or configured_template.key
+            language_code = language_code or configured_template.language_code
+        return self.send_template(
+            phone_number,
+            template_name,
+            language_code=language_code,
+            body_parameters=body_parameters or [],
+            button_parameter=button_parameter,
             **context,
         )
 
@@ -164,6 +210,8 @@ class WhatsAppService:
         lease = getattr(invoice, "lease", None)
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
+        if not is_whatsapp_session_open(phone):
+            return self.send_invoice_notice_template(invoice, phone_number=phone)
         body = message or f"Invoice {getattr(invoice, 'invoice_number', invoice.pk)} is ready."
         if pdf_bytes:
             filename = filename or f"Invoice_{getattr(invoice, 'invoice_number', invoice.pk)}.pdf"
@@ -174,6 +222,8 @@ class WhatsAppService:
         lease = getattr(payment, "lease", None)
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
+        if not is_whatsapp_session_open(phone):
+            return self.send_payment_confirmation_template(payment, phone_number=phone)
         body = message or f"Payment receipt for Rs. {getattr(payment, 'amount', '')}."
         if pdf_bytes:
             filename = filename or f"payment_receipt_{getattr(payment, 'pk', 'receipt')}.pdf"
@@ -183,6 +233,10 @@ class WhatsAppService:
     def send_lease(self, lease, document_url=None, message=None):
         tenant = getattr(lease, "tenant", None)
         phone = getattr(tenant, "phone", "")
+        if not is_whatsapp_session_open(phone):
+            if document_url:
+                return self.send_agreement_ready_template(lease, phone_number=phone)
+            return self.send_lease_ledger_template(lease, phone_number=phone)
         if document_url:
             return self.send_pdf(phone, document_url, caption=message, tenant=tenant, lease=lease)
         return self.send_text(phone, message or "Your lease information is ready.", tenant=tenant, lease=lease)
@@ -190,11 +244,158 @@ class WhatsAppService:
     def send_maintenance_update(self, maintenance_request, message=None):
         tenant = getattr(maintenance_request, "tenant", None) or getattr(maintenance_request, "source_tenant", None)
         phone = getattr(tenant, "phone", "")
+        if not is_whatsapp_session_open(phone):
+            lease = getattr(maintenance_request, "lease", None)
+            return self.send_utility_template(
+                phone,
+                "maintenance_update",
+                body_parameters=[
+                    self._tenant_name(tenant),
+                    self._property_unit(lease),
+                    getattr(maintenance_request, "get_status_display", lambda: getattr(maintenance_request, "status", ""))(),
+                ],
+                tenant=tenant,
+                lease=lease,
+                maintenance_request=maintenance_request,
+            )
         body = message or f"Maintenance update: {getattr(maintenance_request, 'status', '')}."
         return self.send_text(phone, body, tenant=tenant, maintenance_request=maintenance_request)
 
     def send_payment_confirmation(self, payment, phone_number=None, message=None):
         return self.send_receipt(payment, phone_number=phone_number, message=message)
+
+    def send_invoice_notice_template(self, invoice, phone_number=None):
+        lease = getattr(invoice, "lease", None)
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        token = self._invoice_button_token(invoice)
+        return self.send_utility_template(
+            phone,
+            "invoice_notice",
+            body_parameters=[
+                self._tenant_name(tenant),
+                self._property_unit(lease),
+                self._money(getattr(invoice, "amount", "")),
+                self._date(getattr(invoice, "due_date", "")),
+            ],
+            button_parameter=token,
+            tenant=tenant,
+            lease=lease,
+            invoice=invoice,
+        )
+
+    def send_payment_confirmation_template(self, payment, phone_number=None):
+        lease = getattr(payment, "lease", None)
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        token = self._payment_receipt_button_token(payment)
+        return self.send_utility_template(
+            phone,
+            "payment_confirmation",
+            body_parameters=[
+                self._tenant_name(tenant),
+                self._property_unit(lease),
+                self._money(getattr(payment, "amount", "")),
+                getattr(payment, "reference_number", "") or str(getattr(payment, "pk", "")),
+            ],
+            button_parameter=token,
+            tenant=tenant,
+            lease=lease,
+            payment=payment,
+        )
+
+    def send_balance_reminder_template(self, lease, phone_number=None):
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        link = self._ledger_link(lease, phone)
+        return self.send_utility_template(
+            phone,
+            "balance_reminder",
+            body_parameters=[
+                self._tenant_name(tenant),
+                self._property_unit(lease),
+                self._money(self._lease_balance(lease)),
+            ],
+            button_parameter=link.token,
+            tenant=tenant,
+            lease=lease,
+        )
+
+    def send_lease_ledger_template(self, lease, phone_number=None):
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        link = self._ledger_link(lease, phone)
+        return self.send_utility_template(
+            phone,
+            "lease_ledger_link",
+            body_parameters=[self._tenant_name(tenant), self._property_unit(lease)],
+            button_parameter=link.token,
+            tenant=tenant,
+            lease=lease,
+        )
+
+    def send_rent_due_reminder_template(self, invoice, phone_number=None):
+        lease = getattr(invoice, "lease", None)
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        return self.send_utility_template(
+            phone,
+            "rent_due_reminder",
+            body_parameters=[
+                self._tenant_name(tenant),
+                self._property_unit(lease),
+                self._money(getattr(invoice, "amount", "")),
+                self._date(getattr(invoice, "due_date", "")),
+            ],
+            button_parameter=self._invoice_button_token(invoice),
+            tenant=tenant,
+            lease=lease,
+            invoice=invoice,
+        )
+
+    def send_late_fee_reminder_template(self, invoice, reminder_number, phone_number=None):
+        lease = getattr(invoice, "lease", None)
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        due_date = getattr(invoice, "due_date", None)
+        days_overdue = ""
+        if due_date:
+            days_overdue = (timezone.localdate() - due_date).days
+        return self.send_utility_template(
+            phone,
+            "late_fee_reminder",
+            body_parameters=[
+                self._tenant_name(tenant),
+                getattr(invoice, "invoice_number", ""),
+                str(reminder_number),
+                self._money(getattr(invoice, "amount", "")),
+                self._date(due_date),
+                str(days_overdue),
+            ],
+            button_parameter=self._invoice_button_token(invoice),
+            tenant=tenant,
+            lease=lease,
+            invoice=invoice,
+        )
+
+    def send_agreement_ready_template(self, lease, phone_number=None):
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        link = self._external_link(
+            WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW,
+            lease,
+            phone,
+            target_model="Lease",
+            metadata={"lease_id": getattr(lease, "pk", None)},
+        )
+        return self.send_utility_template(
+            phone,
+            "agreement_ready",
+            body_parameters=[self._tenant_name(tenant), self._property_unit(lease)],
+            button_parameter=link.token,
+            tenant=tenant,
+            lease=lease,
+        )
 
     def download_media_bytes(self, media_id):
         if not media_id:
@@ -263,7 +464,16 @@ class WhatsAppService:
             results.append(self._send(log.payload, existing_log=log, message_type=log.message_type))
         return results
 
-    def _send(self, payload, message_type, existing_log=None, template_name="", **context):
+    def _send(
+        self,
+        payload,
+        message_type,
+        existing_log=None,
+        template_name="",
+        body_parameters=None,
+        button_parameter="",
+        **context,
+    ):
         phone_number = payload.get("to", "")
         log = existing_log or WhatsAppMessageLog.objects.create(
             direction=WhatsAppMessageLog.DIRECTION_OUTBOUND,
@@ -271,6 +481,8 @@ class WhatsAppService:
             template_name=template_name,
             message_type=message_type,
             status=WhatsAppMessageLog.STATUS_PENDING,
+            body_parameters=body_parameters or [],
+            button_parameter=button_parameter or "",
             payload=payload,
             created_by=self.created_by,
             **self._model_context(context),
@@ -303,7 +515,13 @@ class WhatsAppService:
                 if messages:
                     log.wa_message_id = messages[0].get("id", "")
                 log.save(update_fields=["status", "api_response", "wa_message_id", "updated_at"])
-                return {"ok": True, "log_id": log.pk, "response": response_json}
+                return {
+                    "ok": True,
+                    "log_id": log.pk,
+                    "message_type": log.message_type,
+                    "template_name": log.template_name,
+                    "response": response_json,
+                }
 
             error_text = self._api_error_text(response_json, response.status_code)
             log.status = WhatsAppMessageLog.STATUS_FAILED
@@ -311,7 +529,14 @@ class WhatsAppService:
             log.error_text = error_text
             log.save(update_fields=["status", "api_response", "error_text", "updated_at"])
             logger.warning("WhatsApp API request failed: %s", error_text)
-            return {"ok": False, "log_id": log.pk, "error": error_text, "response": response_json}
+            return {
+                "ok": False,
+                "log_id": log.pk,
+                "message_type": log.message_type,
+                "template_name": log.template_name,
+                "error": error_text,
+                "response": response_json,
+            }
         except requests.RequestException as exc:
             logger.warning("WhatsApp API network error: %s", exc)
             return self._mark_failed(log, str(exc))
@@ -372,7 +597,41 @@ class WhatsAppService:
         log.status = WhatsAppMessageLog.STATUS_FAILED
         log.error_text = error_text
         log.save(update_fields=["status", "error_text", "updated_at"])
-        return {"ok": False, "log_id": log.pk, "error": error_text}
+        return {
+            "ok": False,
+            "log_id": log.pk,
+            "message_type": log.message_type,
+            "template_name": log.template_name,
+            "error": error_text,
+        }
+
+    def _log_disabled_utility_template(self, phone_number, template, body_parameters=None, button_parameter="", **context):
+        phone = self.normalize_phone_number(phone_number)
+        log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_OUTBOUND,
+            phone_number=phone,
+            template_name=template.template_name or template.key,
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE,
+            status=WhatsAppMessageLog.STATUS_FAILED,
+            body_parameters=body_parameters or [],
+            button_parameter=button_parameter or "",
+            payload={
+                "type": "template",
+                "template_key": template.key,
+                "template_name": template.template_name,
+                "language_code": template.language_code,
+            },
+            error_text="WhatsApp Utility template is inactive in Settings.",
+            created_by=self.created_by,
+            **self._model_context(context),
+        )
+        return {
+            "ok": False,
+            "log_id": log.pk,
+            "message_type": log.message_type,
+            "template_name": log.template_name,
+            "error": log.error_text,
+        }
 
     @staticmethod
     def _api_error_text(response_json, status_code):
@@ -390,3 +649,134 @@ class WhatsAppService:
     def _filename_from_url(url):
         name = (url or "").rstrip("/").split("/")[-1]
         return name if name.lower().endswith(".pdf") else ""
+
+    @staticmethod
+    def _template_components(body_parameters, button_parameter):
+        components = []
+        if body_parameters:
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": str(value or "")}
+                        for value in body_parameters
+                    ],
+                }
+            )
+        if button_parameter:
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": "0",
+                    "parameters": [{"type": "text", "text": str(button_parameter)}],
+                }
+            )
+        return components
+
+    @staticmethod
+    def _tenant_name(tenant):
+        if not tenant:
+            return "Tenant"
+        if hasattr(tenant, "get_full_name"):
+            return tenant.get_full_name() or "Tenant"
+        return str(tenant) or "Tenant"
+
+    @staticmethod
+    def _property_unit(lease):
+        unit = getattr(lease, "unit", None)
+        property_obj = getattr(unit, "property", None)
+        property_name = getattr(property_obj, "property_name", "") or ""
+        unit_number = getattr(unit, "unit_number", "") or ""
+        return " / ".join(part for part in [property_name, unit_number] if part) or "-"
+
+    @staticmethod
+    def _date(value):
+        if hasattr(value, "strftime"):
+            return value.strftime("%b %d, %Y")
+        return str(value or "")
+
+    @staticmethod
+    def _money(value):
+        if value in {None, ""}:
+            return "Rs. 0.00"
+        try:
+            return f"Rs. {float(value):,.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
+    def _lease_balance(lease):
+        balance = getattr(lease, "get_balance", 0)
+        return balance() if callable(balance) else balance
+
+    @staticmethod
+    def _invoice_button_token(invoice):
+        from invoices.public_links import make_public_invoice_token
+
+        return make_public_invoice_token(invoice.pk)
+
+    @staticmethod
+    def _payment_receipt_button_token(payment):
+        from payments.public_links import make_public_payment_receipt_token
+
+        return make_public_payment_receipt_token(payment.pk)
+
+    def _ledger_link(self, lease, phone):
+        return self._external_link(
+            WhatsAppExternalLinkToken.LINK_LEDGER_VIEW,
+            lease,
+            phone,
+            target_model="Lease",
+            metadata={"lease_id": getattr(lease, "pk", None)},
+        )
+
+    def _external_link(self, link_type, lease, phone, target_model="", metadata=None):
+        tenant = getattr(lease, "tenant", None)
+        return WhatsAppExternalLinkToken.objects.create(
+            link_type=link_type,
+            phone_number=phone or getattr(tenant, "phone", "") or "",
+            tenant=tenant,
+            staff_user=self.created_by if getattr(self.created_by, "is_authenticated", False) else None,
+            target_app_label="leases",
+            target_model=target_model,
+            target_object_id=getattr(lease, "pk", None),
+            metadata=metadata or {},
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+
+def is_whatsapp_session_open(phone_or_tenant):
+    phone = getattr(phone_or_tenant, "phone", phone_or_tenant) or ""
+    phone = WhatsAppService.normalize_phone_number(phone)
+    if not phone:
+        return False
+
+    cutoff = timezone.now() - timedelta(hours=24)
+    conversation = WhatsAppConversation.objects.filter(phone_number=phone).first()
+    if conversation and conversation.last_inbound_message_at:
+        return conversation.last_inbound_message_at >= cutoff
+
+    return WhatsAppMessageLog.objects.filter(
+        direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+        phone_number=phone,
+        created_at__gte=cutoff,
+    ).exists()
+
+
+def send_whatsapp_template(
+    recipient_phone,
+    template_name,
+    language_code=None,
+    body_parameters=None,
+    button_parameter=None,
+    **context,
+):
+    return WhatsAppService().send_utility_template(
+        recipient_phone,
+        template_name,
+        language_code=language_code,
+        body_parameters=body_parameters or [],
+        button_parameter=button_parameter,
+        **context,
+    )

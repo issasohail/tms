@@ -18,6 +18,7 @@ from .models import (
     WhatsAppMessageLog,
     WhatsAppStaffActionLog,
     WhatsAppStaffPropertyAccess,
+    WhatsAppUtilityTemplate,
     WhatsAppWebhookLog,
 )
 
@@ -44,6 +45,30 @@ class WhatsAppMessageLogAdmin(admin.ModelAdmin):
         "tenant__last_name",
     )
     readonly_fields = ("created_at", "updated_at")
+    fields = (
+        "direction",
+        "message_type",
+        "status",
+        "phone_number",
+        "tenant",
+        "lease",
+        "invoice",
+        "payment",
+        "maintenance_request",
+        "template_name",
+        "body_parameters",
+        "button_parameter",
+        "wa_message_id",
+        "conversation_id",
+        "payload",
+        "api_response",
+        "error_text",
+        "retry_count",
+        "scheduled_for",
+        "created_by",
+        "created_at",
+        "updated_at",
+    )
     raw_id_fields = ("tenant", "lease", "invoice", "payment", "maintenance_request", "created_by")
 
 
@@ -55,9 +80,17 @@ class WhatsAppWebhookLogAdmin(admin.ModelAdmin):
     readonly_fields = ("event_type", "payload", "headers", "method", "remote_addr", "created_at")
 
 
+@admin.register(WhatsAppUtilityTemplate)
+class WhatsAppUtilityTemplateAdmin(admin.ModelAdmin):
+    list_display = ("key", "template_name", "language_code", "button_label", "is_active", "updated_at")
+    list_filter = ("is_active", "language_code")
+    search_fields = ("key", "template_name", "body_text", "button_label", "notes")
+    readonly_fields = ("created_at", "updated_at")
+
+
 @admin.register(WhatsAppConversation)
 class WhatsAppConversationAdmin(admin.ModelAdmin):
-    list_display = ("phone_number", "selected_mode", "staff_user", "tenant", "selected_lease", "pending_state", "status", "last_message_at", "updated_at")
+    list_display = ("phone_number", "selected_mode", "staff_user", "tenant", "selected_lease", "pending_state", "status", "last_inbound_message_at", "last_message_at", "updated_at")
     list_filter = ("selected_mode", "status", "pending_state", "updated_at")
     search_fields = ("phone_number", "selected_lease__tenant__first_name", "selected_lease__tenant__last_name")
     raw_id_fields = ("staff_user", "tenant", "selected_lease", "selected_property", "selected_unit")

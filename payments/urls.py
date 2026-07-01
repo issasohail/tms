@@ -15,6 +15,7 @@ from payments.views import (
     send_receipt,
     payment_pdf_view,
     send_payment_email,
+    public_payment_receipt,
 )
 from payments.views.allocations import allocation_update_api
 
@@ -61,6 +62,7 @@ urlpatterns = [
     # ---- Receipts ----
     path("payment/<int:payment_id>/send-receipt/", send_receipt, name="send_receipt"),
     path("payment/<int:pk>/pdf/", payment_pdf_view, name="payment_pdf"),
+    path("public/receipt/<path:token>/", public_payment_receipt, name="public_payment_receipt"),
     path("payment/<int:pk>/send_email/", send_payment_email, name="send_payment_email"),
     path("api/payment/<int:pk>/whatsapp/", api_payment_receipt_whatsapp, name="api_payment_receipt_whatsapp"),
 

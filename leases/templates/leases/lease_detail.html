@@ -358,6 +358,7 @@
       <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success"><i class="fas fa-sync-alt"></i> Renew</a>
       <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
+      <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-outline-warning"><i class="fas fa-clock"></i> Late Fees</a>
       <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-clipboard-check"></i> Inspections</a>
       <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
       {% include "whatsapp/_dropdown.html" with phone=lease.tenant.phone object_type="lease" object_id=lease.pk %}

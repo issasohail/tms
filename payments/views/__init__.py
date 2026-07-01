@@ -11,6 +11,7 @@ from .payments import (
     send_receipt,
     payment_pdf_view,
     send_payment_email,
+    public_payment_receipt,
     get_filtered_leases,
     send_payment_notification,
     get_units_by_property,

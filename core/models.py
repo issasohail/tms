@@ -46,6 +46,22 @@ class GlobalSettings(models.Model):
     late_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     late_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     late_fee_grace_days = models.PositiveIntegerField(default=0)
+    late_fee_reminder_interval_days = models.PositiveIntegerField(
+        default=5,
+        help_text="Days between each late fee reminder after the grace period.",
+    )
+    late_fee_max_reminders = models.PositiveIntegerField(
+        default=0,
+        help_text="0 = unlimited. Reminders and reminder-based fees stop once this count is reached.",
+    )
+    late_fee_auto_send_reminders = models.BooleanField(
+        default=False,
+        help_text="If on, the scheduled late fee job sends WhatsApp reminders automatically.",
+    )
+    late_fee_auto_apply = models.BooleanField(
+        default=True,
+        help_text="If off, reminder-based late fees wait for approval before being added to invoices.",
+    )
     billing_cap_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,

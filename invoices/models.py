@@ -471,6 +471,69 @@ class MonthlyBillingRunItem(models.Model):
         return f"{self.billing_run_id} lease {self.lease_id} {self.get_status_display()}"
 
 
+class InvoiceLateFeeReminder(models.Model):
+    SOURCE_AUTO = "auto"
+    SOURCE_MANUAL = "manual"
+    SOURCE_CHOICES = (
+        (SOURCE_AUTO, "Automatic"),
+        (SOURCE_MANUAL, "Manual"),
+    )
+
+    STATUS_SENT = "sent"
+    STATUS_FEE_PENDING = "fee_pending"
+    STATUS_FEE_APPLIED = "fee_applied"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = (
+        (STATUS_SENT, "Reminder sent"),
+        (STATUS_FEE_PENDING, "Fee pending approval"),
+        (STATUS_FEE_APPLIED, "Fee applied"),
+        (STATUS_FAILED, "Failed"),
+    )
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="late_fee_reminders",
+    )
+    reminder_number = models.PositiveIntegerField()
+    sent_via = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SENT)
+    whatsapp_message = models.ForeignKey(
+        "whatsapp.WhatsAppMessageLog",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="late_fee_reminders",
+    )
+    late_fee_item = models.ForeignKey(
+        InvoiceItem,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    error_text = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["invoice", "reminder_number"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"Invoice #{self.invoice_id} reminder #{self.reminder_number} ({self.status})"
+
+
 class BillingProgressJob(models.Model):
     ACTION_RUN_BILLING = "run_billing"
     ACTION_PREFLIGHT = "preflight"

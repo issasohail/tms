@@ -34,6 +34,7 @@ from .models_inspections import (
 from django.contrib import admin
 from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause, PendingAgreementApproval
 from .models_renewal import LeaseRenewal, LeaseRenewalClause
+from .models_late_fee import LeaseLateFeeSettings
 
 
 @admin.register(PendingAgreementApproval)
@@ -547,3 +548,21 @@ class LeaseInspectionAdmin(admin.ModelAdmin):
     search_fields = ("lease__tenant__first_name", "lease__tenant__last_name", "unit__unit_number")
     raw_id_fields = ("lease", "property", "unit", "tenant", "inspector", "approved_by", "created_by")
     inlines = [InspectionDetailInline, InspectionMeterInline, InspectionKeyInline, InspectionApplianceInline, InspectionDamageInline]
+
+
+@admin.register(LeaseLateFeeSettings)
+class LeaseLateFeeSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "lease",
+        "override_enabled",
+        "late_fee_enabled",
+        "late_fee_type",
+        "late_fee_amount",
+        "late_fee_percent",
+        "late_fee_grace_days",
+        "reminder_interval_days",
+        "late_fee_max_reminders",
+    )
+    list_filter = ("override_enabled", "late_fee_enabled", "late_fee_type")
+    search_fields = ("lease__tenant__first_name", "lease__tenant__last_name", "lease__unit__unit_number")
+    raw_id_fields = ("lease",)

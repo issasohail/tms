@@ -104,6 +104,8 @@ class WhatsAppMessageLog(models.Model):
     template_name = models.CharField(max_length=120, blank=True)
     message_type = models.CharField(max_length=30, choices=MESSAGE_TYPE_CHOICES, default=MESSAGE_TYPE_TEXT)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    body_parameters = models.JSONField(default=list, blank=True)
+    button_parameter = models.CharField(max_length=500, blank=True)
     payload = models.JSONField(default=dict, blank=True)
     api_response = models.JSONField(default=dict, blank=True)
     error_text = models.TextField(blank=True)
@@ -147,6 +149,59 @@ class WhatsAppWebhookLog(models.Model):
 
     def __str__(self):
         return f"{self.method or 'POST'} {self.event_type or 'webhook'} at {self.created_at}"
+
+
+class WhatsAppUtilityTemplate(models.Model):
+    TEMPLATE_CHOICES = [
+        ("invoice_notice", "Invoice notice"),
+        ("payment_confirmation", "Payment confirmation"),
+        ("balance_reminder", "Balance reminder"),
+        ("late_fee_reminder", "Late fee reminder"),
+        ("lease_ledger_link", "Lease ledger link"),
+        ("rent_due_reminder", "Rent due reminder"),
+        ("lease_expiry_notice", "Lease expiry notice"),
+        ("lease_renewal_offer", "Lease renewal offer"),
+        ("maintenance_request_received", "Maintenance request received"),
+        ("maintenance_update", "Maintenance update"),
+        ("maintenance_completed", "Maintenance completed"),
+        ("inspection_schedule", "Inspection schedule"),
+        ("inspection_report_ready", "Inspection report ready"),
+        ("agreement_ready", "Agreement ready"),
+        ("tenant_registration", "Tenant registration"),
+        ("lease_application", "Lease application"),
+        ("meter_reading_available", "Meter reading available"),
+        ("water_bill_added", "Water bill added"),
+        ("account_notice", "Account notice"),
+    ]
+
+    key = models.CharField(max_length=80, choices=TEMPLATE_CHOICES, unique=True)
+    template_name = models.CharField(
+        max_length=120,
+        help_text="Approved Meta template name. Usually the same as the key.",
+    )
+    language_code = models.CharField(max_length=20, default="en")
+    body_text = models.TextField(
+        blank=True,
+        help_text="Local reference copy of the approved Meta body. Changing this does not update Meta automatically.",
+    )
+    body_variables = models.JSONField(default=list, blank=True)
+    button_label = models.CharField(max_length=120, blank=True)
+    button_parameter_source = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["key"]
+
+    def __str__(self):
+        return self.template_name or self.key
+
+    def save(self, *args, **kwargs):
+        if not self.template_name:
+            self.template_name = self.key
+        super().save(*args, **kwargs)
 
 
 class WhatsAppConversation(models.Model):
@@ -209,6 +264,8 @@ class WhatsAppConversation(models.Model):
     context = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     last_message_at = models.DateTimeField(null=True, blank=True)
+    last_inbound_message_at = models.DateTimeField(null=True, blank=True)
+    last_inbound_message_id = models.CharField(max_length=160, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

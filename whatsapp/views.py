@@ -6,10 +6,12 @@ from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
+from django import forms
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -19,15 +21,46 @@ from maintenance.models import MaintenanceRequest
 from payments.models import Payment
 from tenants.models import Tenant
 
-from .models import PendingWhatsAppMedia, WhatsAppConversation, WhatsAppMessageLog, WhatsAppWebhookLog
+from .models import (
+    PendingWhatsAppMedia,
+    WhatsAppConversation,
+    WhatsAppMessageLog,
+    WhatsAppUtilityTemplate,
+    WhatsAppWebhookLog,
+)
 from .services.tenant_context import find_active_leases_for_phone
-from .services.whatsapp import WhatsAppService
+from .services.whatsapp import WhatsAppService, is_whatsapp_session_open
 
 logger = logging.getLogger(__name__)
 
 
 def _can_view_whatsapp_logs(user):
     return user.is_staff or user.has_perm("core.view_globalsettings")
+
+
+class WhatsAppUtilityTemplateForm(forms.ModelForm):
+    class Meta:
+        model = WhatsAppUtilityTemplate
+        fields = [
+            "template_name",
+            "language_code",
+            "body_text",
+            "body_variables",
+            "button_label",
+            "button_parameter_source",
+            "is_active",
+            "notes",
+        ]
+        widgets = {
+            "template_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "language_code": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "body_text": forms.Textarea(attrs={"rows": 7, "class": "form-control form-control-sm"}),
+            "body_variables": forms.Textarea(attrs={"rows": 5, "class": "form-control form-control-sm font-monospace"}),
+            "button_label": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "button_parameter_source": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "notes": forms.Textarea(attrs={"rows": 3, "class": "form-control form-control-sm"}),
+        }
 
 
 @csrf_exempt
@@ -111,14 +144,19 @@ def _log_webhook_payload(payload):
             phone_number = metadata.get("display_phone_number", "")
 
             for message in value.get("messages", []) or []:
+                inbound_phone = WhatsAppService.normalize_phone_number(message.get("from", "") or phone_number)
+                inbound_at = _message_received_at(message)
+                conversation = _touch_inbound_conversation(inbound_phone, message, inbound_at)
                 message_log = WhatsAppMessageLog.objects.create(
                     direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-                    phone_number=message.get("from", "") or phone_number,
+                    phone_number=inbound_phone,
                     wa_message_id=message.get("id", ""),
                     message_type=message.get("type", WhatsAppMessageLog.MESSAGE_TYPE_WEBHOOK),
                     status=WhatsAppMessageLog.STATUS_RECEIVED,
                     payload=message,
                     api_response={"entry_id": entry.get("id"), "field": change.get("field")},
+                    tenant=conversation.tenant if conversation else None,
+                    lease=conversation.selected_lease if conversation else None,
                 )
                 _queue_ai_message(message_log.pk)
 
@@ -158,6 +196,43 @@ def _log_webhook_payload(payload):
                 )
 
 
+def _message_received_at(message):
+    timestamp = message.get("timestamp")
+    if timestamp:
+        try:
+            return timezone.datetime.fromtimestamp(int(timestamp), tz=timezone.get_current_timezone())
+        except (TypeError, ValueError, OSError):
+            pass
+    return timezone.now()
+
+
+def _touch_inbound_conversation(phone_number, message, received_at):
+    if not phone_number:
+        return None
+    conversation, created = WhatsAppConversation.objects.get_or_create(phone_number=phone_number)
+    if created:
+        lease = find_active_leases_for_phone(phone_number).first()
+        if lease:
+            conversation.tenant = lease.tenant
+            conversation.selected_lease = lease
+            conversation.selected_property = getattr(lease.unit, "property", None)
+            conversation.selected_unit = lease.unit
+    conversation.last_message_at = received_at
+    conversation.last_inbound_message_at = received_at
+    conversation.last_inbound_message_id = message.get("id", "")
+    conversation.save(update_fields=[
+        "tenant",
+        "selected_lease",
+        "selected_property",
+        "selected_unit",
+        "last_message_at",
+        "last_inbound_message_at",
+        "last_inbound_message_id",
+        "updated_at",
+    ])
+    return conversation
+
+
 def _status_error_text(status):
     errors = status.get("errors") or []
     if not errors:
@@ -172,6 +247,44 @@ def _queue_ai_message(message_log_id):
     from .services.queue import enqueue_whatsapp_ai_message
 
     enqueue_whatsapp_ai_message(message_log_id)
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
+def utility_template_list(request):
+    templates = WhatsAppUtilityTemplate.objects.order_by("key")
+    return render(
+        request,
+        "whatsapp/utility_template_list.html",
+        {
+            "templates": templates,
+            "embed": request.GET.get("embed") == "1",
+        },
+    )
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
+def utility_template_edit(request, pk):
+    template = get_object_or_404(WhatsAppUtilityTemplate, pk=pk)
+    if request.method == "POST":
+        form = WhatsAppUtilityTemplateForm(request.POST, instance=template)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "WhatsApp Utility template settings updated.")
+            return redirect("whatsapp:utility_template_list")
+    else:
+        form = WhatsAppUtilityTemplateForm(instance=template)
+
+    return render(
+        request,
+        "whatsapp/utility_template_form.html",
+        {
+            "form": form,
+            "template_obj": template,
+            "embed": request.GET.get("embed") == "1",
+        },
+    )
 
 
 @login_required
@@ -416,7 +529,10 @@ def send_object_message(request, object_type, object_id, action):
     if _is_ajax(request):
         return JsonResponse(result, status=200 if result.get("ok") else 400)
     if result.get("ok"):
-        messages.success(request, "WhatsApp message sent from TMS.")
+        if result.get("message_type") == WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE:
+            messages.success(request, f"WhatsApp template sent: {result.get('template_name') or 'template'}.")
+        else:
+            messages.success(request, "WhatsApp session message sent from TMS.")
     else:
         messages.error(request, result.get("error") or "WhatsApp message failed.")
     return redirect(_object_redirect(obj))
@@ -544,14 +660,22 @@ def _send_action(request, service, obj, object_type, action, phone, message_text
         )
     if object_type == "invoice" and action == "invoice":
         message_text = _invoice_message(request, obj)
+        if not is_whatsapp_session_open(phone):
+            return service.send_invoice_notice_template(obj, phone_number=phone)
         image_bytes, filename = _invoice_jpg_attachment(obj)
         return service.send_image_bytes(phone, image_bytes, filename=filename, caption=message_text, tenant=tenant, lease=lease, invoice=obj)
     if object_type == "payment" and action in {"receipt", "payment_confirmation"}:
         message_text = _payment_receipt_message(obj)
+        if not is_whatsapp_session_open(phone):
+            return service.send_payment_confirmation_template(obj, phone_number=phone)
         image_bytes, filename = _payment_jpg_attachment(obj)
         return service.send_image_bytes(phone, image_bytes, filename=filename, caption=message_text, tenant=tenant, lease=lease, payment=obj)
     if object_type == "lease" and action == "lease":
         return service.send_lease(obj, message=message_text)
+    if object_type == "lease" and action == "text" and not is_whatsapp_session_open(phone):
+        return service.send_balance_reminder_template(obj, phone_number=phone)
+    if object_type == "tenant" and action == "text" and lease and not is_whatsapp_session_open(phone):
+        return service.send_balance_reminder_template(lease, phone_number=phone)
     if object_type == "maintenance" and action == "maintenance_update":
         return service.send_maintenance_update(obj, message=message_text)
     return service.send_text(phone, message_text, tenant=tenant, lease=lease)

@@ -774,7 +774,6 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         context['all_leases'] = all_leases
         context['leases'] = all_leases
         context['leases_total_balance'] = tenant.current_balance  # all lease total balances, active and inactive
-        family_target_leases = [item for item in all_leases if item.status == "active"] or all_leases
 
         context.update({
             'invoices': invoices,
@@ -785,8 +784,6 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             'total_payments': total_payments_active,
             'all_leases': all_leases,                  # for the partial loop
             'leases': all_leases,
-            'family_target_leases': family_target_leases,
-            'family_target_lease_count': len(family_target_leases),
             # <-- expose tenant-wide balance explicitly
             'current_balance': tenant.current_balance
         })

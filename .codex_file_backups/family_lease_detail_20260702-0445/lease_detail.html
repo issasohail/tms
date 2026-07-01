@@ -544,20 +544,6 @@
           <div class="ld-f-value">{{ lease.society_maintenance|default:0|money:0 }}</div>
         </div>
         <div class="ld-f">
-          <div class="ld-f-label">Water Charges</div>
-          <div class="ld-f-value">{{ lease.water_charges|default:0|money:0 }}</div>
-        </div>
-        <div class="ld-f">
-          <div class="ld-f-label">Bill Water</div>
-          <div class="ld-f-value">
-            {% if lease.bill_water_charges %}
-              <span class="ld-badge ld-badge-green">Yes</span>
-            {% else %}
-              <span class="ld-badge ld-badge-gray">No</span>
-            {% endif %}
-          </div>
-        </div>
-        <div class="ld-f">
           <div class="ld-f-label">Security Deposit</div>
           <div class="ld-f-value">{{ lease.security_deposit|default:0|money:0 }}</div>
         </div>
@@ -635,8 +621,8 @@
             <div class="ld-f">
               <div class="ld-f-label">{{ m.relation|default:"Member" }}</div>
               <div class="ld-f-value">
-                <a href="{% url 'tenants:tenant_detail' m.family_member.pk %}">{{ m.family_member.get_full_name }}</a>
-                {% if m.family_member.phone %}<br><span style="font-size:11px;color:#6b7280;">{{ m.family_member.phone }}</span>{% endif %}
+                <a href="{% url 'tenants:tenant_detail' m.tenant.pk %}">{{ m.tenant.get_full_name }}</a>
+                {% if m.tenant.phone %}<br><span style="font-size:11px;color:#6b7280;">{{ m.tenant.phone }}</span>{% endif %}
               </div>
             </div>
           {% endfor %}
@@ -854,33 +840,12 @@
           <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>Family Members</span>
             <div class="d-flex flex-wrap gap-1">
-              <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="collapse" data-bs-target="#leaseFamilyPublicLinkBox">
+              <button type="button" class="btn btn-sm btn-outline-success" id="copyFamilyPublicLinkBtn" data-link-url="{% url 'leases:lease_family_public_link' lease.pk %}">
                 <i class="fas fa-link"></i> Public Link
               </button>
               <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#leaseFamilyAddBox">
                 <i class="fas fa-plus"></i> Add Family
               </button>
-            </div>
-          </div>
-          <div class="collapse" id="leaseFamilyPublicLinkBox">
-            <div class="p-2 border-bottom bg-light">
-              <div class="input-group input-group-sm">
-                <span class="input-group-text fw-semibold">Family Update Link</span>
-                <input id="leaseFamilyPublicLinkInput" type="text" class="form-control text-break" readonly onclick="this.select();" placeholder="Generate a public family link">
-                <button class="btn btn-outline-primary" type="button" id="generateFamilyPublicLinkBtn" data-link-url="{% url 'leases:lease_family_public_link' lease.pk %}">
-                  <i class="fas fa-link me-1"></i> Generate
-                </button>
-                <button class="btn btn-outline-primary" type="button" id="copyFamilyPublicLinkBtn">
-                  <i class="far fa-copy me-1"></i> Copy
-                </button>
-                <a class="btn btn-outline-success disabled" id="whatsappFamilyPublicLinkBtn" href="#" target="_blank" rel="noopener">
-                  <i class="fab fa-whatsapp me-1"></i> WhatsApp
-                </a>
-                <a class="btn btn-outline-dark disabled" id="openFamilyPublicLinkBtn" href="#" target="_blank" rel="noopener">
-                  <i class="fas fa-external-link-alt me-1"></i> Open
-                </a>
-              </div>
-              <div class="form-text">Public link is valid for 48 hours. Submitted family changes require admin approval.</div>
             </div>
           </div>
           <div class="collapse" id="leaseFamilyAddBox">
@@ -1277,28 +1242,15 @@
 (function () {
   const nav = document.getElementById('ldTabNav');
   if (!nav) return;
-  function activateTab(tabName) {
-    const btn = nav.querySelector('.ld-tab-btn[data-tab="' + tabName + '"]');
+  nav.addEventListener('click', function (e) {
+    const btn = e.target.closest('.ld-tab-btn');
     if (!btn) return;
     nav.querySelectorAll('.ld-tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('.ld-tab-pane').forEach(p => p.classList.remove('active'));
-    const t = document.getElementById('ld-tab-' + tabName);
+    const t = document.getElementById('ld-tab-' + btn.dataset.tab);
     if (t) t.classList.add('active');
-  }
-  nav.addEventListener('click', function (e) {
-    const btn = e.target.closest('.ld-tab-btn');
-    if (!btn) return;
-    activateTab(btn.dataset.tab);
   });
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('open_family_add') === '1' || window.location.hash === '#ld-tab-family') {
-    activateTab('family');
-    const addBox = document.getElementById('leaseFamilyAddBox');
-    if (params.get('open_family_add') === '1' && addBox && window.bootstrap) {
-      bootstrap.Collapse.getOrCreateInstance(addBox, { toggle: false }).show();
-    }
-  }
 })();
 
 (function () {
@@ -1436,56 +1388,22 @@
     openNewFamilyModalFromTerm(term, false);
   });
 
-  const familyPublicInput = document.getElementById('leaseFamilyPublicLinkInput');
-  const generateFamilyLinkBtn = document.getElementById('generateFamilyPublicLinkBtn');
-  const copyFamilyLinkBtn = document.getElementById('copyFamilyPublicLinkBtn');
-  const whatsappFamilyLinkBtn = document.getElementById('whatsappFamilyPublicLinkBtn');
-  const openFamilyLinkBtn = document.getElementById('openFamilyPublicLinkBtn');
-  function setFamilyPublicLink(url) {
-    if (familyPublicInput) familyPublicInput.value = url || '';
-    if (openFamilyLinkBtn) {
-      openFamilyLinkBtn.href = url || '#';
-      openFamilyLinkBtn.classList.toggle('disabled', !url);
-    }
-    if (whatsappFamilyLinkBtn) {
-      whatsappFamilyLinkBtn.href = url ? 'https://wa.me/?text=' + encodeURIComponent('Please update lease family information using this secure link:\n\n' + url) : '#';
-      whatsappFamilyLinkBtn.classList.toggle('disabled', !url);
-    }
-  }
-  generateFamilyLinkBtn?.addEventListener('click', function () {
+  document.getElementById('copyFamilyPublicLinkBtn')?.addEventListener('click', function () {
     const btn = this;
-    btn.disabled = true;
-    const original = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating';
     fetch(btn.dataset.linkUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
       .then(response => response.json().then(payload => ({ok: response.ok, payload})))
       .then(({ok, payload}) => {
         if (!ok || !payload.ok) throw new Error(payload.error || 'Could not create public link.');
-        setFamilyPublicLink(payload.url);
-        familyPublicInput?.select();
+        if (navigator.clipboard) {
+          return navigator.clipboard.writeText(payload.url).then(() => payload);
+        }
+        window.prompt('Copy public family link:', payload.url);
+        return payload;
       })
-      .catch(error => alert(error.message))
-      .finally(() => {
-        btn.disabled = false;
-        btn.innerHTML = original;
-      });
-  });
-  copyFamilyLinkBtn?.addEventListener('click', function () {
-    const url = familyPublicInput?.value || '';
-    if (!url) {
-      generateFamilyLinkBtn?.click();
-      return;
-    }
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(() => {
-        const original = copyFamilyLinkBtn.innerHTML;
-        copyFamilyLinkBtn.innerHTML = '<i class="fas fa-check me-1"></i> Copied';
-        setTimeout(() => { copyFamilyLinkBtn.innerHTML = original; }, 1500);
+      .then(payload => {
+        alert('Public family link copied. It is valid for 48 hours.');
       })
       .catch(error => alert(error.message));
-    } else {
-      window.prompt('Copy public family link:', url);
-    }
   });
 
   existingForm?.addEventListener('submit', function (event) {

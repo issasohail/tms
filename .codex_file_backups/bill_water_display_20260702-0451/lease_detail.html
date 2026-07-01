@@ -544,20 +544,6 @@
           <div class="ld-f-value">{{ lease.society_maintenance|default:0|money:0 }}</div>
         </div>
         <div class="ld-f">
-          <div class="ld-f-label">Water Charges</div>
-          <div class="ld-f-value">{{ lease.water_charges|default:0|money:0 }}</div>
-        </div>
-        <div class="ld-f">
-          <div class="ld-f-label">Bill Water</div>
-          <div class="ld-f-value">
-            {% if lease.bill_water_charges %}
-              <span class="ld-badge ld-badge-green">Yes</span>
-            {% else %}
-              <span class="ld-badge ld-badge-gray">No</span>
-            {% endif %}
-          </div>
-        </div>
-        <div class="ld-f">
           <div class="ld-f-label">Security Deposit</div>
           <div class="ld-f-value">{{ lease.security_deposit|default:0|money:0 }}</div>
         </div>

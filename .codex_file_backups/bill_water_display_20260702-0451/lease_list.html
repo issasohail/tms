@@ -105,11 +105,6 @@
       <span>Non-zero</span>
     </label>
 
-    <label class="ll-check ll-filter-bill-water">
-      <input type="checkbox" name="bill_water_charges" id="id_bill_water_charges" {% if bill_water_charges_filter %}checked{% endif %}>
-      <span>Bill Water</span>
-    </label>
-
     {% if request.GET %}
       <a href="?" class="ll-btn ll-btn--clear ll-filter-clear" title="Clear filters" aria-label="Clear filters">
         <i class="fas fa-times"></i><span class="ll-clear-label">Clear</span>
@@ -189,7 +184,6 @@
   --col-unit: 100px;
   --col-family: 108px;
   --col-police: 92px;
-  --col-bill-water: 82px;
   --col-monthly: 112px;
   --col-status: 82px;
   --col-start: 106px;
@@ -412,7 +406,6 @@
 .ll-table-wrap .col-unit { width: var(--col-unit); }
 .ll-table-wrap .col-family { width: var(--col-family); text-align: center; }
 .ll-table-wrap .col-police { width: var(--col-police); text-align: center; }
-.ll-table-wrap .col-bill-water { width: var(--col-bill-water); text-align: center; }
 .ll-table-wrap .col-monthly { width: var(--col-monthly); text-align: right; }
 .family-count-pill {
   display: inline-flex;
@@ -728,7 +721,6 @@
   .ll-filter-status { grid-column: 3; }
   .ll-filter-tenant { grid-column: 1 / span 2; }
   .ll-filter-nonzero { grid-column: 3; align-self: end; justify-content: center; }
-  .ll-filter-bill-water { grid-column: 3; align-self: end; justify-content: center; }
   .ll-filter-clear { grid-column: 3; display: none !important; }
   .ll-label { font-size: .62rem; }
   .ll-select { height: 29px; padding: 4px 6px; font-size: .66rem; border-radius: 6px; }

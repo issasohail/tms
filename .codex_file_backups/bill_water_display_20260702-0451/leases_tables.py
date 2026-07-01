@@ -70,7 +70,7 @@ class LeaseTable(ExportableTable):
 
     family_members = tables.Column(
         verbose_name="Family Member",
-        order_by=("family_member_count",),
+        orderable=False,
         empty_values=(),
         attrs={
             "td": {"class": "col-family"},
@@ -85,16 +85,6 @@ class LeaseTable(ExportableTable):
         attrs={
             "td": {"class": "col-police"},
             "th": {"class": "col-police"},
-        },
-    )
-
-    bill_water_charges = tables.Column(
-        verbose_name="Bill Water",
-        orderable=True,
-        empty_values=(),
-        attrs={
-            "td": {"class": "col-bill-water text-center"},
-            "th": {"class": "col-bill-water text-center"},
         },
     )
 
@@ -209,11 +199,6 @@ class LeaseTable(ExportableTable):
             '<button type="submit" class="police-send-btn" title="Send police verification link">Send</button>'
             '</form>'.format(url=escape(url), csrf=escape(csrf))
         )
-
-    def render_bill_water_charges(self, value, record):
-        if value:
-            return mark_safe('<span class="badge bg-success">Yes</span>')
-        return mark_safe('<span class="badge bg-secondary">No</span>')
 
     def render_balance(self, value, record):
         """Format balance for display and exports"""
@@ -380,7 +365,6 @@ class LeaseTable(ExportableTable):
             "unit",
             "family_members",
             "police_verification",
-            "bill_water_charges",
             "monthly_payments",
             "status",
             "start_date",

@@ -731,7 +731,6 @@ class LeaseListView(SingleTableView):
                 "status",
                 "police_verification_status",
                 "police_verification_document",
-                "bill_water_charges",
                 "tenant__id",
                 "tenant__first_name",
                 "tenant__last_name",
@@ -753,7 +752,6 @@ class LeaseListView(SingleTableView):
         if summary_filter == "ended_recently" and "status" not in self.request.GET:
             status = ""
         nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
-        bill_water_filter = self.request.GET.get("bill_water_charges") == "on"
 
         queryset = self._annotate_list_financials(queryset).annotate(
             family_member_count=Count("family_members", distinct=True),
@@ -778,8 +776,6 @@ class LeaseListView(SingleTableView):
             queryset = queryset.filter(tenant_id=tenant_id)
         if nonzero_balance:
             queryset = queryset.filter(list_balance__gt=0)
-        if bill_water_filter:
-            queryset = queryset.filter(bill_water_charges=True)
 
         self._lease_list_statusless_queryset = queryset
 
@@ -901,7 +897,6 @@ class LeaseListView(SingleTableView):
         if context["current_summary"] == "ended_recently" and "status" not in self.request.GET:
             context["current_status"] = ""
         context["nonzero_balance"] = self.request.GET.get("nonzero_balance", "")
-        context["bill_water_charges_filter"] = self.request.GET.get("bill_water_charges", "")
         context["current_layout"] = self.request.GET.get("layout", "1")
         base_queryset = getattr(self, "_lease_list_base_queryset", self.object_list)
         context["lease_count"] = base_queryset.count()

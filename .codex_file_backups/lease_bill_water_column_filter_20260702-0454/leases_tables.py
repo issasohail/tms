@@ -70,7 +70,7 @@ class LeaseTable(ExportableTable):
 
     family_members = tables.Column(
         verbose_name="Family Member",
-        order_by=("family_member_count",),
+        orderable=False,
         empty_values=(),
         attrs={
             "td": {"class": "col-family"},
@@ -380,7 +380,6 @@ class LeaseTable(ExportableTable):
             "unit",
             "family_members",
             "police_verification",
-            "bill_water_charges",
             "monthly_payments",
             "status",
             "start_date",

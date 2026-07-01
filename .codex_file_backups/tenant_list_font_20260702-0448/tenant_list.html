@@ -4,7 +4,7 @@
 {% load tenants_url_helpers %}
 
 {% block content %}
-<div class="container-fluid grid-tight tenant-list-page">
+<div class="container-fluid grid-tight">
 
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div>
@@ -255,8 +255,8 @@
             </td>
 
             <td class="p-1 col-tenant">
-                <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="tenant-name-link d-block text-truncate" title="{{ tenant.first_name }} {{ tenant.last_name }}">
-                <strong>{{ tenant.first_name }} {{ tenant.last_name }}</strong>
+                <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="text-primary d-block text-truncate">
+                <strong>{{ tenant.first_name }}</strong>
                 </a>
                 <span class="text-muted xsmall d-block">{{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}</span>
                 <div class="xsmall text-truncate">{{ tenant.phone }}</div>
@@ -361,8 +361,8 @@
                     {% endif %}
                 </div>
                 <div class="tc-main">
-                    <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="tenant-name-link d-block text-truncate" title="{{ tenant.first_name }} {{ tenant.last_name }}">
-                        <strong>{{ tenant.first_name }} {{ tenant.last_name }}</strong>
+                    <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="text-primary d-block">
+                        <strong>{{ tenant.first_name }}</strong>
                     </a>
                     <span class="text-muted xsmall d-block">{{ tenant.number_of_family_member }} Family – {{ tenant.get_gender_display }}</span>
                     <div class="xsmall">{{ tenant.phone }}</div>
@@ -526,29 +526,11 @@
     }
     .quick-interest-item input{ margin:0; }
 
-    .tenant-list-page{
-        max-width:1600px;
-        margin:0 auto;
-    }
-
     /* ===================== Type scale ===================== */
     .table-sm td, .table-sm th{ padding:.3rem; font-size:.78rem; vertical-align:middle; }
     .small{ font-size:.8rem; }
     .xsmall{ font-size:.72rem; color:#666; line-height:1.25; }
     .xxsmall{ font-size:.65rem; color:#666; }
-    .tenant-name-link{
-        color:#101828;
-        font-weight:900;
-        font-size:.86rem;
-        line-height:1.18;
-        letter-spacing:0;
-        text-decoration:none;
-    }
-    .tenant-name-link strong{ font-weight:900; }
-    .tenant-name-link:hover{
-        color:#006bff;
-        text-decoration:underline;
-    }
 
     /* ===================== Shared icon-action buttons ===================== */
     .icon-row{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }

@@ -335,7 +335,7 @@ th.col-items, td.col-items{ display:table-cell !important; }
 
     <div class="tb-group tb-line2">
       <select id="leaseFilter"
-              class="form-select form-select-sm"
+              class="form-select form-select-sm select2"
               style="min-width: 120px;"
               title="Lease (Tenant — Unit — Status)">
         <option value="">Lease (Tenant — Unit — Status)</option>
@@ -966,6 +966,7 @@ function labelFromLease(obj){
     if ($leaseFilter && $leaseFilter.length) {
       const exists = $leaseFilter.find(`option[value="${prevVal}"]`).length > 0;
       $leaseFilter.val(exists ? prevVal : '').trigger('change.select2');
+      if (!$leaseFilter.data('select2')) initRecurringWizardSelect2();
     }
   }
 
@@ -1563,6 +1564,12 @@ function initRecurringWizardSelect2() {
   window.__rc_s2_inited = true;
 
   jQuery('.select2-container--open').remove();
+  const $propFilterNow = jQuery('#propFilter');
+  const $unitFilterNow = jQuery('#unitFilter');
+  const $leaseFilterNow = jQuery('#leaseFilter');
+  const $propSelectNow = jQuery('#propSelect');
+  const $leaseSelectNow = jQuery('#leaseSelect');
+  const $categorySelectNow = jQuery('#f_category');
 
   const initRcSelect2 = ($el, options) => {
     if (!$el || !$el.length) return;
@@ -1577,28 +1584,28 @@ function initRecurringWizardSelect2() {
     }, options));
   };
 
-  initRcSelect2($propFilter, {
+  initRcSelect2($propFilterNow, {
     placeholder: 'All properties',
     dropdownParent: document.getElementById('rcRoot')
   });
 
-  initRcSelect2($unitFilter, {
+  initRcSelect2($unitFilterNow, {
     placeholder: 'All units',
     dropdownParent: document.getElementById('rcRoot')
   });
 
-  if ($leaseFilter && $leaseFilter.length) {
-    if ($leaseFilter.data('select2')) $leaseFilter.select2('destroy');
-    $leaseFilter.nextAll('.select2').remove();
+  if ($leaseFilterNow.length) {
+    if ($leaseFilterNow.data('select2')) $leaseFilterNow.select2('destroy');
+    $leaseFilterNow.nextAll('.select2').remove();
 
-    $leaseFilter.select2({
-      width: 'style',
-      placeholder: 'All Lease',
+    $leaseFilterNow.select2({
+      width: '100%',
+      placeholder: 'Search lease...',
       allowClear: true,
       minimumResultsForSearch: 0,
       dropdownAutoWidth: true,
       selectOnClose: true,
-      dropdownParent: $leaseFilter.closest('.tb-line2').get(0)
+      dropdownParent: $leaseFilterNow.closest('.tb-line2').get(0)
       });
 
     $(document).on('select2:open', () => {
@@ -1606,19 +1613,19 @@ function initRecurringWizardSelect2() {
       if (sf) { sf.focus(); sf.select(); }
     });
 
-    $leaseFilter.on('change', loadList);
+    $leaseFilterNow.off('change.rcSelect2').on('change.rcSelect2', loadList);
   }
 
-  initRcSelect2($propSelect, {
+  initRcSelect2($propSelectNow, {
     placeholder: 'Select property',
     dropdownParent: document.getElementById('editorPanel')
   });
 
-  if ($leaseSelect && $leaseSelect.length) {
-    if ($leaseSelect.data('select2')) $leaseSelect.select2('destroy');
-    $leaseSelect.nextAll('.select2').remove();
+  if ($leaseSelectNow.length) {
+    if ($leaseSelectNow.data('select2')) $leaseSelectNow.select2('destroy');
+    $leaseSelectNow.nextAll('.select2').remove();
 
-    $leaseSelect.select2({
+    $leaseSelectNow.select2({
       width: '100%',
       placeholder: '— Select lease —',
       allowClear: true,
@@ -1634,18 +1641,15 @@ function initRecurringWizardSelect2() {
     });
   }
 
-  initRcSelect2($categorySelect, {
+  initRcSelect2($categorySelectNow, {
     placeholder: 'Category',
     allowClear: false,
     dropdownParent: document.getElementById('editorPanel')
   });
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initRecurringWizardSelect2);
-} else {
-  initRecurringWizardSelect2();
-}
+document.addEventListener('DOMContentLoaded', initRecurringWizardSelect2);
+window.addEventListener('load', initRecurringWizardSelect2);
 
   // on init
   (async function init(){

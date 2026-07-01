@@ -4,15 +4,6 @@ from .models import HandymanCategory, HandymanProfile, HandymanRating, Maintenan
 
 
 class HandymanProfileForm(forms.ModelForm):
-    new_category = forms.CharField(
-        required=False,
-        label="Add missing category",
-        widget=forms.TextInput(attrs={
-            "class": "form-control form-control-sm",
-            "placeholder": "Type a new category if it is not in the list",
-        }),
-    )
-
     class Meta:
         model = HandymanProfile
         fields = [
@@ -41,17 +32,6 @@ class HandymanProfileForm(forms.ModelForm):
             "id_card_front": forms.FileInput(attrs={"class": "form-control form-control-sm", "accept": "image/*"}),
             "id_card_back": forms.FileInput(attrs={"class": "form-control form-control-sm", "accept": "image/*"}),
         }
-
-    def save(self, commit=True):
-        handyman = super().save(commit=commit)
-        category_name = (self.cleaned_data.get("new_category") or "").strip()
-        if commit and category_name:
-            category, _created = HandymanCategory.objects.get_or_create(
-                name=category_name,
-                defaults={"is_active": True, "sort_order": 50},
-            )
-            handyman.categories.add(category)
-        return handyman
 
 
 class HandymanCategoryForm(forms.ModelForm):

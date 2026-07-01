@@ -6,7 +6,6 @@ from .models import HandymanProfile, MaintenanceHandymanAssignment
 
 @transaction.atomic
 def assign_handyman(maintenance_request, handyman, *, assigned_by=None, notes="", status=None):
-    selected_status = status or _default_assignment_status()
     MaintenanceHandymanAssignment.objects.select_for_update().filter(
         maintenance_request=maintenance_request,
         is_current=True,
@@ -16,7 +15,7 @@ def assign_handyman(maintenance_request, handyman, *, assigned_by=None, notes=""
         handyman=handyman,
         assigned_by=assigned_by,
         notes=notes or "",
-        status=selected_status,
+        status=status or MaintenanceHandymanAssignment.STATUS_ASSIGNED,
         is_current=True,
     )
 
@@ -64,13 +63,3 @@ def _digits(value):
 def _phone_matches(target_digits, candidate):
     candidate_digits = _digits(candidate)
     return bool(candidate_digits and (candidate_digits.endswith(target_digits[-10:]) or target_digits.endswith(candidate_digits[-10:])))
-
-
-def _default_assignment_status():
-    from core.models import GlobalSettings
-
-    configured_status = GlobalSettings.get_solo().handyman_assignment_default_status
-    allowed_statuses = {value for value, _label in MaintenanceHandymanAssignment.STATUS_CHOICES}
-    if configured_status in allowed_statuses:
-        return configured_status
-    return MaintenanceHandymanAssignment.STATUS_ASSIGNED

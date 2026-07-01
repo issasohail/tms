@@ -10,6 +10,7 @@ urlpatterns = [
     path("settings/", SettingsView.as_view(), name="settings"),
     path("pending-approvals/", views.pending_approvals, name="pending_approvals"),
     path("pending-approvals/<str:kind>/<int:pk>/", views.pending_approval_detail, name="pending_approval_detail"),
+    path("pending-approvals/family/<int:pk>/file/<str:field_name>/", views.pending_family_file, name="pending_family_file"),
     path("pending-approvals/<str:kind>/<int:pk>/approve/", views.pending_approval_approve, name="pending_approval_approve"),
     path("pending-approvals/<str:kind>/<int:pk>/reject/", views.pending_approval_reject, name="pending_approval_reject"),
     path("settings/backup-restore/", BackupCenterView.as_view(), name="backup_center"),

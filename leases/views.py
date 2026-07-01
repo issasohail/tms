@@ -23,6 +23,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.files.base import ContentFile
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.core.files import File
 from django.core.mail import EmailMessage
@@ -2080,7 +2081,13 @@ def approve_pending_family_submission(pending, user):
         for field_name in ("photo", "cnic_front", "cnic_back"):
             uploaded = getattr(pending, field_name)
             if uploaded:
-                setattr(tenant, field_name, uploaded)
+                uploaded.open("rb")
+                try:
+                    content = ContentFile(uploaded.read())
+                    original_name = os.path.basename(uploaded.name or f"{field_name}.jpg")
+                    getattr(tenant, field_name).save(original_name, content, save=False)
+                finally:
+                    uploaded.close()
         tenant.save()
         link, _created = LeaseFamilyMember.objects.get_or_create(
             lease=pending.lease,

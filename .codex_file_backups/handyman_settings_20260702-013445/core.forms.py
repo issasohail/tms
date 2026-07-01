@@ -12,7 +12,6 @@ class GlobalSettingsForm(forms.ModelForm):
 
     TZ_CHOICES = sorted((tz, tz) for tz in available_timezones())
     time_zone = forms.ChoiceField(choices=TZ_CHOICES)
-    handyman_assignment_default_status = forms.ChoiceField()
 
     class Meta:
         model = GlobalSettings
@@ -31,16 +30,6 @@ class GlobalSettingsForm(forms.ModelForm):
                   "time_zone",  # ← NEW
                   "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
                   "whatsapp_ai_ocr_provider", "whatsapp_ai_use_celery",
-                  "handyman_assignment_default_status",
-                  "handyman_enable_whatsapp_profile_updates",
-                  "handyman_enable_whatsapp_job_uploads",
-                  "handyman_enable_ratings",
-                  "handyman_require_id_documents",
-                  "handyman_profile_photo_command",
-                  "handyman_id_front_command",
-                  "handyman_id_back_command",
-                  "handyman_invoice_command",
-                  "handyman_job_photo_command",
                   "enable_debug_toolbar",
                   ]
     FIELD_GROUPS = [
@@ -70,34 +59,10 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Meter Listener", "fas fa-broadcast-tower", [
             "listener_host", "listener_port",
         ]),
-        ("Handyman", "fas fa-tools", [
-            "handyman_assignment_default_status",
-            "handyman_enable_whatsapp_profile_updates",
-            "handyman_enable_whatsapp_job_uploads",
-            "handyman_enable_ratings",
-            "handyman_require_id_documents",
-            "handyman_profile_photo_command",
-            "handyman_id_front_command",
-            "handyman_id_back_command",
-            "handyman_invoice_command",
-            "handyman_job_photo_command",
-        ]),
     ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        try:
-            from handyman.models import MaintenanceHandymanAssignment
-
-            self.fields["handyman_assignment_default_status"].choices = MaintenanceHandymanAssignment.STATUS_CHOICES
-        except Exception:
-            self.fields["handyman_assignment_default_status"].choices = [
-                ("assigned", "Assigned"),
-                ("accepted", "Accepted"),
-                ("in_progress", "In Progress"),
-                ("completed", "Completed"),
-                ("cancelled", "Cancelled"),
-            ]
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.update({"class": "form-check-input"})
@@ -126,16 +91,6 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["whatsapp_ai_model"].label = "OpenAI model"
         self.fields["whatsapp_ai_ocr_provider"].label = "Payment OCR provider"
         self.fields["whatsapp_ai_use_celery"].label = "Use Celery for WhatsApp AI"
-        self.fields["handyman_assignment_default_status"].label = "Default assignment status"
-        self.fields["handyman_enable_whatsapp_profile_updates"].label = "Allow WhatsApp profile updates"
-        self.fields["handyman_enable_whatsapp_job_uploads"].label = "Allow WhatsApp job uploads"
-        self.fields["handyman_enable_ratings"].label = "Enable handyman ratings"
-        self.fields["handyman_require_id_documents"].label = "Require ID documents"
-        self.fields["handyman_profile_photo_command"].label = "Profile photo command"
-        self.fields["handyman_id_front_command"].label = "ID front command"
-        self.fields["handyman_id_back_command"].label = "ID back command"
-        self.fields["handyman_invoice_command"].label = "Invoice command"
-        self.fields["handyman_job_photo_command"].label = "Job photo command"
         self.fields["enable_debug_toolbar"].label = "Enable Django Debug Toolbar (local development only)"
         self.fields["enable_debug_toolbar"].help_text = "Only works when DEBUG=True and host is local. It will not show in production."
         add_auto_titlecase_class(self.fields, {"site_name"})

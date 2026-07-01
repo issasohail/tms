@@ -42,8 +42,7 @@
 
             <dt class="col-5">Property / Unit</dt>
             <dd class="col-7">
-              {% if item.property %}{{ item.property }}{% elif item.unit %}{{ item.unit.property }}{% elif item.lease %}{{ item.lease.unit.property }}{% else %}-{% endif %}
-              {% if item.unit %} / {{ item.unit }}{% elif item.lease %} / {{ item.lease.unit }}{% endif %}
+              {{ property_unit_label }}
             </dd>
 
             {% if kind == "payment" %}
@@ -187,7 +186,7 @@
               <div class="col-12 col-md-4">
                 <div class="fw-semibold small mb-1">Photo</div>
                 {% if item.photo %}
-                  <a href="{{ item.photo.url }}" target="_blank"><img src="{{ item.photo.url }}" class="img-fluid rounded border" style="max-height:260px;object-fit:contain;"></a>
+                  <a href="{{ urls.photo }}" target="_blank"><img src="{{ urls.photo }}" class="img-fluid rounded border" style="max-height:260px;object-fit:contain;"></a>
                 {% else %}
                   <div class="text-muted small">No photo uploaded.</div>
                 {% endif %}
@@ -195,8 +194,8 @@
               <div class="col-12 col-md-4">
                 <div class="fw-semibold small mb-1">ID Front</div>
                 {% if item.cnic_front %}
-                  <a href="{{ item.cnic_front.url }}" target="_blank" class="btn btn-sm btn-outline-primary mb-2">Open File</a>
-                  <img src="{{ item.cnic_front.url }}" class="img-fluid rounded border" style="max-height:260px;object-fit:contain;">
+                  <a href="{{ urls.cnic_front }}" target="_blank" class="btn btn-sm btn-outline-primary mb-2">Open File</a>
+                  <img src="{{ urls.cnic_front }}" class="img-fluid rounded border" style="max-height:260px;object-fit:contain;">
                 {% else %}
                   <div class="text-muted small">No front ID uploaded.</div>
                 {% endif %}
@@ -204,8 +203,8 @@
               <div class="col-12 col-md-4">
                 <div class="fw-semibold small mb-1">ID Back</div>
                 {% if item.cnic_back %}
-                  <a href="{{ item.cnic_back.url }}" target="_blank" class="btn btn-sm btn-outline-primary mb-2">Open File</a>
-                  <img src="{{ item.cnic_back.url }}" class="img-fluid rounded border" style="max-height:260px;object-fit:contain;">
+                  <a href="{{ urls.cnic_back }}" target="_blank" class="btn btn-sm btn-outline-primary mb-2">Open File</a>
+                  <img src="{{ urls.cnic_back }}" class="img-fluid rounded border" style="max-height:260px;object-fit:contain;">
                 {% else %}
                   <div class="text-muted small">No back ID uploaded.</div>
                 {% endif %}

@@ -109,54 +109,6 @@ class GlobalSettings(models.Model):
         help_text="Queue WhatsApp AI work through Celery when a worker is running; otherwise TMS uses a local background thread.",
     )
 
-    # Handyman
-    handyman_assignment_default_status = models.CharField(
-        max_length=20,
-        default="assigned",
-        help_text="Status used when staff assigns a handyman and no status is selected.",
-    )
-    handyman_enable_whatsapp_profile_updates = models.BooleanField(
-        default=True,
-        help_text="Allow handymen to update profile photo and ID card images from WhatsApp.",
-    )
-    handyman_enable_whatsapp_job_uploads = models.BooleanField(
-        default=True,
-        help_text="Allow handymen to upload invoices and job photos from WhatsApp.",
-    )
-    handyman_enable_ratings = models.BooleanField(
-        default=True,
-        help_text="Show and accept tenant ratings for handyman jobs.",
-    )
-    handyman_require_id_documents = models.BooleanField(
-        default=False,
-        help_text="Require front and back ID card images before marking a handyman fully documented.",
-    )
-    handyman_profile_photo_command = models.CharField(
-        max_length=40,
-        default="PROFILE PHOTO",
-        help_text="WhatsApp command for updating the handyman profile photo.",
-    )
-    handyman_id_front_command = models.CharField(
-        max_length=40,
-        default="ID FRONT",
-        help_text="WhatsApp command for updating the front ID card image.",
-    )
-    handyman_id_back_command = models.CharField(
-        max_length=40,
-        default="ID BACK",
-        help_text="WhatsApp command for updating the back ID card image.",
-    )
-    handyman_invoice_command = models.CharField(
-        max_length=40,
-        default="INVOICE",
-        help_text="WhatsApp command for attaching an invoice to the active job.",
-    )
-    handyman_job_photo_command = models.CharField(
-        max_length=40,
-        default="PHOTO",
-        help_text="WhatsApp command for attaching a job photo to the active job.",
-    )
-
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

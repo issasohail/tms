@@ -41,16 +41,10 @@
         </div>
       </div>
       <div class="border-start ps-3">
-        {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
-          <div class="small text-muted">Average Rating</div>
-          <div class="fs-3 fw-bold">{{ handyman.average_rating }}</div>
-          <div class="hm-stars">★★★★★</div>
-          <div class="small text-muted">({{ handyman.rating_count }} Ratings)</div>
-        {% else %}
-          <div class="small text-muted">Ratings</div>
-          <div class="fs-6 fw-bold">Off</div>
-          <div class="small text-muted">Disabled in settings</div>
-        {% endif %}
+        <div class="small text-muted">Average Rating</div>
+        <div class="fs-3 fw-bold">{{ handyman.average_rating }}</div>
+        <div class="hm-stars">★★★★★</div>
+        <div class="small text-muted">({{ handyman.rating_count }} Ratings)</div>
       </div>
       <div class="border-start ps-3">
         <div class="small text-muted">Completed Jobs</div>
@@ -79,16 +73,12 @@
       </div>
       <div class="hm-card">
         <h6>Ratings & Reviews</h6>
-        {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
-          {% for rating in handyman.ratings.all|slice:":6" %}
-            <div class="hm-job-row">
-              <div><span class="hm-stars">★★★★★</span><div class="small">{{ rating.comments|default:"-" }}</div><div class="small text-muted">{{ rating.tenant_name_snapshot }} - {{ rating.property_name_snapshot }} {{ rating.unit_name_snapshot }}</div></div>
-              <span>{{ rating.rating }}</span>
-            </div>
-          {% empty %}<div class="small text-muted">No ratings yet.</div>{% endfor %}
-        {% else %}
-          <div class="small text-muted">Ratings are disabled in settings.</div>
-        {% endif %}
+        {% for rating in handyman.ratings.all|slice:":6" %}
+          <div class="hm-job-row">
+            <div><span class="hm-stars">★★★★★</span><div class="small">{{ rating.comments|default:"-" }}</div><div class="small text-muted">{{ rating.tenant_name_snapshot }} - {{ rating.property_name_snapshot }} {{ rating.unit_name_snapshot }}</div></div>
+            <span>{{ rating.rating }}</span>
+          </div>
+        {% empty %}<div class="small text-muted">No ratings yet.</div>{% endfor %}
       </div>
     </div>
   </div>

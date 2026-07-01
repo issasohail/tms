@@ -22,7 +22,7 @@
       <div class="border rounded p-3">
         <h6>Basic Information</h6>
         {% for field in form %}
-          {% if field.name != "photo" and field.name != "id_card_front" and field.name != "id_card_back" and field.name != "new_category" %}
+          {% if field.name != "photo" and field.name != "id_card_front" and field.name != "id_card_back" %}
             <div class="mb-2 {% if field.name == 'is_preferred' or field.name == 'is_active' %}form-check{% endif %}">
               {% if field.name == 'is_preferred' or field.name == 'is_active' %}
                 {{ field }} <label class="form-check-label">{{ field.label }}</label>
@@ -32,14 +32,6 @@
               {% endif %}
               {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
             </div>
-            {% if field.name == "categories" %}
-              <div class="mb-2">
-                <label class="form-label small mb-1">{{ form.new_category.label }}</label>
-                {{ form.new_category }}
-                <div class="form-text">If the trade is missing, enter it here and it will be added to settings.</div>
-                {% if form.new_category.errors %}<div class="text-danger small">{{ form.new_category.errors }}</div>{% endif %}
-              </div>
-            {% endif %}
           {% endif %}
         {% endfor %}
       </div>

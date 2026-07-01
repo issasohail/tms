@@ -2,7 +2,6 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Count, Q
-from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
@@ -88,44 +87,12 @@ def category_settings(request):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Handyman category saved.")
-        redirect_url = f"{reverse_lazy('handyman:category_settings')}?embed=1" if request.GET.get("embed") == "1" else reverse_lazy("handyman:category_settings")
-        return redirect(redirect_url)
-    sort = request.GET.get("sort")
-    ordering = ("name", "sort_order") if sort == "name" else ("sort_order", "name")
+        return redirect("handyman:category_settings")
     return render(
         request,
         "handyman/category_settings.html",
-        {
-            "form": form,
-            "categories": HandymanCategory.objects.order_by(*ordering),
-            "sort": sort,
-            "base_template": "handyman/embedded_base.html" if request.GET.get("embed") == "1" else "base.html",
-            "is_embedded": request.GET.get("embed") == "1",
-        },
+        {"form": form, "categories": HandymanCategory.objects.all()},
     )
-
-
-@login_required
-@require_POST
-def category_inline_update(request, pk):
-    category = get_object_or_404(HandymanCategory, pk=pk)
-    field = request.POST.get("field")
-    value = (request.POST.get("value") or "").strip()
-    if field == "name":
-        if not value:
-            return HttpResponseBadRequest("Name required")
-        category.name = value
-    elif field == "sort_order":
-        try:
-            category.sort_order = int(value or 0)
-        except ValueError:
-            return HttpResponseBadRequest("Invalid sort order")
-    elif field == "is_active":
-        category.is_active = value in ("1", "true", "on", "yes")
-    else:
-        return HttpResponseBadRequest("Invalid field")
-    category.save(update_fields=[field])
-    return JsonResponse({"ok": True})
 
 
 @login_required

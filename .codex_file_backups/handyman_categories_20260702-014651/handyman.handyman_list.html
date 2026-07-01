@@ -51,12 +51,9 @@
         <h4 class="hm-title">Handyman List</h4>
         <div class="hm-crumb">Home / Handyman / Handyman List</div>
       </div>
-      <div class="d-flex flex-wrap gap-1 justify-content-end">
-        <a href="{% url 'handyman:handyman_add' %}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Handyman</a>
-        <a href="{% url 'handyman:category_settings' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Categories</a>
-      </div>
+      <a href="{% url 'handyman:handyman_add' %}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Handyman</a>
     </div>
-    <form method="get" class="hm-filters" id="hm-filter-form">
+    <form method="get" class="hm-filters">
       <input name="q" value="{{ filters.q }}" class="form-control form-control-sm wide" placeholder="Search by name or phone...">
       <select name="category" class="form-select form-select-sm">
         <option value="">All Categories</option>
@@ -127,21 +124,4 @@
     </div>
   </div>
 </div>
-<script>
-  (function () {
-    const form = document.getElementById("hm-filter-form");
-    if (!form) return;
-    let timer = null;
-    form.querySelectorAll("select").forEach(field => {
-      field.addEventListener("change", () => form.submit());
-    });
-    const search = form.querySelector("input[name='q']");
-    if (search) {
-      search.addEventListener("input", () => {
-        window.clearTimeout(timer);
-        timer = window.setTimeout(() => form.submit(), 500);
-      });
-    }
-  })();
-</script>
 {% endblock %}

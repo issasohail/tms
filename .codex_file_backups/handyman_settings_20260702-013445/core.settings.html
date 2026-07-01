@@ -38,12 +38,6 @@
       <a class="settings-tab-card" href="#settings-group-meter-listener" data-settings-target="settings-group-meter-listener">
         <span class="settings-tab-icon"><i class="fas fa-broadcast-tower"></i></span><span>Meter Listener</span>
       </a>
-      <a class="settings-tab-card" href="#settings-group-handyman" data-settings-target="settings-group-handyman">
-        <span class="settings-tab-icon"><i class="fas fa-tools"></i></span><span>Handyman</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-tool-handyman-categories" data-settings-target="settings-tool-handyman-categories">
-        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-tools"></i></span><span>Handyman Categories</span>
-      </a>
       <a class="settings-tab-card" href="#settings-development-tools" data-settings-target="settings-development-tools">
         <span class="settings-tab-icon"><i class="fas fa-code"></i></span><span>Development Tools</span>
       </a>
@@ -193,22 +187,6 @@
                   </div>
                 </div>
               {% endif %}
-              {% if group_title == "Handyman" %}
-                <div class="row g-2 mt-2">
-                  <div class="col-12 col-md-6">
-                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="#settings-tool-handyman-categories" data-settings-target="settings-tool-handyman-categories">
-                      <div class="small fw-semibold mb-1">Handyman Categories</div>
-                      <span class="badge bg-info text-dark">Open category list</span>
-                    </a>
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="{% url 'handyman:handyman_list' %}">
-                      <div class="small fw-semibold mb-1">Handyman Profiles</div>
-                      <span class="badge bg-primary">Open handyman list</span>
-                    </a>
-                  </div>
-                </div>
-              {% endif %}
             </div>
           </section>
         {% endfor %}
@@ -330,16 +308,6 @@
           <a class="btn btn-sm btn-outline-success" href="{% url 'core:pending_approvals' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
         <iframe class="settings-inline-frame" src="{% url 'core:pending_approvals' %}?embed=1" title="Pending Approvals"></iframe>
-      </div>
-    </div>
-
-    <div class="settings-tab-panel d-none" id="settings-tool-handyman-categories">
-      <div class="card shadow-sm settings-embedded-panel">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <h4 class="mb-0"><i class="fas fa-tools me-2"></i>Handyman Categories</h4>
-          <a class="btn btn-sm btn-outline-success" href="{% url 'handyman:category_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
-        </div>
-        <iframe class="settings-inline-frame" src="{% url 'handyman:category_settings' %}?embed=1" title="Handyman Categories"></iframe>
       </div>
     </div>
   </div>

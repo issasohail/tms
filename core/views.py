@@ -2,7 +2,7 @@
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib import messages
 from django.core.files.base import ContentFile
-from django.http import Http404, HttpResponseForbidden
+from django.http import FileResponse, Http404, HttpResponseForbidden
 from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
 from django.shortcuts import get_object_or_404, redirect, render
@@ -41,11 +41,34 @@ PENDING_KIND_LABELS = {
 
 
 def _pending_item_urls(kind, item):
-    return {
+    urls = {
         "detail": reverse("core:pending_approval_detail", args=[kind, item.pk]),
         "approve": reverse("core:pending_approval_approve", args=[kind, item.pk]),
         "reject": reverse("core:pending_approval_reject", args=[kind, item.pk]),
     }
+    if kind == "family":
+        urls.update({
+            "photo": reverse("core:pending_family_file", args=[item.pk, "photo"]),
+            "cnic_front": reverse("core:pending_family_file", args=[item.pk, "cnic_front"]),
+            "cnic_back": reverse("core:pending_family_file", args=[item.pk, "cnic_back"]),
+        })
+    return urls
+
+
+def _property_unit_label(item):
+    property_obj = getattr(item, "property", None)
+    unit = getattr(item, "unit", None)
+    lease = getattr(item, "lease", None)
+    if lease:
+        unit = getattr(lease, "unit", None)
+        property_obj = getattr(unit, "property", property_obj)
+    elif unit and not property_obj:
+        property_obj = getattr(unit, "property", None)
+    property_name = getattr(property_obj, "property_name", "") or str(property_obj or "")
+    unit_number = getattr(unit, "unit_number", "") or str(unit or "")
+    if property_name and unit_number:
+        return f"{property_name} / {unit_number}"
+    return property_name or unit_number or "-"
 
 
 def _media_preview_kind(file_name, media_type=""):
@@ -137,7 +160,11 @@ def pending_approvals(request):
     ]
     for section in sections:
         section["items"] = [
-            {"object": item, "urls": _pending_item_urls(section["kind"], item)}
+            {
+                "object": item,
+                "urls": _pending_item_urls(section["kind"], item),
+                "property_unit_label": _property_unit_label(item),
+            }
             for item in section["items"]
         ]
     return render(request, "core/pending_approvals.html", {"sections": sections})
@@ -214,9 +241,26 @@ def pending_approval_detail(request, kind, pk):
             "item": item,
             "media_preview": media_preview,
             "media_items": media_items,
+            "property_unit_label": _property_unit_label(item),
             "urls": _pending_item_urls(kind, item),
         },
     )
+
+
+@login_required
+def pending_family_file(request, pk, field_name):
+    from leases.models import PendingLeaseFamilyMemberSubmission
+
+    if field_name not in {"photo", "cnic_front", "cnic_back"}:
+        raise Http404("Unknown file field.")
+    item = get_object_or_404(PendingLeaseFamilyMemberSubmission, pk=pk)
+    file_field = getattr(item, field_name)
+    if not file_field:
+        raise Http404("File not found.")
+    try:
+        return FileResponse(file_field.open("rb"), filename=file_field.name.rsplit("/", 1)[-1])
+    except FileNotFoundError:
+        raise Http404("File is missing from storage.")
 
 
 def _attach_pending_media_from_core(pending, user):

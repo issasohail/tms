@@ -51,12 +51,9 @@
         <h4 class="hm-title">Handyman List</h4>
         <div class="hm-crumb">Home / Handyman / Handyman List</div>
       </div>
-      <div class="d-flex flex-wrap gap-1 justify-content-end">
-        <a href="{% url 'handyman:handyman_add' %}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Handyman</a>
-        <a href="{% url 'handyman:category_settings' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Categories</a>
-      </div>
+      <a href="{% url 'handyman:handyman_add' %}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Handyman</a>
     </div>
-    <form method="get" class="hm-filters" id="hm-filter-form">
+    <form method="get" class="hm-filters">
       <input name="q" value="{{ filters.q }}" class="form-control form-control-sm wide" placeholder="Search by name or phone...">
       <select name="category" class="form-select form-select-sm">
         <option value="">All Categories</option>
@@ -89,13 +86,7 @@
           <div>{{ handyman.display_phone|default:"-" }}</div>
           <div>{% for category in handyman.categories.all %}<span class="hm-badge me-1">{{ category.name }}</span>{% empty %}<span class="hm-muted">-</span>{% endfor %}</div>
           <div>{% if handyman.is_preferred %}<span class="hm-badge gold">Preferred</span>{% else %}<span class="hm-muted">-</span>{% endif %}</div>
-          <div>
-            {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
-              <span class="hm-stars">★</span> {{ handyman.rating_avg|floatformat:1|default:"0.0" }} ({{ handyman.ratings_total|default:0 }})
-            {% else %}
-              <span class="hm-muted">Off</span>
-            {% endif %}
-          </div>
+          <div><span class="hm-stars">★</span> {{ handyman.rating_avg|floatformat:1|default:"0.0" }} ({{ handyman.ratings_total|default:0 }})</div>
           <div>{{ handyman.completed_jobs_total|default:0 }}</div>
           <div><span class="hm-badge {% if handyman.is_active %}green{% else %}red{% endif %}">{% if handyman.is_active %}Active{% else %}Inactive{% endif %}</span></div>
           <div class="hm-actions"><a class="btn btn-outline-primary btn-sm" href="{{ handyman.get_absolute_url }}"><i class="bi bi-eye"></i></a><a class="btn btn-outline-secondary btn-sm" href="{% url 'handyman:handyman_edit' handyman.pk %}"><i class="bi bi-pencil"></i></a></div>
@@ -113,13 +104,7 @@
             <div class="d-flex justify-content-between gap-2"><span class="hm-name">{{ handyman.full_name }}</span>{% if handyman.is_preferred %}<span class="hm-badge gold">Preferred</span>{% endif %}</div>
             <div class="hm-muted">{{ handyman.display_phone|default:"-" }}</div>
             <div class="hm-muted">{% for category in handyman.categories.all %}{{ category.name }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</div>
-            <div>
-              {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
-                <span class="hm-stars">★</span> {{ handyman.rating_avg|floatformat:1|default:"0.0" }}
-              {% else %}
-                <span class="hm-muted">Ratings off</span>
-              {% endif %}
-            </div>
+            <div><span class="hm-stars">★</span> {{ handyman.rating_avg|floatformat:1|default:"0.0" }}</div>
           </div>
           <i class="bi bi-chevron-right text-muted"></i>
         </a>
@@ -127,21 +112,4 @@
     </div>
   </div>
 </div>
-<script>
-  (function () {
-    const form = document.getElementById("hm-filter-form");
-    if (!form) return;
-    let timer = null;
-    form.querySelectorAll("select").forEach(field => {
-      field.addEventListener("change", () => form.submit());
-    });
-    const search = form.querySelector("input[name='q']");
-    if (search) {
-      search.addEventListener("input", () => {
-        window.clearTimeout(timer);
-        timer = window.setTimeout(() => form.submit(), 500);
-      });
-    }
-  })();
-</script>
 {% endblock %}

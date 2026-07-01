@@ -5,24 +5,28 @@ from .models import HandymanJobAttachment, HandymanProfile
 from .services import active_assignment_for_handyman_phone
 
 
+COMMAND_TO_FIELD = {
+    "profile photo": "photo",
+    "id front": "id_card_front",
+    "id back": "id_card_back",
+}
+
+
 def handle_handyman_whatsapp_message(message_log, conversation, text, message_type, identity):
     lowered = (text or "").strip().lower()
-    config = _handyman_settings()
-    profile_commands = _profile_commands(config)
-    if config.handyman_enable_whatsapp_profile_updates and lowered in profile_commands:
+    if lowered in COMMAND_TO_FIELD:
         if not _handyman_for_phone(message_log.phone_number):
             return None
         conversation.pending_state = "handyman_profile_upload"
-        conversation.context["handyman_profile_field"] = profile_commands[lowered]
+        conversation.context["handyman_profile_field"] = COMMAND_TO_FIELD[lowered]
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return "Please send the image now.", "handyman_profile_upload_prompt", {}
-    job_commands = _job_commands(config)
-    if config.handyman_enable_whatsapp_job_uploads and lowered in job_commands:
+    if lowered in {"invoice", "photo"}:
         assignment = active_assignment_for_handyman_phone(message_log.phone_number)
         if not assignment:
             return None
         conversation.pending_state = "handyman_job_upload"
-        conversation.context["handyman_attachment_type"] = job_commands[lowered]
+        conversation.context["handyman_attachment_type"] = "invoice" if lowered == "invoice" else "job_photo"
         conversation.context["handyman_assignment_id"] = assignment.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return "Please send the file now.", "handyman_job_upload_prompt", {"assignment_id": assignment.pk}
@@ -31,8 +35,6 @@ def handle_handyman_whatsapp_message(message_log, conversation, text, message_ty
 
 def handle_handyman_media_message(message_log, conversation, text, message_type, identity):
     if conversation.pending_state == "handyman_profile_upload":
-        if not _handyman_settings().handyman_enable_whatsapp_profile_updates:
-            return None
         field_name = conversation.context.get("handyman_profile_field")
         if field_name not in {"photo", "id_card_front", "id_card_back"}:
             return None
@@ -51,8 +53,6 @@ def handle_handyman_media_message(message_log, conversation, text, message_type,
         return "Updated. Thank you.", "handyman_profile_upload_saved", {"handyman_id": handyman.pk}
 
     if conversation.pending_state == "handyman_job_upload":
-        if not _handyman_settings().handyman_enable_whatsapp_job_uploads:
-            return None
         assignment_id = conversation.context.get("handyman_assignment_id")
         attachment_type = conversation.context.get("handyman_attachment_type")
         assignment = active_assignment_for_handyman_phone(message_log.phone_number)
@@ -95,30 +95,3 @@ def _digits(value):
 def _phone_matches(target_digits, candidate):
     candidate_digits = _digits(candidate)
     return bool(candidate_digits and (candidate_digits.endswith(target_digits[-10:]) or target_digits.endswith(candidate_digits[-10:])))
-
-
-def _handyman_settings():
-    from core.models import GlobalSettings
-
-    return GlobalSettings.get_solo()
-
-
-def _profile_commands(config):
-    commands = {
-        _normalized_command(config.handyman_profile_photo_command): "photo",
-        _normalized_command(config.handyman_id_front_command): "id_card_front",
-        _normalized_command(config.handyman_id_back_command): "id_card_back",
-    }
-    return {command: field for command, field in commands.items() if command}
-
-
-def _job_commands(config):
-    commands = {
-        _normalized_command(config.handyman_invoice_command): "invoice",
-        _normalized_command(config.handyman_job_photo_command): "job_photo",
-    }
-    return {command: attachment_type for command, attachment_type in commands.items() if command}
-
-
-def _normalized_command(value):
-    return str(value or "").strip().lower()

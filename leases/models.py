@@ -1200,6 +1200,24 @@ class LeaseFamilyMember(models.Model):
         return f"{self.family_member} ({self.relation})"
 
 
+def pending_family_photo_upload_to(instance, filename):
+    ext = filename.split(".")[-1]
+    name = slugify(f"{instance.first_name} {instance.last_name}") or "family-member"
+    return os.path.join("lease_family_pending/photos/", f"{instance.cnic}-{name}-photo.{ext}")
+
+
+def pending_family_cnic_front_upload_to(instance, filename):
+    ext = filename.split(".")[-1]
+    name = slugify(f"{instance.first_name} {instance.last_name}") or "family-member"
+    return os.path.join("lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICfront.{ext}")
+
+
+def pending_family_cnic_back_upload_to(instance, filename):
+    ext = filename.split(".")[-1]
+    name = slugify(f"{instance.first_name} {instance.last_name}") or "family-member"
+    return os.path.join("lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICback.{ext}")
+
+
 class PendingLeaseFamilyMemberSubmission(models.Model):
     ACTION_ADD = "add"
     ACTION_REMOVE = "remove"
@@ -1250,9 +1268,9 @@ class PendingLeaseFamilyMemberSubmission(models.Model):
     gender = models.CharField(max_length=1, choices=Tenant.GENDER_CHOICES, default="M", blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
-    photo = models.ImageField(upload_to="lease_family_pending/photos/", blank=True, null=True)
-    cnic_front = models.ImageField(upload_to="lease_family_pending/cnic_front/", blank=True, null=True)
-    cnic_back = models.ImageField(upload_to="lease_family_pending/cnic_back/", blank=True, null=True)
+    photo = models.ImageField(upload_to=pending_family_photo_upload_to, blank=True, null=True)
+    cnic_front = models.ImageField(upload_to=pending_family_cnic_front_upload_to, blank=True, null=True)
+    cnic_back = models.ImageField(upload_to=pending_family_cnic_back_upload_to, blank=True, null=True)
     token = models.CharField(max_length=64, unique=True, db_index=True)
     expires_at = models.DateTimeField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)

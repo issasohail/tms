@@ -260,6 +260,8 @@
     }
     .unit-inline-edit,
     .unit-building-type-edit,
+    .unit-smart-edit,
+    .unit-public-edit,
     .lead-phone-text {
         display: inline-block;
         min-width: 52px;
@@ -269,6 +271,8 @@
     }
     .unit-inline-edit:hover,
     .unit-building-type-edit:hover,
+    .unit-smart-edit:hover,
+    .unit-public-edit:hover,
     .lead-phone-text:hover {
         background: #eef5ff;
         box-shadow: inset 0 0 0 1px #b6d4fe;
@@ -765,10 +769,18 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     document.querySelectorAll(".unit-public-edit").forEach(function (span) {
         span.addEventListener("click", function () {
-            togglePublicStatus(span);
+            toggleBooleanStatus(span, "show_publicly");
         });
         span.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") togglePublicStatus(span);
+            if (event.key === "Enter") toggleBooleanStatus(span, "show_publicly");
+        });
+    });
+    document.querySelectorAll(".unit-smart-edit").forEach(function (span) {
+        span.addEventListener("click", function () {
+            toggleBooleanStatus(span, "is_smart_meter");
+        });
+        span.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") toggleBooleanStatus(span, "is_smart_meter");
         });
     });
     document.querySelectorAll(".unit-building-type-edit").forEach(function (span) {
@@ -906,14 +918,14 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    function togglePublicStatus(span) {
+    function toggleBooleanStatus(span, field) {
         if (span.dataset.editing === "1") return;
         span.dataset.editing = "1";
 
         const currentValue = span.dataset.currentValue === "true";
         const newValue = !currentValue;
 
-        saveUnitField(span.dataset.unitId, "show_publicly", newValue ? "true" : "false")
+        saveUnitField(span.dataset.unitId, field, newValue ? "true" : "false")
             .then(function () {
                 span.dataset.currentValue = newValue ? "true" : "false";
                 span.textContent = newValue ? "Yes" : "No";

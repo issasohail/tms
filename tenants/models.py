@@ -127,6 +127,9 @@ class Tenant(models.Model):
     emergency_contact_relation = models.CharField(
         max_length=20, null=True, blank=True)
     number_of_family_member = models.CharField(max_length=2, default=4)
+    family_member_adults = models.PositiveIntegerField(default=0, blank=True)
+    family_member_children = models.PositiveIntegerField(default=0, blank=True)
+    nadra_family_no = models.CharField(max_length=50, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)

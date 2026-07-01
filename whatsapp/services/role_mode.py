@@ -225,7 +225,8 @@ def upload_type_menu_text():
         "4. Tenant Document\n"
         "5. Maintenance Photo\n"
         "6. Payment Receipt\n"
-        "7. Cancel"
+        "7. Police Verification\n"
+        "8. Cancel"
     )
 
 

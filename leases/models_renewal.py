@@ -40,6 +40,10 @@ class LeaseRenewal(models.Model):
         decimal_places=2,
         default=Decimal("0.00"),
     )
+    bill_water_charges = models.BooleanField(
+        default=True,
+        help_text="Include water charges in monthly billing control.",
+    )
     internet_charges = models.DecimalField(
         max_digits=10,
         decimal_places=2,

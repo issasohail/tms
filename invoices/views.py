@@ -3125,6 +3125,7 @@ from invoices.services import (
     run_monthly_billing_preflight,
     send_monthly_billing_item,
     send_monthly_billing_ready,
+    _invoice_water_item,
     _latest_meter_reading_for_lease,
 )
 from invoices.billing_queue import enqueue_billing_job
@@ -3155,13 +3156,32 @@ class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        items_qs = self.object.items.select_related("lease__tenant", "lease__unit__property", "invoice")
+        items_qs = self.object.items.select_related("lease__tenant", "lease__unit__property", "tenant", "property", "unit", "invoice")
         items = list(items_qs)
         electric_period_end = None
+        water_item_by_invoice = {}
         for item in items:
+            item.is_smart_meter_unit = bool(getattr(item.unit, "is_smart_meter", False) or getattr(getattr(item.lease, "unit", None), "is_smart_meter", False))
+            item.water_billable = bool(getattr(item.lease, "bill_water_charges", True))
+            water_item = _invoice_water_item(item.invoice)
+            item.water_invoice_item = water_item
+            item.water_display_amount = getattr(water_item, "amount", None)
+            item.water_display_description = getattr(water_item, "description", "") or f"Water charges {self.object.billing_month:%b %Y}"
+            if item.invoice_id:
+                water_item_by_invoice[item.invoice_id] = water_item
             if item.electric_required and item.lease_id and item.electric_period_end:
                 electric_period_end = item.electric_period_end
                 break
+        for item in items:
+            if not hasattr(item, "water_billable"):
+                item.is_smart_meter_unit = bool(getattr(item.unit, "is_smart_meter", False) or getattr(getattr(item.lease, "unit", None), "is_smart_meter", False))
+                item.water_billable = bool(getattr(item.lease, "bill_water_charges", True))
+                water_item = water_item_by_invoice.get(item.invoice_id) if item.invoice_id else None
+                if item.invoice_id not in water_item_by_invoice:
+                    water_item = _invoice_water_item(item.invoice)
+                item.water_invoice_item = water_item
+                item.water_display_amount = getattr(water_item, "amount", None)
+                item.water_display_description = getattr(water_item, "description", "") or f"Water charges {self.object.billing_month:%b %Y}"
         if electric_period_end:
             for item in items:
                 if item.electric_required and item.lease_id:
@@ -3171,7 +3191,7 @@ class MonthlyBillingRunDetailView(LoginRequiredMixin, DetailView):
             MonthlyBillingRunItem.STATUS_SKIPPED,
             MonthlyBillingRunItem.STATUS_EXCLUDED,
         ])
-        electric_items = billable_items.filter(electric_required=True)
+        electric_items = billable_items.filter(unit__is_smart_meter=True)
         ended_recently_start = self.object.billing_month - timedelta(days=30)
         ended_recently_end = self.object.billing_month - timedelta(days=1)
         ended_recently_leases = Lease.objects.filter(
@@ -3383,7 +3403,22 @@ def monthly_billing_water_update(request, pk):
             messages.success(request, "Water charge saved.")
         prepare_monthly_billing_ready(item.billing_run)
     except Exception as exc:
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         messages.error(request, f"Water update failed: {exc}")
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        item.refresh_from_db()
+        water_item = _invoice_water_item(item.invoice)
+        return JsonResponse({
+            "ok": True,
+            "item_id": item.pk,
+            "amount": str(getattr(water_item, "amount", item.water_charge or "")),
+            "description": getattr(water_item, "description", "") or f"Water charges {item.billing_run.billing_month:%b %Y}",
+            "water_required": item.water_required,
+            "water_resolved": item.water_resolved,
+            "status": item.get_status_display(),
+            "issue_message": item.issue_message,
+        })
     return redirect("invoices:monthly_billing_run_detail", pk=item.billing_run_id)
 
 

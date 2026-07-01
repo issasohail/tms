@@ -130,6 +130,33 @@ def category_inline_update(request, pk):
 
 @login_required
 @require_POST
+def handyman_inline_update(request, pk):
+    handyman = get_object_or_404(HandymanProfile, pk=pk)
+    field = request.POST.get("field")
+    value = request.POST.get("value")
+    if field in {"phone", "whatsapp_number"}:
+        setattr(handyman, field, (value or "").strip())
+        handyman.save(update_fields=[field, "updated_at"])
+        return JsonResponse({"ok": True, "value": getattr(handyman, field) or "-"})
+    if field == "categories":
+        ids = request.POST.getlist("value")
+        categories = HandymanCategory.objects.filter(pk__in=ids, is_active=True)
+        handyman.categories.set(categories)
+        labels = [category.name for category in handyman.categories.all()]
+        return JsonResponse({"ok": True, "value": ", ".join(labels) or "-"})
+    if field == "is_preferred":
+        handyman.is_preferred = str(value).lower() in {"1", "true", "yes", "on"}
+        handyman.save(update_fields=["is_preferred", "updated_at"])
+        return JsonResponse({"ok": True, "value": "Preferred" if handyman.is_preferred else "-"})
+    if field == "is_active":
+        handyman.is_active = str(value).lower() in {"1", "true", "yes", "on"}
+        handyman.save(update_fields=["is_active", "updated_at"])
+        return JsonResponse({"ok": True, "value": "Active" if handyman.is_active else "Inactive"})
+    return JsonResponse({"ok": False, "error": "Unsupported field."}, status=400)
+
+
+@login_required
+@require_POST
 def assign_to_maintenance(request, request_id):
     request_obj = get_object_or_404(MaintenanceRequest, pk=request_id)
     form = MaintenanceHandymanAssignmentForm(request.POST)
@@ -141,7 +168,16 @@ def assign_to_maintenance(request, request_id):
             notes=form.cleaned_data.get("notes", ""),
             status=form.cleaned_data.get("status"),
         )
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({
+                "ok": True,
+                "handyman": assignment.handyman.full_name,
+                "status": assignment.get_status_display(),
+                "assigned_at": assignment.assigned_at.strftime("%Y-%m-%d"),
+            })
         messages.success(request, f"Assigned to {assignment.handyman.full_name}.")
     else:
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"ok": False, "error": "Please select a valid handyman."}, status=400)
         messages.error(request, "Please select a valid handyman.")
     return redirect(request_obj.get_absolute_url())

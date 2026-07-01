@@ -54,6 +54,7 @@ urlpatterns = [
     path("public/ledger/<str:token>/", views.public_lease_ledger, name="public_lease_ledger"),
     path("public/family/<str:token>/", views.public_lease_family_add, name="public_lease_family_add"),
     path("public/family/<str:token>/cnic-check/", views.public_lease_family_cnic_check, name="public_lease_family_cnic_check"),
+    path("public/police-verification/<str:token>/", views.public_police_verification, name="public_police_verification"),
     path("<int:pk>/approve-pending/", views.approve_pending_lease, name="approve_pending_lease"),
     path("pending-agreement/<int:pk>/review/", views.review_pending_agreement, name="review_pending_agreement"),
     path("inspections/", views_inspections.inspection_sheet_home, name="inspection_sheet_home"),
@@ -109,6 +110,8 @@ urlpatterns = [
     path('<int:pk>/pdf/', generate_lease_pdf, name='lease-pdf'),
     path('<int:pk>/police-verification/pdf/',
          views.police_verification_summary_pdf, name='police_verification_summary_pdf'),
+    path('<int:pk>/police-verification/link/',
+         views.lease_police_verification_link, name='lease_police_verification_link'),
 
     # Email
     path('<int:pk>/email/', lease_email, name='lease_email'),

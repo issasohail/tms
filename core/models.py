@@ -72,6 +72,20 @@ class GlobalSettings(models.Model):
         default=7,
         help_text="Default number of days public lease file share links remain valid.",
     )
+    police_verification_document_category_code = models.CharField(
+        max_length=50,
+        default="police_verification",
+        help_text="Lease document category code used to mark police verification as complete.",
+    )
+    police_verification_link_valid_hours = models.PositiveIntegerField(
+        default=48,
+        help_text="Hours a public police verification link remains valid.",
+    )
+    police_verification_whatsapp_command = models.CharField(
+        max_length=80,
+        default="Police Verification",
+        help_text="WhatsApp command tenants can send to receive the police verification link.",
+    )
 
     time_zone = models.CharField(max_length=64, default="Asia/Karachi")  # NEW
 

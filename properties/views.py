@@ -105,7 +105,27 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         today = timezone.now().date()
-        units = list(self.object.units.all().order_by("unit_number"))
+        ending_date = today + timedelta(days=40)
+        active_lease = Lease.objects.filter(
+            unit_id=OuterRef("pk"),
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exclude(status__in=["ended", "terminated"])
+        active_lease_history = LeaseRenewal.objects.filter(
+            lease__unit_id=OuterRef("pk"),
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        units = list(
+            self.object.units.annotate(
+                has_active_lease=Exists(active_lease),
+                has_active_lease_history=Exists(active_lease_history),
+                has_ending_soon_lease=Exists(active_lease.filter(end_date__lte=ending_date)),
+                has_ending_soon_lease_history=Exists(active_lease_history.filter(end_date__lte=ending_date)),
+                active_lease_end_date=Subquery(active_lease.order_by("end_date", "id").values("end_date")[:1], output_field=DateField()),
+                active_lease_history_end_date=Subquery(active_lease_history.order_by("end_date", "id").values("end_date")[:1], output_field=DateField()),
+            ).order_by("unit_number")
+        )
         active_unit_ids = set(
             Lease.objects.filter(
                 unit__property=self.object,
@@ -228,6 +248,7 @@ class UnitListView(SingleTableMixin, FilterView):
                 "gas_meter_num",
                 "society_maintenance",
                 "water_charges",
+                "is_smart_meter",
                 "security_requires",
                 "status",
                 "property__id",
@@ -882,6 +903,7 @@ def unit_inline_update(request):
             "water_charges",
             "security_requires",
             "show_publicly",
+            "is_smart_meter",
         }
 
         if field not in allowed_fields:
@@ -911,10 +933,10 @@ def unit_inline_update(request):
                 }
             )
 
-        if field == "show_publicly":
+        if field in {"show_publicly", "is_smart_meter"}:
             bool_value = str(value).lower() in {"true", "1", "yes", "on"}
-            unit.show_publicly = bool_value
-            unit.save(update_fields=["show_publicly"])
+            setattr(unit, field, bool_value)
+            unit.save(update_fields=[field])
             return JsonResponse(
                 {
                     "success": True,

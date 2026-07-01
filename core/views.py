@@ -37,6 +37,7 @@ PENDING_KIND_LABELS = {
     "media": "WhatsApp Document / Media",
     "maintenance": "WhatsApp Maintenance",
     "family": "Lease Family Member",
+    "police": "Police Verification",
 }
 
 
@@ -96,7 +97,7 @@ def _pending_media_context(media):
 @login_required
 def pending_approvals(request):
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
-    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission
+    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission, PendingPoliceVerificationSubmission
 
     pending_payments = PendingWhatsAppPayment.objects.filter(
         status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
@@ -116,6 +117,9 @@ def pending_approvals(request):
     pending_family = PendingLeaseFamilyMemberSubmission.objects.filter(
         status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
     ).select_related("lease__tenant", "lease__unit__property", "primary_tenant", "relationship_type")[:50]
+    pending_police = PendingPoliceVerificationSubmission.objects.filter(
+        status=PendingPoliceVerificationSubmission.STATUS_PENDING,
+    ).select_related("lease__tenant", "lease__unit__property", "tenant")[:50]
     sections = [
         {
             "title": "Pending Leases",
@@ -157,6 +161,12 @@ def pending_approvals(request):
             "items": pending_family,
             "count": PendingLeaseFamilyMemberSubmission.objects.filter(status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING).count(),
         },
+        {
+            "title": "Police Verification",
+            "kind": "police",
+            "items": pending_police,
+            "count": PendingPoliceVerificationSubmission.objects.filter(status=PendingPoliceVerificationSubmission.STATUS_PENDING).count(),
+        },
     ]
     for section in sections:
         section["items"] = [
@@ -171,7 +181,7 @@ def pending_approvals(request):
 
 
 def _pending_item_for_kind(kind, pk):
-    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission
+    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission, PendingPoliceVerificationSubmission
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
 
     if kind == "lease":
@@ -210,6 +220,17 @@ def _pending_item_for_kind(kind, pk):
             ),
             pk=pk,
         )
+    if kind == "police":
+        return get_object_or_404(
+            PendingPoliceVerificationSubmission.objects.select_related(
+                "lease__tenant",
+                "lease__unit__property",
+                "tenant",
+                "reviewed_by",
+                "approved_document",
+            ),
+            pk=pk,
+        )
     raise Http404("Unknown pending approval type.")
 
 
@@ -232,6 +253,12 @@ def pending_approval_detail(request, kind, pk):
             {"object": media, **_pending_media_context(media)}
             for media in item.media.all()
         ]
+    elif kind == "police":
+        media_preview = {
+            "file_url": item.file.url if item.file else "",
+            "preview_kind": _media_preview_kind(item.file.name if item.file else ""),
+            "filename": item.original_filename or (item.file.name if item.file else ""),
+        }
     return render(
         request,
         "core/pending_approval_detail.html",
@@ -408,6 +435,11 @@ def pending_approval_approve(request, kind, pk):
             else:
                 messages.success(request, "Family member approved and added to lease.")
             return redirect("leases:lease_detail", pk=item.lease_id)
+        if kind == "police":
+            from leases.services.police_verification import approve_police_submission
+            approve_police_submission(item, request.user)
+            messages.success(request, "Police verification approved and attached to the lease.")
+            return redirect("leases:lease_detail", pk=item.lease_id)
         if kind == "payment":
             _approve_pending_payment(item, request.user)
             messages.success(request, "WhatsApp payment approved and posted.")
@@ -436,7 +468,7 @@ def pending_approval_approve(request, kind, pk):
 @login_required
 @require_POST
 def pending_approval_reject(request, kind, pk):
-    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission
+    from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission, PendingPoliceVerificationSubmission
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
 
     item = _pending_item_for_kind(kind, pk)
@@ -466,6 +498,12 @@ def pending_approval_reject(request, kind, pk):
         item.reviewed_at = timezone.now()
         item.review_notes = request.POST.get("review_notes", "")
         item.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_notes", "updated_at"])
+    elif kind == "police":
+        item.status = PendingPoliceVerificationSubmission.STATUS_REJECTED
+        item.reviewed_by = request.user
+        item.reviewed_at = timezone.now()
+        item.notes = "\n".join(part for part in [item.notes, request.POST.get("review_notes", "")] if part).strip()
+        item.save(update_fields=["status", "reviewed_by", "reviewed_at", "notes"])
     else:
         raise Http404("Unknown pending approval type.")
     messages.success(request, "Pending item rejected.")

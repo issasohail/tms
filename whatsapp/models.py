@@ -559,6 +559,7 @@ class WhatsAppExternalLinkToken(models.Model):
     LINK_INVOICE_PDF = "invoice_pdf"
     LINK_LEDGER_VIEW = "ledger_view"
     LINK_LEASE_FAMILY_ADD = "lease_family_add"
+    LINK_POLICE_VERIFICATION = "police_verification"
     LINK_PAYMENT_RECEIPT_UPLOAD = "payment_receipt_upload"
     LINK_MAINTENANCE_PHOTO_UPLOAD = "maintenance_photo_upload"
     LINK_TYPE_CHOICES = [
@@ -570,6 +571,7 @@ class WhatsAppExternalLinkToken(models.Model):
         (LINK_INVOICE_PDF, "Invoice PDF link"),
         (LINK_LEDGER_VIEW, "Ledger view link"),
         (LINK_LEASE_FAMILY_ADD, "Lease family member form"),
+        (LINK_POLICE_VERIFICATION, "Police verification form"),
         (LINK_PAYMENT_RECEIPT_UPLOAD, "Payment receipt upload"),
         (LINK_MAINTENANCE_PHOTO_UPLOAD, "Maintenance photo upload"),
     ]

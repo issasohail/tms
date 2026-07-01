@@ -511,6 +511,9 @@ class MaintenanceRequestListView(LoginRequiredMixin, ListView):
         ctx["unit_options"] = _unit_options()
         ctx["leases"] = _current_leases_qs().order_by("tenant__first_name", "tenant__last_name", "unit__unit_number")[:300]
         ctx["categories"] = _active_categories()
+        from handyman.forms import MaintenanceHandymanAssignmentForm
+
+        ctx["handyman_assignment_form"] = MaintenanceHandymanAssignmentForm(prefix="handyman_assignment")
         ctx["date_filter_choices"] = [
             ("today", "Today"),
             ("yesterday", "Yesterday"),
@@ -622,6 +625,9 @@ class MaintenanceRequestUpdateView(LoginRequiredMixin, UpdateView):
         ctx["leases"] = _current_leases_qs().order_by("tenant__first_name", "tenant__last_name", "unit__unit_number")[:300]
         ctx["selected_property_id"] = getattr(selected_unit, "property_id", "") or ""
         ctx["selected_lease_id"] = getattr(selected_lease, "pk", "") or ""
+        from handyman.forms import MaintenanceHandymanAssignmentForm
+
+        ctx["handyman_assignment_form"] = MaintenanceHandymanAssignmentForm()
         return ctx
 
     def form_valid(self, form):
@@ -644,6 +650,20 @@ class MaintenanceRequestUpdateView(LoginRequiredMixin, UpdateView):
         uploaded, skipped = _save_request_uploads(self.request, self.object)
         if skipped:
             messages.warning(self.request, f"Skipped unsupported file(s): {', '.join(skipped)}")
+        handyman_id = self.request.POST.get("handyman_assignment-handyman")
+        if handyman_id:
+            from handyman.forms import MaintenanceHandymanAssignmentForm
+            from handyman.services import assign_handyman
+
+            assignment_form = MaintenanceHandymanAssignmentForm(self.request.POST, prefix="handyman_assignment")
+            if assignment_form.is_valid():
+                assign_handyman(
+                    self.object,
+                    assignment_form.cleaned_data["handyman"],
+                    assigned_by=self.request.user,
+                    notes=assignment_form.cleaned_data.get("notes", ""),
+                    status=assignment_form.cleaned_data.get("status"),
+                )
         messages.success(self.request, "Maintenance request updated.")
         return response
 

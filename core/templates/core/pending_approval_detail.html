@@ -77,6 +77,10 @@
               <dt class="col-5">DOB</dt><dd class="col-7">{{ item.date_of_birth|default:"-" }}</dd>
               <dt class="col-5">Submitted Phone</dt><dd class="col-7">{{ item.phone|default:"-" }}</dd>
               <dt class="col-5">Expires</dt><dd class="col-7">{{ item.expires_at|date:"M d, Y H:i" }}</dd>
+            {% elif kind == "police" %}
+              <dt class="col-5">Source</dt><dd class="col-7">{{ item.get_source_display }}</dd>
+              <dt class="col-5">Filename</dt><dd class="col-7">{{ item.original_filename|default:item.file.name }}</dd>
+              <dt class="col-5">Lease</dt><dd class="col-7"><a href="{% url 'leases:lease_detail' item.lease.pk %}">{{ item.lease }}</a></dd>
             {% endif %}
           </dl>
         </div>
@@ -116,6 +120,12 @@
               {% else %}
                 Approval will create a Tenant record and link it as a family member on this lease. Duplicate CNIC / ID is checked again before approval.
               {% endif %}
+            </div>
+          {% elif kind == "police" %}
+            <p class="mb-2"><strong>Notes</strong></p>
+            <pre class="small bg-light border rounded p-2 text-wrap" style="white-space:pre-wrap;">{{ item.notes|default:"No notes." }}</pre>
+            <div class="alert alert-info py-2 small mb-0">
+              Approval will create an active Police Verification lease document and mark the lease police verification status as verified.
             </div>
           {% endif %}
         </div>

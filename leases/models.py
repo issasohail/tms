@@ -81,6 +81,10 @@ class Lease(models.Model):
         null=True,
         help_text="Monthly water charges (0 for none)",
     )
+    bill_water_charges = models.BooleanField(
+        default=True,
+        help_text="Include water charges in monthly billing control.",
+    )
     internet_charges = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -1218,6 +1222,17 @@ def pending_family_cnic_back_upload_to(instance, filename):
     return os.path.join("lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICback.{ext}")
 
 
+def pending_police_verification_upload_to(instance, filename):
+    ext = os.path.splitext(filename or "")[1].lower() or ".pdf"
+    lease_id = instance.lease_id or "new"
+    tenant = getattr(instance, "tenant", None)
+    tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else "tenant"
+    tenant_part = slugify(tenant_name)[:40] or "tenant"
+    date_part = timezone.localdate().strftime("%Y%m%d")
+    token = uuid.uuid4().hex[:8]
+    return f"leases/police_verification/pending/{lease_id}/{tenant_part}-{date_part}-{token}{ext}"
+
+
 class PendingLeaseFamilyMemberSubmission(models.Model):
     ACTION_ADD = "add"
     ACTION_REMOVE = "remove"
@@ -1700,6 +1715,62 @@ class LeaseDocument(models.Model):
             self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
         if not self.display_name:
             self.display_name = self.original_filename or os.path.basename(getattr(self.file, "name", "") or "Lease file")
+        super().save(*args, **kwargs)
+
+
+class PendingPoliceVerificationSubmission(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+    SOURCE_PUBLIC_LINK = "public_link"
+    SOURCE_WHATSAPP = "whatsapp"
+    SOURCE_STAFF = "staff"
+    SOURCE_CHOICES = [
+        (SOURCE_PUBLIC_LINK, "Public Link"),
+        (SOURCE_WHATSAPP, "WhatsApp"),
+        (SOURCE_STAFF, "Staff"),
+    ]
+
+    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="pending_police_verifications")
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_police_verifications")
+    file = models.FileField(
+        upload_to=pending_police_verification_upload_to,
+        validators=[FileExtensionValidator(["pdf", "jpg", "jpeg", "png", "webp"])],
+        max_length=255,
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
+    source = models.CharField(max_length=30, choices=SOURCE_CHOICES, default=SOURCE_PUBLIC_LINK)
+    phone = models.CharField(max_length=32, blank=True)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_police_verifications")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    approved_document = models.ForeignKey("leases.LeaseDocument", on_delete=models.SET_NULL, null=True, blank=True, related_name="police_pending_sources")
+    whatsapp_media = models.ForeignKey("whatsapp.PendingWhatsAppMedia", on_delete=models.SET_NULL, null=True, blank=True, related_name="police_verification_submissions")
+
+    class Meta:
+        ordering = ["-submitted_at", "-id"]
+        indexes = [
+            models.Index(fields=["lease", "status", "submitted_at"]),
+            models.Index(fields=["status", "submitted_at"]),
+        ]
+
+    def __str__(self):
+        return f"Police verification for lease #{self.lease_id} ({self.status})"
+
+    @property
+    def created_at(self):
+        return self.submitted_at
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_filename:
+            self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
         super().save(*args, **kwargs)
 
 

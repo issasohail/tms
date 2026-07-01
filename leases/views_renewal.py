@@ -131,6 +131,7 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
             lease.monthly_rent = renewal.monthly_rent
             lease.society_maintenance = renewal.society_maintenance
             lease.water_charges = renewal.water_charges
+            lease.bill_water_charges = renewal.bill_water_charges
             lease.internet_charges = renewal.internet_charges
             lease.agreement_charges = renewal.agreement_charges
             lease.security_deposit = renewal.security_deposit
@@ -149,6 +150,7 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
                 "monthly_rent",
                 "society_maintenance",
                 "water_charges",
+                "bill_water_charges",
                 "internet_charges",
                 "agreement_charges",
                 "security_deposit",

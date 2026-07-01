@@ -161,7 +161,7 @@
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
 :root {
-  --ll-blue: #0d6efd;
+  --ll-blue: #344054;
   --ll-green: #198754;
   --ll-red: #dc3545;
   --ll-orange: #fd7e14;
@@ -183,6 +183,7 @@
   --col-prop: 78px;
   --col-unit: 100px;
   --col-family: 108px;
+  --col-police: 92px;
   --col-monthly: 112px;
   --col-status: 82px;
   --col-start: 106px;
@@ -404,6 +405,7 @@
 .ll-table-wrap .col-property { width: var(--col-prop); }
 .ll-table-wrap .col-unit { width: var(--col-unit); }
 .ll-table-wrap .col-family { width: var(--col-family); text-align: center; }
+.ll-table-wrap .col-police { width: var(--col-police); text-align: center; }
 .ll-table-wrap .col-monthly { width: var(--col-monthly); text-align: right; }
 .family-count-pill {
   display: inline-flex;
@@ -423,6 +425,41 @@
   color: #b54708;
   font-size: .65rem;
   font-weight: 900;
+}
+.police-ok {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #087443;
+  font-size: .72rem;
+  font-weight: 900;
+}
+.police-link-form {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  white-space: nowrap;
+}
+.police-missing {
+  color: #667085;
+  font-size: .72rem;
+  font-weight: 800;
+}
+.police-send-btn {
+  border: 1px solid var(--ll-green);
+  background: var(--ll-green);
+  color: #fff;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: .68rem;
+  font-weight: 900;
+  line-height: 1.2;
 }
 .ll-table-wrap .col-status { width: var(--col-status); text-align: center; }
 .ll-table-wrap .col-start { width: var(--col-start); }
@@ -946,6 +983,40 @@ document.addEventListener("DOMContentLoaded", function () {
   $('#id_tenant').change(function () {
     if ($(this).val()) { $('#id_property, #id_unit').val(''); }
     $('#lease-filter-form').submit();
+  });
+
+  document.querySelectorAll(".police-link-form").forEach(function(form) {
+    form.addEventListener("submit", function(event) {
+      const useApi = document.getElementById("use-whatsapp-api")?.checked;
+      if (!useApi) return;
+      event.preventDefault();
+      const button = form.querySelector("button[type='submit']");
+      const data = new FormData(form);
+      data.set("use_api", "1");
+      if (button) {
+        button.disabled = true;
+        button.dataset.originalText = button.textContent;
+        button.textContent = "Sending...";
+      }
+      fetch(form.action, {
+        method: "POST",
+        body: data,
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      })
+        .then(response => response.json().then(payload => ({ ok: response.ok, payload })))
+        .then(({ ok, payload }) => {
+          if (!ok || !payload.ok) throw new Error(payload.error || "WhatsApp API send failed.");
+          alert("Police verification link and PDF sent via WhatsApp Business API.");
+        })
+        .catch(error => alert(error.message))
+        .finally(() => {
+          if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalText || "Send";
+          }
+        });
+    });
   });
 
   const today = new Date();

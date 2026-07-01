@@ -99,6 +99,20 @@
           {{ form.assigned_to }}
           <div class="text-danger small">{{ form.assigned_to.errors }}</div>
         </div>
+        {% if object %}
+          <div class="col-md-6">
+            <label class="form-label">Assign Handyman</label>
+            {{ handyman_assignment_form.handyman }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Assignment Status</label>
+            {{ handyman_assignment_form.status }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Assignment Notes</label>
+            {{ handyman_assignment_form.notes }}
+          </div>
+        {% endif %}
         <div class="col-12">
           <label class="form-label">Admin Notes</label>
           {{ form.admin_notes }}

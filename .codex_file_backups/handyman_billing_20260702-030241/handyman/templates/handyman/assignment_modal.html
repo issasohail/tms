@@ -1,0 +1,32 @@
+<div class="card mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <strong>Handyman Assignment</strong>
+    <a href="{% url 'handyman:handyman_list' %}" class="btn btn-outline-primary btn-sm">Handymen</a>
+  </div>
+  <div class="card-body">
+    {% if current_handyman_assignment %}
+      <div class="border rounded p-2 mb-2">
+        <div class="fw-bold">{{ current_handyman_assignment.handyman.full_name }}</div>
+        <div class="small text-muted">{{ current_handyman_assignment.get_status_display }} - assigned {{ current_handyman_assignment.assigned_at|date:"M d, Y" }}</div>
+      </div>
+    {% else %}
+      <div class="text-muted small mb-2">No current handyman assigned.</div>
+    {% endif %}
+    <form method="post" action="{% url 'handyman:assign_to_maintenance' request_obj.pk %}">
+      {% csrf_token %}
+      {{ handyman_assignment_form.handyman }}
+      <div class="row g-2 mt-1">
+        <div class="col-5">{{ handyman_assignment_form.status }}</div>
+        <div class="col-7">{{ handyman_assignment_form.notes }}</div>
+      </div>
+      <button class="btn btn-primary btn-sm mt-2">Assign / Reassign</button>
+    </form>
+    {% if handyman_assignment_history %}
+      <hr>
+      <div class="small fw-bold mb-1">History</div>
+      {% for assignment in handyman_assignment_history %}
+        <div class="small border-bottom py-1">{{ assignment.handyman.full_name }} - {{ assignment.get_status_display }} <span class="text-muted">{{ assignment.assigned_at|date:"M d, Y" }}</span></div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>

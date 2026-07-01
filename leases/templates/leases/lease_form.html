@@ -824,6 +824,13 @@
                     {{ form.water_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
                   </div>
                   <div class="lf-f">
+                    <label class="form-label d-block">Bill Water Charges</label>
+                    <div class="form-check">
+                      {{ form.bill_water_charges|add_class:"form-check-input" }}
+                      <label class="form-check-label small" for="{{ form.bill_water_charges.id_for_label }}">Include in monthly billing</label>
+                    </div>
+                  </div>
+                  <div class="lf-f">
                     <label class="form-label">Internet Charges</label>
                     {{ form.internet_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
                   </div>
@@ -1071,6 +1078,7 @@
                         <th style="width:110px">Rent</th>
                         <th style="width:110px">Maint.</th>
                         <th style="width:100px">Water</th>
+                        <th style="width:100px">Bill Water</th>
                         <th style="width:100px">Internet</th>
                         <th style="width:90px">Inc. %</th>
                         <th style="width:70px">Signed</th>
@@ -1110,6 +1118,10 @@
                           <td>
                             <div class="renewal-read-field">{{ renewal_form.instance.water_charges|default:0|floatformat:0|intcomma }}</div>
                             <div class="renewal-edit-field">{{ renewal_form.water_charges }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{% if renewal_form.instance.bill_water_charges %}Yes{% else %}No{% endif %}</div>
+                            <div class="renewal-edit-field text-center">{{ renewal_form.bill_water_charges }}</div>
                           </td>
                           <td>
                             <div class="renewal-read-field">{{ renewal_form.instance.internet_charges|default:0|floatformat:0|intcomma }}</div>

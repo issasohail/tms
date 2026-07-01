@@ -67,6 +67,14 @@ class UnitTable(ExportableTable):
             "th": {"class": "text-center"},
         },
     )
+    is_smart_meter = tables.BooleanColumn(
+        verbose_name="Smart Meter",
+        yesno="Yes,No",
+        attrs={
+            "td": {"class": "text-center"},
+            "th": {"class": "text-center"},
+        },
+    )
 
     actions = tables.TemplateColumn(
         verbose_name="Actions",
@@ -239,6 +247,21 @@ class UnitTable(ExportableTable):
     def value_show_publicly(self, value, record):
         return "Yes" if value else "No"
 
+    def render_is_smart_meter(self, value, record):
+        label = "Yes" if value else "No"
+        css = "badge bg-success" if value else "badge bg-secondary"
+        return format_html(
+            '<span class="unit-smart-edit {}" '
+            'data-unit-id="{}" data-current-value="{}" tabindex="0">{}</span>',
+            css,
+            record.pk,
+            "true" if value else "false",
+            label,
+        )
+
+    def value_is_smart_meter(self, value, record):
+        return "Yes" if value else "No"
+
     # Add PDF-specific column widths
     pdf_export_attrs = {
         **ExportableTable.Meta.pdf_export_attrs,
@@ -274,6 +297,7 @@ class UnitTable(ExportableTable):
             "water_charges",
             "security_requires",
             "status",
+            "is_smart_meter",
             "show_publicly",
             "actions",
         )

@@ -32,7 +32,7 @@ class HandymanProfileForm(forms.ModelForm):
             "full_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "phone": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "whatsapp_number": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "categories": forms.SelectMultiple(attrs={"class": "form-select form-select-sm js-select2", "data-placeholder": "Select categories"}),
+            "categories": forms.SelectMultiple(attrs={"class": "form-select form-select-sm js-select2 hm-category-box", "data-placeholder": "Select categories", "size": 10}),
             "is_preferred": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "address": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
@@ -77,6 +77,8 @@ class MaintenanceHandymanAssignmentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["handyman"].queryset = HandymanProfile.objects.prefetch_related("categories").filter(is_active=True).order_by("-is_preferred", "full_name")
+        self.fields["handyman"].label_from_instance = lambda obj: f"{obj.full_name} - {', '.join(c.name for c in obj.categories.all()) or 'No category'}"
         if not self.is_bound and not self.initial.get("status"):
             from core.models import GlobalSettings
 

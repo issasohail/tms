@@ -104,6 +104,10 @@
                         {{ item.first_name }} {{ item.last_name }}
                         {% if item.relationship_type %}<span class="text-muted">({{ item.relationship_type.name }})</span>{% endif %}
                       {% endif %}
+                      {% if section.kind == "police" %}
+                        <span class="badge bg-info text-dark me-1">{{ item.get_source_display }}</span>
+                        {{ item.original_filename|default:item.file.name|truncatechars:60 }}
+                      {% endif %}
                     </td>
                     <td>
                       <span class="pending-status-line">

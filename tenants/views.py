@@ -602,6 +602,7 @@ def tenant_registration_submission_review(request, pk):
                 "permanent_address", "working_address",
                 "emergency_contact_name", "emergency_contact_phone",
                 "emergency_contact_relation", "number_of_family_member",
+                "family_member_adults", "family_member_children", "nadra_family_no",
                 "notes",
             ]
             for field in allowed:

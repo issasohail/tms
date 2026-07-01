@@ -12,6 +12,13 @@ from invoices.models import Invoice
 from invoices.public_links import make_public_invoice_token
 from leases.public_links import create_public_ledger_link, public_ledger_url
 from leases.models import Lease
+from leases.models import PendingPoliceVerificationSubmission
+from leases.services.police_verification import (
+    build_police_whatsapp_message,
+    create_pending_police_submission,
+    create_police_verification_link,
+    police_whatsapp_command,
+)
 from maintenance.models import MaintenanceRequest
 from properties.models import Property, Unit
 from tenants.models import Tenant, normalize_cnic
@@ -143,6 +150,22 @@ class WhatsAppAIAssistant:
 
         selected_lease = self._selected_active_lease(conversation)
         lowered = (text or "").strip().lower()
+        command = police_whatsapp_command().strip().lower()
+
+        if selected_lease and lowered in {command, "police", "police verification"}:
+            link, url = create_police_verification_link(
+                None,
+                selected_lease,
+                phone_number=message_log.phone_number,
+            )
+            conversation.pending_state = "police_verification_upload"
+            conversation.context["police_verification_lease_id"] = selected_lease.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                build_police_whatsapp_message(None, selected_lease, url),
+                "police_verification_link",
+                {"lease": selected_lease, "link_id": link.pk},
+            )
 
         if was_mode_selection and lowered in {"2", "tenant", "continue as tenant"}:
             lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
@@ -160,6 +183,14 @@ class WhatsAppAIAssistant:
             )
 
         if message_type in {"image", "document", "video"}:
+            police_response = self._consume_police_verification_media(
+                message_log,
+                conversation,
+                selected_lease,
+                text,
+            )
+            if police_response:
+                return police_response
             media = create_pending_media(message_log, conversation, selected_lease)
             if media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT:
                 return self._stage_payment(message_log, conversation, selected_lease, media, text)
@@ -328,6 +359,15 @@ class WhatsAppAIAssistant:
             conversation.tenant = selected_lease.tenant
             conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "tenant", "updated_at"])
 
+        police_response = self._consume_police_verification_media(
+            message_log,
+            conversation,
+            selected_lease,
+            text,
+        )
+        if police_response:
+            return police_response
+
         media = create_pending_media(message_log, conversation, selected_lease)
         ocr_json = run_payment_ocr(media, self.ai_config) if message_type == "image" else {"engine": "skipped", "confidence": 0}
         if media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT or _ocr_looks_like_payment(ocr_json):
@@ -358,6 +398,50 @@ class WhatsAppAIAssistant:
             _media_confirmation_text(media),
             "media_pending",
             {"lease": selected_lease, "pending_media_id": media.pk, "ocr": ocr_json},
+        )
+
+    def _consume_police_verification_media(self, message_log, conversation, selected_lease, text):
+        caption = (text or "").strip().lower()
+        lease = selected_lease
+        if conversation.pending_state == "police_verification_upload":
+            lease_id = conversation.context.get("police_verification_lease_id")
+            if lease_id:
+                lease = Lease.objects.select_related("tenant", "unit__property").filter(pk=lease_id).first() or lease
+        elif "police verification" not in caption:
+            return None
+
+        if not lease:
+            return None
+        media = create_pending_media(message_log, conversation, lease)
+        media.purpose = PendingWhatsAppMedia.PURPOSE_LEASE
+        media.lease = lease
+        media.tenant = lease.tenant
+        media.property = lease.unit.property
+        media.unit = lease.unit
+        media.ai_notes = f"{media.ai_notes} Staged as police verification.".strip()
+        media.save(update_fields=["purpose", "lease", "tenant", "property", "unit", "ai_notes", "updated_at"])
+        if media.file:
+            create_pending_police_submission(
+                lease,
+                media.file,
+                PendingPoliceVerificationSubmission.SOURCE_WHATSAPP,
+                phone=message_log.phone_number,
+                notes=caption,
+                whatsapp_media=media,
+            )
+        else:
+            return (
+                "We received the police verification message, but the file download was not available. Please resend the PDF/image.",
+                "police_verification_media_missing",
+                {"lease": lease, "pending_media_id": media.pk},
+            )
+        conversation.pending_state = ""
+        self._clear_context_keys(conversation, "police_verification_lease_id")
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            "Police verification file received and sent for staff approval.",
+            "police_verification_media",
+            {"lease": lease, "pending_media_id": media.pk},
         )
 
     def _consume_global_pending_state(self, message_log, conversation, text, identity):
@@ -1398,9 +1482,47 @@ class WhatsAppAIAssistant:
         if not purpose:
             return (
                 "Please reply with a number:\n\n"
-                "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Cancel",
+                "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Police Verification\n8 Cancel",
                 "upload_type_retry",
                 {"lease": selected_lease, "pending_media_id": media.pk},
+            )
+
+        if purpose == "police_verification":
+            lease = selected_lease or media.lease
+            if not lease:
+                return (
+                    "Please select your lease first, then send Police Verification again.",
+                    "lease_lookup",
+                    {"pending_media_id": media.pk},
+                )
+            media.purpose = PendingWhatsAppMedia.PURPOSE_LEASE
+            media.lease = lease
+            media.tenant = lease.tenant
+            media.property = lease.unit.property
+            media.unit = lease.unit
+            media.ai_notes = f"{media.ai_notes} Staged as police verification.".strip()
+            media.save(update_fields=["purpose", "lease", "tenant", "property", "unit", "ai_notes", "updated_at"])
+            if not media.file:
+                return (
+                    "We received the police verification message, but the file download was not available. Please resend the PDF/image.",
+                    "police_verification_media_missing",
+                    {"lease": lease, "pending_media_id": media.pk},
+                )
+            create_pending_police_submission(
+                lease,
+                media.file,
+                PendingPoliceVerificationSubmission.SOURCE_WHATSAPP,
+                phone=message_log.phone_number,
+                notes="Selected from tenant upload menu.",
+                whatsapp_media=media,
+            )
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "pending_media_id")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                "Police verification file received and sent for staff approval.",
+                "police_verification_media",
+                {"lease": lease, "pending_media_id": media.pk},
             )
 
         media.purpose = purpose
@@ -1456,6 +1578,34 @@ class WhatsAppAIAssistant:
             return "Upload cancelled. The file remains staged for admin review.", "staff_upload_cancelled", {"pending_media_id": media.pk}
         if not purpose:
             return upload_type_menu_text(), "upload_type_retry", {"pending_media_id": media.pk}
+
+        if purpose == "police_verification":
+            if not media.lease_id:
+                return (
+                    "Police verification uploads need a lease. Please attach this file from the tenant lease context or use the pending approvals screen.",
+                    "upload_type_retry",
+                    {"pending_media_id": media.pk},
+                )
+            media.purpose = PendingWhatsAppMedia.PURPOSE_LEASE
+            media.ai_notes = f"{media.ai_notes} Staged as police verification by staff upload menu.".strip()
+            media.save(update_fields=["purpose", "ai_notes", "updated_at"])
+            if media.file:
+                create_pending_police_submission(
+                    media.lease,
+                    media.file,
+                    PendingPoliceVerificationSubmission.SOURCE_WHATSAPP,
+                    phone=message_log.phone_number,
+                    notes="Selected from staff upload menu.",
+                    whatsapp_media=media,
+                )
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "pending_media_id", "staff_upload_hint")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return (
+                "Police verification file received and sent for approval.",
+                "police_verification_media",
+                {"pending_media_id": media.pk},
+            )
 
         media.purpose = purpose
         media.save(update_fields=["purpose", "updated_at"])
@@ -2019,7 +2169,7 @@ def _media_confirmation_text(media):
     if media.purpose == PendingWhatsAppMedia.PURPOSE_OTHER:
         return (
             "We received your media. What would you like to do?\n\n"
-            "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Cancel"
+            "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Police Verification\n8 Cancel"
         )
     return "We received your media and staged it for admin review before attaching it to any record."
 
@@ -2052,7 +2202,10 @@ def _upload_purpose_from_text(text):
         "payment": PendingWhatsAppMedia.PURPOSE_PAYMENT,
         "payment receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
         "receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
-        "7": "cancel",
+        "7": "police_verification",
+        "police": "police_verification",
+        "police verification": "police_verification",
+        "8": "cancel",
         "cancel": "cancel",
         "other": PendingWhatsAppMedia.PURPOSE_OTHER,
     }

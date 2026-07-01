@@ -708,6 +708,12 @@ def _invoice_has_water_item(invoice):
     return invoice.items.filter(category__name__icontains="water").exists()
 
 
+def _invoice_water_item(invoice):
+    if not invoice:
+        return None
+    return invoice.items.filter(category__name__icontains="water").order_by("id").first()
+
+
 def _latest_meter_reading_for_lease(lease, period_end: date):
     from smart_meter.models import MeterInstallation, MeterReading
 
@@ -827,7 +833,10 @@ def run_monthly_billing_preflight(billing_month: date, *, created_by=None, creat
             recurring_found = _recurring_rules_for_lease(lease, billing_month).exists()
             latest, installations = _latest_meter_reading_for_lease(lease, electric_month_end)
             is_smart = bool(getattr(unit, "is_smart_meter", False))
-            water_required = bool((getattr(lease, "water_charges", None) or Decimal("0.00")) > 0)
+            water_required = bool(
+                getattr(lease, "bill_water_charges", True)
+                and (getattr(lease, "water_charges", None) or Decimal("0.00")) > 0
+            )
             existing_invoice = _month_invoice_for_lease(lease, billing_month)
             status = "would_send"
             reasons = []
@@ -896,8 +905,14 @@ def run_monthly_billing_preflight(billing_month: date, *, created_by=None, creat
         item.recurring_invoice_found = _recurring_rules_for_lease(lease, billing_month).exists()
         item.invoice = _month_invoice_for_lease(lease, billing_month)
         item.invoice_total = getattr(item.invoice, "amount", None)
-        item.water_required = bool((getattr(lease, "water_charges", None) or Decimal("0.00")) > 0)
-        item.water_resolved = not item.water_required or _invoice_has_water_item(item.invoice) or bool(item.water_charge is not None)
+        item.water_required = bool(
+            getattr(lease, "bill_water_charges", True)
+            and (getattr(lease, "water_charges", None) or Decimal("0.00")) > 0
+        )
+        water_item = _invoice_water_item(item.invoice)
+        item.water_resolved = not item.water_required or bool(water_item) or bool(item.water_charge is not None)
+        if water_item:
+            item.water_charge = water_item.amount
 
         latest, installations = _latest_meter_reading_for_lease(lease, electric_month_end)
         is_smart_meter = bool(getattr(unit, "is_smart_meter", False))
@@ -1063,20 +1078,34 @@ def resolve_monthly_billing_water(item, *, amount=None, description=None, not_ap
         _refresh_run_counts(item.billing_run)
         return item
 
+    if not getattr(item.lease, "bill_water_charges", True):
+        return resolve_monthly_billing_water(item, not_applicable=True)
+
     amount = Decimal(str(amount or "0")).quantize(Decimal("0.01"))
     invoice = item.invoice or ensure_month_invoice(item.lease, item.billing_run.billing_month)
     water_cat, _ = ItemCategory.objects.get_or_create(name="Water Charges")
     before_invoice = item.invoice
-    before_item = invoice.items.filter(category=water_cat, description__icontains=f"{item.billing_run.billing_month:%b %Y}").first()
-    water_item, created = InvoiceItem.objects.update_or_create(
-        invoice=invoice,
-        category=water_cat,
-        description=description or f"Water charges {item.billing_run.billing_month:%b %Y}",
-        defaults={"amount": amount, "is_recurring": False},
-    )
+    water_item = _invoice_water_item(invoice)
+    created = False
+    water_description = description or getattr(water_item, "description", "") or f"Water charges {item.billing_run.billing_month:%b %Y}"
+    if water_item:
+        water_item.category = water_cat
+        water_item.description = water_description
+        water_item.amount = amount
+        water_item.is_recurring = False
+        water_item.save(update_fields=["category", "description", "amount", "is_recurring"])
+    else:
+        water_item = InvoiceItem.objects.create(
+            invoice=invoice,
+            category=water_cat,
+            description=water_description,
+            amount=amount,
+            is_recurring=False,
+        )
+        created = True
     if not before_invoice:
         _track_created_records(item, invoice_ids=[invoice.pk])
-    if created or not before_item:
+    if created:
         _track_created_records(item, invoice_item_ids=[water_item.pk])
     item.invoice = invoice
     item.water_required = True
@@ -1105,6 +1134,8 @@ def apply_property_water_charge(run, property_obj, *, amount, description, sourc
     updated = 0
     for item in run.items.filter(property=property_obj).exclude(status=MonthlyBillingRunItem.STATUS_EXCLUDED).select_related("lease"):
         if source_item and item.pk == source_item.pk:
+            continue
+        if not getattr(item.lease, "bill_water_charges", True):
             continue
         if not (getattr(item.lease, "water_charges", None) or Decimal("0.00")) > 0:
             continue
@@ -1225,6 +1256,20 @@ def build_monthly_invoice_whatsapp_message(invoice, billing_month):
     return "\n".join(line for line in lines if line)
 
 
+def _monthly_invoice_pdf_bytes(item):
+    from invoices.views import _invoice_pdf_context, render_to_pdf
+
+    if not item.invoice:
+        return None
+    if item.invoice_pdf:
+        item.invoice_pdf.open("rb")
+        try:
+            return item.invoice_pdf.read()
+        finally:
+            item.invoice_pdf.close()
+    return render_to_pdf("invoices/invoice_pdf.html", _invoice_pdf_context(item.invoice))
+
+
 def send_monthly_billing_ready(run, *, created_by=None, retry_failed=False, dry_run=False, progress_callback=None):
     from whatsapp.services.whatsapp import WhatsAppService
 
@@ -1240,17 +1285,15 @@ def send_monthly_billing_ready(run, *, created_by=None, retry_failed=False, dry_
         _progress(progress_callback, item, index, len(item_list), "Sending WhatsApp")
         if item.status == MonthlyBillingRunItem.STATUS_SENT and not retry_failed:
             continue
-        if not item.invoice_pdf:
-            _set_pending(item, MonthlyBillingRunItem.ISSUE_PDF_FAILED, "Invoice PDF missing.")
-            continue
         phone = getattr(getattr(item.lease, "tenant", None), "phone", "")
         if not phone:
             _set_pending(item, MonthlyBillingRunItem.ISSUE_PHONE_MISSING, "Tenant phone missing.")
             continue
         try:
-            item.invoice_pdf.open("rb")
-            pdf_bytes = item.invoice_pdf.read()
-            item.invoice_pdf.close()
+            pdf_bytes = _monthly_invoice_pdf_bytes(item)
+            if not pdf_bytes:
+                _set_pending(item, MonthlyBillingRunItem.ISSUE_PDF_FAILED, "Invoice PDF could not be generated.")
+                continue
             result = service.send_invoice(
                 item.invoice,
                 phone_number=phone,
@@ -1292,9 +1335,6 @@ def send_monthly_billing_item(item, *, created_by=None):
     if item.status == MonthlyBillingRunItem.STATUS_EXCLUDED:
         _item_log(item, "WhatsApp skipped because item is excluded")
         return item
-    if not item.invoice_pdf:
-        _set_pending(item, MonthlyBillingRunItem.ISSUE_PDF_FAILED, "Invoice PDF missing.")
-        return item
     phone = getattr(getattr(item.lease, "tenant", None), "phone", "")
     if not phone:
         _set_pending(item, MonthlyBillingRunItem.ISSUE_PHONE_MISSING, "Tenant phone missing.")
@@ -1302,9 +1342,10 @@ def send_monthly_billing_item(item, *, created_by=None):
 
     service = WhatsAppService(created_by=created_by if getattr(created_by, "is_authenticated", False) else None)
     try:
-        item.invoice_pdf.open("rb")
-        pdf_bytes = item.invoice_pdf.read()
-        item.invoice_pdf.close()
+        pdf_bytes = _monthly_invoice_pdf_bytes(item)
+        if not pdf_bytes:
+            _set_pending(item, MonthlyBillingRunItem.ISSUE_PDF_FAILED, "Invoice PDF could not be generated.")
+            return item
         result = service.send_invoice(
             item.invoice,
             phone_number=phone,

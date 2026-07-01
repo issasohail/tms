@@ -124,7 +124,7 @@
     </div>
 
     <div class="card-body">
-      <form method="post" novalidate>
+      <form method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
         {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
         {{ form.non_field_errors }}
@@ -150,6 +150,24 @@
 
         <div class="property-section">
           <div class="property-section-title">
+            <i class="bi bi-shield-check"></i>
+            Police Verification Address
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-4 col-xl-3">{{ form.house_no|as_crispy_field }}</div>
+            <div class="col-6 col-md-2 col-xl-1">{{ form.street_no|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-3">{{ form.colony|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-3">{{ form.road|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.covered_area_type|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.police_station|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.police_division|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.police_circle|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.zila|as_crispy_field }}</div>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <div class="property-section-title">
             <i class="bi bi-person-vcard"></i>
             Owner
           </div>
@@ -161,6 +179,7 @@
             <div class="col-12 col-md-4 col-xl-2">{{ form.owner_cnic|as_crispy_field }}</div>
             <div class="col-12 col-md-4 col-xl-2">{{ form.owner_phone|as_crispy_field }}</div>
             <div class="col-12 col-md-8 col-xl-4">{{ form.owner_address|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-3">{{ form.owner_photo|as_crispy_field }}</div>
             <div class="col-12 col-xl-8">{{ form.bank_account_details|as_crispy_field }}</div>
           </div>
         </div>

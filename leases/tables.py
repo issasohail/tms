@@ -3,6 +3,7 @@ import json
 from decimal import Decimal
 
 from django.core.cache import cache
+from django.middleware.csrf import get_token
 from django.db.models import Sum
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -74,6 +75,16 @@ class LeaseTable(ExportableTable):
         attrs={
             "td": {"class": "col-family"},
             "th": {"class": "col-family"},
+        },
+    )
+
+    police_verification = tables.Column(
+        verbose_name="Police",
+        orderable=False,
+        empty_values=(),
+        attrs={
+            "td": {"class": "col-police"},
+            "th": {"class": "col-police"},
         },
     )
 
@@ -167,6 +178,26 @@ class LeaseTable(ExportableTable):
 
         return mark_safe(
             f'<a href="{url}" class="family-count-pill">{escape(label)}</a>{pending_html}'
+        )
+
+    def render_police_verification(self, record):
+        has_document = bool(getattr(record, "police_document_count", 0)) or bool(
+            getattr(record, "police_verification_document", "")
+        )
+        if has_document:
+            return mark_safe('<span class="police-ok">✓ Yes</span>')
+
+        request = getattr(self, "request", None)
+        if not request:
+            return mark_safe('<span class="police-missing">No</span>')
+        url = reverse("leases:lease_police_verification_link", args=[record.pk])
+        csrf = get_token(request)
+        return mark_safe(
+            '<form method="post" action="{url}" class="police-link-form">'
+            '<input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">'
+            '<span class="police-missing">No</span>'
+            '<button type="submit" class="police-send-btn" title="Send police verification link">Send</button>'
+            '</form>'.format(url=escape(url), csrf=escape(csrf))
         )
 
     def render_balance(self, value, record):
@@ -333,6 +364,7 @@ class LeaseTable(ExportableTable):
             "property",
             "unit",
             "family_members",
+            "police_verification",
             "monthly_payments",
             "status",
             "start_date",

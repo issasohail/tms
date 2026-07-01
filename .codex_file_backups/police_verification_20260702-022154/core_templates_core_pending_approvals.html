@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Pending Approvals{% endblock %}
+{% block content %}
+<style>
+  .pending-approval-table {
+    table-layout: fixed;
+  }
+  .pending-approval-table th,
+  .pending-approval-table td {
+    vertical-align: middle;
+  }
+  .pending-created { width: 118px; }
+  .pending-phone { width: 114px; }
+  .pending-photo { width: 54px; }
+  .pending-tenant { width: 230px; }
+  .pending-property { width: 230px; }
+  .pending-status { width: 132px; }
+  .pending-review { width: 190px; }
+  .pending-nowrap {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pending-status-line,
+  .pending-review-line {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    white-space: nowrap;
+  }
+  .pending-family-photo {
+    width: 34px;
+    height: 34px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 1px solid #d8dee6;
+    background: #f3f4f6;
+  }
+  @media (max-width: 768px) {
+    .pending-approval-table { min-width: 980px; }
+  }
+</style>
+<div class="container-fluid py-3" style="max-width:1400px;">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h4 class="mb-0">Pending Approvals</h4>
+      <div class="text-muted small">Review pending leases, agreement edits, WhatsApp payments, documents, and maintenance submissions.</div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    {% for section in sections %}
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="fw-semibold">{{ section.title }} <span class="badge bg-warning text-dark">{{ section.count }}</span></div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0 pending-approval-table">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:44px;">SN</th>
+                  <th class="pending-created">Created</th>
+                  <th class="pending-phone">Phone</th>
+                  {% if section.kind == "family" %}<th class="pending-photo">Photo</th>{% endif %}
+                  <th class="pending-tenant">Tenant</th>
+                  <th class="pending-property">Property / Unit</th>
+                  <th>Details</th>
+                  <th class="pending-status">Status</th>
+                  <th class="pending-review">Review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in section.items %}
+                  {% with item=row.object %}
+                  <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">{{ item.created_at|date:"M d, Y H:i" }}</td>
+                    <td class="pending-nowrap" title="{{ item.phone|default:'-' }}">{{ item.phone|default:"-" }}</td>
+                    {% if section.kind == "family" %}
+                      <td>
+                        {% if item.photo %}
+                          <a href="{{ row.urls.photo }}" target="_blank"><img src="{{ row.urls.photo }}" class="pending-family-photo" alt=""></a>
+                        {% else %}
+                          <span class="text-muted small">-</span>
+                        {% endif %}
+                      </td>
+                    {% endif %}
+                    <td class="pending-nowrap" title="{% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}">
+                      {% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}
+                    </td>
+                    <td class="pending-nowrap" title="{{ row.property_unit_label }}">
+                      {{ row.property_unit_label }}
+                    </td>
+                    <td>
+                      {% if item.amount %}Rs. {{ item.amount }}{% endif %}
+                      {% if item.issue_type %}{{ item.issue_type }}{% endif %}
+                      {% if item.purpose %}{{ item.get_purpose_display }}{% endif %}
+                      {% if item.proposed_terms %}<span class="text-muted">{{ item.proposed_terms|truncatechars:90 }}</span>{% endif %}
+                      {% if item.monthly_rent %}Rent: Rs. {{ item.monthly_rent }}{% endif %}
+                      {% if item.description %}<span class="text-muted">{{ item.description|truncatechars:90 }}</span>{% endif %}
+                      {% if section.kind == "family" %}
+                        <span class="badge {% if item.action == 'remove' %}bg-danger{% else %}bg-primary{% endif %} me-1">{{ item.get_action_display }}</span>
+                        {{ item.first_name }} {{ item.last_name }}
+                        {% if item.relationship_type %}<span class="text-muted">({{ item.relationship_type.name }})</span>{% endif %}
+                      {% endif %}
+                    </td>
+                    <td>
+                      <span class="pending-status-line">
+                        <span class="badge bg-secondary">{{ item.get_status_display }}</span>
+                        {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
+                          <form method="post" action="{{ row.urls.approve }}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-xs btn-success py-0 px-1" onclick="return confirm('Approve this item?');">Approve</button>
+                          </form>
+                        {% endif %}
+                      </span>
+                    </td>
+                    <td>
+                      <span class="pending-review-line">
+                      <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">Detail</a>
+                      {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
+                        <form method="post" action="{{ row.urls.reject }}" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this item?');">Reject</button>
+                        </form>
+                      {% endif %}
+                      </span>
+                    </td>
+                  </tr>
+                  {% endwith %}
+                {% empty %}
+                  <tr><td colspan="{% if section.kind == 'family' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No pending items.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

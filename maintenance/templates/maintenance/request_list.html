@@ -763,6 +763,7 @@
               </form>
               <div class="maint-actions">
                 <a href="{% url 'maintenance:request_detail' item.id %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i><span class="btn-text ms-1">Detail</span></a>
+                <button type="button" class="btn btn-outline-primary btn-sm js-assign-handyman" data-assign-url="{% url 'handyman:assign_to_maintenance' item.id %}" data-title="{{ item.title|escape }}"><i class="bi bi-person-gear"></i><span class="btn-text ms-1">Assign</span></button>
                 <a href="{% url 'maintenance:request_edit' item.id %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil"></i><span class="btn-text ms-1">Edit</span></a>
                 <button type="button" class="btn btn-outline-danger btn-sm js-request-delete" data-delete-url="{% url 'maintenance:request_delete' item.id %}"><i class="bi bi-trash"></i><span class="btn-text ms-1">Delete</span></button>
                 <button type="button" class="btn btn-success btn-sm js-whatsapp"><i class="bi bi-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span></button>
@@ -777,11 +778,48 @@
   </div>
 </div>
 
+<div class="modal fade" id="assignHandymanModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="assignHandymanForm" method="post">
+        {% csrf_token %}
+        <div class="modal-header py-2">
+          <h6 class="modal-title">Assign Handyman</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="small text-muted mb-2" id="assignHandymanTitle"></div>
+          <label class="form-label small mb-1">Handyman</label>
+          {{ handyman_assignment_form.handyman }}
+          <div class="row g-2 mt-1">
+            <div class="col-5">
+              <label class="form-label small mb-1">Status</label>
+              {{ handyman_assignment_form.status }}
+            </div>
+            <div class="col-7">
+              <label class="form-label small mb-1">Notes</label>
+              {{ handyman_assignment_form.notes }}
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Assign</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   const list = document.getElementById("maint-list");
   const quickForm = document.getElementById("maint-quick-add");
   const filterForm = document.querySelector(".js-filter-form");
+  const assignModalEl = document.getElementById("assignHandymanModal");
+  const assignForm = document.getElementById("assignHandymanForm");
+  const assignTitle = document.getElementById("assignHandymanTitle");
+  let assignButton = null;
   const quickError = document.getElementById("maint-quick-error");
   const csrf = document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
   const relatedUrl = quickForm?.dataset.relatedUrl || "";
@@ -1359,6 +1397,30 @@
         renumberRows();
       }).catch(error => alert(error.message));
     }
+    const assign = event.target.closest(".js-assign-handyman");
+    if (assign) {
+      assignButton = assign;
+      assignForm.action = assign.dataset.assignUrl;
+      assignTitle.textContent = assign.dataset.title || "";
+      if (window.bootstrap) new bootstrap.Modal(assignModalEl).show();
+      return;
+    }
+  });
+
+  assignForm?.addEventListener("submit", function (event) {
+    event.preventDefault();
+    const formData = new FormData(assignForm);
+    fetch(assignForm.action, {
+      method: "POST",
+      body: formData,
+      credentials: "same-origin",
+      headers: {"X-Requested-With": "XMLHttpRequest"}
+    }).then(r => r.json().then(data => ({ok:r.ok, data}))).then(({ok, data}) => {
+      if (!ok || !data.ok) throw new Error(data.error || "Assignment failed.");
+      if (assignButton) assignButton.classList.replace("btn-outline-primary", "btn-primary");
+      if (assignButton) assignButton.querySelector(".btn-text").textContent = data.handyman;
+      if (window.bootstrap) bootstrap.Modal.getInstance(assignModalEl)?.hide();
+    }).catch(err => alert(err.message));
   });
 
   list?.addEventListener("change", function (event) {

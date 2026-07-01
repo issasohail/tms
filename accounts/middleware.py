@@ -73,6 +73,7 @@ EXEMPT_URL_NAMES = {
     "tenant_public_registration",
     "public_lease_family_add",
     "public_lease_family_cnic_check",
+    "public_police_verification",
     "public_lease_files_share",
     "public_lease_file_share",
     "public_lease_file_download",

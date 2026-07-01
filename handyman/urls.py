@@ -9,6 +9,7 @@ urlpatterns = [
     path("add/", views.HandymanCreateView.as_view(), name="handyman_add"),
     path("<int:pk>/", views.HandymanDetailView.as_view(), name="handyman_detail"),
     path("<int:pk>/edit/", views.HandymanUpdateView.as_view(), name="handyman_edit"),
+    path("<int:pk>/inline/", views.handyman_inline_update, name="handyman_inline_update"),
     path("categories/", views.category_settings, name="category_settings"),
     path("categories/<int:pk>/inline/", views.category_inline_update, name="category_inline_update"),
     path("maintenance/<int:request_id>/assign/", views.assign_to_maintenance, name="assign_to_maintenance"),

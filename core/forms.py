@@ -27,6 +27,9 @@ class GlobalSettingsForm(forms.ModelForm):
                   "late_fee_auto_send_reminders", "late_fee_auto_apply",
                   "billing_cap_amount",
                   "lease_file_share_valid_days",
+                  "police_verification_document_category_code",
+                  "police_verification_link_valid_hours",
+                  "police_verification_whatsapp_command",
                   "listener_host", "listener_port",
                   "time_zone",  # ← NEW
                   "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
@@ -48,6 +51,11 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Billing Scale & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
+        ]),
+        ("Police Verification", "fas fa-shield-alt", [
+            "police_verification_document_category_code",
+            "police_verification_link_valid_hours",
+            "police_verification_whatsapp_command",
         ]),
         ("Late Fees", "fas fa-clock", [
             "late_fee_enabled", "late_fee_type", "late_fee_amount",
@@ -119,6 +127,9 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
+        self.fields["police_verification_document_category_code"].label = "Police document category code"
+        self.fields["police_verification_link_valid_hours"].label = "Police link validity hours"
+        self.fields["police_verification_whatsapp_command"].label = "Police WhatsApp command"
         self.fields["whatsapp_media_retention_days"].label = "WhatsApp media retention days"
         self.fields["whatsapp_media_retention_days"].help_text = "Downloaded WhatsApp media files are kept for this many days. Raw webhook logs stay untouched."
         self.fields["whatsapp_ai_enabled"].label = "Enable WhatsApp AI assistant"

@@ -287,13 +287,13 @@
   <div class="ld-title-row">
     <div>
       <h1 class="ld-title">
-        Lease #{{ lease.id }} &mdash; {{ lease.unit.property.property_name }} {{ lease.unit.unit_number }}
-        <span class="ld-occ">(Occupancy: {{ occupancy_count }})</span>
+        {{ lease.tenant.get_full_name }} - {{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}
       </h1>
       <div class="ld-subtitle">
-        <span>{{ lease.tenant.get_full_name }}</span>
+        <span>Lease #{{ lease.id }}</span>
         <span>&middot;</span>
-        <span>{{ lease.start_date }} &ndash; {{ lease.end_date }}</span>
+        <span>{{ lease.start_date }} - {{ lease.end_date }}</span>
+        <span class="ld-occ">(Occupancy: {{ occupancy_count }})</span>
         <span class="ld-badge {% if lease.status == 'active' %}ld-badge-green{% elif lease.status == 'expired' %}ld-badge-red{% else %}ld-badge-gray{% endif %}">
           {{ lease.get_status_display }}
         </span>

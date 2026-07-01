@@ -32,6 +32,7 @@ from django.db import connection, transaction
 # LeaseFamily is needed if you link/create in quick-add
 from django.db.models import (
     Case,
+    Count,
     DecimalField,
     F,
     OuterRef,
@@ -43,7 +44,13 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Concat, Greatest, Lower
-from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpResponse,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
@@ -77,17 +84,17 @@ from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
 from leases.models import Lease, PendingAgreementApproval
-from maintenance.public_links import make_public_maintenance_token
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
 from leases.utils import do_replace_placeholders
+from maintenance.public_links import make_public_maintenance_token
 from payments.models import Payment
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant, normalize_cnic
+from utils.pdf_export import handle_export
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
 from whatsapp.services.external_links import record_external_link_access
-from utils.pdf_export import handle_export
 
 # leases/views.py
 from .forms import (
@@ -158,26 +165,54 @@ def _can_approve_leases(user):
 
 
 def public_lease_create(request, token):
-    link = _get_valid_whatsapp_link(token, WhatsAppExternalLinkToken.LINK_LEASE_CREATION)
+    link = _get_valid_whatsapp_link(
+        token, WhatsAppExternalLinkToken.LINK_LEASE_CREATION
+    )
     record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_STAFF)
 
     tenant = link.tenant or _link_object(link, Tenant, "tenant_id")
     property_obj = _link_object(link, Property, "property_id")
     unit = _link_object(link, Unit, "unit_id")
     if not tenant or not property_obj:
-        return render(request, "leases/public_link_status.html", {"title": "Invalid Link", "message": "This lease link is missing tenant or property details."}, status=404)
+        return render(
+            request,
+            "leases/public_link_status.html",
+            {
+                "title": "Invalid Link",
+                "message": "This lease link is missing tenant or property details.",
+            },
+            status=404,
+        )
     if not tenant.is_active:
-        return render(request, "leases/public_link_status.html", {"title": "Tenant Pending Approval", "message": "This tenant is not approved yet. Approve the tenant before creating a lease."}, status=403)
+        return render(
+            request,
+            "leases/public_link_status.html",
+            {
+                "title": "Tenant Pending Approval",
+                "message": "This tenant is not approved yet. Approve the tenant before creating a lease.",
+            },
+            status=403,
+        )
     if unit and unit.property_id != property_obj.pk:
-        return render(request, "leases/public_link_status.html", {"title": "Invalid Unit", "message": "The selected unit does not belong to this property."}, status=400)
+        return render(
+            request,
+            "leases/public_link_status.html",
+            {
+                "title": "Invalid Unit",
+                "message": "The selected unit does not belong to this property.",
+            },
+            status=400,
+        )
 
     initial = {}
     if unit:
-        initial.update({
-            "monthly_rent": unit.monthly_rent,
-            "society_maintenance": unit.society_maintenance,
-            "water_charges": getattr(unit, "water_charges", None),
-        })
+        initial.update(
+            {
+                "monthly_rent": unit.monthly_rent,
+                "society_maintenance": unit.society_maintenance,
+                "water_charges": getattr(unit, "water_charges", None),
+            }
+        )
     if request.method == "POST":
         form = PublicLeaseCreationForm(request.POST)
         if form.is_valid():
@@ -190,42 +225,76 @@ def public_lease_create(request, token):
             link.target_app_label = "leases"
             link.target_model = "lease"
             link.target_object_id = lease.pk
-            link.save(update_fields=["target_app_label", "target_model", "target_object_id"])
-            return render(request, "leases/public_link_status.html", {
-                "title": "Lease Submitted",
-                "message": "Lease saved as Pending Approval. A Property Manager or Administrator can approve it from TMS.",
-                "lease": lease,
-            })
+            link.save(
+                update_fields=["target_app_label", "target_model", "target_object_id"]
+            )
+            return render(
+                request,
+                "leases/public_link_status.html",
+                {
+                    "title": "Lease Submitted",
+                    "message": "Lease saved as Pending Approval. A Property Manager or Administrator can approve it from TMS.",
+                    "lease": lease,
+                },
+            )
     else:
         form = PublicLeaseCreationForm(initial=initial)
 
-    return render(request, "leases/public_lease_form.html", {
-        "form": form,
-        "tenant": tenant,
-        "property": property_obj,
-        "unit": unit,
-    })
+    return render(
+        request,
+        "leases/public_lease_form.html",
+        {
+            "form": form,
+            "tenant": tenant,
+            "property": property_obj,
+            "unit": unit,
+        },
+    )
 
 
 def public_agreement_view(request, token):
-    link = _get_valid_whatsapp_link(token, WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW)
+    link = _get_valid_whatsapp_link(
+        token, WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW
+    )
     record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_STAFF)
     lease = _link_object(link, Lease, "lease_id")
     if not lease:
-        return render(request, "leases/public_link_status.html", {"title": "Agreement Not Found", "message": "This agreement link is not attached to a lease."}, status=404)
-    return render(request, "leases/public_agreement_view.html", {
-        "lease": lease,
-        "agreement_date": lease.agreement_date or lease.start_date,
-        "clauses": _lease_clauses_for_agreement(lease),
-    })
+        return render(
+            request,
+            "leases/public_link_status.html",
+            {
+                "title": "Agreement Not Found",
+                "message": "This agreement link is not attached to a lease.",
+            },
+            status=404,
+        )
+    return render(
+        request,
+        "leases/public_agreement_view.html",
+        {
+            "lease": lease,
+            "agreement_date": lease.agreement_date or lease.start_date,
+            "clauses": _lease_clauses_for_agreement(lease),
+        },
+    )
 
 
 def public_agreement_edit(request, token):
-    link = _get_valid_whatsapp_link(token, WhatsAppExternalLinkToken.LINK_AGREEMENT_EDIT)
+    link = _get_valid_whatsapp_link(
+        token, WhatsAppExternalLinkToken.LINK_AGREEMENT_EDIT
+    )
     record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_STAFF)
     lease = _link_object(link, Lease, "lease_id")
     if not lease:
-        return render(request, "leases/public_link_status.html", {"title": "Agreement Not Found", "message": "This agreement edit link is not attached to a lease."}, status=404)
+        return render(
+            request,
+            "leases/public_link_status.html",
+            {
+                "title": "Agreement Not Found",
+                "message": "This agreement edit link is not attached to a lease.",
+            },
+            status=404,
+        )
     if request.method == "POST":
         form = PublicAgreementEditForm(request.POST)
         if form.is_valid():
@@ -234,14 +303,20 @@ def public_agreement_edit(request, token):
                 proposed_terms=form.cleaned_data["proposed_terms"],
                 submitted_by=link.staff_user,
             )
-            return render(request, "leases/public_link_status.html", {
-                "title": "Agreement Edit Submitted",
-                "message": "Your agreement change was saved as Pending Agreement Approval.",
-                "lease": lease,
-            })
+            return render(
+                request,
+                "leases/public_link_status.html",
+                {
+                    "title": "Agreement Edit Submitted",
+                    "message": "Your agreement change was saved as Pending Agreement Approval.",
+                    "lease": lease,
+                },
+            )
     else:
         form = PublicAgreementEditForm(initial={"proposed_terms": lease.terms or ""})
-    return render(request, "leases/public_agreement_edit.html", {"form": form, "lease": lease})
+    return render(
+        request, "leases/public_agreement_edit.html", {"form": form, "lease": lease}
+    )
 
 
 def public_lease_ledger(request, token):
@@ -249,12 +324,16 @@ def public_lease_ledger(request, token):
     record_external_link_access(request, link, TrustedDeviceRegistry.USER_TYPE_TENANT)
     lease_id = link.metadata.get("lease_id") or link.target_object_id
     lease = get_object_or_404(
-        Lease.objects.select_related("tenant", "unit", "unit__property").prefetch_related(
+        Lease.objects.select_related(
+            "tenant", "unit", "unit__property"
+        ).prefetch_related(
             "invoices",
             Prefetch("payments", queryset=Payment.objects.select_related("allocation")),
             Prefetch(
                 "security_transactions",
-                queryset=SecurityDepositTransaction.objects.select_related("allocation", "payment").order_by("date", "id"),
+                queryset=SecurityDepositTransaction.objects.select_related(
+                    "allocation", "payment"
+                ).order_by("date", "id"),
             ),
         ),
         pk=lease_id,
@@ -268,7 +347,8 @@ def public_lease_ledger(request, token):
             {
                 "date": invoice.issue_date,
                 "type": "Invoice",
-                "description": invoice.description or f"Invoice {invoice.invoice_number}",
+                "description": invoice.description
+                or f"Invoice {invoice.invoice_number}",
                 "amount": -amount,
             }
         )
@@ -284,7 +364,9 @@ def public_lease_ledger(request, token):
                 "amount": amount,
             }
         )
-    transactions.sort(key=lambda row: (row["date"], 0 if row["type"] == "Invoice" else 1))
+    transactions.sort(
+        key=lambda row: (row["date"], 0 if row["type"] == "Invoice" else 1)
+    )
     balance = zero
     for index, row in enumerate(transactions, start=1):
         balance += row["amount"]
@@ -332,7 +414,9 @@ def approve_pending_lease(request, pk):
 def review_pending_agreement(request, pk):
     if not _can_approve_leases(request.user):
         return HttpResponse("Permission denied", status=403)
-    pending = get_object_or_404(PendingAgreementApproval, pk=pk, status=PendingAgreementApproval.STATUS_PENDING)
+    pending = get_object_or_404(
+        PendingAgreementApproval, pk=pk, status=PendingAgreementApproval.STATUS_PENDING
+    )
     action = request.POST.get("action")
     pending.reviewed_by = request.user
     pending.reviewed_at = timezone.now()
@@ -654,7 +738,14 @@ class LeaseListView(SingleTableView):
         nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
         summary_filter = self.request.GET.get("summary", "")
 
-        queryset = self._annotate_list_financials(queryset)
+        queryset = self._annotate_list_financials(queryset).annotate(
+            family_member_count=Count("family_members", distinct=True),
+            pending_family_count=Count(
+                "pending_family_submissions",
+                filter=Q(pending_family_submissions__status="pending"),
+                distinct=True,
+            ),
+        )
 
         # Apply filters
         if property_id:
@@ -1318,17 +1409,27 @@ def lease_family_create_and_add(request, pk):
     if not first_name:
         return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
     if not cnic:
-        return JsonResponse({"ok": False, "error": "CNIC / ID is required."}, status=400)
+        return JsonResponse(
+            {"ok": False, "error": "CNIC / ID is required."}, status=400
+        )
     if not relation:
-        return JsonResponse({"ok": False, "error": "Relationship is required."}, status=400)
+        return JsonResponse(
+            {"ok": False, "error": "Relationship is required."}, status=400
+        )
 
     cnic_digits = normalize_cnic(cnic)
     if cnic_digits and len(cnic_digits) != 13:
-        return JsonResponse({"ok": False, "error": "CNIC must contain exactly 13 digits."}, status=400)
+        return JsonResponse(
+            {"ok": False, "error": "CNIC must contain exactly 13 digits."}, status=400
+        )
 
     relationship_defaults = _family_relationship_defaults(relation)
     with transaction.atomic():
-        tenant = Tenant.objects.filter(cnic_digits=cnic_digits).first() if cnic_digits else None
+        tenant = (
+            Tenant.objects.filter(cnic_digits=cnic_digits).first()
+            if cnic_digits
+            else None
+        )
         created_tenant = False
         if not tenant:
             tenant = Tenant(
@@ -1380,14 +1481,18 @@ def lease_family_create_and_add(request, pk):
             "relation": link.relation,
             "detail_url": reverse("tenants:tenant_detail", args=[tenant.pk]),
             "edit_url": reverse("tenants:tenant_update", args=[tenant.pk]),
-            "remove_url": reverse("leases:lease_family_remove", args=[lease.pk, link.pk]),
+            "remove_url": reverse(
+                "leases:lease_family_remove", args=[lease.pk, link.pk]
+            ),
         }
     )
 
 
 @login_required
 def lease_family_public_link(request, pk):
-    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=pk)
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit__property"), pk=pk
+    )
     link = WhatsAppExternalLinkToken.objects.create(
         link_type=WhatsAppExternalLinkToken.LINK_LEASE_FAMILY_ADD,
         tenant=lease.tenant,
@@ -1402,7 +1507,9 @@ def lease_family_public_link(request, pk):
         reverse("leases:public_lease_family_add", args=[link.token])
     )
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"ok": True, "url": url, "expires_at": link.expires_at.isoformat()})
+        return JsonResponse(
+            {"ok": True, "url": url, "expires_at": link.expires_at.isoformat()}
+        )
     messages.success(request, f"Public family member link valid for 48 hours: {url}")
     return redirect("leases:lease_detail", pk=lease.pk)
 
@@ -1422,7 +1529,30 @@ def _public_family_link(token):
     return lease, link
 
 
-@require_http_methods(["GET", "POST"])
+def _family_relationship_defaults(value):
+    try:
+        relationship_type = LeaseRelationshipType.objects.filter(
+            pk=int(value),
+            is_active=True,
+        ).first()
+    except (TypeError, ValueError):
+        relationship_type = LeaseRelationshipType.objects.filter(
+            code=value,
+            is_active=True,
+        ).first()
+
+    if relationship_type:
+        return {
+            "relationship_type": relationship_type,
+            "relationship": relationship_type.code[:30],
+        }
+
+    return {
+        "relationship_type": None,
+        "relationship": value or "other",
+    }
+
+
 def public_lease_family_add(request, token):
     lease, link = _public_family_link(token)
     if lease is None:
@@ -1436,22 +1566,49 @@ def public_lease_family_add(request, token):
             status=403,
         )
 
-    relationship_types = LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
+    relationship_types = LeaseRelationshipType.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    )
+    family_members_qs = lease.family_members.select_related(
+        "family_member", "relationship_type"
+    ).all()
+    pending_requests_qs = (
+        PendingLeaseFamilyMemberSubmission.objects.filter(
+            lease=lease,
+            status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+        )
+        .select_related(
+            "relationship_type",
+            "existing_family_member",
+            "existing_family_member__family_member",
+        )
+        .order_by("created_at")
+    )
+
     context = {
         "lease": lease,
         "token": token,
         "expires_at": link.expires_at,
         "relationship_types": relationship_types,
-        "family_members": lease.family_members.select_related("family_member", "relationship_type").all(),
+        "family_members": family_members_qs,
+        "pending_family_requests": pending_requests_qs,
     }
+
     if request.method == "GET":
-        record_external_link_access(request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST)
+        record_external_link_access(
+            request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+        )
         return render(request, "leases/public_lease_family_form.html", context)
 
-    action = (request.POST.get("action") or PendingLeaseFamilyMemberSubmission.ACTION_ADD).strip()
+    action = (
+        request.POST.get("action") or PendingLeaseFamilyMemberSubmission.ACTION_ADD
+    ).strip()
+
     if action == PendingLeaseFamilyMemberSubmission.ACTION_REMOVE:
         member = get_object_or_404(
-            LeaseFamilyMember.objects.select_related("family_member", "relationship_type"),
+            LeaseFamilyMember.objects.select_related(
+                "family_member", "relationship_type"
+            ),
             pk=request.POST.get("existing_member_id"),
             lease=lease,
         )
@@ -1461,8 +1618,13 @@ def public_lease_family_add(request, token):
             status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
         ).exists()
         if existing_pending:
-            context.update({"errors": ["This removal request is already waiting for approval."]})
-            return render(request, "leases/public_lease_family_form.html", context, status=400)
+            context.update(
+                {"errors": ["This removal request is already waiting for approval."]}
+            )
+            return render(
+                request, "leases/public_lease_family_form.html", context, status=400
+            )
+
         family_tenant = member.family_member
         PendingLeaseFamilyMemberSubmission.objects.create(
             lease=lease,
@@ -1474,7 +1636,8 @@ def public_lease_family_add(request, token):
             relationship=member.relationship,
             relationship_type=member.relationship_type,
             cnic=family_tenant.cnic or "",
-            cnic_digits=family_tenant.cnic_digits or normalize_cnic(family_tenant.cnic or ""),
+            cnic_digits=family_tenant.cnic_digits
+            or normalize_cnic(family_tenant.cnic or ""),
             phone=family_tenant.phone or "",
             gender=family_tenant.gender or "M",
             date_of_birth=family_tenant.date_of_birth,
@@ -1482,7 +1645,252 @@ def public_lease_family_add(request, token):
             token=uuid.uuid4().hex,
             expires_at=link.expires_at,
         )
-        record_external_link_access(request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST)
+        record_external_link_access(
+            request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+        )
+        context["remove_submitted"] = family_tenant
+        context["pending_family_requests"] = (
+            PendingLeaseFamilyMemberSubmission.objects.filter(
+                lease=lease,
+                status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+            )
+            .select_related(
+                "relationship_type",
+                "existing_family_member",
+                "existing_family_member__family_member",
+            )
+            .order_by("created_at")
+        )
+        return render(request, "leases/public_lease_family_form.html", context)
+
+    total_forms_raw = request.POST.get("family-TOTAL_FORMS") or "1"
+    try:
+        total_forms = max(1, min(int(total_forms_raw), 25))
+    except (TypeError, ValueError):
+        total_forms = 1
+
+    errors = []
+    rows = []
+    seen_cnic_digits = {}
+
+    for index in range(total_forms):
+        row_number = index + 1
+        full_name = (request.POST.get(f"family-{index}-full_name") or "").strip()
+        first_name = (request.POST.get(f"family-{index}-first_name") or "").strip()
+        last_name = (request.POST.get(f"family-{index}-last_name") or "").strip()
+        relation = (request.POST.get(f"family-{index}-relation") or "").strip()
+        cnic = (request.POST.get(f"family-{index}-cnic") or "").strip()
+        phone = (request.POST.get(f"family-{index}-phone") or "").strip()
+        gender = (request.POST.get(f"family-{index}-gender") or "M").strip() or "M"
+        dob = (request.POST.get(f"family-{index}-date_of_birth") or "").strip()
+        notes = (request.POST.get(f"family-{index}-notes") or "").strip()
+
+        has_files = any(
+            request.FILES.get(f"family-{index}-{field}")
+            for field in ("photo", "cnic_front", "cnic_back")
+        )
+        has_text = any(
+            [full_name, first_name, last_name, relation, cnic, phone, dob, notes]
+        )
+        if not has_text and not has_files:
+            continue
+
+        if full_name and not first_name:
+            parts = full_name.split()
+            first_name = parts[0] if parts else ""
+            last_name = last_name or " ".join(parts[1:])
+        if not last_name:
+            last_name = "Family"
+
+        cnic_digits = normalize_cnic(cnic)
+        parsed_dob = None
+        if dob:
+            try:
+                parsed_dob = date.fromisoformat(dob)
+            except ValueError:
+                errors.append(f"Member {row_number}: Date of birth is not valid.")
+
+        if not first_name:
+            errors.append(f"Member {row_number}: First name is required.")
+        if not relation:
+            errors.append(f"Member {row_number}: Relationship is required.")
+        if len(cnic_digits) != 13:
+            errors.append(
+                f"Member {row_number}: CNIC / ID must contain exactly 13 digits."
+            )
+        else:
+            if cnic_digits in seen_cnic_digits:
+                errors.append(
+                    f"Member {row_number}: CNIC / ID is repeated in this submission. It already appears in member {seen_cnic_digits[cnic_digits]}."
+                )
+            seen_cnic_digits[cnic_digits] = row_number
+            if Tenant.objects.filter(cnic_digits=cnic_digits).exists():
+                errors.append(
+                    f"Member {row_number}: This ID is already in the system. Please contact admin about this family member."
+                )
+            elif PendingLeaseFamilyMemberSubmission.objects.filter(
+                cnic_digits=cnic_digits,
+                status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+            ).exists():
+                errors.append(
+                    f"Member {row_number}: This ID is already waiting for approval."
+                )
+
+        relationship_defaults = _family_relationship_defaults(relation)
+        rows.append(
+            {
+                "row_number": row_number,
+                "full_name": full_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "relation": relation,
+                "relationship": relationship_defaults.get("relationship") or "other",
+                "relationship_type": relationship_defaults.get("relationship_type"),
+                "cnic": cnic,
+                "cnic_digits": cnic_digits,
+                "phone": phone,
+                "gender": gender,
+                "date_of_birth": parsed_dob,
+                "dob_raw": dob,
+                "notes": notes,
+                "photo": request.FILES.get(f"family-{index}-photo"),
+                "cnic_front": request.FILES.get(f"family-{index}-cnic_front"),
+                "cnic_back": request.FILES.get(f"family-{index}-cnic_back"),
+            }
+        )
+
+    if not rows:
+        errors.append("Please add at least one family member before submitting.")
+
+    if errors:
+        context.update({"errors": errors, "posted_rows": rows})
+        return render(
+            request, "leases/public_lease_family_form.html", context, status=400
+        )
+
+    created = []
+    with transaction.atomic():
+        for row in rows:
+            created.append(
+                PendingLeaseFamilyMemberSubmission.objects.create(
+                    lease=lease,
+                    primary_tenant=lease.tenant,
+                    action=PendingLeaseFamilyMemberSubmission.ACTION_ADD,
+                    first_name=row["first_name"],
+                    last_name=row["last_name"],
+                    relationship=row["relationship"],
+                    relationship_type=row["relationship_type"],
+                    cnic=row["cnic"],
+                    cnic_digits=row["cnic_digits"],
+                    phone=row["phone"],
+                    gender=row["gender"],
+                    date_of_birth=row["date_of_birth"],
+                    notes=row["notes"],
+                    token=uuid.uuid4().hex,
+                    expires_at=link.expires_at,
+                    photo=row["photo"],
+                    cnic_front=row["cnic_front"],
+                    cnic_back=row["cnic_back"],
+                )
+            )
+
+    record_external_link_access(
+        request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+    )
+    context["submitted_count"] = len(created)
+    context["pending_family_requests"] = (
+        PendingLeaseFamilyMemberSubmission.objects.filter(
+            lease=lease,
+            status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+        )
+        .select_related(
+            "relationship_type",
+            "existing_family_member",
+            "existing_family_member__family_member",
+        )
+        .order_by("created_at")
+    )
+    return render(request, "leases/public_lease_family_form.html", context)
+
+
+@require_http_methods(["GET", "POST"])
+def public_lease_family_addv1(request, token):
+    lease, link = _public_family_link(token)
+    if lease is None:
+        return render(
+            request,
+            "leases/public_link_status.html",
+            {
+                "title": "Family Link Expired",
+                "message": "This family member link is invalid or expired. Please request a new link from the office.",
+            },
+            status=403,
+        )
+
+    relationship_types = LeaseRelationshipType.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    )
+    context = {
+        "lease": lease,
+        "token": token,
+        "expires_at": link.expires_at,
+        "relationship_types": relationship_types,
+        "family_members": lease.family_members.select_related(
+            "family_member", "relationship_type"
+        ).all(),
+    }
+    if request.method == "GET":
+        record_external_link_access(
+            request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+        )
+        return render(request, "leases/public_lease_family_form.html", context)
+
+    action = (
+        request.POST.get("action") or PendingLeaseFamilyMemberSubmission.ACTION_ADD
+    ).strip()
+    if action == PendingLeaseFamilyMemberSubmission.ACTION_REMOVE:
+        member = get_object_or_404(
+            LeaseFamilyMember.objects.select_related(
+                "family_member", "relationship_type"
+            ),
+            pk=request.POST.get("existing_member_id"),
+            lease=lease,
+        )
+        existing_pending = PendingLeaseFamilyMemberSubmission.objects.filter(
+            action=PendingLeaseFamilyMemberSubmission.ACTION_REMOVE,
+            existing_family_member=member,
+            status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+        ).exists()
+        if existing_pending:
+            context.update(
+                {"errors": ["This removal request is already waiting for approval."]}
+            )
+            return render(
+                request, "leases/public_lease_family_form.html", context, status=400
+            )
+        family_tenant = member.family_member
+        PendingLeaseFamilyMemberSubmission.objects.create(
+            lease=lease,
+            primary_tenant=lease.tenant,
+            action=PendingLeaseFamilyMemberSubmission.ACTION_REMOVE,
+            existing_family_member=member,
+            first_name=family_tenant.first_name,
+            last_name=family_tenant.last_name,
+            relationship=member.relationship,
+            relationship_type=member.relationship_type,
+            cnic=family_tenant.cnic or "",
+            cnic_digits=family_tenant.cnic_digits
+            or normalize_cnic(family_tenant.cnic or ""),
+            phone=family_tenant.phone or "",
+            gender=family_tenant.gender or "M",
+            date_of_birth=family_tenant.date_of_birth,
+            notes=(request.POST.get("remove_reason") or "").strip(),
+            token=uuid.uuid4().hex,
+            expires_at=link.expires_at,
+        )
+        record_external_link_access(
+            request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+        )
         context["remove_submitted"] = family_tenant
         return render(request, "leases/public_lease_family_form.html", context)
 
@@ -1512,16 +1920,22 @@ def public_lease_family_add(request, token):
     if len(cnic_digits) != 13:
         errors.append("CNIC / ID must contain exactly 13 digits.")
     elif Tenant.objects.filter(cnic_digits=cnic_digits).exists():
-        errors.append("This ID is already in the system. Please contact admin about this, or add another family member if you have any.")
+        errors.append(
+            "This ID is already in the system. Please contact admin about this, or add another family member if you have any."
+        )
     elif PendingLeaseFamilyMemberSubmission.objects.filter(
         cnic_digits=cnic_digits,
         status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
     ).exists():
-        errors.append("This ID is already waiting for approval. Please contact admin, or add another family member if you have any.")
+        errors.append(
+            "This ID is already waiting for approval. Please contact admin, or add another family member if you have any."
+        )
 
     if errors:
         context.update({"errors": errors, "posted": request.POST})
-        return render(request, "leases/public_lease_family_form.html", context, status=400)
+        return render(
+            request, "leases/public_lease_family_form.html", context, status=400
+        )
 
     relationship_defaults = _family_relationship_defaults(relation)
     parsed_dob = None
@@ -1529,8 +1943,12 @@ def public_lease_family_add(request, token):
         try:
             parsed_dob = date.fromisoformat(dob)
         except ValueError:
-            context.update({"errors": ["Date of birth is not valid."], "posted": request.POST})
-            return render(request, "leases/public_lease_family_form.html", context, status=400)
+            context.update(
+                {"errors": ["Date of birth is not valid."], "posted": request.POST}
+            )
+            return render(
+                request, "leases/public_lease_family_form.html", context, status=400
+            )
 
     pending = PendingLeaseFamilyMemberSubmission.objects.create(
         lease=lease,
@@ -1551,7 +1969,9 @@ def public_lease_family_add(request, token):
         cnic_front=request.FILES.get("cnic_front"),
         cnic_back=request.FILES.get("cnic_back"),
     )
-    record_external_link_access(request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST)
+    record_external_link_access(
+        request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+    )
     context["submitted"] = pending
     return render(request, "leases/public_lease_family_form.html", context)
 
@@ -1560,7 +1980,9 @@ def public_lease_family_add(request, token):
 def public_lease_family_cnic_check(request, token):
     lease, link = _public_family_link(token)
     if lease is None:
-        return JsonResponse({"ok": False, "error": "Link is invalid or expired."}, status=403)
+        return JsonResponse(
+            {"ok": False, "error": "Link is invalid or expired."}, status=403
+        )
     cnic_digits = normalize_cnic(request.GET.get("cnic") or "")
     if len(cnic_digits) != 13:
         return JsonResponse({"ok": True, "exists": False, "message": ""})
@@ -1570,12 +1992,16 @@ def public_lease_family_cnic_check(request, token):
         status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
     ).exists()
     if exists or pending_exists:
-        return JsonResponse({
-            "ok": True,
-            "exists": True,
-            "message": "This ID is already in the system. Please contact admin about this, or add another family member if you have any.",
-        })
-    return JsonResponse({"ok": True, "exists": False, "message": "ID is available for submission."})
+        return JsonResponse(
+            {
+                "ok": True,
+                "exists": True,
+                "message": "This ID is already in the system. Please contact admin about this, or add another family member if you have any.",
+            }
+        )
+    return JsonResponse(
+        {"ok": True, "exists": False, "message": "ID is available for submission."}
+    )
 
 
 def approve_pending_family_submission(pending, user):
@@ -1583,14 +2009,23 @@ def approve_pending_family_submission(pending, user):
         raise ValueError("This family member submission has already been reviewed.")
     if pending.action == PendingLeaseFamilyMemberSubmission.ACTION_REMOVE:
         member = pending.existing_family_member
-        if not member or not LeaseFamilyMember.objects.filter(pk=getattr(member, "pk", None), lease=pending.lease).exists():
-            raise ValueError("This family member has already been removed from the lease.")
+        if (
+            not member
+            or not LeaseFamilyMember.objects.filter(
+                pk=getattr(member, "pk", None), lease=pending.lease
+            ).exists()
+        ):
+            raise ValueError(
+                "This family member has already been removed from the lease."
+            )
         name = member.family_member.get_full_name()
         member.delete()
         pending.status = PendingLeaseFamilyMemberSubmission.STATUS_APPROVED
         pending.reviewed_by = user
         pending.reviewed_at = timezone.now()
-        pending.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        pending.save(
+            update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"]
+        )
         return name
 
     existing_tenant = Tenant.objects.filter(cnic_digits=pending.cnic_digits).first()
@@ -1600,8 +2035,12 @@ def approve_pending_family_submission(pending, user):
             family_member=existing_tenant,
         ).exists()
         if already_linked:
-            raise ValueError("This family member is already linked to this lease. No approval action is needed.")
-        raise ValueError("This CNIC / ID already exists in Tenant table. Please link the existing tenant from Lease Detail instead of approving this duplicate submission.")
+            raise ValueError(
+                "This family member is already linked to this lease. No approval action is needed."
+            )
+        raise ValueError(
+            "This CNIC / ID already exists in Tenant table. Please link the existing tenant from Lease Detail instead of approving this duplicate submission."
+        )
     with transaction.atomic():
         tenant = Tenant.objects.create(
             first_name=pending.first_name,
@@ -1632,14 +2071,16 @@ def approve_pending_family_submission(pending, user):
         pending.status = PendingLeaseFamilyMemberSubmission.STATUS_APPROVED
         pending.reviewed_by = user
         pending.reviewed_at = timezone.now()
-        pending.save(update_fields=[
-            "created_tenant",
-            "created_family_member",
-            "status",
-            "reviewed_by",
-            "reviewed_at",
-            "updated_at",
-        ])
+        pending.save(
+            update_fields=[
+                "created_tenant",
+                "created_family_member",
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "updated_at",
+            ]
+        )
     return link
 
 
@@ -2172,13 +2613,17 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     )
                 ),
                 "relationship_types": list(
-                    LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
+                    LeaseRelationshipType.objects.filter(is_active=True).order_by(
+                        "sort_order", "name"
+                    )
                 ),
             }
         )
         public_maintenance_token = make_public_maintenance_token(lease)
         ctx["public_maintenance_url"] = self.request.build_absolute_uri(
-            reverse("maintenance:public_request_create", args=[public_maintenance_token])
+            reverse(
+                "maintenance:public_request_create", args=[public_maintenance_token]
+            )
         )
         ctx["public_maintenance_whatsapp_text"] = (
             f"Dear {lease.tenant.get_full_name()},\n\n"
@@ -2187,8 +2632,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             f"{ctx['public_maintenance_url']}"
         )
         if not any(
-            renewal.renewal_number == 1 and renewal.is_original
-            for renewal in renewals
+            renewal.renewal_number == 1 and renewal.is_original for renewal in renewals
         ):
             ensure_original_history(
                 lease,
@@ -2243,7 +2687,9 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 dep_balance += amt
                 signed_amt = amt
             elif tx.type in ("REFUND", "DAMAGE"):
-                deduction = (tx.deduction_amount or ZERO) if tx.type == "REFUND" else ZERO
+                deduction = (
+                    (tx.deduction_amount or ZERO) if tx.type == "REFUND" else ZERO
+                )
                 dep_balance -= amt + deduction
                 signed_amt = -(amt + deduction)
             else:
@@ -2917,7 +3363,9 @@ def _security_ledger_rows_for_lease(lease):
                 "amount": signed_amount,
                 "balance": balance,
                 "deduction_amount": deduction,
-                "refund_status": tx.get_refund_status_display() if tx.type == "REFUND" else "",
+                "refund_status": tx.get_refund_status_display()
+                if tx.type == "REFUND"
+                else "",
             }
         )
     return rows
@@ -3109,7 +3557,11 @@ def export_ledger_excel(request, lease_id):
             id=lease_id,
         )
         invoices = Invoice.objects.filter(lease=lease).order_by("issue_date")
-        payments = Payment.objects.filter(lease=lease).select_related("allocation").order_by("payment_date")
+        payments = (
+            Payment.objects.filter(lease=lease)
+            .select_related("allocation")
+            .order_by("payment_date")
+        )
 
         # Calculate running balance
         transactions = []
@@ -3298,18 +3750,22 @@ def export_ledger_excel(request, lease_id):
                 cell.border = thin_border
 
             for index, row in enumerate(security_rows, start=1):
-                ws.append([
-                    index,
-                    row["date"].strftime("%b %d, %Y"),
-                    row["type"],
-                    row["description"],
-                    row["amount"],
-                    row["balance"],
-                ])
+                ws.append(
+                    [
+                        index,
+                        row["date"].strftime("%b %d, %Y"),
+                        row["type"],
+                        row["description"],
+                        row["amount"],
+                        row["balance"],
+                    ]
+                )
 
             for row in ws.iter_rows(min_row=security_header_row, max_row=ws.max_row):
                 for cell in row:
-                    cell.font = black_font if cell.row != security_header_row else cell.font
+                    cell.font = (
+                        black_font if cell.row != security_header_row else cell.font
+                    )
                     cell.border = thin_border
                     if cell.column_letter in ["E", "F"]:
                         cell.number_format = "#,##0.00"

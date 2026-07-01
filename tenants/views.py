@@ -803,19 +803,39 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             country_code=getattr(settings_obj, "country_code", "+92"),
         )
         family_links = []
+        family_lease_links = []
         try:
             LeaseFamilyMember = apps.get_model("leases", "LeaseFamilyMember")
+
+            # Family members under this tenant's own lease
             family_links = list(
                 LeaseFamilyMember.objects
                 .filter(primary_tenant=tenant)
                 .select_related("lease", "family_member")
                 .order_by("sort_order", "family_member__first_name", "family_member__last_name")
             )
+
+            # Leases where this tenant is listed as someone else's family member
+            family_lease_links = list(
+                LeaseFamilyMember.objects
+                .filter(family_member=tenant)
+                .select_related(
+                    "lease",
+                    "lease__tenant",
+                    "lease__unit",
+                    "lease__unit__property",
+                    "primary_tenant",
+                    "relationship_type",
+                )
+                .order_by("-lease__start_date", "-lease__id")
+            )
         except Exception:
             family_links = []
+            family_lease_links = []
+
         context["family_members"] = family_links
+        context["family_lease_links"] = family_lease_links
         context.update(_family_counts(family_links))
-        context["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
 
         def get_object(self, queryset=None):
             tenant = super().get_object(queryset)

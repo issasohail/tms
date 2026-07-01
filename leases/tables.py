@@ -67,6 +67,16 @@ class LeaseTable(ExportableTable):
         },  # ✨ change to col-unit
     )
 
+    family_members = tables.Column(
+        verbose_name="Family Member",
+        orderable=False,
+        empty_values=(),
+        attrs={
+            "td": {"class": "col-family"},
+            "th": {"class": "col-family"},
+        },
+    )
+
     status = tables.Column(
         attrs={"td": {"class": "col-status"}, "th": {"class": "col-status"}}
     )
@@ -144,6 +154,20 @@ class LeaseTable(ExportableTable):
         """Render total payments using the model's monthly_payments property"""
         # payments = record.total_payments
         return format_money(value, self.global_settings, decimals=0)
+
+    def render_family_members(self, record):
+        count = getattr(record, "family_member_count", 0) or 0
+        pending = getattr(record, "pending_family_count", 0) or 0
+        url = reverse("leases:lease_detail", args=[record.pk]) + "#leaseFamilySection"
+
+        label = f"{count} Member" if count == 1 else f"{count} Members"
+        pending_html = ""
+        if pending:
+            pending_html = f'<span class="family-pending">{pending} Pending</span>'
+
+        return mark_safe(
+            f'<a href="{url}" class="family-count-pill">{escape(label)}</a>{pending_html}'
+        )
 
     def render_balance(self, value, record):
         """Format balance for display and exports"""
@@ -308,6 +332,7 @@ class LeaseTable(ExportableTable):
             "tenant",
             "property",
             "unit",
+            "family_members",
             "monthly_payments",
             "status",
             "start_date",

@@ -174,7 +174,8 @@
   --col-id: 52px;
   --col-tenant: 190px;
   --col-prop: 78px;
-  --col-unit: 118px;
+  --col-unit: 100px;
+  --col-family: 108px;
   --col-monthly: 112px;
   --col-status: 82px;
   --col-start: 106px;
@@ -394,7 +395,27 @@
 .ll-table-wrap .col-tenant { width: var(--col-tenant); }
 .ll-table-wrap .col-property { width: var(--col-prop); }
 .ll-table-wrap .col-unit { width: var(--col-unit); }
+.ll-table-wrap .col-family { width: var(--col-family); text-align: center; }
 .ll-table-wrap .col-monthly { width: var(--col-monthly); text-align: right; }
+.family-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #0d6efd !important;
+  font-size: .72rem;
+  font-weight: 900;
+  text-decoration: none !important;
+}
+.family-pending {
+  display: block;
+  margin-top: 3px;
+  color: #b54708;
+  font-size: .65rem;
+  font-weight: 900;
+}
 .ll-table-wrap .col-status { width: var(--col-status); text-align: center; }
 .ll-table-wrap .col-start { width: var(--col-start); }
 .ll-table-wrap .col-end { width: var(--col-end); }

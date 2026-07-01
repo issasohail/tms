@@ -875,6 +875,7 @@
             <table class="ld-tbl">
               <thead>
                 <tr>
+                  <th>S.N</th>
                   <th>Name</th>
                   <th>Relationship</th>
                   <th>CNIC</th>
@@ -887,6 +888,7 @@
               <tbody id="leaseFamilyRows">
                 {% for member in family_members %}
                   <tr>
+                    <td>{{ forloop.counter }}</td>
                     <td><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
                     <td>{{ member.relation }}</td>
                     <td>{{ member.family_member.cnic|default:"&mdash;" }}</td>

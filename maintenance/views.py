@@ -566,6 +566,16 @@ class MaintenanceRequestDetailView(LoginRequiredMixin, DetailView):
             "unit", "unit__property", "assigned_to", "created_by", "updated_by"
         ).prefetch_related("media", "status_logs")
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        from handyman.forms import MaintenanceHandymanAssignmentForm
+
+        assignments = self.object.handyman_assignments.select_related("handyman").order_by("-is_current", "-assigned_at", "-id")
+        ctx["current_handyman_assignment"] = assignments.filter(is_current=True).first()
+        ctx["handyman_assignment_history"] = assignments.filter(is_current=False)
+        ctx["handyman_assignment_form"] = MaintenanceHandymanAssignmentForm()
+        return ctx
+
 
 class MaintenanceRequestCreateView(LoginRequiredMixin, CreateView):
     model = MaintenanceRequest

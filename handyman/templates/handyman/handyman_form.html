@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .hm-form-wrap { max-width: 1180px; }
+  .hm-panel { background:#fff; border:1px solid rgba(13,93,181,.25); border-radius:8px; padding:1rem; }
+  .hm-grid { display:grid; grid-template-columns:1.1fr .8fr; gap:1rem; }
+  .hm-doc { display:grid; grid-template-columns:110px 1fr; gap:.75rem; align-items:center; margin-bottom:.9rem; }
+  .hm-preview { width:104px; height:90px; object-fit:cover; border:1px solid #e5e7eb; border-radius:6px; background:#f1f5f9; }
+  @media (max-width: 760px) { .hm-grid { grid-template-columns:1fr; } .hm-panel { border-radius:0; border-left:0; border-right:0; } .hm-form-wrap { padding:0; } }
+</style>
+<div class="container hm-form-wrap mt-3">
+  <form method="post" enctype="multipart/form-data" class="hm-panel">
+    {% csrf_token %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h5 class="mb-0"><a href="{% url 'handyman:handyman_list' %}" class="text-decoration-none text-dark"><i class="bi bi-arrow-left me-1"></i></a> Add / Edit Handyman</h5>
+        <div class="small text-muted">Home / Handyman / Add Handyman</div>
+      </div>
+    </div>
+    <div class="hm-grid">
+      <div class="border rounded p-3">
+        <h6>Basic Information</h6>
+        {% for field in form %}
+          {% if field.name != "photo" and field.name != "id_card_front" and field.name != "id_card_back" %}
+            <div class="mb-2 {% if field.name == 'is_preferred' or field.name == 'is_active' %}form-check{% endif %}">
+              {% if field.name == 'is_preferred' or field.name == 'is_active' %}
+                {{ field }} <label class="form-check-label">{{ field.label }}</label>
+              {% else %}
+                <label class="form-label small mb-1">{{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}</label>
+                {{ field }}
+              {% endif %}
+              {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <div class="border rounded p-3">
+        <h6>Documents & Photo</h6>
+        {% for field in form %}
+          {% if field.name == "photo" or field.name == "id_card_front" or field.name == "id_card_back" %}
+            <div class="hm-doc">
+              {% if field.value %}<img class="hm-preview" src="{{ field.value.url }}" alt="">{% else %}<div class="hm-preview"></div>{% endif %}
+              <div>
+                <label class="form-label small mb-1">{{ field.label }}</label>
+                {{ field }}
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <a href="{% url 'handyman:handyman_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+      <button class="btn btn-primary btn-sm">Save Handyman</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     "weasyprint",
     "dal_select2",
     "maintenance",
+    "handyman.apps.HandymanConfig",
     "whatsapp.apps.WhatsappConfig",
     "django_extensions",
     "django_filters",

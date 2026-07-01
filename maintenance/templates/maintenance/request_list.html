@@ -516,6 +516,7 @@
       <button type="button" class="btn btn-info btn-sm text-white js-export-btn" data-type="jpg" data-title="Maintenance Requests" data-subtitle="Filtered maintenance request list" data-filename="maintenance-requests"><i class="bi bi-file-earmark-image me-1"></i>JPG</button>
       <button type="button" class="btn btn-success btn-sm js-export-btn" data-type="excel" data-title="Maintenance Requests" data-subtitle="Filtered maintenance request list" data-filename="maintenance-requests"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
       <a href="{% url 'maintenance:category_list' %}" class="btn btn-warning btn-sm"><i class="bi bi-tags me-1"></i>Categories</a>
+      <a href="{% url 'handyman:handyman_list' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-person-gear me-1"></i>Handyman</a>
       <a href="{% url 'maintenance:request_add' %}" class="btn btn-primary btn-sm">Add Request</a>
     </div>
   </div>

@@ -38,6 +38,7 @@
             {% if perms.properties.view_property%}<li><a class="dropdown-item" href="{% url 'properties:property_list' %}">Properties</a></li>{% endif %}
             {% if perms.properties.view_unit   %}<li><a class="dropdown-item" href="{% url 'properties:unit_list' %}">Units</a></li>{% endif %}
             {% if perms.maintenance.view_maintenancerequest %}<li><a class="dropdown-item" href="{% url 'maintenance:request_list' %}"><i class="bi bi-tools me-1 text-warning"></i>Maintenance</a></li>{% endif %}
+            <li><a class="dropdown-item" href="{% url 'handyman:handyman_list' %}"><i class="bi bi-person-gear me-1 text-primary"></i>Handyman</a></li>
             {% if perms.expenses.view_expense  %}<li><a class="dropdown-item" href="{% url 'expenses:expense_list' %}">Expenses</a></li>{% endif %}
             {% if perms.utilities.view_utility %}<li><a class="dropdown-item" href="{% url 'utilities:utility_list' %}">Utilities</a></li>{% endif %}
             {% if perms.reports.view_report    %}<li><a class="dropdown-item" href="{% url 'reports:report_list' %}">Reports</a></li>{% endif %}
@@ -108,6 +109,7 @@
         {% if perms.invoices.view_invoice     %}<li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
         {% if perms.reports.view_report       %}<li><a class="dlink" href="{% url 'reports:report_list' %}">Reports</a></li>{% endif %}
         {% if perms.maintenance.view_maintenancerequest %}<li><a class="dlink" href="{% url 'maintenance:request_list' %}">Maintenance</a></li>{% endif %}
+        <li><a class="dlink" href="{% url 'handyman:handyman_list' %}">Handyman</a></li>
         {% if perms.smart_meter.view_meter    %}<li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>{% endif %}
         {% if perms.core.view_globalsettings  %}<li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>{% endif %}
         {% if user.is_staff %}<li><a class="dlink" href="{% url 'accounts:user_access_list' %}">Users</a></li>{% endif %}

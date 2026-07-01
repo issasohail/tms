@@ -92,6 +92,11 @@ app_patterns = [
         namespace='maintenance'
     )),
 
+    path('handyman/', include(
+        ('handyman.urls', 'handyman'),
+        namespace='handyman'
+    )),
+
     path(
         "whatsapp/webhook/",
         whatsapp_webhook,
@@ -143,6 +148,7 @@ root_app_patterns = [
     path('leases/', plain_include('leases.urls')),
     path('invoices/', plain_include('invoices.urls')),
     path('maintenance/', plain_include('maintenance.urls')),
+    path('handyman/', plain_include('handyman.urls')),
     path("whatsapp/webhook/", whatsapp_webhook, name="whatsapp_webhook"),
     path('whatsapp/', plain_include('whatsapp.urls')),
 

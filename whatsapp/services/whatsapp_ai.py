@@ -44,6 +44,7 @@ from whatsapp.services.tenant_context import (
     lease_option_lines,
 )
 from whatsapp.services.whatsapp import WhatsAppService
+from handyman.whatsapp import handle_handyman_media_message, handle_handyman_whatsapp_message
 
 logger = logging.getLogger(__name__)
 
@@ -112,11 +113,18 @@ class WhatsAppAIAssistant:
         identity = identify_sender(message_log.phone_number)
 
         if message_type in {"image", "document", "video"}:
+            handyman_media_response = handle_handyman_media_message(message_log, conversation, text, message_type, identity)
+            if handyman_media_response:
+                return handyman_media_response
             return self._handle_media_message(message_log, conversation, text, message_type, identity)
 
         state_response = self._consume_global_pending_state(message_log, conversation, text, identity)
         if state_response:
             return state_response
+
+        handyman_response = handle_handyman_whatsapp_message(message_log, conversation, text, message_type, identity)
+        if handyman_response:
+            return handyman_response
 
         was_mode_selection = (
             conversation.pending_state == "mode_selection"

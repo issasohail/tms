@@ -3316,11 +3316,18 @@ def monthly_billing_run_enqueue(request, pk):
     try:
         enqueue_billing_job(progress_job)
     except Exception as exc:
-        progress_job.status = BillingProgressJob.STATUS_FAILED
-        progress_job.error_text = str(exc)
-        progress_job.completed_at = timezone.now()
-        progress_job.save(update_fields=["status", "error_text", "completed_at", "updated_at"])
-        return JsonResponse({"ok": False, "job_id": progress_job.pk, "error": str(exc)}, status=503)
+        try:
+            from invoices.tasks import run_billing_progress_job
+
+            progress_job.message = "Redis is unavailable; running this action locally."
+            progress_job.save(update_fields=["message", "updated_at"])
+            run_billing_progress_job(progress_job.pk)
+        except Exception as local_exc:
+            progress_job.status = BillingProgressJob.STATUS_FAILED
+            progress_job.error_text = str(local_exc)
+            progress_job.completed_at = timezone.now()
+            progress_job.save(update_fields=["status", "error_text", "completed_at", "updated_at"])
+            return JsonResponse({"ok": False, "job_id": progress_job.pk, "error": str(local_exc)}, status=503)
 
     return JsonResponse({"ok": True, "job_id": progress_job.pk})
 

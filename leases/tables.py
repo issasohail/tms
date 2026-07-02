@@ -211,9 +211,22 @@ class LeaseTable(ExportableTable):
         )
 
     def render_bill_water_charges(self, value, record):
-        if value:
-            return mark_safe('<span class="badge bg-success">Yes</span>')
-        return mark_safe('<span class="badge bg-secondary">No</span>')
+        label = "Yes" if value else "No"
+        badge_class = "bg-success" if value else "bg-secondary"
+        url = reverse("leases:lease_bill_water_inline_update", args=[record.pk])
+
+        return mark_safe(
+            f'''
+            <button
+                type="button"
+                class="badge {badge_class} lease-water-badge border-0"
+                data-url="{escape(url)}"
+                data-value="{"1" if value else "0"}"
+            >
+                {label}
+            </button>
+            '''
+        )
 
     def render_balance(self, value, record):
         """Format balance for display and exports"""

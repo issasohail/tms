@@ -20,7 +20,7 @@
       <i class="fas fa-file-invoice-dollar"></i><span class="btn-label"> Generate Billing</span>
     </a>
 
-    <form method="post" action="{% url 'invoices:monthly_billing_invoice_list_action' %}" class="d-inline-flex align-items-center gap-1">
+    <form method="post" action="{% url 'invoices:monthly_billing_invoice_list_action' %}" class="d-inline-flex align-items-center gap-1 js-invoice-billing-action-form">
       {% csrf_token %}
       <div class="input-group input-group-sm invoice-auto-billing-group">
         <span class="input-group-text">Auto</span>
@@ -2741,7 +2741,27 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
   </div>
 </div>
 
-
+<div class="modal fade" id="invoiceBillingProgressModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Billing is working</h6>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3" style="height:.7rem;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" id="invoiceBillingProgressBar" style="width:15%"></div>
+        </div>
+        <div class="fw-semibold" id="invoiceBillingProgressMessage">Starting...</div>
+        <div class="small text-muted mt-1">
+          Elapsed: <span id="invoiceBillingElapsed">0s</span>
+        </div>
+        <div class="small text-muted mt-2">
+          Please do not refresh. The page will open the billing run when finished.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   document
@@ -2820,6 +2840,8 @@ document.addEventListener('DOMContentLoaded', () => {
   applyMobileLabels();
   window.addEventListener('resize', applyMobileLabels);
 });
+
+
 </script>
 
 
@@ -2993,6 +3015,74 @@ document.addEventListener('DOMContentLoaded', () => {
   markEditButtons();
   normalizeMobileAmounts();
   window.addEventListener('resize', normalizeMobileAmounts);
+
+  document.querySelectorAll('.js-invoice-billing-action-form').forEach(form => {
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+
+      const clickedButton = event.submitter;
+      const actionLabel = clickedButton ? clickedButton.textContent.trim() : 'Billing';
+      const formData = new FormData(form);
+
+      if (clickedButton && clickedButton.name) {
+        formData.set(clickedButton.name, clickedButton.value);
+      }
+
+      const modalEl = document.getElementById('invoiceBillingProgressModal');
+      const modal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+      const message = document.getElementById('invoiceBillingProgressMessage');
+      const elapsed = document.getElementById('invoiceBillingElapsed');
+      const bar = document.getElementById('invoiceBillingProgressBar');
+
+      let seconds = 0;
+      let width = 15;
+
+      message.textContent = actionLabel + ' is running...';
+      elapsed.textContent = '0s';
+      bar.style.width = '15%';
+      modal.show();
+
+      const timer = window.setInterval(() => {
+        seconds += 1;
+        width = Math.min(90, width + 3);
+        elapsed.textContent = seconds + 's';
+        bar.style.width = width + '%';
+      }, 1000);
+
+      fetch(form.getAttribute('action'), {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+        .then(async response => {
+          const contentType = response.headers.get('content-type') || '';
+
+          if (contentType.includes('application/json')) {
+            const payload = await response.json();
+            return { ok: response.ok, payload };
+          }
+
+          const text = await response.text();
+          throw new Error('Server returned HTML instead of JSON. Check the Django terminal/server error.');
+        })
+
+        .then(({ ok, payload }) => {
+          if (!ok || !payload.ok) {
+            throw new Error(payload.error || 'Billing action failed.');
+          }
+          bar.style.width = '100%';
+          message.textContent = payload.message || 'Done. Opening billing run...';
+          window.clearInterval(timer);
+          window.location.href = payload.redirect_url;
+        })
+        .catch(error => {
+          window.clearInterval(timer);
+          bar.classList.remove('progress-bar-animated');
+          bar.classList.add('bg-danger');
+          message.textContent = error.message || 'Billing action failed.';
+        });
+    });
+  });  
 });
 </script>
 

@@ -23,9 +23,9 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.files.base import ContentFile
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.core.files import File
+from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection, transaction
@@ -84,7 +84,11 @@ from invoices.models import Invoice, SecurityDepositTransaction
 from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
-from leases.models import Lease, PendingAgreementApproval, PendingPoliceVerificationSubmission
+from leases.models import (
+    Lease,
+    PendingAgreementApproval,
+    PendingPoliceVerificationSubmission,
+)
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
 from leases.services.police_verification import (
@@ -604,6 +608,24 @@ class CachedLazyPaginator(LazyPaginator):
         return self._page_cache[page_number]
 
 
+@login_required
+@require_POST
+def lease_bill_water_inline_update(request, pk):
+    lease = get_object_or_404(Lease, pk=pk)
+
+    value = str(request.POST.get("value", "")).lower()
+    lease.bill_water_charges = value in ["1", "true", "yes", "on"]
+    lease.save(update_fields=["bill_water_charges"])
+
+    return JsonResponse(
+        {
+            "success": True,
+            "bill_water_charges": lease.bill_water_charges,
+            "label": "Yes" if lease.bill_water_charges else "No",
+        }
+    )
+
+
 class LeaseListView(SingleTableView):
     model = Lease
     table_class = LeaseTable
@@ -764,7 +786,10 @@ class LeaseListView(SingleTableView):
             ),
             police_document_count=Count(
                 "documents",
-                filter=Q(documents__category=police_category_code(), documents__is_active=True),
+                filter=Q(
+                    documents__category=police_category_code(),
+                    documents__is_active=True,
+                ),
                 distinct=True,
             ),
         )
@@ -898,10 +923,15 @@ class LeaseListView(SingleTableView):
         context["current_tenant"] = self.request.GET.get("tenant", "")
         context["current_summary"] = self.request.GET.get("summary", "")
         context["current_status"] = self.request.GET.get("status", "active")
-        if context["current_summary"] == "ended_recently" and "status" not in self.request.GET:
+        if (
+            context["current_summary"] == "ended_recently"
+            and "status" not in self.request.GET
+        ):
             context["current_status"] = ""
         context["nonzero_balance"] = self.request.GET.get("nonzero_balance", "")
-        context["bill_water_charges_filter"] = self.request.GET.get("bill_water_charges", "")
+        context["bill_water_charges_filter"] = self.request.GET.get(
+            "bill_water_charges", ""
+        )
         context["current_layout"] = self.request.GET.get("layout", "1")
         base_queryset = getattr(self, "_lease_list_base_queryset", self.object_list)
         context["lease_count"] = base_queryset.count()
@@ -910,7 +940,9 @@ class LeaseListView(SingleTableView):
             end_date__gte=today,
             end_date__lte=today + timedelta(days=60),
         ).count()
-        statusless_queryset = getattr(self, "_lease_list_statusless_queryset", base_queryset)
+        statusless_queryset = getattr(
+            self, "_lease_list_statusless_queryset", base_queryset
+        )
         context["ended_recently_count"] = statusless_queryset.filter(
             end_date__gte=today - timedelta(days=60),
             end_date__lt=today,
@@ -1875,12 +1907,20 @@ def public_police_verification(request, token):
             status=403,
         )
 
-    relationship_types = LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
-    family_members = lease.family_members.select_related("family_member", "relationship_type").all()
+    relationship_types = LeaseRelationshipType.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    )
+    family_members = lease.family_members.select_related(
+        "family_member", "relationship_type"
+    ).all()
     pending_family_requests = PendingLeaseFamilyMemberSubmission.objects.filter(
         lease=lease,
         status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
-    ).select_related("relationship_type", "existing_family_member", "existing_family_member__family_member")
+    ).select_related(
+        "relationship_type",
+        "existing_family_member",
+        "existing_family_member__family_member",
+    )
     pending_police = lease.pending_police_verifications.filter(
         status=PendingPoliceVerificationSubmission.STATUS_PENDING,
     ).order_by("-submitted_at")
@@ -1897,7 +1937,9 @@ def public_police_verification(request, token):
     }
 
     if request.method == "GET":
-        record_external_link_access(request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST)
+        record_external_link_access(
+            request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+        )
         return render(request, "leases/public_police_verification.html", context)
 
     errors = []
@@ -1905,16 +1947,27 @@ def public_police_verification(request, token):
     tenant_submission = None
     tenant_data = {}
     tenant_fields = [
-        "phone", "phone2", "phone3", "cnic", "occupation", "permanent_address",
-        "temporary_address", "working_address", "number_of_family_member",
-        "family_member_adults", "family_member_children", "nadra_family_no",
+        "phone",
+        "phone2",
+        "phone3",
+        "cnic",
+        "occupation",
+        "permanent_address",
+        "temporary_address",
+        "working_address",
+        "number_of_family_member",
+        "family_member_adults",
+        "family_member_children",
+        "nadra_family_no",
     ]
     for field in tenant_fields:
         value = (request.POST.get(field) or "").strip()
         current = getattr(lease.tenant, field, "") if lease.tenant else ""
         if value and str(value) != str(current or ""):
             tenant_data[field] = value
-    if tenant_data or any(request.FILES.get(name) for name in ("photo", "cnic_front", "cnic_back")):
+    if tenant_data or any(
+        request.FILES.get(name) for name in ("photo", "cnic_front", "cnic_back")
+    ):
         tenant_submission = create_tenant_registration_submission(
             lease,
             tenant_data,
@@ -1949,7 +2002,10 @@ def public_police_verification(request, token):
         relation = (request.POST.get(f"family-{index}-relation") or "").strip()
         phone = (request.POST.get(f"family-{index}-phone") or "").strip()
         dob = (request.POST.get(f"family-{index}-date_of_birth") or "").strip()
-        has_files = any(request.FILES.get(f"family-{index}-{field}") for field in ("photo", "cnic_front", "cnic_back"))
+        has_files = any(
+            request.FILES.get(f"family-{index}-{field}")
+            for field in ("photo", "cnic_front", "cnic_back")
+        )
         if not any([full_name, cnic, relation, phone, dob, has_files]):
             continue
         name_parts = full_name.split()
@@ -1966,23 +2022,27 @@ def public_police_verification(request, token):
             except ValueError:
                 errors.append(f"Family member {index + 1}: date of birth is not valid.")
         relationship_defaults = _family_relationship_defaults(relation)
-        family_rows.append({
-            "first_name": first_name,
-            "last_name": last_name,
-            "relationship": relationship_defaults.get("relationship") or "other",
-            "relationship_type": relationship_defaults.get("relationship_type"),
-            "cnic": cnic,
-            "cnic_digits": normalize_cnic(cnic),
-            "phone": phone,
-            "date_of_birth": parsed_dob,
-            "photo": request.FILES.get(f"family-{index}-photo"),
-            "cnic_front": request.FILES.get(f"family-{index}-cnic_front"),
-            "cnic_back": request.FILES.get(f"family-{index}-cnic_back"),
-        })
+        family_rows.append(
+            {
+                "first_name": first_name,
+                "last_name": last_name,
+                "relationship": relationship_defaults.get("relationship") or "other",
+                "relationship_type": relationship_defaults.get("relationship_type"),
+                "cnic": cnic,
+                "cnic_digits": normalize_cnic(cnic),
+                "phone": phone,
+                "date_of_birth": parsed_dob,
+                "photo": request.FILES.get(f"family-{index}-photo"),
+                "cnic_front": request.FILES.get(f"family-{index}-cnic_front"),
+                "cnic_back": request.FILES.get(f"family-{index}-cnic_back"),
+            }
+        )
 
     if errors:
         context["errors"] = errors
-        return render(request, "leases/public_police_verification.html", context, status=400)
+        return render(
+            request, "leases/public_police_verification.html", context, status=400
+        )
 
     for row in family_rows:
         PendingLeaseFamilyMemberSubmission.objects.create(
@@ -2005,36 +2065,52 @@ def public_police_verification(request, token):
             cnic_back=row["cnic_back"],
         )
     if family_rows:
-        saved_messages.append(f"{len(family_rows)} family member request(s) sent for staff approval.")
+        saved_messages.append(
+            f"{len(family_rows)} family member request(s) sent for staff approval."
+        )
 
-    record_external_link_access(request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST)
-    context.update({
-        "success_messages": saved_messages or ["No changes were submitted."],
-        "submitted_ok": True,
-        "tenant_update_submitted": bool(tenant_data or tenant_submission),
-        "family_update_count": len(family_rows),
-        "police_file_submitted": bool(police_file),
-        "confirmation_photo_url": (
-            tenant_submission.photo.url
-            if tenant_submission and tenant_submission.photo
-            else (lease.tenant.photo.url if lease.tenant and lease.tenant.photo else "")
-        ),
-        "pending_family_requests": PendingLeaseFamilyMemberSubmission.objects.filter(
-            lease=lease,
-            status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
-        ).select_related("relationship_type", "existing_family_member", "existing_family_member__family_member"),
-        "pending_police": lease.pending_police_verifications.filter(
-            status=PendingPoliceVerificationSubmission.STATUS_PENDING,
-        ).order_by("-submitted_at"),
-        **police_context_sections(lease),
-    })
+    record_external_link_access(
+        request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
+    )
+    context.update(
+        {
+            "success_messages": saved_messages or ["No changes were submitted."],
+            "submitted_ok": True,
+            "tenant_update_submitted": bool(tenant_data or tenant_submission),
+            "family_update_count": len(family_rows),
+            "police_file_submitted": bool(police_file),
+            "confirmation_photo_url": (
+                tenant_submission.photo.url
+                if tenant_submission and tenant_submission.photo
+                else (
+                    lease.tenant.photo.url
+                    if lease.tenant and lease.tenant.photo
+                    else ""
+                )
+            ),
+            "pending_family_requests": PendingLeaseFamilyMemberSubmission.objects.filter(
+                lease=lease,
+                status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
+            ).select_related(
+                "relationship_type",
+                "existing_family_member",
+                "existing_family_member__family_member",
+            ),
+            "pending_police": lease.pending_police_verifications.filter(
+                status=PendingPoliceVerificationSubmission.STATUS_PENDING,
+            ).order_by("-submitted_at"),
+            **police_context_sections(lease),
+        }
+    )
     return render(request, "leases/public_police_verification.html", context)
 
 
 @login_required
 @require_POST
 def lease_police_verification_link(request, pk):
-    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=pk)
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit__property"), pk=pk
+    )
     link, url = create_police_verification_link(request, lease, created_by=request.user)
     message = build_police_whatsapp_message(request, lease, url)
     phone = getattr(lease.tenant, "phone", "") or ""
@@ -2048,14 +2124,20 @@ def lease_police_verification_link(request, pk):
                 "tenant": lease.tenant,
                 "property": lease.unit.property,
                 "unit": lease.unit,
-                "family_members": lease.family_members.select_related("family_member").all(),
+                "family_members": lease.family_members.select_related(
+                    "family_member"
+                ).all(),
                 "generated_at": timezone.localtime(),
             },
             request=request,
         )
-        pdf_bytes = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
+        pdf_bytes = HTML(
+            string=html, base_url=request.build_absolute_uri("/")
+        ).write_pdf()
         service = WhatsAppService(created_by=request.user)
-        text_result = service.send_text(phone, message, tenant=lease.tenant, lease=lease)
+        text_result = service.send_text(
+            phone, message, tenant=lease.tenant, lease=lease
+        )
         pdf_result = service.send_pdf_bytes(
             phone,
             pdf_bytes,
@@ -2067,25 +2149,48 @@ def lease_police_verification_link(request, pk):
         api_results = [text_result, pdf_result]
         ok = all(result.get("ok") for result in api_results)
         if request.headers.get("x-requested-with") == "XMLHttpRequest":
-            return JsonResponse({
-                "ok": ok,
+            return JsonResponse(
+                {
+                    "ok": ok,
+                    "url": url,
+                    "message": message,
+                    "expires_at": link.expires_at.isoformat(),
+                    "api": True,
+                    "results": api_results,
+                    "error": "; ".join(
+                        str(result.get("error", ""))
+                        for result in api_results
+                        if not result.get("ok")
+                    ),
+                },
+                status=200 if ok else 502,
+            )
+        if ok:
+            messages.success(
+                request,
+                "Police verification link and information PDF sent via WhatsApp Business API.",
+            )
+        else:
+            messages.error(
+                request,
+                "WhatsApp Business API send failed. Please check WhatsApp logs.",
+            )
+        return redirect("leases:lease_list")
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse(
+            {
+                "ok": True,
                 "url": url,
                 "message": message,
                 "expires_at": link.expires_at.isoformat(),
-                "api": True,
-                "results": api_results,
-                "error": "; ".join(str(result.get("error", "")) for result in api_results if not result.get("ok")),
-            }, status=200 if ok else 502)
-        if ok:
-            messages.success(request, "Police verification link and information PDF sent via WhatsApp Business API.")
-        else:
-            messages.error(request, "WhatsApp Business API send failed. Please check WhatsApp logs.")
-        return redirect("leases:lease_list")
-    if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"ok": True, "url": url, "message": message, "expires_at": link.expires_at.isoformat()})
+            }
+        )
     if phone:
         return redirect(build_whatsapp_url(phone, message))
-    messages.success(request, f"Police verification link valid until {link.expires_at:%Y-%m-%d %H:%M}: {url}")
+    messages.success(
+        request,
+        f"Police verification link valid until {link.expires_at:%Y-%m-%d %H:%M}: {url}",
+    )
     return redirect("leases:lease_list")
 
 
@@ -2334,7 +2439,9 @@ def approve_pending_family_submission(pending, user):
                 uploaded.open("rb")
                 try:
                     content = ContentFile(uploaded.read())
-                    original_name = os.path.basename(uploaded.name or f"{field_name}.jpg")
+                    original_name = os.path.basename(
+                        uploaded.name or f"{field_name}.jpg"
+                    )
                     getattr(tenant, field_name).save(original_name, content, save=False)
                 finally:
                     uploaded.close()

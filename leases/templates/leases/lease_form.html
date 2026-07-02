@@ -831,6 +831,13 @@
                     </div>
                   </div>
                   <div class="lf-f">
+                    <label class="form-label d-block">Bill Recurring Charges</label>
+                    <div class="form-check">
+                      {{ form.bill_recurring_charges|add_class:"form-check-input" }}
+                      <label class="form-check-label small" for="{{ form.bill_recurring_charges.id_for_label }}">Include in monthly recurring billing</label>
+                    </div>
+                  </div>
+                  <div class="lf-f">
                     <label class="form-label">Internet Charges</label>
                     {{ form.internet_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
                   </div>

@@ -199,9 +199,27 @@
   --col-actions: 150px;
 }
 
+.lease-water-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.lease-water-toggle input {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+.lease-water-label {
+  min-width: 32px;
+}
+
 .ll-page {
   width: 100%;
-  max-width: 1600px;
+  max-width: 1800px;
   margin: 0 auto;
 }
 .ll-header {
@@ -1326,7 +1344,48 @@ async function sendSelectedReminders() {
   }
   alert(`Reminder send complete.\nSent/opened: ${sent}\nFailed: ${failed}`);
 }
+document.querySelectorAll(".lease-water-badge").forEach(function (badge) {
+  badge.addEventListener("click", function () {
+    const oldValue = badge.dataset.value;
+    const newValue = oldValue === "1" ? "0" : "1";
 
+    badge.disabled = true;
+
+    const formData = new FormData();
+    formData.append("value", newValue);
+
+    fetch(badge.dataset.url, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) throw new Error("Update failed");
+
+        badge.dataset.value = data.bill_water_charges ? "1" : "0";
+        badge.textContent = data.label;
+        badge.classList.toggle("bg-success", data.bill_water_charges);
+        badge.classList.toggle("bg-secondary", !data.bill_water_charges);
+      })
+      .catch(() => {
+        alert("Could not update Bill Water.");
+      })
+      .finally(() => {
+        badge.disabled = false;
+      });
+  });
+});
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(";").shift();
+  return "";
+}
 document.getElementById("send-all-reminders")?.addEventListener("click", openReminderSelectionModal);
 document.getElementById("send-selected-reminders")?.addEventListener("click", sendSelectedReminders);
 </script>

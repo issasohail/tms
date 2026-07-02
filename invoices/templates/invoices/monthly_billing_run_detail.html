@@ -44,11 +44,21 @@
   <button class="mbill-stat" data-filter="ended-recently"><span class="label">Lease Ending in Past 30 Days</span><span class="value">{{ billing_kpis.ended_recently_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="recurring-found"><span class="label">Recurring Found</span><span class="value">{{ billing_kpis.recurring_found_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="missing-recurring"><div class="label">Missing Recurring</div><div class="value">{{ run.missing_recurring_count|intcomma }}</div></button>
-  <button class="mbill-stat" data-filter="electric-all"><span class="label">Electric Readings</span><span class="value">{{ billing_kpis.electric_ready_count|intcomma }}/{{ billing_kpis.electric_total_count|intcomma }}</span></button>
-  <button class="mbill-stat" data-filter="meter-pending"><span class="label">Meter Pending</span><span class="value">{{ billing_kpis.electric_pending_count|intcomma }}</span></button>
-  <button class="mbill-stat" data-filter="water-missing"><span class="label">Water Charge Missing</span><span class="value">{{ run.water_missing_count|intcomma }}</span></button>
-  <button class="mbill-stat" data-filter="ready"><span class="label">Ready</span><span class="value">{{ run.ready_to_send_count|intcomma }}</span></button>
-  <button class="mbill-stat" data-filter="pending"><span class="label">Pending</span><span class="value">{{ run.pending_attention_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="electric-all">
+    <span class="label">Electric / Meter</span>
+    <span class="value">
+      <span class="js-kpi-subfilter text-success" data-subfilter="electric-ready" data-kpi="electric-ready">{{ billing_kpis.electric_ready_count|intcomma }}</span>
+      /
+      <span class="js-kpi-subfilter text-primary" data-subfilter="electric-all" data-kpi="electric-total">{{ billing_kpis.electric_total_count|intcomma }}</span>
+    </span>
+    <div class="small mt-1">
+      Pending:
+      <span class="js-kpi-subfilter text-warning fw-bold" data-subfilter="meter-pending" data-kpi="electric-pending">{{ billing_kpis.electric_pending_count|intcomma }}</span>
+    </div>
+  </button>
+  <button class="mbill-stat" data-filter="water-all"><span class="label">Water Charges</span><span class="value" data-kpi="water">{{ billing_kpis.water_resolved_count|intcomma }}/{{ billing_kpis.water_required_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="ready"><span class="label">Ready</span><span class="value" data-kpi="ready">{{ run.ready_to_send_count|intcomma }}</span></button>
+  <button class="mbill-stat" data-filter="pending"><span class="label">Pending</span><span class="value" data-kpi="pending">{{ run.pending_attention_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="sent"><span class="label">Sent</span><span class="value">{{ run.sent_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="failed"><span class="label">Failed</span><span class="value">{{ run.failed_count|intcomma }}</span></button>
   <button class="mbill-stat" data-filter="excluded"><span class="label">Excluded</span><span class="value">{{ run.excluded_count|intcomma }}</span></button>
@@ -155,8 +165,9 @@
             data-electric-required="{{ item.is_smart_meter_unit|yesno:'1,0' }}"
             data-meter-pending="{% if item.issue_code == 'latest_meter_reading_missing' or item.issue_code == 'meter_offline' %}1{% else %}0{% endif %}"
             data-manual-electric="{{ item.manual_electric|yesno:'1,0' }}"
-            data-water-missing="{% if item.issue_code == 'water_charge_missing' %}1{% else %}0{% endif %}">
-          <td>{{ forloop.counter }}</td>
+            data-water-missing="{% if item.issue_code == 'water_charge_missing' %}1{% else %}0{% endif %}"
+            data-water-required="{{ item.water_billable|yesno:'1,0' }}">
+          <td class="sn-cell">{{ forloop.counter }}</td>
           <td title="{{ item.tenant.first_name }} {{ item.tenant.last_name }}">{{ item.tenant|default:"-"|truncatechars:20 }}</td>
           <td>
             {% if item.lease_id %}
@@ -166,7 +177,7 @@
             {% endif %}
           </td>
           <td>{{ item.unit.unit_number|default:"-" }}</td>
-          <td>
+          <td class="invoice-cell">
             {% if item.invoice %}
               <a href="{% url 'invoices:invoice_detail' item.invoice.pk %}">{{ item.invoice.invoice_number }}</a>
               <div class="mbill-muted">Rs. {{ item.invoice_total|default:0|floatformat:2|intcomma }}</div>
@@ -177,11 +188,17 @@
             {% if not item.is_smart_meter_unit %}
               <span class="badge bg-light text-dark border">N/A</span>
             {% elif item.electric_required %}
-              <span class="badge {% if item.electric_ready %}bg-success{% else %}bg-warning text-dark{% endif %}">{% if item.electric_ready %}Ready{% else %}Pending{% endif %}</span>
+              <span class="badge {% if item.electric_ready %}bg-success{% else %}bg-info text-dark{% endif %}">{% if item.electric_ready %}Ready{% else %}Pending{% endif %}</span>
               <div class="mbill-muted">
                 {% if item.latest_meter_reading_at %}Last reading at {{ item.latest_meter_reading_at|date:"M d, Y H:i" }}{% elif item.latest_meter_reading_date %}Last reading at {{ item.latest_meter_reading_date|date:"M d, Y" }}{% else %}No reading found{% endif %}
                 <br>Period ends {{ item.electric_period_end|date:"M d, Y" }}
               </div>
+              {% if not item.electric_ready and item.latest_meter_reading_date %}
+                <form method="post" action="{% url 'invoices:monthly_billing_item_action' item.pk %}" class="mt-1 billing-electric-form">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-success" name="action" value="approve_electric_reading" type="submit">Accept reading</button>
+                </form>
+              {% endif %}
             {% else %}
               <span class="text-muted">-</span>
             {% endif %}
@@ -253,6 +270,7 @@
 </div>
 {% endif %}
 
+
 <div class="modal fade" id="billingProgressModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -260,9 +278,15 @@
         <h6 class="modal-title" id="progressTitle">Billing Progress</h6>
       </div>
       <div class="modal-body">
-        <div class="progress mb-3" style="height:.6rem;">
-          <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:10%"></div>
+        <div class="d-flex justify-content-between small mb-1">
+          <span>Overall progress</span>
+          <strong id="progressPercent">0%</strong>
         </div>
+        <div class="progress mb-3" style="height:.75rem;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:10%">0%</div>
+        </div>
+
+        
         <div class="fw-semibold" id="progressStep">Starting...</div>
         <div class="small text-muted" id="progressMessage"></div>
         <div class="small text-muted mt-2">
@@ -272,6 +296,10 @@
           <div>Counter: <span id="progressCounter">0 / {{ all_items|length }}</span></div>
           <div>Elapsed: <span id="progressElapsed">0s</span> · Average: <span id="progressAverage">calculating</span> · Remaining: <span id="progressRemaining">calculating</span></div>
         </div>
+      </div>
+      <div class="modal-footer py-2 d-none" id="progressFooter">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="progressCloseBtn" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-sm btn-primary" id="progressReloadBtn">Reload results</button>
       </div>
     </div>
   </div>
@@ -302,7 +330,7 @@
 <script>
   (function () {
     const buttons = document.querySelectorAll('#kpiFilters .mbill-stat');
-    const rows = document.querySelectorAll('.billing-row');
+    function getRows() { return document.querySelectorAll('.billing-row'); }
     const endedRecentlySection = document.getElementById('endedRecentlySection');
     const search = document.getElementById('billingSearch');
     let activeFilter = '';
@@ -315,6 +343,7 @@
       if (filter === 'electric-all') return row.dataset.electricRequired === '1';
       if (filter === 'meter-pending') return row.dataset.meterPending === '1';
       if (filter === 'manual-electric') return row.dataset.manualElectric === '1';
+      if (filter === 'water-all') return row.dataset.waterRequired === '1';
       if (filter === 'water-missing') return row.dataset.waterMissing === '1';
       if (filter === 'ready') return row.dataset.status === 'ready_to_send';
       if (filter === 'pending') return row.dataset.status === 'pending_attention';
@@ -330,13 +359,24 @@
       if (endedRecentlySection) {
         endedRecentlySection.style.display = activeFilter === 'ended-recently' ? 'block' : 'none';
       }
+      let visibleIndex = 1;
+      const rows = getRows();
+
       rows.forEach((row) => {
         const textOk = !query || row.textContent.toLowerCase().includes(query);
-        row.style.display = (matches(row, activeFilter) && textOk) ? '' : 'none';
+        const show = matches(row, activeFilter) && textOk;
+        row.style.display = show ? '' : 'none';
+
+        if (show) {
+          const snCell = row.querySelector('.sn-cell');
+          if (snCell) snCell.textContent = visibleIndex++;
+        }
       });
     }
     buttons.forEach((button) => {
-      button.addEventListener('click', function () {
+      button.addEventListener('click', function (event) {
+        event.preventDefault();
+        if (search) search.value = '';
         activeFilter = button.dataset.filter || '';
         buttons.forEach((b) => b.classList.toggle('active', b === button));
         applyFilters();
@@ -347,6 +387,66 @@
     });
     if (search) search.addEventListener('input', applyFilters);
 
+    document.querySelectorAll('.js-kpi-subfilter').forEach((sub) => {
+      sub.style.cursor = 'pointer';
+      sub.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (search) search.value = '';
+        activeFilter = sub.dataset.subfilter || '';
+
+        buttons.forEach((b) => b.classList.remove('active'));
+        sub.closest('.mbill-stat')?.classList.add('active');
+
+        applyFilters();
+      });
+    });    
+    document.querySelectorAll('.billing-electric-form').forEach((form) => {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        const button = form.querySelector('button[type="submit"]');
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Saving...';
+
+        const data = new FormData(form);
+        data.set('action', button.value);
+
+        fetch(form.getAttribute('action'), {
+          method: 'POST',
+          body: data,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+          .then(async response => {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              const payload = await response.json();
+              return { ok: response.ok, payload };
+            }
+            throw new Error('Server returned HTML instead of JSON. Check Django terminal error.');
+          })
+          .then(({ ok, payload }) => {
+            if (!ok || !payload.ok) throw new Error(payload.error || 'Accept reading failed.');
+
+            updateKpis(payload.run_counts || {});
+
+            const cell = form.closest('.electric-cell');
+            if (cell) {
+              cell.innerHTML = `
+                <span class="badge bg-success">Ready</span>
+                <div class="mbill-muted">Reading accepted without page refresh.</div>
+              `;
+            }
+          })
+          .catch(error => {
+            alert(error.message || 'Accept reading failed.');
+            button.disabled = false;
+            button.textContent = originalText;
+          });
+      });
+    });    
     document.querySelectorAll('.mbill-table th.sortable').forEach((header, idx) => {
       header.addEventListener('click', function () {
         const table = header.closest('table');
@@ -361,6 +461,7 @@
           return asc ? av.localeCompare(bv) : bv.localeCompare(av);
         });
         bodyRows.forEach((row) => tbody.appendChild(row));
+        applyFilters();
       });
     });
     document.querySelectorAll('.mbill-table').forEach((table) => {
@@ -375,6 +476,10 @@
       });
       bodyRows.forEach((row) => tbody.appendChild(row));
     });
+    // Numbering must run AFTER the default sort above has settled the DOM
+    // order, otherwise S.No reflects the pre-sort order while rows are
+    // displayed in the post-sort order (the original bug).
+    applyFilters();
 
     function formatMoney(value) {
       const numberValue = Number(value || 0);
@@ -400,7 +505,7 @@
           button.dataset.originalText = button.innerText;
           button.innerText = 'Saving...';
         }
-        fetch(form.action, {
+        fetch(form.getAttribute('action'), {
           method: 'POST',
           body: data,
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -412,6 +517,7 @@
             const cell = form.closest('.water-cell');
             if (!payload.water_required) {
               cell.innerHTML = '<span class="badge bg-light text-dark border">N/A</span>';
+              updateKpis(payload.run_counts || {});
               return;
             }
             let display = form.querySelector('.js-water-display');
@@ -432,6 +538,18 @@
             form.querySelector('[name="water_description"]').value = payload.description || '';
             display.classList.remove('d-none');
             form.querySelector('.water-editor')?.classList.add('d-none');
+            const row = form.closest('.billing-row');
+            if (row) {
+              row.dataset.waterMissing = payload.issue_code === 'water_charge_missing' ? '1' : '0';
+              row.dataset.status = payload.status_code || row.dataset.status;
+            }
+            updateKpis(payload.run_counts || {});
+            const invoiceCell = form.closest('.billing-row')?.querySelector('.invoice-cell');
+            if (invoiceCell && payload.invoice_id && payload.invoice_number) {
+              invoiceCell.innerHTML = `
+                <a href="${payload.invoice_url}">${payload.invoice_number}</a>
+              `;
+            }
           })
           .catch((error) => alert(error.message))
           .finally(() => {
@@ -443,6 +561,26 @@
       });
     });
 
+    function updateKpis(counts) {
+      const water = document.querySelector('[data-kpi="water"]');
+      const ready = document.querySelector('[data-kpi="ready"]');
+      const pending = document.querySelector('[data-kpi="pending"]');
+      if (water && counts.water_required !== undefined) {
+        water.textContent = (counts.water_resolved || 0) + '/' + (counts.water_required || 0);
+      }
+      if (ready && counts.ready !== undefined) ready.textContent = counts.ready || 0;
+      if (pending && counts.pending !== undefined) pending.textContent = counts.pending || 0;
+
+      const electricReady = document.querySelector('[data-kpi="electric-ready"]');
+      const electricTotal = document.querySelector('[data-kpi="electric-total"]');
+      const electricPending = document.querySelector('[data-kpi="electric-pending"]');
+
+      if (electricReady && counts.electric_ready !== undefined) electricReady.textContent = counts.electric_ready || 0;
+      if (electricTotal && counts.electric_total !== undefined) electricTotal.textContent = counts.electric_total || 0;
+      if (electricPending && counts.electric_pending !== undefined) electricPending.textContent = counts.electric_pending || 0;
+
+    }
+
     const jobStatusUrlTemplate = "{% url 'invoices:monthly_billing_job_status' 0 %}";
     function showProgress(actionLabel, jobId) {
       const modalEl = document.getElementById('billingProgressModal');
@@ -452,7 +590,15 @@
       document.getElementById('progressStep').textContent = 'Queued';
       document.getElementById('progressMessage').textContent = '';
       document.getElementById('progressBar').style.width = '5%';
+      document.getElementById('progressBar').textContent = '0%';
+      document.getElementById('progressPercent').textContent = '0%';
+      document.getElementById('progressFooter').classList.add('d-none');
+      document.getElementById('progressBar').classList.remove('bg-danger');
+      document.getElementById('progressBar').classList.add('progress-bar-animated');
+
       modal.show();
+      document.getElementById('progressReloadBtn').onclick = function () { window.location.reload(); };
+
       const statusUrl = jobStatusUrlTemplate.replace('/0/', '/' + jobId + '/');
       const timer = window.setInterval(function () {
         fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
@@ -467,21 +613,49 @@
             document.getElementById('progressElapsed').textContent = (data.elapsed_seconds || 0) + 's';
             document.getElementById('progressAverage').textContent = (data.average_seconds || '0.00') + 's';
             document.getElementById('progressRemaining').textContent = (data.estimated_remaining_seconds || 0) + 's';
-            document.getElementById('progressBar').style.width = Math.max(5, data.percent || 0) + '%';
+            const percentValue = Math.max(0, Math.min(100, data.percent || 0));
+            const progressBar = document.getElementById('progressBar');
+            const progressPercent = document.getElementById('progressPercent');
+
+            if (progressBar) {
+              progressBar.style.width = Math.max(5, percentValue) + '%';
+              progressBar.textContent = percentValue + '%';
+            }
+
+            if (progressPercent) {
+              progressPercent.textContent = percentValue + '%';
+            }
             if (data.status === 'completed' || data.status === 'failed') {
               window.clearInterval(timer);
+              const footer = document.getElementById('progressFooter');
+              const modalInstance = bootstrap.Modal.getInstance(modalEl);
+              if (modalInstance) {
+                modalInstance._config.backdrop = true;
+                modalInstance._config.keyboard = true;
+              }
+              footer.classList.remove('d-none');
+              billingActionRunning = false;
+              document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((btn) => { btn.disabled = false; });
               if (data.status === 'completed') {
+                document.getElementById('progressBar').classList.remove('progress-bar-animated');
                 document.getElementById('progressBar').style.width = '100%';
                 window.setTimeout(function () { window.location.reload(); }, 900);
+              } else {
+                document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                document.getElementById('progressBar').classList.add('bg-danger');
               }
             }
           });
       }, 1000);
     }
+let billingActionRunning = false;
     document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((button) => {
       button.addEventListener('click', function (event) {
         if (button.value === 'dry_run') return;
         event.preventDefault();
+        if (billingActionRunning) return;
+        billingActionRunning = true;
+        document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((btn) => { btn.disabled = true; });
         const form = button.closest('form');
         const data = new FormData(form);
         data.set('action', button.value);
@@ -494,11 +668,17 @@
           .then(({ ok, payload }) => {
             if (!ok || !payload.ok) {
               alert(payload.error || 'Could not queue billing job.');
+              billingActionRunning = false;
+              document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((btn) => { btn.disabled = false; });
               return;
             }
             showProgress(button.innerText.trim(), payload.job_id);
           })
-          .catch(() => alert('Could not queue billing job. Make sure Redis is running.'));
+          .catch(() => {
+            alert('Could not queue billing job. Make sure Redis is running.');
+            billingActionRunning = false;
+            document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((btn) => { btn.disabled = false; });
+          });
       });
     });
 

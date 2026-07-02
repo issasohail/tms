@@ -85,6 +85,11 @@ class Lease(models.Model):
         default=True,
         help_text="Include water charges in monthly billing control.",
     )
+    bill_recurring_charges = models.BooleanField(
+        default=True,
+        help_text="Include this lease in monthly recurring/rent billing checks. "
+        "Uncheck for leases that intentionally have no recurring charge (e.g. staff/comp units).",
+    )
     internet_charges = models.DecimalField(
         max_digits=10,
         decimal_places=2,

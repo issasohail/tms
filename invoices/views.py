@@ -6,7 +6,7 @@ import logging
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-
+from django.conf import settings
 from django.apps import apps  # (ensure this import exists at the top)
 from django.conf import settings
 from django.contrib import messages
@@ -3880,27 +3880,37 @@ def monthly_billing_run_enqueue(request, pk):
         current_step="Queued",
         message="Queued",
     )
-    try:
-        enqueue_billing_job(progress_job)
-    except Exception:
-        try:
-            from invoices.tasks import run_billing_progress_job
+    def _run_locally():
+            try:
+                from invoices.tasks import run_billing_progress_job
 
-            progress_job.message = "Redis is unavailable; running this action locally."
-            progress_job.save(update_fields=["message", "updated_at"])
-            run_billing_progress_job(progress_job.pk)
-        except Exception as local_exc:
-            progress_job.status = BillingProgressJob.STATUS_FAILED
-            progress_job.error_text = str(local_exc)
-            progress_job.completed_at = timezone.now()
-            progress_job.save(
-                update_fields=["status", "error_text", "completed_at", "updated_at"]
-            )
-            return JsonResponse(
-                {"ok": False, "job_id": progress_job.pk, "error": str(local_exc)},
-                status=503,
-            )
+                progress_job.message = "Running locally (Redis disabled)."
+                progress_job.save(update_fields=["message", "updated_at"])
+                run_billing_progress_job(progress_job.pk)
+                return None
+            except Exception as local_exc:
+                progress_job.status = BillingProgressJob.STATUS_FAILED
+                progress_job.error_text = str(local_exc)
+                progress_job.completed_at = timezone.now()
+                progress_job.save(
+                    update_fields=["status", "error_text", "completed_at", "updated_at"]
+                )
+                return JsonResponse(
+                    {"ok": False, "job_id": progress_job.pk, "error": str(local_exc)},
+                    status=503,
+                )
 
+    if settings.BILLING_RQ_ENABLED:
+            try:
+                enqueue_billing_job(progress_job)
+            except Exception:
+                err = _run_locally()
+                if err:
+                    return err
+    else:
+            err = _run_locally()
+            if err:
+                return err
     return JsonResponse({"ok": True, "job_id": progress_job.pk})
 
 

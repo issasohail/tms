@@ -651,121 +651,14 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
     return qs.order_by("-last_ts", "meter_number")
 
 
-SMART_METER_CHIPS = OrderedDict([
-    ("total", {"label": "Total", "class": "primary"}),
-    ("active", {"label": "Active", "class": "success"}),
-    ("offline", {"label": "Offline", "class": "secondary"}),
-    ("vacant", {"label": "Vacant", "class": "dark"}),
-    ("low", {"label": "Low Balance", "class": "warning"}),
-    ("negative", {"label": "Negative", "class": "danger"}),
-    ("cutoff", {"label": "Cut Off", "class": "danger"}),
-    ("needs_attention", {"label": "Needs Attention", "class": "warning"}),
-    ("billing_issues", {"label": "Billing Issues", "class": "info"}),
-])
-
-
-def _normalized_meter_chip(request):
-    chip = (request.GET.get("chip") or "total").strip().lower()
-    return chip if chip in SMART_METER_CHIPS else "total"
-
-
-def _with_meter_operational_flags(qs):
-    """
-    Add reusable flags used by the clickable Smart Meter chips.
-    Keep this backend-only so counts, filters, exports and refreshes use one rule.
-    """
-    from django.db.models import Exists
-
-    today = timezone.localdate()
-    active_lease_qs = Lease.objects.filter(
-        unit_id=OuterRef("unit_id"),
-        status="active",
-        start_date__lte=today,
-        end_date__gte=today,
-    )
-    return qs.annotate(has_active_lease=Exists(active_lease_qs))
-
-
-def _meter_chip_q(chip):
-    vacant_q = Q(unit__isnull=True) | Q(has_active_lease=False)
-    offline_q = Q(is_online=False)
-    no_latest_q = Q(last_ts__isnull=True)
-    negative_q = Q(balance__isnull=False, balance__lt=0)
-    low_q = Q(is_low=True)
-    cutoff_q = Q(power_status__iexact="off") | Q(is_cutoff_flag=True)
-
-    if chip == "active":
-        return Q(is_active=True)
-    if chip == "offline":
-        return offline_q
-    if chip == "vacant":
-        return vacant_q
-    if chip == "low":
-        return low_q
-    if chip == "negative":
-        return negative_q
-    if chip == "cutoff":
-        return cutoff_q
-    if chip == "needs_attention":
-        return offline_q | vacant_q | low_q | negative_q | cutoff_q
-    if chip == "billing_issues":
-        return offline_q | vacant_q | no_latest_q | negative_q
-    return Q()
-
-
-def _apply_meter_chip_filter(qs, chip):
-    chip = chip if chip in SMART_METER_CHIPS else "total"
-    if chip == "total":
-        return qs
-    return qs.filter(_meter_chip_q(chip))
-
-
-def _meter_chip_counts(base_qs):
-    return {
-        key: (base_qs.count() if key == "total" else base_qs.filter(_meter_chip_q(key)).count())
-        for key in SMART_METER_CHIPS.keys()
-    }
-
-
-def _meter_chip_cards(request, base_qs, url_name):
-    current_chip = _normalized_meter_chip(request)
-    counts = _meter_chip_counts(base_qs)
-    base_url = reverse(url_name)
-    cards = []
-
-    for key, meta in SMART_METER_CHIPS.items():
-        qd = request.GET.copy()
-        for remove_key in ("chip", "page", "offline"):
-            qd.pop(remove_key, None)
-        if key != "total":
-            qd["chip"] = key
-        query = qd.urlencode()
-        cards.append({
-            "key": key,
-            "label": meta["label"],
-            "count": counts.get(key, 0),
-            "url": f"{base_url}?{query}" if query else base_url,
-            "class": meta["class"],
-            "active": current_chip == key,
-        })
-    return cards
-
-
 # smart_meter/views.py
 
 
 def meter_list(request):
     ONLINE_MINUTES = 10
 
-    # Your existing helper builds the base queryset with flags/filters.
-    # Add chip flags/counts before applying the selected chip filter so the chips
-    # always show the full count for the current property/unit/meter/search filter.
-    meters_base_qs = _with_meter_operational_flags(
-        _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
-    )
-    current_chip = _normalized_meter_chip(request)
-    chip_cards = _meter_chip_cards(request, meters_base_qs, "smart_meter:meter_list")
-    meters_qs = _apply_meter_chip_filter(meters_base_qs, current_chip)
+    # Your existing helper builds the base queryset with flags/filters
+    meters_qs = _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
 
     # ✅ Make it efficient for template access (no N+1)
     meters_qs = meters_qs.select_related(
@@ -841,9 +734,7 @@ def meter_list(request):
         "paginator": paginator,
         "total_count": total_count,
         # ...your existing filters...
-        "online_minutes": ONLINE_MINUTES,
-        "chip_cards": chip_cards,
-        "current_chip": current_chip, }
+        "online_minutes": ONLINE_MINUTES, }
 
     # add to context (before render)
     ctx.update({
@@ -1445,17 +1336,6 @@ def live_custom(request):
     elif active_filter == "inactive":
         filtered_meters = filtered_meters.filter(is_active=False)
 
-    meter_scope_qs = _with_meter_operational_flags(
-        _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
-    )
-    if active_filter == "active":
-        meter_scope_qs = meter_scope_qs.filter(is_active=True)
-    elif active_filter == "inactive":
-        meter_scope_qs = meter_scope_qs.filter(is_active=False)
-    current_chip = _normalized_meter_chip(request)
-    chip_cards = _meter_chip_cards(request, meter_scope_qs, "smart_meter:smart_meter_live_custom")
-    meter_scope_qs = _apply_meter_chip_filter(meter_scope_qs, current_chip)
-
     # 3) Base queryset: only readings for the selected meters
     qs = (
         LiveReading.objects
@@ -1490,8 +1370,6 @@ def live_custom(request):
             Q(meter__meter_number__icontains=q) |
             Q(meter__unit__property__property_name__icontains=q)
         )
-
-    qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
     # 5) Compute 'is_online' and apply offline-only filter if requested
     cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
@@ -1532,8 +1410,6 @@ def live_custom(request):
         "q": q,
         "offline_only": offline_only,
         "active_filter": active_filter,
-        "chip_cards": chip_cards,
-        "current_chip": current_chip,
 
         # dropdown data (same as meter list)
         "all_properties": all_properties,
@@ -3523,17 +3399,6 @@ def live_custom_data(request):
         request, include_meter_property=False
      )
 
-    meter_scope_qs = _with_meter_operational_flags(
-        _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
-    )
-    if active_filter == "active":
-        meter_scope_qs = meter_scope_qs.filter(is_active=True)
-    elif active_filter == "inactive":
-        meter_scope_qs = meter_scope_qs.filter(is_active=False)
-    meter_scope_qs = _apply_meter_chip_filter(
-        meter_scope_qs, _normalized_meter_chip(request)
-    )
-
     qs = (
         LiveReading.objects
         .select_related("meter", "meter__unit", "meter__unit__property")
@@ -3566,8 +3431,6 @@ def live_custom_data(request):
             Q(meter__meter_number__icontains=q) |
             Q(meter__unit__property__property_name__icontains=q)
         )
-
-    qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
     cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
     tenant_names = active_tenant_names_for_units(

@@ -645,6 +645,14 @@
                 document.getElementById('progressBar').classList.add('bg-danger');
               }
             }
+          })
+          .catch(() => {
+            window.clearInterval(timer);
+            document.getElementById('progressStep').textContent = 'Error';
+            document.getElementById('progressMessage').textContent = 'Lost connection to job status.';
+            document.getElementById('progressFooter').classList.remove('d-none');
+            billingActionRunning = false;
+            document.querySelectorAll('.billing-run-action-form button[type="submit"]').forEach((btn) => { btn.disabled = false; });
           });
       }, 1000);
     }

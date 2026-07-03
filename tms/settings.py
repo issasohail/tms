@@ -10,13 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from easy_thumbnails.conf import Settings as thumb_settings
-import logging
-from dotenv import load_dotenv
-from pathlib import Path
-import os
-import os
 import importlib.util
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from easy_thumbnails.conf import Settings as thumb_settings
 
 LOG_DIR = r"C:\tenant_management_system\logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -126,19 +125,37 @@ CKEDITOR_5_CONFIGS = {
 
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "1186798447852753")
-WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "4573255446332475")
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv(
+    "WHATSAPP_BUSINESS_ACCOUNT_ID", "4573255446332475"
+)
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "TMS_WHATSAPP_VERIFY_2026")
 WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v23.0")
 WHATSAPP_DEFAULT_COUNTRY_CODE = os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "+92")
 WHATSAPP_REQUEST_TIMEOUT = int(os.getenv("WHATSAPP_REQUEST_TIMEOUT", "20"))
-WHATSAPP_DEFAULT_TEMPLATE_NAME = os.getenv("WHATSAPP_DEFAULT_TEMPLATE_NAME", "hello_world")
-WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE = os.getenv("WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE", "en_US")
+WHATSAPP_DEFAULT_TEMPLATE_NAME = os.getenv(
+    "WHATSAPP_DEFAULT_TEMPLATE_NAME", "hello_world"
+)
+WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE = os.getenv(
+    "WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE", "en_US"
+)
 WHATSAPP_DEFAULT_LANGUAGE = os.getenv("WHATSAPP_DEFAULT_LANGUAGE", "en")
-WHATSAPP_AI_ENABLED = os.getenv("WHATSAPP_AI_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+WHATSAPP_AI_ENABLED = os.getenv("WHATSAPP_AI_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 WHATSAPP_AI_PROVIDER = os.getenv("WHATSAPP_AI_PROVIDER", "rules")
 WHATSAPP_AI_OCR_PROVIDER = os.getenv("WHATSAPP_AI_OCR_PROVIDER", "basic")
-WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in {"1", "true", "yes", "on"}
-WHATSAPP_PUBLIC_BASE_URL = os.getenv("WHATSAPP_PUBLIC_BASE_URL", "https://tms.sonazconsultancy.online")
+WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+WHATSAPP_PUBLIC_BASE_URL = os.getenv(
+    "WHATSAPP_PUBLIC_BASE_URL", "https://tms.sonazconsultancy.online"
+)
 WHATSAPP_MODE_SESSION_MINUTES = int(os.getenv("WHATSAPP_MODE_SESSION_MINUTES", "60"))
 WHATSAPP_ROLE_GROUP_NAMES = [
     "Guest",
@@ -159,18 +176,28 @@ THUMBNAIL_PROCESSORS = (
 IMAGE_CROPPING_THUMB_SIZE = (300, 300)
 
 DEBUG_TOOLBAR_INSTALLED = importlib.util.find_spec("debug_toolbar") is not None
-IS_LOCAL_DEVELOPMENT = os.getenv("TMS_LOCAL_DEV", "").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-} or os.name == "nt"
-ENABLE_LOCAL_DEBUG_TOOLBAR = DEBUG and IS_LOCAL_DEVELOPMENT and DEBUG_TOOLBAR_INSTALLED and os.getenv("TMS_DISABLE_DEBUG_TOOLBAR", "").lower() not in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+IS_LOCAL_DEVELOPMENT = (
+    os.getenv("TMS_LOCAL_DEV", "").lower()
+    in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    or os.name == "nt"
+)
+ENABLE_LOCAL_DEBUG_TOOLBAR = (
+    DEBUG
+    and IS_LOCAL_DEVELOPMENT
+    and DEBUG_TOOLBAR_INSTALLED
+    and os.getenv("TMS_DISABLE_DEBUG_TOOLBAR", "").lower()
+    not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+)
 
 if ENABLE_LOCAL_DEBUG_TOOLBAR:
     INSTALLED_APPS += ["debug_toolbar"]
@@ -378,7 +405,6 @@ DEFAULT_FROM_EMAIL = "issasohail@gmail.com"  # Same as EMAIL_HOST_USER
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-
 
 
 REST_FRAMEWORK = {

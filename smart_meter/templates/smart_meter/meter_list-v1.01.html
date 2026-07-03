@@ -22,18 +22,6 @@
   </div>
 </div>
 
-{% if chip_cards %}
-<div class="meter-chip-grid mb-3">
-  {% for chip in chip_cards %}
-    <a href="{{ chip.url }}"
-       class="meter-chip meter-chip-{{ chip.class }} {% if chip.active %}is-active{% endif %}">
-      <span class="meter-chip-label">{{ chip.label }}</span>
-      <span class="meter-chip-count">{{ chip.count }}</span>
-    </a>
-  {% endfor %}
-</div>
-{% endif %}
-
 <div class="card mb-3">
   <div class="card-body py-2 px-3">
     {% include "includes/meter_filters.html" %}
@@ -381,44 +369,6 @@
   .col-select { width: 48px; }
   .col-serial { width: 40px; } /* was 20px; give it a bit more tap room */
 .col-power { width: 88px; white-space: nowrap; }
-
-
-/* Clickable operational chips */
-.meter-chip-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: .5rem;
-}
-.meter-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .5rem;
-  padding: .5rem .65rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: .65rem;
-  background: var(--bs-body-bg);
-  color: inherit;
-  text-decoration: none;
-  box-shadow: 0 1px 4px rgba(0,0,0,.04);
-}
-.meter-chip:hover { transform: translateY(-1px); text-decoration: none; }
-.meter-chip.is-active { border-width: 2px; box-shadow: 0 0 0 .12rem rgba(13,110,253,.12); }
-.meter-chip-label { font-size: .78rem; font-weight: 700; line-height: 1.1; }
-.meter-chip-count { font-size: 1rem; font-weight: 800; line-height: 1; }
-.meter-chip-primary { border-color: rgba(13,110,253,.45); }
-.meter-chip-success { border-color: rgba(25,135,84,.45); }
-.meter-chip-secondary { border-color: rgba(108,117,125,.45); }
-.meter-chip-dark { border-color: rgba(33,37,41,.45); }
-.meter-chip-warning { border-color: rgba(255,193,7,.70); }
-.meter-chip-danger { border-color: rgba(220,53,69,.60); }
-.meter-chip-info { border-color: rgba(13,202,240,.60); }
-@media (max-width: 576px) {
-  .meter-chip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; }
-  .meter-chip { padding: .38rem .42rem; border-radius: .5rem; }
-  .meter-chip-label { font-size: .58rem; }
-  .meter-chip-count { font-size: .78rem; }
-}
 
 </style>
 

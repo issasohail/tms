@@ -34,7 +34,6 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import (
-    NoReverseMatch,  # Add this import
     reverse,
     reverse_lazy,
 )
@@ -55,12 +54,11 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from weasyprint import HTML
 
 from core.models import GlobalSettings
-from invoices.models import Invoice, SecurityDepositTransaction  # Add this import
-from leases.models import Lease
+from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
+from leases.models import Lease, LeaseFamilyMember
 from leases.whatsapp import build_whatsapp_url
 from payments.models import Payment
 from properties.models import Property, Unit
-from utils.pdf_export import handle_export
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
 from whatsapp.services.external_links import record_external_link_access
 
@@ -78,158 +76,6 @@ from .tables import (
 
 TENANT_REGISTRATION_MAX_AGE = 60 * 60 * 24 * 7
 TENANT_REGISTRATION_SALT = "tenants.registration-link"
-
-
-class TenantListView(SingleTableView):
-    model = Tenant
-    table_class = TenantTable
-    template_name = "tenants/tenant_list.html"
-    paginate_by = 40
-    context_object_name = "tenants"
-    export_formats = ["csv", "xlsx", "pdf"]
-
-    def get_queryset(self):
-        today = timezone.now().date()
-
-        # Optimized prefetch query
-        active_leases = Prefetch(
-            "leases",
-            queryset=Lease.objects.filter(
-                status="active", start_date__lte=today, end_date__gte=today
-            )
-            .select_related("unit__property")
-            .order_by("-start_date"),
-            to_attr="active_leases",
-        )
-
-        queryset = (
-            super().get_queryset().prefetch_related(active_leases, "interested_in")
-        )
-
-        # Apply filters
-        filters = {}
-        if self.request.GET.get("property"):
-            filters["leases__unit__property_id"] = self.request.GET.get("property")
-        if self.request.GET.get("unit"):
-            filters["leases__unit_id"] = self.request.GET.get("unit")
-        if not self.request.GET.get("include_inactive"):
-            filters["is_active"] = True
-
-        if filters:
-            queryset = queryset.filter(**filters)
-
-        return queryset.distinct().order_by("first_name")
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["all_properties"] = Property.objects.all().order_by("property_name")
-
-        # Get filtered units based on selected property
-        property_id = self.request.GET.get("property")
-        context["filtered_units"] = (
-            Unit.objects.filter(property_id=property_id).order_by("unit_number")
-            if property_id
-            else Unit.objects.none()
-        )
-
-        # Add current filter values to context
-        context["current_property"] = property_id
-        context["current_unit"] = self.request.GET.get("unit")
-        context["phone_search"] = self.request.GET.get("phone", "")
-        context["include_inactive"] = bool(self.request.GET.get("include_inactive"))
-
-        # Add export formats to context
-        context["export_formats"] = self.table_class.Meta.export_formats
-        tenants = context.get("object_list", [])
-        for tenant in tenants:
-            tenant.ledger_url = ""
-            if tenant.current_lease:  # Using the property we added
-                try:
-                    tenant.ledger_url = reverse(
-                        "tenants:lease_ledger",
-                        kwargs={"lease_id": tenant.current_lease.id},
-                    )
-                except NoReverseMatch:
-                    pass
-
-        return context
-
-    def get(self, request, *args, **kwargs):
-        # Handle export requests
-        export_response = self.handle_export(request)
-        if export_response:
-            return export_response
-        return super().get(request, *args, **kwargs)
-
-    def tenant_list(request):
-        include_inactive = request.GET.get("include_inactive", False) == "on"
-
-        queryset = Tenant.objects.all()
-
-        if not include_inactive:
-            # Only show tenants with active leases
-            queryset = queryset.filter(leases__status="active").distinct()
-
-    def handle_export(self, request):
-        """Handle export functionality"""
-        self.object_list = self.get_queryset()
-        table = self.get_table()
-        export_name = "tenants_list"
-        return handle_export(request, table, export_name)
-
-    def create_export(self, export_format):
-        queryset = self.get_queryset()
-        filename = f"tenants_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
-
-        if export_format == "csv":
-            # Your existing CSV export logic
-            # ...
-            pass
-
-        elif export_format == "xlsx":
-            # Your existing Excel export logic
-            # ...
-            pass
-
-        elif export_format == "pdf":
-            # Get pagination data
-            page_obj = self.get_page_obj(queryset)
-
-            html_string = render_to_string(
-                "tenants/tenant_list_pdf.html",
-                {
-                    "tenants": page_obj.object_list,
-                    "page_obj": page_obj,
-                    "is_paginated": True,
-                    "date": timezone.now().strftime("%Y-%m-%d"),
-                },
-            )
-
-            html = HTML(string=html_string, base_url=self.request.build_absolute_uri())
-            pdf = html.write_pdf()
-
-            response = HttpResponse(pdf, content_type="application/pdf")
-            response["Content-Disposition"] = f'attachment; filename="{filename}.pdf"'
-            return response
-
-        return None
-
-    def get_page_obj(self, queryset):
-        paginator = self.get_paginator(
-            queryset,
-            self.paginate_by,
-            orphans=self.get_paginate_orphans(),
-            allow_empty_first_page=self.get_allow_empty(),
-        )
-        page_kwarg = self.page_kwarg
-        page = self.kwargs.get(page_kwarg) or self.request.GET.get(page_kwarg) or 1
-        return paginator.page(page)
-
-    def get(self, request, *args, **kwargs):
-        export_format = request.GET.get("export")
-        if export_format in self.export_formats:
-            return self.create_export(export_format)
-        return super().get(request, *args, **kwargs)
 
 
 def tenant_registration_token(tenant):
@@ -992,7 +838,7 @@ def create_export(self, export_format):
                     tenant.phone,
                     lease.unit.property.property_name if lease else "",
                     lease.unit.unit_number if lease else "",
-                    lease.total_payment if lease else "",
+                    lease.get_total_payment if lease else "",
                     lease.get_balance if lease else "",
                 ]
             )
@@ -1020,7 +866,7 @@ def create_export(self, export_format):
                     tenant.phone,
                     lease.unit.property.property_name if lease else "",
                     lease.unit.unit_number if lease else "",
-                    lease.total_payment if lease else "",
+                    lease.get_total_payment if lease else "",
                     lease.get_balance if lease else "",
                 ]
             )
@@ -1529,11 +1375,17 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
     export_formats = ["csv", "xlsx", "pdf"]  # Add this line
 
     def get_queryset(self):
+        today = timezone.now().date()
         show_inactive = self.request.GET.get("show_inactive") == "on"
+
         lease_prefetch_queryset = (
             Lease.objects.all()
             if show_inactive
-            else Lease.objects.filter(status="active")
+            else Lease.objects.filter(
+                status="active",
+                start_date__lte=today,
+                end_date__gte=today,
+            )
         )
 
         active_leases = Prefetch(
@@ -1560,6 +1412,24 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         family_member = self.request.GET.get("family_member") == "1"
         potential_tenant = self.request.GET.get("potential_tenant") == "1"
         on_notice = self.request.GET.get("on_notice") == "1"
+        sort = self.request.GET.get("sort")
+
+        has_any_filter = any(
+            [
+                tenant_id,
+                phone,
+                property_id,
+                unit_id,
+                show_inactive,
+                family_member,
+                potential_tenant,
+                on_notice,
+                interest_ids,
+                tenant_status,
+            ]
+        )
+        if not has_any_filter:
+            tenant_status = "active"
 
         if tenant_id:
             return queryset.filter(id=tenant_id).order_by("first_name", "last_name")
@@ -1578,56 +1448,89 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         if interest_ids:
             queryset = queryset.filter(interested_in__id__in=interest_ids).distinct()
 
-        if family_member:
-            queryset = queryset.exclude(number_of_family_member__isnull=True).exclude(
-                number_of_family_member__in=["", "0"]
-            )
-
         if potential_tenant:
-            queryset = queryset.filter(interested_in__isnull=False).distinct()
+            queryset = queryset.filter(
+                interested_in__isnull=False, is_active=False
+            ).distinct()
 
-        lease_filter = Lease.objects.filter(tenant_id=OuterRef("pk"))
+        lease_filter = Lease.objects.filter(
+            tenant_id=OuterRef("pk"),
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
 
-        if not show_inactive:
-            lease_filter = lease_filter.filter(status="active")
+        family_filter = LeaseFamilyMember.objects.filter(
+            family_member_id=OuterRef("pk"),
+            lease__status="active",
+            lease__start_date__lte=today,
+            lease__end_date__gte=today,
+        )
 
         if property_id:
             lease_filter = lease_filter.filter(unit__property_id=property_id)
+            family_filter = family_filter.filter(lease__unit__property_id=property_id)
 
         if unit_id:
             lease_filter = lease_filter.filter(unit_id=unit_id)
+            family_filter = family_filter.filter(lease__unit_id=unit_id)
 
         if on_notice:
-            today = timezone.now().date()
             notice_until = today + timezone.timedelta(days=60)
             lease_filter = lease_filter.filter(
-                status="active",
-                end_date__gte=today,
-                end_date__lte=notice_until,
+                end_date__gte=today, end_date__lte=notice_until
+            )
+            family_filter = family_filter.filter(
+                lease__end_date__gte=today, lease__end_date__lte=notice_until
             )
 
-        queryset = queryset.annotate(has_matching_lease=Exists(lease_filter))
+        queryset = queryset.annotate(
+            has_matching_lease=Exists(lease_filter),
+            is_active_family_member=Exists(family_filter),
+        )
+
+        if family_member:
+            queryset = queryset.filter(is_active_family_member=True)
 
         if tenant_status == "active":
-            queryset = queryset.filter(has_matching_lease=True)
-
-        elif tenant_status == "inactive":
-            active_lease_filter = Lease.objects.filter(
-                tenant_id=OuterRef("pk"), status="active"
+            queryset = queryset.filter(is_active=True).filter(
+                Q(has_matching_lease=True) | Q(is_active_family_member=True)
             )
-            queryset = queryset.annotate(
-                has_active_lease=Exists(active_lease_filter)
-            ).filter(has_active_lease=False)
-
+        elif tenant_status == "inactive":
+            queryset = queryset.exclude(
+                is_active=True,
+                has_matching_lease=True,
+            ).exclude(
+                is_active=True,
+                is_active_family_member=True,
+            )
         elif property_id or unit_id or on_notice:
-            queryset = queryset.filter(has_matching_lease=True)
-
-        elif not show_inactive:
             queryset = queryset.filter(
-                Q(has_matching_lease=True) | Q(interested_in__isnull=False)
-            ).distinct()
+                Q(has_matching_lease=True) | Q(is_active_family_member=True)
+            )
+        elif not show_inactive and not interest_ids and not potential_tenant:
+            queryset = queryset.filter(is_active=True).filter(
+                Q(has_matching_lease=True) | Q(is_active_family_member=True)
+            )
 
-        return queryset.order_by("first_name", "last_name")
+        if sort == "lease":
+            queryset = queryset.order_by(
+                "leases__unit__property__property_name",
+                "leases__unit__unit_number",
+                "first_name",
+                "last_name",
+            )
+        elif sort == "-lease":
+            queryset = queryset.order_by(
+                "-leases__unit__property__property_name",
+                "-leases__unit__unit_number",
+                "first_name",
+                "last_name",
+            )
+        else:
+            queryset = queryset.order_by("first_name", "last_name")
+
+        return queryset.distinct()
 
     def _attach_lease_totals(self, tenants):
         leases = []
@@ -1689,6 +1592,37 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                 row["total"] or zero
             )
 
+        property_ids = [
+            lease.unit.property_id
+            for lease in leases
+            if getattr(lease, "unit_id", None)
+        ]
+        recurring_rows = (
+            RecurringCharge.objects.filter(active=True, kind="FIXED")
+            .filter(
+                Q(scope="GLOBAL")
+                | Q(scope="PROPERTY", property_id__in=property_ids)
+                | Q(scope="LEASE", lease_id__in=lease_ids)
+            )
+            .values("scope", "lease_id", "property_id")
+            .annotate(total=Coalesce(Sum("amount"), zero_db))
+        )
+
+        recurring_global = zero
+        recurring_by_property = {}
+        recurring_by_lease = {}
+        for row in recurring_rows:
+            if row["scope"] == "GLOBAL":
+                recurring_global += row["total"] or zero
+            elif row["scope"] == "PROPERTY":
+                recurring_by_property[row["property_id"]] = recurring_by_property.get(
+                    row["property_id"], zero
+                ) + (row["total"] or zero)
+            elif row["scope"] == "LEASE":
+                recurring_by_lease[row["lease_id"]] = recurring_by_lease.get(
+                    row["lease_id"], zero
+                ) + (row["total"] or zero)
+
         for lease in leases:
             balance = invoice_totals.get(lease.id, zero) - payment_totals.get(
                 lease.id, zero
@@ -1697,6 +1631,19 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             adjust = security_totals.get(lease.id, {}).get("ADJUST", zero)
             security_due = max(
                 (lease.security_deposit or zero) - paid_in - adjust, zero
+            )
+
+            recurring_total = (
+                recurring_global
+                + recurring_by_property.get(
+                    getattr(lease.unit, "property_id", None), zero
+                )
+                + recurring_by_lease.get(lease.id, zero)
+            )
+            lease_monthly = Decimal(str(getattr(lease, "get_total_payment", zero) or zero))
+
+            lease.cached_monthly_payment = (
+                recurring_total if recurring_total > 0 else lease_monthly
             )
             lease._cached_get_balance = balance
             lease._cached_security_due = security_due
@@ -1708,6 +1655,29 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         property_id = self.request.GET.get("property")
         page_tenants = list(context.get("object_list") or context.get("tenants") or [])
         self._attach_lease_totals(page_tenants)
+
+        today = timezone.now().date()
+        LeaseFamilyMember = apps.get_model("leases", "LeaseFamilyMember")
+
+        family_relations = (
+            LeaseFamilyMember.objects.filter(
+                    family_member_id__in=[tenant.pk for tenant in page_tenants],
+                    lease__status="active",
+                    lease__start_date__lte=today,
+                    lease__end_date__gte=today,
+                )
+                .select_related(
+                    "lease__unit__property",
+                    "primary_tenant",
+                    "relationship_type",
+                )
+                .order_by("family_member_id", "-lease__start_date", "-id")
+            )
+        family_map = {}
+        for relation in family_relations:
+            family_map.setdefault(relation.family_member_id, relation)
+        for tenant in page_tenants:
+            tenant.current_family_relationship = family_map.get(tenant.pk)
 
         # Add all tenants for the tenant dropdown
         context["all_tenants"] = Tenant.objects.only(
@@ -1788,9 +1758,15 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             .count()
         )
 
+        active_family_exists = LeaseFamilyMember.objects.filter(
+            family_member_id=OuterRef("pk"),
+            lease__status="active",
+            lease__start_date__lte=today,
+            lease__end_date__gte=today,
+        )
         context["family_member_tenant_count"] = (
-            all_tenant_qs.exclude(number_of_family_member__isnull=True)
-            .exclude(number_of_family_member__in=["", "0"])
+            all_tenant_qs.annotate(is_active_family_member=Exists(active_family_exists))
+            .filter(is_active_family_member=True)
             .count()
         )
 
@@ -1844,7 +1820,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             tenant.phone,
                             lease.unit.property.property_name if lease else "",
                             lease.unit.unit_number if lease else "",
-                            lease.total_payment if lease else "",
+                            lease.get_total_payment if lease else "",
                             lease.get_balance if lease else "",
                         ]
                     )
@@ -2091,6 +2067,19 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
 
 # tenants/views.py
+
+
+@login_required
+@require_POST
+def tenant_status_toggle(request):
+    try:
+        data = json.loads(request.body.decode("utf-8") or "{}")
+        tenant = get_object_or_404(Tenant, pk=data.get("id"))
+        tenant.is_active = str(data.get("is_active")) in ["1", "true", "True"]
+        tenant.save(update_fields=["is_active", "updated_at"])
+        return JsonResponse({"success": True, "is_active": tenant.is_active})
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
 
 
 def tenant_ajax_update(request):

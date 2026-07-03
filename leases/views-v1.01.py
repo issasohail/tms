@@ -25,7 +25,6 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.core.files import File
-from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage
 from django.core.serializers.json import DjangoJSONEncoder
@@ -145,11 +144,6 @@ from .utils.billing import (
     update_billing_on_change,
 )
 from .utils.email_service import send_lease_agreement_email
-from .utils.move_out_billing import (
-    apply_move_out_settlement,
-    build_move_out_settlement_preview,
-    move_out_billing_trigger,
-)
 
 # --- Security deposit helpers ------------------------------------
 
@@ -2517,17 +2511,11 @@ def detect_lease_changes(old_lease, new_lease) -> Dict[str, Any]:
     old_sec = old_lease.security_deposit or ZERO
     new_sec = new_lease.security_deposit or ZERO
 
-    was_ending = old_lease.status in ("ended", "terminated")
-    is_ending = new_lease.status in ("ended", "terminated")
-
     return {
         "security_changed": (old_sec != new_sec),
         "rent_changed": (old_rent != new_rent),
         "maintenance_changed": (old_maint != new_maint),
         "end_date_changed": (old_lease.end_date != new_lease.end_date),
-        "status_changed_to_ended": is_ending and not was_ending,
-        "old_status": old_lease.status,
-        "new_status": new_lease.status,
         # optional: handy numbers for the modal / messages
         "old_required": old_sec,
         "new_required": new_sec,
@@ -2664,36 +2652,8 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         rent_changed = changes["rent_changed"]
         end_date_changed = changes["end_date_changed"]
 
-        # ---------- MOVE-OUT FINAL SETTLEMENT CHECK ----------
-        # Fires when status just became ended/terminated, or end_date was
-        # corrected on an already-ended/terminated lease. Only relevant if
-        # the lease bills water AND its unit has a smart meter.
-        move_out_trigger = move_out_billing_trigger(old, form.instance)
-        settlement_preview = None
-        if move_out_trigger:
-            settlement_preview = build_move_out_settlement_preview(
-                form.instance, end_date=form.instance.end_date
-            )
-            if settlement_preview["applicable"] and settlement_preview["blocked"]:
-                # Business rule: block the ENTIRE save (not just the
-                # electric/water step) until the meter reading is fixed.
-                messages.error(
-                    self.request,
-                    "Cannot save this lease as ended/terminated: "
-                    + settlement_preview["block_reason"],
-                )
-                ctx = self.get_context_data(form=form)
-                ctx["family_formset"] = LeaseFamilyFormSet(
-                    instance=old, prefix="family_members"
-                )
-                ctx["settlement_preview"] = settlement_preview
-                ctx["lease_change_flags"] = changes
-                return self.render_to_response(ctx)
-
         qa_total = int(self.request.POST.get("qa-TOTAL") or 0)
-        important_change = security_changed or rent_changed or end_date_changed or bool(
-            move_out_trigger and settlement_preview and settlement_preview["applicable"]
-        )
+        important_change = security_changed or rent_changed or end_date_changed
 
         # ---------- STEP 1: PREVIEW PATH ----------
         if not confirmed and important_change and qa_total == 0:
@@ -2716,7 +2676,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                     "auto_open_billing_modal": True,
                     "is_create": False,
                     "lease_change_flags": changes,
-                    "settlement_preview": settlement_preview,
                 }
             )
             return self.render_to_response(ctx)
@@ -2795,30 +2754,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             include_backfill=include_backfill,
             update_existing=update_existing,
         )
-
-        # ---------- STEP 6: MOVE-OUT FINAL SETTLEMENT (electric + water) ----------
-        if (
-            move_out_trigger
-            and settlement_preview
-            and settlement_preview["applicable"]
-            and not settlement_preview["blocked"]
-        ):
-            water_amount = self.request.POST.get("final_water_amount")
-            try:
-                apply_move_out_settlement(
-                    self.object,
-                    water_amount=water_amount,
-                    end_date=self.object.end_date,
-                )
-                messages.success(
-                    self.request,
-                    "Final electric/water settlement posted for this move-out.",
-                )
-            except ValidationError as exc:
-                messages.error(
-                    self.request, f"Final settlement not posted: {exc.message}"
-                )
-
         messages.success(self.request, "Lease updated. Billing & security synced.")
         return redirect(self.get_success_url())
 

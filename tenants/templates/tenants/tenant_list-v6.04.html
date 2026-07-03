@@ -2,9 +2,7 @@
 {% load static humanize money_tags %}
 {% load payments_url_helpers %}
 {% load tenants_url_helpers %}
-
 {% block main_container_class %}container-fluid px-2{% endblock %}
-
 {% block content %}
 <div class="tenant-list-page">
 
@@ -114,11 +112,11 @@
 
 
     <div class="tenant-summary-grid mb-3">
-        <a class="tenant-stat-card stat-total" href="{% url 'tenants:tenant_list' %}?show_inactive=on">
+        <a class="tenant-stat-card stat-total {% if not request.GET.tenant_status and not request.GET.on_notice and not request.GET.family_member and not request.GET.potential_tenant and not request.GET.interested_in and not request.GET.show_inactive %}is-selected{% endif %}" href="{% url 'tenants:tenant_list' %}">
             <span class="stat-icon"><i class="fas fa-users"></i></span>
             <span class="stat-text"><span class="stat-label">Total Tenants</span><strong>{{ total_tenant_count|default:page_obj.paginator.count }}</strong><small>All tenants</small></span>
         </a>
-        <a class="tenant-stat-card stat-active {% if request.GET.tenant_status == 'active' or not request.GET %}is-selected{% endif %}" href="?tenant_status=active">
+        <a class="tenant-stat-card stat-active {% if request.GET.tenant_status == 'active' %}is-selected{% endif %}" href="?tenant_status=active">
             <span class="stat-icon"><i class="fas fa-user-check"></i></span>
             <span class="stat-text"><span class="stat-label">Active Tenants</span><strong>{{ active_tenant_count|default:'0' }}</strong><small>Currently active</small></span>
         </a>
@@ -144,126 +142,74 @@
         </a>
     </div>
 
-<form method="get" id="filter-form" class="tenant-filter-card mb-3">
-    <div class="filters-grid">
+    <form method="get" id="filter-form" class="tenant-filter-card mb-3">
+        <div class="filters-grid">
+            <div class="fg name">
+                <select id="tenant-filter" name="tenant" class="form-control form-control-sm select2" data-placeholder="All Tenants">
+                    <option value="">All Tenants</option>
+                    {% for t in all_tenants %}
+                    <option value="{{ t.id }}" {% if request.GET.tenant == t.id|stringformat:"s" %}selected{% endif %}>{{ t.first_name }} {{ t.last_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
 
-        <!-- Tenant filter -->
-        <div class="fg name">
-            <select id="tenant-filter" name="tenant" class="form-control form-control-sm select2" data-placeholder="All Tenants">
-                <option value="">All Tenants</option>
-                {% for t in all_tenants %}
-                    <option value="{{ t.id }}" {% if request.GET.tenant == t.id|stringformat:"s" %}selected{% endif %}>
-                        {{ t.first_name }} {{ t.last_name }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+            <div class="fg property">
+                <select name="property" class="form-control form-control-sm" id="property-select">
+                    <option value="">All Properties</option>
+                    {% for property in properties %}
+                    <option value="{{ property.id }}" {% if request.GET.property == property.id|stringformat:"s" %}selected{% endif %}>{{ property.property_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
 
-        <!-- Property filter -->
-        <div class="fg property">
-            <select name="property" class="form-control form-control-sm" id="property-select">
-                <option value="">All Properties</option>
-                {% for property in properties %}
-                    <option value="{{ property.id }}" {% if request.GET.property == property.id|stringformat:"s" %}selected{% endif %}>
-                        {{ property.property_name }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+            <div class="fg unit">
+                <select name="unit" class="form-control form-control-sm" id="unit-select">
+                    <option value="">All Units</option>
+                    {% for unit in all_units %}
+                    <option value="{{ unit.id }}" {% if request.GET.unit == unit.id|stringformat:"s" %}selected{% endif %}>{{ unit.unit_number }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="fg status">
+                <select name="tenant_status" class="form-control form-control-sm" id="tenant-status-select">
+                    <option value="active" {% if request.GET.tenant_status == "active" or not request.GET %}selected{% endif %}>Active Tenants</option>
+                    <option value="inactive" {% if request.GET.tenant_status == "inactive" %}selected{% endif %}>Inactive Tenants</option>
+                    <option value="" {% if request.GET.show_inactive %}selected{% endif %}>All Tenants</option>
+                </select>
+            </div>
+            <div class="fg phone">
+                <div class="search-wrap">
+                    <input type="text" name="phone" class="form-control form-control-sm" placeholder="Search by name, phone, CNIC..." value="{{ request.GET.phone }}">
+                    <i class="fas fa-search"></i>
+                </div>
+            </div>
 
-        <!-- Unit filter -->
-        <div class="fg unit">
-            <select name="unit" class="form-control form-control-sm" id="unit-select">
-                <option value="">All Units</option>
-                {% for unit in all_units %}
-                    <option value="{{ unit.id }}" {% if request.GET.unit == unit.id|stringformat:"s" %}selected{% endif %}>
-                        {{ unit.unit_number }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+            <div class="fg inactive">
+                <label class="form-check mb-0 small">
+                    <input type="checkbox" name="show_inactive" class="form-check-input" id="show_inactive" {% if request.GET.show_inactive %}checked{% endif %}>
+                    <span class="form-check-label">Show Inactive</span>
+                </label>
+            </div>
 
-        <!-- Search filter -->
-        <div class="fg phone">
-            <div class="search-wrap">
-                <input type="text"
-                       name="phone"
-                       class="form-control form-control-sm"
-                       placeholder="Search by name, phone, CNIC..."
-                       value="{{ request.GET.phone }}">
-                <i class="fas fa-search"></i>
+            <div class="fg interest-actions">
+                <span class="interest-label">Interested In:</span>
+                {% if interest_types %}
+                    {% for item in interest_types %}
+                    <label class="form-check-label interest-check">
+                        <input type="checkbox" class="form-check-input" name="interested_in" value="{{ item.id }}" {% if item.id|stringformat:"s" in current_interested_in %}checked{% endif %}>
+                        {% if item.name == 'Single Room with Attached Bath and Kitchen' %}Single Room{% else %}{{ item.name }}{% endif %}
+                    </label>
+                    {% endfor %}
+                {% else %}
+                    <label class="form-check-label interest-check"><input type="checkbox" class="form-check-input"> Single Room</label>
+                    <label class="form-check-label interest-check"><input type="checkbox" class="form-check-input"> 2 Room Flat</label>
+                    <label class="form-check-label interest-check"><input type="checkbox" class="form-check-input"> Other</label>
+                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm filter-btn"><i class="fas fa-filter"></i> Filter</button>
+                <a href="{% url 'tenants:tenant_list' %}" class="btn btn-light btn-sm reset-btn"><i class="fas fa-undo"></i> Reset</a>
             </div>
         </div>
-
-        <!-- Active / inactive filter -->
-        <div class="fg status">
-            <select name="tenant_status" class="form-control form-control-sm" id="tenant-status-select">
-                <option value="active" {% if request.GET.tenant_status == "active" or not request.GET %}selected{% endif %}>
-                    Active Tenants
-                </option>
-                <option value="inactive" {% if request.GET.tenant_status == "inactive" %}selected{% endif %}>
-                    Inactive Tenants
-                </option>
-                <option value="" {% if request.GET.show_inactive %}selected{% endif %}>
-                    All Tenants
-                </option>
-            </select>
-        </div>
-
-        <!-- Show inactive checkbox -->
-        <div class="fg inactive">
-            <label class="form-check mb-0 small">
-                <input type="checkbox"
-                       name="show_inactive"
-                       class="form-check-input"
-                       id="show_inactive"
-                       {% if request.GET.show_inactive %}checked{% endif %}>
-                <span class="form-check-label">Show Inactive</span>
-            </label>
-        </div>
-
-        <!-- Interested + buttons -->
-        <div class="fg interest-actions">
-            <span class="interest-label">Interested In:</span>
-
-            {% if interest_types %}
-                {% for item in interest_types %}
-                    <label class="form-check-label interest-check">
-                        <input type="checkbox"
-                               class="form-check-input"
-                               name="interested_in"
-                               value="{{ item.id }}"
-                               {% if item.id|stringformat:"s" in current_interested_in %}checked{% endif %}>
-                        {% if item.name == 'Single Room with Attached Bath and Kitchen' %}
-                            Single Room
-                        {% else %}
-                            {{ item.name }}
-                        {% endif %}
-                    </label>
-                {% endfor %}
-            {% else %}
-                <label class="form-check-label interest-check">
-                    <input type="checkbox" class="form-check-input"> Single Room
-                </label>
-                <label class="form-check-label interest-check">
-                    <input type="checkbox" class="form-check-input"> 2 Room Flat
-                </label>
-                <label class="form-check-label interest-check">
-                    <input type="checkbox" class="form-check-input"> Other
-                </label>
-            {% endif %}
-
-            <button type="submit" class="btn btn-primary btn-sm filter-btn">
-                <i class="fas fa-filter"></i> Filter
-            </button>
-
-            <a href="{% url 'tenants:tenant_list' %}" class="btn btn-light btn-sm reset-btn">
-                <i class="fas fa-undo"></i> Reset
-            </a>
-        </div>
-
-    </div>
-</form>
+    </form>
 
     {# ============ DESKTOP TABLE (>=992px) ============ #}
     <div class="table-responsive tenant-table-wrap d-none d-lg-block">
@@ -276,11 +222,10 @@
                 <th class="col-cnic">CNIC</th>
                 <th class="col-address">Address</th>
                 <th class="col-notes">Notes</th>
-                <th class="col-lease"><a class="sortable-th" href="?{% for key,value in request.GET.items %}{% if key != 'sort' and key != 'page' %}{{ key }}={{ value|urlencode }}&{% endif %}{% endfor %}sort={% if request.GET.sort == 'lease' %}-lease{% else %}lease{% endif %}">Lease &amp; Payment {% if request.GET.sort == 'lease' %}▲{% elif request.GET.sort == '-lease' %}▼{% endif %}</a></th>
+                <th class="col-lease">Lease &amp; Payment</th>
                 <th class="col-money col-monthly">Monthly</th>
                 <th class="col-money col-balance">Balance</th>
                 <th class="col-money col-sec-balance">Sec. Balance</th>
-                <th class="col-active">Active</th>
                 <th class="col-actions">Actions</th>
             </tr>
             </thead>
@@ -313,40 +258,41 @@
 
                         {% if tenant.cnic_front %}
                         <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" title="CNIC Front">
-                            <img src="{{ tenant.cnic_front.url }}" class="img-cnic" alt="CNIC Front" onerror="this.classList.add('is-missing');">
+                            <img
+                                src="{{ tenant.cnic_front.url }}"
+                                class="img-cnic"
+                                alt="CNIC Front"
+                                onerror="this.classList.add('is-missing');">
                         </a>
-                        {% else %}
-                            <span class="cnic-fallback">CNIC Front</span>
                         {% endif %}
 
                         {% if tenant.cnic_back %}
                         <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" title="CNIC Back">
-                            <img src="{{ tenant.cnic_back.url }}" class="img-cnic" alt="CNIC Back" onerror="this.classList.add('is-missing');">
+                            <img
+                                src="{{ tenant.cnic_back.url }}"
+                                class="img-cnic"
+                                alt="CNIC Back"
+                                onerror="this.classList.add('is-missing');">
                         </a>
-                        {% else %}
-                            <span class="cnic-fallback">CNIC Back</span>
+                        {% endif %}
+
+                        {% if not tenant.cnic_front and not tenant.cnic_back %}
+                            <span class="text-muted">-</span>
                         {% endif %}
 
                     </div>
                 </td>
-                <td class="col-address xsmall address-wrap" title="{{ tenant.address|default:'-' }}">{{ tenant.address|default:"-" }}</td>
+                <td class="col-address xsmall" title="{{ tenant.address|default:'-' }}">{{ tenant.address|default:"-"|truncatechars:42 }}</td>
                 <td class="col-notes xsmall" title="{{ tenant.notes|default:'-' }}">{{ tenant.notes|default:"-"|truncatechars:42 }}</td>
                 <td class="p-2 col-lease xsmall">
-                    {% with family_rel=tenant.current_family_relationship %}
                     {% if lease %}
                     <a href="{% url 'leases:lease_detail' lease.pk %}" class="lease-link"><strong>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</strong></a>
                     <div class="lease-dates mt-1"><span>Start: {{ lease.start_date|date:"Y-m-d" }}</span><span>End: <span class="{% if lease.is_ending_soon %}text-danger fw-bold{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span></span></div>
-                    {% elif family_rel %}
-                    <span class="badge bg-purple-soft text-purple border mb-1">Family Member</span>
-                    <a href="{% url 'leases:lease_detail' family_rel.lease.pk %}" class="lease-link d-block"><strong>{{ family_rel.lease.unit.property.property_name }}-{{ family_rel.lease.unit.unit_number }}</strong></a>
-                    <div class="lease-dates mt-1"><span>Primary: {{ family_rel.primary_tenant.first_name }} {{ family_rel.primary_tenant.last_name }}</span><span>Relation: {{ family_rel.relation }}</span><span>End: {{ family_rel.lease.end_date|date:"Y-m-d" }}</span></div>
                     {% else %}<span class="text-muted fst-italic">No active lease</span>{% endif %}
-                    {% endwith %}
                 </td>
-                <td class="money-cell">{% if lease %}{{ lease.cached_monthly_payment|default:lease.get_total_payment|money:0 }}{% else %}-{% endif %}</td>
+                <td class="money-cell">{% if lease %}{{ lease.total_payment|money:0 }}{% else %}-{% endif %}</td>
                 <td class="money-cell {% if lease and lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">{% if lease %}{{ lease.get_balance|money:0 }}{% else %}-{% endif %}</td>
                 <td class="money-cell {% if lease and lease.security_due > 0 %}text-danger{% else %}text-success{% endif %}">{% if lease %}{{ lease.security_due|money:0 }}{% else %}-{% endif %}</td>
-                <td class="col-active text-center"><button type="button" class="tenant-status-toggle {% if tenant.is_active %}is-active{% else %}is-inactive{% endif %}" data-tenant-id="{{ tenant.id }}" data-active="{% if tenant.is_active %}1{% else %}0{% endif %}">{% if tenant.is_active %}Active{% else %}Inactive{% endif %}</button></td>
                 <td class="p-2 col-actions">
                     <div class="tenant-action-grid">
                         <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="action-pill action-view" title="View" data-bs-toggle="tooltip"><i class="fas fa-eye"></i> <span>View</span></a>
@@ -365,7 +311,7 @@
                 </td>
             </tr>
             {% endwith %}
-            {% empty %}<tr><td colspan="12" class="text-center py-3 small text-muted">No tenants found matching your criteria</td></tr>{% endfor %}
+            {% empty %}<tr><td colspan="11" class="text-center py-3 small text-muted">No tenants found matching your criteria</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
@@ -403,7 +349,7 @@
                 {% if lease %}
                 <a href="{% url 'leases:lease_detail' lease.pk %}" class="tc-lease-title"><i class="fas fa-file-contract"></i> {{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }} <i class="fas fa-chevron-right ms-auto"></i></a>
                 <div class="tc-money-row">
-                    <div><span>Monthly</span><strong>{{ lease.cached_monthly_payment|default:lease.get_total_payment|money:0 }}</strong></div>
+                    <div><span>Monthly</span><strong>{{ lease.total_payment|money:0 }}</strong></div>
                     <div><span>Balance</span><strong class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">{{ lease.get_balance|money:0 }}</strong></div>
                     <div><span>Sec. Balance</span><strong class="{% if lease.security_due > 0 %}text-danger{% else %}text-success{% endif %}">{{ lease.security_due|money:0 }}</strong></div>
                 </div>
@@ -489,10 +435,10 @@
    Keeps page inside visible screen and prevents oversized layout
 ========================================================= */
 .tenant-list-page{
-    width:1800px !important;
-    max-width:none !important;
-    margin:0 auto !important;
-    padding:0 8px 1rem;
+    width:100%;
+    max-width:1800px;
+    margin:0 auto;
+    padding:0 12px 1rem;
 }
 
 /* =========================================================
@@ -628,29 +574,24 @@
 
 .filters-grid{
     display:grid;
-    grid-template-columns:1.15fr 1.15fr 1.15fr 1.55fr 1fr auto;
+    grid-template-columns:1fr 1fr 1fr 1.25fr auto;
     gap:.75rem;
     align-items:center;
     grid-template-areas:
-        "name property unit phone status inactive"
-        "interest interest interest interest interest interest";
+        "name property unit phone inactive"
+        "interest interest interest interest interest";
 }
 
 .fg.name{ grid-area:name; }
 .fg.property{ grid-area:property; }
 .fg.unit{ grid-area:unit; }
 .fg.phone{ grid-area:phone; }
-.fg.status{ grid-area:status; }
 .fg.inactive{ grid-area:inactive; }
 .fg.interest-actions{ grid-area:interest; }
 
 .form-control-sm{
     min-height:34px;
     font-size:.82rem;
-}
-
-.select2-container{
-    width:100% !important;
 }
 
 .select2-container .select2-selection--single{
@@ -683,15 +624,11 @@
     color:#98a2b3;
 }
 
-.fg.inactive{
-    white-space:nowrap;
-}
-
 .interest-actions{
     display:flex;
     align-items:center;
     flex-wrap:wrap;
-    gap:.55rem .85rem;
+    gap:.6rem 1rem;
 }
 
 .interest-label{
@@ -711,7 +648,7 @@
 
 .filter-btn,
 .reset-btn{
-    min-width:86px;
+    min-width:92px;
     font-weight:700;
 }
 
@@ -755,14 +692,13 @@
 .tenant-table .col-tenant{ width:13%; }
 .tenant-table .col-emergency{ width:7%; }
 .tenant-table .col-cnic{ width:7%; }
-.tenant-table .col-address{ width:14%; }
+.tenant-table .col-address{ width:12%; }
 .tenant-table .col-notes{ width:8%; }
 .tenant-table .col-lease{ width:10%; }
-.tenant-table .col-active{ width:5%; text-align:center; }
 .tenant-table .col-monthly{ width:5%; text-align:center; }
 .tenant-table .col-balance{ width:5%; text-align:center; }
 .tenant-table .col-sec-balance{ width:6%; text-align:center; }
-.tenant-table .col-actions{ width:15%; }
+.tenant-table .col-actions{ width:20%; }
 
 /* =========================================================
    PHOTOS / CNIC IMAGES
@@ -884,16 +820,7 @@ img.is-missing,
     text-overflow:ellipsis;
     white-space:nowrap;
 }
-.address-text{
-    display:-webkit-box;
-    -webkit-line-clamp:2;
-    -webkit-box-orient:vertical;
-    overflow:hidden;
-    white-space:normal;
-    line-height:1.35;
-    max-height:2.8em;
-    word-break:normal;
-}
+
 /* =========================================================
    ACTION BUTTONS
    3 buttons per row, outlined, not too wide.
@@ -903,7 +830,7 @@ img.is-missing,
 ========================================================= */
 .tenant-action-grid{
     display:grid;
-    grid-template-columns:repeat(3, 68px);
+    grid-template-columns:repeat(3, 78px);
     justify-content:center;
     gap:6px;
 }
@@ -916,7 +843,7 @@ img.is-missing,
     align-items:center;
     justify-content:center;
 
-    width:68px;
+    width:78px;
     height:31px;
 
     border:1px solid currentColor;
@@ -924,7 +851,7 @@ img.is-missing,
 
     background:#fff;
 
-    font-size:.66rem;
+    font-size:.70rem;
     font-weight:700;
 
     text-decoration:none;
@@ -968,34 +895,6 @@ button.action-pill{
     background:#f8fafc;
     text-decoration:none;
 }
-
-
-.address-wrap{
-    white-space:normal !important;
-    overflow:hidden;
-    display:-webkit-box;
-    -webkit-line-clamp:2;
-    -webkit-box-orient:vertical;
-    line-height:1.25;
-}
-
-.tenant-status-toggle{
-    border:1px solid #d0d5dd;
-    border-radius:999px;
-    padding:.18rem .55rem;
-    font-size:.64rem;
-    font-weight:800;
-    line-height:1.2;
-    background:#fff;
-    cursor:pointer;
-}
-.tenant-status-toggle.is-active{ color:#067647; border-color:#12b76a; background:#ecfdf3; }
-.tenant-status-toggle.is-inactive{ color:#b42318; border-color:#fda29b; background:#fff1f3; }
-.tenant-status-toggle.is-saving{ opacity:.55; pointer-events:none; }
-.sortable-th{ color:#344054; text-decoration:none; font-weight:900; }
-.sortable-th:hover{ color:#0d6efd; text-decoration:underline; }
-.bg-purple-soft{ background:#f3e8ff; }
-.text-purple{ color:#7c3aed; }
 
 /* =========================================================
    TABLET / MOBILE CARDS
@@ -1144,34 +1043,6 @@ button.action-pill{
     grid-template-columns:repeat(3,1fr);
 }
 
-
-.address-wrap{
-    white-space:normal !important;
-    overflow:hidden;
-    display:-webkit-box;
-    -webkit-line-clamp:2;
-    -webkit-box-orient:vertical;
-    line-height:1.25;
-}
-
-.tenant-status-toggle{
-    border:1px solid #d0d5dd;
-    border-radius:999px;
-    padding:.18rem .55rem;
-    font-size:.64rem;
-    font-weight:800;
-    line-height:1.2;
-    background:#fff;
-    cursor:pointer;
-}
-.tenant-status-toggle.is-active{ color:#067647; border-color:#12b76a; background:#ecfdf3; }
-.tenant-status-toggle.is-inactive{ color:#b42318; border-color:#fda29b; background:#fff1f3; }
-.tenant-status-toggle.is-saving{ opacity:.55; pointer-events:none; }
-.sortable-th{ color:#344054; text-decoration:none; font-weight:900; }
-.sortable-th:hover{ color:#0d6efd; text-decoration:underline; }
-.bg-purple-soft{ background:#f3e8ff; }
-.text-purple{ color:#7c3aed; }
-
 /* =========================================================
    TABLET
 ========================================================= */
@@ -1234,8 +1105,8 @@ button.action-pill{
         grid-template-columns:1fr 1fr;
         grid-template-areas:
             "name property"
-            "status phone"
-            "interest inactive";
+            "phone inactive"
+            "interest interest";
         gap:.55rem;
     }
 
@@ -1330,8 +1201,8 @@ button.action-pill{
         grid-template-columns:1fr 1fr;
         grid-template-areas:
             "name property"
-            "status phone"
-            "interest inactive";
+            "phone inactive"
+            "interest interest";
         gap:.45rem;
     }
 
@@ -1417,7 +1288,9 @@ button.action-pill{
     }
 }
 @media (min-width:992px){
-    .tenant-cards{ display:none !important; }
+    .tenant-cards{
+        display:none !important;
+    }
 }
 </style>
 
@@ -1546,7 +1419,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const $tenantSel = $('#tenant-filter');
   const $propSel   = $('#property-select');
   const $unitSel   = $('#unit-select');
-  const $statusSel = $('#tenant-status-select');
   const $inactive  = $('#show_inactive');
   const $leadOnly  = $();
   const registrationButton = document.getElementById("btnNewRegistrationLink");
@@ -1569,6 +1441,10 @@ document.addEventListener('DOMContentLoaded', function () {
       holder.textContent = "";
     });
   }
+
+  $('#tenant-status-select').on('change', function () {
+        $form.submit();
+    });
 
   function showQuickRegistrationErrors(errors) {
     if (!quickRegistrationForm || !errors) return;
@@ -1745,13 +1621,6 @@ document.addEventListener('DOMContentLoaded', function () {
     $form.submit();
   });
 
-  $statusSel.on('change', function () {
-    if ($(this).val() === '') {
-      $('#show_inactive').prop('checked', true);
-    }
-    $form.submit();
-  });
-
   // Tenant change: clear property + unit, submit
   $tenantSel.on('change', function () {
     if ($(this).val()) {
@@ -1767,34 +1636,6 @@ document.addEventListener('DOMContentLoaded', function () {
       e.preventDefault();
       $form[0].submit();
     }
-  });
-
-
-  document.addEventListener('click', function(event){
-    const btn = event.target.closest('.tenant-status-toggle');
-    if (!btn) return;
-    event.preventDefault();
-    const tenantId = btn.dataset.tenantId;
-    const nextActive = btn.dataset.active === '1' ? '0' : '1';
-    btn.classList.add('is-saving');
-    fetch("{% url 'tenants:tenant_status_toggle' %}", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": getTenantListCookie("csrftoken"),
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      body: JSON.stringify({ id: tenantId, is_active: nextActive })
-    })
-    .then(function(response){ return response.json().then(function(data){ if(!response.ok || !data.success){ throw new Error(data.error || 'Status update failed.'); } return data; }); })
-    .then(function(data){
-      btn.dataset.active = data.is_active ? '1' : '0';
-      btn.textContent = data.is_active ? 'Active' : 'Inactive';
-      btn.classList.toggle('is-active', data.is_active);
-      btn.classList.toggle('is-inactive', !data.is_active);
-    })
-    .catch(function(error){ alert(error.message); })
-    .finally(function(){ btn.classList.remove('is-saving'); });
   });
 
   // (Optional) If no property selected at load, keep unit enabled; the page re-render will

@@ -1,9 +1,7 @@
 from .models_pcr import PropertyConditionReport, PCRPhoto
 from .models import Lease, LeaseAgreementClause, LeaseDocument, LeaseDocumentCategory, LeaseFamilyMember, LeaseFileShareLink, LeaseRelationshipType, LeaseTemplate, LeaseUnitOccupancy
 from django.db.models import F
-from django.contrib import admin, messages
-from django.core.exceptions import ValidationError
-import copy
+from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html, mark_safe
 from django.db import models
@@ -15,11 +13,6 @@ from django import forms
 from .models import Unit
 from properties.models import Property
 from leases.utils.agreement_generator import generate_lease_agreement
-from leases.utils.move_out_billing import (
-    apply_move_out_settlement,
-    build_move_out_settlement_preview,
-    move_out_billing_trigger,
-)
 from django.http import HttpResponse
 from .models_inspections import (
     InspectionAppliance,
@@ -127,73 +120,12 @@ class LeaseAgreementClauseInline(admin.TabularInline):
     def has_add_permission(self, request, obj=None):
         return False  # Prevent adding new clauses directly in admin
 
-class LeaseMoveOutAdminForm(forms.ModelForm):
-    """Adds a manual final-water-amount field and blocks the save entirely
-    if this edit finalizes a move-out (status -> ended/terminated, or
-    end_date corrected on an already-ended lease) but the electric meter
-    reading doesn't yet cover the new end date."""
-
-    final_water_amount = forms.DecimalField(
-        required=False,
-        label="Final water charge (move-out only)",
-        help_text=(
-            "Only used if this save finalizes a move-out for a lease with "
-            "water billing enabled and a smart-metered unit. Ignored otherwise."
-        ),
-    )
-
-    class Meta:
-        model = Lease
-        fields = "__all__"
-
-    def clean(self):
-        cleaned_data = super().clean()
-        if not self.instance.pk:
-            return cleaned_data  # new lease being created, nothing to move out of
-
-        # Build a lightweight "prospective new state" from cleaned_data
-        # without mutating self.instance (Django applies cleaned_data onto
-        # the real instance later, in _post_clean()).
-        new_state = copy.copy(self.instance)
-        for field, value in cleaned_data.items():
-            if hasattr(new_state, field):
-                setattr(new_state, field, value)
-
-        if move_out_billing_trigger(self.instance, new_state):
-            preview = build_move_out_settlement_preview(
-                new_state, end_date=new_state.end_date
-            )
-            if preview["applicable"] and preview["blocked"]:
-                raise ValidationError(preview["block_reason"])
-        return cleaned_data
-
-
 @admin.register(Lease)
 class LeaseAdmin(admin.ModelAdmin):
-    form = LeaseMoveOutAdminForm
     list_display = ("id", "tenant", "unit", "start_date", "end_date", "status")
     list_filter = ("status", "start_date", "end_date")
     search_fields = ("tenant__first_name", "tenant__last_name", "unit__unit_number")
     inlines = [LeaseAgreementClauseInline]
-
-    def save_model(self, request, obj, form, change):
-        old = Lease.objects.get(pk=obj.pk) if (change and obj.pk) else None
-        super().save_model(request, obj, form, change)
-        if old is not None and move_out_billing_trigger(old, obj):
-            water_amount = form.cleaned_data.get("final_water_amount")
-            try:
-                result = apply_move_out_settlement(
-                    obj, water_amount=water_amount, end_date=obj.end_date
-                )
-                if result is not None:
-                    messages.success(
-                        request,
-                        "Final electric/water settlement posted for this move-out.",
-                    )
-            except ValidationError as exc:
-                messages.error(
-                    request, f"Final settlement not posted: {exc.message}"
-                )
 
 
 

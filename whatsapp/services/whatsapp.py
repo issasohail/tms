@@ -7,7 +7,12 @@ from django.conf import settings
 from django.utils import timezone
 
 from leases.whatsapp import normalize_whatsapp_phone
-from whatsapp.models import WhatsAppConversation, WhatsAppExternalLinkToken, WhatsAppMessageLog, WhatsAppUtilityTemplate
+from whatsapp.models import (
+    WhatsAppConversation,
+    WhatsAppExternalLinkToken,
+    WhatsAppMessageLog,
+    WhatsAppUtilityTemplate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +34,8 @@ class WhatsAppService:
     def normalize_phone_number(phone_number, country_code=None):
         return normalize_whatsapp_phone(
             phone_number,
-            country_code=country_code or getattr(settings, "WHATSAPP_DEFAULT_COUNTRY_CODE", "+92"),
+            country_code=country_code
+            or getattr(settings, "WHATSAPP_DEFAULT_COUNTRY_CODE", "+92"),
         )
 
     def send_text(self, phone_number, body, **context):
@@ -40,7 +46,9 @@ class WhatsAppService:
             "type": "text",
             "text": {"preview_url": False, "body": body or ""},
         }
-        return self._send(payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT, **context)
+        return self._send(
+            payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT, **context
+        )
 
     def configuration_status(self):
         missing = []
@@ -78,14 +86,19 @@ class WhatsAppService:
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": language_code or getattr(settings, "WHATSAPP_DEFAULT_LANGUAGE", "en")},
+                "language": {
+                    "code": language_code
+                    or getattr(settings, "WHATSAPP_DEFAULT_LANGUAGE", "en")
+                },
             },
         }
         if components:
             payload["template"]["components"] = components
         return self._send(
             payload,
-            message_type=context.pop("message_type", WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE),
+            message_type=context.pop(
+                "message_type", WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE
+            ),
             template_name=template_name,
             body_parameters=body_parameters,
             button_parameter=button_parameter or "",
@@ -101,7 +114,9 @@ class WhatsAppService:
         language_code=None,
         **context,
     ):
-        configured_template = WhatsAppUtilityTemplate.objects.filter(key=template_name).first()
+        configured_template = WhatsAppUtilityTemplate.objects.filter(
+            key=template_name
+        ).first()
         if configured_template:
             if not configured_template.is_active:
                 return self._log_disabled_utility_template(
@@ -122,8 +137,12 @@ class WhatsAppService:
             **context,
         )
 
-    def send_document(self, phone_number, document_url, filename=None, caption=None, **context):
-        message_type = context.pop("message_type", WhatsAppMessageLog.MESSAGE_TYPE_DOCUMENT)
+    def send_document(
+        self, phone_number, document_url, filename=None, caption=None, **context
+    ):
+        message_type = context.pop(
+            "message_type", WhatsAppMessageLog.MESSAGE_TYPE_DOCUMENT
+        )
         document = {"link": document_url}
         if filename:
             document["filename"] = filename
@@ -137,12 +156,22 @@ class WhatsAppService:
         }
         return self._send(payload, message_type=message_type, **context)
 
-    def send_document_bytes(self, phone_number, file_bytes, filename, mime_type="application/pdf", caption=None, **context):
+    def send_document_bytes(
+        self,
+        phone_number,
+        file_bytes,
+        filename,
+        mime_type="application/pdf",
+        caption=None,
+        **context,
+    ):
         media_result = self._upload_media(file_bytes, filename, mime_type)
         if not media_result.get("ok"):
             return media_result
 
-        message_type = context.pop("message_type", WhatsAppMessageLog.MESSAGE_TYPE_DOCUMENT)
+        message_type = context.pop(
+            "message_type", WhatsAppMessageLog.MESSAGE_TYPE_DOCUMENT
+        )
         document = {"id": media_result["media_id"]}
         if filename:
             document["filename"] = filename
@@ -166,9 +195,19 @@ class WhatsAppService:
             "type": "image",
             "image": image,
         }
-        return self._send(payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context)
+        return self._send(
+            payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context
+        )
 
-    def send_image_bytes(self, phone_number, image_bytes, filename="image.jpg", mime_type="image/jpeg", caption=None, **context):
+    def send_image_bytes(
+        self,
+        phone_number,
+        image_bytes,
+        filename="image.jpg",
+        mime_type="image/jpeg",
+        caption=None,
+        **context,
+    ):
         media_result = self._upload_media(image_bytes, filename, mime_type)
         if not media_result.get("ok"):
             return media_result
@@ -182,7 +221,9 @@ class WhatsAppService:
             "type": "image",
             "image": image,
         }
-        return self._send(payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context)
+        return self._send(
+            payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context
+        )
 
     def send_pdf(self, phone_number, pdf_url, filename=None, caption=None, **context):
         filename = filename or self._filename_from_url(pdf_url) or "document.pdf"
@@ -195,7 +236,9 @@ class WhatsAppService:
             **context,
         )
 
-    def send_pdf_bytes(self, phone_number, pdf_bytes, filename=None, caption=None, **context):
+    def send_pdf_bytes(
+        self, phone_number, pdf_bytes, filename=None, caption=None, **context
+    ):
         return self.send_document_bytes(
             phone_number,
             pdf_bytes,
@@ -206,19 +249,37 @@ class WhatsAppService:
             **context,
         )
 
-    def send_invoice(self, invoice, phone_number=None, message=None, pdf_bytes=None, filename=None):
+    def send_invoice(
+        self, invoice, phone_number=None, message=None, pdf_bytes=None, filename=None
+    ):
         lease = getattr(invoice, "lease", None)
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
         if not is_whatsapp_session_open(phone):
             return self.send_invoice_notice_template(invoice, phone_number=phone)
-        body = message or f"Invoice {getattr(invoice, 'invoice_number', invoice.pk)} is ready."
+        body = (
+            message
+            or f"Invoice {getattr(invoice, 'invoice_number', invoice.pk)} is ready."
+        )
         if pdf_bytes:
-            filename = filename or f"Invoice_{getattr(invoice, 'invoice_number', invoice.pk)}.pdf"
-            return self.send_pdf_bytes(phone, pdf_bytes, filename=filename, caption=body, tenant=tenant, lease=lease, invoice=invoice)
+            filename = (
+                filename
+                or f"Invoice_{getattr(invoice, 'invoice_number', invoice.pk)}.pdf"
+            )
+            return self.send_pdf_bytes(
+                phone,
+                pdf_bytes,
+                filename=filename,
+                caption=body,
+                tenant=tenant,
+                lease=lease,
+                invoice=invoice,
+            )
         return self.send_text(phone, body, tenant=tenant, lease=lease, invoice=invoice)
 
-    def send_receipt(self, payment, phone_number=None, message=None, pdf_bytes=None, filename=None):
+    def send_receipt(
+        self, payment, phone_number=None, message=None, pdf_bytes=None, filename=None
+    ):
         lease = getattr(payment, "lease", None)
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
@@ -226,8 +287,18 @@ class WhatsAppService:
             return self.send_payment_confirmation_template(payment, phone_number=phone)
         body = message or f"Payment receipt for Rs. {getattr(payment, 'amount', '')}."
         if pdf_bytes:
-            filename = filename or f"payment_receipt_{getattr(payment, 'pk', 'receipt')}.pdf"
-            return self.send_pdf_bytes(phone, pdf_bytes, filename=filename, caption=body, tenant=tenant, lease=lease, payment=payment)
+            filename = (
+                filename or f"payment_receipt_{getattr(payment, 'pk', 'receipt')}.pdf"
+            )
+            return self.send_pdf_bytes(
+                phone,
+                pdf_bytes,
+                filename=filename,
+                caption=body,
+                tenant=tenant,
+                lease=lease,
+                payment=payment,
+            )
         return self.send_text(phone, body, tenant=tenant, lease=lease, payment=payment)
 
     def send_lease(self, lease, document_url=None, message=None):
@@ -238,11 +309,20 @@ class WhatsAppService:
                 return self.send_agreement_ready_template(lease, phone_number=phone)
             return self.send_lease_ledger_template(lease, phone_number=phone)
         if document_url:
-            return self.send_pdf(phone, document_url, caption=message, tenant=tenant, lease=lease)
-        return self.send_text(phone, message or "Your lease information is ready.", tenant=tenant, lease=lease)
+            return self.send_pdf(
+                phone, document_url, caption=message, tenant=tenant, lease=lease
+            )
+        return self.send_text(
+            phone,
+            message or "Your lease information is ready.",
+            tenant=tenant,
+            lease=lease,
+        )
 
     def send_maintenance_update(self, maintenance_request, message=None):
-        tenant = getattr(maintenance_request, "tenant", None) or getattr(maintenance_request, "source_tenant", None)
+        tenant = getattr(maintenance_request, "tenant", None) or getattr(
+            maintenance_request, "source_tenant", None
+        )
         phone = getattr(tenant, "phone", "")
         if not is_whatsapp_session_open(phone):
             lease = getattr(maintenance_request, "lease", None)
@@ -252,14 +332,23 @@ class WhatsAppService:
                 body_parameters=[
                     self._tenant_name(tenant),
                     self._property_unit(lease),
-                    getattr(maintenance_request, "get_status_display", lambda: getattr(maintenance_request, "status", ""))(),
+                    getattr(
+                        maintenance_request,
+                        "get_status_display",
+                        lambda: getattr(maintenance_request, "status", ""),
+                    )(),
                 ],
                 tenant=tenant,
                 lease=lease,
                 maintenance_request=maintenance_request,
             )
-        body = message or f"Maintenance update: {getattr(maintenance_request, 'status', '')}."
-        return self.send_text(phone, body, tenant=tenant, maintenance_request=maintenance_request)
+        body = (
+            message
+            or f"Maintenance update: {getattr(maintenance_request, 'status', '')}."
+        )
+        return self.send_text(
+            phone, body, tenant=tenant, maintenance_request=maintenance_request
+        )
 
     def send_payment_confirmation(self, payment, phone_number=None, message=None):
         return self.send_receipt(payment, phone_number=phone_number, message=message)
@@ -267,18 +356,32 @@ class WhatsAppService:
     def send_invoice_notice_template(self, invoice, phone_number=None):
         lease = getattr(invoice, "lease", None)
         tenant = getattr(lease, "tenant", None)
+        unit = getattr(lease, "unit", None)
+        property_obj = getattr(unit, "property", None) if unit else None
+
         phone = phone_number or getattr(tenant, "phone", "")
-        token = self._invoice_button_token(invoice)
+
+        property_name = (
+            getattr(property_obj, "name", "")
+            or getattr(property_obj, "property_name", "")
+            or str(property_obj or "")
+        )
+        unit_name = (
+            getattr(unit, "unit_number", "")
+            or getattr(unit, "name", "")
+            or str(unit or "")
+        )
+
         return self.send_utility_template(
             phone,
             "invoice_notice",
             body_parameters=[
                 self._tenant_name(tenant),
-                self._property_unit(lease),
+                property_name,
+                unit_name,
                 self._money(getattr(invoice, "amount", "")),
                 self._date(getattr(invoice, "due_date", "")),
             ],
-            button_parameter=token,
             tenant=tenant,
             lease=lease,
             invoice=invoice,
@@ -296,7 +399,8 @@ class WhatsAppService:
                 self._tenant_name(tenant),
                 self._property_unit(lease),
                 self._money(getattr(payment, "amount", "")),
-                getattr(payment, "reference_number", "") or str(getattr(payment, "pk", "")),
+                getattr(payment, "reference_number", "")
+                or str(getattr(payment, "pk", "")),
             ],
             button_parameter=token,
             tenant=tenant,
@@ -353,7 +457,9 @@ class WhatsAppService:
             invoice=invoice,
         )
 
-    def send_late_fee_reminder_template(self, invoice, reminder_number, phone_number=None):
+    def send_late_fee_reminder_template(
+        self, invoice, reminder_number, phone_number=None
+    ):
         lease = getattr(invoice, "lease", None)
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
@@ -420,8 +526,14 @@ class WhatsAppService:
             )
             if file_response.ok:
                 return file_response.content
-            logger.warning("WhatsApp media download failed: HTTP %s", file_response.status_code)
-        except (WhatsAppConfigurationError, requests.RequestException, ValueError) as exc:
+            logger.warning(
+                "WhatsApp media download failed: HTTP %s", file_response.status_code
+            )
+        except (
+            WhatsAppConfigurationError,
+            requests.RequestException,
+            ValueError,
+        ) as exc:
             logger.warning("WhatsApp media download unavailable: %s", exc)
         return b""
 
@@ -449,7 +561,12 @@ class WhatsAppService:
             created_by=self.created_by,
             **self._model_context(context),
         )
-        return {"ok": True, "scheduled": True, "log_id": log.pk, "scheduled_for": scheduled_for}
+        return {
+            "ok": True,
+            "scheduled": True,
+            "log_id": log.pk,
+            "scheduled_for": scheduled_for,
+        }
 
     def retry_failed(self, limit=25):
         logs = WhatsAppMessageLog.objects.filter(
@@ -461,7 +578,9 @@ class WhatsAppService:
             log.retry_count += 1
             log.status = WhatsAppMessageLog.STATUS_PENDING
             log.save(update_fields=["retry_count", "status", "updated_at"])
-            results.append(self._send(log.payload, existing_log=log, message_type=log.message_type))
+            results.append(
+                self._send(log.payload, existing_log=log, message_type=log.message_type)
+            )
         return results
 
     def _send(
@@ -514,7 +633,14 @@ class WhatsAppService:
                 log.api_response = response_json
                 if messages:
                     log.wa_message_id = messages[0].get("id", "")
-                log.save(update_fields=["status", "api_response", "wa_message_id", "updated_at"])
+                log.save(
+                    update_fields=[
+                        "status",
+                        "api_response",
+                        "wa_message_id",
+                        "updated_at",
+                    ]
+                )
                 return {
                     "ok": True,
                     "log_id": log.pk,
@@ -527,7 +653,9 @@ class WhatsAppService:
             log.status = WhatsAppMessageLog.STATUS_FAILED
             log.api_response = response_json
             log.error_text = error_text
-            log.save(update_fields=["status", "api_response", "error_text", "updated_at"])
+            log.save(
+                update_fields=["status", "api_response", "error_text", "updated_at"]
+            )
             logger.warning("WhatsApp API request failed: %s", error_text)
             return {
                 "ok": False,
@@ -561,7 +689,11 @@ class WhatsAppService:
                 response_json = {"text": response.text}
 
             if response.ok and response_json.get("id"):
-                return {"ok": True, "media_id": response_json["id"], "response": response_json}
+                return {
+                    "ok": True,
+                    "media_id": response_json["id"],
+                    "response": response_json,
+                }
 
             return {
                 "ok": False,
@@ -579,7 +711,9 @@ class WhatsAppService:
         if not self.phone_number_id:
             missing.append("WHATSAPP_PHONE_NUMBER_ID")
         if missing:
-            raise WhatsAppConfigurationError(f"Missing WhatsApp setting(s): {', '.join(missing)}")
+            raise WhatsAppConfigurationError(
+                f"Missing WhatsApp setting(s): {', '.join(missing)}"
+            )
 
     def _messages_url(self):
         return f"https://graph.facebook.com/{self.api_version}/{self.phone_number_id}/messages"
@@ -605,7 +739,14 @@ class WhatsAppService:
             "error": error_text,
         }
 
-    def _log_disabled_utility_template(self, phone_number, template, body_parameters=None, button_parameter="", **context):
+    def _log_disabled_utility_template(
+        self,
+        phone_number,
+        template,
+        body_parameters=None,
+        button_parameter="",
+        **context,
+    ):
         phone = self.normalize_phone_number(phone_number)
         log = WhatsAppMessageLog.objects.create(
             direction=WhatsAppMessageLog.DIRECTION_OUTBOUND,
@@ -635,7 +776,9 @@ class WhatsAppService:
 
     @staticmethod
     def _api_error_text(response_json, status_code):
-        error = response_json.get("error", {}) if isinstance(response_json, dict) else {}
+        error = (
+            response_json.get("error", {}) if isinstance(response_json, dict) else {}
+        )
         message = error.get("message") or "WhatsApp API error"
         code = error.get("code")
         return f"HTTP {status_code}: {message}" + (f" (code {code})" if code else "")
@@ -643,7 +786,11 @@ class WhatsAppService:
     @staticmethod
     def _model_context(context):
         allowed = {"tenant", "lease", "invoice", "payment", "maintenance_request"}
-        return {key: value for key, value in context.items() if key in allowed and value is not None}
+        return {
+            key: value
+            for key, value in context.items()
+            if key in allowed and value is not None
+        }
 
     @staticmethod
     def _filename_from_url(url):
@@ -737,7 +884,9 @@ class WhatsAppService:
             link_type=link_type,
             phone_number=phone or getattr(tenant, "phone", "") or "",
             tenant=tenant,
-            staff_user=self.created_by if getattr(self.created_by, "is_authenticated", False) else None,
+            staff_user=self.created_by
+            if getattr(self.created_by, "is_authenticated", False)
+            else None,
             target_app_label="leases",
             target_model=target_model,
             target_object_id=getattr(lease, "pk", None),

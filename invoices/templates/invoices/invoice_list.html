@@ -2633,19 +2633,96 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
   };
 
   function invoiceBulkRows() {
+    const parseAmount = value => parseFloat(String(value || '0').replace(/,/g, '')) || 0;
     return Array.from(document.querySelectorAll('.btn-wa-invoice[data-object-id]'))
-      .map(btn => ({
-        id: btn.dataset.objectId,
-        phone: normalizePkPhone(btn.dataset.phone),
-        invoiceNumber: btn.dataset.invno || btn.dataset.objectId,
-        tenant: ((btn.dataset.fname || '') + ' ' + (btn.dataset.lname || '')).trim() || 'Tenant',
-        propertyName: btn.dataset.property || '',
-        unitNumber: btn.dataset.unit || '',
-        dueDate: btn.dataset.due || '',
-        amount: btn.dataset.total || '0.00',
-        status: btn.dataset.status || ''
-      }))
+      .map(btn => {
+        const currentBalance = btn.dataset.totalbal
+          || (parseAmount(btn.dataset.leasebal) + parseAmount(btn.dataset.securitybal))
+            .toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return {
+          id: btn.dataset.objectId,
+          phone: normalizePkPhone(btn.dataset.phone),
+          invoiceNumber: btn.dataset.invno || btn.dataset.objectId,
+          tenant: ((btn.dataset.fname || '') + ' ' + (btn.dataset.lname || '')).trim() || 'Tenant',
+          propertyName: btn.dataset.property || '',
+          unitNumber: btn.dataset.unit || '',
+          issueMonth: btn.dataset.issueMonth || '',
+          dueDate: btn.dataset.due || '',
+          amount: btn.dataset.total || '0.00',
+          currentBalance: currentBalance,
+          currentBalanceValue: parseAmount(currentBalance),
+          status: btn.dataset.status || ''
+        };
+      })
       .filter(row => row.id);
+  }
+
+  function populateInvoiceBulkFilters(rows) {
+    const propertyFilter = document.getElementById('invoice-bulk-property-filter');
+    const monthFilter = document.getElementById('invoice-bulk-month-filter');
+    if (!propertyFilter || !monthFilter) return;
+
+    const currentProperty = propertyFilter.value;
+    const properties = Array.from(new Set(rows.map(row => row.propertyName).filter(Boolean))).sort();
+    propertyFilter.innerHTML = '<option value="">All Properties</option>';
+    properties.forEach(propertyName => {
+      const option = document.createElement('option');
+      option.value = propertyName;
+      option.textContent = propertyName;
+      propertyFilter.appendChild(option);
+    });
+    if (properties.includes(currentProperty)) {
+      propertyFilter.value = currentProperty;
+    }
+  }
+
+  function filteredInvoiceBulkRows() {
+    const rows = window.invoiceBulkAllRows || [];
+    const propertyValue = document.getElementById('invoice-bulk-property-filter')?.value || '';
+    const monthValue = document.getElementById('invoice-bulk-month-filter')?.value || '';
+    return rows.filter(row => {
+      const propertyMatches = !propertyValue || row.propertyName === propertyValue;
+      const monthMatches = !monthValue || row.issueMonth === monthValue;
+      return propertyMatches && monthMatches;
+    });
+  }
+
+  function renderInvoiceBulkRows(rows) {
+    const tbody = document.getElementById('invoice-bulk-selection-body');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="text-center">${index + 1}</td>
+        <td class="text-center"><input type="checkbox" class="form-check-input invoice-bulk-select" data-index="${index}" ${row.phone && row.currentBalanceValue !== 0 ? 'checked' : ''} ${row.phone ? '' : 'disabled'}></td>
+        <td>${row.invoiceNumber}</td>
+        <td>${row.tenant}</td>
+        <td>${row.propertyName} / ${row.unitNumber}</td>
+        <td>${row.dueDate || '-'}</td>
+        <td class="text-end">${row.amount}</td>
+        <td class="text-end">${row.currentBalance}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    window.invoiceBulkSelection = rows;
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No invoices match these filters.</td></tr>';
+    }
+  }
+
+  function refreshInvoiceBulkModalRows() {
+    renderInvoiceBulkRows(filteredInvoiceBulkRows());
+  }
+
+  function bindInvoiceBulkFilterEvents() {
+    ['invoice-bulk-property-filter', 'invoice-bulk-month-filter'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el || el.dataset.bulkFilterBound === '1') return;
+      ['change', 'input'].forEach(eventName => {
+        el.addEventListener(eventName, refreshInvoiceBulkModalRows);
+      });
+      el.dataset.bulkFilterBound = '1';
+    });
   }
 
   function openInvoiceBulkModal() {
@@ -2654,21 +2731,10 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
       alert('No invoices found on this filtered page.');
       return;
     }
-    const tbody = document.getElementById('invoice-bulk-selection-body');
-    tbody.innerHTML = '';
-    rows.forEach((row, index) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="text-center"><input type="checkbox" class="form-check-input invoice-bulk-select" data-index="${index}" ${row.phone ? 'checked' : ''} ${row.phone ? '' : 'disabled'}></td>
-        <td>${row.invoiceNumber}</td>
-        <td>${row.tenant}</td>
-        <td>${row.propertyName} / ${row.unitNumber}</td>
-        <td>${row.dueDate || '-'}</td>
-        <td class="text-end">${row.amount}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-    window.invoiceBulkSelection = rows;
+    window.invoiceBulkAllRows = rows;
+    populateInvoiceBulkFilters(rows);
+    bindInvoiceBulkFilterEvents();
+    refreshInvoiceBulkModalRows();
     const sendButton = document.getElementById('send-selected-invoices');
     if (sendButton) {
       sendButton.onclick = sendSelectedInvoices;
@@ -2715,16 +2781,28 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div class="row g-2 align-items-center mb-2">
+          <div class="col-12 col-md-5">
+            <select id="invoice-bulk-property-filter" class="form-select form-select-sm" title="Property">
+              <option value="">All Properties</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <input type="month" id="invoice-bulk-month-filter" class="form-control form-control-sm" title="Invoice month">
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle">
             <thead>
               <tr>
+                <th class="text-center">Sn</th>
                 <th class="text-center">Send</th>
                 <th>Invoice</th>
                 <th>Tenant</th>
                 <th>Property / Unit</th>
                 <th>Due</th>
                 <th class="text-end">Amount</th>
+                <th class="text-end">Current Balance</th>
               </tr>
             </thead>
             <tbody id="invoice-bulk-selection-body"></tbody>

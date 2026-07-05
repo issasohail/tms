@@ -152,6 +152,14 @@ class WhatsAppWebhookLog(models.Model):
 
 
 class WhatsAppUtilityTemplate(models.Model):
+    LANGUAGE_CHOICES = [
+        ("en", "English (en)"),
+        ("en_US", "English - United States (en_US)"),
+        ("en_GB", "English - United Kingdom (en_GB)"),
+        ("ur", "Urdu (ur)"),
+        ("ar", "Arabic (ar)"),
+    ]
+
     TEMPLATE_CHOICES = [
         ("invoice_notice", "Invoice notice"),
         ("payment_confirmation", "Payment confirmation"),
@@ -179,7 +187,7 @@ class WhatsAppUtilityTemplate(models.Model):
         max_length=120,
         help_text="Approved Meta template name. Usually the same as the key.",
     )
-    language_code = models.CharField(max_length=20, default="en")
+    language_code = models.CharField(max_length=20, choices=LANGUAGE_CHOICES, default="en")
     body_text = models.TextField(
         blank=True,
         help_text="Local reference copy of the approved Meta body. Changing this does not update Meta automatically.",

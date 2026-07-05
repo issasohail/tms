@@ -40,6 +40,7 @@
            data-lname="{{ record.lease.tenant.last_name|default:'' }}"
            data-invno="{{ record.invoice_number|default:'' }}"
            data-issue="{{ record.issue_date|date:'M d, Y' }}"
+           data-issue-month="{{ record.issue_date|date:'Y-m' }}"
            data-due="{{ record.due_date|date:'M d, Y' }}"
            data-property="{{ record.lease.unit.property.property_name|default:'' }}"
            data-unit="{{ record.lease.unit.unit_number|default:'' }}"

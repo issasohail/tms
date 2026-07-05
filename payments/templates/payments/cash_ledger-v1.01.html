@@ -195,29 +195,20 @@ document.addEventListener("click", async function(e){
 
   try {
     const useApi = document.getElementById("payment-use-whatsapp-api")?.checked;
-    const objectId = a.dataset.apiObjectId;
-    if (useApi && objectId) {
-      let apiResponse;
-      let apiData = {};
-      try {
-        apiResponse = await fetch(cashLedgerPaymentApiUrl(objectId), {
-          method: "POST",
-          headers: { "X-CSRFToken": cashLedgerCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
-          credentials: "same-origin"
-        });
-        apiData = await apiResponse.json().catch(() => ({}));
-      } catch (networkErr) {
-        alert("Failed to send via WhatsApp API: " + networkErr.message);
-        return;
-      }
+    if (useApi && a.dataset.apiObjectId) {
+      const apiResponse = await fetch(cashLedgerPaymentApiUrl(a.dataset.apiObjectId), {
+        method: "POST",
+        headers: { "X-CSRFToken": cashLedgerCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      });
+      const apiData = await apiResponse.json().catch(() => ({}));
       if (!apiResponse.ok || apiData.ok === false) {
-        alert("Failed to send via WhatsApp API: " + (apiData.error || `HTTP ${apiResponse.status}`));
-        return;
+        throw new Error(apiData.error || "API send failed");
       }
       alert("Receipt sent via WhatsApp API.");
       return;
     }
-    if (useApi && !objectId) {
+    if (useApi && !a.dataset.apiObjectId) {
       alert("This cash ledger row does not have a direct WhatsApp API send yet. Opening WhatsApp instead.");
     }
 
@@ -238,7 +229,7 @@ document.addEventListener("click", async function(e){
     window.open(waUrl, "_blank");
   } catch (err) {
     console.error(err);
-    alert("Failed to open WhatsApp: " + err.message);
+    alert("Failed to open WhatsApp.");
   }
 }, true);
 </script>

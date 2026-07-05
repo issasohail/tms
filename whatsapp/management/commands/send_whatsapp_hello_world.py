@@ -11,7 +11,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         service = WhatsAppService()
-        result = service.send_template(options["phone"], "hello_world", language_code="en_US")
+        result = service.send_template(options["phone"], "hello_world", language_code="en")
         if not result.get("ok"):
             raise CommandError(result.get("error") or "WhatsApp send failed.")
         self.stdout.write(self.style.SUCCESS(f"WhatsApp hello_world sent. Log ID: {result.get('log_id')}"))

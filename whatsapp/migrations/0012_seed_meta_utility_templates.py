@@ -5,9 +5,9 @@ UTILITY_TEMPLATES = [
     {
         "key": "invoice_notice",
         "template_name": "invoice_notice",
-        "language_code": "en_US",
-        "body_text": "Dear {{1}}, your invoice for {{2}} is ready. Amount: {{3}}. Due date: {{4}}.",
-        "body_variables": ["Tenant name", "Property / Unit", "Invoice amount", "Due date"],
+        "language_code": "en",
+        "body_text": "Dear {{1}}, your invoice for {{2}} unit {{3}} is ready. Amount: {{4}}. Due date: {{5}}.",
+        "body_variables": ["Tenant name", "Property", "Unit", "Invoice amount", "Due date"],
         "button_label": "View Invoice",
         "button_parameter_source": "Signed public invoice token",
         "notes": "Business-initiated invoice notice template used when the 24-hour WhatsApp session is closed.",
@@ -15,7 +15,7 @@ UTILITY_TEMPLATES = [
     {
         "key": "payment_confirmation",
         "template_name": "payment_confirmation",
-        "language_code": "en_US",
+        "language_code": "en",
         "body_text": "Dear {{1}}, payment received for {{2}}. Amount: {{3}}. Receipt: {{4}}.",
         "body_variables": ["Tenant name", "Property / Unit", "Payment amount", "Receipt number"],
         "button_label": "View Receipt",
@@ -25,9 +25,9 @@ UTILITY_TEMPLATES = [
     {
         "key": "balance_reminder",
         "template_name": "balance_reminder",
-        "language_code": "en_US",
-        "body_text": "Dear {{1}}, this is a balance reminder for {{2}}. Outstanding balance: {{3}}.",
-        "body_variables": ["Tenant name", "Property / Unit", "Outstanding balance"],
+        "language_code": "en",
+        "body_text": "Dear {{1}},\n\nOur records show an outstanding balance.\n\nProperty / Unit:\n{{2}}\n\nOutstanding Balance:\nRs. {{3}}\nPlease Pay before {{4}} to avoid Late fees \nPlease review your account using the button below.\n\nThank you.",
+        "body_variables": ["Tenant name", "Property / Unit", "Outstanding balance", "Due date"],
         "button_label": "View Ledger",
         "button_parameter_source": "WhatsAppExternalLinkToken ledger token",
         "notes": "Business-initiated outstanding balance reminder.",
@@ -35,7 +35,7 @@ UTILITY_TEMPLATES = [
     {
         "key": "lease_ledger_link",
         "template_name": "lease_ledger_link",
-        "language_code": "en_US",
+        "language_code": "en",
         "body_text": "Dear {{1}}, your lease ledger for {{2}} is ready.",
         "body_variables": ["Tenant name", "Property / Unit"],
         "button_label": "Open Ledger",
@@ -45,7 +45,7 @@ UTILITY_TEMPLATES = [
     {
         "key": "rent_due_reminder",
         "template_name": "rent_due_reminder",
-        "language_code": "en_US",
+        "language_code": "en",
         "body_text": "Dear {{1}}, rent/payment for {{2}} is due. Amount: {{3}}. Due date: {{4}}.",
         "body_variables": ["Tenant name", "Property / Unit", "Amount due", "Due date"],
         "button_label": "Pay / View Invoice",
@@ -55,7 +55,7 @@ UTILITY_TEMPLATES = [
     {
         "key": "late_fee_reminder",
         "template_name": "late_fee_reminder",
-        "language_code": "en_US",
+        "language_code": "en",
         "body_text": "Dear {{1}}, this is late payment reminder #{{3}} for invoice #{{2}}. Outstanding amount: {{4}}. Due date: {{5}}. Days overdue: {{6}}.",
         "body_variables": ["Tenant name", "Invoice number", "Reminder number", "Outstanding amount", "Due date", "Days overdue"],
         "button_label": "View invoice",
@@ -65,7 +65,7 @@ UTILITY_TEMPLATES = [
     {
         "key": "agreement_ready",
         "template_name": "agreement_ready",
-        "language_code": "en_US",
+        "language_code": "en",
         "body_text": "Dear {{1}}, your agreement for {{2}} is ready.",
         "body_variables": ["Tenant name", "Property / Unit"],
         "button_label": "Open Agreement",

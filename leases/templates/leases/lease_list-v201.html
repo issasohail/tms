@@ -1245,16 +1245,8 @@ function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balanc
         method: "POST",
         headers: { "X-CSRFToken": leaseListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin"
-      }).then(async function(response) {
-        let payload = {};
-        try {
-          payload = await response.json();
-        } catch (_) {
-          payload = {};
-        }
-        if (!response.ok || payload.ok === false) {
-          throw new Error(payload.error || `HTTP ${response.status}`);
-        }
+      }).then(function(response) {
+        if (!response.ok) throw new Error("API send failed");
         alert("WhatsApp reminder sent via API.");
       }).catch(function(error) {
         alert("Failed to send via WhatsApp API: " + error.message);

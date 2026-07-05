@@ -1,6 +1,4 @@
 import logging
-import re
-from calendar import monthrange
 from datetime import timedelta
 from typing import Iterable
 
@@ -355,7 +353,27 @@ class WhatsAppService:
     def send_payment_confirmation(self, payment, phone_number=None, message=None):
         return self.send_receipt(payment, phone_number=phone_number, message=message)
 
-    def send_invoice_notice_template(self, invoice, phone_number=None):
+
+def send_invoice_notice_template(self, invoice, phone_number=None):
+    lease = getattr(invoice, "lease", None)
+    tenant = getattr(lease, "tenant", None)
+    phone = phone_number or getattr(tenant, "phone", "")
+
+    return self.send_utility_template(
+        phone,
+        "invoice_notice",
+        body_parameters=[
+            self._tenant_name(tenant),
+            self._property_unit(lease),  # combined, was 2 separate params before
+            self._money(getattr(invoice, "amount", "")),
+            self._date(getattr(invoice, "due_date", "")),
+        ],
+        tenant=tenant,
+        lease=lease,
+        invoice=invoice,
+    )
+
+    def send_invoice_notice_templatev1(self, invoice, phone_number=None):
         lease = getattr(invoice, "lease", None)
         tenant = getattr(lease, "tenant", None)
         unit = getattr(lease, "unit", None)
@@ -374,8 +392,6 @@ class WhatsAppService:
             or str(unit or "")
         )
 
-        # invoice_notice body variables:
-        # {{1}} tenant, {{2}} property, {{3}} unit, {{4}} amount, {{5}} due date.
         return self.send_utility_template(
             phone,
             "invoice_notice",
@@ -422,8 +438,7 @@ class WhatsAppService:
             body_parameters=[
                 self._tenant_name(tenant),
                 self._property_unit(lease),
-                self._money_amount(self._lease_balance(lease)),
-                self._lease_due_date(lease),
+                self._money(self._lease_balance(lease)),
             ],
             button_parameter=link.token,
             tenant=tenant,
@@ -810,10 +825,7 @@ class WhatsAppService:
                 {
                     "type": "body",
                     "parameters": [
-                        # Meta rejects blank/whitespace-only parameter text with
-                        # 400 (#131008) "Required parameter is missing", so fall
-                        # back to a placeholder rather than sending "".
-                        {"type": "text", "text": str(value).strip() if str(value or "").strip() else "-"}
+                        {"type": "text", "text": str(value or "")}
                         for value in body_parameters
                     ],
                 }
@@ -859,44 +871,6 @@ class WhatsAppService:
             return f"Rs. {float(value):,.2f}"
         except (TypeError, ValueError):
             return str(value)
-
-    @staticmethod
-    def _money_amount(value):
-        if value in {None, ""}:
-            return "0.00"
-        try:
-            return f"{float(value):,.2f}"
-        except (TypeError, ValueError):
-            return str(value)
-
-    @classmethod
-    def _lease_due_date(cls, lease):
-        value = getattr(lease, "due_date", "") or ""
-        if hasattr(value, "strftime"):
-            return cls._date(value)
-
-        match = re.search(r"\d{1,2}", str(value))
-        if not match:
-            return str(value)
-
-        day = int(match.group())
-        if day < 1:
-            return str(value)
-
-        today = timezone.localdate()
-        year = today.year
-        month = today.month
-        max_day = monthrange(year, month)[1]
-        due_day = min(day, max_day)
-        due_date = today.replace(day=due_day)
-
-        if due_date < today:
-            month = 1 if today.month == 12 else today.month + 1
-            year = today.year + 1 if today.month == 12 else today.year
-            max_day = monthrange(year, month)[1]
-            due_date = due_date.replace(year=year, month=month, day=min(day, max_day))
-
-        return cls._date(due_date)
 
     @staticmethod
     def _lease_balance(lease):

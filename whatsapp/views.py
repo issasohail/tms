@@ -53,7 +53,7 @@ class WhatsAppUtilityTemplateForm(forms.ModelForm):
         ]
         widgets = {
             "template_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "language_code": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "language_code": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "body_text": forms.Textarea(attrs={"rows": 7, "class": "form-control form-control-sm"}),
             "body_variables": forms.Textarea(attrs={"rows": 5, "class": "form-control form-control-sm font-monospace"}),
             "button_label": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
@@ -654,7 +654,7 @@ def _send_action(request, service, obj, object_type, action, phone, message_text
         return service.send_template(
             phone,
             getattr(settings, "WHATSAPP_DEFAULT_TEMPLATE_NAME", "hello_world"),
-            language_code=getattr(settings, "WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE", "en_US"),
+            language_code=getattr(settings, "WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE", "en"),
             tenant=tenant,
             lease=lease,
         )
@@ -872,7 +872,7 @@ def send_hello_world_test(request):
     result = service.send_template(
         phone,
         "hello_world",
-        language_code="en_US",
+        language_code="en",
         message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE,
     )
     return JsonResponse(result)

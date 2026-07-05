@@ -1201,6 +1201,22 @@ function whatsappApiUrl(template, objectId) {
   return template.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
 }
 
+function leaseWhatsAppApiErrorMessage(payload, fallback) {
+  const debug = (payload && payload.debug) || {};
+  const lines = [payload?.error || fallback || "API send failed"];
+  if (debug.log_id) lines.push("Log ID: " + debug.log_id);
+  if (debug.template_name) lines.push("Template: " + debug.template_name);
+  if (debug.language_code) lines.push("Language: " + debug.language_code);
+  if (debug.body_parameter_count !== undefined) lines.push("Body params: " + debug.body_parameter_count);
+  if (debug.body_parameters && debug.body_parameters.length) lines.push("Values: " + debug.body_parameters.join(" | "));
+  if (debug.button_parameter) lines.push("Button: " + debug.button_parameter);
+  if (debug.meta_error_code) lines.push("Meta code: " + debug.meta_error_code);
+  if (debug.meta_error_subcode) lines.push("Meta subcode: " + debug.meta_error_subcode);
+  if (debug.meta_error_details) lines.push("Meta detail: " + debug.meta_error_details);
+  if (debug.meta_fbtrace_id) lines.push("fbtrace_id: " + debug.meta_fbtrace_id);
+  return lines.join("\n");
+}
+
 async function postLeaseWhatsAppApi(url) {
   const response = await fetch(url, {
     method: "POST",
@@ -1214,7 +1230,7 @@ async function postLeaseWhatsAppApi(url) {
     payload = {};
   }
   if (!response.ok || payload.ok === false) {
-    throw new Error(payload.error || "API send failed");
+    throw new Error(leaseWhatsAppApiErrorMessage(payload, "HTTP " + response.status));
   }
   return payload;
 }
@@ -1253,7 +1269,7 @@ function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balanc
           payload = {};
         }
         if (!response.ok || payload.ok === false) {
-          throw new Error(payload.error || `HTTP ${response.status}`);
+          throw new Error(leaseWhatsAppApiErrorMessage(payload, `HTTP ${response.status}`));
         }
         alert("WhatsApp reminder sent via API.");
       }).catch(function(error) {

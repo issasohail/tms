@@ -183,6 +183,22 @@ function cashLedgerPaymentApiUrl(objectId) {
   return CASH_LEDGER_PAYMENT_WHATSAPP_API_URL_TEMPLATE.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
 }
 
+function cashLedgerWhatsAppApiErrorMessage(payload, fallback) {
+  const debug = (payload && payload.debug) || {};
+  const lines = [payload?.error || fallback || "API send failed"];
+  if (debug.log_id) lines.push("Log ID: " + debug.log_id);
+  if (debug.template_name) lines.push("Template: " + debug.template_name);
+  if (debug.language_code) lines.push("Language: " + debug.language_code);
+  if (debug.body_parameter_count !== undefined) lines.push("Body params: " + debug.body_parameter_count);
+  if (debug.body_parameters && debug.body_parameters.length) lines.push("Values: " + debug.body_parameters.join(" | "));
+  if (debug.button_parameter) lines.push("Button: " + debug.button_parameter);
+  if (debug.meta_error_code) lines.push("Meta code: " + debug.meta_error_code);
+  if (debug.meta_error_subcode) lines.push("Meta subcode: " + debug.meta_error_subcode);
+  if (debug.meta_error_details) lines.push("Meta detail: " + debug.meta_error_details);
+  if (debug.meta_fbtrace_id) lines.push("fbtrace_id: " + debug.meta_fbtrace_id);
+  return lines.join("\n");
+}
+
 document.addEventListener("click", async function(e){
   const a = e.target.closest(".btn-wa-receipt");
   if (!a) return;
@@ -211,7 +227,7 @@ document.addEventListener("click", async function(e){
         return;
       }
       if (!apiResponse.ok || apiData.ok === false) {
-        alert("Failed to send via WhatsApp API: " + (apiData.error || `HTTP ${apiResponse.status}`));
+        alert("Failed to send via WhatsApp API:\n" + cashLedgerWhatsAppApiErrorMessage(apiData, `HTTP ${apiResponse.status}`));
         return;
       }
       alert("Receipt sent via WhatsApp API.");

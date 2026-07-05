@@ -4,7 +4,8 @@ from django.db import migrations
 UTILITY_TEMPLATES = [
     {
         "key": "invoice_notice",
-        "template_name": "invoice_notice",
+        # Meta has this approved with the misspelled name. Do not correct it.
+        "template_name": "invocice_notice",
         "language_code": "en",
         "body_text": "Dear {{1}}, your invoice for {{2}} unit {{3}} is ready. Amount: {{4}}. Due date: {{5}}.",
         "body_variables": ["Tenant name", "Property", "Unit", "Invoice amount", "Due date"],

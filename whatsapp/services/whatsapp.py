@@ -18,6 +18,12 @@ from whatsapp.models import (
 
 logger = logging.getLogger(__name__)
 
+# Meta template spelling is intentionally different from the local key.
+# Do not "correct" invocice_notice: that is the approved Meta template name.
+META_TEMPLATE_NAME_OVERRIDES = {
+    "invoice_notice": "invocice_notice",
+}
+
 
 class WhatsAppConfigurationError(RuntimeError):
     pass
@@ -116,8 +122,9 @@ class WhatsAppService:
         language_code=None,
         **context,
     ):
+        template_key = template_name
         configured_template = WhatsAppUtilityTemplate.objects.filter(
-            key=template_name
+            key=template_key
         ).first()
         if configured_template:
             if not configured_template.is_active:
@@ -128,8 +135,14 @@ class WhatsAppService:
                     button_parameter=button_parameter or "",
                     **context,
                 )
-            template_name = configured_template.template_name or configured_template.key
+            template_name = (
+                META_TEMPLATE_NAME_OVERRIDES.get(configured_template.key)
+                or configured_template.template_name
+                or configured_template.key
+            )
             language_code = language_code or configured_template.language_code
+        else:
+            template_name = META_TEMPLATE_NAME_OVERRIDES.get(template_key, template_key)
         return self.send_template(
             phone_number,
             template_name,
@@ -652,6 +665,7 @@ class WhatsAppService:
                     "message_type": log.message_type,
                     "template_name": log.template_name,
                     "response": response_json,
+                    "debug": self._send_debug(log, payload, response_json),
                 }
 
             error_text = self._api_error_text(response_json, response.status_code)
@@ -661,7 +675,11 @@ class WhatsAppService:
             log.save(
                 update_fields=["status", "api_response", "error_text", "updated_at"]
             )
-            logger.warning("WhatsApp API request failed: %s", error_text)
+            logger.warning(
+                "WhatsApp API request failed: %s | debug=%s",
+                error_text,
+                self._send_debug(log, payload, response_json),
+            )
             return {
                 "ok": False,
                 "log_id": log.pk,
@@ -669,6 +687,7 @@ class WhatsAppService:
                 "template_name": log.template_name,
                 "error": error_text,
                 "response": response_json,
+                "debug": self._send_debug(log, payload, response_json),
             }
         except requests.RequestException as exc:
             logger.warning("WhatsApp API network error: %s", exc)
@@ -742,6 +761,7 @@ class WhatsAppService:
             "message_type": log.message_type,
             "template_name": log.template_name,
             "error": error_text,
+            "debug": self._send_debug(log, log.payload, log.api_response),
         }
 
     def _log_disabled_utility_template(
@@ -786,7 +806,62 @@ class WhatsAppService:
         )
         message = error.get("message") or "WhatsApp API error"
         code = error.get("code")
-        return f"HTTP {status_code}: {message}" + (f" (code {code})" if code else "")
+        subcode = error.get("error_subcode")
+        details = (
+            error.get("error_data", {}).get("details")
+            if isinstance(error.get("error_data"), dict)
+            else ""
+        )
+        text = f"HTTP {status_code}: {message}"
+        if code:
+            text += f" (code {code})"
+        if subcode:
+            text += f" (subcode {subcode})"
+        if details:
+            text += f" - {details}"
+        return text
+
+    @staticmethod
+    def _send_debug(log, payload, response_json=None):
+        template = payload.get("template") or {}
+        language = template.get("language") or {}
+        components = template.get("components") or []
+        body_component = next(
+            (item for item in components if item.get("type") == "body"),
+            {},
+        )
+        body_params = body_component.get("parameters") or []
+        button_components = [
+            item for item in components if item.get("type") == "button"
+        ]
+        error = (
+            response_json.get("error", {})
+            if isinstance(response_json, dict)
+            else {}
+        )
+        return {
+            "log_id": getattr(log, "pk", None),
+            "phone_number": payload.get("to", ""),
+            "message_type": payload.get("type", ""),
+            "template_name": template.get("name") or getattr(log, "template_name", ""),
+            "language_code": language.get("code", ""),
+            "body_parameter_count": len(body_params),
+            "body_parameters": [
+                (param.get("text", "") if isinstance(param, dict) else str(param))
+                for param in body_params
+            ],
+            "button_parameter": getattr(log, "button_parameter", ""),
+            "button_component_count": len(button_components),
+            "meta_error_code": error.get("code"),
+            "meta_error_subcode": error.get("error_subcode"),
+            "meta_error_type": error.get("type"),
+            "meta_error_details": (
+                error.get("error_data", {}).get("details")
+                if isinstance(error.get("error_data"), dict)
+                else ""
+            ),
+            "meta_fbtrace_id": error.get("fbtrace_id"),
+        }
 
     @staticmethod
     def _model_context(context):

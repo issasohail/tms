@@ -361,19 +361,19 @@
       <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-success"><i class="fas fa-sync-alt"></i> Renew</a>
       <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-sm btn-warning"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
-      <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-outline-warning"><i class="fas fa-clock"></i> Late Fees</a>
-      <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-clipboard-check"></i> Inspections</a>
+      <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-clock"></i> Late Fees</a>
+      <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-dark"><i class="fas fa-clipboard-check"></i> Inspections</a>
       <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" class="btn btn-sm btn-success"><i class="fab fa-whatsapp"></i> WA</a>
       {% include "whatsapp/_dropdown.html" with phone=lease.tenant.phone object_type="lease" object_id=lease.pk %}
       {% if lease.status == "active" %}
-        <button type="button" class="btn btn-sm btn-outline-primary" data-maintenance-link="{{ public_maintenance_url }}" id="copyMaintenanceLinkBtn">
+        <button type="button" class="btn btn-sm btn-primary" data-maintenance-link="{{ public_maintenance_url }}" id="copyMaintenanceLinkBtn">
           <i class="fas fa-link"></i> Copy Maintenance Link
         </button>
         <a href="https://wa.me/?text={{ public_maintenance_whatsapp_text|urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-success">
           <i class="fab fa-whatsapp"></i> Share Maintenance Link
         </a>
       {% endif %}
-      <a href="{% url 'leases:police_verification_summary_pdf' lease.pk %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-file-pdf"></i> Police PDF</a>
+      <a href="{% url 'leases:police_verification_summary_pdf' lease.pk %}" class="btn btn-sm btn-dark"><i class="fas fa-file-pdf"></i> Police PDF</a>
       <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i> Print</a>
       {% if lease.generated_agreement_pdf %}
         <button onclick="sendEmail()" class="btn btn-sm btn-info"><i class="fas fa-envelope"></i> Email</button>
@@ -772,12 +772,12 @@
                   </td>
                   <td class="no-print">
                     <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                      <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
-                      <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-primary">Edit</a>
-                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-secondary">Clauses</a>
-                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-dark">Generate PDF</a>
-                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-success">Upload Signed</a>
-                      <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-outline-dark">Photos</a>
+                      <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-dark">View</a>
+                      <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-primary">Edit</a>
+                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-secondary">Clauses</a>
+                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-dark">Generate PDF</a>
+                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-success">Upload Signed</a>
+                      <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-dark">Photos</a>
                     </div>
                   </td>
                 </tr>
@@ -854,7 +854,7 @@
           <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>Family Members</span>
             <div class="d-flex flex-wrap gap-1">
-              <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="collapse" data-bs-target="#leaseFamilyPublicLinkBox">
+              <button type="button" class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#leaseFamilyPublicLinkBox">
                 <i class="fas fa-link"></i> Public Link
               </button>
               <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#leaseFamilyAddBox">
@@ -867,16 +867,16 @@
               <div class="input-group input-group-sm">
                 <span class="input-group-text fw-semibold">Family Update Link</span>
                 <input id="leaseFamilyPublicLinkInput" type="text" class="form-control text-break" readonly onclick="this.select();" placeholder="Generate a public family link">
-                <button class="btn btn-outline-primary" type="button" id="generateFamilyPublicLinkBtn" data-link-url="{% url 'leases:lease_family_public_link' lease.pk %}">
+                <button class="btn btn-primary" type="button" id="generateFamilyPublicLinkBtn" data-link-url="{% url 'leases:lease_family_public_link' lease.pk %}">
                   <i class="fas fa-link me-1"></i> Generate
                 </button>
-                <button class="btn btn-outline-primary" type="button" id="copyFamilyPublicLinkBtn">
+                <button class="btn btn-primary" type="button" id="copyFamilyPublicLinkBtn">
                   <i class="far fa-copy me-1"></i> Copy
                 </button>
-                <a class="btn btn-outline-success disabled" id="whatsappFamilyPublicLinkBtn" href="#" target="_blank" rel="noopener">
+                <a class="btn btn-success disabled" id="whatsappFamilyPublicLinkBtn" href="#" target="_blank" rel="noopener">
                   <i class="fab fa-whatsapp me-1"></i> WhatsApp
                 </a>
-                <a class="btn btn-outline-dark disabled" id="openFamilyPublicLinkBtn" href="#" target="_blank" rel="noopener">
+                <a class="btn btn-dark disabled" id="openFamilyPublicLinkBtn" href="#" target="_blank" rel="noopener">
                   <i class="fas fa-external-link-alt me-1"></i> Open
                 </a>
               </div>
@@ -904,7 +904,7 @@
                 </div>
                 <div class="col-12 col-lg-3 d-flex flex-wrap gap-1">
                   <button type="submit" class="btn btn-sm btn-success flex-fill">Link Tenant</button>
-                  <button type="button" class="btn btn-sm btn-outline-primary flex-fill" id="openNewFamilyModalBtn">Add New</button>
+                  <button type="button" class="btn btn-sm btn-primary flex-fill" id="openNewFamilyModalBtn">Add New</button>
                 </div>
               </form>
               <div class="form-text" id="leaseFamilySearchHelp">Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.</div>
@@ -936,11 +936,11 @@
                     <td>{{ member.family_member.age|default:"&mdash;" }}</td>
                     <td class="no-print">
                       <div class="d-flex flex-wrap gap-1">
-                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">View</a>
-                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
+                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-primary">Edit</a>
                         <form method="post" action="{% url 'leases:lease_family_remove' lease.pk member.pk %}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
                           {% csrf_token %}
-                          <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                          <button type="submit" class="btn btn-sm btn-danger">Remove</button>
                         </form>
                       </div>
                     </td>
@@ -1039,7 +1039,7 @@
             <div class="d-flex flex-wrap gap-2 mb-3 no-print">
               <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-primary" title="Share all active files on WhatsApp">
+                <button type="submit" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
                   <i class="fab fa-whatsapp"> Share All files</i>
                 </button>
               </form>
@@ -1072,26 +1072,26 @@
                   </div>
                   <div class="ld-file-actions no-print">
                     {% if doc.file_exists %}
-                      <a class="btn btn-sm btn-outline-secondary ld-file-action-btn" target="_blank" rel="noopener" href="{% url 'leases:lease_file_view' doc.pk %}" title="View">
+                      <a class="btn btn-sm btn-secondary ld-file-action-btn" target="_blank" rel="noopener" href="{% url 'leases:lease_file_view' doc.pk %}" title="View">
                         <i class="fas fa-eye"></i>
                       </a>
-                      <a class="btn btn-sm btn-outline-success ld-file-action-btn" href="{% url 'leases:lease_file_download' doc.pk %}" title="Download">
+                      <a class="btn btn-sm btn-success ld-file-action-btn" href="{% url 'leases:lease_file_download' doc.pk %}" title="Download">
                         <i class="fas fa-download ld-file-icon-download"></i>
                       </a>
                     {% else %}
-                      <button class="btn btn-sm btn-outline-secondary ld-file-action-btn" type="button" disabled title="File missing">
+                      <button class="btn btn-sm btn-secondary ld-file-action-btn" type="button" disabled title="File missing">
                         <i class="fas fa-exclamation-triangle"></i>
                       </button>
                     {% endif %}
                     <form method="post" action="{% url 'leases:lease_file_share_one' doc.pk %}">
                       {% csrf_token %}
-                      <button type="submit" class="btn btn-sm btn-outline-primary ld-file-action-btn" title="Share on WhatsApp">
+                      <button type="submit" class="btn btn-sm btn-primary ld-file-action-btn" title="Share on WhatsApp">
                         <i class="fab fa-whatsapp ld-file-icon-whatsapp"></i>
                       </button>
                     </form>
                     <form method="post" action="{% url 'leases:lease_file_deactivate' doc.pk %}" onsubmit="return confirm('Delete this file from the active list?');">
                       {% csrf_token %}
-                      <button type="submit" class="btn btn-sm btn-outline-danger ld-file-action-btn" title="Delete">
+                      <button type="submit" class="btn btn-sm btn-danger ld-file-action-btn" title="Delete">
                         <i class="fas fa-trash-alt"></i>
                       </button>
                     </form>
@@ -1113,7 +1113,7 @@
             <span>Lease Inspection Sheets</span>
             <div class="d-flex flex-wrap gap-1 no-print">
               <a class="btn btn-sm btn-primary" href="{% url 'leases:lease_inspection_create' lease.pk %}">Create Inspection</a>
-              <a class="btn btn-sm btn-outline-dark" href="{% url 'leases:inspection_compare' lease.pk %}">Compare</a>
+              <a class="btn btn-sm btn-dark" href="{% url 'leases:inspection_compare' lease.pk %}">Compare</a>
             </div>
           </div>
           <div class="ld-tw">
@@ -1138,12 +1138,16 @@
                     <td>{{ inspection.completion_percent }}%</td>
                     <td class="no-print">
                       <div class="d-flex flex-wrap gap-1">
-                        <a class="btn btn-sm btn-outline-dark" href="{% url 'leases:inspection_detail' inspection.pk %}">View</a>
-                        <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:inspection_edit' inspection.pk %}">Edit</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'leases:inspection_pdf' inspection.pk %}">Print</a>
+                        <a class="btn btn-sm btn-dark" href="{% url 'leases:inspection_detail' inspection.pk %}">View</a>
+                        <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_edit' inspection.pk %}">Edit</a>
+                        <a class="btn btn-sm btn-secondary" href="{% url 'leases:inspection_pdf' inspection.pk %}">Print</a>
                         <form method="post" action="{% url 'leases:inspection_public_link' inspection.pk %}">
                           {% csrf_token %}
-                          <button class="btn btn-sm btn-outline-success" type="submit">Public Link</button>
+                          <button class="btn btn-sm btn-success" type="submit">Public Link</button>
+                        </form>
+                        <form method="post" action="{% url 'leases:inspection_send_sheet' inspection.pk %}" target="_blank">
+                          {% csrf_token %}
+                          <button class="btn btn-sm btn-success" type="submit"><i class="fab fa-whatsapp"></i> Send Sheet</button>
                         </form>
                         <form method="post" action="{% url 'leases:inspection_approve' inspection.pk %}">
                           {% csrf_token %}
@@ -1332,11 +1336,11 @@
       <td>${esc(data.age || '—')}</td>
       <td class="no-print">
         <div class="d-flex flex-wrap gap-1">
-          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-outline-dark">View</a>
-          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-outline-primary">Edit</a>
+          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-dark">View</a>
+          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-primary">Edit</a>
           <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
             <input type="hidden" name="csrfmiddlewaretoken" value="${esc(csrf)}">
-            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
           </form>
         </div>
       </td>`;

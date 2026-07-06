@@ -1005,6 +1005,12 @@ def build_payment_receipt_message(request, pay):
         sec_required = totals["required"] or 0
         sec_balance_to_collect = totals["balance_to_collect"] or 0
         sec_status = "Paid" if sec_balance_to_collect <= 0 else "Pending"
+        lease_balance = getattr(lease, "get_balance", Decimal("0.00")) or Decimal("0.00")
+        if callable(lease_balance):
+            lease_balance = lease_balance()
+        new_balance = Decimal(str(lease_balance or 0)) + Decimal(str(sec_balance_to_collect or 0))
+    else:
+        new_balance = Decimal("0.00")
 
     lines = [
         f"Dear {first_name},",
@@ -1035,6 +1041,7 @@ def build_payment_receipt_message(request, pay):
     lines.extend([
         f"*Amount: Rs. {float(amount):,.2f}*",
         f"Balance: Rs. {float(balance):,.2f}",
+        f"New Balance: Rs. {float(new_balance):,.2f}",
         "",
         "Thank you!",
     ])

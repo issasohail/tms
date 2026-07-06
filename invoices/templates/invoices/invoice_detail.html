@@ -26,12 +26,15 @@
       <a href="{% url 'invoices:invoice_pdf' invoice.pk %}" class="btn btn-secondary btn-sm">
         <i class="fas fa-file-pdf me-1"></i> PDF
       </a>
+      <label class="form-check form-check-inline small mb-0 align-self-center" title="Use WhatsApp Cloud API instead of opening WhatsApp">
+        <input class="form-check-input" type="checkbox" id="invoice-use-whatsapp-api">
+        <span class="form-check-label">Use WhatsApp API</span>
+      </label>
       <button
         class="btn btn-success btn-sm"
         onclick="sendWhatsAppSingleInvoice('{{ invoice.lease.tenant.phone|default:''|escapejs }}')">
         <i class="fab fa-whatsapp me-1"></i> WhatsApp
       </button>
-      {% include "whatsapp/_dropdown.html" with phone=invoice.lease.tenant.phone object_type="invoice" object_id=invoice.pk %}
     </div>
 
     {# Right cluster: record actions #}
@@ -617,6 +620,38 @@ function sendSMS() {
 /* ── WhatsApp ── */
 function sendWhatsAppSingleInvoice(phone) {
   if (!phone || !String(phone).trim()) { alert('No phone number available for WhatsApp.'); return; }
+  const useApi = document.getElementById('invoice-use-whatsapp-api')?.checked;
+  if (useApi) {
+    sendInvoiceViaWhatsAppApi(phone);
+    return;
+  }
+  sendInvoiceViaNormalWhatsApp(phone);
+}
+
+function sendInvoiceViaWhatsAppApi(fallbackPhone) {
+  const url = "{% url 'whatsapp:send_object_message' 'invoice' invoice.pk 'invoice' %}";
+  const csrfToken = document.querySelector('#csrf-form [name=csrfmiddlewaretoken]')?.value || document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/)?.[2] || '';
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': decodeURIComponent(csrfToken),
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+  .then(({ok, payload}) => {
+    if (!ok || !payload.ok) {
+      throw new Error(payload.error || 'WhatsApp API send failed.');
+    }
+    alert('Invoice sent via WhatsApp API.');
+  })
+  .catch(error => {
+    alert('WhatsApp API failed. Opening normal WhatsApp instead.\n\n' + (error.message || 'Unknown error'));
+    sendInvoiceViaNormalWhatsApp(fallbackPhone);
+  });
+}
+
+function sendInvoiceViaNormalWhatsApp(phone) {
   let p = String(phone).replace(/[^\d]/g, '');
   if (!p) { alert('No valid phone number.'); return; }
   if (p.startsWith('0')) p = '92' + p.substring(1);

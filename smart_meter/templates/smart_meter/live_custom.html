@@ -68,18 +68,18 @@
   @media (max-width: 576px) {
     :root {
       --w-sno: 18px;
-      --w-prop: 62px;
+      --w-prop: 54px;
       --w-unit: 70px;
       --w-tenant: 90px;
-      --w-meter: 110px;
+      --w-meter: 96px;
       /* wider to fit 3-controls block beneath */
       --w-status: 108px;
       /* hidden on small, value not critical */
       --w-power: 118px;
       /* hidden on small unless you re-enable */
 
-      --w-updated: 80px;
-      --w-total-energy: 80px;
+      --w-updated: 66px;
+      --w-total-energy: 76px;
 
       --row-font: .58rem;
       --row-pad-y: .20rem;
@@ -124,11 +124,11 @@
       --filter-maxw: 180px;
 
       --w-sno: 18px;
-      --w-prop: 62px;
+      --w-prop: 50px;
       --w-tenant: 80px;
-      --w-meter: 80px;
-      --w-updated: 60px;
-      --w-total-energy: 80px;
+      --w-meter: 88px;
+      --w-updated: 58px;
+      --w-total-energy: 72px;
       --w-total-power: 40px;
       --w-pf: 40px;
 
@@ -233,6 +233,7 @@
   td.col-prop {
     min-width: var(--w-prop);
     width: var(--w-prop);
+    max-width: var(--w-prop);
   }
 
   th.col-unit,
@@ -253,6 +254,7 @@
   td.col-meter {
     min-width: var(--w-meter);
     width: var(--w-meter);
+    max-width: var(--w-meter);
   }
 
   th.col-status,
@@ -386,10 +388,26 @@
   .meter-chip-danger { border-color: rgba(220,53,69,.60); }
   .meter-chip-info { border-color: rgba(13,202,240,.60); }
   @media (max-width: 576px) {
-    .meter-chip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; }
-    .meter-chip { padding: .38rem .42rem; border-radius: .5rem; }
-    .meter-chip-label { font-size: .58rem; }
-    .meter-chip-count { font-size: .78rem; }
+    .meter-chip-grid {
+      grid-template-columns: repeat(20, minmax(0, 1fr));
+      gap: .25rem;
+    }
+    .meter-chip {
+      grid-column: span 4;
+      min-width: 0;
+      padding: .28rem .22rem;
+      border-radius: .45rem;
+      gap: .16rem;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .meter-chip:nth-child(n+6) {
+      grid-column: span 5;
+    }
+    .meter-chip-label { font-size: .50rem; line-height: 1.0; }
+    .meter-chip-count { font-size: .72rem; line-height: 1; }
   }
 
   /* Buttons & filters */
@@ -521,12 +539,23 @@
     }
 
     /* Property cell: show Unit and tenant beneath */
+    th.col-prop,
+    td.col-prop {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .col-prop .mobile-unit {
       display: block;
       font-size: .52rem;
       opacity: .85;
       margin-top: .12rem;
       line-height: 1.0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .col-prop .mobile-tenant {
@@ -535,6 +564,10 @@
       opacity: .85;
       margin-top: .12rem;
       line-height: 1.0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     /* METER COLUMN: show 3 controls beneath (Online badge, Power badge, Toggle) */
@@ -741,6 +774,55 @@
       if (flash && typeof flashCell === "function") flashCell(td);
     }
   }
+
+  function fmtLiveMetric(value, suffix) {
+    if (value === null || value === undefined || value === "") return "-";
+    const text = String(value).trim();
+    return suffix ? `${text} ${suffix}` : text;
+  }
+
+  function setTotalEnergyCell(tr, energy, voltage, current, flash = true) {
+    const td = tr.querySelector('td[data-col="total_energy"]');
+    if (!td) return;
+
+    const prevNum = toNum(td.dataset.prevNum);
+    const nextNum = toNum(energy);
+    const energyText = fmtLiveMetric(energy, "kWh");
+    const voltageText = `V: ${fmtLiveMetric(voltage, "V")}`;
+    const currentText = `I: ${fmtLiveMetric(current, "A")}`;
+
+    const mainNode = td.querySelector(".total-energy-main");
+    const prevText = mainNode ? mainNode.textContent.trim() : (td.childNodes[0]?.textContent || td.textContent || "").trim();
+
+    if (prevText !== energyText || td.querySelector(".mobile-voltage")?.textContent !== voltageText || td.querySelector(".mobile-current")?.textContent !== currentText) {
+      let dir = null;
+      if (prevNum !== null && nextNum !== null) {
+        if (nextNum > prevNum) dir = "up";
+        else if (nextNum < prevNum) dir = "down";
+      }
+
+      td.innerHTML = "";
+      const energySpan = document.createElement("span");
+      energySpan.className = "total-energy-main";
+      energySpan.textContent = energyText;
+      td.appendChild(energySpan);
+
+      const voltageSpan = document.createElement("span");
+      voltageSpan.className = "mobile-voltage";
+      voltageSpan.textContent = voltageText;
+      td.appendChild(voltageSpan);
+
+      const currentSpan = document.createElement("span");
+      currentSpan.className = "mobile-current";
+      currentSpan.textContent = currentText;
+      td.appendChild(currentSpan);
+
+      if (nextNum !== null) td.dataset.prevNum = String(nextNum);
+      else td.dataset.prevNum = "";
+      setDelta(energySpan, dir);
+      if (flash && typeof flashCell === "function") flashCell(td);
+    }
+  }
 </script>
 
 <script>
@@ -836,7 +918,7 @@
 
         setCell(tr, "source_ip", r.source_ip);
         setCell(tr, "port", r.port);
-        setNumericCellWithDelta(tr, "total_energy", r.total_energy, true);
+        setTotalEnergyCell(tr, r.total_energy, r.voltage_a, r.current_a, true);
         setNumericCellWithDelta(tr, "voltage_a", r.voltage_a, true);
         setNumericCellWithDelta(tr, "current_a", r.current_a, true);
         setNumericCellWithDelta(tr, "total_power", r.total_power, true);
@@ -1496,7 +1578,7 @@
 
             <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
             <td class="text-right" data-col="total_energy">
-              {{ r.total_energy|default:"—" }} kWh
+              <span class="total-energy-main">{{ r.total_energy|default:"—" }} kWh</span>
               <span class="mobile-voltage">V: {{ r.voltage_a|default:"—" }} V</span>
               <span class="mobile-current">I: {{ r.current_a|default:"—" }} A</span>
             </td>
@@ -1525,5 +1607,160 @@
 
 <!-- Secondary dialog tag kept for safety; stays hidden -->
 <dialog id="colsDlg" style="display:none"></dialog>
+
+<style>
+  /* Final mobile table-only tightening. Keeps chips and filters unchanged. */
+  @media (max-width: 576px) {
+    #captureArea .card .table-responsive {
+      overflow-x: hidden;
+    }
+
+    #captureArea table.table-compact {
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+      font-size: .50rem;
+    }
+
+    #captureArea table.table-compact th,
+    #captureArea table.table-compact td {
+      padding: .12rem .10rem !important;
+      line-height: 1.05;
+      overflow: hidden;
+      vertical-align: middle;
+    }
+
+    #captureArea table.table-compact th.sno,
+    #captureArea table.table-compact td.sno {
+      width: 18px !important;
+      min-width: 18px !important;
+      max-width: 18px !important;
+    }
+
+    #captureArea table.table-compact th.col-prop,
+    #captureArea table.table-compact td.col-prop {
+      width: 52px !important;
+      min-width: 52px !important;
+      max-width: 52px !important;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    #captureArea table.table-compact th.col-meter,
+    #captureArea table.table-compact td.col-meter {
+      width: 84px !important;
+      min-width: 84px !important;
+      max-width: 84px !important;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    #captureArea table.table-compact th[data-col="updated"],
+    #captureArea table.table-compact td[data-col="updated"] {
+      width: 58px !important;
+      min-width: 58px !important;
+      max-width: 58px !important;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    #captureArea table.table-compact th[data-col="total_energy"],
+    #captureArea table.table-compact td[data-col="total_energy"] {
+      width: 84px !important;
+      min-width: 84px !important;
+      max-width: 84px !important;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-unit,
+    #captureArea table.table-compact .col-prop .mobile-tenant {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1;
+      margin-top: .08rem;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-unit {
+      font-size: .43rem;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-tenant {
+      font-size: .40rem;
+    }
+
+    #captureArea table.table-compact .col-meter .mobile-actions {
+      flex-wrap: nowrap;
+      gap: 1px;
+      margin-top: .08rem;
+    }
+
+    #captureArea table.table-compact .col-meter .mobile-actions .badge,
+    #captureArea table.table-compact .col-meter .mobile-actions .btn {
+      font-size: .42rem;
+      padding: .08rem .12rem;
+      line-height: 1;
+    }
+
+    #captureArea table.table-compact .col-meter .mobile-actions .btn {
+      width: 15px;
+      height: 15px;
+      min-width: 15px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"] .total-energy-main,
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-voltage,
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-current {
+      display: block;
+      line-height: 1.08;
+      white-space: nowrap;
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"] .total-energy-main {
+      font-size: .48rem;
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-voltage,
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-current {
+      font-size: .42rem;
+      margin-top: .06rem;
+    }
+  }
+
+  @media (max-width: 360px) {
+    #captureArea table.table-compact th.col-prop,
+    #captureArea table.table-compact td.col-prop {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+    }
+
+    #captureArea table.table-compact th.col-meter,
+    #captureArea table.table-compact td.col-meter {
+      width: 80px !important;
+      min-width: 80px !important;
+      max-width: 80px !important;
+    }
+
+    #captureArea table.table-compact th[data-col="updated"],
+    #captureArea table.table-compact td[data-col="updated"] {
+      width: 56px !important;
+      min-width: 56px !important;
+      max-width: 56px !important;
+    }
+
+    #captureArea table.table-compact th[data-col="total_energy"],
+    #captureArea table.table-compact td[data-col="total_energy"] {
+      width: 80px !important;
+      min-width: 80px !important;
+      max-width: 80px !important;
+    }
+  }
+</style>
 
 {% endblock %}

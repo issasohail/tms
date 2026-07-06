@@ -42,10 +42,13 @@
             <button onclick="sendSMS()" class="btn btn-warning btn-sm me-1">
                 <i class="fas fa-sms me-1"></i> SMS
             </button>
+            <label class="form-check form-check-inline small mb-0 align-self-center me-1" title="Use WhatsApp Cloud API instead of opening WhatsApp">
+                <input class="form-check-input" type="checkbox" id="payment-use-whatsapp-api">
+                <span class="form-check-label">WhatsApp API</span>
+            </label>
             <button onclick="sendWhatsApp()" class="btn btn-success btn-sm me-1">
                 <i class="fab fa-whatsapp me-1"></i> WhatsApp
             </button>
-            {% include "whatsapp/_dropdown.html" with phone=payment.lease.tenant.phone object_type="payment" object_id=payment.pk %}
 
             
         </div>
@@ -441,6 +444,12 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
     }
 
     function sendWhatsApp() {
+        const useApi = document.getElementById('payment-use-whatsapp-api')?.checked;
+        if (useApi) {
+            sendWhatsAppReceiptViaApi();
+            return;
+        }
+
         let rawPhone = "{{ payment.lease.tenant.phone|default:''|escapejs }}";
 
         if (!rawPhone.trim()) {
@@ -502,6 +511,27 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
         // WhatsApp expects full international number without '+' in the phone= param
         const waUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
         window.open(waUrl, '_blank');
+    }
+
+    function sendWhatsAppReceiptViaApi() {
+        const url = "{% url 'whatsapp:send_object_message' 'payment' payment.pk 'receipt' %}";
+        fetch(url, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": "{{ csrf_token }}",
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+        .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+        .then(({ok, payload}) => {
+            if (!ok || !payload.ok) {
+                throw new Error(payload.error || "WhatsApp API send failed.");
+            }
+            alert("Payment receipt sent via WhatsApp API.");
+        })
+        .catch(error => {
+            alert("Could not send receipt via WhatsApp API: " + (error.message || "Unknown error"));
+        });
     }
 </script>
 

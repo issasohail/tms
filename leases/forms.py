@@ -524,6 +524,7 @@ class InspectionItemForm(forms.ModelForm):
         fields = [
             "category",
             "item_name",
+            "default_quantity",
             "display_order",
             "required",
             "allow_photos",
@@ -534,6 +535,7 @@ class InspectionItemForm(forms.ModelForm):
         widgets = {
             "category": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "item_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "default_quantity": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1"}),
             "display_order": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
             "required": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "allow_photos": forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -644,8 +646,9 @@ class InspectionDetailForm(forms.ModelForm):
 
     class Meta:
         model = InspectionDetail
-        fields = ["status_choice", "remarks", "damage_cost"]
+        fields = ["quantity", "status_choice", "remarks", "damage_cost"]
         widgets = {
+            "quantity": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1"}),
             "remarks": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 1}),
             "damage_cost": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
         }

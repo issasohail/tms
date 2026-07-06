@@ -91,11 +91,12 @@
 
     <div class="tab-pane fade" id="tab-items">
       <div class="table-responsive"><table class="table table-sm table-bordered mb-0">
-        <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Category</th><th>Item</th><th style="width:90px;">Order</th><th>Required</th><th>Photos</th><th>Cost</th><th>Notes</th><th>Active</th></tr></thead>
+        <thead class="table-light"><tr><th style="width:45px;">SN</th><th>Category</th><th>Item</th><th style="width:80px;">Qty</th><th style="width:90px;">Order</th><th>Required</th><th>Photos</th><th>Cost</th><th>Notes</th><th>Active</th></tr></thead>
         <tbody>{% for row in items %}<tr data-kind="items" data-pk="{{ row.pk }}">
           <td>{{ forloop.counter }}</td>
           <td class="inspection-category-cell"><span class="js-setting-display">{{ row.category.name }}</span><select class="form-select form-select-sm js-setting js-setting-editor" data-field="category">{% for cat in categories %}<option value="{{ cat.pk }}" {% if row.category_id == cat.pk %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></td>
           <td><span class="js-setting-display">{{ row.item_name }}</span><input class="form-control form-control-sm js-setting js-setting-editor" data-field="item_name" value="{{ row.item_name }}"></td>
+          <td><span class="js-setting-display">{{ row.default_quantity }}</span><input type="number" min="1" class="form-control form-control-sm js-setting js-setting-editor" data-field="default_quantity" value="{{ row.default_quantity }}"></td>
           <td><span class="js-setting-display">{{ row.display_order }}</span><input type="number" class="form-control form-control-sm js-setting js-setting-editor" data-field="display_order" value="{{ row.display_order }}"></td>
           <td><span class="js-setting-display">{% if row.required %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="required" {% if row.required %}checked{% endif %}></td>
           <td><span class="js-setting-display">{% if row.allow_photos %}Yes{% else %}No{% endif %}</span><input type="checkbox" class="form-check-input js-setting-check js-setting-editor" data-field="allow_photos" {% if row.allow_photos %}checked{% endif %}></td>

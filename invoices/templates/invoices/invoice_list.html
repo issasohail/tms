@@ -14,37 +14,41 @@
       <i class="fas fa-plus"></i><span class="btn-label"> New Invoice</span>
     </a>
 
-    <div class="export-group">{% include "includes/export_buttons.html" %}</div>
-
-    <a href="{% url 'invoices:generate_monthly' %}" class="btn btn-success">
-      <i class="fas fa-file-invoice-dollar"></i><span class="btn-label"> Generate Billing</span>
-    </a>
-
-    <form method="post" action="{% url 'invoices:monthly_billing_invoice_list_action' %}" class="d-inline-flex align-items-center gap-1 js-invoice-billing-action-form">
-      {% csrf_token %}
-      <div class="input-group input-group-sm invoice-auto-billing-group">
-        <span class="input-group-text">Auto</span>
-        <input type="month" name="month" class="form-control" required title="Billing month">
-        <button type="submit" name="action" value="preflight" class="btn btn-outline-primary" title="Run monthly billing preflight">
-          <i class="fas fa-search"></i><span class="btn-label"> Preflight</span>
-        </button>
-        <button type="submit" name="action" value="generate" class="btn btn-outline-success" title="Generate monthly billing run">
-          <i class="fas fa-cogs"></i><span class="btn-label"> Generate</span>
-        </button>
-        <button type="submit" name="action" value="send_ready" class="btn btn-outline-success" title="Generate PDFs and send ready invoices"
-                onclick="return confirm('Send all Ready to Send invoices for the selected month through WhatsApp?');">
-          <i class="fab fa-whatsapp"></i><span class="btn-label"> Send Ready</span>
-        </button>
-        <button type="submit" name="action" value="retry_failed" class="btn btn-outline-danger" title="Retry failed WhatsApp sends"
-                onclick="return confirm('Retry failed WhatsApp invoice sends for the selected month?');">
-          <i class="fas fa-sync-alt"></i><span class="btn-label"> Retry</span>
-        </button>
+    <div class="dropdown invoice-monthly-dropdown">
+      <button class="btn btn-success dropdown-toggle" type="button" id="invoiceMonthlyBillingMenu" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fas fa-file-invoice-dollar"></i><span class="btn-label"> Monthly Billing</span>
+      </button>
+      <div class="dropdown-menu dropdown-menu-end invoice-toolbar-menu p-2" aria-labelledby="invoiceMonthlyBillingMenu">
+        <a href="{% url 'invoices:monthly_billing_run_list' %}" class="dropdown-item">
+          <i class="fas fa-list me-2"></i>Auto Monthly List
+        </a>
+        <form method="post" action="{% url 'invoices:monthly_billing_invoice_list_action' %}" class="js-invoice-billing-action-form mt-2">
+          {% csrf_token %}
+          <label class="form-label small text-muted mb-1" for="invoice-monthly-billing-month">Billing month</label>
+          <input type="month" name="month" id="invoice-monthly-billing-month" class="form-control form-control-sm mb-2" required title="Billing month">
+          <div class="invoice-dropdown-action-grid">
+            <button type="submit" name="action" value="preflight" class="btn btn-outline-primary btn-sm" title="Run monthly billing preflight">
+              <i class="fas fa-search"></i><span class="btn-label"> Preflight</span>
+            </button>
+            <button type="submit" name="action" value="generate" class="btn btn-outline-success btn-sm" title="Generate monthly billing run">
+              <i class="fas fa-cogs"></i><span class="btn-label"> Generate</span>
+            </button>
+            <button type="submit" name="action" value="send_ready" class="btn btn-outline-success btn-sm" title="Generate PDFs and send ready invoices"
+                    onclick="return confirm('Send all Ready to Send invoices for the selected month through WhatsApp?');">
+              <i class="fab fa-whatsapp"></i><span class="btn-label"> Send Ready</span>
+            </button>
+            <button type="submit" name="action" value="retry_failed" class="btn btn-outline-danger btn-sm" title="Retry failed WhatsApp sends"
+                    onclick="return confirm('Retry failed WhatsApp invoice sends for the selected month?');">
+              <i class="fas fa-sync-alt"></i><span class="btn-label"> Retry</span>
+            </button>
+          </div>
+        </form>
+        <div class="dropdown-divider"></div>
+        <a href="{% url 'invoices:monthly_billing_run_list' %}" class="dropdown-item">
+          <i class="fas fa-tasks me-2"></i>Review Runs
+        </a>
       </div>
-    </form>
-
-    <a href="{% url 'invoices:monthly_billing_run_list' %}" class="btn btn-outline-primary">
-      <i class="fas fa-tasks"></i><span class="btn-label"> Review Runs</span>
-    </a>
+    </div>
 
     <form method="post" action="{% url 'invoices:apply_late_fees' %}" class="d-inline">
       {% csrf_token %}
@@ -61,32 +65,40 @@
       <i class="fas fa-redo-alt"></i><span class="btn-label"> Recurring Invoice</span>
     </a>
 
-    <a href="{% url 'invoices:waterbill_list' %}" class="btn btn-success">
-      <i class="fas fa-tint"></i><span class="btn-label"> Water Bill</span>
-    </a>
-
-    <a href="{% url 'invoices:category_list' %}" class="btn btn-success">
-      <i class="fas fa-list"></i><span class="btn-label"> View Category</span>
-    </a>
-
     <label class="form-check form-check-inline small mb-0" title="Use WhatsApp Cloud API instead of opening WhatsApp links">
       <input class="form-check-input" type="checkbox" id="invoice-use-whatsapp-api" data-whatsapp-api-toggle="invoice-list">
       <span class="form-check-label">Use WhatsApp API</span>
     </label>
 
     <button type="button" class="btn btn-success" id="invoice-bulk-whatsapp">
-      <i class="fab fa-whatsapp"></i><span class="btn-label"> Bulk Invoice</span>
+      <i class="fab fa-whatsapp"></i><span class="btn-label"> Send Bulk Invoice</span>
     </button>
 
-    <form method="get" action="{% url 'invoices:invoices_bulk_delete_preview' %}" class="d-inline-flex align-items-center gap-1">
-      <div class="input-group" style="max-width: 300px;">
-        <span class="input-group-text">Month</span>
-        <input type="month" name="month" required class="form-control">
-        <button type="submit" class="btn btn-danger">
-          <i class="bi bi-trash"></i> Preview Rollback
-        </button>
+    <div class="dropdown invoice-more-dropdown">
+      <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="invoiceMoreMenu" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fas fa-ellipsis-h"></i><span class="btn-label"> More</span>
+      </button>
+      <div class="dropdown-menu dropdown-menu-end invoice-toolbar-menu p-2" aria-labelledby="invoiceMoreMenu">
+        <a href="{% url 'invoices:waterbill_list' %}" class="dropdown-item">
+          <i class="fas fa-tint me-2"></i>Water Bill
+        </a>
+        <a href="{% url 'invoices:category_list' %}" class="dropdown-item">
+          <i class="fas fa-list me-2"></i>View Category
+        </a>
+        <div class="dropdown-divider"></div>
+        <form method="get" action="{% url 'invoices:invoices_bulk_delete_preview' %}">
+          <label class="form-label small text-muted mb-1" for="invoice-rollback-month">Rollback month</label>
+          <div class="input-group input-group-sm">
+            <input type="month" name="month" id="invoice-rollback-month" required class="form-control">
+            <button type="submit" class="btn btn-danger">
+              <i class="bi bi-trash"></i><span class="btn-label"> Preview</span>
+            </button>
+          </div>
+        </form>
       </div>
-    </form>
+    </div>
+
+    <div class="export-group">{% include "includes/export_buttons.html" %}</div>
   </div>
 
 </div>
@@ -2396,7 +2408,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-
 {% endblock %}
 
 {% block extra_js %}
@@ -3487,5 +3498,561 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<!-- Invoice list redesign overrides: desktop/tablet/mobile toolbar, filters, balance/status/actions -->
+<style>
+  .invoice-page-compact .btn,
+  .invoice-page-compact .form-control,
+  .invoice-page-compact .form-select,
+  .invoice-page-compact .input-group-text {
+    font-size: .78rem;
+  }
+
+  .invoice-header-actions .btn {
+    min-height: 32px;
+    padding: .28rem .52rem;
+    white-space: nowrap;
+  }
+
+  .invoice-header-actions label[for],
+  .invoice-header-actions .form-check {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: .2rem .45rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: .375rem;
+    background: #fff;
+  }
+
+  .invoice-header-actions .dropdown {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .invoice-header-actions .dropdown > .btn,
+  .invoice-header-actions .export-group .btn,
+  .invoice-header-actions .export-group .btn-group {
+    width: 100%;
+  }
+
+  .invoice-toolbar-menu {
+    min-width: 320px;
+    max-width: min(92vw, 380px);
+    font-size: .78rem;
+  }
+
+  .invoice-toolbar-menu .dropdown-item {
+    border-radius: .35rem;
+    padding: .38rem .5rem;
+  }
+
+  .invoice-toolbar-menu .form-label {
+    display: block;
+  }
+
+  .invoice-dropdown-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .35rem;
+  }
+
+  .invoice-dropdown-action-grid .btn {
+    width: 100%;
+    min-height: 30px;
+    padding: .25rem .35rem;
+    justify-content: center;
+  }
+
+  .invoice-list-dense table.table th.col-balance,
+  .invoice-list-dense table.table td.col-balance {
+    width: 8.5rem;
+    white-space: nowrap;
+  }
+
+  .invoice-list-dense table.table th.col-status,
+  .invoice-list-dense table.table td.col-status {
+    width: 6rem;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .invoice-list-dense table.table th.col-actions,
+  .invoice-list-dense table.table td.actions-cell {
+    width: 8rem;
+    text-align: right;
+  }
+
+  .invoice-status-badge {
+    font-size: .68rem;
+    font-weight: 600;
+  }
+
+  @media (min-width: 992px) {
+    .invoice-page-compact.page-header {
+      align-items: flex-start !important;
+      gap: .75rem;
+    }
+
+    .invoice-header-actions {
+      justify-content: flex-end;
+      gap: .35rem !important;
+    }
+
+    .invoice-filter-form,
+    #invoice-filter-form.filters-card {
+      padding: .55rem .65rem;
+    }
+
+    #invoice-filter-form .filters-grid {
+      display: grid !important;
+      grid-template-columns: 7rem 8rem 8rem minmax(7.5rem, .85fr) minmax(8.5rem, .95fr) minmax(12rem, 1.25fr) 5.25rem 5.25rem 6.4rem !important;
+      gap: .45rem !important;
+      align-items: center;
+    }
+
+    #invoice-filter-form .filters-grid > * {
+      min-width: 0 !important;
+      width: 100%;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 991.98px) {
+    .invoice-page-compact.page-header {
+      display: block !important;
+    }
+
+    .invoice-header-actions {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      gap: .35rem !important;
+      width: 100%;
+    }
+
+    .invoice-header-actions > * {
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    .invoice-header-actions .btn,
+    .invoice-header-actions .form-check {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .invoice-header-actions .js-invoice-billing-action-form,
+    .invoice-header-actions form[action*="invoices_bulk_delete_preview"] {
+      grid-column: span 2;
+    }
+
+    .invoice-header-actions .input-group {
+      width: 100%;
+      max-width: none !important;
+    }
+
+    #invoice-filter-form .filters-grid {
+      display: grid !important;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      gap: .4rem !important;
+      align-items: center;
+    }
+
+    #invoice-filter-form .filters-grid > * {
+      min-width: 0 !important;
+      width: 100%;
+    }
+
+    .invoice-list-dense table.table {
+      font-size: .66rem !important;
+      table-layout: fixed;
+    }
+
+    .invoice-list-dense table.table th,
+    .invoice-list-dense table.table td {
+      padding: .22rem .24rem !important;
+      vertical-align: middle;
+    }
+
+    .invoice-list-dense table.table .col-desc,
+    .invoice-list-dense table.table .col-issue {
+      display: none !important;
+    }
+
+    .invoice-list-dense table.table .col-sn {
+      display: table-cell !important;
+      width: 2.2rem !important;
+    }
+
+    .invoice-list-dense table.table .col-invno {
+      display: table-cell !important;
+      width: 4.2rem !important;
+    }
+
+    .invoice-list-dense table.table .col-balance {
+      display: table-cell !important;
+      width: 6.2rem !important;
+    }
+
+    .invoice-list-dense table.table .col-status {
+      display: table-cell !important;
+      width: 4.8rem !important;
+    }
+
+    .invoice-list-dense table.table td.actions-cell {
+      width: 4.4rem !important;
+      text-align: right !important;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .invoice-page-compact.page-header {
+      display: block !important;
+      margin-bottom: .45rem !important;
+    }
+
+    .invoice-page-compact.page-header .h4 {
+      display: block !important;
+      font-size: 1rem;
+      margin-bottom: .45rem !important;
+    }
+
+    .invoice-header-actions {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: .28rem !important;
+      width: 100% !important;
+      overflow: visible !important;
+    }
+
+    .invoice-header-actions > * {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+
+    .invoice-header-actions .btn,
+    .invoice-header-actions .form-check {
+      width: 100%;
+      min-height: 28px;
+      padding: .18rem .18rem !important;
+      font-size: .62rem !important;
+      line-height: 1.05 !important;
+      justify-content: center;
+      text-align: center;
+      white-space: normal;
+    }
+
+    .invoice-header-actions .btn i {
+      margin-right: .12rem;
+    }
+
+    .invoice-header-actions .js-invoice-billing-action-form,
+    .invoice-header-actions form[action*="invoices_bulk_delete_preview"] {
+      grid-column: 1 / -1 !important;
+    }
+
+    .invoice-header-actions .input-group,
+    .invoice-header-actions form[action*="invoices_bulk_delete_preview"] .input-group {
+      display: grid !important;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: .15rem;
+      max-width: none !important;
+      width: 100% !important;
+    }
+
+    .invoice-header-actions .js-invoice-billing-action-form .input-group {
+      grid-template-columns: auto minmax(0, 1fr) repeat(4, auto);
+      overflow-x: auto;
+      padding-bottom: .1rem;
+    }
+
+    .invoice-header-actions .input-group-text,
+    .invoice-header-actions input[type="month"],
+    .invoice-header-actions .input-group .btn {
+      min-height: 27px !important;
+      height: 27px !important;
+      padding: .12rem .18rem !important;
+      font-size: .60rem !important;
+      white-space: nowrap !important;
+    }
+
+    #invoice-filter-form.filters-card {
+      padding: .35rem .4rem !important;
+      border: 1px solid var(--bs-border-color, #dee2e6) !important;
+      box-shadow: none !important;
+    }
+
+    #invoice-filter-form .filters-grid {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: .3rem !important;
+      align-items: center;
+    }
+
+    #invoice-filter-form .filters-grid > * {
+      min-width: 0 !important;
+      width: 100% !important;
+      grid-column: auto / span 1 !important;
+    }
+
+    #invoice-filter-form .form-select,
+    #invoice-filter-form .form-control,
+    #invoice-filter-form .action-btn,
+    #invoice-filter-form .inactive-toggle {
+      height: 1.65rem !important;
+      min-height: 1.65rem !important;
+      padding: .08rem .16rem !important;
+      font-size: .66rem !important;
+      line-height: 1 !important;
+    }
+
+    .invoice-list-dense {
+      overflow-x: auto;
+    }
+
+    .invoice-list-dense table.table {
+      min-width: 560px;
+      table-layout: fixed;
+      font-size: .58rem !important;
+    }
+
+    .invoice-list-dense table.table th,
+    .invoice-list-dense table.table td {
+      padding: .16rem .18rem !important;
+      line-height: 1.05 !important;
+      vertical-align: top;
+    }
+
+    .invoice-list-dense table.table .col-sn,
+    .invoice-list-dense table.table .col-invno,
+    .invoice-list-dense table.table .col-propunit,
+    .invoice-list-dense table.table .tenant-cell,
+    .invoice-list-dense table.table .col-amount,
+    .invoice-list-dense table.table .col-balance,
+    .invoice-list-dense table.table .col-status,
+    .invoice-list-dense table.table td.actions-cell {
+      display: table-cell !important;
+    }
+
+    .invoice-list-dense table.table .col-desc,
+    .invoice-list-dense table.table .col-issue,
+    .invoice-list-dense table.table .col-due {
+      display: none !important;
+    }
+
+    .invoice-list-dense table.table .col-sn {
+      width: 2rem !important;
+      max-width: 2rem !important;
+      text-align: center !important;
+    }
+
+    .invoice-list-dense table.table .col-invno {
+      width: 3.5rem !important;
+      max-width: 3.5rem !important;
+      white-space: nowrap;
+    }
+
+    .invoice-list-dense table.table .col-propunit {
+      width: 5rem !important;
+      max-width: 5rem !important;
+    }
+
+    .invoice-list-dense table.table .tenant-cell {
+      width: 4.4rem !important;
+      max-width: 4.4rem !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .invoice-list-dense table.table .col-amount,
+    .invoice-list-dense table.table .col-balance {
+      width: 4.8rem !important;
+      max-width: 4.8rem !important;
+      white-space: nowrap;
+      text-align: right !important;
+    }
+
+    .invoice-list-dense table.table .col-status {
+      width: 4rem !important;
+      max-width: 4rem !important;
+      text-align: right !important;
+    }
+
+    .invoice-list-dense table.table td.actions-cell,
+    .invoice-list-dense table.table th.col-actions {
+      width: 4rem !important;
+      max-width: 4rem !important;
+      text-align: right !important;
+    }
+
+    .invoice-status-badge {
+      font-size: .52rem;
+      padding: .16rem .22rem;
+      max-width: 100%;
+      white-space: normal;
+    }
+
+    .invoice-list-dense td.actions-cell .actions-wrap,
+    .invoice-list-dense td.actions-cell .invoice-actions {
+      display: grid !important;
+      grid-template-columns: repeat(2, 17px) !important;
+      gap: 2px !important;
+      justify-content: end !important;
+      width: 38px !important;
+      min-width: 38px !important;
+      max-width: 38px !important;
+      margin-left: auto !important;
+    }
+
+    .invoice-list-dense td.actions-cell .btn {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 17px !important;
+      height: 17px !important;
+      min-width: 17px !important;
+      min-height: 17px !important;
+      padding: 0 !important;
+      line-height: 1 !important;
+    }
+
+    .invoice-list-dense td.actions-cell .btn i {
+      font-size: .52rem !important;
+      margin: 0 !important;
+    }
+
+    .invoice-list-dense td.actions-cell .btn .btn-text,
+    .invoice-list-dense td.actions-cell .btn .btn-label {
+      display: none !important;
+    }
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.invoice-list-dense table.table').forEach(table => {
+    table.querySelectorAll('thead th').forEach((th, index) => {
+      if (index !== 11) th.classList.remove('col-actions');
+      if (index === 9) th.classList.add('col-balance');
+      if (index === 10) th.classList.add('col-status');
+      if (index === 11) th.classList.add('col-actions');
+    });
+
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      cells.forEach((cell, index) => {
+        if (index !== 11) cell.classList.remove('col-actions');
+      });
+      if (cells[9]) cells[9].classList.add('col-balance', 'text-end');
+      if (cells[10]) cells[10].classList.add('col-status');
+      if (cells[11]) cells[11].classList.add('col-actions');
+    });
+  });
+});
+</script>
+
+<style>
+  /* Final toolbar layout override: desktop one row, tablet two rows. */
+  @media (min-width: 992px) {
+    .page-header.invoice-page-compact {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: .75rem !important;
+    }
+
+    .page-header.invoice-page-compact .h4 {
+      flex: 0 0 auto !important;
+      margin: 0 !important;
+    }
+
+    .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
+      display: flex !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      justify-content: flex-end !important;
+      gap: .32rem !important;
+      width: auto !important;
+      max-width: none !important;
+      overflow: visible !important;
+    }
+
+    .page-header.invoice-page-compact > .top-actions.invoice-header-actions > * {
+      flex: 0 0 auto !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      margin: 0 !important;
+    }
+
+    .invoice-header-actions .btn,
+    .invoice-header-actions .dropdown > .btn,
+    .invoice-header-actions .export-group .btn,
+    .invoice-header-actions .form-check {
+      width: auto !important;
+      min-height: 30px !important;
+      height: 30px !important;
+      padding: .22rem .42rem !important;
+      font-size: .68rem !important;
+      line-height: 1 !important;
+      white-space: nowrap !important;
+    }
+
+    .invoice-header-actions .form-check {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: .18rem !important;
+    }
+
+    .invoice-header-actions .export-group,
+    .invoice-header-actions .export-group .btn-group,
+    .invoice-header-actions .export-group .dropdown {
+      width: auto !important;
+      display: inline-flex !important;
+    }
+  }
+
+  @media (min-width: 576px) and (max-width: 991.98px) {
+    .page-header.invoice-page-compact {
+      display: block !important;
+    }
+
+    .page-header.invoice-page-compact > .top-actions.invoice-header-actions {
+      display: grid !important;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      grid-auto-rows: minmax(30px, auto) !important;
+      gap: .32rem !important;
+      width: 100% !important;
+      overflow: visible !important;
+    }
+
+    .page-header.invoice-page-compact > .top-actions.invoice-header-actions > * {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+    }
+
+    .invoice-header-actions .btn,
+    .invoice-header-actions .dropdown > .btn,
+    .invoice-header-actions .export-group .btn,
+    .invoice-header-actions .form-check {
+      width: 100% !important;
+      min-height: 30px !important;
+      height: 30px !important;
+      padding: .2rem .24rem !important;
+      font-size: .64rem !important;
+      line-height: 1 !important;
+      justify-content: center !important;
+      white-space: nowrap !important;
+    }
+
+    .invoice-header-actions .export-group,
+    .invoice-header-actions .export-group .btn-group,
+    .invoice-header-actions .export-group .dropdown {
+      width: 100% !important;
+    }
+  }
+</style>
 
 {% endblock %}

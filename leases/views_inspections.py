@@ -17,6 +17,7 @@ from django.views.decorators.http import require_POST
 from weasyprint import HTML
 
 from invoices.models import Invoice, InvoiceItem, ItemCategory
+from leases.whatsapp import build_whatsapp_url
 from leases.models import LeaseDocument
 from properties.models import Property, Unit
 from .forms import (
@@ -71,7 +72,7 @@ SETTINGS_CONFIG = {
         "model": InspectionItem,
         "form": InspectionItemForm,
         "title": "Inspection Items",
-        "columns": ["category", "item_name", "display_order", "required", "allow_photos", "allow_damage_cost", "allow_notes", "active"],
+        "columns": ["category", "item_name", "default_quantity", "display_order", "required", "allow_photos", "allow_damage_cost", "allow_notes", "active"],
     },
     "templates": {
         "model": InspectionTemplate,
@@ -177,8 +178,10 @@ def inspection_settings_inline_update(request, kind, pk):
         return JsonResponse({"ok": False, "error": "Invalid field."}, status=400)
     if field in {"active", "required", "allow_photos", "allow_damage_cost", "allow_notes"}:
         value = _bool_from_post(value)
-    elif field == "display_order":
+    elif field in {"display_order", "default_quantity"}:
         value = int(value or 0)
+        if field == "default_quantity":
+            value = max(value, 1)
     elif field == "category":
         obj.category = get_object_or_404(InspectionCategory, pk=value)
         obj.save(update_fields=["category"])
@@ -349,6 +352,7 @@ def _detail_payload(detail):
         "status_badge_color": detail.status_badge_color,
         "remarks": detail.remarks,
         "damage_cost": str(detail.damage_cost or Decimal("0.00")),
+        "quantity": detail.quantity,
         "display_order": detail.display_order,
         "photo_count": detail.photos.count() if hasattr(detail, "photos") else 0,
     }
@@ -539,6 +543,29 @@ def inspection_public_link(request, inspection_id):
     return redirect("leases:inspection_detail", inspection_id=inspection.pk)
 
 
+@login_required
+@permission_required("leases.change_leaseinspection", raise_exception=True)
+@require_POST
+def inspection_send_sheet(request, inspection_id):
+    inspection = get_object_or_404(LeaseInspection.objects.select_related("lease__tenant", "unit", "property", "tenant", "inspection_type"), pk=inspection_id)
+    days = int(request.POST.get("days") or 7)
+    inspection.public_is_active = True
+    inspection.public_expires_at = timezone.now() + timezone.timedelta(days=days)
+    inspection.save(update_fields=["public_is_active", "public_expires_at", "updated_at"])
+    public_url = request.build_absolute_uri(reverse("leases:public_inspection_sign", args=[inspection.public_token]))
+    message = (
+        f"Inspection sheet for {inspection.property.property_name} {inspection.unit.unit_number} is ready.\n\n"
+        f"Please review and sign here:\n{public_url}"
+    )
+    phone = getattr(inspection.tenant, "phone", "") or getattr(inspection.tenant, "phone2", "") or getattr(inspection.tenant, "phone3", "")
+    inspection.add_audit("inspection_sheet_sent_link", request.user, {"days": days})
+    whatsapp_url = build_whatsapp_url(phone, message)
+    if whatsapp_url:
+        return redirect(whatsapp_url)
+    messages.warning(request, "Inspection public link was generated, but tenant has no WhatsApp phone number.")
+    return redirect("leases:inspection_detail", inspection_id=inspection.pk)
+
+
 def _public_detail_from_token(token, detail_id=None):
     inspection = get_object_or_404(_inspection_queryset(), public_token=token)
     if not inspection.public_link_valid:
@@ -669,11 +696,13 @@ def inspection_detail_update_ajax(request, detail_id):
         detail.status_badge_color = status.badge_color if status else ""
     elif field == "remarks":
         detail.remarks = value
+    elif field == "quantity":
+        detail.quantity = max(int(value or 1), 1)
     elif field == "damage_cost":
         detail.damage_cost = Decimal(value or "0.00")
     else:
         return JsonResponse({"ok": False, "error": "Invalid field."}, status=400)
-    detail.save(update_fields=["status_name", "status_badge_color", "remarks", "damage_cost"])
+    detail.save(update_fields=["status_name", "status_badge_color", "remarks", "quantity", "damage_cost"])
     detail.inspection.add_audit("detail_ajax_updated", request.user, {"detail_id": detail.pk, "field": field})
     return JsonResponse({"ok": True, "detail": _detail_payload(detail)})
 
@@ -729,6 +758,7 @@ def inspection_item_create_ajax(request):
             "allow_damage_cost": True,
             "allow_notes": True,
             "active": True,
+            "default_quantity": 1,
         },
     )
     return JsonResponse({"ok": True, "item": {"id": item.pk, "name": item.item_name, "category_id": category.pk}})
@@ -746,6 +776,7 @@ def inspection_row_add_ajax(request, inspection_id):
         inspection=inspection,
         category=category.name,
         item_name=item.item_name,
+        quantity=item.default_quantity,
         display_order=next_order,
         required=item.required,
         allow_photos=item.allow_photos,

@@ -92,7 +92,7 @@ class InvoiceItem(models.Model):
 
     category = models.ForeignKey(
         'ItemCategory', on_delete=models.PROTECT)  # NEW (required)
-    description = models.CharField(max_length=200, blank=True, null=True)
+    description = models.CharField(max_length=500, blank=True, null=True)
     amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,

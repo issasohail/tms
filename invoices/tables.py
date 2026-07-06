@@ -91,6 +91,23 @@ class InvoiceTable(ExportableTable):
                "td": {"class": "col-amount text-end"}},
     )
 
+    lease_balance = Column(
+        empty_values=(),
+        verbose_name="Lease Balance",
+        orderable=False,
+        attrs={
+            "th": {"class": "col-balance text-end"},
+            "td": {"class": "col-balance text-end"},
+        },
+    )
+
+    status = Column(
+        accessor="status",
+        verbose_name="Status",
+        orderable=True,
+        attrs={"th": {"class": "col-status"}, "td": {"class": "col-status"}},
+    )
+
     actions = tables.TemplateColumn(
         template_name='components/action_buttons.html',
         verbose_name='Actions',
@@ -110,6 +127,8 @@ class InvoiceTable(ExportableTable):
             "issue_date",
             "due_date",
             "total_amount",
+            "lease_balance",
+            "status",
             "actions",
         )
         sequence = fields
@@ -160,6 +179,33 @@ class InvoiceTable(ExportableTable):
 
     def render_total_amount(self, value):
         return format_money(value, _settings_obj())
+
+    def render_lease_balance(self, record):
+        balance = getattr(record, "dashboard_lease_balance", None)
+        if balance is None:
+            try:
+                balance = record.lease.get_balance()
+            except Exception:
+                balance = None
+        if balance is None:
+            return "-"
+        return format_money(balance, _settings_obj())
+
+    def render_status(self, record, value):
+        label = record.get_status_display() if hasattr(record, "get_status_display") else (value or "")
+        status_key = (value or "").lower()
+        badge_class = "secondary"
+        if status_key in {"paid", "complete", "completed"}:
+            badge_class = "success"
+        elif status_key in {"partial", "partially_paid"}:
+            badge_class = "warning text-dark"
+        elif status_key in {"overdue", "due", "unpaid", "pending"}:
+            badge_class = "danger"
+        return format_html(
+            '<span class="badge bg-{} invoice-status-badge">{}</span>',
+            badge_class,
+            label or "-",
+        )
 
     def render_actions(self, record):
         return render_to_string('components/action_buttons.html', {

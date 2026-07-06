@@ -260,6 +260,7 @@
     }
     .unit-inline-edit,
     .unit-building-type-edit,
+    .unit-status-edit,
     .unit-smart-edit,
     .unit-public-edit,
     .lead-phone-text {
@@ -271,6 +272,7 @@
     }
     .unit-inline-edit:hover,
     .unit-building-type-edit:hover,
+    .unit-status-edit:hover,
     .unit-smart-edit:hover,
     .unit-public-edit:hover,
     .lead-phone-text:hover {
@@ -279,6 +281,20 @@
     }
     .unit-building-type-edit {
         min-width: 120px;
+    }
+    .unit-status-edit {
+        min-width: 78px;
+        border: 0;
+        white-space: normal;
+        line-height: 1.2;
+    }
+    .unit-status-caret {
+        font-size: 0.65em;
+        opacity: 0.75;
+    }
+    .unit-status-select {
+        min-width: 126px;
+        font-size: 0.78rem;
     }
     .actions-wrap {
         white-space: nowrap;
@@ -713,12 +729,195 @@
             font-size: 0.64rem;
         }
     }
+    @media (max-width: 767.98px) {
+        .unit-page-header {
+            padding: 2px 0 0;
+        }
+        .unit-page-actions {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px !important;
+        }
+        .unit-page-actions .btn,
+        .unit-page-actions .dropdown-toggle {
+            border-radius: 7px;
+            min-height: 34px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .unit-filter-card {
+            border-radius: 8px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
+        }
+        .unit-filter-row {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px;
+            gap: 7px;
+        }
+        .unit-table-wrap {
+            border: 0;
+            background: transparent;
+            overflow: visible;
+            margin-left: 0;
+            margin-right: 0;
+        }
+        .unit-table-wrap table,
+        .unit-table-wrap tbody,
+        .unit-table-wrap tr,
+        .unit-table-wrap td {
+            display: block;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+        }
+        .unit-table-wrap table {
+            border: 0 !important;
+            background: transparent;
+            table-layout: auto !important;
+        }
+        .unit-table-wrap thead {
+            display: none;
+        }
+        .unit-table-wrap tbody tr {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #d8e2ee;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        }
+        .unit-table-wrap tbody tr:nth-child(even) {
+            background: #fbfdff;
+        }
+        .unit-table-wrap th,
+        .unit-table-wrap td,
+        .table td.unit-actions-cell,
+        .table th.unit-actions-cell {
+            position: static !important;
+            box-shadow: none !important;
+            border: 0 !important;
+            background: transparent !important;
+        }
+        .unit-table-wrap td {
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 30px;
+            padding: 5px 0 !important;
+            font-size: 0.78rem !important;
+            line-height: 1.2;
+            white-space: normal !important;
+            overflow: visible !important;
+        }
+        .unit-table-wrap td::before {
+            flex: 0 0 78px;
+            color: #64748b;
+            content: "";
+            font-size: 0.64rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .unit-table-wrap td:nth-child(1),
+        .unit-table-wrap td:nth-child(4),
+        .unit-table-wrap td:nth-child(6),
+        .unit-table-wrap td:nth-child(7),
+        .unit-table-wrap td:nth-child(8),
+        .unit-table-wrap td:nth-child(9),
+        .unit-table-wrap td:nth-child(10) {
+            display: none !important;
+        }
+        .unit-table-wrap td:nth-child(2) {
+            padding-top: 0 !important;
+            font-size: 1rem !important;
+            font-weight: 700;
+            border-bottom: 1px solid #edf2f7 !important;
+            margin-bottom: 4px;
+        }
+        .unit-table-wrap td:nth-child(2)::before {
+            content: "Unit";
+        }
+        .unit-table-wrap td:nth-child(3)::before {
+            content: "Property";
+        }
+        .unit-table-wrap td:nth-child(5)::before {
+            content: "Rent";
+        }
+        .unit-table-wrap td:nth-child(11)::before {
+            content: "Status";
+        }
+        .unit-table-wrap td:nth-child(12)::before {
+            content: "Smart";
+        }
+        .unit-table-wrap td:nth-child(13)::before {
+            content: "Public";
+        }
+        .unit-table-wrap td.unit-actions-cell::before {
+            content: "Actions";
+        }
+        .unit-table-wrap td:nth-child(2) a {
+            color: #0f172a;
+            text-decoration: none;
+            overflow-wrap: anywhere;
+        }
+        .unit-table-wrap td:nth-child(11),
+        .unit-table-wrap td:nth-child(11) a,
+        .unit-table-wrap td:nth-child(11) span,
+        .unit-table-wrap td:nth-child(11) .badge {
+            font-size: 0.72rem !important;
+            white-space: normal !important;
+        }
+        .unit-status-edit {
+            min-width: 94px;
+            padding: 5px 8px;
+            text-align: center;
+        }
+        .unit-status-select {
+            width: 132px;
+            min-width: 132px;
+        }
+        .unit-actions-cell .actions-wrap,
+        .actions-wrap {
+            justify-content: flex-end;
+            gap: 5px !important;
+            width: 100%;
+        }
+        .unit-actions-cell .action-btn,
+        .actions-wrap .action-btn {
+            width: 30px !important;
+            min-width: 30px !important;
+            max-width: 30px !important;
+            height: 28px !important;
+            min-height: 28px !important;
+            border-radius: 7px;
+        }
+        .unit-actions-cell .action-btn i,
+        .actions-wrap .action-btn i {
+            font-size: 0.78rem !important;
+        }
+    }
+    @media (min-width: 768px) and (max-width: 991.98px) {
+        .unit-table-wrap {
+            border-radius: 8px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        }
+        .unit-table-wrap table {
+            min-width: 1080px;
+        }
+        .unit-table-wrap th,
+        .unit-table-wrap td {
+            padding: 7px 8px;
+        }
+    }
 </style>
 {% endblock %}
 {% block extra_js %}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     const buildingTypeOptions = JSON.parse(document.getElementById("buildingTypeOptions").textContent || "[]");
+    const unitStatusOptions = [
+        {value: "vacant", label: "Vacant", badgeClass: "bg-primary"},
+        {value: "occupied", label: "Occupied", badgeClass: "bg-success"},
+        {value: "maintenance", label: "Maintenance", badgeClass: "bg-danger"}
+    ];
 
     const selectAll = document.getElementById('select-all');
     if (selectAll) {
@@ -791,6 +990,19 @@ document.addEventListener("DOMContentLoaded", function () {
             if (event.key === "Enter") startBuildingTypeEdit(span);
         });
     });
+    document.querySelectorAll(".unit-status-edit").forEach(function (span) {
+        span.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            startUnitStatusEdit(span);
+        });
+        span.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                startUnitStatusEdit(span);
+            }
+        });
+    });
 
     document.querySelectorAll(".unit-inline-edit").forEach(function (span) {
         span.addEventListener("click", function () {
@@ -826,6 +1038,67 @@ document.addEventListener("DOMContentLoaded", function () {
                 vacantSummaryButton.disabled = false;
             });
         });
+    }
+
+    function startUnitStatusEdit(span) {
+        if (span.dataset.editing === "1") return;
+        span.dataset.editing = "1";
+        const previousValue = span.dataset.currentValue || "vacant";
+        const previousHtml = span.innerHTML;
+        const select = document.createElement("select");
+        select.className = "form-select form-select-sm unit-status-select";
+        select.innerHTML = unitStatusOptions.map(function (item) {
+            return `<option value="${item.value}" ${item.value === previousValue ? "selected" : ""}>${item.label}</option>`;
+        }).join("");
+        select.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        span.replaceWith(select);
+        select.focus();
+        let finished = false;
+
+        function finish(save) {
+            if (finished) return;
+            finished = true;
+            if (!save) {
+                select.replaceWith(span);
+                span.dataset.editing = "0";
+                return;
+            }
+            select.disabled = true;
+            saveUnitField(span.dataset.unitId, "status", select.value)
+                .then(function (payload) {
+                    updateStatusBadge(span, payload.value || select.value, payload.new_value);
+                    select.replaceWith(span);
+                })
+                .catch(function (error) {
+                    alert(error.message);
+                    span.dataset.currentValue = previousValue;
+                    span.innerHTML = previousHtml;
+                    select.replaceWith(span);
+                })
+                .finally(function () {
+                    span.dataset.editing = "0";
+                });
+        }
+
+        select.addEventListener("change", function () { finish(true); });
+        select.addEventListener("blur", function () { finish(true); });
+        select.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") finish(false);
+            if (event.key === "Enter") finish(true);
+        });
+    }
+
+    function updateStatusBadge(span, value, label) {
+        const option = unitStatusOptions.find(function (item) {
+            return item.value === value;
+        }) || unitStatusOptions[0];
+        span.dataset.currentValue = option.value;
+        span.classList.remove("bg-primary", "bg-success", "bg-danger", "bg-warning", "text-dark", "text-wrap");
+        span.classList.add(option.badgeClass);
+        span.innerHTML = `${escapeHtml(label || option.label)}<i class="fas fa-chevron-down ms-1 unit-status-caret"></i>`;
     }
 
     function startBuildingTypeEdit(span) {

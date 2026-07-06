@@ -206,6 +206,11 @@ urlpatterns = [
         name="inspection_public_link",
     ),
     path(
+        "inspection/<int:inspection_id>/send-sheet/",
+        views_inspections.inspection_send_sheet,
+        name="inspection_send_sheet",
+    ),
+    path(
         "inspection/<int:inspection_id>/approve/",
         views_inspections.inspection_approve,
         name="inspection_approve",

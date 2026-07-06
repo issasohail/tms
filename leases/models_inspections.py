@@ -85,6 +85,7 @@ class InspectionItem(models.Model):
         InspectionCategory, on_delete=models.PROTECT, related_name="items"
     )
     item_name = models.CharField(max_length=150)
+    default_quantity = models.PositiveIntegerField(default=1)
     display_order = models.PositiveIntegerField(default=50)
     required = models.BooleanField(default=False)
     allow_photos = models.BooleanField(default=True)
@@ -268,6 +269,7 @@ class LeaseInspection(models.Model):
                     inspection=self,
                     category=item.category.name,
                     item_name=item.item_name,
+                    quantity=item.default_quantity,
                     display_order=idx,
                     required=item.required,
                     allow_photos=item.allow_photos,
@@ -287,6 +289,7 @@ class InspectionDetail(models.Model):
     )
     category = models.CharField(max_length=100)
     item_name = models.CharField(max_length=150)
+    quantity = models.PositiveIntegerField(default=1)
     status_name = models.CharField(max_length=100, blank=True)
     status_badge_color = models.CharField(max_length=20, blank=True)
     remarks = models.TextField(blank=True)

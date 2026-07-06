@@ -75,6 +75,7 @@ class InvoiceItemForm(forms.ModelForm):
         fields = ["category", "description", "amount",
                   "is_recurring"]  # <- amount included
         widgets = {
+            "description": forms.Textarea(attrs={"rows": 3, "maxlength": "500", "class": "form-control form-control-sm"}),
             "amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
         }
 

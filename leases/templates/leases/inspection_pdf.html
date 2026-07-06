@@ -15,7 +15,7 @@
     .line-heading,
     .inspection-line {
       display: grid;
-      grid-template-columns: 18px 58px 1fr 46px 1.2fr 38px;
+      grid-template-columns: 18px 58px 1fr 22px 46px 1.2fr 38px;
       gap: 3px;
       align-items: center;
     }
@@ -67,7 +67,7 @@
   </div>
 
   <div class="line-heading">
-    <div>SN</div><div>Category</div><div>Item</div><div>Status</div><div>Remarks</div><div>Damage</div>
+    <div>SN</div><div>Category</div><div>Item</div><div>Qty</div><div>Status</div><div>Remarks</div><div>Damage</div>
   </div>
   <div class="sheet-columns">
     {% for row in inspection.details.all %}
@@ -75,6 +75,7 @@
         <div class="sn">{{ forloop.counter }}</div>
         <div class="cat">{{ row.category }}</div>
         <div class="item">{{ row.item_name }}</div>
+        <div class="status">{{ row.quantity|default:"1" }}</div>
         <div class="status">{{ row.status_name|default:"-" }}</div>
         <div class="remarks">{{ row.remarks|default:"-" }}{% if row.photos.count %} (Photos: {{ row.photos.count }}){% endif %}</div>
         <div class="damage">{{ row.damage_cost|default:"0.00" }}</div>

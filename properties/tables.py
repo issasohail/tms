@@ -119,6 +119,19 @@ class UnitTable(ExportableTable):
             display_value or "-",
         )
 
+    def _status_badge(self, record, value, label, css_class, extra_html=""):
+        return format_html(
+            '<span class="unit-status-edit badge {}" data-unit-id="{}" '
+            'data-current-value="{}" tabindex="0" role="button" '
+            'title="Click to change status">{}{}'
+            '<i class="fas fa-chevron-down ms-1 unit-status-caret"></i></span>',
+            css_class,
+            record.pk,
+            value,
+            label,
+            extra_html,
+        )
+
     def render_monthly_rent(self, value, record):
         return self._inline_text(record, "monthly_rent", self._format_decimal(value))
 
@@ -185,28 +198,23 @@ class UnitTable(ExportableTable):
             end_date = getattr(
                 record, "active_lease_history_end_date", None
             ) or getattr(record, "active_lease_end_date", None)
-
             date_text = end_date.strftime("%b %d, %Y") if end_date else ""
-
-            badge = format_html(
-                '<span class="badge bg-warning text-dark text-wrap" style="line-height:1.2;">'
-                "<strong>Ending Soon</strong><br>"
-                "<small>{}</small>"
-                "</span>",
-                date_text,
-            )
-
             lease_id = getattr(
                 record, "active_lease_history_lease_id", None
             ) or getattr(record, "active_lease_id", None)
-
+            badge = self._status_badge(
+                record,
+                "occupied",
+                format_html("<strong>Ending Soon</strong>"),
+                "bg-warning text-dark text-wrap",
+                format_html("<br><small>{}</small>", date_text),
+            )
             if lease_id:
                 return format_html(
-                    '<a href="{}" class="text-decoration-none">{}</a>',
+                    '<a href="{}" class="text-decoration-none unit-status-lease-link">{}</a>',
                     reverse("leases:lease_detail", args=[lease_id]),
                     badge,
                 )
-
             return badge
 
         if getattr(record, "has_active_lease_history", False) or getattr(
@@ -216,11 +224,16 @@ class UnitTable(ExportableTable):
                 record, "active_lease_history_lease_id", None
             ) or getattr(record, "active_lease_id", None)
 
-            badge = format_html('<span class="badge bg-success">Occupied</span>')
+            badge = self._status_badge(
+                record,
+                "occupied",
+                "Occupied",
+                "bg-success",
+            )
 
             if lease_id:
                 return format_html(
-                    '<a href="{}" class="text-decoration-none">{}</a>',
+                    '<a href="{}" class="text-decoration-none unit-status-lease-link">{}</a>',
                     reverse("leases:lease_detail", args=[lease_id]),
                     badge,
                 )
@@ -228,9 +241,27 @@ class UnitTable(ExportableTable):
             return badge
 
         if record.status == "maintenance":
-            return format_html('<span class="badge bg-danger">Maintenance</span>')
+            return self._status_badge(
+                record,
+                "maintenance",
+                "Maintenance",
+                "bg-danger",
+            )
 
-        return format_html('<span class="badge bg-primary">Vacant</span>')
+        if record.status == "occupied":
+            return self._status_badge(
+                record,
+                "occupied",
+                "Occupied",
+                "bg-success",
+            )
+
+        return self._status_badge(
+            record,
+            "vacant",
+            "Vacant",
+            "bg-primary",
+        )
 
     def render_show_publicly(self, value, record):
         label = "Yes" if value else "No"

@@ -74,6 +74,9 @@
       <form method="post" action="{% url 'leases:inspection_public_link' inspection.pk %}">{% csrf_token %}
         <button class="btn btn-sm btn-success" type="submit">Public Link</button>
       </form>
+      <form method="post" action="{% url 'leases:inspection_send_sheet' inspection.pk %}" target="_blank">{% csrf_token %}
+        <button class="btn btn-sm btn-success" type="submit"><i class="fab fa-whatsapp"></i> Send Sheet</button>
+      </form>
       <form method="post" action="{% url 'leases:inspection_approve' inspection.pk %}" onsubmit="return confirm('Approve this inspection? Public link will be disabled.');">{% csrf_token %}
         <button class="btn btn-sm btn-success" type="submit">Approve</button>
       </form>
@@ -169,12 +172,12 @@
     <div class="card-header py-1 fw-semibold">Checklist</div>
     <div class="table-responsive">
       <table class="table table-sm table-bordered align-middle mb-0 inspection-table">
-        <thead class="table-light"><tr><th style="width:42px;">SN</th><th style="width:115px;">Category</th><th style="width:140px;">Item</th><th>Status</th><th style="width:170px;">Remarks</th><th style="width:120px;">Damage</th><th style="width:210px;">Photos / Videos</th></tr></thead>
+        <thead class="table-light"><tr><th style="width:42px;">SN</th><th style="width:115px;">Category</th><th style="width:140px;">Item</th><th style="width:70px;">Qty</th><th>Status</th><th style="width:170px;">Remarks</th><th style="width:120px;">Damage</th><th style="width:210px;">Photos / Videos</th></tr></thead>
         <tbody id="inspectionRows">
           {% regroup inspection.details.all by category as category_groups %}
           {% for group in category_groups %}
             <tr class="inspection-category-header" data-category="{{ group.grouper|slugify }}">
-              <td colspan="7">
+              <td colspan="8">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <div><span class="inspection-category-toggle">▼</span>{{ group.grouper }} <span class="text-muted">({{ group.list|length }})</span></div>
                   <div class="inspection-status-wrap" data-category-mark-all="{{ group.grouper|slugify }}" data-category-name="{{ group.grouper }}">
@@ -190,6 +193,7 @@
                 <td class="inspection-sn">{{ forloop.counter }}</td>
                 <td>{{ row.category }}</td>
                 <td>{{ row.item_name }}{% if row.required %}<span class="text-danger">*</span>{% endif %}</td>
+                <td><input class="form-control form-control-sm text-end inspection-quantity inspection-live-input" type="number" min="1" step="1" value="{{ row.quantity|default:'1' }}"></td>
                 <td>
                   <div class="inspection-status-wrap">
                     {% for status in statuses %}
@@ -235,7 +239,7 @@
               </tr>
             {% endfor %}
           {% empty %}
-            <tr><td colspan="7" class="text-muted py-3">No checklist items were copied. Add items above.</td></tr>
+            <tr><td colspan="8" class="text-muted py-3">No checklist items were copied. Add items above.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -372,11 +376,11 @@
   document.addEventListener('input', function (event) {
     const target = event.target;
     const tr = target.closest('tr[data-detail-id]');
-    if (!tr || (!target.classList.contains('inspection-remarks') && !target.classList.contains('inspection-damage'))) return;
+    if (!tr || (!target.classList.contains('inspection-remarks') && !target.classList.contains('inspection-damage') && !target.classList.contains('inspection-quantity'))) return;
     clearTimeout(textTimer);
     textTimer = setTimeout(() => {
       const data = new FormData();
-      data.append('field', target.classList.contains('inspection-remarks') ? 'remarks' : 'damage_cost');
+      data.append('field', target.classList.contains('inspection-remarks') ? 'remarks' : (target.classList.contains('inspection-quantity') ? 'quantity' : 'damage_cost'));
       data.append('value', target.value);
       tr.classList.add('inspection-saving');
       post(tr.dataset.updateUrl, data).finally(() => tr.classList.remove('inspection-saving'));

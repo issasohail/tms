@@ -32,12 +32,13 @@
       <div class="table-responsive">
         {{ detail_formset.management_form }}
         <table class="table table-sm table-bordered align-middle mb-0">
-          <thead class="table-light"><tr><th>Category</th><th>Item</th><th>Status</th><th>Remarks</th><th>Damage Cost</th></tr></thead>
+          <thead class="table-light"><tr><th>Category</th><th>Item</th><th style="width:90px;">Qty</th><th>Status</th><th>Remarks</th><th>Damage Cost</th></tr></thead>
           <tbody>
             {% for form in detail_formset %}
               <tr>
                 <td>{{ form.instance.category }}{{ form.id }}</td>
                 <td>{{ form.instance.item_name }}{% if form.instance.required %}<span class="text-danger">*</span>{% endif %}</td>
+                <td>{{ form.quantity }}{% for error in form.quantity.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
                 <td>{{ form.status_choice }}{% for error in form.status_choice.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
                 <td>{{ form.remarks }}{% for error in form.remarks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
                 <td>{{ form.damage_cost }}{% for error in form.damage_cost.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>

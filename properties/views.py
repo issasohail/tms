@@ -902,6 +902,7 @@ def unit_inline_update(request):
             "society_maintenance",
             "water_charges",
             "security_requires",
+            "status",
             "show_publicly",
             "is_smart_meter",
         }
@@ -942,6 +943,23 @@ def unit_inline_update(request):
                     "success": True,
                     "new_value": "Yes" if bool_value else "No",
                     "value": bool_value,
+                }
+            )
+
+        if field == "status":
+            valid_statuses = dict(Unit.UNIT_STATUS)
+            if value not in valid_statuses:
+                return JsonResponse(
+                    {"success": False, "error": "Please choose a valid unit status."},
+                    status=400,
+                )
+            unit.status = value
+            unit.save(update_fields=["status"])
+            return JsonResponse(
+                {
+                    "success": True,
+                    "new_value": valid_statuses[value],
+                    "value": value,
                 }
             )
 

@@ -93,6 +93,7 @@
 
 
 <form id="invoice-filter-form" method="get" class="card card-body mb-3 filters-card invoice-page-compact">
+  <script id="invoice-units-data" type="application/json">{{ units_by_property_json|safe }}</script>
   <div class="filters-grid">
     <select name="period" id="id_period" class="form-select form-select-sm" title="Period">
       <option value="">All</option>
@@ -2498,6 +2499,245 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
 </script>
 
 <script>
+(function () {
+  function invoiceFilterUrl(form) {
+    const url = new URL(form.action || window.location.href, window.location.origin);
+    url.search = new URLSearchParams(new FormData(form)).toString();
+    return url;
+  }
+
+  function enhanceInvoiceTable() {
+    document.querySelectorAll('.invoice-list-dense table.table').forEach(table => {
+      table.classList.add('table-compact');
+      table.querySelectorAll('thead th').forEach((th, index) => {
+        if (index === 1) th.classList.add('col-check');
+        if (index === 4) th.classList.add('col-tenant');
+        if (index === 9) th.classList.add('col-actions');
+      });
+      table.querySelectorAll('tbody tr').forEach(row => {
+        const propertyCell = row.querySelector('td.col-propunit');
+        const tenantCell = row.querySelector('td.tenant-cell');
+        const descCell = row.querySelector('td.col-desc');
+        const issueCell = row.querySelector('td.col-issue');
+        const actionsCell = row.querySelector('td.actions-cell');
+
+        if (propertyCell && tenantCell && !propertyCell.querySelector('.mobile-tenant')) {
+          const tenantText = tenantCell.textContent.trim();
+          if (tenantText) {
+            const tenantSubtext = document.createElement('span');
+            tenantSubtext.className = 'mobile-subtext mobile-tenant';
+            tenantSubtext.textContent = tenantText;
+            propertyCell.appendChild(tenantSubtext);
+          }
+        }
+
+        if (descCell && issueCell && !descCell.querySelector('.mobile-issue-date')) {
+          const issueText = issueCell.textContent.trim();
+          if (issueText) {
+            const issueSubtext = document.createElement('span');
+            issueSubtext.className = 'mobile-subtext mobile-issue-date';
+            issueSubtext.textContent = `Issue: ${issueText}`;
+            descCell.appendChild(issueSubtext);
+          }
+        }
+
+        if (actionsCell) {
+          actionsCell.classList.add('col-actions');
+          actionsCell.querySelectorAll('.actions-wrap').forEach(wrap => {
+            wrap.classList.add('invoice-actions');
+          });
+          actionsCell.querySelectorAll('a, button').forEach(btn => {
+            const text = (btn.textContent || '').toLowerCase();
+            const title = (btn.getAttribute('title') || '').toLowerCase();
+            const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+            const href = (btn.getAttribute('href') || '').toLowerCase();
+            if (
+              btn.classList.contains('btn-edit') ||
+              text.includes('edit') ||
+              title.includes('edit') ||
+              aria.includes('edit') ||
+              href.includes('edit') ||
+              href.includes('update')
+            ) {
+              btn.classList.add('action-edit');
+            }
+          });
+        }
+      });
+    });
+
+    const useMobile = window.matchMedia('(max-width: 575.98px)').matches;
+    document.querySelectorAll('.invoice-list-dense td.col-amount').forEach(cell => {
+      if (!cell.dataset.fullAmount) cell.dataset.fullAmount = cell.textContent.trim();
+      cell.textContent = useMobile ? cell.dataset.fullAmount.replace(/(\.\d{2})(\s*)$/, '$2') : cell.dataset.fullAmount;
+    });
+  }
+
+  async function ajaxInvoiceFilterSubmit(form) {
+    const url = invoiceFilterUrl(form);
+    form.classList.add('opacity-75');
+
+    try {
+      const response = await fetch(url.toString(), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!response.ok) throw new Error('Filter request failed.');
+
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const nextForm = doc.getElementById('invoice-filter-form');
+      const nextTable = doc.querySelector('.invoice-list-dense');
+      const currentTable = document.querySelector('.invoice-list-dense');
+
+      if (!nextForm || !nextTable || !currentTable) {
+        window.location.href = url.toString();
+        return;
+      }
+
+      form.replaceWith(nextForm);
+      currentTable.replaceWith(nextTable);
+      history.replaceState(null, '', url.pathname + url.search);
+      bindInvoiceFilterAjax();
+      enhanceInvoiceTable();
+    } catch (error) {
+      console.error(error);
+      window.location.href = url.toString();
+    } finally {
+      document.getElementById('invoice-filter-form')?.classList.remove('opacity-75');
+    }
+  }
+
+  function bindInvoiceFilterAjax() {
+    const form = document.getElementById('invoice-filter-form');
+    if (!form || form.dataset.ajaxBound === '1') return;
+    const period = document.getElementById('id_period');
+    const property = document.getElementById('id_property');
+    const unit = document.getElementById('id_unit');
+    const lease = document.getElementById('id_lease');
+    const start = document.getElementById('id_start_date');
+    const end = document.getElementById('id_end_date');
+    const showInactive = document.getElementById('id_show_inactive');
+    const params = new URLSearchParams(window.location.search);
+    let submitTimer = null;
+
+    function submitSoon() {
+      window.clearTimeout(submitTimer);
+      submitTimer = window.setTimeout(() => ajaxInvoiceFilterSubmit(form), 120);
+    }
+
+    function fmt(d){ return d.toISOString().slice(0,10); }
+    function sow(d){ const c=new Date(d); const day=(c.getDay()+6)%7; c.setDate(c.getDate()-day); return c; }
+    function eow(d){ const s=sow(d); const e=new Date(s); e.setDate(s.getDate()+6); return e; }
+    function som(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+    function eom(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+    function soy(d){ return new Date(d.getFullYear(),0,1); }
+    function eoy(d){ return new Date(d.getFullYear(),11,31); }
+
+    function unitsByProperty() {
+      const unitsData = document.getElementById('invoice-units-data');
+      if (!unitsData) return {};
+      try {
+        return JSON.parse(unitsData.textContent || '{}');
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function populateUnits(selectedValue) {
+      if (!property || !unit) return;
+      const pid = property.value;
+      const selectedUnit = selectedValue ?? params.get('unit') ?? params.get('unit_id') ?? '';
+      unit.innerHTML = '';
+      if (!pid) {
+        unit.disabled = true;
+        return;
+      }
+
+      const allOpt = document.createElement('option');
+      allOpt.value = '';
+      allOpt.textContent = 'All units';
+      unit.appendChild(allOpt);
+
+      (unitsByProperty()[pid] || []).forEach(o => {
+        const el = document.createElement('option');
+        el.value = o.id;
+        el.textContent = o.label;
+        if (String(o.id) === String(selectedUnit)) el.selected = true;
+        unit.appendChild(el);
+      });
+      unit.disabled = false;
+    }
+
+    form.dataset.ajaxBound = '1';
+    form.submit = submitSoon;
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      submitSoon();
+    });
+
+    populateUnits();
+    period?.addEventListener('change', () => {
+      const now = new Date();
+      let s = '';
+      let e = '';
+      switch(period.value){
+        case 'today': s=e=fmt(now); break;
+        case 'yesterday': { const y=new Date(); y.setDate(now.getDate()-1); s=e=fmt(y); break; }
+        case 'this_week': s=fmt(sow(now)); e=fmt(eow(now)); break;
+        case 'last_week': { const n=new Date(); n.setDate(n.getDate()-7); s=fmt(sow(n)); e=fmt(eow(n)); break; }
+        case 'this_month': s=fmt(som(now)); e=fmt(eom(now)); break;
+        case 'last_month': { const d=new Date(now.getFullYear(), now.getMonth()-1, 1); s=fmt(som(d)); e=fmt(eom(d)); break; }
+        case 'next_month': { const d=new Date(now.getFullYear(), now.getMonth()+1, 1); s=fmt(som(d)); e=fmt(eom(d)); break; }
+        case 'this_year': s=fmt(soy(now)); e=fmt(eoy(now)); break;
+        default: s=''; e='';
+      }
+      if (start) start.value = s;
+      if (end) end.value = e;
+      submitSoon();
+    });
+    property?.addEventListener('change', () => {
+      populateUnits('');
+      if (lease && window.jQuery) jQuery(lease).val(null).trigger('change.select2');
+      submitSoon();
+    });
+    unit?.addEventListener('change', submitSoon);
+    start?.addEventListener('change', submitSoon);
+    end?.addEventListener('change', submitSoon);
+    showInactive?.addEventListener('change', submitSoon);
+
+    if (window.jQuery && jQuery.fn && jQuery.fn.select2 && lease) {
+      const $lease = jQuery(lease);
+      if (!$lease.data('select2')) {
+        $lease.select2({
+          theme: 'bootstrap-5',
+          width: 'style',
+          placeholder: 'Lease',
+          allowClear: true,
+          dropdownAutoWidth: true,
+          dropdownParent: jQuery('#invoice-filter-form')
+        });
+      }
+      $lease.off('select2:open.invoiceFilter').on('select2:open.invoiceFilter', function () {
+        setTimeout(function () {
+          const input = document.querySelector('.select2-container--open .select2-search__field');
+          if (input) input.focus();
+        }, 0);
+      });
+      $lease.off('change.invoiceFilter').on('change.invoiceFilter', submitSoon);
+    } else {
+      lease?.addEventListener('change', submitSoon);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindInvoiceFilterAjax);
+  } else {
+    bindInvoiceFilterAjax();
+  }
+})();
+</script>
+
+<script>
   const INVOICE_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'invoice' 0 'invoice' %}";
 
   // Same phone cleanup used in your detail page
@@ -2524,6 +2764,73 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
     if (debug.meta_error_details) lines.push('Meta detail: ' + debug.meta_error_details);
     if (debug.meta_fbtrace_id) lines.push('fbtrace_id: ' + debug.meta_fbtrace_id);
     return lines.join('\n');
+  }
+
+  function showInvoiceToast(message, variant) {
+    let wrap = document.getElementById('invoiceToastContainer');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = 'invoiceToastContainer';
+      wrap.className = 'position-fixed top-0 end-0 p-3';
+      wrap.style.zIndex = '1080';
+      document.body.appendChild(wrap);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'alert alert-' + (variant || 'success') + ' shadow-sm mb-2 py-2 px-3 small';
+    toast.setAttribute('role', 'status');
+    toast.textContent = message;
+    wrap.appendChild(toast);
+    setTimeout(() => {
+      toast.style.transition = 'opacity .25s ease';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  function showInvoiceWhatsAppApiMessage(title, message) {
+    let modalEl = document.getElementById('invoiceWhatsappApiMessageModal');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.id = 'invoiceWhatsappApiMessageModal';
+      modalEl.className = 'modal fade';
+      modalEl.tabIndex = -1;
+      modalEl.innerHTML = `
+        <div class="modal-dialog modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header py-2">
+              <h5 class="modal-title h6 mb-0"></h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <textarea class="form-control small" rows="12" readonly></textarea>
+            </div>
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary js-copy-message">Copy</button>
+              <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modalEl);
+      modalEl.querySelector('.js-copy-message').addEventListener('click', async function() {
+        const textArea = modalEl.querySelector('textarea');
+        textArea.select();
+        try {
+          await navigator.clipboard.writeText(textArea.value);
+        } catch (_) {
+          document.execCommand('copy');
+        }
+        this.textContent = 'Copied';
+        setTimeout(() => { this.textContent = 'Copy'; }, 1200);
+      });
+    }
+    modalEl.querySelector('.modal-title').textContent = title;
+    modalEl.querySelector('textarea').value = message;
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else {
+      console.error(message);
+      showInvoiceToast((message || title).split('\n')[0], 'danger');
+    }
   }
 
   async function postInvoiceWhatsAppApi(objectId) {
@@ -2574,9 +2881,9 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
       const useApi = document.getElementById('invoice-use-whatsapp-api')?.checked;
       if (useApi && el.dataset.objectId) {
         postInvoiceWhatsAppApi(el.dataset.objectId).then(function() {
-          alert('Invoice sent via WhatsApp API.');
+          showInvoiceToast('Invoice sent via WhatsApp API.');
         }).catch(function(error) {
-          alert('Failed to send via WhatsApp API: ' + error.message);
+          showInvoiceWhatsAppApiMessage('WhatsApp API Error', 'Failed to send via WhatsApp API:\n' + error.message);
         });
         return false;
       }
@@ -2783,7 +3090,7 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
         console.error('Invoice WhatsApp send failed', row, error);
       }
     }
-    alert(`Bulk invoice send complete.\nSent: ${sent}\nFailed: ${failed}`);
+    showInvoiceToast(`Bulk invoice send complete. Sent: ${sent}. Failed: ${failed}.`, failed ? 'warning' : 'success');
   }
 
   document.getElementById('invoice-bulk-whatsapp')?.addEventListener('click', openInvoiceBulkModal);

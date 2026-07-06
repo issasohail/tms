@@ -23,6 +23,7 @@ from tenants.models import Tenant
 
 from .models import (
     PendingWhatsAppMedia,
+    WhatsAppAIInteractionLog,
     WhatsAppConversation,
     WhatsAppMessageLog,
     WhatsAppUtilityTemplate,
@@ -251,6 +252,22 @@ def _queue_ai_message(message_log_id):
 
 @login_required
 @user_passes_test(_can_view_whatsapp_logs)
+@require_POST
+def replay_ai_message(request, message_log_id):
+    message_log = get_object_or_404(
+        WhatsAppMessageLog,
+        pk=message_log_id,
+        direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+    )
+    from .services.whatsapp_ai import process_inbound_whatsapp_message
+
+    process_inbound_whatsapp_message(message_log)
+    messages.success(request, "WhatsApp AI replay completed.")
+    return redirect(f"{reverse('whatsapp:webhook_log_list')}?phone={message_log.phone_number}")
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
 def utility_template_list(request):
     templates = WhatsAppUtilityTemplate.objects.order_by("key")
     return render(
@@ -367,6 +384,7 @@ def _conversation_summary():
                 "last_status": log.status,
                 "last_message": _message_text(log),
                 "last_at": log.created_at,
+                "needs_reply": _conversation_needs_reply(log.phone_number),
             }
         )
     return summary
@@ -385,8 +403,14 @@ def _conversation_messages(phone_number):
             original_whatsapp_message_id__in=[log.id for log in logs]
         )
     }
+    ai_by_message_id = {
+        item.message_log_id: item
+        for item in WhatsAppAIInteractionLog.objects.filter(message_log_id__in=[log.id for log in logs])
+        .order_by("message_log_id", "created_at")
+    }
     for log in logs:
         media = media_by_message_id.get(log.id)
+        ai_log = ai_by_message_id.get(log.id)
         rows.append(
             {
                 "id": log.id,
@@ -398,9 +422,20 @@ def _conversation_messages(phone_number):
                 "created_at": log.created_at,
                 "wa_message_id": log.wa_message_id,
                 "error_text": log.error_text,
+                "ai": ai_log,
             }
         )
     return rows
+
+
+def _conversation_needs_reply(phone_number):
+    latest = (
+        WhatsAppMessageLog.objects.filter(phone_number=phone_number)
+        .exclude(direction=WhatsAppMessageLog.DIRECTION_STATUS)
+        .order_by("-created_at")
+        .first()
+    )
+    return bool(latest and latest.direction == WhatsAppMessageLog.DIRECTION_INBOUND)
 
 
 def _conversation_context_for_phone(phone_number, latest_log=None):
@@ -672,6 +707,8 @@ def _send_action(request, service, obj, object_type, action, phone, message_text
         return service.send_image_bytes(phone, image_bytes, filename=filename, caption=message_text, tenant=tenant, lease=lease, payment=obj)
     if object_type == "lease" and action == "lease":
         return service.send_lease(obj, message=message_text)
+    if object_type == "lease" and action == "renewal":
+        return service.send_lease_renewal_notice_templates(obj, phone_number=phone)
     if object_type == "lease" and action == "text" and not is_whatsapp_session_open(phone):
         return service.send_balance_reminder_template(obj, phone_number=phone)
     if object_type == "tenant" and action == "text" and lease and not is_whatsapp_session_open(phone):

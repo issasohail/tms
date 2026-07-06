@@ -539,6 +539,27 @@
 }
 .end-soon,
 .ll-days-left { color: #dc3545 !important; font-weight: 900 !important; }
+.ll-renew-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.ll-renew-line .ll-days-left {
+  display: inline !important;
+  margin: 0 !important;
+  line-height: 1.1;
+}
+.ll-renew-btn {
+  min-height: 0 !important;
+  height: 16px;
+  padding: 0 5px !important;
+  font-size: .6rem;
+  line-height: 14px;
+  border-radius: 4px !important;
+  font-weight: 700;
+}
 .status-ended { color: #dc3545 !important; font-weight: 900 !important; }
 .ll-table-wrap td.col-balance a,
 .ll-table-wrap td.col-balance { color: #078044; }
@@ -926,6 +947,13 @@
     text-align: right;
     white-space: nowrap;
   }
+  .ll-table-wrap td.col-end .ll-renew-line {
+    justify-content: flex-end;
+  }
+  .ll-table-wrap td.col-end .ll-renew-line .ll-days-left {
+    display: inline !important;
+    margin-top: 0;
+  }
   .ll-table-wrap td.col-property::after { content: "" !important; }
   .ll-table-wrap td.col-actions {
     grid-column: 1 / -1;
@@ -1033,7 +1061,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(response => response.json().then(payload => ({ ok: response.ok, payload })))
         .then(({ ok, payload }) => {
           if (!ok || !payload.ok) throw new Error(payload.error || "WhatsApp API send failed.");
-          alert("Police verification link and PDF sent via WhatsApp Business API.");
+          showLeaseToast("Police verification link and PDF sent via WhatsApp Business API.");
         })
         .catch(error => alert(error.message))
         .finally(() => {
@@ -1170,6 +1198,7 @@ document.addEventListener("DOMContentLoaded", function () {
 const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
 const TMS_CURRENCY_SYMBOL  = "{{ CURRENCY_SYMBOL|escapejs }}";
 const LEASE_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'lease' 0 'text' %}";
+const LEASE_RENEWAL_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'lease' 0 'renewal' %}";
 
 function normalizePhone(phone, defaultCountryCodeRaw) {
   if (!phone) return null;
@@ -1201,6 +1230,27 @@ function whatsappApiUrl(template, objectId) {
   return template.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
 }
 
+function showLeaseToast(message, variant) {
+  let wrap = document.getElementById("leaseToastContainer");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "leaseToastContainer";
+    wrap.className = "position-fixed top-0 end-0 p-3";
+    wrap.style.zIndex = "1080";
+    document.body.appendChild(wrap);
+  }
+  const toast = document.createElement("div");
+  toast.className = "alert alert-" + (variant || "success") + " shadow-sm mb-2 py-2 px-3 small";
+  toast.setAttribute("role", "status");
+  toast.textContent = message;
+  wrap.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = "opacity .25s ease";
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
 function leaseWhatsAppApiErrorMessage(payload, fallback) {
   const debug = (payload && payload.debug) || {};
   const lines = [payload?.error || fallback || "API send failed"];
@@ -1215,6 +1265,52 @@ function leaseWhatsAppApiErrorMessage(payload, fallback) {
   if (debug.meta_error_details) lines.push("Meta detail: " + debug.meta_error_details);
   if (debug.meta_fbtrace_id) lines.push("fbtrace_id: " + debug.meta_fbtrace_id);
   return lines.join("\n");
+}
+
+function showLeaseWhatsAppApiMessage(title, message) {
+  let modalEl = document.getElementById("leaseWhatsappApiMessageModal");
+  if (!modalEl) {
+    modalEl = document.createElement("div");
+    modalEl.id = "leaseWhatsappApiMessageModal";
+    modalEl.className = "modal fade";
+    modalEl.tabIndex = -1;
+    modalEl.innerHTML = `
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h5 class="modal-title h6 mb-0"></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <textarea class="form-control small" rows="12" readonly></textarea>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary js-copy-message">Copy</button>
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modalEl);
+    modalEl.querySelector(".js-copy-message").addEventListener("click", async function() {
+      const textArea = modalEl.querySelector("textarea");
+      textArea.select();
+      try {
+        await navigator.clipboard.writeText(textArea.value);
+      } catch (_) {
+        document.execCommand("copy");
+      }
+      this.textContent = "Copied";
+      setTimeout(() => { this.textContent = "Copy"; }, 1200);
+    });
+  }
+  modalEl.querySelector(".modal-title").textContent = title;
+  modalEl.querySelector("textarea").value = message;
+  if (window.bootstrap && bootstrap.Modal) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  } else {
+    console.error(message);
+    showLeaseToast(message.split("\n")[0] || title, "danger");
+  }
 }
 
 async function postLeaseWhatsAppApi(url) {
@@ -1247,6 +1343,23 @@ document.addEventListener("DOMContentLoaded", function() {
       localStorage.setItem(key, input.checked ? "1" : "0");
     });
   });
+
+  document.querySelectorAll(".btn-wa-renew[data-object-id]").forEach(function(button) {
+    button.addEventListener("click", async function(event) {
+      event.preventDefault();
+      const leaseId = button.dataset.objectId;
+      if (!leaseId) return;
+      button.disabled = true;
+      try {
+        await postLeaseWhatsAppApi(whatsappApiUrl(LEASE_RENEWAL_WHATSAPP_API_URL_TEMPLATE, leaseId));
+        showLeaseToast("Expiry and renewal WhatsApp notices sent.");
+      } catch (error) {
+        showLeaseWhatsAppApiMessage("WhatsApp API Error", "Failed to send renewal notices:\n" + error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 });
 
 function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balance,
@@ -1271,9 +1384,9 @@ function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balanc
         if (!response.ok || payload.ok === false) {
           throw new Error(leaseWhatsAppApiErrorMessage(payload, `HTTP ${response.status}`));
         }
-        alert("WhatsApp reminder sent via API.");
+        showLeaseToast("WhatsApp reminder sent.");
       }).catch(function(error) {
-        alert("Failed to send via WhatsApp API: " + error.message);
+        showLeaseWhatsAppApiMessage("WhatsApp API Error", "Failed to send via WhatsApp API:\n" + error.message);
       });
       return;
     }
@@ -1366,7 +1479,7 @@ async function sendSelectedReminders() {
       console.error("Reminder send failed", row, error);
     }
   }
-  alert(`Reminder send complete.\nSent/opened: ${sent}\nFailed: ${failed}`);
+  showLeaseToast(`Reminder send complete. Sent/opened: ${sent}. Failed: ${failed}.`, failed ? "warning" : "success");
 }
 document.querySelectorAll(".lease-water-badge").forEach(function (badge) {
   badge.addEventListener("click", function () {

@@ -268,12 +268,28 @@ class LeaseTable(ExportableTable):
         if hasattr(self, "export_formats") and getattr(self, "is_export", False):
             return value.strftime("%Y-%m-%d")
 
-        # For HTML display, check if ending within 40 days
+        # For HTML display, show the same renewal action where the end date is red.
         if value:
             remaining_days = (value - timezone.now().date()).days
-            if 0 <= remaining_days <= 40:
+            if 0 <= remaining_days < 60:
+                days_label = f"{remaining_days} days left"
+                renew_button = ""
+                tenant_phone = getattr(getattr(record, "tenant", None), "phone", "")
+                if tenant_phone:
+                    renew_button = (
+                        f'<button type="button" '
+                        f'class="btn btn-primary btn-wa-renew ll-renew-btn" '
+                        f'title="Send expiry and renewal WhatsApp notices" '
+                        f'data-object-id="{record.pk}">'
+                        f'Renew'
+                        f'</button>'
+                    )
                 return mark_safe(
                     f'<span class="ending-soon">{value.strftime("%b %d, %Y")}</span>'
+                    f'<span class="ll-renew-line">'
+                    f'<small class="ll-days-left">{days_label}</small>'
+                    f'{renew_button}'
+                    f'</span>'
                 )
 
         return value.strftime("%b %d, %Y") if value else ""
@@ -318,7 +334,6 @@ class LeaseTable(ExportableTable):
         security_balance = ""
         security_status = ""
         due_date = record.due_date or ""
-
         whatsapp_url = None
         if has_balance:
             # --- Period (begin / end or Ongoing) ---

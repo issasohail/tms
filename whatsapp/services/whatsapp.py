@@ -2,6 +2,7 @@ import logging
 import re
 from calendar import monthrange
 from datetime import timedelta
+from decimal import Decimal
 from typing import Iterable
 
 import requests
@@ -83,11 +84,16 @@ class WhatsAppService:
         components=None,
         body_parameters=None,
         button_parameter=None,
+        button_index="0",
         **context,
     ):
         body_parameters = list(body_parameters or [])
         if components is None:
-            components = self._template_components(body_parameters, button_parameter)
+            components = self._template_components(
+                body_parameters,
+                button_parameter,
+                button_index=button_index,
+            )
         payload = {
             "messaging_product": "whatsapp",
             "to": self.normalize_phone_number(phone_number),
@@ -119,6 +125,7 @@ class WhatsAppService:
         template_name,
         body_parameters=None,
         button_parameter=None,
+        button_index="0",
         language_code=None,
         **context,
     ):
@@ -149,6 +156,7 @@ class WhatsAppService:
             language_code=language_code,
             body_parameters=body_parameters or [],
             button_parameter=button_parameter,
+            button_index=button_index,
             **context,
         )
 
@@ -399,6 +407,8 @@ class WhatsAppService:
                 self._money(getattr(invoice, "amount", "")),
                 self._date(getattr(invoice, "due_date", "")),
             ],
+            button_parameter=self._invoice_button_token(invoice),
+            button_index="1",
             tenant=tenant,
             lease=lease,
             invoice=invoice,
@@ -408,7 +418,6 @@ class WhatsAppService:
         lease = getattr(payment, "lease", None)
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
-        token = self._payment_receipt_button_token(payment)
         return self.send_utility_template(
             phone,
             "payment_confirmation",
@@ -419,7 +428,6 @@ class WhatsAppService:
                 getattr(payment, "reference_number", "")
                 or str(getattr(payment, "pk", "")),
             ],
-            button_parameter=token,
             tenant=tenant,
             lease=lease,
             payment=payment,
@@ -428,17 +436,17 @@ class WhatsAppService:
     def send_balance_reminder_template(self, lease, phone_number=None):
         tenant = getattr(lease, "tenant", None)
         phone = phone_number or getattr(tenant, "phone", "")
-        link = self._ledger_link(lease, phone)
+        due_date, pay_before, amount_due = self._lease_rent_due_reminder_values(lease)
         return self.send_utility_template(
             phone,
-            "balance_reminder",
+            "rent_due_reminder",
             body_parameters=[
                 self._tenant_name(tenant),
                 self._property_unit(lease),
-                self._money_amount(self._lease_balance(lease)),
-                self._lease_due_date(lease),
+                self._money_amount(amount_due),
+                due_date,
+                pay_before,
             ],
-            button_parameter=link.token,
             tenant=tenant,
             lease=lease,
         )
@@ -520,6 +528,55 @@ class WhatsAppService:
             tenant=tenant,
             lease=lease,
         )
+
+    def send_lease_expiry_notice_template(self, lease, phone_number=None):
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        return self.send_utility_template(
+            phone,
+            "lease_expiry_notice",
+            body_parameters=[
+                self._tenant_name(tenant),
+                self._property_unit(lease),
+                self._date(getattr(lease, "end_date", "")),
+            ],
+            tenant=tenant,
+            lease=lease,
+        )
+
+    def send_lease_renewal_offer_template(self, lease, phone_number=None):
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        return self.send_utility_template(
+            phone,
+            "lease_renewal_offer",
+            body_parameters=[
+                self._tenant_name(tenant),
+                self._property_unit(lease),
+            ],
+            tenant=tenant,
+            lease=lease,
+        )
+
+    def send_lease_renewal_notice_templates(self, lease, phone_number=None):
+        tenant = getattr(lease, "tenant", None)
+        phone = phone_number or getattr(tenant, "phone", "")
+        results = [
+            self.send_lease_expiry_notice_template(lease, phone_number=phone),
+            self.send_lease_renewal_offer_template(lease, phone_number=phone),
+        ]
+        ok = all(result.get("ok") for result in results)
+        first_error = next((result for result in results if not result.get("ok")), {})
+        return {
+            "ok": ok,
+            "message_type": WhatsAppMessageLog.MESSAGE_TYPE_TEMPLATE,
+            "template_name": "lease_expiry_notice, lease_renewal_offer",
+            "results": results,
+            "log_id": results[-1].get("log_id") if results else None,
+            "error": first_error.get("error", ""),
+            "debug": first_error.get("debug", {}),
+            "tenant": getattr(tenant, "pk", None),
+        }
 
     def download_media_bytes(self, media_id):
         if not media_id:
@@ -878,7 +935,7 @@ class WhatsAppService:
         return name if name.lower().endswith(".pdf") else ""
 
     @staticmethod
-    def _template_components(body_parameters, button_parameter):
+    def _template_components(body_parameters, button_parameter, button_index="0"):
         components = []
         if body_parameters:
             components.append(
@@ -898,7 +955,7 @@ class WhatsAppService:
                 {
                     "type": "button",
                     "sub_type": "url",
-                    "index": "0",
+                    "index": str(button_index or "0"),
                     "parameters": [{"type": "text", "text": str(button_parameter)}],
                 }
             )
@@ -946,17 +1003,25 @@ class WhatsAppService:
 
     @classmethod
     def _lease_due_date(cls, lease):
+        due_date = cls._lease_due_date_object(lease, roll_forward=True)
+        if due_date:
+            return cls._date(due_date)
+        value = getattr(lease, "due_date", "") or ""
+        return str(value)
+
+    @classmethod
+    def _lease_due_date_object(cls, lease, roll_forward=True):
         value = getattr(lease, "due_date", "") or ""
         if hasattr(value, "strftime"):
-            return cls._date(value)
+            return value
 
         match = re.search(r"\d{1,2}", str(value))
         if not match:
-            return str(value)
+            return None
 
         day = int(match.group())
         if day < 1:
-            return str(value)
+            return None
 
         today = timezone.localdate()
         year = today.year
@@ -965,13 +1030,71 @@ class WhatsAppService:
         due_day = min(day, max_day)
         due_date = today.replace(day=due_day)
 
-        if due_date < today:
+        if roll_forward and due_date < today:
             month = 1 if today.month == 12 else today.month + 1
             year = today.year + 1 if today.month == 12 else today.year
             max_day = monthrange(year, month)[1]
             due_date = due_date.replace(year=year, month=month, day=min(day, max_day))
 
-        return cls._date(due_date)
+        return due_date
+
+    @classmethod
+    def _lease_rent_due_reminder_values(cls, lease):
+        due_date = cls._lease_due_date_object(lease, roll_forward=False)
+        amount_due = cls._lease_balance(lease)
+        pay_before = cls._date(due_date) if due_date else cls._lease_due_date(lease)
+
+        if not due_date:
+            return pay_before, pay_before, amount_due
+
+        try:
+            from leases.models_late_fee import get_effective_late_fee_settings
+
+            cfg = get_effective_late_fee_settings(lease)
+        except Exception:
+            cfg = {"enabled": False}
+
+        today = timezone.localdate()
+        grace_days = int(cfg.get("grace_days") or 0)
+        grace_deadline = due_date + timedelta(days=grace_days)
+        days_overdue = (today - due_date).days
+        late_fee_due = bool(cfg.get("enabled")) and today > due_date and days_overdue >= grace_days
+
+        if late_fee_due:
+            late_fee = cls._lease_late_fee_amount(amount_due, cfg, lease)
+            amount_due = cls._decimal(amount_due) + late_fee
+            pay_before = (
+                f"{cls._date(due_date)}. Your payment is already due; "
+                "please pay at your earliest."
+            )
+        elif today > due_date:
+            pay_before = cls._date(grace_deadline)
+
+        return cls._date(due_date), pay_before, amount_due
+
+    @classmethod
+    def _lease_late_fee_amount(cls, amount_due, cfg, lease):
+        if not cfg.get("enabled"):
+            return Decimal("0.00")
+        if cfg.get("type") == "percent":
+            return (
+                cls._decimal(amount_due)
+                * cls._decimal(cfg.get("percent"))
+                / Decimal("100.00")
+            ).quantize(Decimal("0.01"))
+        configured_amount = cls._decimal(cfg.get("amount"))
+        if configured_amount:
+            return configured_amount
+        return cls._decimal(getattr(lease, "late_fee", 0))
+
+    @staticmethod
+    def _decimal(value):
+        if value in {None, ""}:
+            return Decimal("0.00")
+        try:
+            return Decimal(str(value).replace(",", ""))
+        except Exception:
+            return Decimal("0.00")
 
     @staticmethod
     def _lease_balance(lease):

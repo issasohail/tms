@@ -77,6 +77,9 @@
                     <span class="badge {% if item.last_status == 'failed' %}bg-danger{% elif item.last_status == 'read' or item.last_status == 'delivered' or item.last_status == 'sent' %}bg-success{% else %}bg-secondary{% endif %}">
                       {{ item.last_status }}
                     </span>
+                    {% if item.needs_reply %}
+                      <span class="badge bg-warning text-dark">Needs reply</span>
+                    {% endif %}
                   </td>
                 </tr>
               {% empty %}
@@ -153,6 +156,23 @@
                   {% endif %}
                   {% if row.error_text %}
                     <div class="text-danger small mt-1">{{ row.error_text }}</div>
+                  {% endif %}
+                  {% if row.ai %}
+                    <div class="small mt-2">
+                      <span class="badge bg-info text-dark">AI: {{ row.ai.intent|default:"unknown" }}</span>
+                      <span class="text-muted">{{ row.ai.latency_ms }} ms</span>
+                      {% if row.ai.error_text %}
+                        <div class="text-danger mt-1">{{ row.ai.error_text }}</div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  {% if row.direction == 'inbound' %}
+                    <form method="post" action="{% url 'whatsapp:replay_ai_message' row.id %}" class="mt-2">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">
+                        Replay AI
+                      </button>
+                    </form>
                   {% endif %}
                   {% if row.wa_message_id %}
                     <div class="text-muted small mt-1 whatsapp-message-id d-none">Message ID: {{ row.wa_message_id }}</div>

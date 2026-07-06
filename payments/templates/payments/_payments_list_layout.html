@@ -623,6 +623,27 @@ document.addEventListener("DOMContentLoaded", function () {
     return window.PAYMENT_WHATSAPP_API_URL_TEMPLATE.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
   }
 
+  function showPaymentToast(message, variant) {
+    let wrap = document.getElementById("paymentToastContainer");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = "paymentToastContainer";
+      wrap.className = "position-fixed top-0 end-0 p-3";
+      wrap.style.zIndex = "1080";
+      document.body.appendChild(wrap);
+    }
+    const toast = document.createElement("div");
+    toast.className = "alert alert-" + (variant || "success") + " shadow-sm mb-2 py-2 px-3 small";
+    toast.setAttribute("role", "status");
+    toast.textContent = message;
+    wrap.appendChild(toast);
+    setTimeout(() => {
+      toast.style.transition = "opacity .25s ease";
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
   document.addEventListener("click", async (e) => {
     const btn = e.target.closest(".btn-wa-receipt");
     if (!btn) return;
@@ -639,7 +660,7 @@ document.addEventListener("DOMContentLoaded", function () {
         let apiPayload = {};
         try { apiPayload = await apiRes.json(); } catch (_) { apiPayload = {}; }
         if (!apiRes.ok || apiPayload.ok === false) throw new Error(apiPayload.error || "API send failed");
-        alert("Receipt sent via WhatsApp API.");
+        showPaymentToast("Receipt sent via WhatsApp API.");
         return;
       }
 

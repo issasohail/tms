@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from datetime import timedelta
@@ -23,8 +24,10 @@ from maintenance.models import MaintenanceRequest
 from properties.models import Property, Unit
 from tenants.models import Tenant, normalize_cnic
 from whatsapp.models import (
+    PendingWhatsAppMaintenance,
     PendingWhatsAppMedia,
     PendingWhatsAppPayment,
+    WhatsAppMessageLog,
     WhatsAppExternalLinkToken,
     WhatsAppAIInteractionLog,
     WhatsAppConversation,
@@ -68,6 +71,30 @@ Tenant actions are self-service and limited to their own active lease.
 Staff actions require role and property permission checks and must be logged.
 Sensitive write actions must create drafts or pending approval records unless the role explicitly allows direct approval.
 """
+
+
+SAFE_TEXT_INTENTS = {
+    "availability",
+    "payment",
+    "payments",
+    "latest_invoice",
+    "payment_receipt",
+    "maintenance",
+    "maintenance_status",
+    "lease",
+    "lease_documents",
+    "agreement",
+    "balance",
+    "inspection",
+    "meter",
+    "family",
+    "police_verification",
+    "move_out",
+    "renewal",
+    "contact",
+    "suggestion",
+    "general",
+}
 
 
 class WhatsAppAIAssistant:
@@ -257,6 +284,10 @@ class WhatsAppAIAssistant:
         if isinstance(lease, str):
             return lease, "lease_lookup", {}
 
+        guided_maintenance_response = self._consume_guided_maintenance(message_log, conversation, text, lease)
+        if guided_maintenance_response:
+            return guided_maintenance_response
+
         invoice_payment_response = self._consume_tenant_invoice_payment_menu(conversation, text, lease)
         if invoice_payment_response:
             return invoice_payment_response
@@ -265,6 +296,16 @@ class WhatsAppAIAssistant:
             return self._ledger_link_reply(lease), "ledger", {"lease": lease, "tenant": getattr(lease, "tenant", None)}
         if any(word in lowered for word in ("family", "member", "members")):
             return self._family_list_reply(lease, message_log.phone_number), "family_list", {"lease": lease, "tenant": getattr(lease, "tenant", None)}
+        if _looks_like_inspection_request(text):
+            return self._inspection_sheet_reply(lease), "inspection", {"lease": lease, "tenant": getattr(lease, "tenant", None)}
+
+        intent = detect_intent(text)
+        if intent == "general":
+            intent = self._openai_text_intent(text)
+
+        tenant_action_response = self._handle_tenant_data_intent(message_log, conversation, intent, text, lease)
+        if tenant_action_response:
+            return tenant_action_response
 
         if lowered in {
             "2",
@@ -284,7 +325,6 @@ class WhatsAppAIAssistant:
                 {"lease": lease, "tenant": getattr(lease, "tenant", None)},
             )
 
-        intent = detect_intent(text)
         if lowered in {"7", "vacant", "vacancy", "available", "vacant units"}:
             return self._available_units_reply(), "availability", {}
         if lowered in {"8", "registration", "tenant registration"}:
@@ -324,12 +364,7 @@ class WhatsAppAIAssistant:
         if intent == "payment":
             return self._stage_payment(message_log, conversation, lease, None, text)
         if intent == "maintenance":
-            pending = create_pending_maintenance(message_log, conversation, lease)
-            return (
-                "Please send a clear photo or short video of the issue. Your maintenance request is staged for admin review.",
-                "maintenance_request",
-                {"lease": lease, "tenant": getattr(lease, "tenant", None), "pending_maintenance_id": pending.pk},
-            )
+            return self._start_guided_maintenance(message_log, conversation, text, lease)
         if intent == "availability":
             return self._available_units_reply(), "availability", {}
         if intent == "payments":
@@ -340,6 +375,8 @@ class WhatsAppAIAssistant:
                 "tenant_invoice_payment_menu",
                 {"lease": lease, "tenant": getattr(lease, "tenant", None)},
             )
+        if intent == "inspection":
+            return self._inspection_sheet_reply(lease), "inspection", {"lease": lease, "tenant": getattr(lease, "tenant", None)}
         if intent in {"balance", "lease"} and lease:
             return self._lease_reply(intent, lease), intent, {"lease": lease, "tenant": lease.tenant}
 
@@ -369,6 +406,26 @@ class WhatsAppAIAssistant:
             return police_response
 
         media = create_pending_media(message_log, conversation, selected_lease)
+        pending_maintenance_id = conversation.context.get("pending_maintenance_id")
+        if conversation.pending_state == "pending_maintenance" and pending_maintenance_id:
+            pending = PendingWhatsAppMaintenance.objects.filter(
+                pk=pending_maintenance_id,
+                status=PendingWhatsAppMaintenance.STATUS_PENDING,
+            ).first()
+            if pending:
+                media.purpose = PendingWhatsAppMedia.PURPOSE_MAINTENANCE
+                media.lease = selected_lease or pending.lease
+                media.tenant = pending.tenant
+                media.property = pending.property
+                media.unit = pending.unit
+                media.ai_notes = f"{media.ai_notes} Attached to guided WhatsApp maintenance request #{pending.pk}.".strip()
+                media.save(update_fields=["purpose", "lease", "tenant", "property", "unit", "ai_notes", "updated_at"])
+                pending.media.add(media)
+                return (
+                    "Maintenance media attached to your request. Thank you.",
+                    "maintenance_media_attached",
+                    {"lease": pending.lease, "tenant": pending.tenant, "pending_maintenance_id": pending.pk},
+                )
         ocr_json = run_payment_ocr(media, self.ai_config) if message_type == "image" else {"engine": "skipped", "confidence": 0}
         if media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT or _ocr_looks_like_payment(ocr_json):
             media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
@@ -557,10 +614,12 @@ class WhatsAppAIAssistant:
 
     def _handle_guest_message(self, message_log, conversation, text):
         intent = detect_intent(text)
+        if intent == "general":
+            intent = self._openai_text_intent(text)
         lowered = (text or "").strip().lower()
         if lowered in {"menu", "hi", "hello", "start", ""}:
             return guest_menu_text()
-        if lowered in {"4", "suggestion", "suggestions", "advice", "advise", "feedback", "idea"}:
+        if lowered in {"4", "suggestion", "suggestions", "advice", "advise", "feedback", "idea"} or intent == "suggestion":
             return self._start_suggestion_capture(conversation, "WhatsApp Guest")
         if intent in {"payments", "balance", "lease"}:
             return "Please send Property, Unit, Contact Number, and Tenant Name so we can find the correct lease/ledger."
@@ -573,8 +632,10 @@ class WhatsAppAIAssistant:
                 "2. Contact office\n\n"
                 "Reply with a number or type your request."
             )
-        if lowered in {"3", "contact", "contact office", "office"}:
+        if lowered in {"3", "contact", "contact office", "office"} or intent == "contact":
             return "Please tell me what you need, and our office team will follow up."
+        if intent == "inspection":
+            return "Inspection sheets are available only after we match your active lease. Please send Property, Unit, Contact Number, and Tenant Name."
         return guest_menu_text()
 
     def _handle_staff_message(self, message_log, conversation, text, message_type, identity):
@@ -620,6 +681,9 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
             return staff_menu_text(staff_user)
+        natural_staff_response = self._handle_staff_natural_language(message_log, conversation, text, staff_user)
+        if natural_staff_response:
+            return natural_staff_response
         if "ledger" in lowered or "statement" in lowered:
             return self._start_staff_search(conversation, "tenant_ledger", "Send tenant name, phone, CNIC, property, or unit for ledger.")
         if lowered in {"add tenant", "new tenant"}:
@@ -689,6 +753,57 @@ class WhatsAppAIAssistant:
             return mode_selection_text()
         log_staff_action(staff_user, message_log.phone_number, "staff_menu_request", "allowed", text=text[:200])
         return staff_submenu_text(text)
+
+    def _handle_staff_natural_language(self, message_log, conversation, text, staff_user):
+        lowered = (text or "").strip().lower()
+        query = _strip_staff_action_words(text)
+        if not query:
+            return None
+        if any(phrase in lowered for phrase in ("pending payment", "payment verification", "verify payments")):
+            return self._staff_payment_verification(message_log, staff_user)
+        if any(phrase in lowered for phrase in ("open maintenance", "maintenance summary", "pending maintenance")):
+            return self._staff_maintenance_summary(message_log, staff_user)
+        if any(phrase in lowered for phrase in ("missing meter", "missing reading")):
+            return self._staff_missing_meter_readings(message_log, staff_user)
+        if any(phrase in lowered for phrase in ("vacant", "available unit", "empty unit")):
+            return self._available_units_reply()
+        if "invoice" in lowered and ("link" in lowered or "send" in lowered):
+            invoices = self._staff_search_invoices(staff_user, query)
+            if len(invoices) == 1:
+                return self._staff_invoice_link_reply(message_log, staff_user, invoices[0])
+            if invoices:
+                conversation.pending_state = "staff_search_selection"
+                conversation.context["staff_search_options"] = [{"type": "invoice", "id": item.pk} for item in invoices[:9]]
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                lines = ["Invoice Search Results"]
+                for index, invoice in enumerate(invoices[:9], start=1):
+                    lines.append(f"{index}. {invoice.invoice_number} - {invoice.lease.tenant.get_full_name()} - Rs. {invoice.amount} - {invoice.get_status_display()}")
+                lines.append("\nReply with a number.")
+                return "\n".join(lines)
+        if "balance" in lowered:
+            leases = self._staff_search_leases(staff_user, query)
+            if len(leases) == 1:
+                return self._staff_lease_action_reply(message_log, staff_user, leases[0], "lease_balance")
+            if leases:
+                return self._staff_search_results_for_action(conversation, leases, "lease_balance")
+        if "ledger" in lowered or "statement" in lowered:
+            leases = self._staff_search_leases(staff_user, query)
+            if len(leases) == 1:
+                return self._staff_lease_action_reply(message_log, staff_user, leases[0], "lease_ledger")
+            if leases:
+                return self._staff_search_results_for_action(conversation, leases, "lease_ledger")
+        return None
+
+    def _staff_search_results_for_action(self, conversation, leases, action):
+        conversation.pending_state = "staff_search_selection"
+        conversation.context["staff_search_action"] = action
+        conversation.context["staff_search_options"] = [{"type": "lease", "id": item.pk} for item in leases[:9]]
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        lines = ["Lease Search Results"]
+        for index, lease in enumerate(leases[:9], start=1):
+            lines.append(f"{index}. {lease.tenant.get_full_name()} - {lease.unit.property.property_name} / {lease.unit.unit_number} - {lease.get_status_display()}")
+        lines.append("\nReply with a number.")
+        return "\n".join(lines)
 
     def _create_registration_link_for_staff(self, message_log, conversation, staff_user):
         from tenants.models import Tenant
@@ -1807,6 +1922,8 @@ class WhatsAppAIAssistant:
             ocr_json.update(extracted)
         match = match_payment_to_active_lease(message_log.phone_number, ocr_json)
         matched_lease = lease or match.get("lease")
+        duplicate_note = _payment_duplicate_note(matched_lease, ocr_json)
+        ai_notes = "\n".join(part for part in [match.get("notes", ""), duplicate_note] if part).strip()
         pending = PendingWhatsAppPayment.objects.create(
             tenant=getattr(matched_lease, "tenant", None),
             lease=matched_lease,
@@ -1820,7 +1937,7 @@ class WhatsAppAIAssistant:
             reference=ocr_json.get("reference", ""),
             bank_information=ocr_json.get("bank_information") or {"channel": _payment_channel(text or ocr_json.get("raw_text", ""))},
             ai_confidence=match.get("confidence", 0),
-            ai_notes=match.get("notes", ""),
+            ai_notes=ai_notes,
             original_whatsapp_message=message_log,
             conversation=conversation,
         )
@@ -1913,6 +2030,91 @@ class WhatsAppAIAssistant:
             {"lease": lease, "tenant": lease.tenant},
         )
 
+    def _start_guided_maintenance(self, message_log, conversation, text, lease):
+        issue, urgency, confidence = detect_maintenance_issue(text)
+        conversation.pending_state = "tenant_maintenance_details"
+        conversation.context["maintenance_draft"] = {
+            "initial_text": text or "",
+            "issue_type": issue,
+            "urgency": urgency,
+            "confidence": confidence,
+        }
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            "Maintenance request\n\n"
+            f"I read this as: {issue} ({urgency}).\n\n"
+            "Please reply with the location and details in one message.\n"
+            "Example: Bathroom pipe leaking, urgent, water is spreading.\n\n"
+            "You can also send a clear photo or short video after this.",
+            "maintenance_details_prompt",
+            {"lease": lease, "tenant": lease.tenant},
+        )
+
+    def _consume_guided_maintenance(self, message_log, conversation, text, lease):
+        if conversation.pending_state != "tenant_maintenance_details":
+            return None
+        lowered = (text or "").strip().lower()
+        if lowered in {"cancel", "back", "menu", "main menu"}:
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "maintenance_draft")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return self._tenant_welcome_menu(lease), "maintenance_cancelled", {"lease": lease, "tenant": lease.tenant}
+
+        draft = conversation.context.get("maintenance_draft") or {}
+        combined_text = "\n".join(part for part in [draft.get("initial_text"), text] if part).strip()
+        payload = dict(message_log.payload or {})
+        payload["text"] = {"body": combined_text}
+        message_log.payload = payload
+        issue, urgency, confidence = detect_maintenance_issue(combined_text)
+        pending = create_pending_maintenance(message_log, conversation, lease)
+        pending.issue_type = issue if issue != "Other" else (draft.get("issue_type") or pending.issue_type)
+        pending.urgency = "urgent" if _looks_urgent(combined_text) else (urgency or draft.get("urgency") or pending.urgency)
+        pending.description = combined_text
+        pending.ai_confidence = max(int(confidence or 0), int(draft.get("confidence") or 0), pending.ai_confidence or 0)
+        pending.ai_notes = "Guided WhatsApp maintenance request staged for admin approval."
+        pending.save(update_fields=["issue_type", "urgency", "description", "ai_confidence", "ai_notes", "updated_at"])
+        conversation.pending_state = "pending_maintenance"
+        conversation.context["pending_maintenance_id"] = pending.pk
+        self._clear_context_keys(conversation, "maintenance_draft")
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            "Maintenance request saved for admin review.\n\n"
+            f"Issue: {pending.issue_type or 'Other'}\n"
+            f"Urgency: {pending.urgency or 'normal'}\n\n"
+            "Please send a clear photo or short video if available.",
+            "maintenance_request",
+            {"lease": lease, "tenant": lease.tenant, "pending_maintenance_id": pending.pk},
+        )
+
+    def _handle_tenant_data_intent(self, message_log, conversation, intent, text, lease):
+        if intent == "latest_invoice":
+            return self._latest_invoice_reply(lease), "latest_invoice", {"lease": lease, "tenant": lease.tenant}
+        if intent == "payment_receipt":
+            return self._latest_payment_receipt_reply(lease), "payment_receipt", {"lease": lease, "tenant": lease.tenant}
+        if intent == "lease_documents":
+            return self._lease_documents_reply(lease), "lease_documents", {"lease": lease, "tenant": lease.tenant}
+        if intent == "agreement":
+            return self._agreement_link_reply(message_log, lease), "agreement", {"lease": lease, "tenant": lease.tenant}
+        if intent == "maintenance_status":
+            return self._maintenance_status_reply(lease), "maintenance_status", {"lease": lease, "tenant": lease.tenant}
+        if intent == "meter":
+            return self._meter_reading_reply(lease), "meter", {"lease": lease, "tenant": lease.tenant}
+        if intent == "family":
+            return self._family_list_reply(lease, message_log.phone_number), "family_list", {"lease": lease, "tenant": lease.tenant}
+        if intent == "police_verification":
+            link, url = create_police_verification_link(None, lease, phone_number=message_log.phone_number)
+            conversation.pending_state = "police_verification_upload"
+            conversation.context["police_verification_lease_id"] = lease.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return build_police_whatsapp_message(None, lease, url), "police_verification_link", {"lease": lease, "link_id": link.pk}
+        if intent == "contact":
+            return "Please tell me what you need, and our office team will follow up.", "contact_office", {"lease": lease, "tenant": lease.tenant}
+        if intent == "suggestion":
+            return self._start_suggestion_capture(conversation, "WhatsApp Tenant"), "suggestion_prompt", {"lease": lease, "tenant": lease.tenant}
+        if intent in {"move_out", "renewal"}:
+            return self._sensitive_lease_request_reply(message_log, conversation, intent, text, lease)
+        return None
+
     def _outstanding_invoices_reply(self, lease):
         invoices = list(
             Invoice.objects.filter(lease=lease)
@@ -1931,6 +2133,47 @@ class WhatsAppAIAssistant:
                 f"{invoice.invoice_number}: Rs. {amount} due {invoice.due_date} ({invoice.get_status_display()})\n{link}"
             )
         return "\n".join(lines)
+
+    def _latest_invoice_reply(self, lease):
+        invoice = (
+            Invoice.objects.filter(lease=lease)
+            .exclude(status="cancelled")
+            .order_by("-issue_date", "-id")
+            .first()
+        )
+        if not invoice:
+            return "No invoice is recorded for your active lease yet."
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        token = make_public_invoice_token(invoice.pk)
+        link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
+        return (
+            "Latest invoice\n\n"
+            f"Invoice: {invoice.invoice_number}\n"
+            f"Amount: Rs. {invoice.amount or Decimal('0.00')}\n"
+            f"Due Date: {invoice.due_date or '-'}\n"
+            f"Status: {invoice.get_status_display()}\n\n"
+            f"Link:\n{link}"
+        )
+
+    def _latest_payment_receipt_reply(self, lease):
+        from payments.models import Payment
+
+        payment = (
+            Payment.objects.filter(lease=lease)
+            .select_related("payment_method")
+            .order_by("-payment_date", "-id")
+            .first()
+        )
+        if not payment:
+            return "No payment receipt is recorded for your active lease yet."
+        return (
+            "Latest payment receipt\n\n"
+            f"Date: {payment.payment_date}\n"
+            f"Amount: Rs. {payment.amount}\n"
+            f"Method: {getattr(payment.payment_method, 'name', '') or '-'}\n"
+            f"Reference: {payment.reference_number or '-'}\n\n"
+            "Please contact the office if you need the receipt PDF resent."
+        )
 
     def _ledger_link_reply(self, lease):
         base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
@@ -1977,6 +2220,171 @@ class WhatsAppAIAssistant:
         ])
         return "\n".join(lines)
 
+    def _lease_documents_reply(self, lease):
+        from core.models import GlobalSettings
+        from leases.models import LeaseDocument, LeaseFileShareLink
+
+        docs = list(
+            LeaseDocument.objects.filter(lease=lease, is_active=True)
+            .order_by("category", "-uploaded_at", "-id")[:10]
+        )
+        if not docs:
+            return "No lease documents are currently available for your active lease."
+        settings_obj = GlobalSettings.get_solo()
+        valid_days = max(1, getattr(settings_obj, "lease_file_share_valid_days", 7) or 7)
+        link = LeaseFileShareLink.objects.create(
+            lease=lease,
+            document=None,
+            expires_at=timezone.now() + timedelta(days=valid_days),
+        )
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        share_url = f"{base_url.rstrip('/')}{reverse('leases:public_lease_files_share', args=[link.token])}"
+        lines = [
+            "Lease documents available:",
+            f"Lease: {lease.unit.property.property_name} / {lease.unit.unit_number}",
+        ]
+        for index, document in enumerate(docs[:5], start=1):
+            lines.append(f"{index}. {document.category_label} - {document.display_name or document.original_filename or 'Document'}")
+        if len(docs) > 5:
+            lines.append(f"...and {len(docs) - 5} more")
+        lines.extend(["", "Secure documents link:", share_url, f"Link expires in {valid_days} day(s)."])
+        return "\n".join(lines)
+
+    def _agreement_link_reply(self, message_log, lease):
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        token = WhatsAppExternalLinkToken.objects.create(
+            link_type=WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW,
+            phone_number=message_log.phone_number,
+            tenant=lease.tenant,
+            target_app_label="leases",
+            target_model="lease",
+            target_object_id=lease.pk,
+            metadata={"lease_id": lease.pk, "source": "whatsapp_tenant"},
+            expires_at=timezone.now() + timedelta(hours=48),
+        )
+        link = f"{base_url.rstrip('/')}{reverse('leases:public_agreement_view', args=[token.token])}"
+        return (
+            "Lease agreement\n\n"
+            f"Lease: {lease.unit.property.property_name} / {lease.unit.unit_number}\n"
+            f"Status: {'Signed' if lease.is_agreement_signed else 'Not marked signed'}\n\n"
+            f"View agreement:\n{link}\n"
+            "Link is valid for 48 hours."
+        )
+
+    def _maintenance_status_reply(self, lease):
+        requests = list(
+            MaintenanceRequest.objects.filter(lease=lease)
+            .exclude(status__in=["completed", "cancelled"])
+            .order_by("-reported_date", "-id")[:5]
+        )
+        if not requests:
+            recent = list(
+                MaintenanceRequest.objects.filter(lease=lease)
+                .order_by("-reported_date", "-id")[:3]
+            )
+            if not recent:
+                return "No maintenance requests are recorded for your active lease."
+            lines = ["Recent maintenance requests:"]
+            for index, item in enumerate(recent, start=1):
+                lines.append(f"{index}. {item.title} - {item.get_status_display()} - {item.reported_date}")
+            return "\n".join(lines)
+        lines = ["Open maintenance requests:"]
+        for index, item in enumerate(requests, start=1):
+            lines.append(f"{index}. {item.title} - {item.get_status_display()} - {item.reported_date}")
+        return "\n".join(lines)
+
+    def _meter_reading_reply(self, lease):
+        try:
+            from smart_meter.models import LiveReading, MeterInstallation
+        except Exception:
+            return "Please send your latest meter reading or utility bill photo. Our team will review it."
+
+        installations = list(
+            MeterInstallation.objects.filter(
+                lease=lease,
+                is_active=True,
+                end_date__isnull=True,
+            ).select_related("meter", "unit")[:5]
+        )
+        if not installations:
+            return "No active smart meter is linked to your lease. You can send a meter photo here for office review."
+        lines = ["Latest meter reading:"]
+        for installation in installations:
+            live = LiveReading.objects.filter(meter=installation.meter).first()
+            if live:
+                lines.append(
+                    f"Meter {installation.meter.meter_number}: {live.total_energy or '-'} kWh, "
+                    f"Balance Rs. {live.balance if live.balance is not None else '-'} "
+                    f"({timezone.localtime(live.ts):%Y-%m-%d %H:%M})"
+                )
+            else:
+                lines.append(f"Meter {installation.meter.meter_number}: no live reading found.")
+        lines.append("")
+        lines.append("You can also send a meter photo here for office review.")
+        return "\n".join(lines)
+
+    def _inspection_sheet_reply(self, lease):
+        from leases.models_inspections import LeaseInspection
+
+        inspections = list(
+            LeaseInspection.objects.select_related("inspection_type", "property", "unit", "tenant")
+            .filter(lease=lease)
+            .order_by("-inspection_date", "-id")[:3]
+        )
+        if not inspections:
+            return (
+                "No inspection sheet is recorded for your active lease yet.\n\n"
+                "Please contact the office if you need a new inspection."
+            )
+
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        latest = inspections[0]
+        lines = [
+            "Inspection sheet",
+            f"Lease: {lease.unit.property.property_name} / {lease.unit.unit_number}",
+            "",
+            "Recent inspections:",
+        ]
+        for index, inspection in enumerate(inspections, start=1):
+            lines.append(
+                f"{index}. {inspection.inspection_type} - {inspection.inspection_date} - {inspection.get_status_display()}"
+            )
+
+        if latest.status != LeaseInspection.STATUS_APPROVED:
+            if not latest.public_link_valid:
+                latest.public_is_active = True
+                latest.public_expires_at = timezone.now() + timedelta(hours=48)
+                latest.save(update_fields=["public_is_active", "public_expires_at", "updated_at"])
+                latest.add_audit("whatsapp_tenant_public_link_generated", extra={"hours": 48})
+            public_link = f"{base_url.rstrip('/')}{reverse('leases:public_inspection_sign', args=[latest.public_token])}"
+            lines.extend([
+                "",
+                "Open latest inspection sheet:",
+                public_link,
+                "Link is valid for 48 hours.",
+            ])
+        else:
+            lines.extend([
+                "",
+                "The latest inspection sheet is approved. Please contact the office if you need a signed copy.",
+            ])
+        return "\n".join(lines)
+
+    def _sensitive_lease_request_reply(self, message_log, conversation, intent, text, lease):
+        source = "WhatsApp Tenant Move Out" if intent == "move_out" else "WhatsApp Tenant Renewal"
+        ticket = self._create_suggestion_ticket(message_log, conversation, text, identify_sender(message_log.phone_number))
+        if ticket:
+            return (
+                "Thanks. Your request has been sent to the office for review.\n\n"
+                f"Request: {'Move-out / vacating' if intent == 'move_out' else 'Lease renewal'}\n"
+                f"Reference #{ticket.id}"
+            ), intent, {"lease": lease, "tenant": lease.tenant, "suggestion_id": ticket.id, "source": source}
+        return (
+            "Thanks. We received your request and our office team will review it shortly.",
+            intent,
+            {"lease": lease, "tenant": lease.tenant, "source": source},
+        )
+
     def _lease_reply(self, intent, lease):
         ctx = build_lease_context(lease)
         if intent == "payments":
@@ -2003,6 +2411,38 @@ class WhatsAppAIAssistant:
         return (
             f"Your outstanding balance for {ctx.property.property_name} - Unit {ctx.unit.unit_number} is Rs. {ctx.balance}."
         )
+
+    def _openai_text_intent(self, text):
+        if self.ai_config.provider != "openai" or not self.ai_config.openai_api_key_configured:
+            return "general"
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return "general"
+        try:
+            from openai import OpenAI
+        except ImportError:
+            return "general"
+
+        prompt = (
+            "Classify this property-management WhatsApp tenant message into one intent. "
+            "Return only JSON like {\"intent\":\"inspection\"}. "
+            "Allowed intents: "
+            + ", ".join(sorted(SAFE_TEXT_INTENTS))
+            + ".\n\n"
+            f"Message: {clean_text[:500]}"
+        )
+        try:
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            response = client.responses.create(
+                model=self.ai_config.model,
+                input=[{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
+            )
+            parsed = _parse_json_object(getattr(response, "output_text", "") or "")
+            intent = (parsed.get("intent") or "general").strip().lower()
+            return intent if intent in SAFE_TEXT_INTENTS else "general"
+        except Exception:
+            logger.exception("OpenAI WhatsApp text intent classification failed.")
+            return "general"
 
     def _available_units_reply(self):
         units = list(
@@ -2038,9 +2478,40 @@ def detect_intent(text):
     }
     if lowered in tenant_menu_number_map:
         return tenant_menu_number_map[lowered]
-    if any(word in lowered for word in ("available", "availability", "vacancy", "vacant", "room", "flat available", "rent available", "khali", "khaali", "empty flat")):
+    if _looks_like_suggestion(lowered):
+        return "suggestion"
+    if _looks_like_contact(lowered):
+        return "contact"
+    if _looks_like_police_verification(lowered):
+        return "police_verification"
+    if _looks_like_inspection_request(lowered):
+        return "inspection"
+    if _looks_like_maintenance_status(lowered):
+        return "maintenance_status"
+    if _looks_like_latest_invoice(lowered):
+        return "latest_invoice"
+    if _looks_like_payment_receipt_request(lowered):
+        return "payment_receipt"
+    if _looks_like_lease_documents(lowered):
+        return "lease_documents"
+    if _looks_like_agreement_request(lowered):
+        return "agreement"
+    if _looks_like_meter_request(lowered):
+        return "meter"
+    if _looks_like_family_request(lowered):
+        return "family"
+    if _looks_like_move_out(lowered):
+        return "move_out"
+    if _looks_like_renewal(lowered):
+        return "renewal"
+    if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues", "baqaya", "remaining", "pending rent", "remaining rent")):
+        return "balance"
+    if (
+        _contains_any_word(lowered, {"available", "availability", "vacancy", "vacant", "khali", "khaali"})
+        or any(phrase in lowered for phrase in ("flat available", "rent available", "empty flat", "available unit"))
+    ):
         return "availability"
-    if any(word in lowered for word in ("payment", "paid", "receipt", "screenshot", "transfer", "easypaisa", "jazzcash", "raast", "bank transfer", "rent paid", "kiraya", "kiraya jama", "jama", "remaining rent")):
+    if any(word in lowered for word in ("payment", "paid", "receipt", "screenshot", "transfer", "easypaisa", "jazzcash", "raast", "bank transfer", "rent paid", "kiraya jama", "jama")):
         return "payment"
     issue, _, confidence = detect_maintenance_issue(lowered)
     if issue != "Other" or confidence >= 75 or any(word in lowered for word in ("maintenance", "repair", "pani", "water", "bijli", "electric", "light", "leak", "not working", "kharab")):
@@ -2049,9 +2520,161 @@ def detect_intent(text):
         return "payments"
     if any(word in lowered for word in ("lease", "agreement", "contract", "expiry", "expire", "renewal", "deposit", "kiraya nama")):
         return "lease"
-    if any(word in lowered for word in ("balance", "outstanding", "rent due", "dues", "baqaya", "remaining", "pending rent")):
-        return "balance"
     return "general"
+
+
+def _looks_like_inspection_request(text):
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    inspection_words = (
+        "inspection",
+        "inspect",
+        "condition report",
+        "condition sheet",
+        "pcr",
+        "property condition",
+        "move in report",
+        "move-out report",
+        "move out report",
+    )
+    if any(word in lowered for word in inspection_words):
+        return True
+    return "sheet" in lowered and any(word in lowered for word in ("property", "unit", "lease", "flat", "room"))
+
+
+def _looks_like_latest_invoice(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "latest invoice",
+            "last invoice",
+            "current invoice",
+            "new invoice",
+            "invoice copy",
+            "send invoice",
+            "invoice link",
+            "rent bill",
+            "bill copy",
+        )
+    )
+
+
+def _looks_like_payment_receipt_request(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "payment receipt",
+            "receipt copy",
+            "rent receipt",
+            "last receipt",
+            "latest receipt",
+            "paid receipt",
+        )
+    )
+
+
+def _looks_like_lease_documents(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "lease document",
+            "lease documents",
+            "documents",
+            "my files",
+            "tenant files",
+            "lease file",
+            "lease files",
+        )
+    )
+
+
+def _looks_like_agreement_request(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "agreement",
+            "contract",
+            "kiraya nama",
+            "lease copy",
+            "signed copy",
+        )
+    )
+
+
+def _looks_like_maintenance_status(text):
+    lowered = (text or "").strip().lower()
+    return (
+        any(word in lowered for word in ("status", "update", "progress", "pending"))
+        and any(word in lowered for word in ("maintenance", "repair", "complaint", "issue", "request"))
+    )
+
+
+def _looks_like_meter_request(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "meter",
+            "meter reading",
+            "electric reading",
+            "utility bill",
+            "electric bill",
+            "bijli bill",
+            "kwh",
+        )
+    )
+
+
+def _looks_like_family_request(text):
+    lowered = (text or "").strip().lower()
+    return any(word in lowered for word in ("family", "family member", "members", "dependent", "dependant"))
+
+
+def _looks_like_police_verification(text):
+    lowered = (text or "").strip().lower()
+    return "police" in lowered or "verification" in lowered
+
+
+def _looks_like_move_out(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "move out",
+            "move-out",
+            "vacate",
+            "vacating",
+            "leave flat",
+            "leave unit",
+            "end lease",
+            "terminate lease",
+        )
+    )
+
+
+def _looks_like_renewal(text):
+    lowered = (text or "").strip().lower()
+    return any(word in lowered for word in ("renew", "renewal", "extend lease", "extension"))
+
+
+def _looks_like_contact(text):
+    lowered = (text or "").strip().lower()
+    return any(word in lowered for word in ("contact", "office", "call me", "speak to", "manager", "helpdesk"))
+
+
+def _looks_like_suggestion(text):
+    lowered = (text or "").strip().lower()
+    return any(word in lowered for word in ("suggestion", "feedback", "advice", "advise", "idea", "complaint"))
+
+
+def _contains_any_word(text, words):
+    tokens = {token.strip(".,!?;:()[]{}") for token in (text or "").lower().split()}
+    return bool(tokens & set(words))
 
 
 def _tenant_invoice_payment_menu_text():
@@ -2113,6 +2736,59 @@ def _looks_like_other(text):
     return (text or "").strip().lower() in {"other", "another", "different"}
 
 
+def _looks_urgent(text):
+    lowered = (text or "").strip().lower()
+    return any(word in lowered for word in ("urgent", "emergency", "immediately", "spark", "fire", "flood", "water spreading"))
+
+
+def _strip_staff_action_words(text):
+    lowered = (text or "").strip()
+    noise = (
+        "please",
+        "show",
+        "send",
+        "get",
+        "find",
+        "search",
+        "tenant",
+        "lease",
+        "balance",
+        "ledger",
+        "statement",
+        "invoice",
+        "link",
+        "for",
+        "of",
+        "to",
+    )
+    tokens = [token for token in lowered.replace(",", " ").split() if token.lower() not in noise]
+    return " ".join(tokens).strip() or lowered
+
+
+def _payment_duplicate_note(lease, ocr_json):
+    if not lease:
+        return ""
+    amount = ocr_json.get("amount")
+    reference = (ocr_json.get("reference") or "").strip()
+    payment_date = ocr_json.get("date")
+    if not amount and not reference:
+        return ""
+    try:
+        from payments.models import Payment
+    except Exception:
+        return ""
+    existing = Payment.objects.filter(lease=lease)
+    if reference:
+        existing = existing.filter(reference_number__iexact=reference)
+    elif amount and payment_date:
+        existing = existing.filter(amount=amount, payment_date=payment_date)
+    elif amount:
+        existing = existing.filter(amount=amount).order_by("-payment_date")[:1]
+    if existing.exists():
+        return "Possible duplicate payment found; admin should verify before approval."
+    return ""
+
+
 def _payment_channel(text):
     lowered = (text or "").lower()
     for channel in ("easypaisa", "jazzcash", "raast"):
@@ -2123,6 +2799,19 @@ def _payment_channel(text):
     if "cheque" in lowered or "check" in lowered:
         return "Cheque"
     return ""
+
+
+def _parse_json_object(raw_text):
+    text = (raw_text or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _ocr_looks_like_payment(ocr_json):

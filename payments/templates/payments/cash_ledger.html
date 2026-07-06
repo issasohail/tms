@@ -199,6 +199,73 @@ function cashLedgerWhatsAppApiErrorMessage(payload, fallback) {
   return lines.join("\n");
 }
 
+function showCashLedgerToast(message, variant) {
+  let wrap = document.getElementById("cashLedgerToastContainer");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "cashLedgerToastContainer";
+    wrap.className = "position-fixed top-0 end-0 p-3";
+    wrap.style.zIndex = "1080";
+    document.body.appendChild(wrap);
+  }
+  const toast = document.createElement("div");
+  toast.className = "alert alert-" + (variant || "success") + " shadow-sm mb-2 py-2 px-3 small";
+  toast.setAttribute("role", "status");
+  toast.textContent = message;
+  wrap.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = "opacity .25s ease";
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+function showCashLedgerWhatsAppApiMessage(title, message) {
+  let modalEl = document.getElementById("cashLedgerWhatsappApiMessageModal");
+  if (!modalEl) {
+    modalEl = document.createElement("div");
+    modalEl.id = "cashLedgerWhatsappApiMessageModal";
+    modalEl.className = "modal fade";
+    modalEl.tabIndex = -1;
+    modalEl.innerHTML = `
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h5 class="modal-title h6 mb-0"></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <textarea class="form-control small" rows="12" readonly></textarea>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary js-copy-message">Copy</button>
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modalEl);
+    modalEl.querySelector(".js-copy-message").addEventListener("click", async function() {
+      const textArea = modalEl.querySelector("textarea");
+      textArea.select();
+      try {
+        await navigator.clipboard.writeText(textArea.value);
+      } catch (_) {
+        document.execCommand("copy");
+      }
+      this.textContent = "Copied";
+      setTimeout(() => { this.textContent = "Copy"; }, 1200);
+    });
+  }
+  modalEl.querySelector(".modal-title").textContent = title;
+  modalEl.querySelector("textarea").value = message;
+  if (window.bootstrap && bootstrap.Modal) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  } else {
+    console.error(message);
+    showCashLedgerToast(message.split("\n")[0] || title, "danger");
+  }
+}
+
 document.addEventListener("click", async function(e){
   const a = e.target.closest(".btn-wa-receipt");
   if (!a) return;
@@ -223,14 +290,14 @@ document.addEventListener("click", async function(e){
         });
         apiData = await apiResponse.json().catch(() => ({}));
       } catch (networkErr) {
-        alert("Failed to send via WhatsApp API: " + networkErr.message);
+        showCashLedgerWhatsAppApiMessage("WhatsApp API Error", "Failed to send via WhatsApp API:\n" + networkErr.message);
         return;
       }
       if (!apiResponse.ok || apiData.ok === false) {
-        alert("Failed to send via WhatsApp API:\n" + cashLedgerWhatsAppApiErrorMessage(apiData, `HTTP ${apiResponse.status}`));
+        showCashLedgerWhatsAppApiMessage("WhatsApp API Error", "Failed to send via WhatsApp API:\n" + cashLedgerWhatsAppApiErrorMessage(apiData, `HTTP ${apiResponse.status}`));
         return;
       }
-      alert("Receipt sent via WhatsApp API.");
+      showCashLedgerToast("Receipt sent via WhatsApp API.");
       return;
     }
     if (useApi && !objectId) {

@@ -81,7 +81,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from weasyprint import HTML
 
-from invoices.models import Invoice, SecurityDepositTransaction
+from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
 from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
@@ -2561,6 +2561,47 @@ def create_security_required_adjustment(old_lease, new_lease):
     )
 
 
+def _sync_current_renewal_end_date(lease, *, user=None):
+    """
+    Keep the active/current renewal history row aligned when the master lease
+    end date is edited directly from the lease form.
+    """
+    today = timezone.localdate()
+    renewal = (
+        lease.renewals.filter(start_date__lte=today, end_date__gte=today)
+        .order_by("-renewal_number", "-id")
+        .first()
+    )
+    if renewal is None:
+        renewal = lease.renewals.order_by("-renewal_number", "-id").first()
+    if renewal is None:
+        return 0
+
+    update_fields = []
+    if renewal.end_date != lease.end_date:
+        renewal.end_date = lease.end_date
+        update_fields.append("end_date")
+    if not update_fields:
+        return 0
+    if user and getattr(user, "is_authenticated", False):
+        renewal.updated_by = user
+        update_fields.append("updated_by")
+    update_fields.append("updated_at")
+    renewal.save(update_fields=update_fields)
+    return 1
+
+
+def _sync_lease_recurring_charge_end_dates(lease):
+    """
+    RecurringCharge.end_date is independent from Lease.end_date, so lease-form
+    changes must explicitly close lease-scoped recurring rules on the same day.
+    """
+    updated = RecurringCharge.objects.filter(lease=lease).exclude(
+        end_date=lease.end_date
+    ).update(end_date=lease.end_date)
+    return updated
+
+
 class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
     model = Lease
     form_class = LeaseForm
@@ -2657,6 +2698,12 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
 
         # Snapshot BEFORE (from DB)
         old = Lease.objects.get(pk=form.instance.pk)
+        status_changed_to_inactive = (
+            old.status != form.instance.status and form.instance.status != "active"
+        )
+        if status_changed_to_inactive:
+            form.instance.end_date = timezone.localdate()
+            form.cleaned_data["end_date"] = form.instance.end_date
 
         # Detect changes (uses unsaved form.instance values)
         changes = detect_lease_changes(old, form.instance)
@@ -2757,6 +2804,11 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         renewal_fs.instance = self.object
         renewal_fs.save()
         self._handle_quick_add(self.object)
+        renewal_sync_count = _sync_current_renewal_end_date(
+            self.object,
+            user=self.request.user,
+        )
+        recurring_sync_count = _sync_lease_recurring_charge_end_dates(self.object)
 
         # ---------- STEP 4: SECURITY LEDGER ADJUSTMENT ----------
         if security_changed:
@@ -2819,7 +2871,16 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                     self.request, f"Final settlement not posted: {exc.message}"
                 )
 
-        messages.success(self.request, "Lease updated. Billing & security synced.")
+        sync_bits = []
+        if renewal_sync_count:
+            sync_bits.append("current renewal end date")
+        if recurring_sync_count:
+            sync_bits.append(f"{recurring_sync_count} recurring charge date(s)")
+        sync_note = f" Synced {', '.join(sync_bits)}." if sync_bits else ""
+        messages.success(
+            self.request,
+            f"Lease updated. Billing & security synced.{sync_note}",
+        )
         return redirect(self.get_success_url())
 
 

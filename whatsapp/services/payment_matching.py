@@ -1,13 +1,16 @@
 import re
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from .tenant_context import build_lease_context, find_active_leases_for_phone
 
 
 AMOUNT_RE = re.compile(r"(?:rs\.?|pkr|amount|paid|total)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)", re.I)
 REF_RE = re.compile(r"(?:ref|reference|tid|transaction|trx|rrn|id)[\s#:.-]*([A-Z0-9-]{5,})", re.I)
+DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b")
 
 
 def extract_payment_text_fields(text):
@@ -22,12 +25,40 @@ def extract_payment_text_fields(text):
     ref_match = REF_RE.search(text or "")
     if ref_match:
         reference = ref_match.group(1).strip()
+    payment_date = _extract_payment_date(text)
     return {
         "amount": amount,
-        "date": timezone.localdate(),
+        "date": payment_date,
         "reference": reference,
         "raw_text": text or "",
     }
+
+
+def _extract_payment_date(text):
+    lowered = (text or "").lower()
+    today = timezone.localdate()
+    if "yesterday" in lowered or "kal" in lowered:
+        return today - timedelta(days=1)
+    if "today" in lowered or "aaj" in lowered:
+        return today
+    match = DATE_RE.search(text or "")
+    if not match:
+        return today
+    value = match.group(1)
+    parsed = parse_date(value)
+    if parsed:
+        return parsed
+    separator = "/" if "/" in value else "-"
+    parts = value.split(separator)
+    if len(parts) != 3:
+        return today
+    day, month, year = parts
+    if len(year) == 2:
+        year = f"20{year}"
+    try:
+        return timezone.datetime(int(year), int(month), int(day)).date()
+    except ValueError:
+        return today
 
 
 def match_payment_to_active_lease(phone_number, ocr_data=None):

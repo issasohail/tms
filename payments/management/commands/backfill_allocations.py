@@ -20,7 +20,7 @@ def absD(v):
 
 class Command(BaseCommand):
     help = (
-        "Backfill PaymentDetail for all Payments AND create one Payment+Allocation "
+        "Backfill PaymentDetail for all Payments AND create one Payment+PaymentDetail "
         "for standalone SecurityDepositTransaction rows (PAYMENT/REFUND only)."
     )
 
@@ -59,7 +59,7 @@ class Command(BaseCommand):
         skipped_already_linked = 0
 
         # ---------------------------------------------------------------------
-        # PART A: Existing Payments -> ensure allocation + link/create SDT per allocation
+        # PART A: Existing Payments -> ensure payment detail + link/create SDT per payment detail
         # ---------------------------------------------------------------------
         pay_qs = Payment.objects.select_related("lease").order_by("id")
         if limit:
@@ -152,13 +152,13 @@ class Command(BaseCommand):
                     SecurityDepositTransaction.objects.filter(payment_detail=alloc).delete()
 
         # ---------------------------------------------------------------------
-        # PART B (NEW): Standalone SDT rows (PAYMENT/REFUND) -> create Payment + Allocation
+        # PART B (NEW): Standalone SDT rows (PAYMENT/REFUND) -> create Payment + PaymentDetail
         # - one Payment per SDT row
         # - do NOT create Payment for REQUIRED
-        # - only act when SDT has no allocation
+        # - only act when SDT has no payment detail
         # ---------------------------------------------------------------------
         sdt_qs = SecurityDepositTransaction.objects.select_related(
-            "lease", "payment", "allocation"
+            "lease", "payment", "payment_detail"
         ).order_by("id")
         if limit:
             sdt_qs = sdt_qs[:limit]
@@ -247,6 +247,6 @@ class Command(BaseCommand):
                 sdt.payment = pay
                 sdt.payment_detail = alloc
                 sdt.amount = amt  # keep positive; direction is in sdt.type
-                sdt.save(update_fields=["payment", "allocation", "amount"])
+                sdt.save(update_fields=["payment", "payment_detail", "amount"])
 
             linked_sdt += 1

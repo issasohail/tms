@@ -362,6 +362,17 @@
     border-radius: 999px;
   }
 
+  .live-detail-link {
+    color: inherit;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .live-detail-link:hover {
+    color: var(--bs-primary);
+    text-decoration: underline;
+  }
+
 
   /* Clickable operational chips */
   .meter-chip-grid {
@@ -819,9 +830,11 @@
       }
 
       td.innerHTML = "";
-      const energySpan = document.createElement("span");
-      energySpan.className = "total-energy-main";
+      const energyUrl = td.dataset.energyUrl || "";
+      const energySpan = document.createElement(energyUrl ? "a" : "span");
+      energySpan.className = "total-energy-main live-detail-link";
       energySpan.textContent = energyText;
+      if (energyUrl) energySpan.href = energyUrl;
       td.appendChild(energySpan);
 
       const voltageSpan = document.createElement("span");
@@ -1617,7 +1630,13 @@
             <td class="sticky-left col-prop text-center" title="{{ p.property_name }}">
               <span class="mobile-property">{{ p.property_name|slice:":8" }}</span>
               <span class="mobile-unit" aria-hidden="true">{{ u.unit_number|default:"" }}</span>
-              <span class="mobile-tenant" title="{{ r.tenant_name|default:"Vacant" }}">{{ r.tenant_name|default:"Vacant"|slice:":20" }}</span>
+              <span class="mobile-tenant" title="{{ r.tenant_name|default:"Vacant" }}">
+                {% if r.tenant_id %}
+                  <a href="{% url 'tenants:tenant_detail' r.tenant_id %}" class="live-detail-link">{{ r.tenant_name|default:"Vacant"|slice:":20" }}</a>
+                {% else %}
+                  {{ r.tenant_name|default:"Vacant"|slice:":20" }}
+                {% endif %}
+              </span>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ u.unit_number }}">
@@ -1625,11 +1644,15 @@
             </td>
 
             <td class="sticky-left col-tenant text-center" title="{{ r.tenant_name|default:"Vacant" }}">
-              {{ r.tenant_name|default:"Vacant" }}
+              {% if r.tenant_id %}
+                <a href="{% url 'tenants:tenant_detail' r.tenant_id %}" class="live-detail-link">{{ r.tenant_name|default:"Vacant" }}</a>
+              {% else %}
+                {{ r.tenant_name|default:"Vacant" }}
+              {% endif %}
             </td>
 
             <td class="sticky-left col-meter text-center" title="{{ m.meter_number }}">
-              {{ m.meter_number }}
+              <a href="{% url 'smart_meter:meter_detail' m.id %}" class="live-detail-link">{{ m.meter_number }}</a>
               <!-- Small-screen: place 3 controls under Meter # -->
               <div class="mobile-actions">
                 <span
@@ -1686,8 +1709,8 @@
             <td class="text-center" data-col="balance">Rs. {{ r.balance|default:"0.00" }}</td>
 
             <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
-            <td class="text-right" data-col="total_energy">
-              <span class="total-energy-main">{{ r.total_energy|default:"—" }} kWh</span>
+            <td class="text-right" data-col="total_energy" data-energy-url="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}">
+              <a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}" class="total-energy-main live-detail-link">{{ r.total_energy|default:"—" }} kWh</a>
               <span class="mobile-voltage">V: {{ r.voltage_a|default:"—" }} V</span>
               <span class="mobile-current">I: {{ r.current_a|default:"—" }} A</span>
             </td>

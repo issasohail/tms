@@ -557,6 +557,13 @@ body.exporting-receipt-jpg .printable-content .card {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         });
+        const leasePortionNum = parseAmount("{{ payment_detail.lease_amount|floatformat:2|escapejs }}");
+        const securityPortionNum = parseAmount("{{ payment_detail.security_amount|floatformat:2|escapejs }}");
+        const positivePortionCount = (leasePortionNum > 0 ? 1 : 0) + (securityPortionNum > 0 ? 1 : 0);
+        let totalAmountLabel = `{% if payment_detail.lease_amount < 0 or payment_detail.security_type == "REFUND" %}Refund Amount{% else %}Total Amount Received{% endif %}`;
+        if (positivePortionCount === 1 && totalAmountLabel === "Total Amount Received") {
+            totalAmountLabel += leasePortionNum > 0 ? " for Lease" : " for Security";
+        }
 
         // Build message as lines (Django controls whether sec balance line appears)
         const lines = [
@@ -569,13 +576,14 @@ body.exporting-receipt-jpg .printable-content .card {
             `Security Deposit Balance: {{ CURRENCY_SYMBOL|escapejs }} ${secBalStr}`,
             {% endif %}
             `Date: {{ payment_detail.payment.payment_date|date:"M d, Y"|escapejs }}`,
-            `{% if payment_detail.lease_amount < 0 or payment_detail.security_type == "REFUND" %}Refund Amount: {{ payment_detail.payment.amount|money:2|escapejs }}{% else %}Total Amount Received: {{ payment_detail.payment.amount|money:2|escapejs }}{% endif %}`,
-            {% if payment_detail.lease_amount > 0 %}
+            `${totalAmountLabel}: {{ payment_detail.payment.amount|money:2|escapejs }}`,
+            {% if payment_detail.lease_amount > 0 and payment_detail.security_amount > 0 %}
             `Lease Portion: {{ payment_detail.lease_amount|money:2|escapejs }}`,
             {% endif %}
-            {% if payment_detail.security_amount > 0 %}
+            {% if payment_detail.lease_amount > 0 and payment_detail.security_amount > 0 %}
             `{% if payment_detail.security_type == "REFUND" %}Security Refund{% else %}Security Portion{% endif %}: {{ payment_detail.security_amount|money:2|escapejs }}`,
             {% endif %}
+            `Total Balance: {{ CURRENCY_SYMBOL|escapejs }} ${totalWithSecStr}`,
             ``,
             `Thank you`
         ];

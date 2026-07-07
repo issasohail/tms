@@ -144,6 +144,15 @@
                       <span class="badge bg-info text-dark">Open WhatsApp Webhook Logs</span>
                     </a>
                   </div>
+                  <div class="col-12">
+                    <button
+                      class="btn btn-sm btn-outline-success"
+                      type="submit"
+                      formaction="{% url 'core:test_whatsapp_pending_request_alert' %}"
+                      formmethod="post">
+                      <i class="fab fa-whatsapp me-1"></i> Test Pending Alert
+                    </button>
+                  </div>
                 </div>
               {% endif %}
               {% if group_title == "WhatsApp AI Assistant" %}

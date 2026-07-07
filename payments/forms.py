@@ -264,7 +264,8 @@ class PaymentDetailForm(forms.ModelForm):
         ("SPLIT", "Split"),
     ]
 
-    allocation_mode = forms.ChoiceField(
+    payment_type = forms.ChoiceField(
+        label="Payment Type",
         choices=MODE_CHOICES,
         required=False,
         initial="LEASE",
@@ -273,7 +274,7 @@ class PaymentDetailForm(forms.ModelForm):
 
     class Meta:
         model = PaymentDetail
-        fields = ["allocation_mode", "lease_amount", "security_amount", "security_type"]
+        fields = ["payment_type", "lease_amount", "security_amount", "security_type"]
         widgets = {
             "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
             "security_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
@@ -284,7 +285,7 @@ class PaymentDetailForm(forms.ModelForm):
         self.payment_total = kwargs.pop("payment_total", None)
         super().__init__(*args, **kwargs)
 
-        # When editing an existing allocation, pick the correct mode so JS doesn't overwrite values
+        # When editing an existing payment detail, pick the correct mode so JS doesn't overwrite values.
         inst = getattr(self, "instance", None)
         if inst and getattr(inst, "pk", None):
             lease_amt = inst.lease_amount or Decimal("0.00")
@@ -303,16 +304,16 @@ class PaymentDetailForm(forms.ModelForm):
             else:
                 mode = "LEASE"
 
-            self.fields["allocation_mode"].initial = mode
+            self.fields["payment_type"].initial = mode
             # If the field already has initial/posted value, don't fight it; but for GET edit this fixes display.
-            if "allocation_mode" not in self.data:
-                self.initial["allocation_mode"] = mode
+            if "payment_type" not in self.data:
+                self.initial["payment_type"] = mode
         else:
-            self.fields["allocation_mode"].initial = "LEASE"
+            self.fields["payment_type"].initial = "LEASE"
 
     def clean(self):
         cleaned_data = super().clean()
-        mode = (cleaned_data.get("allocation_mode") or "LEASE").upper()
+        mode = (cleaned_data.get("payment_type") or "LEASE").upper()
         lease_amount = cleaned_data.get("lease_amount") or Decimal("0.00")
         security_amount = cleaned_data.get("security_amount") or Decimal("0.00")
 
@@ -323,7 +324,7 @@ class PaymentDetailForm(forms.ModelForm):
                 mode = "LEASE_REFUND"
 
         if lease_amount < 0 and mode != "LEASE_REFUND":
-            self.add_error("lease_amount", "Lease amount cannot be negative unless Allocation Mode is Lease Refund.")
+            self.add_error("lease_amount", "Lease amount cannot be negative unless Payment Type is Lease Refund.")
         if security_amount < 0:
             self.add_error("security_amount", "Security amount cannot be negative.")
 
@@ -343,10 +344,10 @@ class PaymentDetailForm(forms.ModelForm):
                 cleaned_data["security_type"] = "REFUND"
             elif lease_amount + security_amount != payment_total:
                 raise forms.ValidationError(
-                    f"Allocation total ({lease_amount + security_amount}) must equal Payment amount ({payment_total})."
+                    f"Payment detail total ({lease_amount + security_amount}) must equal Payment amount ({payment_total})."
                 )
 
-        cleaned_data["allocation_mode"] = mode
+        cleaned_data["payment_type"] = mode
         cleaned_data["lease_amount"] = lease_amount
         cleaned_data["security_amount"] = security_amount
         cleaned_data["security_type"] = (cleaned_data.get("security_type") or "PAYMENT").upper()

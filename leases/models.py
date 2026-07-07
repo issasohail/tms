@@ -452,7 +452,7 @@ class Lease(models.Model):
 
     @cached_property
     def payments_qs(self):
-        # PERF: reuse prefetched payments and allocations for balance calculations.
+        # PERF: reuse prefetched payments and payment details for balance calculations.
         if hasattr(self, "_prefetched_objects_cache") and "payments" in self._prefetched_objects_cache:
             return list(self._prefetched_objects_cache["payments"])
         from payments.models import Payment
@@ -466,9 +466,9 @@ class Lease(models.Model):
 
         payments_total = zero
         for payment in self.payments_qs:
-            allocation = getattr(payment, "detail", None)
-            if allocation:
-                payments_total += allocation.lease_amount or zero
+            payment_detail = getattr(payment, "detail", None)
+            if payment_detail:
+                payments_total += payment_detail.lease_amount or zero
             else:
                 payments_total += payment.amount or zero
 
@@ -495,7 +495,7 @@ class Lease(models.Model):
         return list(
             SecurityDepositTransaction.objects.filter(lease=self).select_related(
                 "payment",
-                "detail",
+                "payment_detail",
             )
         )
 

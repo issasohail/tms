@@ -94,11 +94,11 @@
 
               <hr class="my-2">
 
-              <!-- Allocation header line: Mode + balances -->
+              <!-- Payment detail header line: type + balances -->
               <div class="row g-1 align-items-end">
                 <div class="col-12 col-md-5">
-                  <div class="small fw-semibold mb-1">Allocation Mode</div>
-                  {{ allocation_form.allocation_mode }}
+                  <div class="small fw-semibold mb-1">Payment Type</div>
+                  {{ payment_detail_form.payment_type }}
                 </div>
 
                 <div class="col-6 col-md-3">
@@ -116,17 +116,17 @@
               <div class="row g-1 align-items-end mt-1">
                 <div class="col-12 col-md-4">
                   <div class="small fw-semibold mb-1">Security Type</div>
-                  {{ allocation_form.security_type }}
+                  {{ payment_detail_form.security_type }}
                 </div>
 
                 <div class="col-6 col-md-4">
                   <div class="small fw-semibold mb-1">Lease Amount</div>
-                  {{ allocation_form.lease_amount }}
+                  {{ payment_detail_form.lease_amount }}
                 </div>
 
                 <div class="col-6 col-md-4">
                   <div class="small fw-semibold mb-1">Security Amount</div>
-                  {{ allocation_form.security_amount }}
+                  {{ payment_detail_form.security_amount }}
                 </div>
               </div>
 
@@ -318,7 +318,7 @@
     line-height: 1.1;
   }
 
-  /* If crispy adds form-control styles to allocation fields, keep them compact */
+  /* If crispy adds form-control styles to payment detail fields, keep them compact */
   #id_lease_amount, #id_security_amount, #id_amount{
     text-align: right;
   }
@@ -484,8 +484,8 @@
       el.value = val.toFixed(2);
     }, { passive:false });
 
-    // Allocation sync (single source of truth)
-    initAllocationSync();
+    // Payment detail sync (single source of truth)
+    initPaymentDetailSync();
   });
 
   function initSelect2(){
@@ -833,14 +833,14 @@ Thank you!`;
   }
 
   /* =========================
-     Allocation sync (editable)
+     Payment detail sync (editable)
      ========================= */
-  function initAllocationSync(){
+  function initPaymentDetailSync(){
     function n(v){ return parseFloat(String(v||"").replace(/,/g,"")) || 0; }
     function f2(v){ return (Math.round(v*100)/100).toFixed(2); }
 
     const $form  = $('#paymentForm');
-    const $mode  = $('#id_allocation_mode');
+    const $mode  = $('#id_payment_type');
     const $total = $('#id_amount');
     const $lease = $('#id_lease_amount');
     const $sec   = $('#id_security_amount');
@@ -929,7 +929,7 @@ Thank you!`;
       lock = false;
     }
 
-    // If user clicks into allocation fields, switch to SPLIT so typing works.
+    // If user clicks into payment detail fields, switch to SPLIT so typing works.
     $lease.on('focus', function(){
       if (($mode.val() || '').toUpperCase() !== 'SPLIT'){
         $mode.val('SPLIT').trigger('change');
@@ -952,7 +952,7 @@ Thank you!`;
       const sum = n($lease.val()) + n($sec.val());
       if (Math.abs(total - sum) > 0.009){
         e.preventDefault();
-        alert(`Allocation mismatch: lease+security = ${sum.toFixed(2)} but payment = ${total.toFixed(2)}`);
+        alert(`Payment detail mismatch: lease+security = ${sum.toFixed(2)} but payment = ${total.toFixed(2)}`);
       }
     });
 

@@ -1,4 +1,5 @@
 from decimal import Decimal
+import re
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -14,7 +15,23 @@ from core.models import GlobalSettings
 from invoices.models import Invoice, SecurityDepositTransaction
 from invoices.services import security_deposit_totals
 from payments.models import Payment
-from utils.pdf_export import AllocationReceiptPDF
+from utils.pdf_export import PaymentDetailReceiptPDF
+
+
+def _payment_pdf_filename(payment):
+    tenant = getattr(getattr(payment, "lease", None), "tenant", None)
+    if tenant:
+        full_name = (
+            getattr(tenant, "get_full_name", lambda: "")()
+            or f"{getattr(tenant, 'first_name', '')} {getattr(tenant, 'last_name', '')}"
+        )
+    else:
+        full_name = ""
+
+    tenant_part = re.sub(r"[^A-Za-z0-9]+", "", full_name).strip()[:8] or "Tenant"
+    date_part = payment.payment_date.strftime("%Y-%m-%d") if payment.payment_date else "NoDate"
+    amount_part = f"{payment.amount or Decimal('0.00'):.2f}".replace(",", "")
+    return f"Payment_{tenant_part}-{date_part}-{amount_part}.pdf"
 
 
 class PaymentDetailView(LoginRequiredMixin, DetailView):
@@ -87,7 +104,8 @@ class PaymentPDFView(LoginRequiredMixin, View):
             messages.error(request, "This payment has no payment detail.")
             return redirect("payments:payment_detail", pk=payment.pk)
 
-        pdf_bytes, filename = AllocationReceiptPDF.generate(payment_detail, request)
+        pdf_bytes, _filename = PaymentDetailReceiptPDF.generate(payment_detail, request)
+        filename = _payment_pdf_filename(payment)
 
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'

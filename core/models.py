@@ -29,6 +29,14 @@ class GlobalSettings(models.Model):
         default=90,
         help_text="Days to keep downloaded WhatsApp media files. Raw webhook logs are not deleted.",
     )
+    whatsapp_pending_request_notifications_enabled = models.BooleanField(
+        default=True,
+        help_text="Send WhatsApp alerts to staff when tenant WhatsApp requests wait for approval.",
+    )
+    whatsapp_pending_request_staff_numbers = models.TextField(
+        blank=True,
+        help_text="Comma or line separated staff WhatsApp numbers for pending request alerts.",
+    )
 
     # Billing
     currency_code = models.CharField(max_length=8, default="PKR")

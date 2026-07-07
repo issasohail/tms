@@ -20,6 +20,8 @@ class GlobalSettingsForm(forms.ModelForm):
                   "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user", "smtp_password",
                   "whatsapp_number", "twilio_account_sid", "twilio_auth_token", "twilio_from_number",
                   "whatsapp_media_retention_days",
+                  "whatsapp_pending_request_notifications_enabled",
+                  "whatsapp_pending_request_staff_numbers",
                   "currency_code","country_code",  "unit_rate_per_kwh", "service_charge_flat",
                   "late_fee_enabled", "late_fee_type", "late_fee_amount",
                   "late_fee_percent", "late_fee_grace_days",
@@ -66,6 +68,8 @@ class GlobalSettingsForm(forms.ModelForm):
         ("WhatsApp / Twilio", "fab fa-whatsapp", [
             "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
             "twilio_from_number", "whatsapp_media_retention_days",
+            "whatsapp_pending_request_notifications_enabled",
+            "whatsapp_pending_request_staff_numbers",
         ]),
         ("WhatsApp AI Assistant", "fas fa-robot", [
             "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
@@ -132,6 +136,10 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["police_verification_whatsapp_command"].label = "Police WhatsApp command"
         self.fields["whatsapp_media_retention_days"].label = "WhatsApp media retention days"
         self.fields["whatsapp_media_retention_days"].help_text = "Downloaded WhatsApp media files are kept for this many days. Raw webhook logs stay untouched."
+        self.fields["whatsapp_pending_request_notifications_enabled"].label = "Enable pending request staff alerts"
+        self.fields["whatsapp_pending_request_staff_numbers"].label = "Pending request staff WhatsApp numbers"
+        self.fields["whatsapp_pending_request_staff_numbers"].help_text = "Comma or line separated staff numbers. If empty, TMS falls back to property-assigned WhatsApp staff, then superusers."
+        self.fields["whatsapp_pending_request_staff_numbers"].widget.attrs.update({"rows": 2})
         self.fields["whatsapp_ai_enabled"].label = "Enable WhatsApp AI assistant"
         self.fields["whatsapp_ai_provider"].label = "Assistant provider"
         self.fields["whatsapp_ai_model"].label = "OpenAI model"
@@ -269,7 +277,7 @@ class SuggestionTicketForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={
             "class": "form-control",
-            "placeholder": "Example: Cash Ledger, Settings, Payment Receipt",
+            "placeholder": "Example: Payment List, Settings, Payment Receipt",
         }),
     )
     title = forms.CharField(

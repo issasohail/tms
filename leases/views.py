@@ -353,7 +353,7 @@ def public_lease_ledger(request, token):
             Prefetch(
                 "security_transactions",
                 queryset=SecurityDepositTransaction.objects.select_related(
-                    "detail", "payment"
+                    "payment_detail", "payment"
                 ).order_by("date", "id"),
             ),
         ),
@@ -372,10 +372,10 @@ def public_lease_ledger(request, token):
                 or f"Invoice {invoice.invoice_number}",
                 "amount": -amount,
             }
-        )
+    )
     for payment in lease.payments_qs:
-        allocation = getattr(payment, "detail", None)
-        lease_amount = getattr(allocation, "lease_amount", None) if allocation else None
+        payment_detail = getattr(payment, "detail", None)
+        lease_amount = getattr(payment_detail, "lease_amount", None) if payment_detail else None
         amount = (lease_amount if lease_amount is not None else payment.amount) or zero
         transactions.append(
             {
@@ -484,12 +484,12 @@ def strip_html(text):
 def lease_applied_amount(payment) -> Decimal:
     """
     Amount that should affect Lease ledger balance.
-    - If PaymentDetail exists: use allocation.lease_amount
+    - If PaymentDetail exists: use payment_detail.lease_amount
     - Else: legacy fallback to payment.amount
     """
-    alloc = getattr(payment, "detail", None)
-    if alloc:
-        return alloc.lease_amount or ZERO
+    payment_detail = getattr(payment, "detail", None)
+    if payment_detail:
+        return payment_detail.lease_amount or ZERO
     return payment.amount or ZERO
 
 
@@ -3082,7 +3082,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     "security_transactions",
                     queryset=SecurityDepositTransaction.objects.select_related(
                         "payment",
-                        "detail",
+                        "payment_detail",
                     ).order_by("date", "id"),
                 ),
             )
@@ -3633,7 +3633,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     Prefetch(
                         "security_transactions",
                         queryset=SecurityDepositTransaction.objects.select_related(
-                            "detail", "payment"
+                            "payment_detail", "payment"
                         ).order_by("date", "id"),
                     ),
                 ),
@@ -3747,10 +3747,10 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
 
         # Lease ledger must use the payment detail lease amount, not total payment amount.
         for payment in lease.payments_qs:
-            alloc = getattr(payment, "detail", None)
+            payment_detail = getattr(payment, "detail", None)
 
             # lease portion only
-            lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
+            lease_amt = getattr(payment_detail, "lease_amount", None) if payment_detail else None
             amt = (
                 lease_amt if lease_amt is not None else (payment.amount or ZERO)
             ) or ZERO
@@ -3935,8 +3935,8 @@ def lease_ledger_pdf(request, lease_id):
 
         # Process payments
         for payment in lease.payments_qs:
-            alloc = getattr(payment, "detail", None)
-            lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
+            payment_detail = getattr(payment, "detail", None)
+            lease_amt = getattr(payment_detail, "lease_amount", None) if payment_detail else None
             amt = (
                 lease_amt
                 if lease_amt is not None
@@ -4092,8 +4092,8 @@ def export_ledger_excel(request, lease_id):
 
         # Process payments
         for payment in payments:
-            alloc = getattr(payment, "detail", None)
-            lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
+            payment_detail = getattr(payment, "detail", None)
+            lease_amt = getattr(payment_detail, "lease_amount", None) if payment_detail else None
             amount = (
                 lease_amt
                 if lease_amt is not None

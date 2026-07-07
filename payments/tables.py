@@ -110,8 +110,8 @@ class PaymentTable(tables.Table):
 
     def render_amount(self, value, record):
         amount = value
-        allocation = getattr(record, "detail", None)
-        if (getattr(allocation, "security_type", "") or "").upper() == "REFUND":
+        payment_detail = getattr(record, "detail", None)
+        if (getattr(payment_detail, "security_type", "") or "").upper() == "REFUND":
             amount = -amount
         return format_money(amount, GlobalSettings.get_solo())
 

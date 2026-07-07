@@ -167,11 +167,12 @@ URL_MODEL_HINTS = {
         "clause": "leaseagreementclause",
     },
     "payments": {
-        "allocation": "paymentallocation",
-        "allocations": "paymentallocation",
+        "detail": "paymentdetail",
+        "details": "paymentdetail",
         "cash": "payment",
         "ledger": "payment",
         "payment": "payment",
+        "payments": "payment",
     },
     "invoices": {
         "category": "itemcategory",

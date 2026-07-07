@@ -111,13 +111,31 @@ def api_payment_detail_receipt_whatsapp(request, pk: int):
     ]
     if getattr(payment, "payment_date", None):
         lines.append(f"Date: {payment.payment_date:%b %d, %Y}")
-    lines.append(f"*Total Amount Received: {_money(payment.amount)}*")
-    if (detail.lease_amount or 0) > 0:
+    lease_amount = _dec(detail.lease_amount)
+    security_amount = _dec(detail.security_amount)
+    positive_parts = [
+        label
+        for label, value in (
+            ("Lease", lease_amount),
+            ("Security", security_amount),
+        )
+        if value > 0
+    ]
+    amount_label = "Total Amount Received"
+    if detail.security_type != "REFUND" and len(positive_parts) == 1:
+        amount_label = f"{amount_label} for {positive_parts[0]}"
+    lines.append(f"*{amount_label}: {_money(payment.amount)}*")
+    if len(positive_parts) > 1 and lease_amount > 0:
         lines.append(f"Lease Portion: {_money(detail.lease_amount)}")
-    if (detail.security_amount or 0) > 0:
+    if len(positive_parts) > 1 and security_amount > 0:
         label = "Security Refund" if detail.security_type == "REFUND" else "Security Portion"
         lines.append(f"{label}: {_money(detail.security_amount)}")
         lines.append(f"Security Status: {sec_status}")
+    lease_balance = getattr(lease, "get_balance", 0) if lease else 0
+    if callable(lease_balance):
+        lease_balance = lease_balance()
+    total_balance = _dec(lease_balance) + _dec(totals.get("balance_to_collect"))
+    lines.append(f"Total Balance: {_money(total_balance)}")
     lines.append("Thank you.")
 
     return JsonResponse({

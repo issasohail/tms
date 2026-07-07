@@ -5,6 +5,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
@@ -226,6 +227,7 @@ class WhatsAppAIAssistant:
                 conversation.pending_state = "pending_maintenance"
                 conversation.context["pending_maintenance_id"] = pending.pk
                 conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                notify_staff_pending_request("maintenance", pending)
                 return (
                     "We received your maintenance media. Please share the issue type and urgency if not already included.",
                     "maintenance_media",
@@ -234,6 +236,7 @@ class WhatsAppAIAssistant:
             conversation.pending_state = "tenant_upload_type"
             conversation.context["pending_media_id"] = media.pk
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            notify_staff_pending_request("upload", media)
             return (
                 _media_confirmation_text(media),
                 "media_pending",
@@ -441,6 +444,7 @@ class WhatsAppAIAssistant:
             conversation.pending_state = "pending_maintenance"
             conversation.context["pending_maintenance_id"] = pending.pk
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            notify_staff_pending_request("maintenance", pending)
             return (
                 "I read this as maintenance media. Please share the issue type and urgency if not already included.",
                 "maintenance_media",
@@ -451,6 +455,7 @@ class WhatsAppAIAssistant:
         conversation.pending_state = state
         conversation.context["pending_media_id"] = media.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        notify_staff_pending_request("upload", media)
         return (
             _media_confirmation_text(media),
             "media_pending",
@@ -646,6 +651,7 @@ class WhatsAppAIAssistant:
             conversation.pending_state = "staff_upload_type"
             conversation.context["pending_media_id"] = media.pk
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            notify_staff_pending_request("upload", media)
             log_staff_action(
                 staff_user,
                 message_log.phone_number,
@@ -761,6 +767,8 @@ class WhatsAppAIAssistant:
             return None
         if any(phrase in lowered for phrase in ("pending payment", "payment verification", "verify payments")):
             return self._staff_payment_verification(message_log, staff_user)
+        if any(phrase in lowered for phrase in ("pending request", "pending requests", "pending queue", "whatsapp pending")):
+            return self._staff_pending_requests(message_log, staff_user)
         if any(phrase in lowered for phrase in ("open maintenance", "maintenance summary", "pending maintenance")):
             return self._staff_maintenance_summary(message_log, staff_user)
         if any(phrase in lowered for phrase in ("missing meter", "missing reading")):
@@ -1332,6 +1340,52 @@ class WhatsAppAIAssistant:
             lines.append(f"{index}. Rs. {payment.amount or 'Not detected'} - {target} - {payment.get_status_display()}")
         return "\n".join(lines)
 
+    def _staff_pending_requests(self, message_log, staff_user):
+        property_ids = None
+        if not staff_user.is_superuser:
+            property_ids = [item.pk for item in self._staff_accessible_properties(staff_user)]
+
+        payments = PendingWhatsAppPayment.objects.filter(
+            status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
+            approved=False,
+            rejected=False,
+        ).select_related("tenant", "property", "unit").order_by("-created_at")
+        media = PendingWhatsAppMedia.objects.filter(
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+        ).select_related("tenant", "property", "unit", "lease").order_by("-created_at")
+        maintenance = PendingWhatsAppMaintenance.objects.filter(
+            status=PendingWhatsAppMaintenance.STATUS_PENDING,
+        ).select_related("tenant", "property", "unit").order_by("-created_at")
+
+        if property_ids is not None:
+            payments = payments.filter(Q(property_id__in=property_ids) | Q(property__isnull=True))
+            media = media.filter(Q(property_id__in=property_ids) | Q(property__isnull=True))
+            maintenance = maintenance.filter(Q(property_id__in=property_ids) | Q(property__isnull=True))
+
+        log_staff_action(staff_user, message_log.phone_number, "pending_requests_listed", "allowed")
+
+        if not payments.exists() and not media.exists() and not maintenance.exists():
+            return "No pending WhatsApp requests found in properties you can access."
+
+        lines = ["Pending WhatsApp Requests"]
+        if payments.exists():
+            lines.append("\nPayments")
+            for index, payment in enumerate(payments[:5], start=1):
+                target = _pending_target(payment)
+                lines.append(f"{index}. Rs. {payment.amount or 'Not detected'} - {target} - {payment.get_status_display()}")
+        if maintenance.exists():
+            lines.append("\nMaintenance")
+            for index, item in enumerate(maintenance[:5], start=1):
+                target = _pending_target(item)
+                lines.append(f"{index}. {target} - {item.issue_type or 'Issue'} - {item.urgency or 'normal'}")
+        if media.exists():
+            lines.append("\nUploads")
+            for index, item in enumerate(media[:5], start=1):
+                target = _pending_target(item)
+                lines.append(f"{index}. {item.get_purpose_display()} - {target}")
+        lines.append("\nOpen TMS admin pending approval screens to approve or reject.")
+        return "\n".join(lines)
+
     def _staff_maintenance_summary(self, message_log, staff_user):
         requests = MaintenanceRequest.objects.select_related("tenant", "lease", "unit__property").exclude(status__in=["completed", "cancelled"]).order_by("-reported_date", "-id")
         if not staff_user.is_superuser:
@@ -1654,17 +1708,20 @@ class WhatsAppAIAssistant:
             return self._stage_payment(message_log, conversation, selected_lease, media, text)
         if purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
             pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
+            notify_staff_pending_request("maintenance", pending)
             return (
                 "We received your maintenance photo. Please share the issue type and urgency if not already included.",
                 "maintenance_media",
                 {"lease": selected_lease, "pending_maintenance_id": pending.pk},
             )
         if purpose == PendingWhatsAppMedia.PURPOSE_OTHER:
+            notify_staff_pending_request("upload", media)
             return (
                 "Thanks. Your upload is staged for admin review.",
                 "media_pending",
                 {"lease": selected_lease, "pending_media_id": media.pk},
             )
+        notify_staff_pending_request("upload", media)
         return (
             "Thanks. Your upload is staged for admin review before attaching it to your lease.",
             "media_pending",
@@ -1950,6 +2007,7 @@ class WhatsAppAIAssistant:
         )
         conversation.context["pending_payment_id"] = pending.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        notify_staff_pending_request("payment", pending)
         return _payment_confirmation_text(pending), "payment_pending", {"lease": matched_lease, "tenant": getattr(matched_lease, "tenant", None), "pending_payment_id": pending.pk}
 
     def _stage_unassigned_payment(self, message_log, conversation, media, text, ocr_json):
@@ -1972,6 +2030,7 @@ class WhatsAppAIAssistant:
         conversation.context["payment_apply_retry_count"] = 0
         conversation.context.pop("payment_apply_lease_options", None)
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        notify_staff_pending_request("payment", pending)
         channel = (pending.bank_information or {}).get("channel") or "Not detected"
         return (
             "I read this image as a payment receipt.\n\n"
@@ -1998,7 +2057,7 @@ class WhatsAppAIAssistant:
             return None
 
         lowered = (text or "").strip().lower()
-        if lowered in {"5", "back", "menu", "main menu"}:
+        if lowered in {"6", "back", "menu", "main menu"}:
             conversation.pending_state = ""
             conversation.save(update_fields=["pending_state", "updated_at"])
             return self._tenant_welcome_menu(lease), "tenant_menu", {"lease": lease, "tenant": lease.tenant}
@@ -2022,6 +2081,10 @@ class WhatsAppAIAssistant:
                 "upload_prompt",
                 {"lease": lease, "tenant": lease.tenant},
             )
+        if lowered in {"5", "latest invoice", "last invoice", "request last invoice", "request latest invoice"}:
+            conversation.pending_state = ""
+            conversation.save(update_fields=["pending_state", "updated_at"])
+            return self._latest_invoice_reply(lease), "latest_invoice", {"lease": lease, "tenant": lease.tenant}
 
         return (
             "Please reply with a number from the Invoice / Payment menu.\n\n"
@@ -2077,6 +2140,7 @@ class WhatsAppAIAssistant:
         conversation.context["pending_maintenance_id"] = pending.pk
         self._clear_context_keys(conversation, "maintenance_draft")
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        notify_staff_pending_request("maintenance", pending)
         return (
             "Maintenance request saved for admin review.\n\n"
             f"Issue: {pending.issue_type or 'Other'}\n"
@@ -2682,11 +2746,110 @@ def _tenant_invoice_payment_menu_text():
         "Invoice / Payment\n\n"
         "1. Outstanding invoices\n"
         "2. Recent payments\n"
-        "3. Full ledger link\n"
+        "3. View Ledger\n"
         "4. Upload receipt\n"
-        "5. Back\n\n"
+        "5. Request Last Invoice\n"
+        "6. Back\n\n"
         "Reply with a number."
     )
+
+
+def notify_staff_pending_request(request_type, pending):
+    staff_numbers = _pending_request_staff_numbers(pending)
+    if not staff_numbers:
+        return
+    message = _pending_request_staff_message(request_type, pending)
+    service = WhatsAppService()
+    for phone in staff_numbers:
+        try:
+            service.send_text(phone, message)
+        except Exception:
+            logger.exception("Failed to notify staff about pending WhatsApp %s #%s", request_type, getattr(pending, "pk", None))
+
+
+def _pending_request_staff_numbers(pending):
+    try:
+        from core.models import GlobalSettings
+
+        config = GlobalSettings.get_solo()
+    except Exception:
+        logger.exception("Could not load GlobalSettings for WhatsApp pending request notification.")
+        config = None
+
+    if config and not config.whatsapp_pending_request_notifications_enabled:
+        return []
+
+    configured = _split_configured_staff_numbers(
+        getattr(config, "whatsapp_pending_request_staff_numbers", "") if config else ""
+    )
+    if configured:
+        return configured
+
+    property_obj = getattr(pending, "property", None)
+    users = []
+    if property_obj:
+        users = [
+            access.staff_user
+            for access in getattr(property_obj, "whatsapp_staff_access", []).filter(is_active=True).select_related("staff_user")
+            if access.staff_user and access.staff_user.is_active and access.staff_user.whatsapp_number
+        ]
+    if not users:
+        User = get_user_model()
+        users = list(User.objects.filter(is_active=True, is_staff=True, is_superuser=True).exclude(whatsapp_number="")[:5])
+    return _unique_phone_numbers(user.whatsapp_number for user in users)
+
+
+def _split_configured_staff_numbers(raw_numbers):
+    cleaned = str(raw_numbers or "").replace(";", ",").replace("\n", ",")
+    return [item.strip() for item in cleaned.split(",") if item.strip()]
+
+
+def _unique_phone_numbers(numbers):
+    seen = set()
+    unique = []
+    for number in numbers:
+        normalized = WhatsAppService.normalize_phone_number(number)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            unique.append(normalized)
+    return unique
+
+
+def _pending_request_staff_message(request_type, pending):
+    target = _pending_target(pending)
+    tenant = getattr(pending, "tenant", None)
+    tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else str(tenant or "Unmatched")
+    lines = [
+        "New pending WhatsApp request",
+        "",
+        f"Type: {request_type.title()}",
+        f"Reference: #{getattr(pending, 'pk', '-')}",
+        f"Tenant: {tenant_name or 'Unmatched'}",
+        f"Property/Unit: {target}",
+    ]
+    amount = getattr(pending, "amount", None)
+    if amount:
+        lines.append(f"Amount: Rs. {amount}")
+    issue = getattr(pending, "issue_type", "")
+    if issue:
+        lines.append(f"Issue: {issue}")
+    lines.extend(["", "Reply Pending Requests to view the WhatsApp queue."])
+    return "\n".join(lines)
+
+
+def _pending_target(pending):
+    property_obj = getattr(pending, "property", None)
+    unit = getattr(pending, "unit", None)
+    if property_obj and unit:
+        return f"{property_obj.property_name} / {unit.unit_number}"
+    if property_obj:
+        return property_obj.property_name
+    lease = getattr(pending, "lease", None)
+    lease_unit = getattr(lease, "unit", None)
+    lease_property = getattr(lease_unit, "property", None)
+    if lease_property and lease_unit:
+        return f"{lease_property.property_name} / {lease_unit.unit_number}"
+    return "Unmatched"
 
 
 def _add_tenant_menu_text():

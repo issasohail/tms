@@ -39,6 +39,32 @@ def active_tenant_names_for_units(unit_ids, today=None):
     return names
 
 
+def active_tenant_info_for_units(unit_ids, today=None):
+    tenant_info = {}
+    unit_ids = [unit_id for unit_id in set(unit_ids) if unit_id]
+    if not unit_ids:
+        return tenant_info
+
+    today = today or timezone.localdate()
+    leases = (
+        Lease.objects.filter(
+            unit_id__in=unit_ids,
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+        .select_related("tenant")
+        .order_by("unit_id", "-start_date", "-id")
+    )
+    for lease in leases:
+        if lease.unit_id not in tenant_info:
+            tenant_info[lease.unit_id] = {
+                "name": tenant_display_name(lease.tenant),
+                "tenant_id": lease.tenant_id,
+            }
+    return tenant_info
+
+
 def attach_active_tenant_names(objects, unit_id_getter, attr_name="tenant_name"):
     unit_ids = [unit_id_getter(obj) for obj in objects]
     names = active_tenant_names_for_units(unit_ids)

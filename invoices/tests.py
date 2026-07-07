@@ -7,7 +7,9 @@ from django.test import TestCase
 from invoices.models import Invoice, InvoiceItem, ItemCategory, RecurringCharge
 from invoices.services import (
     _recurring_rules_for_lease,
+    ensure_month_invoice,
     generate_monthly_billing_electric,
+    invoice_due_date_from_lease,
     previous_month_start,
     run_monthly_billing_preflight,
 )
@@ -51,6 +53,29 @@ class MonthlyBillingRegressionTests(TestCase):
     def test_previous_month_start_handles_year_boundary(self):
         self.assertEqual(previous_month_start(date(2026, 7, 1)), date(2026, 6, 1))
         self.assertEqual(previous_month_start(date(2026, 1, 1)), date(2025, 12, 1))
+
+    def test_invoice_due_date_uses_lease_due_day(self):
+        self.lease.due_date = "5th of each month."
+        self.assertEqual(
+            invoice_due_date_from_lease(self.lease, date(2026, 7, 1)),
+            date(2026, 7, 5),
+        )
+
+    def test_invoice_due_date_clamps_to_month_end(self):
+        self.lease.due_date = "31st of each month."
+        self.assertEqual(
+            invoice_due_date_from_lease(self.lease, date(2026, 2, 1)),
+            date(2026, 2, 28),
+        )
+
+    def test_monthly_invoice_uses_lease_due_day(self):
+        self.lease.due_date = "10th of each month."
+        self.lease.save(update_fields=["due_date"])
+
+        invoice = ensure_month_invoice(self.lease, date(2026, 7, 1))
+
+        self.assertEqual(invoice.issue_date, date(2026, 7, 1))
+        self.assertEqual(invoice.due_date, date(2026, 7, 10))
 
     def test_recurring_rules_only_match_billing_month_window(self):
         future_rule = RecurringCharge.objects.create(

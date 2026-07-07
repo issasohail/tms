@@ -4,6 +4,7 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
+import re
 
 # IMPORTANT: import Lease from *this* app to avoid "name 'Lease' is not defined"
 from django.apps import apps
@@ -16,6 +17,30 @@ from .models import Invoice, InvoiceItem, ItemCategory, RecurringCharge, WaterBi
 
 def first_of_month(d: date) -> date:
     return d.replace(day=1)
+
+
+def invoice_due_date_from_lease(
+    lease, issue_date: date, fallback: date | None = None
+) -> date:
+    """
+    Resolve an invoice due date from Lease.due_date text for the invoice month.
+    Examples: "5th of each month.", "5", "10th" -> that day in issue_date's month.
+    """
+    if not issue_date:
+        return fallback or timezone.localdate()
+
+    raw_due_date = (getattr(lease, "due_date", "") or "").strip()
+    match = re.search(
+        r"(?<!\d)([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?!\d)",
+        raw_due_date,
+        re.IGNORECASE,
+    )
+    if not match:
+        return fallback or issue_date
+
+    due_day = int(match.group(1))
+    last_day = monthrange(issue_date.year, issue_date.month)[1]
+    return date(issue_date.year, issue_date.month, min(due_day, last_day))
 
 
 def _lease_qs():
@@ -146,8 +171,11 @@ def ensure_month_invoice(lease, period_date):
     period_date should be the first day of that month.
     """
     # Build defaults, including amount=0.00 if the field exists on Invoice
+    fallback_due_date = period_date + timedelta(days=7)
     defaults = {
-        "due_date": period_date + timedelta(days=7),
+        "due_date": invoice_due_date_from_lease(
+            lease, period_date, fallback=fallback_due_date
+        ),
         "description": f"Invoice for {period_date:%B %Y}",
     }
     invoice_fields = {f.name for f in Invoice._meta.fields}

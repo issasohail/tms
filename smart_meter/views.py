@@ -26,7 +26,7 @@ from smart_meter.utils.commands import refresh_live
 from smart_meter.utils.tenants import (
     attach_active_tenant_names,
     attach_tenant_names_for_dates,
-    active_tenant_names_for_units,
+    active_tenant_info_for_units,
 )
 from smart_meter.models import Meter, LiveReading
 from smart_meter.utils.commands import send_cutoff_command, send_restore_command
@@ -665,7 +665,7 @@ SMART_METER_CHIPS = OrderedDict([
 
 
 def _normalized_meter_chip(request):
-    chip = (request.GET.get("chip") or "total").strip().lower()
+    chip = (request.GET.get("chip") or "active").strip().lower()
     return chip if chip in SMART_METER_CHIPS else "total"
 
 
@@ -692,7 +692,7 @@ def _meter_chip_q(chip):
     no_latest_q = Q(last_ts__isnull=True)
     negative_q = Q(balance__isnull=False, balance__lt=0)
     low_q = Q(is_low=True)
-    cutoff_q = Q(power_status__iexact="off") | Q(is_cutoff_flag=True)
+    cutoff_q = Q(power_status__iexact="off")
 
     if chip == "active":
         return Q(is_active=True)
@@ -737,8 +737,7 @@ def _meter_chip_cards(request, base_qs, url_name):
         qd = request.GET.copy()
         for remove_key in ("chip", "page", "offline"):
             qd.pop(remove_key, None)
-        if key != "total":
-            qd["chip"] = key
+        qd["chip"] = key
         query = qd.urlencode()
         cards.append({
             "key": key,
@@ -1501,10 +1500,16 @@ def live_custom(request):
         if offline_only and r.is_online:
             continue
         rows.append(r)
-    attach_active_tenant_names(
-        rows,
-        lambda reading: reading.meter.unit_id if reading.meter else None,
+    tenant_info = active_tenant_info_for_units(
+        reading.meter.unit_id
+        for reading in rows
+        if reading.meter and reading.meter.unit_id
     )
+    for reading in rows:
+        unit_key = reading.meter.unit_id if reading.meter else None
+        info = tenant_info.get(unit_key)
+        reading.tenant_name = info["name"] if info else "Vacant"
+        reading.tenant_id = info["tenant_id"] if info else None
 
     # Mark selected flags (NO template comparison needed)
     # formatter-proof flags (avoid template comparisons)
@@ -1522,6 +1527,8 @@ def live_custom(request):
         m.is_selected = (str(m.id) == cm)
 
     offline_checked = (request.GET.get("offline") == "1")
+    energy_end_date = timezone.localdate()
+    energy_start_date = energy_end_date.replace(day=1)
 
 
 
@@ -1542,6 +1549,8 @@ def live_custom(request):
         "current_property": prop_id,
         "current_unit": unit_id,
         "current_meter": meter_id,
+        "energy_start_date": energy_start_date,
+        "energy_end_date": energy_end_date,
         "vpn_connected": vpn_connected(),
         "public_ip": public_ip(),
     })
@@ -3570,7 +3579,7 @@ def live_custom_data(request):
     qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
     cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
-    tenant_names = active_tenant_names_for_units(
+    tenant_info = active_tenant_info_for_units(
         qs.values_list("meter__unit_id", flat=True)
     )
 
@@ -3593,7 +3602,8 @@ def live_custom_data(request):
             "property_name": p.property_name or "",
             "property_short": (p.property_name or "")[:8],
             "unit_number": u.unit_number or "",
-            "tenant_name": tenant_names.get(u.id, "Vacant"),
+            "tenant_name": tenant_info.get(u.id, {}).get("name", "Vacant"),
+            "tenant_id": tenant_info.get(u.id, {}).get("tenant_id"),
             "meter_number": m.meter_number or "",
 
             "updated_ts": _ts_iso(r.ts),

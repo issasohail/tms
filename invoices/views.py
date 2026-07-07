@@ -80,6 +80,7 @@ from .services import (
     active_leases_qs,
     ensure_month_invoice,
     first_of_month,
+    invoice_due_date_from_lease,
     run_monthly_billing_for,
     security_deposit_totals,
 )
@@ -484,6 +485,14 @@ class InvoiceCreateView(LoginRequiredMixin, CreateView):
                 )
                 return self.render_to_response(self.get_context_data(form=form))
 
+        lease = form.cleaned_data.get("lease")
+        issue_date = form.cleaned_data.get("issue_date") or timezone.localdate()
+        form.instance.due_date = invoice_due_date_from_lease(
+            lease,
+            issue_date,
+            fallback=form.cleaned_data.get("due_date") or issue_date,
+        )
+
         try:
             with transaction.atomic():
                 response = super().form_valid(form)  # saves self.object
@@ -526,8 +535,14 @@ class InvoiceCreateView(LoginRequiredMixin, CreateView):
     def get_initial(self):
         initial = super().get_initial()
         today = timezone.localdate()
+        lease = None
+        lease_id = self.request.GET.get("lease") or self.request.GET.get("lease_id")
+        if lease_id:
+            lease = Lease.objects.filter(pk=lease_id).first()
         initial.setdefault("issue_date", today)
-        initial.setdefault("due_date", today)
+        initial.setdefault(
+            "due_date", invoice_due_date_from_lease(lease, today, fallback=today)
+        )
         return initial
 
 
@@ -1503,8 +1518,11 @@ def first_of_month(d):
 
 def ensure_month_invoice(lease, period_date):
     """Return the single invoice object for this lease & period (create if missing)."""
+    fallback_due_date = period_date + timedelta(days=7)
     defaults = {
-        "due_date": period_date + timedelta(days=7),
+        "due_date": invoice_due_date_from_lease(
+            lease, period_date, fallback=fallback_due_date
+        ),
         "description": f"Invoice for {period_date:%B %Y}",
         "amount": Decimal("0.00"),
     }

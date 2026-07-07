@@ -1009,6 +1009,55 @@ class SettingsView(FormView):
         return ctx
 
 
+@login_required
+@require_POST
+def test_whatsapp_pending_request_alert(request):
+    config = GlobalSettings.get_solo()
+    raw_numbers = (
+        request.POST.get("whatsapp_pending_request_staff_numbers")
+        or config.whatsapp_pending_request_staff_numbers
+        or ""
+    )
+    numbers = _split_whatsapp_staff_numbers(raw_numbers)
+    if not numbers:
+        messages.error(request, "Add at least one pending request staff WhatsApp number before testing.")
+        return redirect(f"{reverse('core:settings')}#settings-group-whatsapp-twilio")
+
+    from whatsapp.services.whatsapp import WhatsAppService
+
+    service = WhatsAppService(created_by=request.user)
+    sent = 0
+    failed = []
+    body = (
+        "Test WhatsApp pending request alert from TMS.\n\n"
+        "If you received this, pending request notifications are configured."
+    )
+    for number in numbers:
+        result = service.send_text(number, body)
+        if result.get("ok"):
+            sent += 1
+        else:
+            failed.append(f"{number}: {result.get('error') or 'failed'}")
+
+    if sent:
+        messages.success(request, f"Test pending request alert sent to {sent} number(s).")
+    if failed:
+        messages.error(request, "Some test alerts failed: " + " | ".join(failed[:3]))
+    return redirect(f"{reverse('core:settings')}#settings-group-whatsapp-twilio")
+
+
+def _split_whatsapp_staff_numbers(raw_numbers):
+    cleaned = str(raw_numbers or "").replace(";", ",").replace("\n", ",")
+    numbers = []
+    seen = set()
+    for item in cleaned.split(","):
+        number = item.strip()
+        if number and number not in seen:
+            seen.add(number)
+            numbers.append(number)
+    return numbers
+
+
 def lease_document_category_get(request, pk):
     category = get_object_or_404(LeaseDocumentCategory, pk=pk)
     return JsonResponse({

@@ -1855,15 +1855,15 @@ document.addEventListener("click", async function(e){
     const btn = e.target.closest(".btn-split-edit");
     if(!btn) return;
 
-    const allocId = btn.dataset.allocationId;
+    const paymentDetailId = btn.dataset.allocationId;
     const modalEl = document.getElementById("splitModal");
     const form = document.getElementById("splitForm");
 
-    form.querySelector("[name=payment_detail_id]").value = allocId;
+    form.querySelector("[name=payment_detail_id]").value = paymentDetailId;
 
     // Prefill
     const url = new URL("{% url 'payments:payment_detail_prefill_api' %}", window.location.origin);
-    url.searchParams.set("payment_detail_id", allocId);
+    url.searchParams.set("payment_detail_id", paymentDetailId);
 
     const r = await fetch(url.toString());
     const data = await r.json();

@@ -531,11 +531,11 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
     @transaction.atomic
     def form_valid(self, form):
         # Validate payment_detail subform (so lease_amount/security_amount errors show nicely if any)
-        allocation_form = PaymentDetailForm(
+        payment_detail_form = PaymentDetailForm(
             self.request.POST,
             payment_total=form.cleaned_data.get("amount"),
         )
-        if not allocation_form.is_valid():
+        if not payment_detail_form.is_valid():
             return self.form_invalid(form)
 
         # 1) Build/save Payment
@@ -550,11 +550,11 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         self.object = payment
 
         # 2) Read mode + amounts (prefer cleaned_data)
-        mode = (allocation_form.cleaned_data.get("allocation_mode") or "LEASE").upper()
-        sec_type = (allocation_form.cleaned_data.get("security_type") or "PAYMENT").upper()
+        mode = (payment_detail_form.cleaned_data.get("payment_type") or "LEASE").upper()
+        sec_type = (payment_detail_form.cleaned_data.get("security_type") or "PAYMENT").upper()
 
-        lease_amt = allocation_form.cleaned_data.get("lease_amount") or Decimal("0.00")
-        sec_amt   = allocation_form.cleaned_data.get("security_amount") or Decimal("0.00")
+        lease_amt = payment_detail_form.cleaned_data.get("lease_amount") or Decimal("0.00")
+        sec_amt   = payment_detail_form.cleaned_data.get("security_amount") or Decimal("0.00")
 
         payment_total = payment.amount or Decimal("0.00")
 
@@ -600,7 +600,7 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             return self.form_invalid(form)
 
         # 5) Persist payment detail + security ledger
-        alloc = rebuild_payment_detail(
+        payment_detail = rebuild_payment_detail(
             payment=payment,
             lease_amount=lease_amt,
             security_amount=sec_amt,
@@ -636,8 +636,12 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             "detail",
         ).order_by("-id")[:size]
         context["recent_payments"] = _attach_cached_lease_balances(recent_payments)
-        context["allocation_form"] = PaymentDetailForm(initial={
-            "allocation_mode": "LEASE",
+        payment_type = (self.request.GET.get("payment_type") or "LEASE").upper()
+        if payment_type not in {"LEASE", "LEASE_REFUND", "SECURITY", "REFUND", "SPLIT"}:
+            payment_type = "LEASE"
+
+        context["payment_detail_form"] = PaymentDetailForm(initial={
+            "payment_type": payment_type,
             "lease_amount": "0.00",
             "security_amount": "0.00",
             "security_type": "PAYMENT",
@@ -675,21 +679,21 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        allocation_form = PaymentDetailForm(
+        payment_detail_form = PaymentDetailForm(
             self.request.POST,
             payment_total=form.cleaned_data.get("amount"),
         )
-        if not allocation_form.is_valid():
+        if not payment_detail_form.is_valid():
             return self.form_invalid(form)
 
         payment = form.save()
         self.object = payment
 
-        mode = (allocation_form.cleaned_data.get("allocation_mode") or "LEASE").upper()
-        sec_type = (allocation_form.cleaned_data.get("security_type") or "PAYMENT").upper()
+        mode = (payment_detail_form.cleaned_data.get("payment_type") or "LEASE").upper()
+        sec_type = (payment_detail_form.cleaned_data.get("security_type") or "PAYMENT").upper()
 
-        lease_amt = allocation_form.cleaned_data.get("lease_amount") or Decimal("0.00")
-        sec_amt   = allocation_form.cleaned_data.get("security_amount") or Decimal("0.00")
+        lease_amt = payment_detail_form.cleaned_data.get("lease_amount") or Decimal("0.00")
+        sec_amt   = payment_detail_form.cleaned_data.get("security_amount") or Decimal("0.00")
 
         payment_total = payment.amount or Decimal("0.00")
 
@@ -726,7 +730,7 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
             )
             return self.form_invalid(form)
 
-        alloc = rebuild_payment_detail(
+        payment_detail = rebuild_payment_detail(
             payment=payment,
             lease_amount=lease_amt,
             security_amount=sec_amt,
@@ -744,14 +748,14 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         # existing context code (if any)...
 
         payment = self.object
-        alloc = getattr(payment, "detail", None)
+        payment_detail = getattr(payment, "detail", None)
 
-        if alloc:
-            context["allocation_form"] = PaymentDetailForm(instance=alloc)
+        if payment_detail:
+            context["payment_detail_form"] = PaymentDetailForm(instance=payment_detail)
         else:
             # if payment_detail row doesn't exist, still show the UI with defaults
-            context["allocation_form"] = PaymentDetailForm(initial={
-                "allocation_mode": "LEASE",
+            context["payment_detail_form"] = PaymentDetailForm(initial={
+                "payment_type": "LEASE",
                 "lease_amount": str(payment.amount or "0.00"),
                 "security_amount": "0.00",
                 "security_type": "PAYMENT",
@@ -1186,11 +1190,11 @@ def build_payment_receipt_message(request, pay):
 
     payment_date = getattr(pay, "payment_date", None)
     amount = getattr(pay, "amount", 0) or Decimal("0.00")
-    alloc = getattr(pay, "detail", None)
-    is_refund = (getattr(alloc, "security_type", "") or "").upper() == "REFUND"
-    is_lease_refund = (getattr(alloc, "lease_amount", amount) or Decimal("0.00")) < 0
-    lease_portion = getattr(alloc, "lease_amount", None) if alloc else None
-    security_portion = getattr(alloc, "security_amount", None) if alloc else None
+    payment_detail = getattr(pay, "detail", None)
+    is_refund = (getattr(payment_detail, "security_type", "") or "").upper() == "REFUND"
+    is_lease_refund = (getattr(payment_detail, "lease_amount", amount) or Decimal("0.00")) < 0
+    lease_portion = getattr(payment_detail, "lease_amount", None) if payment_detail else None
+    security_portion = getattr(payment_detail, "security_amount", None) if payment_detail else None
 
     sec_required = 0
     sec_balance_to_collect = 0
@@ -1224,14 +1228,27 @@ def build_payment_receipt_message(request, pay):
     if payment_date:
         lines.append(f"Date: {payment_date:%b %d, %Y}")
 
+    lease_portion = Decimal(str(lease_portion or 0))
+    security_portion = Decimal(str(security_portion or 0))
+    positive_parts = [
+        label
+        for label, value in (
+            ("Lease", lease_portion),
+            ("Security", security_portion),
+        )
+        if value > 0
+    ]
+
     amount_label = "Refund Amount" if (is_refund or is_lease_refund) else "Total Amount Received"
+    if not is_refund and not is_lease_refund and len(positive_parts) == 1:
+        amount_label = f"{amount_label} for {positive_parts[0]}"
     lines.append(f"{amount_label}: Rs. {abs(float(amount)):,.2f}")
-    if lease_portion and lease_portion > 0:
+    if len(positive_parts) > 1 and lease_portion > 0:
         lines.append(f"Lease Portion: Rs. {float(lease_portion):,.2f}")
-    if security_portion and security_portion > 0:
+    if len(positive_parts) > 1 and security_portion > 0:
         security_label = "Security Refund" if is_refund else "Security Portion"
         lines.append(f"{security_label}: Rs. {float(security_portion):,.2f}")
-    lines.append(f"New Balance: Rs. {float(new_balance):,.2f}")
+    lines.append(f"Total Balance: Rs. {float(new_balance):,.2f}")
     lines.extend(["", "Thank you"])
 
     return "\n".join([line for line in lines if line])
@@ -1274,7 +1291,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 
 from payments.models import PaymentDetail
-from utils.pdf_export import AllocationReceiptPDF
+from utils.pdf_export import PaymentDetailReceiptPDF
 
 
 class PaymentDetailPDFViewV1(View):
@@ -1290,7 +1307,7 @@ class PaymentDetailPDFViewV1(View):
             pk=pk
         )
 
-        result = AllocationReceiptPDF.generate(payment_detail, request)
+        result = PaymentDetailReceiptPDF.generate(payment_detail, request)
         if isinstance(result, tuple):
             pdf_bytes, filename = result
         else:

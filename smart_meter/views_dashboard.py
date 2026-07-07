@@ -1310,8 +1310,8 @@ def build_billing_summary_context(request):
                         Sum(
                             Case(
                                 When(
-                                    allocation__isnull=False,
-                                    then=F("allocation__lease_amount"),
+                                    detail__isnull=False,
+                                    then=F("detail__lease_amount"),
                                 ),
                                 default=F("amount"),
                                 output_field=DecimalField(max_digits=12, decimal_places=2),

@@ -137,6 +137,7 @@ def staff_menu_text(user=None):
         "8. Search\n"
         "9. Switch Mode\n"
         "10. Suggestion / advice\n\n"
+        "Type Pending Requests to view WhatsApp items waiting for review.\n\n"
         "Reply with a number or type your request."
     )
 
@@ -154,6 +155,8 @@ def tenant_menu_text():
         "8. Tenant registration\n"
         "9. Contact office\n"
         "10. Suggestion / advice\n\n"
+        "Request Last Invoice\n"
+        "View Ledger\n\n"
         "Reply with a number or type your request."
     )
 

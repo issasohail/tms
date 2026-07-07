@@ -3,6 +3,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 # adjust path as needed
 from invoices.models import RecurringCharge, Invoice, InvoiceItem
+from invoices.services import invoice_due_date_from_lease
 
 
 class Command(BaseCommand):
@@ -19,15 +20,13 @@ class Command(BaseCommand):
             inv = Invoice.objects.create(
                 lease=rc.lease,
                 issue_date=today,
-                due_date=today,  # or lease default terms
+                due_date=invoice_due_date_from_lease(rc.lease, today, fallback=today),
                 amount=0,  # will be recalculated by signals
                 status='sent',  # or 'draft' if you prefer review first
                 description=f"Auto recurring charges for {today:%b %Y}",
             )
             InvoiceItem.objects.create(
                 invoice=inv,
-                category=rc.lease.default_categoryif hasattr(
-                    rc.lease, 'default_category') else ChargeType.objects.first(),
                 category=rc.category,
                 description=rc.description or f"{rc.category.name} (recurring)",
                 amount=rc.amount,

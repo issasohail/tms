@@ -801,9 +801,9 @@ from io import BytesIO
 from datetime import datetime
 
 
-class AllocationReceiptPDF:
+class PaymentDetailReceiptPDF:
     @staticmethod
-    def generate(allocation, request=None):
+    def generate(payment_detail, request=None):
         buf = BytesIO()
         doc = SimpleDocTemplate(
             buf,
@@ -821,34 +821,34 @@ class AllocationReceiptPDF:
         )
         normal = ParagraphStyle("n", parent=styles["Normal"], fontSize=9, leading=11)
 
-        p = allocation.payment
+        p = payment_detail.payment
         lease = p.lease
 
-        is_security_refund = (allocation.security_type or "").upper() == "REFUND"
-        is_lease_refund = (allocation.lease_amount or 0) < 0
+        is_security_refund = (payment_detail.security_type or "").upper() == "REFUND"
+        is_lease_refund = (payment_detail.lease_amount or 0) < 0
         is_refund = is_security_refund or is_lease_refund
         receipt_title = (
             "LEASE REFUND RECEIPT"
             if is_lease_refund
             else "SECURITY REFUND RECEIPT"
             if is_security_refund
-            else "PAYMENT ALLOCATION RECEIPT"
+            else "PAYMENT DETAIL RECEIPT"
         )
         total_label = "TOTAL REFUNDED" if is_refund else "TOTAL RECEIVED"
         security_label = "Security Refund" if is_security_refund else "Security Amount"
-        security_value = f"Rs. {allocation.security_amount:,.2f}"
-        total_value = f"Rs. {allocation.total_received():,.2f}"
-        lease_value = f"Rs. {allocation.lease_amount:,.2f}"
+        security_value = f"Rs. {payment_detail.security_amount:,.2f}"
+        total_value = f"Rs. {payment_detail.total_received():,.2f}"
+        lease_value = f"Rs. {payment_detail.lease_amount:,.2f}"
         if is_lease_refund:
-            lease_value = f"-Rs. {abs(allocation.lease_amount):,.2f}"
-            total_value = f"-Rs. {abs(allocation.lease_amount):,.2f}"
+            lease_value = f"-Rs. {abs(payment_detail.lease_amount):,.2f}"
+            total_value = f"-Rs. {abs(payment_detail.lease_amount):,.2f}"
         elif is_security_refund:
-            security_value = f"-Rs. {allocation.security_amount:,.2f}"
-            total_value = f"-Rs. {allocation.security_amount:,.2f}"
+            security_value = f"-Rs. {payment_detail.security_amount:,.2f}"
+            total_value = f"-Rs. {payment_detail.security_amount:,.2f}"
 
         elems = [
             Paragraph(receipt_title, title),
-            Paragraph(f"Allocation #: {allocation.pk}", normal),
+            Paragraph(f"Payment Detail #: {payment_detail.pk}", normal),
             Paragraph(f"Payment Ref: {p.reference_number or p.pk}", normal),
             Paragraph(f"Date: {p.payment_date.strftime('%b %d, %Y')}", normal),
             Spacer(1, 10),
@@ -874,7 +874,7 @@ class AllocationReceiptPDF:
             ["Description", "Amount"],
             ["Lease Refund" if is_lease_refund else "Lease Amount", lease_value],
             [security_label, security_value],
-            ["Security Type", allocation.security_type],
+            ["Security Type", payment_detail.security_type],
             [total_label, total_value],
         ]
         d = Table(details, colWidths=[300, 180])
@@ -896,5 +896,5 @@ class AllocationReceiptPDF:
         pdf = buf.getvalue()
         buf.close()
 
-        filename = f"allocation_{allocation.pk}_{p.payment_date.strftime('%Y%m%d')}.pdf"
+        filename = f"payment_detail_{payment_detail.pk}_{p.payment_date.strftime('%Y%m%d')}.pdf"
         return pdf, filename

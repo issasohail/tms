@@ -42,12 +42,16 @@ def seed_inspection_quantity_items(apps, schema_editor):
 
     bedroom_categories = [
         cat
-        for cat in InspectionCategory.objects.filter(active=True).order_by("display_order", "name")
+        for cat in InspectionCategory.objects.filter(active=True).order_by(
+            "display_order", "name"
+        )
         if cat.name.lower().startswith("bedroom")
     ]
     bathroom_categories = [
         cat
-        for cat in InspectionCategory.objects.filter(active=True).order_by("display_order", "name")
+        for cat in InspectionCategory.objects.filter(active=True).order_by(
+            "display_order", "name"
+        )
         if cat.name.lower().startswith("bathroom")
     ]
     living_room = category("Living Room", 20)
@@ -59,14 +63,18 @@ def seed_inspection_quantity_items(apps, schema_editor):
     for cat in bedroom_categories:
         added_items.append(item(cat, "Window Curtain Rod", 95, 1))
         added_items.append(item(cat, "Window Lock", 100, 1))
-        light = InspectionItem.objects.filter(category=cat, item_name__iexact="Light").first()
+        light = InspectionItem.objects.filter(
+            category=cat, item_name__iexact="Light"
+        ).first()
         if light and light.default_quantity != 4:
             light.default_quantity = 4
             light.save(update_fields=["default_quantity"])
 
     for cat in bathroom_categories:
         added_items.append(item(cat, "Muslim Shower", 95, 1))
-        light = InspectionItem.objects.filter(category=cat, item_name__iexact="Light").first()
+        light = InspectionItem.objects.filter(
+            category=cat, item_name__iexact="Light"
+        ).first()
         if light and light.default_quantity != 1:
             light.default_quantity = 1
             light.save(update_fields=["default_quantity"])
@@ -76,7 +84,9 @@ def seed_inspection_quantity_items(apps, schema_editor):
         added_items.append(item(cat, "Window Lock", 100, 1))
 
     for cat in [living_room, single_room]:
-        light = InspectionItem.objects.filter(category=cat, item_name__iexact="Light").first()
+        light = InspectionItem.objects.filter(
+            category=cat, item_name__iexact="Light"
+        ).first()
         if light:
             if light.default_quantity != 4:
                 light.default_quantity = 4
@@ -84,24 +94,38 @@ def seed_inspection_quantity_items(apps, schema_editor):
         else:
             added_items.append(item(cat, "Light", 30, 4))
 
-    kitchen_light = InspectionItem.objects.filter(category=kitchen, item_name__iexact="Light").first()
+    kitchen_light = InspectionItem.objects.filter(
+        category=kitchen, item_name__iexact="Light"
+    ).first()
     if kitchen_light and kitchen_light.default_quantity != 1:
         kitchen_light.default_quantity = 1
         kitchen_light.save(update_fields=["default_quantity"])
 
-    for template in InspectionTemplate.objects.filter(active=True).prefetch_related("items__category"):
-        existing_categories = {existing.category_id for existing in template.items.all()}
+    for template in InspectionTemplate.objects.filter(active=True).prefetch_related(
+        "items__category"
+    ):
+        existing_categories = {
+            existing.category_id for existing in template.items.all()
+        }
         template_additions = [
-            new_item for new_item in added_items if new_item.category_id in existing_categories
+            new_item
+            for new_item in added_items
+            if new_item.category_id in existing_categories
         ]
         if template.name.lower() == "room":
             template_additions.extend(
-                InspectionItem.objects.filter(category=single_room, active=True).order_by("display_order", "item_name")
+                InspectionItem.objects.filter(
+                    category=single_room, active=True
+                ).order_by("display_order", "item_name")
             )
         if not template_additions:
             continue
         current_ids = set(template.items.values_list("id", flat=True))
-        new_items = [new_item for new_item in template_additions if new_item.pk not in current_ids]
+        new_items = [
+            new_item
+            for new_item in template_additions
+            if new_item.pk not in current_ids
+        ]
         if new_items:
             template.items.add(*new_items)
         ordered_ids = list(template.item_order or [])
@@ -114,7 +138,6 @@ def seed_inspection_quantity_items(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("leases", "0063_inspection_quantities"),
     ]

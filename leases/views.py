@@ -24,8 +24,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.core.files import File
 from django.core.exceptions import ValidationError
+from django.core.files import File
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage
 from django.core.serializers.json import DjangoJSONEncoder
@@ -87,8 +87,16 @@ from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
 from leases.models import (
     Lease,
+    LeaseVehicle,
+    LeaseVehicleType,
     PendingAgreementApproval,
+    PendingLeaseVehicleSubmission,
     PendingPoliceVerificationSubmission,
+)
+from leases.services.vehicle_submissions import (
+    attach_pending_vehicle_submissions_to_lease,
+    copy_pending_vehicle_to_lease_vehicle,
+    create_pending_vehicle_submissions_from_post,
 )
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
@@ -117,11 +125,13 @@ from .forms import (
     CustomRenewForm,
     LeaseFamilyFormSet,
     LeaseForm,
+    LeaseVehicleFormSet,
+    LeaseVehicleTypeForm,
     LeaseRenewalInlineFormSet,
     LeaseTemplateForm,
     RenewLeaseForm,
 )
-from .models import (  # adjust import paths if needed
+from .models import (
     DefaultClause,
     Lease,
     LeaseFamilyMember,
@@ -129,9 +139,6 @@ from .models import (  # adjust import paths if needed
     LeaseTemplate,
     LeaseUnitOccupancy,
     PendingLeaseFamilyMemberSubmission,
-    Property,
-    Tenant,
-    Unit,
 )
 
 # Ensure this is correct for your setup
@@ -372,10 +379,12 @@ def public_lease_ledger(request, token):
                 or f"Invoice {invoice.invoice_number}",
                 "amount": -amount,
             }
-    )
+        )
     for payment in lease.payments_qs:
         payment_detail = getattr(payment, "detail", None)
-        lease_amount = getattr(payment_detail, "lease_amount", None) if payment_detail else None
+        lease_amount = (
+            getattr(payment_detail, "lease_amount", None) if payment_detail else None
+        )
         amount = (lease_amount if lease_amount is not None else payment.amount) or zero
         transactions.append(
             {
@@ -632,6 +641,219 @@ def lease_bill_water_inline_update(request, pk):
     )
 
 
+@login_required
+@require_POST
+def lease_due_date_inline_update(request, pk):
+    lease = get_object_or_404(Lease, pk=pk)
+
+    value = (request.POST.get("value") or "").strip()
+    if len(value) > 100:
+        return JsonResponse(
+            {"success": False, "error": "Due date cannot be more than 100 characters."},
+            status=400,
+        )
+
+    lease.due_date = value
+    lease.save(update_fields=["due_date"])
+
+    return JsonResponse(
+        {
+            "success": True,
+            "due_date": lease.due_date or "",
+            "short_label": (lease.due_date or "")[:4] or "-",
+        }
+    )
+
+
+def _absolute_file_url(request, file_field):
+    if not file_field:
+        return ""
+    try:
+        return request.build_absolute_uri(file_field.url)
+    except ValueError:
+        return ""
+
+
+def _vehicle_dict(request, vehicle):
+    return {
+        "id": vehicle.pk,
+        "type": vehicle.vehicle_type.name if vehicle.vehicle_type_id else "",
+        "registration_number": vehicle.registration_number,
+        "make": vehicle.make,
+        "model": vehicle.model,
+        "color": vehicle.color,
+        "year": vehicle.year or "",
+        "owner_name": vehicle.owner_name,
+        "owner_cnic": vehicle.owner_cnic,
+        "parking_slot": vehicle.parking_slot,
+        "notes": vehicle.notes,
+        "is_active": vehicle.is_active,
+        "vehicle_photo_url": _absolute_file_url(request, vehicle.vehicle_photo),
+        "registration_book_url": _absolute_file_url(
+            request, vehicle.registration_book_photo
+        ),
+    }
+
+
+def _pending_vehicle_dict(request, submission):
+    return {
+        "id": submission.pk,
+        "type": submission.vehicle_type.name if submission.vehicle_type_id else "",
+        "registration_number": submission.registration_number,
+        "make": submission.make,
+        "model": submission.model,
+        "color": submission.color,
+        "year": submission.year or "",
+        "owner_name": submission.owner_name,
+        "owner_cnic": submission.owner_cnic,
+        "parking_slot": submission.parking_slot,
+        "source": submission.source,
+        "status": submission.status,
+        "status_label": submission.get_status_display(),
+        "submitted_at": timezone.localtime(submission.submitted_at).strftime(
+            "%Y-%m-%d %H:%M"
+        ),
+        "vehicle_photo_url": _absolute_file_url(request, submission.vehicle_photo),
+        "registration_book_url": _absolute_file_url(
+            request, submission.registration_book_photo
+        ),
+        "approve_url": reverse("leases:approve_pending_vehicle_submission", args=[submission.pk]),
+        "reject_url": reverse("leases:reject_pending_vehicle_submission", args=[submission.pk]),
+    }
+
+
+def _lease_vehicle_payload(request, lease):
+    vehicles = list(
+        lease.vehicles.filter(is_active=True).select_related("vehicle_type").order_by(
+            "vehicle_type__sort_order", "registration_number"
+        )
+    )
+    pending = list(
+        lease.pending_vehicle_submissions.filter(
+            status=PendingLeaseVehicleSubmission.STATUS_PENDING
+        )
+        .select_related("vehicle_type")
+        .order_by("-submitted_at")
+    )
+    if vehicles:
+        status = "yes"
+        label = "Yes" if len(vehicles) == 1 else f"Yes {len(vehicles)}"
+    elif pending:
+        status = "pending"
+        label = "Pending" if len(pending) == 1 else f"Pending {len(pending)}"
+    elif lease.has_vehicle is False:
+        status = "no"
+        label = "No Vehicle"
+    elif lease.has_vehicle is True:
+        status = "need_info"
+        label = "Need Info"
+    else:
+        status = "not_entered"
+        label = "Not Entered"
+
+    return {
+        "success": True,
+        "lease_id": lease.pk,
+        "tenant": lease.tenant.get_full_name() if lease.tenant_id else "",
+        "unit": str(lease.unit) if lease.unit_id else "",
+        "has_vehicle": lease.has_vehicle,
+        "status": status,
+        "label": label,
+        "vehicles": [_vehicle_dict(request, vehicle) for vehicle in vehicles],
+        "pending": [_pending_vehicle_dict(request, item) for item in pending],
+        "vehicle_types": [
+            {"id": item.pk, "name": item.name}
+            for item in LeaseVehicleType.objects.filter(is_active=True).order_by(
+                "sort_order", "name"
+            )
+        ],
+    }
+
+
+def _json_or_redirect(request, payload, redirect_url):
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse(payload)
+    return redirect(redirect_url)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def lease_vehicle_info_ajax(request, pk):
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit", "unit__property"), pk=pk
+    )
+    if request.method == "GET":
+        return JsonResponse(_lease_vehicle_payload(request, lease))
+
+    has_vehicle = request.POST.get("has_vehicle", "")
+    if has_vehicle == "0":
+        lease.has_vehicle = False
+        lease.save(update_fields=["has_vehicle"])
+        lease.vehicles.filter(is_active=True).update(is_active=False)
+        return JsonResponse(_lease_vehicle_payload(request, lease))
+    if has_vehicle != "1":
+        return JsonResponse(
+            {"success": False, "error": "Please select whether tenant has a vehicle."},
+            status=400,
+        )
+
+    vehicle_type_id = (request.POST.get("vehicle_type") or "").strip()
+    if not vehicle_type_id:
+        return JsonResponse(
+            {"success": False, "error": "Vehicle type is required."},
+            status=400,
+        )
+    vehicle_type = get_object_or_404(
+        LeaseVehicleType,
+        pk=vehicle_type_id,
+        is_active=True,
+    )
+    registration_number = (request.POST.get("registration_number") or "").strip()
+    if not registration_number:
+        return JsonResponse(
+            {"success": False, "error": "Vehicle registration number is required."},
+            status=400,
+        )
+
+    year = None
+    year_raw = (request.POST.get("year") or "").strip()
+    if year_raw:
+        try:
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {"success": False, "error": "Vehicle year must be a number."},
+                status=400,
+            )
+
+    try:
+        LeaseVehicle.objects.create(
+            lease=lease,
+            tenant=lease.tenant,
+            vehicle_type=vehicle_type,
+            registration_number=registration_number,
+            make=(request.POST.get("make") or "").strip(),
+            model=(request.POST.get("model") or "").strip(),
+            color=(request.POST.get("color") or "").strip(),
+            year=year,
+            owner_name=(request.POST.get("owner_name") or "").strip(),
+            owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
+            parking_slot=(request.POST.get("parking_slot") or "").strip(),
+            vehicle_photo=request.FILES.get("vehicle_photo"),
+            registration_book_photo=request.FILES.get("registration_book_photo"),
+            notes=(request.POST.get("notes") or "").strip(),
+        )
+    except Exception as exc:
+        return JsonResponse(
+            {"success": False, "error": f"Vehicle not added: {exc}"},
+            status=400,
+        )
+
+    lease.has_vehicle = True
+    lease.save(update_fields=["has_vehicle"])
+    return JsonResponse(_lease_vehicle_payload(request, lease))
+
+
 class LeaseListView(SingleTableView):
     model = Lease
     table_class = LeaseTable
@@ -760,6 +982,8 @@ class LeaseListView(SingleTableView):
                 "police_verification_status",
                 "police_verification_document",
                 "bill_water_charges",
+                "due_date",
+                "has_vehicle",
                 "tenant__id",
                 "tenant__first_name",
                 "tenant__last_name",
@@ -796,6 +1020,16 @@ class LeaseListView(SingleTableView):
                     documents__category=police_category_code(),
                     documents__is_active=True,
                 ),
+                distinct=True,
+            ),
+            vehicle_count=Count(
+                "vehicles",
+                filter=Q(vehicles__is_active=True),
+                distinct=True,
+            ),
+            pending_vehicle_count=Count(
+                "pending_vehicle_submissions",
+                filter=Q(pending_vehicle_submissions__status="pending"),
                 distinct=True,
             ),
         )
@@ -1204,6 +1438,15 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             ),
         )
         ctx.setdefault(
+            "vehicle_formset",
+            LeaseVehicleFormSet(
+                self.request.POST or None,
+                self.request.FILES or None,
+                prefix="vehicles",
+                instance=lease_instance,
+            ),
+        )
+        ctx.setdefault(
             "tenants_for_add",
             _tenant_family_options(),
         )
@@ -1242,6 +1485,21 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             ctx["family_formset"] = family_fs
             return self.render_to_response(ctx)
 
+        vehicle_fs = LeaseVehicleFormSet(
+            self.request.POST,
+            self.request.FILES,
+            prefix="vehicles",
+            instance=form.instance,
+        )
+        if confirmed and not vehicle_fs.is_valid():
+            messages.error(
+                self.request, "Vehicle form has errors. Please fix and try again."
+            )
+            ctx = self.get_context_data(form=form)
+            ctx["family_formset"] = family_fs
+            ctx["vehicle_formset"] = vehicle_fs
+            return self.render_to_response(ctx)
+
         # ---------- 1st click: PREVIEW ----------
         if not confirmed:
             # Temporarily save to compute billing, then roll back
@@ -1277,6 +1535,17 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         # Family links
         family_fs.instance = self.object
         family_fs.save()
+        vehicle_fs.instance = self.object
+        vehicle_fs.save()
+        attached_vehicle_count = attach_pending_vehicle_submissions_to_lease(
+            lease=self.object,
+            tenant=self.object.tenant,
+        )
+        if attached_vehicle_count:
+            messages.success(
+                self.request,
+                f"{attached_vehicle_count} pending vehicle submission(s) linked to this lease.",
+            )
         self._handle_quick_add(self.object)
 
         # Create initial REQUIRED security deposit transaction *after* lease exists
@@ -1425,6 +1694,56 @@ def _run_sql(fn):
 
 
 # leases/views.py
+
+
+@login_required
+@require_POST
+def lease_vehicle_add(request, pk):
+    lease = get_object_or_404(Lease.objects.select_related("tenant"), pk=pk)
+    vehicle_type = get_object_or_404(
+        LeaseVehicleType,
+        pk=request.POST.get("vehicle_type"),
+        is_active=True,
+    )
+    registration_number = (request.POST.get("registration_number") or "").strip()
+    if not registration_number:
+        messages.error(request, "Vehicle registration number is required.")
+        return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+
+    year = None
+    year_raw = (request.POST.get("year") or "").strip()
+    if year_raw:
+        try:
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            messages.error(request, "Vehicle year must be a number.")
+            return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+
+    try:
+        LeaseVehicle.objects.create(
+            lease=lease,
+            tenant=lease.tenant,
+            vehicle_type=vehicle_type,
+            registration_number=registration_number,
+            make=(request.POST.get("make") or "").strip(),
+            model=(request.POST.get("model") or "").strip(),
+            color=(request.POST.get("color") or "").strip(),
+            year=year,
+            owner_name=(request.POST.get("owner_name") or "").strip(),
+            owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
+            parking_slot=(request.POST.get("parking_slot") or "").strip(),
+            vehicle_photo=request.FILES.get("vehicle_photo"),
+            registration_book_photo=request.FILES.get("registration_book_photo"),
+            notes=(request.POST.get("notes") or "").strip(),
+        )
+    except Exception as exc:
+        messages.error(request, f"Vehicle not added: {exc}")
+    else:
+        if lease.has_vehicle is not True:
+            lease.has_vehicle = True
+            lease.save(update_fields=["has_vehicle"])
+        messages.success(request, "Vehicle added to lease.")
+    return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
 
 
 @login_required
@@ -1930,6 +2249,12 @@ def public_police_verification(request, token):
     pending_police = lease.pending_police_verifications.filter(
         status=PendingPoliceVerificationSubmission.STATUS_PENDING,
     ).order_by("-submitted_at")
+    pending_vehicle_submissions = lease.pending_vehicle_submissions.select_related(
+        "vehicle_type"
+    ).order_by("-submitted_at")[:10]
+    vehicle_types = LeaseVehicleType.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    )
 
     context = {
         "lease": lease,
@@ -1939,6 +2264,8 @@ def public_police_verification(request, token):
         "family_members": family_members,
         "pending_family_requests": pending_family_requests,
         "pending_police": pending_police,
+        "pending_vehicle_submissions": pending_vehicle_submissions,
+        "vehicle_types": vehicle_types,
         **police_context_sections(lease),
     }
 
@@ -2075,6 +2402,23 @@ def public_police_verification(request, token):
             f"{len(family_rows)} family member request(s) sent for staff approval."
         )
 
+    vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
+        request,
+        lease=lease,
+        tenant=lease.tenant,
+        source="police_verification",
+    )
+    errors.extend(vehicle_errors)
+    if errors:
+        context["errors"] = errors
+        return render(
+            request, "leases/public_police_verification.html", context, status=400
+        )
+    if vehicle_rows:
+        saved_messages.append(
+            f"{len(vehicle_rows)} vehicle submission(s) sent for staff approval."
+        )
+
     record_external_link_access(
         request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
     )
@@ -2085,6 +2429,7 @@ def public_police_verification(request, token):
             "tenant_update_submitted": bool(tenant_data or tenant_submission),
             "family_update_count": len(family_rows),
             "police_file_submitted": bool(police_file),
+            "vehicle_update_count": len(vehicle_rows),
             "confirmation_photo_url": (
                 tenant_submission.photo.url
                 if tenant_submission and tenant_submission.photo
@@ -2105,10 +2450,141 @@ def public_police_verification(request, token):
             "pending_police": lease.pending_police_verifications.filter(
                 status=PendingPoliceVerificationSubmission.STATUS_PENDING,
             ).order_by("-submitted_at"),
+            "pending_vehicle_submissions": lease.pending_vehicle_submissions.select_related(
+                "vehicle_type"
+            ).order_by("-submitted_at")[:10],
+            "vehicle_types": vehicle_types,
             **police_context_sections(lease),
         }
     )
     return render(request, "leases/public_police_verification.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def lease_vehicle_type_settings(request):
+    if request.method == "POST":
+        form = LeaseVehicleTypeForm(request.POST)
+        if form.is_valid():
+            vehicle_type = form.save(commit=False)
+            if not vehicle_type.code:
+                vehicle_type.code = slugify(vehicle_type.name)
+            vehicle_type.save()
+            messages.success(request, "Lease vehicle type added.")
+            return redirect("leases:lease_vehicle_type_settings")
+    else:
+        form = LeaseVehicleTypeForm()
+
+    vehicle_types = LeaseVehicleType.objects.order_by("sort_order", "name")
+    return render(
+        request,
+        "leases/settings/lease_vehicle_type_settings.html",
+        {"form": form, "vehicle_types": vehicle_types},
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def lease_vehicle_type_edit(request, pk):
+    vehicle_type = get_object_or_404(LeaseVehicleType, pk=pk)
+    form = LeaseVehicleTypeForm(request.POST or None, instance=vehicle_type)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Lease vehicle type updated.")
+        return redirect("leases:lease_vehicle_type_settings")
+    return render(
+        request,
+        "leases/settings/lease_vehicle_type_form.html",
+        {"form": form, "vehicle_type": vehicle_type},
+    )
+
+
+@login_required
+@require_POST
+def lease_vehicle_type_toggle(request, pk):
+    vehicle_type = get_object_or_404(LeaseVehicleType, pk=pk)
+    vehicle_type.is_active = not vehicle_type.is_active
+    vehicle_type.save(update_fields=["is_active"])
+    state = "activated" if vehicle_type.is_active else "deactivated"
+    messages.success(request, f"{vehicle_type.name} {state}.")
+    return redirect("leases:lease_vehicle_type_settings")
+
+
+@login_required
+@require_POST
+def lease_vehicle_type_delete(request, pk):
+    vehicle_type = get_object_or_404(LeaseVehicleType, pk=pk)
+    if (
+        vehicle_type.lease_vehicles.exists()
+        or vehicle_type.pending_vehicle_submissions.exists()
+    ):
+        messages.warning(
+            request,
+            "This vehicle type is already used. Deactivate it instead of deleting.",
+        )
+        return redirect("leases:lease_vehicle_type_settings")
+    name = vehicle_type.name
+    vehicle_type.delete()
+    messages.success(request, f"{name} deleted.")
+    return redirect("leases:lease_vehicle_type_settings")
+
+
+def _redirect_after_vehicle_submission_action(submission):
+    if submission.lease_id:
+        return redirect("leases:lease_detail", pk=submission.lease_id)
+    if submission.pending_tenant_submission_id:
+        return redirect(
+            "tenants:registration_submission_detail",
+            pk=submission.pending_tenant_submission_id,
+        )
+    return redirect("leases:lease_list")
+
+
+@login_required
+@require_POST
+def approve_pending_vehicle_submission(request, pk):
+    submission = get_object_or_404(
+        PendingLeaseVehicleSubmission.objects.select_related(
+            "lease", "lease__tenant", "tenant", "vehicle_type"
+        ),
+        pk=pk,
+    )
+    try:
+        vehicle = copy_pending_vehicle_to_lease_vehicle(
+            submission,
+            reviewed_by=request.user,
+        )
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse(
+                {"success": False, "error": "; ".join(exc.messages)}, status=400
+            )
+        return _redirect_after_vehicle_submission_action(submission)
+    messages.success(request, "Vehicle submission approved.")
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        lease = vehicle.lease
+        return JsonResponse(_lease_vehicle_payload(request, lease))
+    return _redirect_after_vehicle_submission_action(submission)
+
+
+@login_required
+@require_POST
+def reject_pending_vehicle_submission(request, pk):
+    submission = get_object_or_404(PendingLeaseVehicleSubmission, pk=pk)
+    submission.status = PendingLeaseVehicleSubmission.STATUS_REJECTED
+    submission.reviewed_by = request.user
+    submission.reviewed_at = timezone.now()
+    submission.review_notes = (request.POST.get("review_notes") or "").strip()
+    submission.save(
+        update_fields=["status", "reviewed_by", "reviewed_at", "review_notes"]
+    )
+    messages.success(request, "Vehicle submission rejected.")
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        if submission.lease_id:
+            return JsonResponse(_lease_vehicle_payload(request, submission.lease))
+        return JsonResponse({"success": True})
+    return _redirect_after_vehicle_submission_action(submission)
 
 
 @login_required
@@ -2596,9 +3072,11 @@ def _sync_lease_recurring_charge_end_dates(lease):
     RecurringCharge.end_date is independent from Lease.end_date, so lease-form
     changes must explicitly close lease-scoped recurring rules on the same day.
     """
-    updated = RecurringCharge.objects.filter(lease=lease).exclude(
-        end_date=lease.end_date
-    ).update(end_date=lease.end_date)
+    updated = (
+        RecurringCharge.objects.filter(lease=lease)
+        .exclude(end_date=lease.end_date)
+        .update(end_date=lease.end_date)
+    )
     return updated
 
 
@@ -2640,6 +3118,15 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             LeaseRenewalInlineFormSet(
                 self.request.POST or None,
                 prefix="renewals",
+                instance=lease_instance,
+            ),
+        )
+        ctx.setdefault(
+            "vehicle_formset",
+            LeaseVehicleFormSet(
+                self.request.POST or None,
+                self.request.FILES or None,
+                prefix="vehicles",
                 instance=lease_instance,
             ),
         )
@@ -2738,8 +3225,15 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                 return self.render_to_response(ctx)
 
         qa_total = int(self.request.POST.get("qa-TOTAL") or 0)
-        important_change = security_changed or rent_changed or end_date_changed or bool(
-            move_out_trigger and settlement_preview and settlement_preview["applicable"]
+        important_change = (
+            security_changed
+            or rent_changed
+            or end_date_changed
+            or bool(
+                move_out_trigger
+                and settlement_preview
+                and settlement_preview["applicable"]
+            )
         )
 
         # ---------- STEP 1: PREVIEW PATH ----------
@@ -2754,6 +3248,9 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             # For preview, show an *unbound* family formset (so it doesn't complain)
             ctx["family_formset"] = LeaseFamilyFormSet(
                 instance=old, prefix="family_members"
+            )
+            ctx["vehicle_formset"] = LeaseVehicleFormSet(
+                instance=old, prefix="vehicles"
             )
 
             ctx.update(
@@ -2775,6 +3272,12 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         renewal_fs = LeaseRenewalInlineFormSet(
             self.request.POST, prefix="renewals", instance=form.instance
         )
+        vehicle_fs = LeaseVehicleFormSet(
+            self.request.POST,
+            self.request.FILES,
+            prefix="vehicles",
+            instance=form.instance,
+        )
         if not family_fs.is_valid():
             messages.error(
                 self.request, "Family form has errors. Please fix and try again."
@@ -2790,6 +3293,15 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             ctx["family_formset"] = family_fs
             ctx["renewal_formset"] = renewal_fs
             return self.render_to_response(ctx)
+        if not vehicle_fs.is_valid():
+            messages.error(
+                self.request, "Vehicle form has errors. Please fix and try again."
+            )
+            ctx = self.get_context_data(form=form)
+            ctx["family_formset"] = family_fs
+            ctx["renewal_formset"] = renewal_fs
+            ctx["vehicle_formset"] = vehicle_fs
+            return self.render_to_response(ctx)
 
         # If quick-add rows exist, treat this as confirmed
         if not confirmed and qa_total > 0:
@@ -2803,6 +3315,17 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         family_fs.save()
         renewal_fs.instance = self.object
         renewal_fs.save()
+        vehicle_fs.instance = self.object
+        vehicle_fs.save()
+        attached_vehicle_count = attach_pending_vehicle_submissions_to_lease(
+            lease=self.object,
+            tenant=self.object.tenant,
+        )
+        if attached_vehicle_count:
+            messages.success(
+                self.request,
+                f"{attached_vehicle_count} pending vehicle submission(s) linked to this lease.",
+            )
         self._handle_quick_add(self.object)
         renewal_sync_count = _sync_current_renewal_end_date(
             self.object,
@@ -2993,9 +3516,18 @@ def police_verification_summary_pdf(request, pk):
     lease = get_object_or_404(
         Lease.objects.select_related(
             "tenant", "unit", "unit__property"
-        ).prefetch_related("family_members__family_member"),
+        ).prefetch_related(
+            "family_members__family_member",
+            Prefetch(
+                "vehicles",
+                queryset=LeaseVehicle.objects.filter(is_active=True).select_related(
+                    "vehicle_type"
+                ),
+            ),
+        ),
         pk=pk,
     )
+    vehicles = lease.vehicles.filter(is_active=True).select_related("vehicle_type")
     html = render_to_string(
         "leases/police_verification_summary_pdf.html",
         {
@@ -3004,6 +3536,7 @@ def police_verification_summary_pdf(request, pk):
             "property": lease.unit.property,
             "unit": lease.unit,
             "family_members": lease.family_members.all(),
+            "vehicles": vehicles,
             "generated_at": timezone.localtime(),
         },
         request=request,
@@ -3059,6 +3592,18 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     queryset=LeaseFamilyMember.objects.select_related(
                         "family_member",
                         "relationship_type",
+                    ),
+                ),
+                Prefetch(
+                    "vehicles",
+                    queryset=LeaseVehicle.objects.select_related(
+                        "vehicle_type", "tenant"
+                    ),
+                ),
+                Prefetch(
+                    "pending_vehicle_submissions",
+                    queryset=PendingLeaseVehicleSubmission.objects.select_related(
+                        "vehicle_type", "tenant", "pending_tenant_submission"
                     ),
                 ),
                 Prefetch(
@@ -3121,6 +3666,11 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "balance_due": lease.get_balance,
                 "lease_total_payment": lease_total_payment,
                 "occupancy_count": 1 + lease.family_members.count(),
+                "lease_vehicles": lease.vehicles.all(),
+                "pending_vehicle_submissions": lease.pending_vehicle_submissions.all(),
+                "vehicle_types": LeaseVehicleType.objects.filter(is_active=True).order_by(
+                    "sort_order", "name"
+                ),
                 "lease_documents": list(lease.documents.all()),
                 "lease_document_categories": list(
                     apps.get_model("leases", "LeaseDocumentCategory").objects.filter(
@@ -3750,7 +4300,11 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
             payment_detail = getattr(payment, "detail", None)
 
             # lease portion only
-            lease_amt = getattr(payment_detail, "lease_amount", None) if payment_detail else None
+            lease_amt = (
+                getattr(payment_detail, "lease_amount", None)
+                if payment_detail
+                else None
+            )
             amt = (
                 lease_amt if lease_amt is not None else (payment.amount or ZERO)
             ) or ZERO
@@ -3936,7 +4490,11 @@ def lease_ledger_pdf(request, lease_id):
         # Process payments
         for payment in lease.payments_qs:
             payment_detail = getattr(payment, "detail", None)
-            lease_amt = getattr(payment_detail, "lease_amount", None) if payment_detail else None
+            lease_amt = (
+                getattr(payment_detail, "lease_amount", None)
+                if payment_detail
+                else None
+            )
             amt = (
                 lease_amt
                 if lease_amt is not None
@@ -4093,7 +4651,11 @@ def export_ledger_excel(request, lease_id):
         # Process payments
         for payment in payments:
             payment_detail = getattr(payment, "detail", None)
-            lease_amt = getattr(payment_detail, "lease_amount", None) if payment_detail else None
+            lease_amt = (
+                getattr(payment_detail, "lease_amount", None)
+                if payment_detail
+                else None
+            )
             amount = (
                 lease_amt
                 if lease_amt is not None

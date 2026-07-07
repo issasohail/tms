@@ -26,6 +26,37 @@
           </table>
         </div>
       </div>
+      <div class="card mt-3">
+        <div class="card-header bg-dark text-white py-2 px-3">Pending Vehicle Submissions</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Registration #</th>
+                  <th>Owner</th>
+                  <th>Status</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for vehicle in pending_vehicle_submissions %}
+                  <tr>
+                    <td>{{ vehicle.vehicle_type.name }}</td>
+                    <td>{{ vehicle.registration_number }}</td>
+                    <td>{{ vehicle.owner_name|default:"-" }}</td>
+                    <td>{{ vehicle.get_status_display }}</td>
+                    <td class="text-muted small">Waiting for lease assignment before approval.</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="5" class="text-muted text-center py-3">No vehicle submissions.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="col-lg-5">
       <div class="card mb-3">

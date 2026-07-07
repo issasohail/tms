@@ -639,6 +639,10 @@
           <i class="ti ti-users"></i>Family
           {% if family_formset %}<span class="lf-nav-badge">{{ family_formset.total_form_count }}</span>{% endif %}
         </a>
+        <a href="#pane-vehicles" class="lf-nav-item" data-lf-tab="pane-vehicles">
+          <i class="ti ti-car"></i>Vehicles
+          {% if vehicle_formset %}<span class="lf-nav-badge">{{ vehicle_formset.total_form_count }}</span>{% endif %}
+        </a>
         <a href="#pane-renewals" class="lf-nav-item" data-lf-tab="pane-renewals">
           <i class="ti ti-rotate-clockwise"></i>Renewals
           {% if renewal_formset %}<span class="lf-nav-badge warn">{{ renewal_formset.initial_form_count }}</span>{% endif %}
@@ -1053,6 +1057,64 @@
             </div>
           </div>
         </div>{# /pane-family #}
+
+        {# ======= PANE: Vehicles ======= #}
+        <div id="pane-vehicles" class="lf-pane d-none">
+          <div class="lf-card">
+            <div class="lf-card-head lf-card-dark">
+              <i class="ti ti-car"></i>
+              <span class="lf-card-title">Tenant Vehicles</span>
+              <span class="text-muted small ms-2">Car, motorcycle, rickshaw, etc.</span>
+            </div>
+            <div style="padding:8px 12px;">
+              {{ vehicle_formset.management_form }}
+              {% if vehicle_formset.non_form_errors %}
+                <div class="alert alert-danger py-2">{{ vehicle_formset.non_form_errors }}</div>
+              {% endif %}
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0" style="min-width:1180px;">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="width:150px">Type</th>
+                      <th style="width:130px">Registration #</th>
+                      <th style="width:120px">Make</th>
+                      <th style="width:120px">Model</th>
+                      <th style="width:100px">Color</th>
+                      <th style="width:150px">Owner</th>
+                      <th style="width:140px">Owner CNIC</th>
+                      <th style="width:110px">Parking</th>
+                      <th style="width:150px">Vehicle Photo</th>
+                      <th style="width:150px">Registration Book</th>
+                      <th style="width:70px">Active</th>
+                      <th style="width:70px">Delete</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for vehicle_form in vehicle_formset %}
+                      <tr>
+                        {% for hidden in vehicle_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        <td>{{ vehicle_form.vehicle_type }}{{ vehicle_form.vehicle_type.errors }}</td>
+                        <td>{{ vehicle_form.registration_number }}{{ vehicle_form.registration_number.errors }}</td>
+                        <td>{{ vehicle_form.make }}</td>
+                        <td>{{ vehicle_form.model }}</td>
+                        <td>{{ vehicle_form.color }}</td>
+                        <td>{{ vehicle_form.owner_name }}</td>
+                        <td>{{ vehicle_form.owner_cnic }}</td>
+                        <td>{{ vehicle_form.parking_slot }}</td>
+                        <td>{{ vehicle_form.vehicle_photo }}</td>
+                        <td>{{ vehicle_form.registration_book_photo }}</td>
+                        <td class="text-center">{{ vehicle_form.is_active }}</td>
+                        <td class="text-center">
+                          {% if vehicle_form.instance.pk %}{{ vehicle_form.DELETE }}{% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>{# /pane-vehicles #}
 
         {# ======= PANE: Renewals ======= #}
         <div id="pane-renewals" class="lf-pane d-none">

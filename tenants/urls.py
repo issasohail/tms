@@ -53,6 +53,13 @@ urlpatterns = [
         views.tenant_lead_inline_update,
         name="tenant_lead_inline_update",
     ),
+    path("<int:pk>/vehicles/add/", views.tenant_vehicle_add, name="tenant_vehicle_add"),
+    path("<int:pk>/family/add/", views.tenant_family_add, name="tenant_family_add"),
+    path(
+        "<int:pk>/family/create-and-add/",
+        views.tenant_family_create_and_add,
+        name="tenant_family_create_and_add",
+    ),
     path("<int:pk>/", TenantDetailView.as_view(), name="tenant_detail"),
     path("<int:pk>/update/", TenantUpdateView.as_view(), name="tenant_update"),
     path("<int:pk>/delete/", TenantDeleteView.as_view(), name="tenant_delete"),

@@ -98,6 +98,16 @@ class LeaseTable(ExportableTable):
         },
     )
 
+    vehicle_info = tables.Column(
+        verbose_name="Vehicle",
+        orderable=False,
+        empty_values=(),
+        attrs={
+            "td": {"class": "col-vehicle text-center"},
+            "th": {"class": "col-vehicle text-center"},
+        },
+    )
+
     status = tables.Column(
         attrs={"td": {"class": "col-status"}, "th": {"class": "col-status"}}
     )
@@ -152,6 +162,13 @@ class LeaseTable(ExportableTable):
             "th": {"class": "col-actions actions-cell"},
         },
     )
+    due_date = tables.Column(
+        verbose_name="Due Date",
+        attrs={
+            "td": {"class": "col-due-date text-center"},
+            "th": {"class": "col-due-date text-center"},
+        },
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -175,6 +192,63 @@ class LeaseTable(ExportableTable):
         """Render total payments using the model's monthly_payments property"""
         # payments = record.total_payments
         return format_money(value, self.global_settings, decimals=0)
+
+    def render_due_date(self, value, record):
+        full = value or ""
+        short = full[:4] if full else "-"
+        url = reverse("leases:lease_due_date_inline_update", args=[record.pk])
+        return mark_safe(
+            f'''
+            <button
+                type="button"
+                class="lease-due-date-badge"
+                data-url="{escape(url)}"
+                data-value="{escape(full)}"
+                title="{escape(full or 'Click to set due date')}"
+            >
+                {escape(short)}
+            </button>
+            '''
+        )
+
+    def render_vehicle_info(self, record):
+        vehicle_count = getattr(record, "vehicle_count", 0) or 0
+        pending_count = getattr(record, "pending_vehicle_count", 0) or 0
+        has_vehicle = getattr(record, "has_vehicle", None)
+        url = reverse("leases:lease_vehicle_info_ajax", args=[record.pk])
+
+        if vehicle_count:
+            label = "Yes" if vehicle_count == 1 else f"Yes {vehicle_count}"
+            return mark_safe(
+                f'<button type="button" class="vehicle-info-pill vehicle-info-pill--yes" '
+                f'data-vehicle-url="{escape(url)}" '
+                f'title="{vehicle_count} active vehicle record(s)">{escape(label)}</button>'
+            )
+        if pending_count:
+            label = "Pending" if pending_count == 1 else f"Pending {pending_count}"
+            return mark_safe(
+                f'<button type="button" class="vehicle-info-pill vehicle-info-pill--pending" '
+                f'data-vehicle-url="{escape(url)}" '
+                f'title="{pending_count} pending vehicle submission(s)">{escape(label)}</button>'
+            )
+        if has_vehicle is False:
+            return mark_safe(
+                f'<button type="button" class="vehicle-info-pill vehicle-info-pill--no" '
+                f'data-vehicle-url="{escape(url)}" '
+                f'title="Tenant confirmed no vehicle">No Vehicle</button>'
+            )
+        if has_vehicle is True:
+            return mark_safe(
+                f'<button type="button" class="vehicle-info-pill vehicle-info-pill--pending" '
+                f'data-vehicle-url="{escape(url)}" '
+                f'title="Tenant has vehicle but details are missing">Need Info</button>'
+            )
+        return mark_safe(
+            f'<button type="button" class="vehicle-info-pill vehicle-info-pill--missing" '
+            f'data-vehicle-url="{escape(url)}" '
+            f'title="No vehicle information has been entered">Not Entered</button>'
+        )
+
 
     def render_family_members(self, record):
         count = getattr(record, "family_member_count", 0) or 0
@@ -404,12 +478,13 @@ class LeaseTable(ExportableTable):
             "sn",
             "id",
             "tenant",
-            "property",
             "unit",
             "family_members",
             "police_verification",
             "bill_water_charges",
+            "vehicle_info",
             "monthly_payments",
+            "due_date",
             "status",
             "start_date",
             "end_date",

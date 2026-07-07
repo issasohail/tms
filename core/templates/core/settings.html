@@ -77,6 +77,9 @@
       <a class="settings-tab-card" href="#settings-doc-categories" data-settings-target="settings-doc-categories">
         <span class="settings-tab-icon"><i class="fas fa-folder-open"></i></span><span>Lease Document Categories</span>
       </a>
+      <a class="settings-tab-card" href="#settings-lease-vehicle-types" data-settings-target="settings-lease-vehicle-types">
+        <span class="settings-tab-icon"><i class="fas fa-car"></i></span><span>Lease Vehicle Types</span>
+      </a>
       <a class="settings-tab-card" href="#settings-interest-types" data-settings-target="settings-interest-types">
         <span class="settings-tab-icon"><i class="fas fa-list-check"></i></span><span>Lead Interest Options</span>
       </a>
@@ -477,6 +480,16 @@
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <div class="settings-tab-panel d-none" id="settings-lease-vehicle-types">
+    <div class="card shadow-sm settings-embedded-panel">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0"><i class="fas fa-car me-2"></i>Lease Vehicle Types</h4>
+        <a class="btn btn-sm btn-outline-success" href="{% url 'leases:lease_vehicle_type_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
+      </div>
+      <iframe class="settings-inline-frame" src="{% url 'leases:lease_vehicle_type_settings' %}?embed=1" title="Lease Vehicle Types"></iframe>
     </div>
   </div>
 

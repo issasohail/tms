@@ -55,7 +55,8 @@ from weasyprint import HTML
 
 from core.models import GlobalSettings
 from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
-from leases.models import Lease, LeaseFamilyMember
+from leases.models import Lease, LeaseFamilyMember, LeaseVehicle, LeaseVehicleType
+from leases.services.vehicle_submissions import create_pending_vehicle_submissions_from_post
 from leases.whatsapp import build_whatsapp_url
 from payments.models import Payment
 from properties.models import Property, Unit
@@ -170,6 +171,23 @@ def _relationship_type_from_value(value):
         ).first()
     except (TypeError, ValueError):
         return LeaseRelationshipType.objects.filter(code=value, is_active=True).first()
+
+
+def _family_relationship_defaults(value):
+    relationship_type = _relationship_type_from_value(value)
+    if relationship_type:
+        return {
+            "relationship_type": relationship_type,
+            "relationship": relationship_type.code[:30],
+        }
+    return {"relationship": (value or "other")[:30]}
+
+
+def _tenant_detail_target_lease(tenant, lease_id):
+    queryset = Lease.objects.filter(tenant=tenant).order_by("-start_date", "-id")
+    if lease_id:
+        return get_object_or_404(queryset, pk=lease_id)
+    return queryset.filter(status="active").first() or queryset.first()
 
 
 def _age_from_dob(dob):
@@ -351,16 +369,33 @@ def tenant_public_registration_update(request, token):
                 cnic_front=request.FILES.get("cnic_front"),
                 cnic_back=request.FILES.get("cnic_back"),
             )
-            return render(
+            vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
                 request,
-                "tenants/public_registration_submitted.html",
-                {
-                    "tenant": tenant,
-                    "submission": submission,
-                    "submitted_name": f"{submitted_data.get('first_name', '')} {submitted_data.get('last_name', '')}".strip(),
-                    "submitted_phone": submitted_data.get("phone") or "",
-                },
+                tenant=tenant,
+                pending_tenant_submission=submission,
+                source="tenant_registration",
             )
+            if vehicle_errors:
+                submission.delete()
+                for error in vehicle_errors:
+                    form.add_error(None, error)
+            else:
+                vehicle_message = (
+                    "Vehicle information submitted and waiting for staff approval."
+                    if vehicle_rows
+                    else ""
+                )
+                return render(
+                    request,
+                    "tenants/public_registration_submitted.html",
+                    {
+                        "tenant": tenant,
+                        "submission": submission,
+                        "submitted_name": f"{submitted_data.get('first_name', '')} {submitted_data.get('last_name', '')}".strip(),
+                        "submitted_phone": submitted_data.get("phone") or "",
+                        "vehicle_message": vehicle_message,
+                    },
+                )
     else:
         form = TenantPublicRegistrationForm(initial=initial)
     existing_family = []
@@ -383,6 +418,9 @@ def tenant_public_registration_update(request, token):
             "form": form,
             "existing_family": existing_family,
             "relationship_types": relationship_types,
+            "vehicle_types": LeaseVehicleType.objects.filter(is_active=True).order_by(
+                "sort_order", "name"
+            ),
         },
     )
 
@@ -430,6 +468,9 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
                 "tenants:tenant_public_registration",
                 args=[tenant_registration_token(self.object.tenant)],
             )
+        )
+        context["pending_vehicle_submissions"] = (
+            self.object.pending_vehicle_submissions.select_related("vehicle_type")
         )
         return context
 
@@ -524,6 +565,153 @@ def get_units_by_property(request):
         "units": [{"id": unit.id, "unit_number": unit.unit_number} for unit in units]
     }
     return JsonResponse(data)
+
+
+@login_required
+@require_POST
+def tenant_vehicle_add(request, pk):
+    tenant = get_object_or_404(Tenant, pk=pk)
+    lease = _tenant_detail_target_lease(tenant, request.POST.get("lease"))
+    if not lease:
+        messages.error(request, "Create a lease before adding a vehicle.")
+        return redirect("tenants:tenant_detail", pk=tenant.pk)
+
+    vehicle_type = get_object_or_404(
+        LeaseVehicleType,
+        pk=request.POST.get("vehicle_type"),
+        is_active=True,
+    )
+    registration_number = (request.POST.get("registration_number") or "").strip()
+    if not registration_number:
+        messages.error(request, "Vehicle registration number is required.")
+        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles")
+
+    year = None
+    year_raw = (request.POST.get("year") or "").strip()
+    if year_raw:
+        try:
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            messages.error(request, "Vehicle year must be a number.")
+            return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles")
+
+    try:
+        LeaseVehicle.objects.create(
+            lease=lease,
+            tenant=tenant,
+            vehicle_type=vehicle_type,
+            registration_number=registration_number,
+            make=(request.POST.get("make") or "").strip(),
+            model=(request.POST.get("model") or "").strip(),
+            color=(request.POST.get("color") or "").strip(),
+            year=year,
+            owner_name=(request.POST.get("owner_name") or "").strip(),
+            owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
+            parking_slot=(request.POST.get("parking_slot") or "").strip(),
+            vehicle_photo=request.FILES.get("vehicle_photo"),
+            registration_book_photo=request.FILES.get("registration_book_photo"),
+            notes=(request.POST.get("notes") or "").strip(),
+        )
+    except Exception as exc:
+        messages.error(request, f"Vehicle not added: {exc}")
+    else:
+        messages.success(request, "Vehicle added.")
+    return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles")
+
+
+@login_required
+@require_POST
+def tenant_family_add(request, pk):
+    tenant = get_object_or_404(Tenant, pk=pk)
+    lease = _tenant_detail_target_lease(tenant, request.POST.get("lease"))
+    if not lease:
+        messages.error(request, "Create a lease before adding family members.")
+        return redirect("tenants:tenant_detail", pk=tenant.pk)
+
+    family_member_id = request.POST.get("family_member")
+    relation = (request.POST.get("relation") or "").strip()
+    if not family_member_id:
+        messages.error(request, "Please select a family member tenant.")
+        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+    family_member = get_object_or_404(Tenant, pk=family_member_id)
+    if family_member.pk == tenant.pk:
+        messages.error(request, "A tenant cannot be added as their own family member.")
+        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+
+    link, created = LeaseFamilyMember.objects.get_or_create(
+        lease=lease,
+        primary_tenant=tenant,
+        family_member=family_member,
+        defaults=_family_relationship_defaults(relation),
+    )
+    if not created and relation:
+        defaults = _family_relationship_defaults(relation)
+        changed = []
+        if defaults.get("relationship_type") and link.relationship_type_id != defaults["relationship_type"].pk:
+            link.relationship_type = defaults["relationship_type"]
+            changed.append("relationship_type")
+        if defaults.get("relationship") and link.relationship != defaults["relationship"]:
+            link.relationship = defaults["relationship"]
+            changed.append("relationship")
+        if changed:
+            link.save(update_fields=changed)
+    messages.success(request, f"{family_member.get_full_name()} added to family.")
+    return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+
+
+@login_required
+@require_POST
+def tenant_family_create_and_add(request, pk):
+    tenant = get_object_or_404(Tenant, pk=pk)
+    lease = _tenant_detail_target_lease(tenant, request.POST.get("lease"))
+    if not lease:
+        messages.error(request, "Create a lease before adding family members.")
+        return redirect("tenants:tenant_detail", pk=tenant.pk)
+
+    full_name = (request.POST.get("full_name") or "").strip()
+    first_name = (request.POST.get("first_name") or "").strip()
+    last_name = (request.POST.get("last_name") or "").strip()
+    relation = (request.POST.get("relation") or "").strip()
+    cnic = (request.POST.get("cnic") or "").strip()
+    phone = (request.POST.get("phone") or "").strip()
+    date_of_birth = (request.POST.get("date_of_birth") or "").strip()
+    if full_name and not first_name:
+        first_name, last_name = _split_registration_name(full_name)
+    if not first_name:
+        messages.error(request, "Family member name is required.")
+        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+    if not last_name:
+        last_name = "Family"
+    if not relation:
+        messages.error(request, "Relationship is required.")
+        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+
+    cnic_digits = normalize_cnic(cnic)
+    family_member = Tenant.objects.filter(cnic_digits=cnic_digits).first() if cnic_digits else None
+    if not family_member:
+        family_member = Tenant(
+            first_name=first_name,
+            last_name=last_name,
+            cnic=cnic,
+            phone=phone or None,
+            gender=(request.POST.get("gender") or "M"),
+        )
+        if date_of_birth:
+            family_member.date_of_birth = date_of_birth
+        for field_name in ("photo", "cnic_front", "cnic_back"):
+            uploaded = request.FILES.get(field_name)
+            if uploaded:
+                setattr(family_member, field_name, uploaded)
+        family_member.save()
+
+    LeaseFamilyMember.objects.get_or_create(
+        lease=lease,
+        primary_tenant=tenant,
+        family_member=family_member,
+        defaults=_family_relationship_defaults(relation),
+    )
+    messages.success(request, f"{family_member.get_full_name()} added to family.")
+    return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
 
 
 class TenantDetailView(LoginRequiredMixin, DetailView):
@@ -750,6 +938,23 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
 
         context["family_members"] = family_links
         context["family_lease_links"] = family_lease_links
+        context["tenant_vehicles"] = (
+            LeaseVehicle.objects.filter(Q(tenant=tenant) | Q(lease_id__in=lease_ids))
+            .select_related("lease", "lease__unit", "lease__unit__property", "vehicle_type")
+            .distinct()
+            .order_by("vehicle_type__sort_order", "registration_number")
+        )
+        context["vehicle_types"] = LeaseVehicleType.objects.filter(is_active=True).order_by(
+            "sort_order", "name"
+        )
+        context["relationship_types"] = (
+            apps.get_model("leases", "LeaseRelationshipType")
+            .objects.filter(is_active=True)
+            .order_by("sort_order", "name")
+        )
+        context["tenant_family_options"] = (
+            Tenant.objects.exclude(pk=tenant.pk).order_by("first_name", "last_name")
+        )
         context.update(_family_counts(family_links))
 
         def get_object(self, queryset=None):

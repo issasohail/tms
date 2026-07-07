@@ -867,6 +867,44 @@
     </div>
 
     <!-- ── Submit Footer ── -->
+    <div class="reg-card">
+      <div class="reg-card-header">
+        <div class="section-icon"><i class="fas fa-car"></i></div>
+        <h6>Vehicle Information</h6>
+      </div>
+      <div class="reg-card-body">
+        <input type="hidden" name="vehicle-TOTAL_FORMS" value="3">
+        {% for i in "012" %}
+          <div class="family-member-card">
+            <div class="family-card-header">
+              <div class="family-card-num">Vehicle #{{ forloop.counter }}</div>
+            </div>
+            <div class="field-group g4 dense-grid">
+              <div class="field-wrap">
+                <label class="field-label">Vehicle Type</label>
+                <select name="vehicle-{{ forloop.counter0 }}-vehicle_type" class="field-control">
+                  <option value="">Select type</option>
+                  {% for vehicle_type in vehicle_types %}
+                    <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field-wrap"><label class="field-label">Registration #</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-registration_number"></div>
+              <div class="field-wrap"><label class="field-label">Make</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-make"></div>
+              <div class="field-wrap"><label class="field-label">Model</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-model"></div>
+              <div class="field-wrap"><label class="field-label">Color</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-color"></div>
+              <div class="field-wrap"><label class="field-label">Year</label><input class="field-control" type="number" min="1900" name="vehicle-{{ forloop.counter0 }}-year"></div>
+              <div class="field-wrap"><label class="field-label">Owner Name</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-owner_name"></div>
+              <div class="field-wrap"><label class="field-label">Owner CNIC</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-owner_cnic"></div>
+              <div class="field-wrap"><label class="field-label">Parking Slot</label><input class="field-control" name="vehicle-{{ forloop.counter0 }}-parking_slot"></div>
+              <div class="field-wrap"><label class="field-label">Vehicle Photo</label><input class="field-control" type="file" accept="image/*" name="vehicle-{{ forloop.counter0 }}-vehicle_photo"></div>
+              <div class="field-wrap"><label class="field-label">Registration Book</label><input class="field-control" type="file" accept="image/*,.pdf" name="vehicle-{{ forloop.counter0 }}-registration_book_photo"></div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
     <div class="reg-footer">
       <button type="submit" class="btn-submit-main">
         <i class="fas fa-paper-plane"></i> Submit for Review

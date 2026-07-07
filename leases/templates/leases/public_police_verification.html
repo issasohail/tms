@@ -325,6 +325,52 @@
         </section>
 
         <section class="card span-2">
+          <h2>Vehicle Information</h2>
+          <div class="body">
+            {% if pending_vehicle_submissions %}
+              <div class="table-wrap" style="margin-bottom:12px;">
+                <table>
+                  <thead><tr><th>Reg #</th><th>Type</th><th>Owner</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {% for submission in pending_vehicle_submissions %}
+                      <tr>
+                        <td>{{ submission.registration_number }}</td>
+                        <td>{{ submission.vehicle_type.name }}</td>
+                        <td>{{ submission.owner_name|default:"-" }}</td>
+                        <td>{{ submission.get_status_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+            <input type="hidden" name="vehicle-TOTAL_FORMS" value="3">
+            <div class="form-grid">
+              {% for i in "012" %}
+                <div class="form-group"><label>Vehicle {{ forloop.counter }} type</label>
+                  <select name="vehicle-{{ forloop.counter0 }}-vehicle_type">
+                    <option value="">Select type</option>
+                    {% for vehicle_type in vehicle_types %}
+                      <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-group"><label>Registration #</label><input name="vehicle-{{ forloop.counter0 }}-registration_number"></div>
+                <div class="form-group"><label>Make</label><input name="vehicle-{{ forloop.counter0 }}-make"></div>
+                <div class="form-group"><label>Model</label><input name="vehicle-{{ forloop.counter0 }}-model"></div>
+                <div class="form-group"><label>Color</label><input name="vehicle-{{ forloop.counter0 }}-color"></div>
+                <div class="form-group"><label>Year</label><input name="vehicle-{{ forloop.counter0 }}-year" type="number" min="1900"></div>
+                <div class="form-group"><label>Owner Name</label><input name="vehicle-{{ forloop.counter0 }}-owner_name"></div>
+                <div class="form-group"><label>Owner CNIC</label><input name="vehicle-{{ forloop.counter0 }}-owner_cnic"></div>
+                <div class="form-group"><label>Parking Slot</label><input name="vehicle-{{ forloop.counter0 }}-parking_slot"></div>
+                <div class="form-group"><label>Vehicle Photo</label><input name="vehicle-{{ forloop.counter0 }}-vehicle_photo" type="file" accept="image/*"></div>
+                <div class="form-group"><label>Registration Book</label><input name="vehicle-{{ forloop.counter0 }}-registration_book_photo" type="file" accept="image/*,.pdf"></div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+
+        <section class="card span-2">
           <h2>Upload Police Verification File</h2>
           <div class="body">
             <div class="form-grid">

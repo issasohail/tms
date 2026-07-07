@@ -237,7 +237,15 @@ class CustomRenewForm(forms.Form):
 from django import forms
 from django.forms import inlineformset_factory
 
-from .models import AgreementPlaceholder, Lease, DefaultClause, LeaseAgreementClause, WhatsAppTemplate
+from .models import (
+    AgreementPlaceholder,
+    DefaultClause,
+    Lease,
+    LeaseAgreementClause,
+    LeaseVehicle,
+    LeaseVehicleType,
+    WhatsAppTemplate,
+)
 from .models_renewal import LeaseRenewal
 
 
@@ -465,6 +473,71 @@ LeaseFamilyFormSet = inlineformset_factory(
     form=LeaseFamilyForm,
     extra=0,            # existing links only; quick-add handles new rows
     can_delete=True
+)
+
+
+class LeaseVehicleTypeForm(forms.ModelForm):
+    class Meta:
+        model = LeaseVehicleType
+        fields = ["name", "code", "sort_order", "is_active"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "code": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "sort_order": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+
+class LeaseVehicleForm(forms.ModelForm):
+    class Meta:
+        model = LeaseVehicle
+        fields = [
+            "tenant",
+            "vehicle_type",
+            "registration_number",
+            "make",
+            "model",
+            "color",
+            "year",
+            "owner_name",
+            "owner_cnic",
+            "parking_slot",
+            "registration_book_photo",
+            "vehicle_photo",
+            "is_active",
+            "notes",
+        ]
+        widgets = {
+            "tenant": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "vehicle_type": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "registration_number": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "make": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "model": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "color": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "year": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1900"}),
+            "owner_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "owner_cnic": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "parking_slot": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "registration_book_photo": forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
+            "vehicle_photo": forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["vehicle_type"].queryset = LeaseVehicleType.objects.filter(
+            is_active=True
+        ).order_by("sort_order", "name")
+        self.fields["tenant"].queryset = Tenant.objects.order_by("first_name", "last_name")
+
+
+LeaseVehicleFormSet = inlineformset_factory(
+    Lease,
+    LeaseVehicle,
+    form=LeaseVehicleForm,
+    extra=1,
+    can_delete=True,
 )
 
 

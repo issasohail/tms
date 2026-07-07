@@ -53,6 +53,9 @@
 
       <div class="alert alert-success py-2 mb-3">
         Thank you. Your tenant registration was submitted for admin review.
+        {% if vehicle_message %}
+          <div class="mt-1">{{ vehicle_message }}</div>
+        {% endif %}
       </div>
 
       <div class="small text-muted">

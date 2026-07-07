@@ -1,44 +1,30 @@
-from .models_lease_photos import LeaseMedia
-from .storage import OverwriteStorage
+import io
+import os
+import uuid
+from collections import defaultdict
+from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.validators import FileExtensionValidator
-import io
-from PIL import Image
-import os
-import uuid
-from django.utils.text import slugify
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from properties.models import Property, Unit
-import json
-import os
-from django.db.models.signals import pre_delete
-from .models_lease_photos import LeaseMedia
-from invoices.services import security_deposit_balance
-
-from decimal import Decimal
-from collections import defaultdict
-
 from django.db import models
-from django.db.models import Sum
-from tenants.models import Tenant
-from properties.models import Unit
-from django.urls import reverse
-from django.utils.functional import cached_property
-from datetime import timedelta
-from django.utils import timezone
-from decimal import Decimal
-from datetime import date
-from django.db import models
-from decimal import Decimal, ROUND_HALF_UP
-from invoices.services import security_deposit_totals
-from django.template import Template, Context
-from decimal import Decimal
-from django.db.models import Sum, Case, When, F, DecimalField
+from django.db.models import Case, DecimalField, F, Sum, When
 from django.db.models.functions import Coalesce
+from django.db.models.signals import post_save, pre_delete
+from django.dispatch import receiver
+from django.template import Context, Template
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.functional import cached_property
+from django.utils.text import slugify
+from PIL import Image
+
 from core.utils.text import normalize_title_fields, smart_title
+from properties.models import Unit
+from tenants.models import Tenant
 
 
 def default_lease_terms():
@@ -187,6 +173,12 @@ class Lease(models.Model):
     )
     due_date = models.CharField(
         max_length=100, null=True, blank=True, default="5th of each month."
+    )
+    has_vehicle = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Null = not entered, True = tenant has vehicle, False = tenant confirmed no vehicle.",
     )
     late_fee = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True, default=500.00
@@ -446,14 +438,20 @@ class Lease(models.Model):
     @cached_property
     def invoices_qs(self):
         # PERF: reuse prefetched invoices instead of aggregating the same lease repeatedly.
-        if hasattr(self, "_prefetched_objects_cache") and "invoices" in self._prefetched_objects_cache:
+        if (
+            hasattr(self, "_prefetched_objects_cache")
+            and "invoices" in self._prefetched_objects_cache
+        ):
             return list(self._prefetched_objects_cache["invoices"])
         return list(self.invoices.all())
 
     @cached_property
     def payments_qs(self):
         # PERF: reuse prefetched payments and payment details for balance calculations.
-        if hasattr(self, "_prefetched_objects_cache") and "payments" in self._prefetched_objects_cache:
+        if (
+            hasattr(self, "_prefetched_objects_cache")
+            and "payments" in self._prefetched_objects_cache
+        ):
             return list(self._prefetched_objects_cache["payments"])
         from payments.models import Payment
 
@@ -462,7 +460,9 @@ class Lease(models.Model):
     @cached_property
     def financial_summary(self):
         zero = Decimal("0.00")
-        invoices_total = sum((invoice.amount or zero for invoice in self.invoices_qs), zero)
+        invoices_total = sum(
+            (invoice.amount or zero for invoice in self.invoices_qs), zero
+        )
 
         payments_total = zero
         for payment in self.payments_qs:
@@ -488,7 +488,10 @@ class Lease(models.Model):
     @cached_property
     def security_transactions_qs(self):
         # PERF: reuse prefetched security transactions instead of filtering by type repeatedly.
-        if hasattr(self, "_prefetched_objects_cache") and "security_transactions" in self._prefetched_objects_cache:
+        if (
+            hasattr(self, "_prefetched_objects_cache")
+            and "security_transactions" in self._prefetched_objects_cache
+        ):
             return list(self._prefetched_objects_cache["security_transactions"])
         from invoices.models import SecurityDepositTransaction
 
@@ -637,14 +640,16 @@ class Lease(models.Model):
 
     @property
     def current_unit(self):
-        if hasattr(self, "_prefetched_objects_cache") and "unit_occupancies" in self._prefetched_objects_cache:
+        if (
+            hasattr(self, "_prefetched_objects_cache")
+            and "unit_occupancies" in self._prefetched_objects_cache
+        ):
             for occupancy in self._prefetched_objects_cache["unit_occupancies"]:
                 if occupancy.move_out_date is None:
                     return occupancy.unit
             return self.unit
         occupancy = (
-            self.unit_occupancies
-            .filter(move_out_date__isnull=True)
+            self.unit_occupancies.filter(move_out_date__isnull=True)
             .select_related("unit")
             .first()
         )
@@ -730,7 +735,8 @@ class LeaseUnitOccupancy(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(move_out_date__isnull=True) | models.Q(move_out_date__gte=models.F("move_in_date")),
+                check=models.Q(move_out_date__isnull=True)
+                | models.Q(move_out_date__gte=models.F("move_in_date")),
                 name="lease_occupancy_out_after_in",
             ),
         ]
@@ -743,7 +749,9 @@ class LeaseUnitOccupancy(models.Model):
         from django.core.exceptions import ValidationError
 
         if self.move_out_date and self.move_out_date < self.move_in_date:
-            raise ValidationError({"move_out_date": "Move-out date cannot be before move-in date."})
+            raise ValidationError(
+                {"move_out_date": "Move-out date cannot be before move-in date."}
+            )
         if self.move_out_date is None:
             clash = LeaseUnitOccupancy.objects.filter(
                 lease=self.lease,
@@ -752,7 +760,9 @@ class LeaseUnitOccupancy(models.Model):
             if self.pk:
                 clash = clash.exclude(pk=self.pk)
             if clash.exists():
-                raise ValidationError("This lease already has an active unit occupancy.")
+                raise ValidationError(
+                    "This lease already has an active unit occupancy."
+                )
 
     def save(self, *args, **kwargs):
         self.active_lease_key = self.lease_id if self.move_out_date is None else None
@@ -1013,23 +1023,27 @@ PLACEHOLDER_REGISTRY = {
     "SECURITY_DEPOSIT_DUE_DATE": lambda lease: (
         lease.start_date + timedelta(days=30)
     ).strftime("%b %d, %Y"),
-    "ELECTRICITY_METER_READING": lambda lease: lease.electricity_meter_reading
-    or "Not Recorded",
+    "ELECTRICITY_METER_READING": lambda lease: (
+        lease.electricity_meter_reading or "Not Recorded"
+    ),
     "WATER_METER_READING": lambda lease: lease.water_meter_reading or "Not Recorded",
-    "TOTAL_MONTHLY": lambda lease: lease.monthly_rent
-    + (lease.society_maintenance or 0),
+    "TOTAL_MONTHLY": lambda lease: (
+        lease.monthly_rent + (lease.society_maintenance or 0)
+    ),
     # 'TOTAL_MONTHLY': lambda lease: lease.society_maintenance + lease.monthly_rent,
     # For clause 5:
     "LEASE_START_DATE": lambda lease: lease.start_date.strftime("%d-%m-%Y"),
     "LEASE_END_DATE": lambda lease: lease.end_date.strftime("%d-%m-%Y"),
     "MONTHLY_RENT": lambda lease: lease.monthly_rent,
     "SOCIETY_MAINTENANCE": lambda lease: lease.society_maintenance or 0,
-    "TOTAL_MONTHLY": lambda lease: lease.monthly_rent
-    + (lease.society_maintenance or 0),
+    "TOTAL_MONTHLY": lambda lease: (
+        lease.monthly_rent + (lease.society_maintenance or 0)
+    ),
     "SECURITY_DEPOSIT": lambda lease: lease.security_deposit,
     "SECURITY_PAID": lambda lease: lease.security_deposit_paid or 0,
-    "SECURITY_BALANCE": lambda lease: lease.security_deposit
-    - (lease.security_deposit_paid or 0),
+    "SECURITY_BALANCE": lambda lease: (
+        lease.security_deposit - (lease.security_deposit_paid or 0)
+    ),
     "SECURITY_BALANCE_DUE_DATE": lambda lease: lease.security_deposit_due_date.strftime(
         "%b %d, %Y"
     ),
@@ -1187,7 +1201,11 @@ class LeaseFamilyMember(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["sort_order", "family_member__first_name", "family_member__last_name"]
+        ordering = [
+            "sort_order",
+            "family_member__first_name",
+            "family_member__last_name",
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["lease", "primary_tenant", "family_member"],
@@ -1203,7 +1221,9 @@ class LeaseFamilyMember(models.Model):
     def relation(self):
         if self.relationship_type:
             return self.relationship_type.name
-        return (self.relationship or "Other").replace("_", " ").replace("-", " ").title()
+        return (
+            (self.relationship or "Other").replace("_", " ").replace("-", " ").title()
+        )
 
     def __str__(self):
         return f"{self.family_member} ({self.relation})"
@@ -1212,26 +1232,36 @@ class LeaseFamilyMember(models.Model):
 def pending_family_photo_upload_to(instance, filename):
     ext = filename.split(".")[-1]
     name = slugify(f"{instance.first_name} {instance.last_name}") or "family-member"
-    return os.path.join("lease_family_pending/photos/", f"{instance.cnic}-{name}-photo.{ext}")
+    return os.path.join(
+        "lease_family_pending/photos/", f"{instance.cnic}-{name}-photo.{ext}"
+    )
 
 
 def pending_family_cnic_front_upload_to(instance, filename):
     ext = filename.split(".")[-1]
     name = slugify(f"{instance.first_name} {instance.last_name}") or "family-member"
-    return os.path.join("lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICfront.{ext}")
+    return os.path.join(
+        "lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICfront.{ext}"
+    )
 
 
 def pending_family_cnic_back_upload_to(instance, filename):
     ext = filename.split(".")[-1]
     name = slugify(f"{instance.first_name} {instance.last_name}") or "family-member"
-    return os.path.join("lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICback.{ext}")
+    return os.path.join(
+        "lease_family_pending/cnic/", f"{instance.cnic}-{name}-CNICback.{ext}"
+    )
 
 
 def pending_police_verification_upload_to(instance, filename):
     ext = os.path.splitext(filename or "")[1].lower() or ".pdf"
     lease_id = instance.lease_id or "new"
     tenant = getattr(instance, "tenant", None)
-    tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else "tenant"
+    tenant_name = (
+        tenant.get_full_name()
+        if tenant and hasattr(tenant, "get_full_name")
+        else "tenant"
+    )
     tenant_part = slugify(tenant_name)[:40] or "tenant"
     date_part = timezone.localdate().strftime("%Y%m%d")
     token = uuid.uuid4().hex[:8]
@@ -1285,15 +1315,25 @@ class PendingLeaseFamilyMemberSubmission(models.Model):
     cnic = models.CharField(max_length=15, blank=True)
     cnic_digits = models.CharField(max_length=13, blank=True, db_index=True)
     phone = models.CharField(max_length=20, blank=True)
-    gender = models.CharField(max_length=1, choices=Tenant.GENDER_CHOICES, default="M", blank=True)
+    gender = models.CharField(
+        max_length=1, choices=Tenant.GENDER_CHOICES, default="M", blank=True
+    )
     date_of_birth = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
-    photo = models.ImageField(upload_to=pending_family_photo_upload_to, blank=True, null=True)
-    cnic_front = models.ImageField(upload_to=pending_family_cnic_front_upload_to, blank=True, null=True)
-    cnic_back = models.ImageField(upload_to=pending_family_cnic_back_upload_to, blank=True, null=True)
+    photo = models.ImageField(
+        upload_to=pending_family_photo_upload_to, blank=True, null=True
+    )
+    cnic_front = models.ImageField(
+        upload_to=pending_family_cnic_front_upload_to, blank=True, null=True
+    )
+    cnic_back = models.ImageField(
+        upload_to=pending_family_cnic_back_upload_to, blank=True, null=True
+    )
     token = models.CharField(max_length=64, unique=True, db_index=True)
     expires_at = models.DateTimeField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1483,7 +1523,9 @@ class PendingAgreementApproval(models.Model):
         on_delete=models.SET_NULL,
         related_name="reviewed_agreement_approvals",
     )
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
     review_notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
@@ -1582,7 +1624,7 @@ class WhatsAppTemplate(models.Model):
     name = models.CharField(max_length=120)
     body = models.TextField(
         blank=True,
-        help_text="Use placeholders like [TENANT_NAME], [UNIT_NUMBER], or custom placeholders."
+        help_text="Use placeholders like [TENANT_NAME], [UNIT_NUMBER], or custom placeholders.",
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1604,9 +1646,15 @@ def lease_document_upload_to(instance, filename):
     tenant = getattr(getattr(instance, "lease", None), "tenant", None)
     unit = getattr(getattr(instance, "lease", None), "unit", None)
     prop = getattr(unit, "property", None)
-    tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else str(tenant or "tenant")
+    tenant_name = (
+        tenant.get_full_name()
+        if tenant and hasattr(tenant, "get_full_name")
+        else str(tenant or "tenant")
+    )
     tenant_part = slugify(tenant_name)[:40] or "tenant"
-    property_part = slugify(getattr(prop, "property_name", "") or "property")[:35] or "property"
+    property_part = (
+        slugify(getattr(prop, "property_name", "") or "property")[:35] or "property"
+    )
     unit_part = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
     category_part = slugify(getattr(instance, "category", "") or "other") or "other"
     date_part = timezone.localdate().strftime("%Y%m%d")
@@ -1652,7 +1700,9 @@ class LeaseDocument(models.Model):
     ]
     SAFE_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "xls", "xlsx", "doc", "docx"]
 
-    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="documents")
+    lease = models.ForeignKey(
+        "leases.Lease", on_delete=models.CASCADE, related_name="documents"
+    )
     lease_history = models.ForeignKey(
         "leases.LeaseRenewal",
         on_delete=models.SET_NULL,
@@ -1667,7 +1717,9 @@ class LeaseDocument(models.Model):
     )
     original_filename = models.CharField(max_length=255, blank=True)
     display_name = models.CharField(max_length=255, blank=True)
-    category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default="other")
+    category = models.CharField(
+        max_length=40, choices=CATEGORY_CHOICES, default="other"
+    )
     description = models.TextField(blank=True)
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1689,11 +1741,17 @@ class LeaseDocument(models.Model):
         ]
 
     def __str__(self):
-        return self.display_name or self.original_filename or os.path.basename(self.file.name)
+        return (
+            self.display_name
+            or self.original_filename
+            or os.path.basename(self.file.name)
+        )
 
     @property
     def file_exists(self):
-        return bool(self.file and self.file.name and default_storage.exists(self.file.name))
+        return bool(
+            self.file and self.file.name and default_storage.exists(self.file.name)
+        )
 
     @property
     def file_url(self):
@@ -1706,20 +1764,30 @@ class LeaseDocument(models.Model):
 
     @property
     def extension(self):
-        return os.path.splitext(self.file.name or self.original_filename or "")[1].lower().lstrip(".")
+        return (
+            os.path.splitext(self.file.name or self.original_filename or "")[1]
+            .lower()
+            .lstrip(".")
+        )
 
     @property
     def category_label(self):
         category = LeaseDocumentCategory.objects.filter(code=self.category).first()
         if category:
             return category.name
-        return dict(self.CATEGORY_CHOICES).get(self.category, self.category.replace("_", " ").title())
+        return dict(self.CATEGORY_CHOICES).get(
+            self.category, self.category.replace("_", " ").title()
+        )
 
     def save(self, *args, **kwargs):
         if self.file and not self.original_filename:
-            self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
+            self.original_filename = os.path.basename(
+                getattr(self.file, "name", "") or ""
+            )
         if not self.display_name:
-            self.display_name = self.original_filename or os.path.basename(getattr(self.file, "name", "") or "Lease file")
+            self.display_name = self.original_filename or os.path.basename(
+                getattr(self.file, "name", "") or "Lease file"
+            )
         super().save(*args, **kwargs)
 
 
@@ -1741,23 +1809,55 @@ class PendingPoliceVerificationSubmission(models.Model):
         (SOURCE_STAFF, "Staff"),
     ]
 
-    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="pending_police_verifications")
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_police_verifications")
+    lease = models.ForeignKey(
+        "leases.Lease",
+        on_delete=models.CASCADE,
+        related_name="pending_police_verifications",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_police_verifications",
+    )
     file = models.FileField(
         upload_to=pending_police_verification_upload_to,
         validators=[FileExtensionValidator(["pdf", "jpg", "jpeg", "png", "webp"])],
         max_length=255,
     )
     original_filename = models.CharField(max_length=255, blank=True)
-    source = models.CharField(max_length=30, choices=SOURCE_CHOICES, default=SOURCE_PUBLIC_LINK)
+    source = models.CharField(
+        max_length=30, choices=SOURCE_CHOICES, default=SOURCE_PUBLIC_LINK
+    )
     phone = models.CharField(max_length=32, blank=True)
     notes = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
     submitted_at = models.DateTimeField(auto_now_add=True)
-    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_police_verifications")
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_police_verifications",
+    )
     reviewed_at = models.DateTimeField(null=True, blank=True)
-    approved_document = models.ForeignKey("leases.LeaseDocument", on_delete=models.SET_NULL, null=True, blank=True, related_name="police_pending_sources")
-    whatsapp_media = models.ForeignKey("whatsapp.PendingWhatsAppMedia", on_delete=models.SET_NULL, null=True, blank=True, related_name="police_verification_submissions")
+    approved_document = models.ForeignKey(
+        "leases.LeaseDocument",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="police_pending_sources",
+    )
+    whatsapp_media = models.ForeignKey(
+        "whatsapp.PendingWhatsAppMedia",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="police_verification_submissions",
+    )
 
     class Meta:
         ordering = ["-submitted_at", "-id"]
@@ -1775,12 +1875,16 @@ class PendingPoliceVerificationSubmission(models.Model):
 
     def save(self, *args, **kwargs):
         if self.file and not self.original_filename:
-            self.original_filename = os.path.basename(getattr(self.file, "name", "") or "")
+            self.original_filename = os.path.basename(
+                getattr(self.file, "name", "") or ""
+            )
         super().save(*args, **kwargs)
 
 
 class LeaseFileShareLink(models.Model):
-    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="file_share_links")
+    lease = models.ForeignKey(
+        "leases.Lease", on_delete=models.CASCADE, related_name="file_share_links"
+    )
     document = models.ForeignKey(
         LeaseDocument,
         on_delete=models.CASCADE,
@@ -1814,8 +1918,6 @@ class LeaseFileShareLink(models.Model):
         return self.is_active and self.expires_at >= timezone.now()
 
 
-from .models_renewal import LeaseRenewal, LeaseRenewalClause  # noqa: E402,F401
-from .models_late_fee import LeaseLateFeeSettings, get_effective_late_fee_settings  # noqa: E402,F401
 from .models_inspections import (  # noqa: E402,F401
     InspectionAppliance,
     InspectionCategory,
@@ -1830,3 +1932,241 @@ from .models_inspections import (  # noqa: E402,F401
     InspectionType,
     LeaseInspection,
 )
+from .models_late_fee import (  # noqa: E402,F401
+    LeaseLateFeeSettings,
+    get_effective_late_fee_settings,
+)
+from .models_renewal import LeaseRenewal, LeaseRenewalClause  # noqa: E402,F401
+
+
+class LeaseVehicleType(models.Model):
+    name = models.CharField(max_length=80)
+    code = models.SlugField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name = "Lease Vehicle Type"
+        verbose_name_plural = "Lease Vehicle Types"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = (self.name or "").strip().title()
+        if not self.code:
+            self.code = slugify(self.name)
+        super().save(*args, **kwargs)
+
+
+def lease_vehicle_photo_upload_to(instance, filename):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    lease = getattr(instance, "lease", None)
+    tenant = getattr(instance, "tenant", None) or getattr(lease, "tenant", None)
+    unit = getattr(lease, "unit", None)
+    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:40]
+    unit_label = slugify(str(unit or "unit"))[:40]
+    registration = slugify(instance.registration_number or "vehicle")[:40]
+    lease_id = getattr(instance, "lease_id", None) or "new"
+    return (
+        f"leases/vehicles/lease-{lease_id}/"
+        f"{tenant_name}-{unit_label}-{registration}-vehicle.{ext}"
+    )
+
+
+def lease_vehicle_book_upload_to(instance, filename):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    lease = getattr(instance, "lease", None)
+    tenant = getattr(instance, "tenant", None) or getattr(lease, "tenant", None)
+    unit = getattr(lease, "unit", None)
+    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:40]
+    unit_label = slugify(str(unit or "unit"))[:40]
+    registration = slugify(instance.registration_number or "vehicle")[:40]
+    lease_id = getattr(instance, "lease_id", None) or "new"
+    return (
+        f"leases/vehicles/lease-{lease_id}/"
+        f"{tenant_name}-{unit_label}-{registration}-registration-book.{ext}"
+    )
+
+
+class LeaseVehicle(models.Model):
+    lease = models.ForeignKey(
+        "Lease",
+        on_delete=models.CASCADE,
+        related_name="vehicles",
+    )
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lease_vehicles",
+    )
+
+    vehicle_type = models.ForeignKey(
+        LeaseVehicleType,
+        on_delete=models.PROTECT,
+        related_name="lease_vehicles",
+    )
+
+    registration_number = models.CharField(max_length=50)
+    make = models.CharField(max_length=80, blank=True)
+    model = models.CharField(max_length=80, blank=True)
+    color = models.CharField(max_length=50, blank=True)
+    year = models.PositiveIntegerField(null=True, blank=True)
+
+    owner_name = models.CharField(max_length=120, blank=True)
+    owner_cnic = models.CharField(max_length=30, blank=True)
+    parking_slot = models.CharField(max_length=50, blank=True)
+
+    registration_book_photo = models.ImageField(
+        upload_to=lease_vehicle_book_upload_to,
+        blank=True,
+        null=True,
+    )
+    vehicle_photo = models.ImageField(
+        upload_to=lease_vehicle_photo_upload_to,
+        blank=True,
+        null=True,
+    )
+
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = [
+            "vehicle_type__sort_order",
+            "vehicle_type__name",
+            "registration_number",
+        ]
+        indexes = [
+            models.Index(fields=["lease", "is_active"], name="leases_leas_lease_i_d66a32_idx"),
+            models.Index(fields=["registration_number"], name="leases_leas_registr_271af8_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lease", "registration_number"],
+                name="uniq_vehicle_registration_per_lease",
+            )
+        ]
+
+    def __str__(self):
+        vehicle_type = self.vehicle_type.name if self.vehicle_type_id else "Vehicle"
+        return f"{vehicle_type} - {self.registration_number}"
+
+
+class PendingLeaseVehicleSubmission(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    lease = models.ForeignKey(
+        "Lease",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="pending_vehicle_submissions",
+    )
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_lease_vehicle_submissions",
+    )
+    pending_tenant_submission = models.ForeignKey(
+        "tenants.TenantRegistrationSubmission",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="pending_vehicle_submissions",
+    )
+
+    vehicle_type = models.ForeignKey(
+        LeaseVehicleType,
+        on_delete=models.PROTECT,
+        related_name="pending_vehicle_submissions",
+    )
+
+    registration_number = models.CharField(max_length=50)
+    make = models.CharField(max_length=80, blank=True)
+    model = models.CharField(max_length=80, blank=True)
+    color = models.CharField(max_length=50, blank=True)
+    year = models.PositiveIntegerField(null=True, blank=True)
+
+    owner_name = models.CharField(max_length=120, blank=True)
+    owner_cnic = models.CharField(max_length=30, blank=True)
+    parking_slot = models.CharField(max_length=50, blank=True)
+
+    registration_book_photo = models.ImageField(
+        upload_to="leases/vehicles/pending/registration_book/",
+        blank=True,
+        null=True,
+    )
+    vehicle_photo = models.ImageField(
+        upload_to="leases/vehicles/pending/photos/",
+        blank=True,
+        null=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_vehicle_submissions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_notes = models.TextField(blank=True)
+    source = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        ordering = ["-submitted_at"]
+        indexes = [
+            models.Index(
+                fields=["lease", "status", "submitted_at"],
+                name="leases_pend_lease_i_6a554b_idx",
+            ),
+            models.Index(
+                fields=["tenant", "status", "submitted_at"],
+                name="leases_pveh_tenant_status_idx",
+            ),
+            models.Index(
+                fields=["pending_tenant_submission", "status", "submitted_at"],
+                name="leases_pveh_reg_status_idx",
+            ),
+            models.Index(fields=["status", "submitted_at"], name="leases_pend_status_37cd00_idx"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not (
+            self.lease_id
+            or self.tenant_id
+            or self.pending_tenant_submission_id
+        ):
+            raise ValidationError(
+                "Pending vehicle submission must be linked to a lease, tenant, or pending tenant submission."
+            )
+
+    def __str__(self):
+        vehicle_type = self.vehicle_type.name if self.vehicle_type_id else "Vehicle"
+        return (
+            f"{vehicle_type} - {self.registration_number} - {self.get_status_display()}"
+        )

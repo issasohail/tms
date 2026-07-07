@@ -111,11 +111,25 @@ def police_context_sections(lease):
         field_status("Children", getattr(tenant, "family_member_children", None)),
         field_status("NADRA family #", getattr(tenant, "nadra_family_no", "")),
     ]
+    vehicles = lease.vehicles.filter(is_active=True).select_related("vehicle_type").order_by(
+        "vehicle_type__sort_order", "registration_number"
+    )
+    vehicle_fields = [
+        field_status(
+            "Vehicle information",
+            ", ".join(
+                f"{vehicle.vehicle_type.name} {vehicle.registration_number}"
+                for vehicle in vehicles
+            ),
+        )
+    ]
     return {
         "owner_fields": owner_fields,
         "property_fields": property_fields,
         "tenant_fields": tenant_fields,
-        "missing_count": sum(1 for section in (owner_fields, property_fields, tenant_fields) for row in section if row["missing"]),
+        "vehicle_fields": vehicle_fields,
+        "vehicles": vehicles,
+        "missing_count": sum(1 for section in (owner_fields, property_fields, tenant_fields, vehicle_fields) for row in section if row["missing"]),
     }
 
 
@@ -123,7 +137,7 @@ def build_police_whatsapp_message(request, lease, url):
     context = police_context_sections(lease)
     missing = [
         row["label"]
-        for section_name in ("owner_fields", "property_fields", "tenant_fields")
+        for section_name in ("owner_fields", "property_fields", "tenant_fields", "vehicle_fields")
         for row in context[section_name]
         if row["missing"]
     ]

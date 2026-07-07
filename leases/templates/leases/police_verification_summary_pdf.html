@@ -76,6 +76,27 @@
     </tbody>
   </table>
 
+  <h2>Tenant Vehicle Information</h2>
+  <table>
+    <thead><tr><th style="width:34px;">S.N</th><th>Type</th><th>Registration #</th><th>Make / Model</th><th>Color</th><th>Owner</th><th>Owner CNIC</th><th>Parking</th></tr></thead>
+    <tbody>
+      {% for vehicle in vehicles %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>{{ vehicle.vehicle_type.name }}</td>
+          <td>{{ vehicle.registration_number }}</td>
+          <td>{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
+          <td>{{ vehicle.color|default:"-" }}</td>
+          <td>{{ vehicle.owner_name|default:"-" }}</td>
+          <td>{{ vehicle.owner_cnic|default:"-" }}</td>
+          <td>{{ vehicle.parking_slot|default:"-" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8">No vehicle information recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
   <h2>Property Information</h2>
   <table>
     <tr><th>Property</th><td>{{ property.property_name }}</td><th>Unit</th><td>{{ unit.unit_number }}</td></tr>

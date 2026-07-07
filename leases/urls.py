@@ -77,6 +77,36 @@ urlpatterns = [
     path("", LeaseListView.as_view(), name="lease_list"),
     path("new/", LeaseCreateView.as_view(), name="lease_create"),
     path(
+        "settings/vehicle-types/",
+        views.lease_vehicle_type_settings,
+        name="lease_vehicle_type_settings",
+    ),
+    path(
+        "settings/vehicle-types/<int:pk>/edit/",
+        views.lease_vehicle_type_edit,
+        name="lease_vehicle_type_edit",
+    ),
+    path(
+        "settings/vehicle-types/<int:pk>/toggle/",
+        views.lease_vehicle_type_toggle,
+        name="lease_vehicle_type_toggle",
+    ),
+    path(
+        "settings/vehicle-types/<int:pk>/delete/",
+        views.lease_vehicle_type_delete,
+        name="lease_vehicle_type_delete",
+    ),
+    path(
+        "vehicle-submissions/<int:pk>/approve/",
+        views.approve_pending_vehicle_submission,
+        name="approve_pending_vehicle_submission",
+    ),
+    path(
+        "vehicle-submissions/<int:pk>/reject/",
+        views.reject_pending_vehicle_submission,
+        name="reject_pending_vehicle_submission",
+    ),
+    path(
         "public/lease/<str:token>/",
         views.public_lease_create,
         name="public_lease_create",
@@ -156,6 +186,16 @@ urlpatterns = [
         "<int:pk>/bill-water/inline/",
         views.lease_bill_water_inline_update,
         name="lease_bill_water_inline_update",
+    ),
+    path(
+        "<int:pk>/due-date/inline/",
+        views.lease_due_date_inline_update,
+        name="lease_due_date_inline_update",
+    ),
+    path(
+        "<int:pk>/vehicle-info/ajax/",
+        views.lease_vehicle_info_ajax,
+        name="lease_vehicle_info_ajax",
     ),
     path("<int:pk>/", LeaseDetailView.as_view(), name="lease_detail"),
     path(
@@ -401,6 +441,11 @@ urlpatterns = [
     ),
     path(
         "leases/<int:pk>/family/add/", views.lease_family_add, name="lease_family_add"
+    ),
+    path(
+        "leases/<int:pk>/vehicles/add/",
+        views.lease_vehicle_add,
+        name="lease_vehicle_add",
     ),
     path(
         "leases/<int:pk>/family/create-and-add/",

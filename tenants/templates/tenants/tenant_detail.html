@@ -388,7 +388,7 @@
       </div>
     </div>
 
-    <div class="col-12 col-xl-4">
+    <div class="col-12 col-xl-4" id="tenantFamily">
       <div class="card td-card shadow-sm h-100">
         <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
           <h6 class="mb-0 text-primary"><i class="fas fa-users me-2"></i>Family Members</h6>
@@ -396,9 +396,74 @@
             <span class="badge bg-primary-subtle text-primary border">Adults: {{ family_adults|default:0 }}</span>
             <span class="badge bg-warning-subtle text-warning border">Children: {{ family_children|default:0 }}</span>
             <span class="badge bg-success-subtle text-success border">Total: {{ family_total|default:0 }}</span>
+            {% if family_target_leases %}
+              <button class="btn btn-sm btn-outline-primary py-0" type="button" data-bs-toggle="collapse" data-bs-target="#tenantFamilyAddBox">Add</button>
+            {% endif %}
           </div>
         </div>
         <div class="card-body py-2">
+          {% if family_target_leases %}
+            <div class="collapse mb-2" id="tenantFamilyAddBox">
+              <div class="border rounded bg-light p-2">
+                <form method="post" action="{% url 'tenants:tenant_family_add' tenant.pk %}" class="row g-2 align-items-end mb-2">
+                  {% csrf_token %}
+                  <div class="col-12">
+                    <label class="form-label small mb-1">Lease</label>
+                    <select name="lease" class="form-select form-select-sm">
+                      {% for lease_option in family_target_leases %}
+                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small mb-1">Existing Tenant</label>
+                    <select name="family_member" class="form-select form-select-sm select2">
+                      <option value="">Select tenant</option>
+                      {% for item in tenant_family_options %}
+                        <option value="{{ item.pk }}">{{ item.get_full_name }}{% if item.cnic %} - {{ item.cnic }}{% endif %}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-8">
+                    <label class="form-label small mb-1">Relationship</label>
+                    <select name="relation" class="form-select form-select-sm" required>
+                      <option value="">Select</option>
+                      {% for item in relationship_types %}
+                        <option value="{{ item.pk }}">{{ item.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-4">
+                    <button type="submit" class="btn btn-sm btn-success w-100">Link</button>
+                  </div>
+                </form>
+                <form method="post" enctype="multipart/form-data" action="{% url 'tenants:tenant_family_create_and_add' tenant.pk %}" class="row g-2 align-items-end">
+                  {% csrf_token %}
+                  <div class="col-12">
+                    <label class="form-label small mb-1">Lease</label>
+                    <select name="lease" class="form-select form-select-sm">
+                      {% for lease_option in family_target_leases %}
+                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-12"><label class="form-label small mb-1">New Family Member Name</label><input name="full_name" class="form-control form-control-sm"></div>
+                  <div class="col-6"><label class="form-label small mb-1">CNIC</label><input name="cnic" class="form-control form-control-sm"></div>
+                  <div class="col-6"><label class="form-label small mb-1">Phone</label><input name="phone" class="form-control form-control-sm"></div>
+                  <div class="col-8">
+                    <label class="form-label small mb-1">Relationship</label>
+                    <select name="relation" class="form-select form-select-sm" required>
+                      <option value="">Select</option>
+                      {% for item in relationship_types %}
+                        <option value="{{ item.pk }}">{{ item.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-4"><button type="submit" class="btn btn-sm btn-primary w-100">Create</button></div>
+                </form>
+              </div>
+            </div>
+          {% endif %}
           {% if family_members %}
             <div class="table-responsive">
               <table class="table table-sm table-hover align-middle td-table td-family-table mb-0">
@@ -493,6 +558,96 @@
       {% endif %}
     </div>
   </div>
+
+  <div class="card td-card shadow-sm mb-3" id="tenantVehicles">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h6 class="mb-0 text-primary"><i class="fas fa-car me-2"></i>Tenant Vehicles</h6>
+      {% if family_target_leases %}
+        <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tenantVehicleAddBox">
+          <i class="fas fa-plus me-1"></i> Add Vehicle
+        </button>
+      {% endif %}
+    </div>
+    <div class="card-body py-2">
+      {% if family_target_leases %}
+        <div class="collapse mb-2" id="tenantVehicleAddBox">
+          <form method="post" enctype="multipart/form-data" action="{% url 'tenants:tenant_vehicle_add' tenant.pk %}" class="border rounded bg-light p-2 row g-2 align-items-end">
+            {% csrf_token %}
+            <div class="col-12 col-md-3">
+              <label class="form-label small mb-1">Lease</label>
+              <select name="lease" class="form-select form-select-sm">
+                {% for lease_option in family_target_leases %}
+                  <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small mb-1">Vehicle Type</label>
+              <select name="vehicle_type" class="form-select form-select-sm" required>
+                <option value="">Select type</option>
+                {% for vehicle_type in vehicle_types %}
+                  <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm" required></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Registration Book</label><input name="registration_book_photo" type="file" accept="image/*,.pdf" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-2"><button type="submit" class="btn btn-sm btn-success w-100">Save Vehicle</button></div>
+          </form>
+        </div>
+      {% endif %}
+
+      {% if tenant_vehicles %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle td-table mb-0">
+            <thead>
+              <tr>
+                <th>S.N</th>
+                <th>Type</th>
+                <th>Registration #</th>
+                <th>Make / Model</th>
+                <th>Owner</th>
+                <th>Parking</th>
+                <th>Lease</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for vehicle in tenant_vehicles %}
+                <tr>
+                  <td>{{ forloop.counter }}</td>
+                  <td>{{ vehicle.vehicle_type.name }}</td>
+                  <td>{{ vehicle.registration_number }}</td>
+                  <td>{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
+                  <td>{{ vehicle.owner_name|default:"-" }}</td>
+                  <td>{{ vehicle.parking_slot|default:"-" }}</td>
+                  <td><a href="{% url 'leases:lease_detail' vehicle.lease.pk %}">{{ vehicle.lease.unit.property.property_name }} / {{ vehicle.lease.unit.unit_number }}</a></td>
+                  <td>
+                    {% if vehicle.is_active %}
+                      <span class="badge bg-success">Active</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Inactive</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mb-0 small text-muted">No vehicle information recorded.</p>
+      {% endif %}
+    </div>
+  </div>
+
   {# ====================== LEASE HISTORY ====================== #}
   <div class="card td-card shadow-sm td-leases-card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">

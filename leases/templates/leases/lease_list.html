@@ -160,6 +160,20 @@
   </div>
 
 </div>
+
+<div class="modal fade" id="vehicleInfoModal" tabindex="-1" aria-labelledby="vehicleInfoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title h6 mb-0" id="vehicleInfoModalLabel">Vehicle Information</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="vehicleInfoModalBody">
+        <div class="text-muted small">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -190,7 +204,9 @@
   --col-family: 108px;
   --col-police: 92px;
   --col-bill-water: 82px;
+  --col-vehicle: 82px;
   --col-monthly: 112px;
+  --col-due-date: 52px;
   --col-status: 82px;
   --col-start: 106px;
   --col-end: 112px;
@@ -431,7 +447,85 @@
 .ll-table-wrap .col-family { width: var(--col-family); text-align: center; }
 .ll-table-wrap .col-police { width: var(--col-police); text-align: center; }
 .ll-table-wrap .col-bill-water { width: var(--col-bill-water); text-align: center; }
+.ll-table-wrap .col-vehicle { width: var(--col-vehicle); text-align: center; }
 .ll-table-wrap .col-monthly { width: var(--col-monthly); text-align: right; }
+.ll-table-wrap .col-due-date { width: var(--col-due-date); text-align: center; font-size: .78rem; }
+.lease-due-date-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  max-width: 42px;
+  padding: 3px 5px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: .70rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.lease-due-date-badge:hover {
+  border-color: #0d6efd;
+  color: #0d6efd;
+  background: #f2f6ff;
+}
+.vehicle-info-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+.vehicle-info-pill--yes { background: #dcfce7; color: #087443 !important; }
+.vehicle-info-pill--pending { background: #fff3cd; color: #946200 !important; }
+.vehicle-info-pill--no { background: #e8f1ff; color: #344054 !important; }
+.vehicle-info-pill--missing { background: #eef2f7; color: #667085 !important; }
+.vehicle-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.vehicle-modal-card {
+  border: 1px solid var(--ll-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.vehicle-modal-photo {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  background: #eef2f7;
+}
+.vehicle-modal-card-body { padding: 9px; }
+.vehicle-modal-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .78rem;
+  line-height: 1.25;
+  border-bottom: 1px solid #f2f4f7;
+  padding: 3px 0;
+}
+.vehicle-modal-line span:first-child { color: #667085; font-weight: 700; }
+.vehicle-modal-line span:last-child { color: #101828; font-weight: 800; text-align: right; }
+.vehicle-modal-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.vehicle-entry-panel {
+  border: 1px solid var(--ll-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
 .family-count-pill {
   display: inline-flex;
   align-items: center;
@@ -591,7 +685,9 @@
     --col-tenant: 142px;
     --col-prop: 54px;
     --col-unit: 92px;
+    --col-vehicle: 70px;
     --col-monthly: 94px;
+    --col-due-date: 48px;
     --col-status: 50px;
     --col-start: 76px;
     --col-end: 82px;
@@ -629,8 +725,10 @@
     --col-id: 32px;
     --col-tenant: 118px;
     --col-prop: 62px;
-    --col-unit: 0;
+    --col-unit: 62px;
+    --col-vehicle: 58px;
     --col-monthly: 80px;
+    --col-due-date: 44px;
     --col-status: 44px;
     --col-start: 0;
     --col-end: 62px;
@@ -638,10 +736,8 @@
     --col-sec: 0;
     --col-actions: 84px;
   }
-  .ll-page--layout2 .ll-table-wrap table.table thead th.col-unit,
   .ll-page--layout2 .ll-table-wrap table.table thead th.col-start,
   .ll-page--layout2 .ll-table-wrap table.table thead th.col-sec { display: none; }
-  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-unit,
   .ll-page--layout2 .ll-table-wrap table.table tbody td.col-start,
   .ll-page--layout2 .ll-table-wrap table.table tbody td.col-sec { display: none; }
   .ll-page--layout2 .ll-table-wrap table.table tbody td,
@@ -880,13 +976,17 @@
   .ll-mobile-unit::before { content: "-"; padding: 0 2px; }
   .ll-table-wrap td.col-property::after { content: " •"; }
   .ll-table-wrap td.col-unit {
-    display: none !important;
-    grid-column: 2;
+    display: block !important;
+    grid-column: 2 / span 2;
     grid-row: 1;
     width: auto !important;
     color: #475467;
     font-size: .66rem;
     padding-left: 0;
+    text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   .ll-table-wrap td.col-monthly {
     grid-column: 1;
@@ -923,7 +1023,27 @@
     text-overflow: ellipsis;
   }
   .ll-table-wrap td.col-start { grid-column: 2; grid-row: 3; text-align: left; }
+  .ll-table-wrap td.col-due-date { grid-column: 1; grid-row: 3; text-align: left; }
   .ll-table-wrap td.col-end { grid-column: 3; grid-row: 3; text-align: right; }
+  .ll-table-wrap td.col-vehicle {
+    grid-column: 2;
+    grid-row: 4;
+    text-align: center;
+  }
+  .ll-table-wrap td.col-vehicle::before {
+    display: inline !important;
+    content: "Vehicle: ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-due-date::before {
+    display: inline !important;
+    content: "Due: ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
   .ll-table-wrap td.col-start::before {
     display: inline !important;
     content: attr(data-short-label) ": ";
@@ -934,6 +1054,7 @@
   .ll-table-wrap td.col-end::before { display: none !important; }
   .ll-table-wrap td.col-status::before { display: none !important; }
   .ll-table-wrap td.col-start,
+  .ll-table-wrap td.col-due-date,
   .ll-table-wrap td.col-end {
     font-size: .66rem;
     color: #101828;
@@ -957,7 +1078,7 @@
   .ll-table-wrap td.col-property::after { content: "" !important; }
   .ll-table-wrap td.col-actions {
     grid-column: 1 / -1;
-    grid-row: 4;
+    grid-row: 5;
     padding-top: 7px;
     border-top: 1px solid #eef2f7;
     overflow: hidden;
@@ -1517,6 +1638,261 @@ document.querySelectorAll(".lease-water-badge").forEach(function (badge) {
       });
   });
 });
+
+document.querySelectorAll(".lease-due-date-badge").forEach(function (badge) {
+  badge.addEventListener("click", function () {
+    const currentValue = badge.dataset.value || "";
+    const newValue = prompt("Update due date", currentValue);
+    if (newValue === null) return;
+    if (newValue.length > 100) {
+      alert("Due date cannot be more than 100 characters.");
+      return;
+    }
+
+    badge.disabled = true;
+
+    const formData = new FormData();
+    formData.append("value", newValue);
+
+    fetch(badge.dataset.url, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || "Update failed");
+
+        badge.dataset.value = data.due_date || "";
+        badge.textContent = data.short_label || "-";
+        badge.title = data.due_date || "Click to set due date";
+        showLeaseToast("Due date updated.");
+      })
+      .catch(error => {
+        alert(error.message || "Could not update Due Date.");
+      })
+      .finally(() => {
+        badge.disabled = false;
+      });
+  });
+});
+
+let activeVehicleBadge = null;
+let activeVehicleUrl = "";
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, function (ch) {
+    return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[ch];
+  });
+}
+
+function updateVehicleBadge(data) {
+  if (!activeVehicleBadge || !data) return;
+  activeVehicleBadge.textContent = data.label || "Not Entered";
+  activeVehicleBadge.classList.remove(
+    "vehicle-info-pill--yes",
+    "vehicle-info-pill--pending",
+    "vehicle-info-pill--no",
+    "vehicle-info-pill--missing"
+  );
+  if (data.status === "yes") activeVehicleBadge.classList.add("vehicle-info-pill--yes");
+  else if (data.status === "pending" || data.status === "need_info") activeVehicleBadge.classList.add("vehicle-info-pill--pending");
+  else if (data.status === "no") activeVehicleBadge.classList.add("vehicle-info-pill--no");
+  else activeVehicleBadge.classList.add("vehicle-info-pill--missing");
+}
+
+function vehicleFileActions(url, label) {
+  if (!url) return "";
+  const safeUrl = escapeHtml(url);
+  const safeLabel = escapeHtml(label);
+  return `
+    <a class="btn btn-sm btn-outline-primary" href="${safeUrl}" target="_blank" download>${safeLabel}</a>
+    <button type="button" class="btn btn-sm btn-outline-secondary vehicle-share-btn" data-share-url="${safeUrl}">Share</button>
+  `;
+}
+
+function vehicleCard(item, pending) {
+  const photo = item.vehicle_photo_url
+    ? `<img class="vehicle-modal-photo" src="${escapeHtml(item.vehicle_photo_url)}" alt="Vehicle photo">`
+    : `<div class="vehicle-modal-photo d-flex align-items-center justify-content-center text-muted small">No photo</div>`;
+  return `
+    <div class="vehicle-modal-card">
+      ${photo}
+      <div class="vehicle-modal-card-body">
+        <div class="vehicle-modal-line"><span>Status</span><span>${pending ? "Pending" : "Active"}</span></div>
+        <div class="vehicle-modal-line"><span>Type</span><span>${escapeHtml(item.type || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Reg #</span><span>${escapeHtml(item.registration_number || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Make / Model</span><span>${escapeHtml([item.make, item.model].filter(Boolean).join(" / ") || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Color</span><span>${escapeHtml(item.color || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Year</span><span>${escapeHtml(item.year || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Owner</span><span>${escapeHtml(item.owner_name || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>CNIC</span><span>${escapeHtml(item.owner_cnic || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Parking</span><span>${escapeHtml(item.parking_slot || "-")}</span></div>
+        <div class="vehicle-modal-actions">
+          ${vehicleFileActions(item.vehicle_photo_url, "Vehicle Photo")}
+          ${vehicleFileActions(item.registration_book_url, "Reg Book")}
+          ${pending ? `<button type="button" class="btn btn-sm btn-success vehicle-approve-btn" data-approve-url="${escapeHtml(item.approve_url)}">Approve</button>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function vehicleTypeOptions(vehicleTypes) {
+  return (vehicleTypes || []).map(item => (
+    `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
+  )).join("");
+}
+
+function renderVehicleModal(data) {
+  updateVehicleBadge(data);
+  document.getElementById("vehicleInfoModalLabel").textContent =
+    `Vehicle Information - ${data.tenant || ""} ${data.unit ? "(" + data.unit + ")" : ""}`;
+
+  const vehiclesHtml = data.vehicles && data.vehicles.length
+    ? `<h6 class="mb-2">Saved Vehicle Info</h6><div class="vehicle-modal-grid mb-3">${data.vehicles.map(item => vehicleCard(item, false)).join("")}</div>`
+    : "";
+  const pendingHtml = data.pending && data.pending.length
+    ? `<h6 class="mb-2">Pending Vehicle Info</h6><div class="vehicle-modal-grid mb-3">${data.pending.map(item => vehicleCard(item, true)).join("")}</div>`
+    : "";
+
+  document.getElementById("vehicleInfoModalBody").innerHTML = `
+    ${vehiclesHtml}
+    ${pendingHtml}
+    ${!vehiclesHtml && !pendingHtml ? `<div class="alert alert-light border py-2 small mb-3">No vehicle information is saved yet.</div>` : ""}
+    <form id="vehicleInfoForm" class="vehicle-entry-panel" enctype="multipart/form-data">
+      <div class="fw-bold mb-2">Have Vehicle?</div>
+      <div class="d-flex gap-3 mb-3">
+        <label class="form-check-label"><input class="form-check-input me-1" type="radio" name="has_vehicle" value="1" ${data.has_vehicle === true ? "checked" : ""}> Yes</label>
+        <label class="form-check-label"><input class="form-check-input me-1" type="radio" name="has_vehicle" value="0" ${data.has_vehicle === false ? "checked" : ""}> No</label>
+      </div>
+      <div id="vehicleFields" class="${data.has_vehicle === false ? "d-none" : ""}">
+        <div class="row g-2">
+          <div class="col-12 col-md-4">
+            <label class="form-label small mb-1">Vehicle Type</label>
+            <select name="vehicle_type" class="form-select form-select-sm">
+              <option value="">Select type</option>
+              ${vehicleTypeOptions(data.vehicle_types)}
+            </select>
+          </div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Notes</label><input name="notes" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Registration Book</label><input name="registration_book_photo" type="file" accept="image/*,.pdf" class="form-control form-control-sm"></div>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="submit" class="btn btn-sm btn-success">Save</button>
+      </div>
+    </form>
+  `;
+
+  bindVehicleModalEvents();
+}
+
+function bindVehicleModalEvents() {
+  document.querySelectorAll('input[name="has_vehicle"]').forEach(input => {
+    input.addEventListener("change", function () {
+      document.getElementById("vehicleFields")?.classList.toggle("d-none", input.value === "0" && input.checked);
+    });
+  });
+
+  document.querySelectorAll(".vehicle-share-btn").forEach(button => {
+    button.addEventListener("click", async function () {
+      const url = button.dataset.shareUrl;
+      if (navigator.share) {
+        await navigator.share({ title: "Vehicle file", url });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        showLeaseToast("File link copied.");
+      } else {
+        prompt("Copy file link", url);
+      }
+    });
+  });
+
+  document.querySelectorAll(".vehicle-approve-btn").forEach(button => {
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      fetch(button.dataset.approveUrl, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": getCookie("csrftoken"),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+      })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+          if (!ok || !data.success) throw new Error(data.error || "Approval failed");
+          renderVehicleModal(data);
+          showLeaseToast("Vehicle approved.");
+        })
+        .catch(error => alert(error.message || "Could not approve vehicle."))
+        .finally(() => { button.disabled = false; });
+    });
+  });
+
+  document.getElementById("vehicleInfoForm")?.addEventListener("submit", function (event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    fetch(activeVehicleUrl, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || "Save failed");
+        renderVehicleModal(data);
+        showLeaseToast("Vehicle information saved.");
+      })
+      .catch(error => alert(error.message || "Could not save vehicle information."))
+      .finally(() => { submitButton.disabled = false; });
+  });
+}
+
+document.querySelectorAll(".vehicle-info-pill").forEach(function (badge) {
+  badge.addEventListener("click", function () {
+    activeVehicleBadge = badge;
+    activeVehicleUrl = badge.dataset.vehicleUrl;
+    document.getElementById("vehicleInfoModalBody").innerHTML = '<div class="text-muted small">Loading...</div>';
+    const modalEl = document.getElementById("vehicleInfoModal");
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else {
+      modalEl.style.display = "block";
+    }
+    fetch(activeVehicleUrl, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(response => response.json())
+      .then(data => renderVehicleModal(data))
+      .catch(() => {
+        document.getElementById("vehicleInfoModalBody").innerHTML = '<div class="alert alert-danger py-2 small">Could not load vehicle information.</div>';
+      });
+  });
+});
+
 function getCookie(name) {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);

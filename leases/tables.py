@@ -493,6 +493,7 @@ class LeaseTable(ExportableTable):
             "actions",
         )
         sequence = fields
+        exclude = ("property",)
         order_by = ("unit",)
         export_formats = ["csv", "xlsx", "pdf"]  # Add supported export formats
 

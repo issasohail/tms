@@ -258,6 +258,43 @@
 .ld-file-icon-whatsapp { color:#198754; }
 .ld-file-missing { font-size:10px; }
 .ld-file-category-select { font-size:11px; padding:2px 5px; min-height:26px; }
+.ld-vehicle-photo-btn {
+  display:inline-block;
+  border:0;
+  background:transparent;
+  padding:0;
+  color:#2563eb;
+  font-weight:700;
+  text-decoration:none;
+  cursor:pointer;
+}
+.ld-vehicle-thumb {
+  width:56px;
+  height:42px;
+  object-fit:cover;
+  border-radius:5px;
+  border:1px solid #e5e7eb;
+}
+.ld-image-preview-meta {
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));
+  gap:6px;
+  margin-top:10px;
+}
+.ld-image-preview-meta div {
+  border:1px solid #e5e7eb;
+  border-radius:6px;
+  padding:6px 8px;
+  background:#f8fafc;
+  font-size:12px;
+}
+.ld-image-preview-meta span {
+  display:block;
+  color:#6b7280;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+}
 
 /* ============================================================
    PRINT
@@ -417,7 +454,14 @@
       {% with vehicle=lease_vehicles.first %}
       <div class="ld-doc-tile">
         {% if vehicle.vehicle_photo %}
-          <a href="{% url 'leases:lease_detail' lease.pk %}#ld-tab-vehicles">
+          <a href="{{ vehicle.vehicle_photo.url }}"
+             class="ld-image-preview-link"
+             data-preview-title="Vehicle Photo"
+             data-preview-type="{{ vehicle.vehicle_type.name }}"
+             data-preview-registration="{{ vehicle.registration_number }}"
+             data-preview-make-model="{{ vehicle.make|default:'' }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}"
+             data-preview-owner="{{ vehicle.owner_name|default:'' }}"
+             data-preview-parking="{{ vehicle.parking_slot|default:'' }}">
             <img src="{{ vehicle.vehicle_photo.url }}" alt="Vehicle" class="ld-doc-img">
             <span class="ld-doc-label">Vehicle</span>
           </a>
@@ -873,10 +917,19 @@
       <div class="ld-tab-pane" id="ld-tab-vehicles">
         <div class="ld-inner-card mb-3">
           <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>Tenant Vehicles</span>
-            <button type="button" class="btn btn-sm btn-primary no-print" data-bs-toggle="collapse" data-bs-target="#leaseVehicleAddBox">
-              <i class="fas fa-plus"></i> Add Vehicle
-            </button>
+            <span>
+              Tenant Vehicles
+              {% if pending_vehicle_count %}
+                <button type="button" class="btn btn-sm btn-warning py-0 px-2 ms-2 no-print" data-bs-toggle="collapse" data-bs-target="#pendingVehicleSubmissionCard" aria-expanded="false">
+                  Pending {{ pending_vehicle_count }}
+                </button>
+              {% endif %}
+            </span>
+            <div class="d-flex flex-wrap gap-1">
+              <button type="button" class="btn btn-sm btn-primary no-print" data-bs-toggle="collapse" data-bs-target="#leaseVehicleAddBox">
+                <i class="fas fa-plus"></i> Add Vehicle
+              </button>
+            </div>
           </div>
           <div class="collapse" id="leaseVehicleAddBox">
             <div class="p-2 border-bottom bg-light">
@@ -903,7 +956,6 @@
                 <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-3"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
-                <div class="col-12 col-md-3"><label class="form-label small mb-1">Registration Book</label><input name="registration_book_photo" type="file" accept="image/*,.pdf" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-4"><label class="form-label small mb-1">Notes</label><input name="notes" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-2"><button type="submit" class="btn btn-sm btn-success w-100">Save Vehicle</button></div>
               </form>
@@ -923,11 +975,12 @@
                   <th>Parking</th>
                   <th>Photos</th>
                   <th>Status</th>
+                  <th class="no-print">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {% for vehicle in lease_vehicles %}
-                  <tr>
+                  <tr id="vehicle-row-{{ vehicle.pk }}">
                     <td>{{ forloop.counter }}</td>
                     <td>{{ vehicle.vehicle_type.name }}</td>
                     <td>{{ vehicle.registration_number }}</td>
@@ -937,7 +990,19 @@
                     <td>{{ vehicle.owner_cnic|default:"-" }}</td>
                     <td>{{ vehicle.parking_slot|default:"-" }}</td>
                     <td>
-                      {% if vehicle.vehicle_photo %}<a href="{{ vehicle.vehicle_photo.url }}" target="_blank">Vehicle</a>{% endif %}
+                      {% if vehicle.vehicle_photo %}
+                        <button type="button"
+                                class="ld-vehicle-photo-btn ld-image-preview-link"
+                                data-preview-src="{{ vehicle.vehicle_photo.url }}"
+                                data-preview-title="Vehicle Photo"
+                                data-preview-type="{{ vehicle.vehicle_type.name }}"
+                                data-preview-registration="{{ vehicle.registration_number }}"
+                                data-preview-make-model="{{ vehicle.make|default:'' }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}"
+                                data-preview-owner="{{ vehicle.owner_name|default:'' }}"
+                                data-preview-parking="{{ vehicle.parking_slot|default:'' }}">
+                          <img src="{{ vehicle.vehicle_photo.url }}" alt="Vehicle" class="ld-vehicle-thumb">
+                        </button>
+                      {% endif %}
                       {% if vehicle.registration_book_photo %}<a href="{{ vehicle.registration_book_photo.url }}" target="_blank" class="ms-1">Book</a>{% endif %}
                       {% if not vehicle.vehicle_photo and not vehicle.registration_book_photo %}-{% endif %}
                     </td>
@@ -948,16 +1013,30 @@
                         <span class="ld-badge">Inactive</span>
                       {% endif %}
                     </td>
+                    <td class="no-print">
+                      <div class="d-flex flex-wrap gap-1">
+                        <button type="button"
+                                class="btn btn-sm btn-primary vehicle-edit-btn"
+                                data-edit-url="{% url 'leases:lease_vehicle_edit' lease.pk vehicle.pk %}">
+                          Edit
+                        </button>
+                        <form method="post" action="{% url 'leases:lease_vehicle_delete' lease.pk vehicle.pk %}" onsubmit="return confirm('Remove this vehicle from active list? History will be preserved.');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                      </div>
+                    </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="10" class="ld-empty">No vehicle information recorded.</td></tr>
+                  <tr><td colspan="11" class="ld-empty">No vehicle information recorded.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div class="ld-inner-card">
+        {% if pending_vehicle_count %}
+        <div class="ld-inner-card collapse" id="pendingVehicleSubmissionCard">
           <div class="ld-inner-head">Pending Vehicle Submissions</div>
           <div class="ld-tw">
             <table class="ld-tbl" style="min-width:820px;">
@@ -1002,13 +1081,12 @@
                       {% endif %}
                     </td>
                   </tr>
-                {% empty %}
-                  <tr><td colspan="8" class="ld-empty">No pending vehicle submissions.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </div>
+        {% endif %}
       </div>
 
       <!-- ======== TERMS & NOTES ======== -->
@@ -1249,6 +1327,65 @@
   </div>
 </div>
 
+<div class="modal fade" id="vehicleEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="vehicleEditForm" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Vehicle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label small mb-1">Vehicle Type</label>
+              <select name="vehicle_type" id="vehicleEditType" class="form-select form-select-sm" required></select>
+            </div>
+            <div class="col-12 col-md-4"><label class="form-label small mb-1">Registration #</label><input name="registration_number" id="vehicleEditReg" class="form-control form-control-sm" required></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Make</label><input name="make" id="vehicleEditMake" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Model</label><input name="model" id="vehicleEditModel" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Color</label><input name="color" id="vehicleEditColor" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" id="vehicleEditYear" type="number" min="1900" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" id="vehicleEditOwner" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" id="vehicleEditCnic" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" id="vehicleEditParking" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-4"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
+            <div class="col-12"><label class="form-label small mb-1">Notes</label><textarea name="notes" id="vehicleEditNotes" rows="2" class="form-control form-control-sm"></textarea></div>
+            <div class="col-12">
+              <label class="form-check-label small"><input name="is_active" id="vehicleEditActive" type="checkbox" class="form-check-input me-1" value="1"> Active</label>
+            </div>
+          </div>
+          <div id="vehicleEditError" class="text-danger small mt-2 d-none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="vehicleEditSaveBtn">Save Vehicle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title h6 mb-0" id="imagePreviewTitle">Image Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <img id="imagePreviewMain" src="" alt="Preview" class="img-fluid w-100 rounded border" style="max-height:72vh;object-fit:contain;">
+        <div class="ld-image-preview-meta" id="imagePreviewMeta"></div>
+      </div>
+      <div class="modal-footer justify-content-between py-2">
+        <a id="imagePreviewDownload" href="#" class="btn btn-sm btn-success" download>Download</a>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="newFamilyMemberModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
@@ -1353,8 +1490,12 @@
     activateTab(btn.dataset.tab);
   });
   const params = new URLSearchParams(window.location.search);
-  if (params.get('open_family_add') === '1' || window.location.hash === '#ld-tab-family') {
+  if (window.location.hash && window.location.hash.indexOf('#ld-tab-') === 0) {
+    activateTab(window.location.hash.replace('#ld-tab-', ''));
+  } else if (params.get('open_family_add') === '1') {
     activateTab('family');
+  }
+  if (params.get('open_family_add') === '1') {
     const addBox = document.getElementById('leaseFamilyAddBox');
     if (params.get('open_family_add') === '1' && addBox && window.bootstrap) {
       bootstrap.Collapse.getOrCreateInstance(addBox, { toggle: false }).show();
@@ -1630,10 +1771,128 @@ function openRenewalMedia(btn) {
   const waApiCheckbox = document.getElementById('waSendViaApi');
   if (waMainBtn && waApiCheckbox) {
     const manualHref = waMainBtn.getAttribute('href');
-    waApiCheckbox.addEventListener('change', function () {
-      waMainBtn.setAttribute('href', this.checked ? manualHref + '?via_api=1' : manualHref);
+    const apiUrl = "{% url 'whatsapp:send_object_message' 'lease' lease.pk 'text' %}";
+    waMainBtn.addEventListener('click', function (event) {
+      if (!waApiCheckbox.checked) {
+        waMainBtn.setAttribute('href', manualHref);
+        return true;
+      }
+      event.preventDefault();
+      waMainBtn.style.pointerEvents = 'none';
+      const original = waMainBtn.innerHTML;
+      waMainBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending';
+      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+        credentials: 'same-origin'
+      })
+        .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+        .then(({ok, payload}) => {
+          if (!ok || payload.ok === false) throw new Error(payload.error || 'WhatsApp API send failed.');
+          alert('WhatsApp sent via API.');
+        })
+        .catch(error => alert(error.message))
+        .finally(() => {
+          waMainBtn.style.pointerEvents = '';
+          waMainBtn.innerHTML = original;
+        });
     });
   }
+})();
+
+(function () {
+  function esc(value) {
+    return String(value || '').replace(/[&<>"']/g, function (ch) {
+      return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]);
+    });
+  }
+
+  document.querySelectorAll('.ld-image-preview-link').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      const src = link.dataset.previewSrc || link.getAttribute('href');
+      if (!src) return;
+      event.preventDefault();
+      const title = link.dataset.previewTitle || link.querySelector('.ld-doc-label')?.textContent || 'Image Preview';
+      document.getElementById('imagePreviewTitle').textContent = title;
+      document.getElementById('imagePreviewMain').src = src;
+      document.getElementById('imagePreviewDownload').href = src;
+      const meta = [
+        ['Type', link.dataset.previewType],
+        ['Registration', link.dataset.previewRegistration],
+        ['Make / Model', link.dataset.previewMakeModel],
+        ['Owner', link.dataset.previewOwner],
+        ['Parking', link.dataset.previewParking]
+      ].filter(row => row[1]);
+      document.getElementById('imagePreviewMeta').innerHTML = meta.map(row => (
+        '<div><span>' + esc(row[0]) + '</span>' + esc(row[1]) + '</div>'
+      )).join('');
+      if (window.bootstrap) {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('imagePreviewModal')).show();
+      }
+    });
+  });
+
+  const vehicleEditModalEl = document.getElementById('vehicleEditModal');
+  const vehicleEditForm = document.getElementById('vehicleEditForm');
+  const vehicleEditError = document.getElementById('vehicleEditError');
+  function setVehicleEditError(message) {
+    if (!vehicleEditError) return;
+    vehicleEditError.textContent = message || '';
+    vehicleEditError.classList.toggle('d-none', !message);
+  }
+  document.querySelectorAll('.vehicle-edit-btn').forEach(function (button) {
+    button.addEventListener('click', function () {
+      setVehicleEditError('');
+      fetch(button.dataset.editUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+        .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+        .then(({ok, payload}) => {
+          if (!ok || !payload.ok) throw new Error(payload.error || 'Could not load vehicle.');
+          vehicleEditForm.action = button.dataset.editUrl;
+          const v = payload.vehicle || {};
+          const typeSelect = document.getElementById('vehicleEditType');
+          typeSelect.innerHTML = (payload.vehicle_types || []).map(item => (
+            '<option value="' + esc(item.id) + '"' + (String(item.id) === String(payload.vehicle_type_id) ? ' selected' : '') + '>' + esc(item.name) + '</option>'
+          )).join('');
+          document.getElementById('vehicleEditReg').value = v.registration_number || '';
+          document.getElementById('vehicleEditMake').value = v.make || '';
+          document.getElementById('vehicleEditModel').value = v.model || '';
+          document.getElementById('vehicleEditColor').value = v.color || '';
+          document.getElementById('vehicleEditYear').value = v.year || '';
+          document.getElementById('vehicleEditOwner').value = v.owner_name || '';
+          document.getElementById('vehicleEditCnic').value = v.owner_cnic || '';
+          document.getElementById('vehicleEditParking').value = v.parking_slot || '';
+          document.getElementById('vehicleEditNotes').value = v.notes || '';
+          document.getElementById('vehicleEditActive').checked = !!v.is_active;
+          if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(vehicleEditModalEl).show();
+        })
+        .catch(error => alert(error.message));
+    });
+  });
+  vehicleEditForm?.addEventListener('submit', function (event) {
+    event.preventDefault();
+    setVehicleEditError('');
+    const saveBtn = document.getElementById('vehicleEditSaveBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    fetch(vehicleEditForm.action, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: new FormData(vehicleEditForm),
+      credentials: 'same-origin'
+    })
+      .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+      .then(({ok, payload}) => {
+        if (!ok || !payload.ok) throw new Error(payload.error || 'Could not save vehicle.');
+        window.location.reload();
+      })
+      .catch(error => setVehicleEditError(error.message))
+      .finally(() => {
+        if (saveBtn) saveBtn.disabled = false;
+      });
+  });
 })();
 
 document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', function () {

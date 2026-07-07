@@ -840,7 +840,6 @@ def lease_vehicle_info_ajax(request, pk):
             owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
             parking_slot=(request.POST.get("parking_slot") or "").strip(),
             vehicle_photo=request.FILES.get("vehicle_photo"),
-            registration_book_photo=request.FILES.get("registration_book_photo"),
             notes=(request.POST.get("notes") or "").strip(),
         )
     except Exception as exc:
@@ -1733,7 +1732,6 @@ def lease_vehicle_add(request, pk):
             owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
             parking_slot=(request.POST.get("parking_slot") or "").strip(),
             vehicle_photo=request.FILES.get("vehicle_photo"),
-            registration_book_photo=request.FILES.get("registration_book_photo"),
             notes=(request.POST.get("notes") or "").strip(),
         )
     except Exception as exc:
@@ -1743,6 +1741,94 @@ def lease_vehicle_add(request, pk):
             lease.has_vehicle = True
             lease.save(update_fields=["has_vehicle"])
         messages.success(request, "Vehicle added to lease.")
+    return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def lease_vehicle_edit(request, pk, vehicle_id):
+    lease = get_object_or_404(Lease.objects.select_related("tenant"), pk=pk)
+    vehicle = get_object_or_404(
+        LeaseVehicle.objects.select_related("vehicle_type"),
+        pk=vehicle_id,
+        lease=lease,
+    )
+
+    if request.method == "GET":
+        return JsonResponse(
+            {
+                "ok": True,
+                "vehicle": _vehicle_dict(request, vehicle),
+                "vehicle_type_id": vehicle.vehicle_type_id,
+                "vehicle_types": [
+                    {"id": item.pk, "name": item.name}
+                    for item in LeaseVehicleType.objects.filter(is_active=True).order_by(
+                        "sort_order", "name"
+                    )
+                ],
+            }
+        )
+
+    vehicle_type = get_object_or_404(
+        LeaseVehicleType,
+        pk=request.POST.get("vehicle_type"),
+        is_active=True,
+    )
+    registration_number = (request.POST.get("registration_number") or "").strip()
+    if not registration_number:
+        return JsonResponse(
+            {"ok": False, "error": "Vehicle registration number is required."},
+            status=400,
+        )
+
+    year = None
+    year_raw = (request.POST.get("year") or "").strip()
+    if year_raw:
+        try:
+            year = int(year_raw)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {"ok": False, "error": "Vehicle year must be a number."},
+                status=400,
+            )
+
+    vehicle.vehicle_type = vehicle_type
+    vehicle.registration_number = registration_number
+    vehicle.make = (request.POST.get("make") or "").strip()
+    vehicle.model = (request.POST.get("model") or "").strip()
+    vehicle.color = (request.POST.get("color") or "").strip()
+    vehicle.year = year
+    vehicle.owner_name = (request.POST.get("owner_name") or "").strip()
+    vehicle.owner_cnic = (request.POST.get("owner_cnic") or "").strip()
+    vehicle.parking_slot = (request.POST.get("parking_slot") or "").strip()
+    vehicle.notes = (request.POST.get("notes") or "").strip()
+    vehicle.is_active = request.POST.get("is_active") in ("1", "on", "true", "yes")
+    if request.FILES.get("vehicle_photo"):
+        vehicle.vehicle_photo = request.FILES["vehicle_photo"]
+    vehicle.save()
+
+    if vehicle.is_active and lease.has_vehicle is not True:
+        lease.has_vehicle = True
+        lease.save(update_fields=["has_vehicle"])
+
+    return JsonResponse({"ok": True, "vehicle": _vehicle_dict(request, vehicle)})
+
+
+@login_required
+@require_POST
+def lease_vehicle_delete(request, pk, vehicle_id):
+    lease = get_object_or_404(Lease, pk=pk)
+    vehicle = get_object_or_404(LeaseVehicle, pk=vehicle_id, lease=lease)
+    vehicle.is_active = False
+    vehicle.save(update_fields=["is_active", "updated_at"])
+
+    if not lease.vehicles.filter(is_active=True).exists():
+        lease.has_vehicle = False
+        lease.save(update_fields=["has_vehicle"])
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": True})
+    messages.success(request, "Vehicle removed from active list.")
     return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
 
 
@@ -3667,7 +3753,12 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "lease_total_payment": lease_total_payment,
                 "occupancy_count": 1 + lease.family_members.count(),
                 "lease_vehicles": lease.vehicles.all(),
-                "pending_vehicle_submissions": lease.pending_vehicle_submissions.all(),
+                "pending_vehicle_submissions": lease.pending_vehicle_submissions.filter(
+                    status=PendingLeaseVehicleSubmission.STATUS_PENDING
+                ),
+                "pending_vehicle_count": lease.pending_vehicle_submissions.filter(
+                    status=PendingLeaseVehicleSubmission.STATUS_PENDING
+                ).count(),
                 "vehicle_types": LeaseVehicleType.objects.filter(is_active=True).order_by(
                     "sort_order", "name"
                 ),

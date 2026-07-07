@@ -366,7 +366,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(
+    os.getenv(
+        "MEDIA_ROOT",
+        "/home/ivs/tms_media" if not DEBUG else str(BASE_DIR / "media"),
+    )
+)
 
 
 # Reverse proxy path support for /tms/.
@@ -484,3 +489,8 @@ LOGGING = {
 FORCE_SCRIPT_NAME = os.getenv("FORCE_SCRIPT_NAME") or (None if DEBUG else "/tms")
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if os.getenv("MEDIA_URL"):
+    MEDIA_URL = os.getenv("MEDIA_URL")
+elif FORCE_SCRIPT_NAME and MEDIA_URL == "/media/":
+    MEDIA_URL = f"{FORCE_SCRIPT_NAME.rstrip('/')}/media/"

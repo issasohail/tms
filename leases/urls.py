@@ -448,6 +448,16 @@ urlpatterns = [
         name="lease_vehicle_add",
     ),
     path(
+        "leases/<int:pk>/vehicles/<int:vehicle_id>/edit/",
+        views.lease_vehicle_edit,
+        name="lease_vehicle_edit",
+    ),
+    path(
+        "leases/<int:pk>/vehicles/<int:vehicle_id>/delete/",
+        views.lease_vehicle_delete,
+        name="lease_vehicle_delete",
+    ),
+    path(
         "leases/<int:pk>/family/create-and-add/",
         views.lease_family_create_and_add,
         name="lease_family_create_and_add",

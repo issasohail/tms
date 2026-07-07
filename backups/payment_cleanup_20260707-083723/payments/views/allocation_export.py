@@ -1,11 +1,11 @@
 from django_tables2.views import SingleTableView
 from payments.tables_allocation import AllocationTable
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from utils.pdf_export import handle_export
 
 class AllocationExportView(SingleTableView):
     table_class = AllocationTable
-    queryset = PaymentAllocation.objects.select_related(
+    queryset = PaymentDetail.objects.select_related(
         "payment__lease__tenant"
     )
 

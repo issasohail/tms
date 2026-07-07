@@ -2,7 +2,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from payments.models import Payment, PaymentAllocation, PaymentMethod
+from payments.models import Payment, PaymentDetail, PaymentMethod
 from invoices.models import SecurityDepositTransaction
 
 
@@ -20,7 +20,7 @@ def absD(v):
 
 class Command(BaseCommand):
     help = (
-        "Backfill PaymentAllocation for all Payments AND create one Payment+Allocation "
+        "Backfill PaymentDetail for all Payments AND create one Payment+Allocation "
         "for standalone SecurityDepositTransaction rows (PAYMENT/REFUND only)."
     )
 
@@ -68,7 +68,7 @@ class Command(BaseCommand):
         for p in pay_qs:
             pay_amt = D(p.amount)
 
-            alloc, alloc_created = PaymentAllocation.objects.get_or_create(
+            alloc, alloc_created = PaymentDetail.objects.get_or_create(
                 payment=p,
                 defaults=dict(
                     lease_amount=pay_amt,
@@ -128,8 +128,7 @@ class Command(BaseCommand):
                 extra = f"Total Payment: Rs. {pay_amt:,.2f} | Lease: Rs. {lease_amt:,.2f} | Security: Rs. {sec_amt:,.2f}"
                 merged_notes = (notes + "\n" + extra).strip() if notes else extra
 
-                sdt, sdt_created = SecurityDepositTransaction.objects.update_or_create(
-                    allocation=alloc,
+                sdt, sdt_created = SecurityDepositTransaction.objects.update_or_create(payment_detail=alloc,
                     defaults=dict(
                         lease=p.lease,
                         payment=p,
@@ -146,11 +145,11 @@ class Command(BaseCommand):
 
                 if existing_sec and not dry:
                     SecurityDepositTransaction.objects.filter(payment=p).exclude(
-                        allocation=alloc
+                        payment_detail=alloc
                     ).delete()
             else:
                 if not dry:
-                    SecurityDepositTransaction.objects.filter(allocation=alloc).delete()
+                    SecurityDepositTransaction.objects.filter(payment_detail=alloc).delete()
 
         # ---------------------------------------------------------------------
         # PART B (NEW): Standalone SDT rows (PAYMENT/REFUND) -> create Payment + Allocation
@@ -172,7 +171,7 @@ class Command(BaseCommand):
             if sdt.type not in ("PAYMENT", "REFUND"):
                 continue
 
-            if sdt.allocation is not None:
+            if sdt.payment_detail is not None:
                 skipped_already_linked += 1
                 continue
 
@@ -212,7 +211,7 @@ class Command(BaseCommand):
                 pay.save()
                 created_pay_from_sdt += 1
 
-            alloc, a_created = PaymentAllocation.objects.get_or_create(
+            alloc, a_created = PaymentDetail.objects.get_or_create(
                 payment=pay,
                 defaults=dict(
                     lease_amount=Decimal("0.00"),
@@ -246,7 +245,7 @@ class Command(BaseCommand):
 
             if not dry:
                 sdt.payment = pay
-                sdt.allocation = alloc
+                sdt.payment_detail = alloc
                 sdt.amount = amt  # keep positive; direction is in sdt.type
                 sdt.save(update_fields=["payment", "allocation", "amount"])
 

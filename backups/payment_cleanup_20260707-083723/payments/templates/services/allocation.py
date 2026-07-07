@@ -8,7 +8,7 @@ def rebuild_allocation(payment, lease_amount, security_amount, security_type, us
         }
         payment.allocation.delete()
 
-    alloc = PaymentAllocation.objects.create(
+    alloc = PaymentDetail.objects.create(
         payment=payment,
         lease_amount=lease_amount,
         security_amount=security_amount,

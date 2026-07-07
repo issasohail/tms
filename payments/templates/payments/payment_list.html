@@ -1,22 +1,1896 @@
-{% extends "payments/_payments_list_layout.html" %}
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize %}
 
-{% block title %}Payments{% endblock %}
-{% block page_heading %}Payment Records{% endblock %}
+{% block title %}Payment List{% endblock %}
+{% block main_container_class %}container-fluid payment-list-container{% endblock %}
 
-{% block header_buttons %}
+{% block content %}
+{% include "payments/_payment_detail_split_modal.html" %}
+<script>
+  window.PAYMENT_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'payment' 0 'receipt' %}";
+</script>
+<div class="d-flex justify-content-between align-items-center mb-4 payment-page-compact payment-list-dense">
+  <h2>{{ heading|default:"Records" }}</h2>
+  <div class="d-flex gap-2">
+    {% block header_buttons %}
   <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
     <i class="fas fa-plus me-1"></i> Add Payment
   </a>
-  <a href="{% url 'payments:cash_ledger' %}" class="btn btn-link">Cash Ledger</a>
 {% endblock %}
-
-{% block totals_card %}
-<div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none">
-  <div class="card-body py-2 px-3">
-    <div class="d-flex justify-content-between align-items-left">
-      <span class="fw-bold small">Payments Received:</span>
-      <span class="fw-bold text-success total-amount-display"></span>
-    </div>
+    <label class="form-check form-check-inline small mb-0 align-self-center" title="Use WhatsApp Cloud API instead of opening WhatsApp links">
+      <input class="form-check-input" type="checkbox" id="payment-use-whatsapp-api" data-whatsapp-api-toggle="payment-list">
+      <span class="form-check-label">Use WhatsApp API</span>
+    </label>
+    {% include "includes/export_buttons.html" %}
   </div>
 </div>
+
+<!-- Filter form -->
+<div class="card mb-3 payment-page-compact payment-list-dense">
+  <div class="card-body p-3">
+    <form method="get" id="payment-filter-form" action="{% block filter_action %}{% url 'payments:payment_list' %}{% endblock %}">
+
+      <div class="payment-filter-grid">
+
+        <div class="pf-field">
+          <label class="form-label mb-1">Property</label>
+          <select name="property" id="id_property" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for property in all_properties %}
+              <option value="{{ property.id }}" {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+                {{ property.property_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="pf-field">
+          <label class="form-label mb-1">Unit</label>
+          <select name="unit" id="id_unit" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for unit in filtered_units %}
+              <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+                {{ unit.unit_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="pf-field pf-field-tenant">
+          <label class="form-label mb-1">Tenant</label>
+          <select name="tenant" id="id_tenant" class="form-select form-select-sm select2">
+            <option value="">All</option>
+            {% for tenant in tenant_list %}
+              <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+                {{ tenant.get_full_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="pf-field">
+          <label class="form-label mb-1">Date Range</label>
+          <select name="date_range" id="id_date_range" class="form-select form-select-sm">
+            <option value="">Custom</option>
+            <option value="all" {% if request.GET.date_range == 'all' %}selected{% endif %}>All</option>
+            <option value="today" {% if request.GET.date_range == 'today' %}selected{% endif %}>Today</option>
+            <option value="yesterday" {% if request.GET.date_range == 'yesterday' %}selected{% endif %}>Yesterday</option>
+            <option value="this_week" {% if request.GET.date_range == 'this_week' %}selected{% endif %}>This Week</option>
+            <option value="last_week" {% if request.GET.date_range == 'last_week' %}selected{% endif %}>Last Week</option>
+            <option value="this_month" {% if request.GET.date_range == 'this_month' %}selected{% endif %}>This Month</option>
+            <option value="last_month" {% if request.GET.date_range == 'last_month' %}selected{% endif %}>Last Month</option>
+            <option value="this_year" {% if request.GET.date_range == 'this_year' %}selected{% endif %}>This Year</option>
+          </select>
+        </div>
+
+        <div class="pf-field">
+          <label class="form-label mb-1">From</label>
+          <input type="date" name="start_date" id="id_start_date" class="form-control form-control-sm" value="{{ request.GET.start_date }}">
+        </div>
+
+        <div class="pf-field">
+          <label class="form-label mb-1">To</label>
+          <input type="date" name="end_date" id="id_end_date" class="form-control form-control-sm" value="{{ request.GET.end_date }}">
+        </div>
+
+      </div>
+    </form>
+  </div>
+</div>
+
+{% block totals_card %}
+  {# show total ONLY when date filter exists #}
+  {% if request.GET.date_range or request.GET.start_date or request.GET.end_date %}
+    <div class="card mb-2 mt-2 payment-list-dense" id="total-card">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-left">
+          <span class="fw-bold small">{% block total_label %}Payment Movements:{% endblock %}</span>
+          <span class="fw-bold text-success total-amount-display">
+            {{ total_amount|money:2 }}
+          </span>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card mb-2 mt-2 payment-list-dense" id="total-card" style="display:none"></div>
+  {% endif %}
+{% endblock %}
+
+
+<div class="table-responsive payment-list-dense"
+     style="--lg-tenant-w: 24rem;">
+  {% render_table table %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+{{ block.super }}
+
+<style>
+  .payment-page-compact .card-header,
+  .payment-page-compact .card-body,
+  .payment-page-compact .card-footer { padding:.5rem .75rem; }
+  .payment-list-dense table.table > :not(caption) > * > * { padding:.25rem .4rem; }
+
+  .actions-wrap{ display:flex; flex-wrap:nowrap; gap:.32rem; align-items:center; }
+  .actions-wrap .btn{ display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; white-space:nowrap; }
+
+  .select2-dropdown { font-size: .78rem; }
+  .select2-results__options { max-height: 220px; }
+  .select2-results__option {
+    padding: .18rem .45rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .select2-search--dropdown .select2-search__field{
+    height: 28px;
+    padding: .2rem .4rem;
+    font-size: .8rem;
+  }
+
+  #id_tenant{ width:10rem !important; }
+  .select2-container--default .select2-selection--single{
+    height:32px; line-height:32px; padding:0 .5rem; font-size:.85rem;
+  }
+  .select2-container--default .select2-selection--single .select2-selection__rendered{
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .select2-container--default .select2-selection--single .select2-selection__arrow{ height:32px; }
+
+  @media (min-width:992px){
+    .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
+      text-align:right; font-variant-numeric:tabular-nums;
+    }
+  }
+
+  /* ================================================================
+     FILTER BAR — "table view" (>=768px, covers tablet + desktop)
+     One line. Fields shrink to fit; if they truly can't, the row
+     scrolls horizontally instead of wrapping.
+     ================================================================ */
+  .payment-filter-grid{
+    display:flex;
+    flex-wrap:nowrap;
+    gap:.5rem;
+    align-items:end;
+    overflow-x:auto;
+    padding-bottom:2px;
+  }
+  .payment-filter-grid .pf-field{ flex:1 1 0; min-width:0; }
+  .payment-filter-grid .pf-field-tenant{ flex:1.4 1 0; }
+  .payment-filter-grid .form-label{ white-space:nowrap; }
+  .payment-filter-grid .form-select,
+  .payment-filter-grid .form-control{ width:100%; }
+
+  @media (min-width: 992px) {
+    .payment-list-dense th.col-tenant,
+    .payment-list-dense td.col-tenant {
+      max-width: var(--lg-tenant-w, 18rem);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #id_tenant { width: 18rem !important; }
+    .payment-page-compact .card-header,
+    .payment-page-compact .card-body,
+    .payment-page-compact .card-footer { padding:.4rem .6rem; }
+    .payment-page-compact h2{ font-size:1.15rem; margin:0; }
+
+    #payment-filter-form .form-label{ margin-bottom:.25rem!important; font-size:.78rem; }
+    #payment-filter-form .form-control-sm,
+    #payment-filter-form .form-select-sm{ height:30px; padding:.2rem .4rem; font-size:.8rem; }
+    #payment-filter-form .select2-container--default .select2-selection--single{
+      height:30px; line-height:30px; font-size:.8rem; padding:0 .4rem;
+    }
+    #payment-filter-form .select2-container--default .select2-selection--single .select2-selection__arrow{ height:30px; }
+    #id_property, #id_unit{ min-width: 160px!important; }
+
+    .payment-list-dense table.table > :not(caption) > * > *{
+      padding:.18rem .32rem;
+      vertical-align: middle;
+      font-size:.87rem;
+    }
+    .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
+      text-align:right; font-variant-numeric: tabular-nums; width: 7.5rem; white-space: nowrap;
+    }
+    .payment-list-dense th.col-date, .payment-list-dense td.col-date{ white-space: nowrap; }
+    .payment-list-dense td.col-actions .actions-wrap{ gap:.18rem; }
+    .payment-list-dense td.col-actions .btn{
+      padding:.18rem .035rem; font-size:.78rem; min-width:0;
+    }
+    .payment-list-dense td.col-actions .btn i{ font-size:.8rem; margin:0 .2rem 0 0; }
+    .payment-list-dense td.col-method,
+    .payment-list-dense td.col-balance{ color:#6c757d; }
+  }
+
+  @media (min-width: 1400px){
+    .payment-list-dense table.table > :not(caption) > * > *{
+      padding:.16rem .28rem; font-size:.85rem;
+    }
+    #id_tenant{ width: 28rem!important; }
+    .payment-page-compact .btn{ padding:.18rem .45rem; font-size:.8rem; }
+  }
+
+  .payment-list-dense table.table > :not(caption) > * > *{
+    padding:.14rem .26rem;
+    font-size:.82rem;
+    vertical-align: middle;
+  }
+  .payment-list-dense thead th{
+    padding:.22rem .26rem;
+    font-size:.76rem;
+    letter-spacing:.01em;
+  }
+
+  .payment-list-dense th.col-actions,
+  .payment-list-dense td.col-actions{
+    width: 11.5rem;
+    white-space:nowrap;
+  }
+  .payment-list-dense td.col-actions .actions-wrap{
+    gap:.14rem;
+  }
+  .payment-list-dense td.col-actions .btn{
+    padding:.10rem .18rem !important;
+    line-height:1 !important;
+    min-width:0;
+    font-size:.78rem;
+  }
+  .payment-list-dense td.col-actions .btn i{
+    font-size:.82rem;
+    margin:0;
+  }
+
+  .payment-list-dense td.col-actions .btn .btn-text{
+    display:none !important;
+  }
+
+  @media (min-width:1400px){
+    .payment-list-dense th.col-actions,
+    .payment-list-dense td.col-actions{ width: 15rem; }
+    .payment-list-dense td.col-actions .btn .btn-text{ display:inline !important; }
+    .payment-list-dense td.col-actions .btn i{ margin-right:.2rem; }
+  }
+
+  .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
+    text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .payment-list-dense th.col-date, .payment-list-dense td.col-date{ white-space:nowrap; }
+
+  #payment-filter-form .form-control-sm,
+  #payment-filter-form .form-select-sm{
+    height:28px; padding:.18rem .35rem; font-size:.78rem;
+  }
+
+  /* ================================================================
+     MOBILE VIEW (<768px) — placed last so it wins the cascade over
+     the !important rules above it at this width.
+     Filters: fixed 3-per-row grid -> exactly 2 rows for the 6 fields.
+     Table rows become cards (flex + order), no table-class/Python
+     changes needed. Serial number, every column's data, and every
+     action button all remain visible.
+     ================================================================ */
+  @media (max-width:767px){
+    html{ font-size:10px; }
+    .payment-page-compact .card .card-body{ overflow: hidden; }
+
+    .payment-filter-grid{
+      display:grid !important;
+      grid-template-columns:repeat(3, 1fr) !important;
+      gap:.35rem .3rem !important;
+      overflow-x:visible;
+    }
+
+    #payment-filter-form .form-control-sm,
+    #payment-filter-form .form-select-sm,
+    #payment-filter-form .select2-container--default .select2-selection--single{
+      font-size:.68rem!important; min-height:28px!important; height:28px!important;
+      padding-top:.2rem!important; padding-bottom:.2rem!important;
+    }
+    #payment-filter-form .form-control-sm,
+    #payment-filter-form .form-select-sm,
+    #payment-filter-form .select2,
+    #payment-filter-form .select2-selection--single{ width:100% !important; min-width:0 !important; }
+    .select2-container{ max-width:100% !important; }
+
+    /* ---- Card-ify each table row ---- */
+    .payment-list-dense .table-responsive{ overflow-x:visible !important; }
+    .payment-list-dense table.table thead{ display:none !important; }
+    .payment-list-dense table.table,
+    .payment-list-dense table.table tbody{ display:block !important; width:100% !important; }
+    .payment-list-dense table.table tbody tr{
+      display:flex !important; flex-wrap:wrap !important; align-items:flex-start !important;
+      border:1px solid #e5e7eb !important; border-radius:10px !important;
+      padding:.55rem .6rem !important; margin-bottom:.5rem !important;
+      background:#fff !important;
+    }
+    .payment-list-dense table.table tbody tr:nth-child(even){ background:#fff !important; }
+    .payment-list-dense table.table tbody td{
+      border:0 !important; padding:.1rem .2rem !important;
+    }
+
+    /* Serial number: always shown, every row, top-left */
+    .payment-list-dense td.col-sn{
+      order:1 !important; flex:0 0 auto !important; width:auto !important;
+      font-size:.68rem !important; color:#9ca3af !important; font-weight:700 !important;
+    }
+    .payment-list-dense td.col-sn::before{ content:"#"; }
+
+    .payment-list-dense td.col-tenant{
+      order:2 !important; flex:1 1 100% !important; max-width:none !important;
+      font-weight:700 !important; font-size:.92rem !important; white-space:normal !important;
+    }
+    .payment-list-dense td.col-property{
+      order:3 !important; flex:1 1 60% !important; max-width:none !important; white-space:normal !important;
+    }
+    .payment-list-dense td.col-amount{
+      order:4 !important; flex:1 1 40% !important; width:auto !important;
+      text-align:right !important; font-weight:700 !important;
+    }
+    .payment-list-dense td.col-date{
+      order:5 !important; flex:1 1 100% !important; width:auto !important;
+      color:#6b7280 !important; font-size:.78rem !important; margin-top:.15rem !important;
+    }
+    .payment-list-dense td.col-actions{
+      order:6 !important; flex:1 1 100% !important; width:auto !important;
+      margin-top:.4rem !important; padding-top:.4rem !important;
+      border-top:1px dashed #eceef1 !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap{ gap:.3rem !important; flex-wrap:wrap !important; }
+    .payment-list-dense td.col-actions .btn{
+      padding:.32rem .5rem !important; font-size:.75rem !important; min-width:2.2rem !important; line-height:1 !important;
+    }
+    .payment-list-dense td.col-actions .btn i{ font-size:.85rem !important; margin:0 !important; }
+    .payment-list-dense td.col-actions .btn .btn-text{ display:none !important; }
+
+    /* Columns folded into sublines (by the enhancer JS) stay hidden as standalone cells */
+    .payment-list-dense td.col-id,
+    .payment-list-dense td.col-unit,
+    .payment-list-dense td.col-method,
+    .payment-list-dense td.col-balance{ display:none !important; }
+
+    .payment-list-dense td.col-property .prop-box{ display:block !important; }
+    .payment-list-dense td.col-property .prop-name{
+      display:block !important; font-weight:600 !important;
+      white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+    }
+    .payment-list-dense td.col-property .subline,
+    .payment-list-dense td.col-amount .subline,
+    .payment-list-dense td.col-date .subline{
+      display:block !important; font-size:.68rem !important; font-weight:400 !important;
+      line-height:1.2 !important; color:#6b7280 !important; white-space:normal !important;
+    }
+  }
+</style>
+
+
+<style>
+  /* ============================================================
+     Payment List — scoped visual overrides
+     All selectors scoped under .payment-list-dense where possible
+     ============================================================ */
+
+  /* --- Source badges (Src column) --- */
+  .payment-list-dense .badge {
+    border-radius: 2rem;
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  /* "Payment" badge */
+  .payment-list-dense .badge.bg-primary,
+  .payment-list-dense .badge[class*="bg-primary"] {
+    background-color: #e8f0fe !important;
+    color: #1a56db !important;
+  }
+  /* "Payment + Split" badge */
+  .payment-list-dense .badge.bg-warning,
+  .payment-list-dense .badge[class*="bg-warning"] {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+  }
+
+  /* --- Row striping & hover --- */
+  .payment-list-dense tbody tr:nth-child(even) {
+    background-color: #f9fafb;
+  }
+  .payment-list-dense tbody tr:hover {
+    background-color: #eff6ff;
+    transition: background-color 0.15s ease;
+  }
+
+  /* --- Balance columns: positive / negative coloring --- */
+  .payment-list-dense td.text-success,
+  .payment-list-dense td .text-success {
+    color: #16a34a !important;
+    font-weight: 600;
+  }
+  .payment-list-dense td.text-danger,
+  .payment-list-dense td .text-danger {
+    color: #dc2626 !important;
+    font-weight: 600;
+  }
+
+  /* --- Split sub-row breakdown text (Lease: ... | Security: ...) --- */
+  .payment-list-dense td small,
+  .payment-list-dense td .split-breakdown {
+    font-size: 0.68rem !important;
+    color: #6b7280 !important;
+    display: block;
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+
+  /* --- Date column: slightly muted --- */
+  .payment-list-dense td.col-date,
+  .payment-list-dense td:nth-child(6) {
+    color: #6b7280;
+    font-size: 0.82rem;
+  }
+
+  /* --- Action buttons: tighter spacing --- */
+  .payment-list-dense td:last-child {
+    white-space: nowrap;
+  }
+  .payment-list-dense td:last-child .btn,
+  .payment-list-dense td:last-child a.btn {
+    padding: 3px 5px;
+    font-size: 0.75rem;
+    margin: 0 1px;
+  }
+
+  /* --- Totals card: accent left border --- */
+  #total-card {
+    border-left: 3px solid #1a56db;
+    background-color: #f0f4ff;
+  }
+  #total-card .total-amount-display {
+    color: #1a56db;
+  }
+
+  /* --- Table header: slightly stronger style --- */
+  .payment-list-dense thead th {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #374151;
+    background-color: #f3f4f6;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+  }
+</style>
+<style>
+  .payment-list-container {
+    max-width: 1700px;
+  }
+  .payment-list-dense {
+    /* Desktop payment list tweak panel */
+    --payment-desktop-table-font-size: 1.12492rem;
+    --payment-desktop-header-font-size: .78rem;
+    --payment-desktop-tenant-size: 1.92rem;
+    --payment-desktop-tenant-weight: 800;
+    --payment-desktop-unit-size: 1.192rem;
+    --payment-desktop-unit-weight: 800;
+    --payment-desktop-amount-size: 1.594rem;
+    --payment-desktop-amount-weight: 800;
+    --payment-col-sn: 3.5rem;
+    --payment-col-tenant: 13rem;
+    --payment-col-property: 8rem;
+    --payment-col-unit: 8rem;
+    --payment-col-date: 6.75rem;
+    --payment-col-amount: 13rem;
+    --payment-col-method: 6rem;
+    --payment-col-desc: 6rem;
+    --payment-col-balance: 8.75rem;
+    --payment-col-actions: 11.5rem;
+  }
+  .payment-page-compact.payment-list-dense {
+    margin-bottom: 1rem !important;
+    flex-wrap: wrap;
+    gap: .75rem;
+  }
+  .payment-page-compact.payment-list-dense:first-of-type {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: #f4f6f8;
+    padding: .45rem 0;
+    box-shadow: 0 1px 0 rgba(16,24,40,.08);
+  }
+  .payment-page-compact.payment-list-dense h2 {
+    font-size: 1.15rem;
+    margin: 0;
+  }
+  .payment-page-compact.payment-list-dense .btn {
+    font-size: .82rem;
+  }
+
+  .payment-filter-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .5rem;
+    align-items: end;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .payment-filter-grid .pf-field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .payment-filter-grid .pf-field-tenant {
+    flex: 1.35 1 0;
+  }
+  #payment-filter-form .form-label {
+    font-size: .76rem;
+    margin-bottom: .2rem !important;
+    white-space: nowrap;
+  }
+  #payment-filter-form .form-select,
+  #payment-filter-form .form-control,
+  #payment-filter-form .select2-container--default .select2-selection--single {
+    font-size: .8rem;
+  }
+
+  #total-card {
+    border-left: 3px solid #1a56db;
+    background-color: #f0f4ff;
+  }
+  #total-card .total-amount-display {
+    color: #16a34a !important;
+    font-weight: 700;
+  }
+
+  .payment-list-dense table.table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: var(--payment-desktop-table-font-size);
+    margin: 0;
+  }
+  .payment-list-dense table.table > :not(caption) > * > * {
+    padding: .4rem .5rem;
+    vertical-align: middle;
+  }
+  .payment-list-dense table.table thead th {
+    font-size: var(--payment-desktop-header-font-size);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: #374151;
+    background: #f3f4f6;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+  }
+  .payment-list-dense table.table tbody td {
+    border-bottom: 1px solid #f0f1f3;
+  }
+  .payment-list-dense td.col-tenant,
+  .payment-list-dense td.col-tenant a {
+    font-size: var(--payment-desktop-tenant-size);
+    font-weight: var(--payment-desktop-tenant-weight);
+  }
+  .payment-list-dense td.col-unit {
+    font-size: var(--payment-desktop-unit-size);
+    font-weight: var(--payment-desktop-unit-weight);
+  }
+  .payment-list-dense td.col-amount,
+  .payment-list-dense td.col-amount .fw-semibold,
+  .payment-list-dense td.col-amount .text-success,
+  .payment-list-dense td.col-amount .text-danger {
+    font-size: var(--payment-desktop-amount-size);
+    font-weight: var(--payment-desktop-amount-weight);
+  }
+  .payment-list-dense table.table tbody tr:nth-child(even) {
+    background: #f9fafb;
+  }
+  .payment-list-dense table.table tbody tr:hover {
+    background: #eff6ff;
+  }
+  .table-responsive.payment-list-dense {
+    background: #fff;
+    border: 1px solid #e4e7ec;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.06);
+  }
+  .payment-list-dense table.table thead th {
+    padding: 10px 9px;
+    color: #475467;
+    background: #f8fafc;
+    font-weight: 800;
+    text-transform: none;
+    letter-spacing: .01em;
+  }
+  .payment-list-dense table.table tbody td {
+    padding: 10px 9px;
+    font-weight: 600;
+    color: #101828;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .payment-list-dense table.table tbody tr:nth-child(even) td {
+    background: #fbfcfe;
+  }
+  .payment-list-dense table.table tbody tr:hover td {
+    background: #f2f6ff;
+  }
+  .payment-list-dense table.table a {
+    color: #06f;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .payment-list-dense th.col-source,
+  .payment-list-dense td.col-source {
+    width: 6.5rem;
+    white-space: nowrap;
+  }
+  .payment-list-dense th.col-sn,
+  .payment-list-dense td.col-sn {
+    width: 3.25rem;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+  }
+  .payment-list-dense th.col-amount,
+  .payment-list-dense td.col-amount,
+  .payment-list-dense th.col-balance,
+  .payment-list-dense td.col-balance,
+  .payment-list-dense th.col-lease-balance,
+  .payment-list-dense td.col-lease-balance,
+  .payment-list-dense th.col-security-balance,
+  .payment-list-dense td.col-security-balance {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .payment-list-dense td.col-date {
+    color: #6b7280;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+
+  .payment-list-dense .badge {
+    border-radius: 2rem;
+    font-size: .68rem;
+    padding: 2px 8px;
+    font-weight: 600;
+    letter-spacing: .01em;
+  }
+  .payment-list-dense .badge.bg-primary,
+  .payment-list-dense .badge[class*="bg-primary"] {
+    background: #e8f0fe !important;
+    color: #1a56db !important;
+  }
+  .payment-list-dense .badge.bg-warning,
+  .payment-list-dense .badge[class*="bg-warning"] {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+  }
+  .payment-list-dense .badge.bg-danger,
+  .payment-list-dense .badge[class*="bg-danger"] {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+  }
+  .payment-list-dense .badge.bg-info,
+  .payment-list-dense .badge[class*="bg-info"] {
+    background: #e0f2fe !important;
+    color: #075985 !important;
+  }
+  .payment-list-dense td .text-success {
+    color: #16a34a !important;
+    font-weight: 700;
+  }
+  .payment-list-dense td .text-danger {
+    color: #dc2626 !important;
+    font-weight: 700;
+  }
+  .payment-list-dense td small,
+  .payment-list-dense td .small,
+  .payment-list-dense td .split-breakdown {
+    display: block;
+    margin-top: 1px;
+    color: #6b7280 !important;
+    font-size: .68rem !important;
+    line-height: 1.25;
+  }
+  .payment-list-dense .unit-sub,
+  .payment-list-dense .balance-sub {
+    display: none !important;
+  }
+
+  .payment-list-dense td.col-actions {
+    white-space: nowrap;
+  }
+  .payment-list-dense td.col-actions .actions-wrap {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .25rem;
+    align-items: center;
+  }
+  .payment-list-dense td.col-actions .btn {
+    width: 1.95rem;
+    height: 1.75rem;
+    padding: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .76rem;
+  }
+
+  @media (min-width: 768px) {
+    .payment-list-dense th.col-unit,
+    .payment-list-dense td.col-unit {
+      min-width: var(--payment-col-unit);
+      width: var(--payment-col-unit);
+      white-space: normal;
+    }
+    .payment-list-dense th.col-sn,
+    .payment-list-dense td.col-sn { width: var(--payment-col-sn); }
+    .payment-list-dense th.col-tenant,
+    .payment-list-dense td.col-tenant { width: var(--payment-col-tenant); }
+    .payment-list-dense th.col-property,
+    .payment-list-dense td.col-property { width: var(--payment-col-property); }
+    .payment-list-dense th.col-date,
+    .payment-list-dense td.col-date { width: var(--payment-col-date); }
+    .payment-list-dense th.col-amount,
+    .payment-list-dense td.col-amount { width: var(--payment-col-amount); }
+    .payment-list-dense th.col-method,
+    .payment-list-dense td.col-method { width: var(--payment-col-method); }
+    .payment-list-dense th.col-description,
+    .payment-list-dense td.col-description { width: var(--payment-col-desc); }
+    .payment-list-dense th.col-lease-balance,
+    .payment-list-dense td.col-lease-balance,
+    .payment-list-dense th.col-security-balance,
+    .payment-list-dense td.col-security-balance,
+    .payment-list-dense th.col-balance,
+    .payment-list-dense td.col-balance { width: var(--payment-col-balance); }
+    .payment-list-dense th.col-actions,
+    .payment-list-dense td.col-actions { width: var(--payment-col-actions); }
+    .payment-list-dense td.col-actions .actions-wrap {
+      gap: 7px;
+    }
+    .payment-list-dense td.col-actions .btn {
+      width: 28px;
+      height: 30px;
+      border-radius: 6px !important;
+      border: 1px solid transparent !important;
+      color: #fff !important;
+      box-shadow: 0 1px 2px rgba(16,24,40,.08);
+    }
+    .payment-list-dense td.col-actions .btn-outline-secondary {
+      background: #667085 !important;
+    }
+    .payment-list-dense td.col-actions .btn-outline-success {
+      background: #12b76a !important;
+    }
+    .payment-list-dense td.col-actions .btn-outline-primary {
+      background: #0d6efd !important;
+    }
+    .payment-list-dense td.col-actions .btn-outline-danger {
+      background: #ef4444 !important;
+    }
+    .payment-list-dense td.col-actions .btn i {
+      color: #fff !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .payment-filter-grid {
+      display: grid !important;
+      grid-template-columns: repeat(3, 1fr) !important;
+      gap: .4rem .35rem !important;
+      overflow-x: visible;
+    }
+    #payment-filter-form .form-label {
+      font-size: .68rem;
+    }
+    #payment-filter-form .form-select,
+    #payment-filter-form .form-control,
+    #payment-filter-form .select2-container--default .select2-selection--single {
+      font-size: .72rem !important;
+      padding-top: .25rem !important;
+      padding-bottom: .25rem !important;
+    }
+
+    .payment-list-dense .table-responsive {
+      overflow-x: visible !important;
+    }
+    .payment-list-dense table.table thead {
+      display: none !important;
+    }
+    .payment-list-dense table.table,
+    .payment-list-dense table.table tbody {
+      display: block !important;
+      width: 100% !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      align-items: flex-start !important;
+      gap: .1rem .35rem;
+      border: 1px solid #e5e7eb !important;
+      border-radius: 10px !important;
+      padding: .65rem .75rem !important;
+      margin-bottom: .55rem !important;
+      background: #fff !important;
+    }
+    .payment-list-dense table.table tbody td {
+      border: 0 !important;
+      padding: .08rem .1rem !important;
+    }
+    .payment-list-dense td.col-sn {
+      order: 1 !important;
+      flex: 0 0 auto !important;
+      width: auto !important;
+      color: #9ca3af !important;
+      font-size: .72rem !important;
+      font-weight: 700 !important;
+    }
+    .payment-list-dense td.col-sn::before {
+      content: "#";
+    }
+    .payment-list-dense td.col-tenant {
+      order: 2 !important;
+      flex: 1 1 58% !important;
+      max-width: none !important;
+      font-weight: 700 !important;
+      font-size: .92rem !important;
+      white-space: normal !important;
+    }
+    .payment-list-dense td.col-source {
+      order: 3 !important;
+      flex: 0 0 auto !important;
+      margin-left: auto;
+      text-align: right;
+    }
+    .payment-list-dense td.col-property {
+      order: 4 !important;
+      flex: 1 1 55% !important;
+      max-width: none !important;
+      white-space: normal !important;
+      color: #6b7280;
+      font-size: .76rem !important;
+    }
+    .payment-list-dense td.col-amount {
+      order: 5 !important;
+      flex: 1 1 35% !important;
+      width: auto !important;
+      text-align: right !important;
+      font-weight: 700 !important;
+    }
+    .payment-list-dense td.col-date {
+      order: 6 !important;
+      flex: 1 1 100% !important;
+      width: auto !important;
+      color: #6b7280 !important;
+      font-size: .74rem !important;
+      margin-top: .15rem !important;
+    }
+    .payment-list-dense td.col-description {
+      order: 7 !important;
+      flex: 1 1 100% !important;
+      color: #6b7280;
+      font-size: .72rem !important;
+    }
+    .payment-list-dense td.col-actions {
+      order: 8 !important;
+      flex: 1 1 100% !important;
+      width: auto !important;
+      margin-top: .45rem !important;
+      padding-top: .5rem !important;
+      border-top: 1px dashed #eceef1 !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      display: flex;
+      flex-wrap: nowrap !important;
+      gap: .4rem !important;
+    }
+    .payment-list-dense td.col-actions .btn {
+      flex: 1 1 0;
+      width: auto;
+      height: 38px;
+      min-width: 0;
+      font-size: .78rem !important;
+    }
+    .payment-list-dense td.col-unit,
+    .payment-list-dense td.col-method,
+    .payment-list-dense td.col-lease-balance,
+    .payment-list-dense td.col-security-balance,
+    .payment-list-dense td.col-balance {
+      display: none !important;
+    }
+    .payment-list-dense .unit-sub,
+    .payment-list-dense .balance-sub {
+      display: block !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .payment-list-dense {
+      /* Mobile payment list tweak panel */
+      --payment-mobile-tenant-size: 2rem;
+      --payment-mobile-tenant-weight: 800;
+      --payment-mobile-sn-size: 1.72rem;
+      --payment-mobile-sn-weight: 700;
+      --payment-mobile-sn-width: 3.4rem;
+      --payment-mobile-sn-color: #101828;
+      --payment-mobile-property-size: 1.276rem;
+      --payment-mobile-unit-size: 1.76rem;
+      --payment-mobile-unit-weight: 700;
+      --payment-mobile-amount-size: 1.498rem;
+      --payment-mobile-amount-weight: 800;
+      --payment-mobile-amount-top: 1.65rem;
+      --payment-mobile-date-size: 1.78rem;
+      --payment-mobile-date-weight: 800;
+      --payment-mobile-date-color: #101828;
+      --payment-mobile-balance-size: 1.28rem;
+      --payment-mobile-balance-weight: 800;
+      --payment-mobile-balance-color: #101828;
+      --payment-mobile-split-size: .62rem;
+      --payment-mobile-split-weight: 500;
+      --payment-mobile-action-icon-size: 1.86rem;
+      --payment-mobile-action-height: 38px;
+    }
+    .table-responsive.payment-list-dense {
+      overflow-x: visible !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      position: relative;
+      gap: 0 .35rem !important;
+      padding: .78rem .78rem .7rem !important;
+      margin: 0 0 .62rem !important;
+      border-radius: 9px !important;
+      box-shadow: none !important;
+    }
+    .payment-list-dense table.table tbody td {
+      line-height: 1.25 !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+    .payment-list-dense td.col-sn {
+      order: 1 !important;
+      flex: 0 0 var(--payment-mobile-sn-width) !important;
+      width: var(--payment-mobile-sn-width) !important;
+      padding-top: .05rem !important;
+      color: var(--payment-mobile-sn-color) !important;
+      font-size: var(--payment-mobile-sn-size) !important;
+      font-weight: var(--payment-mobile-sn-weight) !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-tenant {
+      order: 2 !important;
+      flex: 1 1 calc(100% - var(--payment-mobile-sn-width) - .5rem) !important;
+      min-width: 0 !important;
+      padding-top: .05rem !important;
+      font-size: var(--payment-mobile-tenant-size) !important;
+      font-weight: 700 !important;
+      line-height: 1.15 !important;
+    }
+    .payment-list-dense td.col-tenant a {
+      color: #0d6efd !important;
+      font-weight: var(--payment-mobile-tenant-weight) !important;
+      max-width: 100%;
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
+      white-space: nowrap;
+    }
+    .payment-list-dense td.col-property {
+      order: 3 !important;
+      flex: 1 1 calc(62% - var(--payment-mobile-sn-width)) !important;
+      margin-left: var(--payment-mobile-sn-width) !important;
+      padding-top: .18rem !important;
+      color: #475569 !important;
+      font-size: var(--payment-mobile-property-size) !important;
+      font-weight: 400 !important;
+      line-height: 1.25 !important;
+    }
+    .payment-list-dense td.col-property > span[title] {
+      display: block !important;
+      margin-bottom: .12rem !important;
+    }
+    .payment-list-dense td.col-property .unit-sub,
+    .payment-list-dense td.col-property .subline.unit-sub {
+      color: #334155 !important;
+      display: block !important;
+      font-size: var(--payment-mobile-unit-size) !important;
+      font-weight: var(--payment-mobile-unit-weight) !important;
+      margin-top: .18rem !important;
+      line-height: 1.05 !important;
+    }
+    .payment-list-dense td.col-amount {
+      order: 4 !important;
+      flex: 0 0 34% !important;
+      margin-left: auto !important;
+      padding-top: var(--payment-mobile-amount-top) !important;
+      text-align: right !important;
+      font-size: var(--payment-mobile-amount-size) !important;
+      line-height: 1.1 !important;
+    }
+    .payment-list-dense td.col-amount .fw-semibold,
+    .payment-list-dense td.col-amount .text-success,
+    .payment-list-dense td.col-amount .text-danger {
+      font-size: var(--payment-mobile-amount-size) !important;
+      font-weight: var(--payment-mobile-amount-weight) !important;
+    }
+    .payment-list-dense td.col-amount .small {
+      display: inline-block !important;
+      margin-top: .22rem !important;
+      padding: 2px 6px !important;
+      border-radius: 4px !important;
+      background: #fef3c7 !important;
+      color: #92400e !important;
+      font-size: var(--payment-mobile-split-size) !important;
+      font-weight: var(--payment-mobile-split-weight) !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-date {
+      order: 5 !important;
+      flex: 1 1 100% !important;
+      display: flex !important;
+      align-items: baseline !important;
+      justify-content: space-between !important;
+      gap: .5rem !important;
+      margin-left: var(--payment-mobile-sn-width) !important;
+      padding-right: .1rem !important;
+      margin-top: .28rem !important;
+      color: var(--payment-mobile-date-color) !important;
+      font-size: var(--payment-mobile-date-size) !important;
+      font-weight: var(--payment-mobile-date-weight) !important;
+      line-height: 1.2 !important;
+    }
+    .payment-list-dense td.col-date .balance-sub {
+      display: inline !important;
+      margin-left: auto !important;
+      color: var(--payment-mobile-balance-color) !important;
+      font-size: var(--payment-mobile-balance-size) !important;
+      font-weight: var(--payment-mobile-balance-weight) !important;
+      text-align: right !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-description {
+      order: 6 !important;
+      flex: 1 1 100% !important;
+      margin-left: var(--payment-mobile-sn-width) !important;
+      margin-top: .18rem !important;
+      color: #64748b !important;
+      font-size: .68rem !important;
+      font-weight: 400 !important;
+    }
+    .payment-list-dense td.col-actions {
+      order: 7 !important;
+      flex: 1 1 100% !important;
+      margin-top: .62rem !important;
+      padding-top: .58rem !important;
+      border-top: 1px dashed #e5e7eb !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      width: 100% !important;
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(3.75rem, 1fr)) !important;
+      gap: .42rem !important;
+    }
+    .payment-list-dense td.col-actions .btn {
+      width: 100% !important;
+      height: var(--payment-mobile-action-height) !important;
+      min-width: 0 !important;
+      padding: 0 !important;
+      border-radius: 5px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    .payment-list-dense td.col-actions .btn i {
+      font-size: var(--payment-mobile-action-icon-size) !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .table-responsive.payment-list-dense {
+      overflow-x: visible !important;
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      width: 100% !important;
+      min-height: 0 !important;
+      align-items: flex-start !important;
+    }
+    .payment-list-dense table.table tbody td {
+      box-sizing: border-box !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      white-space: normal !important;
+    }
+    .payment-list-dense td.col-sn {
+      flex: 0 0 var(--payment-mobile-sn-width, 3.4rem) !important;
+      width: var(--payment-mobile-sn-width, 3.4rem) !important;
+      color: var(--payment-mobile-sn-color, #101828) !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-tenant {
+      flex: 1 1 calc(100% - var(--payment-mobile-sn-width, 3.4rem) - .5rem) !important;
+      min-width: 0 !important;
+    }
+    .payment-list-dense td.col-property {
+      flex: 1 1 calc(62% - var(--payment-mobile-sn-width, 3.4rem)) !important;
+      margin-left: var(--payment-mobile-sn-width, 3.4rem) !important;
+    }
+    .payment-list-dense td.col-amount {
+      flex: 0 0 34% !important;
+      margin-left: auto !important;
+      text-align: right !important;
+    }
+    .payment-list-dense td.col-date {
+      display: flex !important;
+      align-items: baseline !important;
+      justify-content: space-between !important;
+      gap: .5rem !important;
+      margin-left: var(--payment-mobile-sn-width, 3.4rem) !important;
+      color: var(--payment-mobile-date-color, #101828) !important;
+    }
+    .payment-list-dense td.col-date .balance-sub {
+      margin-left: auto !important;
+      color: var(--payment-mobile-balance-color, #101828) !important;
+      text-align: right !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-actions {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      width: 100% !important;
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      gap: .42rem !important;
+    }
+    .payment-list-dense td.col-actions .btn {
+      width: 100% !important;
+      height: var(--payment-mobile-action-height, 38px) !important;
+      min-width: 0 !important;
+      padding: 0 !important;
+      border-radius: 5px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: transparent !important;
+    }
+    .payment-list-dense td.col-actions .btn i {
+      font-size: var(--payment-mobile-action-icon-size, 1rem) !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .payment-list-container {
+      max-width: 100% !important;
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      display: grid !important;
+      grid-template-columns: var(--payment-mobile-sn-width, 3.4rem) minmax(0, 1fr) minmax(8rem, auto) !important;
+      gap: .28rem .35rem !important;
+      width: 100% !important;
+      padding: .78rem .78rem .72rem !important;
+      margin: 0 0 .62rem !important;
+    }
+    .payment-list-dense td.col-sn {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      align-self: baseline !important;
+      flex: none !important;
+      width: auto !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-tenant {
+      grid-column: 2 / 4 !important;
+      grid-row: 1 !important;
+      align-self: baseline !important;
+      flex: none !important;
+      width: auto !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-property {
+      grid-column: 2 !important;
+      grid-row: 2 !important;
+      align-self: start !important;
+      flex: none !important;
+      width: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-amount {
+      grid-column: 3 !important;
+      grid-row: 2 !important;
+      align-self: start !important;
+      flex: none !important;
+      width: auto !important;
+      margin: 0 !important;
+      padding: .12rem 0 0 !important;
+      text-align: right !important;
+    }
+    .payment-list-dense td.col-date {
+      grid-column: 2 / 4 !important;
+      grid-row: 3 !important;
+      flex: none !important;
+      width: auto !important;
+      margin: .18rem 0 0 !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-description {
+      grid-column: 2 / 4 !important;
+      grid-row: 4 !important;
+      flex: none !important;
+      width: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-actions {
+      grid-column: 1 / 4 !important;
+      grid-row: 5 !important;
+      flex: none !important;
+      width: auto !important;
+      margin: .58rem 0 0 !important;
+      padding: .58rem 0 0 !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      width: 100% !important;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{{ block.super }}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // jQuery handles (assumes jQuery already loaded in base.html)
+  const $form   = $('#payment-filter-form');
+  const $tenant = $('#id_tenant');
+  const $prop   = $('#id_property');
+  const $unit   = $('#id_unit');
+  const $range  = $('#id_date_range');
+  const $start  = $('#id_start_date');
+  const $end    = $('#id_end_date');
+
+  /* ---------- Tenant Select2 ---------- */
+  if ($tenant.length){
+    $tenant.select2({
+      placeholder: "Search tenant...",
+      allowClear: true,
+      width: 'style',
+      templateResult: function (data) {
+        if (!data.id) return data.text;
+        const full = data.text || '';
+        const short = full.length > 35 ? (full.slice(0, 35) + '…') : full;
+        return $('<span>').text(short).attr('title', full);
+      },
+      templateSelection: function (data) {
+        const full = data.text || '';
+        return full.length > 35 ? (full.slice(0, 35) + '…') : full;
+      }
+    });
+
+    $tenant.on('select2:open', function(){
+      setTimeout(function(){
+        const f = document.querySelector('.select2-container .select2-search__field');
+        if (f) f.focus();
+      }, 0);
+    });
+  }
+
+  /* ---------- Date preset helpers ---------- */
+  function formatDate(date){
+    const y = date.getFullYear();
+    const m = String(date.getMonth()+1).padStart(2,'0');
+    const d = String(date.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function setDateRangePreset(){
+    const p = $range.val();
+    let s = '', e = '';
+    const t = new Date();
+    if (p === 'today'){ s=e=formatDate(t); }
+    else if (p === 'yesterday'){ const y=new Date(t); y.setDate(y.getDate()-1); s=e=formatDate(y); }
+    else if (p === 'this_week'){ const f=new Date(t); f.setDate(f.getDate()-f.getDay()); const l=new Date(t); l.setDate(l.getDate()+(6-l.getDay())); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'last_week'){ const f=new Date(t); f.setDate(f.getDate()-f.getDay()-7); const l=new Date(t); l.setDate(l.getDate()+(6-l.getDay())-7); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'this_month'){ const f=new Date(t.getFullYear(), t.getMonth(), 1); const l=new Date(t.getFullYear(), t.getMonth()+1, 0); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'last_month'){ const f=new Date(t.getFullYear(), t.getMonth()-1, 1); const l=new Date(t.getFullYear(), t.getMonth(), 0); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'this_year'){ const f=new Date(t.getFullYear(),0,1); const l=new Date(t.getFullYear(),11,31); s=formatDate(f); e=formatDate(l); }
+    else if (p === 'all'){ s=''; e=''; }
+    $start.val(s); $end.val(e);
+  }
+
+  function hasAnyFilter(){
+    return !!(
+      $prop.val() ||
+      $unit.val() ||
+      $tenant.val() ||
+      ($range.val() && $range.val() !== '') ||
+      $start.val() ||
+      $end.val()
+    );
+  }
+
+  /* ---------- Total (AJAX optional) ---------- */
+  async function updateTotalAmountAjax(){
+    const card = document.getElementById('total-card');
+    const totalEl = document.querySelector('.total-amount-display');
+    if (!card || !totalEl) return;
+
+    if (!hasAnyFilter()){
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+
+    const params = new URLSearchParams(new FormData($form[0]));
+    params.set('ajax', '1');
+    const url = window.location.pathname + '?' + params.toString();
+
+    try{
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const amt = Number(data.total_amount || 0);
+      totalEl.textContent = '{{ CURRENCY_SYMBOL }} ' + amt.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } catch(e){
+      console.log('Total AJAX failed:', e);
+    }
+  }
+
+  /* ---------- Filter behaviors (submit page + update total) ---------- */
+
+  // clearing rules
+  $tenant.on('change', function(){
+    if ($(this).val()){
+      $prop.val(''); $unit.val(''); 
+    }
+  });
+  $prop.on('change', function(){ $tenant.val('').trigger('change');  });
+  $unit.on('change', function(){ $tenant.val('').trigger('change');  });
+  $range.on('change', function(){
+    if ($(this).val()){
+      
+      setDateRangePreset();
+    }
+  });
+
+  // date inputs: clear preset when user manually picks
+  let dateTimeout;
+  $start.add($end).on('change input', function(){
+    clearTimeout(dateTimeout);
+    dateTimeout = setTimeout(function(){
+      if ($start.val() || $end.val()){
+        $range.val('');
+      }
+    }, 250);
+  });
+
+  function hasDateFilter(){
+    return !!(($range.val() && $range.val() !== '') || $start.val() || $end.val());
+    }
+  // On any change: update total (optional) then submit (real GET)
+  $form.on('change', 'select,input', function(){
+    updateTotalAmountAjax();
+    $form[0].submit();
+  });
+
+  // initial (if already filtered, show/update)
+  if (hasAnyFilter()){
+    updateTotalAmountAjax();
+  }
+
+  /* ---------- Mobile enhancer: add Unit under Property; clamp support ---------- */
+  (function(){
+    const MQ = window.matchMedia('(max-width: 767px)');
+    const TABLE_SEL = 'table.table';
+
+    function ensurePropBox(td){
+      if (!td) return;
+      if (td.querySelector('.prop-box .prop-name')) return;
+
+      let nameEl = td.querySelector('a, span, div');
+      if (!nameEl) {
+        const tn = Array.from(td.childNodes).find(n => n.nodeType===3 && n.nodeValue.trim().length);
+        if (tn){
+          nameEl = document.createElement('span');
+          nameEl.textContent = tn.nodeValue.trim();
+          tn.parentNode.insertBefore(nameEl, tn);
+          tn.nodeValue = '';
+        }
+      }
+      if (!nameEl) return;
+
+      const box = document.createElement('div');
+      box.className = 'prop-box';
+      const propName = document.createElement('span');
+      propName.className = 'prop-name';
+      propName.appendChild(nameEl);
+      td.insertBefore(box, td.firstChild);
+      box.appendChild(propName);
+    }
+
+    function makeSub(label, value, extraClass){
+      const v = (value || '').trim(); if (!v) return null;
+      const wrap = document.createElement('div');
+      wrap.className = `subline mt-1 text-muted ${extraClass||''}`;
+      wrap.style.fontSize = '.58rem';
+      wrap.style.lineHeight = '1.1';
+      wrap.innerHTML = label
+        ? `<strong>${label}</strong> <span class="ellipsis" title="${v}">${v}</span>`
+        : `<span class="ellipsis" title="${v}">${v}</span>`;
+      return wrap;
+    }
+
+    function enhance(){
+      if (!MQ.matches) return;
+      document.querySelectorAll(TABLE_SEL).forEach(table=>{
+        table.querySelectorAll('tbody tr').forEach(tr=>{
+          if (tr.dataset.enhanced === '1') return;
+
+          const get = sel => tr.querySelector(sel);
+          const tdProperty = get('td.col-property');
+          const tdUnit     = get('td.col-unit');
+          const tdAmount   = get('td.col-amount');
+          const tdMethod   = get('td.col-method');
+          const tdDate     = get('td.col-date');
+          const tdBalance  = get('td.col-balance');
+
+          ensurePropBox(tdProperty);
+
+          tdProperty?.querySelectorAll('.subline.unit-sub').forEach(n=>n.remove());
+          tdAmount?.querySelectorAll('.subline.method-sub').forEach(n=>n.remove());
+          tdDate?.querySelectorAll('.subline.balance-sub').forEach(n=>n.remove());
+
+          if (tdProperty && tdUnit){
+            const s = makeSub('', tdUnit.textContent, 'unit-sub');
+            if (s) tdProperty.appendChild(s);
+          }
+          if (tdAmount && tdMethod){
+            const s = makeSub('', tdMethod.textContent, 'method-sub');
+            if (s) tdAmount.appendChild(s);
+          }
+          if (tdDate && tdBalance){
+            const s = makeSub('Bal:', tdBalance.textContent, 'balance-sub');
+            if (s) tdDate.appendChild(s);
+          }
+
+          tr.dataset.enhanced = '1';
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enhance); else enhance();
+    window.addEventListener('load', enhance);
+    MQ.addEventListener('change', function(){
+      document.querySelectorAll('tbody tr').forEach(tr=>{ delete tr.dataset.enhanced; });
+      enhance();
+    });
+  })();
+
+});
+</script>
+
+{# ✅ WhatsApp universal handler (unchanged) #}
+<script>
+  const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+
+  function paymentListCsrfToken() {
+    const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : "";
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll("[data-whatsapp-api-toggle]").forEach(function(input) {
+      const key = "tms:" + input.dataset.whatsappApiToggle;
+      input.checked = localStorage.getItem(key) === "1";
+      input.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      input.addEventListener("change", function(event) {
+        event.preventDefault();
+        localStorage.setItem(key, input.checked ? "1" : "0");
+      });
+    });
+  });
+
+  function normalizePhone(rawPhone, defaultCountryCodeRaw) {
+    if (!rawPhone) return null;
+    let raw = String(rawPhone).trim();
+    let def = (defaultCountryCodeRaw || "").trim();
+    if (def.startsWith("+")) def = def.slice(1);
+
+    if (raw.startsWith("+")) {
+      const digits = raw.replace(/[^\d]/g, "");
+      return digits || null;
+    }
+    let cleaned = raw.replace(/[^\d]/g, "");
+    if (!cleaned) return null;
+    if (cleaned.startsWith("00")) return cleaned.slice(2);
+    if (def && cleaned.startsWith(def)) return cleaned;
+    if (def && cleaned.startsWith("0")) return def + cleaned.slice(1);
+    return def ? def + cleaned : cleaned;
+  }
+
+  function formatMoneyValue(num) {
+    return (parseFloat(num) || 0).toLocaleString("en-PK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function paymentWhatsAppApiUrl(objectId) {
+    return window.PAYMENT_WHATSAPP_API_URL_TEMPLATE.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
+  }
+
+  function showPaymentToast(message, variant) {
+    let wrap = document.getElementById("paymentToastContainer");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = "paymentToastContainer";
+      wrap.className = "position-fixed top-0 end-0 p-3";
+      wrap.style.zIndex = "1080";
+      document.body.appendChild(wrap);
+    }
+    const toast = document.createElement("div");
+    toast.className = "alert alert-" + (variant || "success") + " shadow-sm mb-2 py-2 px-3 small";
+    toast.setAttribute("role", "status");
+    toast.textContent = message;
+    wrap.appendChild(toast);
+    setTimeout(() => {
+      toast.style.transition = "opacity .25s ease";
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-wa-receipt");
+    if (!btn) return;
+    e.preventDefault();
+
+    try {
+      if (document.getElementById("payment-use-whatsapp-api")?.checked && btn.dataset.objectId) {
+        const apiUrl = paymentWhatsAppApiUrl(btn.dataset.objectId);
+        const apiRes = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "X-CSRFToken": paymentListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin"
+        });
+        let apiPayload = {};
+        try { apiPayload = await apiRes.json(); } catch (_) { apiPayload = {}; }
+        if (!apiRes.ok || apiPayload.ok === false) throw new Error(apiPayload.error || "API send failed");
+        showPaymentToast("Receipt sent via WhatsApp API.");
+        return;
+      }
+
+      const url = btn.dataset.waUrl;
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error("Failed to fetch receipt payload");
+
+      const data = await res.json();
+
+      const phone = normalizePhone(data.phone, DEFAULT_COUNTRY_CODE);
+      if (!phone) throw new Error("Invalid phone number");
+
+      let message = data.message || "";
+
+      if (!message) {
+        const headingMap = {
+          "PAYMENT":  "*Security Deposit payment received*",
+          "REFUND":   "*Security Deposit refunded*",
+          "DAMAGE":   "*Security Deposit used for damages*",
+          "ADJUST":   "*Security Deposit adjusted*",
+          "REQUIRED": "*Security Deposit requirement recorded*",
+        };
+        const heading = headingMap[data.type] || "*Security Deposit update*";
+
+        const leaseBal = parseFloat(data.leaseBalance || 0);
+        const secBal   = parseFloat(data.secBalToCollect || 0);
+        const totalBal = leaseBal + secBal;
+
+        const lines = [
+          `Dear ${data.tenantName || "Customer"},`,
+          `${heading} for ${data.propertyName || ""}.`,
+          `Unit: ${data.unitNumber || ""}`,
+          `Period: ${data.periodStart || ""} – ${data.periodEnd || ""}`,
+          `Security Deposit: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(data.securityRequired || 0)} (${data.securityStatus || ""})`,
+        ];
+
+        if (secBal > 0) lines.push(`Security Deposit Balance: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(secBal)}`);
+
+        lines.push(
+          `Date: ${data.tranDate || ""}`,
+          `*Security Amount: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(data.txAmount || 0)}*`,
+          `Lease Balance: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(leaseBal)}`,
+          `*Total Balance: {{ CURRENCY_SYMBOL }} ${formatMoneyValue(totalBal)}*`,
+          ``,
+          `Thank you!`
+        );
+
+        message = lines.join("\n");
+      }
+
+      const wa = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      window.open(wa, "_blank");
+    } catch (err) {
+      alert("Could not open WhatsApp: " + (err.message || err));
+    }
+  });
+</script>
+
+
+<script>
+    // ==========================
+    // Total card (AJAX)
+    // ==========================
+    (function(){
+      function hasDateFilters(){
+        const url = new URL(window.location.href);
+        return !!(url.searchParams.get("date_range") ||
+                  url.searchParams.get("start_date") ||
+                  url.searchParams.get("end_date"));
+      }
+
+      function fetchTotal(){
+        if (!hasDateFilters()) return;
+
+        const url = new URL(window.location.href);
+        url.searchParams.set("ajax", "1");
+
+        fetch(url.toString())
+          .then(r => r.json())
+          .then(data => {
+            const card = document.getElementById("total-card");
+            const out  = document.querySelector(".total-amount-display");
+            if (!card || !out) return;
+
+            card.style.display = "";
+            out.textContent = "{{ CURRENCY_SYMBOL|escapejs }} " + Number(data.total_amount || 0).toLocaleString('en-PK', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+          })
+          .catch(() => {});
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchTotal);
+    })();
+  </script>
+
+<script>
+const PAYMENT_LIST_PAYMENT_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'payment' 0 'receipt' %}";
+
+function paymentListCsrfToken() {
+  const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+  return m ? decodeURIComponent(m[2]) : "";
+}
+
+function paymentListPaymentApiUrl(objectId) {
+  return PAYMENT_LIST_PAYMENT_WHATSAPP_API_URL_TEMPLATE.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
+}
+
+function paymentListWhatsAppApiErrorMessage(payload, fallback) {
+  const debug = (payload && payload.debug) || {};
+  const lines = [payload?.error || fallback || "API send failed"];
+  if (debug.log_id) lines.push("Log ID: " + debug.log_id);
+  if (debug.template_name) lines.push("Template: " + debug.template_name);
+  if (debug.language_code) lines.push("Language: " + debug.language_code);
+  if (debug.body_parameter_count !== undefined) lines.push("Body params: " + debug.body_parameter_count);
+  if (debug.body_parameters && debug.body_parameters.length) lines.push("Values: " + debug.body_parameters.join(" | "));
+  if (debug.button_parameter) lines.push("Button: " + debug.button_parameter);
+  if (debug.meta_error_code) lines.push("Meta code: " + debug.meta_error_code);
+  if (debug.meta_error_subcode) lines.push("Meta subcode: " + debug.meta_error_subcode);
+  if (debug.meta_error_details) lines.push("Meta detail: " + debug.meta_error_details);
+  if (debug.meta_fbtrace_id) lines.push("fbtrace_id: " + debug.meta_fbtrace_id);
+  return lines.join("\n");
+}
+
+function showPaymentListToast(message, variant) {
+  let wrap = document.getElementById("paymentListToastContainer");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "paymentListToastContainer";
+    wrap.className = "position-fixed top-0 end-0 p-3";
+    wrap.style.zIndex = "1080";
+    document.body.appendChild(wrap);
+  }
+  const toast = document.createElement("div");
+  toast.className = "alert alert-" + (variant || "success") + " shadow-sm mb-2 py-2 px-3 small";
+  toast.setAttribute("role", "status");
+  toast.textContent = message;
+  wrap.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = "opacity .25s ease";
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+function showPaymentListWhatsAppApiMessage(title, message) {
+  let modalEl = document.getElementById("paymentListWhatsappApiMessageModal");
+  if (!modalEl) {
+    modalEl = document.createElement("div");
+    modalEl.id = "paymentListWhatsappApiMessageModal";
+    modalEl.className = "modal fade";
+    modalEl.tabIndex = -1;
+    modalEl.innerHTML = `
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h5 class="modal-title h6 mb-0"></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <textarea class="form-control small" rows="12" readonly></textarea>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary js-copy-message">Copy</button>
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modalEl);
+    modalEl.querySelector(".js-copy-message").addEventListener("click", async function() {
+      const textArea = modalEl.querySelector("textarea");
+      textArea.select();
+      try {
+        await navigator.clipboard.writeText(textArea.value);
+      } catch (_) {
+        document.execCommand("copy");
+      }
+      this.textContent = "Copied";
+      setTimeout(() => { this.textContent = "Copy"; }, 1200);
+    });
+  }
+  modalEl.querySelector(".modal-title").textContent = title;
+  modalEl.querySelector("textarea").value = message;
+  if (window.bootstrap && bootstrap.Modal) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  } else {
+    console.error(message);
+    showPaymentListToast(message.split("\n")[0] || title, "danger");
+  }
+}
+
+document.addEventListener("click", async function(e){
+  const a = e.target.closest(".btn-wa-receipt");
+  if (!a) return;
+
+  e.preventDefault();
+  e.stopImmediatePropagation();
+
+  const apiUrl = a.dataset.waUrl;
+  if (!apiUrl) return;
+
+  try {
+    const useApi = document.getElementById("payment-use-whatsapp-api")?.checked;
+    const objectId = a.dataset.apiObjectId;
+    if (useApi && objectId) {
+      let apiResponse;
+      let apiData = {};
+      try {
+        apiResponse = await fetch(paymentListPaymentApiUrl(objectId), {
+          method: "POST",
+          headers: { "X-CSRFToken": paymentListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin"
+        });
+        apiData = await apiResponse.json().catch(() => ({}));
+      } catch (networkErr) {
+        showPaymentListWhatsAppApiMessage("WhatsApp API Error", "Failed to send via WhatsApp API:\n" + networkErr.message);
+        return;
+      }
+      if (!apiResponse.ok || apiData.ok === false) {
+        showPaymentListWhatsAppApiMessage("WhatsApp API Error", "Failed to send via WhatsApp API:\n" + paymentListWhatsAppApiErrorMessage(apiData, `HTTP ${apiResponse.status}`));
+        return;
+      }
+      showPaymentListToast("Receipt sent via WhatsApp API.");
+      return;
+    }
+    if (useApi && !objectId) {
+      alert("This payment list row does not have a direct WhatsApp API send yet. Opening WhatsApp instead.");
+    }
+
+    const r = await fetch(apiUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+    const data = await r.json();
+
+    const phoneRaw = (data.phone || "").toString().trim();
+    const msg = (data.message || "").toString();
+
+    if (!phoneRaw) { alert("No phone number."); return; }
+
+    // normalize phone for wa.me (remove non-digits, drop leading 0, add 92 if needed)
+    let digits = phoneRaw.replace(/\D/g,'');
+    if (digits.startsWith("0")) digits = "92" + digits.slice(1);
+    if (!digits.startsWith("92") && digits.length <= 12) digits = "92" + digits; // your default Pakistan behavior
+
+    const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, "_blank");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to open WhatsApp: " + err.message);
+  }
+}, true);
+</script>
+<script>
+  document.addEventListener("click", async function(e){
+    const btn = e.target.closest(".btn-split-edit");
+    if(!btn) return;
+
+    const allocId = btn.dataset.allocationId;
+    const modalEl = document.getElementById("splitModal");
+    const form = document.getElementById("splitForm");
+
+    form.querySelector("[name=payment_detail_id]").value = allocId;
+
+    // Prefill
+    const url = new URL("{% url 'payments:payment_detail_prefill_api' %}", window.location.origin);
+    url.searchParams.set("payment_detail_id", allocId);
+
+    const r = await fetch(url.toString());
+    const data = await r.json();
+
+    form.querySelector("[name=lease_amount]").value = data.lease_amount || "0.00";
+    form.querySelector("[name=security_amount]").value = data.security_amount || "0.00";
+    form.querySelector("[name=security_type]").value = data.security_type || "PAYMENT";
+
+    new bootstrap.Modal(modalEl).show();
+  });
+
+  document.addEventListener("submit", function(e){
+    if(e.target.id !== "splitForm") return;
+    e.preventDefault();
+
+    fetch("{% url 'payments:payment_detail_update_api' %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value },
+      body: new FormData(e.target)
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(()=>null);
+        alert(err?.error || "Failed to save split.");
+        return;
+      }
+      location.reload();
+    });
+  });
+</script>
 {% endblock %}

@@ -3,10 +3,10 @@ import django_tables2 as tables
 from django.utils.html import format_html
 from django.urls import reverse
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 
 
-class AllocationTable(tables.Table):
+class PaymentDetailTable(tables.Table):
     sn = tables.Column(empty_values=(), orderable=False)
 
     reference = tables.Column(empty_values=(), verbose_name="Ref", orderable=False)
@@ -35,8 +35,9 @@ class AllocationTable(tables.Table):
         return record.payment.payment_date
 
     def render_actions(self, record):
-        view = reverse("payments:allocation_detail", args=[record.id])
-        pdf = reverse("payments:allocation_pdf", args=[record.id])
+        payment_id = record.payment_id
+        view = reverse("payments:payment_detail", args=[payment_id])
+        pdf = reverse("payments:payment_pdf", args=[payment_id])
         return format_html(
             '<a class="btn btn-sm btn-primary" href="{}">View</a> '
             '<a class="btn btn-sm btn-secondary" href="{}">PDF</a>',
@@ -52,3 +53,6 @@ class AllocationTable(tables.Table):
             "actions"
         )
         export_formats = ["csv", "xlsx"]
+
+
+AllocationTable = PaymentDetailTable

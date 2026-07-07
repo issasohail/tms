@@ -110,7 +110,7 @@ class PaymentTable(tables.Table):
 
     def render_amount(self, value, record):
         amount = value
-        allocation = getattr(record, "allocation", None)
+        allocation = getattr(record, "detail", None)
         if (getattr(allocation, "security_type", "") or "").upper() == "REFUND":
             amount = -amount
         return format_money(amount, GlobalSettings.get_solo())
@@ -125,7 +125,7 @@ class PaymentTable(tables.Table):
 
     def render_actions(self, record):
         return render_to_string('components/action_buttons.html', {
-            'view_url': reverse('payments:allocation_detail', args=[record.pk]),
+            'view_url': reverse('payments:payment_detail', args=[record.pk]),
             'edit_url': reverse('payments:payment_update', args=[record.pk]),
             'delete_url': reverse('payments:payment_delete', args=[record.pk]),
             'make_payment_url': reverse('payments:payment_create') + f'?lease={record.lease.pk}',
@@ -147,7 +147,7 @@ class PaymentTable(tables.Table):
 
     def render_description(self, value, record):
         # Decide where description comes from
-        # If your CashLedgerRow carries it:
+        # If the payment list row carries it:
         full = str(getattr(record, "description", "") or "")
         short = _truncate(full, 12)
         return format_html('<span title="{}">{}</span>', full, short)

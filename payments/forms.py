@@ -1,7 +1,7 @@
 # payments/forms.py
 from django import forms
 from django.apps import apps
-from .models import Payment, PaymentAllocation
+from .models import Payment, PaymentDetail
 from properties.models import Property, Unit
 from tenants.models import Tenant
 from django.db.models import Case, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value, When
@@ -29,7 +29,7 @@ def optimize_lease_dropdown_queryset(qs):
             total=Coalesce(
                 Sum(
                     Case(
-                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        When(detail__isnull=False, then=F("detail__lease_amount")),
                         default=F("amount"),
                         output_field=money_field,
                     )
@@ -255,7 +255,7 @@ class PaymentForm(forms.ModelForm):
 
         return lease_qs.order_by('tenant__first_name', 'tenant__last_name')
 
-class PaymentAllocationForm(forms.ModelForm):
+class PaymentDetailForm(forms.ModelForm):
     MODE_CHOICES = [
         ("LEASE", "Lease"),
         ("LEASE_REFUND", "Lease Refund"),
@@ -272,7 +272,7 @@ class PaymentAllocationForm(forms.ModelForm):
     )
 
     class Meta:
-        model = PaymentAllocation
+        model = PaymentDetail
         fields = ["allocation_mode", "lease_amount", "security_amount", "security_type"]
         widgets = {
             "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),

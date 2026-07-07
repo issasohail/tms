@@ -1,42 +1,45 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
+{% load humanize money_tags %}
 
 {% block title %}Delete Payment{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-3">
   <div class="card border-danger">
-    <div class="card-header bg-danger text-white">
-      <h5 class="mb-0">Confirm Delete</h5>
+    <div class="card-header bg-danger text-white py-2">
+      <strong>Confirm Payment Delete</strong>
     </div>
-    <div class="card-body">
-      <p class="mb-3">Are you sure you want to delete this payment?</p>
-      <div class="alert alert-warning small">
-        This will remove the payment, reverse its allocation, and remove linked security deposit movements.
-        Invoices are not edited directly; lease balances recalculate from remaining invoices and payments.
-      </div>
 
-      <ul class="list-group mb-3">
-        <li class="list-group-item"><strong>Payment ID:</strong> {{ object.id }}</li>
-        <li class="list-group-item"><strong>Tenant:</strong> {{ object.lease.tenant.get_full_name }}</li>
-        <li class="list-group-item"><strong>Property:</strong> {{ object.lease.unit.property.property_name }} - Unit {{ object.lease.unit.unit_number }}</li>
-        <li class="list-group-item"><strong>Amount:</strong> {{ object.amount|floatformat:2 }}</li>
-        <li class="list-group-item"><strong>Date:</strong> {{ object.payment_date }}</li>
-        <li class="list-group-item"><strong>Method:</strong> {{ object.payment_method }}</li>
-        {% if allocation %}
-          <li class="list-group-item"><strong>Lease Allocation:</strong> {{ allocation.lease_amount|floatformat:2 }}</li>
-          <li class="list-group-item"><strong>Security Allocation:</strong> {{ allocation.security_amount|floatformat:2 }}</li>
+    <div class="card-body">
+      <p class="mb-2">
+        You are about to delete this payment:
+      </p>
+
+      <ul class="mb-3">
+        <li><strong>Payment Ref:</strong> {{ payment.reference_number|default:payment.id }}</li>
+        <li><strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}</li>
+        <li><strong>Tenant:</strong> {{ payment.lease.tenant.get_full_name }}</li>
+        <li><strong>Unit:</strong> {{ payment.lease.unit.property.property_name }} - {{ payment.lease.unit.unit_number }}</li>
+        <li><strong>Payment Total:</strong> {{ payment.amount|money:2 }}</li>
+        {% if payment_detail %}
+          <li><strong>Lease Portion:</strong> {{ payment_detail.lease_amount|money:2 }}</li>
+          <li><strong>Security Portion:</strong> {{ payment_detail.security_amount|money:2 }}</li>
         {% endif %}
-        <li class="list-group-item"><strong>Security Movements:</strong> {{ security_movements.count }}</li>
       </ul>
 
-      <form method="post">
+      <div class="alert alert-warning py-2 mb-3">
+        This will also remove the linked payment detail and Security Deposit ledger entry (if any).
+      </div>
+
+      <form method="post" class="d-flex gap-2">
         {% csrf_token %}
-        <div class="form-check mb-3">
-          <input type="checkbox" name="confirm_delete" value="yes" class="form-check-input" id="confirm_delete" required>
-          <label for="confirm_delete" class="form-check-label">I understand this destructive action.</label>
-        </div>
-        <button type="submit" class="btn btn-danger">Yes, Delete</button>
-        <a href="{% url 'payments:cash_ledger' %}" class="btn btn-secondary ms-2">Cancel</a>
+        <button type="submit" class="btn btn-danger">
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete Payment
+        </button>
+
+        <a href="{% url 'payments:payment_detail' payment.pk %}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left me-1"></i> Cancel
+        </a>
       </form>
     </div>
   </div>

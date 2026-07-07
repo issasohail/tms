@@ -1,9 +1,10 @@
 # payments/views/api.py
 from django.http import JsonResponse
-from payments.models import PaymentAllocation
+from django.shortcuts import get_object_or_404
+from payments.models import PaymentDetail
 
 def api_allocation_receipt_whatsapp(request, pk):
-    alloc = get_object_or_404(PaymentAllocation, pk=pk)
+    alloc = get_object_or_404(PaymentDetail, pk=pk)
     payment = alloc.payment
     lease = payment.lease
     tenant = lease.tenant
@@ -24,5 +25,5 @@ Thank you!
     return JsonResponse({
         "phone": phone,
         "message": message,
-        "allocation_id": alloc.id
+        "payment_detail_id": alloc.id
     })

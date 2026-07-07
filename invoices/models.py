@@ -212,11 +212,12 @@ from django.utils import timezone
 
 
 class SecurityDepositTransaction(models.Model):
-    allocation = models.OneToOneField(
-        "payments.PaymentAllocation",
+    payment_detail = models.OneToOneField(
+        "payments.PaymentDetail",
         null=True, blank=True,
         on_delete=models.SET_NULL,
-        related_name="security_amt"
+        related_name="security_amt",
+        db_column="allocation_id",
     )
 
     TYPE_CHOICES = [

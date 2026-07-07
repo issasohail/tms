@@ -457,7 +457,7 @@ class Lease(models.Model):
             return list(self._prefetched_objects_cache["payments"])
         from payments.models import Payment
 
-        return list(Payment.objects.filter(lease=self).select_related("allocation"))
+        return list(Payment.objects.filter(lease=self).select_related("detail"))
 
     @cached_property
     def financial_summary(self):
@@ -466,7 +466,7 @@ class Lease(models.Model):
 
         payments_total = zero
         for payment in self.payments_qs:
-            allocation = getattr(payment, "allocation", None)
+            allocation = getattr(payment, "detail", None)
             if allocation:
                 payments_total += allocation.lease_amount or zero
             else:
@@ -495,7 +495,7 @@ class Lease(models.Model):
         return list(
             SecurityDepositTransaction.objects.filter(lease=self).select_related(
                 "payment",
-                "allocation",
+                "detail",
             )
         )
 
@@ -848,7 +848,7 @@ def total_payments(self):
         total=Coalesce(
             Sum(
                 Case(
-                    When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                    When(detail__isnull=False, then=F("detail__lease_amount")),
                     default=F("amount"),
                     output_field=DecimalField(max_digits=12, decimal_places=2),
                 )

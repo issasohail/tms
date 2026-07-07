@@ -1,210 +1,35 @@
-{% load humanize money_tags %}
-{% with lease=payment.lease tenant=payment.lease.tenant unit=payment.lease.unit prop=payment.lease.unit.property allocation=payment.allocation %}
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    @page { size: 500px 700px; margin: 12px; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: #ffffff;
-      color: #111827;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 12px;
-      line-height: 1.25;
-    }
-    .receipt-card {
-      width: 470px;
-      margin: 0 auto;
-      padding: 12px;
-      background: #fff;
-      border: 1px solid #d7dde5;
-      border-radius: 8px;
-    }
-    .receipt-top {
-      display: table;
-      width: 100%;
-      margin-bottom: 9px;
-      border-bottom: 1px solid #d9dee6;
-      padding-bottom: 8px;
-    }
-    .receipt-title,
-    .receipt-date {
-      display: table-cell;
-      vertical-align: top;
-      width: 50%;
-    }
-    .receipt-title h1 {
-      margin: 0 0 3px;
-      font-size: 18px;
-      line-height: 1.05;
-      letter-spacing: 0;
-    }
-    .receipt-ref {
-      color: #4b5563;
-      font-size: 11px;
-    }
-    .receipt-date {
-      text-align: right;
-      white-space: nowrap;
-      font-size: 13px;
-    }
-    .receipt-date .method {
-      margin-top: 4px;
-      font-size: 11px;
-    }
-    .meta-box {
-      border: 1px solid #d7dde5;
-      border-radius: 6px;
-      padding: 8px;
-      margin-bottom: 8px;
-    }
-    .meta-grid {
-      display: table;
-      width: 100%;
-    }
-    .meta-col {
-      display: table-cell;
-      width: 50%;
-      vertical-align: top;
-      padding-right: 8px;
-      font-size: 11px;
-    }
-    .meta-col p {
-      margin: 0 0 3px;
-    }
-    .text-success { color: #059669; }
-    .text-danger { color: #dc2626; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 8px;
-    }
-    th {
-      background: #f3f4f6;
-      color: #4b5563;
-      font-weight: 700;
-      text-transform: uppercase;
-      font-size: 11px;
-    }
-    th, td {
-      padding: 6px 7px;
-      border-bottom: 1px solid #dfe3ea;
-    }
-    .amount {
-      text-align: right;
-      white-space: nowrap;
-    }
-    .total-row {
-      display: table;
-      width: 100%;
-      border-top: 1px solid #d9dee6;
-      padding-top: 8px;
-      margin-top: 2px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .total-label,
-    .total-amount {
-      display: table-cell;
-      width: 50%;
-      text-align: right;
-    }
-    .footer {
-      margin-top: 12px;
-      text-align: center;
-      color: #4b5563;
-      font-size: 11px;
-    }
-  </style>
-</head>
-<body>
-  <div class="receipt-card">
-    <div class="receipt-top">
-      <div class="receipt-title">
-        <h1>
-          {% if allocation and allocation.lease_amount < 0 %}LEASE REFUND RECEIPT{% elif allocation and allocation.security_type == "REFUND" %}SECURITY REFUND RECEIPT{% elif allocation %}PAYMENT ALLOCATION RECEIPT{% else %}PAYMENT RECEIPT{% endif %}
-        </h1>
-        <div class="receipt-ref">#{{ payment.reference_number|default:"-" }}</div>
-      </div>
-      <div class="receipt-date">
-        <strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}
-        <div class="method"><strong>Method:</strong> {{ payment.payment_method.name|default:"" }}</div>
-      </div>
-    </div>
+{% load money_tags %}
+<h3>Payment Receipt (Split)</h3>
+<hr>
 
-    <div class="meta-box">
-      <div class="meta-grid">
-        <div class="meta-col">
-          <p><strong>From:</strong> {{ tenant.first_name }} {{ tenant.last_name }}</p>
-          <p><strong>Phone:</strong> {{ tenant.phone|default:"-" }}</p>
-          <p>
-            <strong>Security:</strong> {{ lease.security_deposit|money:2 }}
-            <span class="{% if lease.security_deposit_paid %}text-success{% else %}text-danger{% endif %}">
-              ({% if lease.security_deposit_paid %}Paid{% else %}Pending{% endif %})
-            </span>
-          </p>
-          <p><strong>New Bal:</strong> {{ lease.get_balance|money:2 }}</p>
-        </div>
-        <div class="meta-col">
-          <p><strong>Property:</strong> {{ prop.property_name }}</p>
-          <p><strong>Unit:</strong> {{ unit.unit_number }}</p>
-          <p><strong>Lease:</strong> {{ lease.start_date|date:"M d, Y" }} - {{ lease.end_date|date:"M d, Y" }}</p>
-        </div>
-      </div>
-    </div>
+<p><strong>Tenant:</strong>
+  {{ payment_detail.payment.lease.tenant.first_name }}
+  {{ payment_detail.payment.lease.tenant.last_name }}
+</p>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th>Payment Mode</th>
-          <th class="amount">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if allocation %}
-          {% if allocation.lease_amount %}
-          <tr>
-            <td>{% if allocation.lease_amount < 0 %}Lease Refund{% else %}Lease Portion{% endif %}</td>
-            <td>{{ payment.payment_method.name|default:"" }}</td>
-            <td class="amount">{{ allocation.lease_amount|money:0 }}</td>
-          </tr>
-          {% endif %}
-          {% if allocation.security_amount %}
-          <tr>
-            <td>{% if allocation.security_type == "REFUND" %}Security Refund{% else %}Security Portion{% endif %}</td>
-            <td>{{ payment.payment_method.name|default:"" }}</td>
-            <td class="amount {% if allocation.security_type == "REFUND" %}text-danger{% endif %}">{% if allocation.security_type == "REFUND" %}-{% endif %}{{ allocation.security_amount|money:0 }}</td>
-          </tr>
-          {% endif %}
-        {% else %}
-          <tr>
-            <td>Payment</td>
-            <td>{{ payment.payment_method.name|default:"" }}</td>
-            <td class="amount">{{ payment.amount|money:2 }}</td>
-          </tr>
-        {% endif %}
-        {% if payment.notes %}
-        <tr>
-          <td colspan="3"><strong>Notes:</strong> {{ payment.notes }}</td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
+<p><strong>Date:</strong> {{ payment_detail.payment.payment_date }}</p>
 
-    <div class="total-row">
-      <div class="total-label">{% if allocation and allocation.lease_amount < 0 or allocation and allocation.security_type == "REFUND" %}Amount Refunded:{% else %}Amount Paid:{% endif %}</div>
-      <div class="total-amount">{{ payment.amount|money:2 }}</div>
-    </div>
-
-    <div class="footer">
-      <div>{% if allocation and allocation.lease_amount < 0 %}Lease refund recorded.{% elif allocation and allocation.security_type == "REFUND" %}Security refund recorded.{% else %}Thank you for your payment!{% endif %}</div>
-      <div>Receipt generated on {% now "M d, Y" %}</div>
-    </div>
-  </div>
-</body>
-</html>
-{% endwith %}
+<table width="100%" border="1" cellpadding="6">
+  <tr>
+    <th>Description</th>
+    <th align="right">Amount</th>
+  </tr>
+  <tr>
+    <td>Lease Payment</td>
+    <td align="right">
+      {{ payment_detail.lease_amount|money:2 }}
+    </td>
+  </tr>
+  <tr>
+    <td>Security Deposit</td>
+    <td align="right">
+      {{ payment_detail.security_amount|money:2 }}
+    </td>
+  </tr>
+  <tr>
+    <th>Total</th>
+    <th align="right">
+      {{ payment_detail.payment.amount|money:2 }}
+    </th>
+  </tr>
+</table>

@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from invoices.models import SecurityDepositTransaction
 
 
@@ -35,7 +35,7 @@ def rebuild_allocation(*, payment, lease_amount, security_amount, security_type=
         payment.save(update_fields=["amount"])
 
     # ALWAYS upsert allocation
-    alloc, _ = PaymentAllocation.objects.update_or_create(
+    alloc, _ = PaymentDetail.objects.update_or_create(
         payment=payment,
         defaults=dict(
             lease_amount=lease_amt,
@@ -47,12 +47,11 @@ def rebuild_allocation(*, payment, lease_amount, security_amount, security_type=
     )
 
     # Remove stale duplicate movements for this payment from older edit paths.
-    SecurityDepositTransaction.objects.filter(payment=payment).exclude(allocation=alloc).delete()
+    SecurityDepositTransaction.objects.filter(payment=payment).exclude(payment_detail=alloc).delete()
 
     # Security ledger row ONLY when sec_amt > 0
     if sec_amt > 0:
-        SecurityDepositTransaction.objects.update_or_create(
-            allocation=alloc,
+        SecurityDepositTransaction.objects.update_or_create(payment_detail=alloc,
             defaults=dict(
                 lease=payment.lease,
                 payment=payment,
@@ -63,6 +62,6 @@ def rebuild_allocation(*, payment, lease_amount, security_amount, security_type=
             ),
         )
     else:
-        SecurityDepositTransaction.objects.filter(allocation=alloc).delete()
+        SecurityDepositTransaction.objects.filter(payment_detail=alloc).delete()
 
     return alloc

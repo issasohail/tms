@@ -165,7 +165,7 @@
               <button class="btn btn-secondary btn-sm" type="button" onclick="history.back()">
                 <i class="fas fa-arrow-left"></i><span class="btn-label ms-1">Back</span>
               </button>
-              <a href="{% if form.instance.pk %}{{ form.instance.get_absolute_url }}{% else %}{% url 'payments:cash_ledger' %}{% endif %}"
+              <a href="{% if form.instance.pk %}{{ form.instance.get_absolute_url }}{% else %}{% url 'payments:payment_list' %}{% endif %}"
                  class="btn btn-danger btn-sm">
                 <i class="fas fa-times"></i> Cancel
               </a>
@@ -222,7 +222,7 @@
                   <td class="col-date">{{ payment.payment_date|date:"M j, Y" }}</td>
 
                   <td class="col-amount">
-                    {% if payment.allocation.security_type == "REFUND" %}
+                    {% if payment.detail.security_type == "REFUND" %}
                       <span class="text-danger">-{{ payment.amount|intcomma }}</span>
                     {% else %}
                       {{ payment.amount|intcomma }}
@@ -261,7 +261,7 @@
                         data-end-date="{{ payment.lease.end_date|date:'M d, Y' }}"
                         data-security-amount="{{ payment.lease.security_deposit|default:0 }}"
                         data-security-paid="{{ payment.lease.security_deposit_paid|yesno:'true,false' }}"
-                        data-security-type="{{ payment.allocation.security_type|default:'PAYMENT' }}"
+                        data-security-type="{{ payment.detail.security_type|default:'PAYMENT' }}"
                         title="WhatsApp">
                         <i class="fab fa-whatsapp"></i>
                         <span class="ms-1 d-none d-sm-inline">WhatsApp</span>

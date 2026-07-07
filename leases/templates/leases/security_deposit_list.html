@@ -154,9 +154,9 @@
                     <div class="d-flex justify-content-center gap-1">
 
                       {% if row.obj.type in "REQUIRED PAYMENT REFUND DAMAGE ADJUST" %}
-                        {% if row.obj.payment and row.obj.payment.allocation %}
+                        {% if row.obj.payment and row.obj.payment.detail %}
                           <a class="btn btn-success btn-sm"
-                            href="{% url 'payments:api_allocation_receipt_whatsapp' row.obj.payment.allocation.id %}"
+                            href="{% url 'payments:api_payment_detail_receipt_whatsapp' row.obj.payment.detail.id %}"
                             target="_blank">
                             Receipt
                           </a>

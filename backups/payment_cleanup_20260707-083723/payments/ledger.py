@@ -28,8 +28,8 @@ class CashLedgerRow:
     delete_url: Optional[str] = None
     wa_url: Optional[str] = None
 
-    # ---- Split/Allocation (only meaningful for PAYMENT rows) ----
-    allocation_id: Optional[int] = None
+    # ---- Split/payment detail (only meaningful for PAYMENT rows) ----
+    payment_detail_id: Optional[int] = None
     is_split: bool = False
     lease_amount: Decimal = Decimal("0.00")
     security_amount: Decimal = Decimal("0.00")

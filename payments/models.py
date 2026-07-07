@@ -101,26 +101,26 @@ class Payment(models.Model):
 
     @property
     def lease_effective_amount(self) -> Decimal:
-        alloc = getattr(self, "allocation", None)
-        if alloc:
-            return alloc.lease_amount or Decimal("0.00")
+        detail = getattr(self, "detail", None)
+        if detail:
+            return detail.lease_amount or Decimal("0.00")
         return self.amount or Decimal("0.00")
 
     @property
     def is_lease_refund(self) -> bool:
-        alloc = getattr(self, "allocation", None)
-        if alloc:
-            return (alloc.lease_amount or Decimal("0.00")) < 0
+        detail = getattr(self, "detail", None)
+        if detail:
+            return (detail.lease_amount or Decimal("0.00")) < 0
         return (self.amount or Decimal("0.00")) < 0
 
     @property
     def security_effective_amount(self) -> Decimal:
-        alloc = getattr(self, "allocation", None)
-        if alloc:
-            return alloc.security_amount or Decimal("0.00")
+        detail = getattr(self, "detail", None)
+        if detail:
+            return detail.security_amount or Decimal("0.00")
         return Decimal("0.00")
     
-class PaymentAllocation(models.Model):
+class PaymentDetail(models.Model):
     SECURITY_TYPES = [
         ("PAYMENT", "Payment"),
         ("REFUND", "Refund"),
@@ -131,7 +131,7 @@ class PaymentAllocation(models.Model):
     payment = models.OneToOneField(
         "payments.Payment",
         on_delete=models.CASCADE,
-        related_name="allocation",
+        related_name="detail",
         null=True,
         blank=True,
     )
@@ -152,7 +152,7 @@ class PaymentAllocation(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="allocation_updates",
+        related_name="payment_detail_updates",
     )
     updated_at = models.DateTimeField(auto_now=True)
     last_reason = models.CharField(max_length=255, blank=True, default="")
@@ -162,14 +162,18 @@ class PaymentAllocation(models.Model):
         return (self.lease_amount or 0) + (self.security_amount or 0)
 
     def __str__(self):
-        return f"Allocation #{self.pk} Payment #{self.payment_id}"
+        return f"Payment Detail #{self.pk} Payment #{self.payment_id}"
+
+    class Meta:
+        db_table = "payments_paymentallocation"
 
 
 class AllocationAuditLog(models.Model):
-    allocation = models.ForeignKey(
-        PaymentAllocation,
+    payment_detail = models.ForeignKey(
+        PaymentDetail,
         on_delete=models.CASCADE,
         related_name="audit_logs",
+        db_column="allocation_id",
     )
     changed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

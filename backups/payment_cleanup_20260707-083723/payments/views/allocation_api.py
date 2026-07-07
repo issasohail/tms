@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from payments.services.allocation import rebuild_allocation
 
 
@@ -23,16 +23,16 @@ def D(v):
 def update_allocation(request):
     """
     POST:
-      allocation_id
+      payment_detail_id
       lease_amount
       security_amount
       security_type
     """
-    alloc_id = request.POST.get("allocation_id")
+    alloc_id = request.POST.get("payment_detail_id")
     if not alloc_id:
-        return HttpResponseBadRequest("allocation_id required")
+        return HttpResponseBadRequest("payment_detail_id required")
 
-    alloc = get_object_or_404(PaymentAllocation.objects.select_related("payment"), pk=alloc_id)
+    alloc = get_object_or_404(PaymentDetail.objects.select_related("payment"), pk=alloc_id)
 
     lease_amt = D(request.POST.get("lease_amount"))
     sec_amt = D(request.POST.get("security_amount"))
@@ -60,7 +60,7 @@ def update_allocation(request):
 
     return JsonResponse({
         "ok": True,
-        "allocation_id": alloc.pk,
+        "payment_detail_id": alloc.pk,
         "payment_id": alloc.payment_id,
         "total": float(total),
     })
@@ -68,12 +68,12 @@ def update_allocation(request):
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET
 from django.http import JsonResponse, Http404
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 
 @login_required
 @require_GET
 def allocation_prefill_api(request, pk: int):
-    alloc = (PaymentAllocation.objects
+    alloc = (PaymentDetail.objects
              .select_related("payment")
              .filter(pk=pk).first())
     if not alloc:
@@ -90,7 +90,7 @@ def allocation_prefill_api(request, pk: int):
         mode = "LEASE"
 
     return JsonResponse({
-        "allocation_id": alloc.pk,
+        "payment_detail_id": alloc.pk,
         "payment_id": alloc.payment_id,
         "payment_amount": float(alloc.payment.amount or 0),
         "allocation_mode": mode,

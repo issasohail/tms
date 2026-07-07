@@ -1,3 +1,3 @@
-from .allocation import rebuild_allocation
+from .payment_detail import rebuild_payment_detail
 
-__all__ = ["rebuild_allocation"]
+__all__ = ["rebuild_payment_detail"]

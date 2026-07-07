@@ -8,8 +8,8 @@ from django.db.models import Case, DecimalField, F, Prefetch, Sum, When
 from django.db.models.functions import Coalesce
 from django.urls import reverse_lazy
 
-from payments.models import PaymentAllocation
-from payments.forms import PaymentAllocationForm,Payment,PaymentForm
+from payments.models import PaymentDetail
+from payments.forms import PaymentDetailForm,Payment,PaymentForm
 from payments.services.allocation import rebuild_allocation
 
 
@@ -17,7 +17,7 @@ from payments.services.allocation import rebuild_allocation
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import DetailView
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 #from leases.utils.billing import security_deposit_totals  # adjust import if different
 from core.models import GlobalSettings  # adjust import if different
 from core.currency import format_money
@@ -32,8 +32,8 @@ from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.views.generic import DetailView, UpdateView, DeleteView
 
-from payments.models import PaymentAllocation
-from payments.forms import PaymentAllocationForm
+from payments.models import PaymentDetail
+from payments.forms import PaymentDetailForm
 from payments.services.allocation import rebuild_allocation
 from invoices.models import Invoice, SecurityDepositTransaction
 
@@ -59,7 +59,7 @@ def attach_cached_lease_balances(payments):
             total=Coalesce(
                 Sum(
                     Case(
-                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        When(detail__isnull=False, then=F("detail__lease_amount")),
                         default=F("amount"),
                         output_field=money_field,
                     )
@@ -82,7 +82,7 @@ def attach_cached_lease_balances(payments):
 
 
 class AllocationDetailView(LoginRequiredMixin, DetailView):
-    model = PaymentAllocation
+    model = PaymentDetail
     template_name = "payments/allocation_detail.html"
     context_object_name = "allocation"
 
@@ -100,13 +100,13 @@ class AllocationDetailView(LoginRequiredMixin, DetailView):
                 "payment__lease__security_transactions",
                 queryset=SecurityDepositTransaction.objects.select_related(
                     "payment",
-                    "allocation",
+                    "payment_detail",
                 ),
             ),
             "payment__lease__invoices",
             Prefetch(
                 "payment__lease__payments",
-                queryset=Payment.objects.select_related("allocation"),
+                queryset=Payment.objects.select_related("detail"),
             ),
         )
 
@@ -147,8 +147,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views.generic import UpdateView
 
-from payments.models import Payment, PaymentAllocation
-from payments.forms import PaymentForm, PaymentAllocationForm
+from payments.models import Payment, PaymentDetail
+from payments.forms import PaymentForm, PaymentDetailForm
 from payments.services import rebuild_allocation
 
 
@@ -158,7 +158,7 @@ class AllocationUpdateView(UpdateView):
       - Payment (amount, date, method, ref, notes, lease)
       - Allocation (lease_amount, security_amount, security_type, mode)
     URL pk can be either:
-      - PaymentAllocation.pk  (preferred)
+      - PaymentDetail.pk  (preferred)
       - Payment.pk           (fallback for legacy rows)
     """
     model = Payment
@@ -169,7 +169,7 @@ class AllocationUpdateView(UpdateView):
         pk = self.kwargs["pk"]
 
         # 1) Try pk as Allocation ID
-        alloc = PaymentAllocation.objects.select_related(
+        alloc = PaymentDetail.objects.select_related(
             "payment",
             "payment__lease",
             "payment__lease__tenant",
@@ -191,7 +191,7 @@ class AllocationUpdateView(UpdateView):
         )
 
         # Ensure allocation exists (if missing, create via rebuild)
-        existing_alloc = getattr(payment, "allocation", None)
+        existing_alloc = getattr(payment, "detail", None)
         if not existing_alloc:
             rebuild_allocation(
                 payment=payment,
@@ -202,17 +202,17 @@ class AllocationUpdateView(UpdateView):
                 reason="Auto-create allocation (legacy payment edit)",
             )
             payment.refresh_from_db()
-            existing_alloc = payment.allocation
+            existing_alloc = payment.detail
 
         return existing_alloc, payment
 
     def get_object(self, queryset=None):
-        self.allocation, payment = self._get_allocation_or_payment()
+        self.payment_detail, payment = self._get_allocation_or_payment()
         return payment
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["allocation_form"] = PaymentAllocationForm(instance=self.allocation)
+        context["allocation_form"] = PaymentDetailForm(instance=self.payment_detail)
 
         # PERF: recent payments template accesses payment->lease->tenant/unit/property and lease balance.
         # ---- recent payments selector (same behavior as PaymentCreateView) ----
@@ -255,15 +255,15 @@ class AllocationUpdateView(UpdateView):
 
     def get_success_url(self):
         # always go to allocation detail
-        return reverse_lazy("payments:allocation_detail", kwargs={"pk": self.allocation.pk})
+        return reverse_lazy("payments:allocation_detail", kwargs={"pk": self.payment_detail.pk})
 
     @transaction.atomic
     def form_valid(self, form):
         payment = form.save(commit=False)
 
-        alloc_form = PaymentAllocationForm(
+        alloc_form = PaymentDetailForm(
             self.request.POST,
-            instance=self.allocation,
+            instance=self.payment_detail,
             payment_total=payment.amount,
         )
         if not alloc_form.is_valid():
@@ -280,7 +280,7 @@ class AllocationUpdateView(UpdateView):
             user=self.request.user,
             reason="Edited allocation",
         )
-        self.allocation = alloc
+        self.payment_detail = alloc
 
         messages.success(self.request, "Payment + Allocation updated successfully.")
         return redirect(self.get_success_url())
@@ -294,8 +294,8 @@ from django.urls import reverse_lazy
 from django.views.generic import UpdateView
 from django.contrib import messages
 
-from payments.models import PaymentAllocation, Payment
-from payments.forms import PaymentForm, PaymentAllocationForm
+from payments.models import PaymentDetail, Payment
+from payments.forms import PaymentForm, PaymentDetailForm
 from payments.services.allocation import rebuild_allocation
 
 from leases.models import Lease
@@ -316,25 +316,25 @@ def _money(value):
 
 class AllocationEditView(LoginRequiredMixin, UpdateView):
     """
-    Edit using payment_form.html (PaymentForm + PaymentAllocationForm),
-    but the URL is keyed by allocation_id.
+    Edit using payment_form.html (PaymentForm + PaymentDetailForm),
+    but the URL is keyed by payment_detail_id.
     """
     model = Payment
     form_class = PaymentForm
     template_name = "payments/payment_form.html"
 
     def dispatch(self, request, *args, **kwargs):
-        self.allocation = get_object_or_404(PaymentAllocation, pk=kwargs["pk"])
-        if not self.allocation.payment_id:
+        self.payment_detail = get_object_or_404(PaymentDetail, pk=kwargs["pk"])
+        if not self.payment_detail.payment_id:
             messages.error(request, "This allocation has no linked payment.")
             return redirect("payments:cash_ledger")
         return super().dispatch(request, *args, **kwargs)
 
     def get_object(self, queryset=None):
-        return self.allocation.payment
+        return self.payment_detail.payment
 
     def get_success_url(self):
-        return reverse_lazy("payments:allocation_detail", kwargs={"pk": self.allocation.pk})
+        return reverse_lazy("payments:allocation_detail", kwargs={"pk": self.payment_detail.pk})
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -348,13 +348,13 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 
         # allocation form prefilled from allocation
         if self.request.method == "POST":
-            ctx["allocation_form"] = PaymentAllocationForm(
+            ctx["allocation_form"] = PaymentDetailForm(
                 self.request.POST,
-                instance=self.allocation,
+                instance=self.payment_detail,
                 payment_total=_dec(self.request.POST.get("amount"), "0.00"),
             )
         else:
-            ctx["allocation_form"] = PaymentAllocationForm(instance=self.allocation)
+            ctx["allocation_form"] = PaymentDetailForm(instance=self.payment_detail)
 
         # right-side recent payments (your template expects these)
         size = 10
@@ -390,9 +390,9 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
     @transaction.atomic
     def form_valid(self, form):
         payment = form.save(commit=False)
-        alloc_form = PaymentAllocationForm(
+        alloc_form = PaymentDetailForm(
             self.request.POST,
-            instance=self.allocation,
+            instance=self.payment_detail,
             payment_total=payment.amount,
         )
 
@@ -410,7 +410,7 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
             user=self.request.user,
             reason="Edited via AllocationEditView",
         )
-        self.allocation = alloc
+        self.payment_detail = alloc
 
         messages.success(self.request, "Allocation updated successfully.")
         return redirect(self.get_success_url())
@@ -418,10 +418,10 @@ class AllocationEditView(LoginRequiredMixin, UpdateView):
 from django.views.generic import DeleteView
 from django.urls import reverse_lazy
 from invoices.models import SecurityDepositTransaction
-from payments.models import Payment, PaymentAllocation
+from payments.models import Payment, PaymentDetail
 
 class AllocationDeleteView(LoginRequiredMixin, DeleteView):
-    model = PaymentAllocation
+    model = PaymentDetail
     template_name = "payments/allocation_confirm_delete.html"
     context_object_name = "allocation"
 
@@ -429,7 +429,7 @@ class AllocationDeleteView(LoginRequiredMixin, DeleteView):
         pk = self.kwargs["pk"]
 
         allocation = (
-            PaymentAllocation.objects
+            PaymentDetail.objects
             .select_related("payment")
             .filter(pk=pk)
             .first()
@@ -438,10 +438,10 @@ class AllocationDeleteView(LoginRequiredMixin, DeleteView):
             return allocation
 
         payment = get_object_or_404(
-            Payment.objects.select_related("allocation"),
+            Payment.objects.select_related("detail"),
             pk=pk,
         )
-        return get_object_or_404(PaymentAllocation, payment=payment)
+        return get_object_or_404(PaymentDetail, payment=payment)
 
     def get_success_url(self):
         return reverse_lazy("payments:cash_ledger")  # or wherever you want to land
@@ -451,7 +451,7 @@ class AllocationDeleteView(LoginRequiredMixin, DeleteView):
         payment = alloc.payment
 
         # Delete security rows that were created from this allocation/payment
-        SecurityDepositTransaction.objects.filter(allocation=alloc).delete()
+        SecurityDepositTransaction.objects.filter(payment_detail=alloc).delete()
         if payment:
             SecurityDepositTransaction.objects.filter(payment=payment).delete()
 
@@ -469,11 +469,11 @@ class AllocationDeleteView(LoginRequiredMixin, DeleteView):
     """
     @transaction.atomic
     def post(self, request, pk):
-        alloc = get_object_or_404(PaymentAllocation, pk=pk)
+        alloc = get_object_or_404(PaymentDetail, pk=pk)
         pay = alloc.payment
 
         # delete security tx linked to this allocation explicitly
-        SecurityDepositTransaction.objects.filter(allocation=alloc).delete()
+        SecurityDepositTransaction.objects.filter(payment_detail=alloc).delete()
 
         # delete payment (will cascade delete allocation)
         if pay:
@@ -491,7 +491,7 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from decimal import Decimal, InvalidOperation
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from payments.services.allocation import rebuild_allocation
 
 
@@ -508,13 +508,13 @@ def allocation_update_api(request):
     """
     AJAX endpoint used by Cash Ledger split modal
     """
-    allocation_id = request.POST.get("allocation_id")
-    if not allocation_id:
-        return JsonResponse({"error": "Missing allocation_id"}, status=400)
+    payment_detail_id = request.POST.get("payment_detail_id")
+    if not payment_detail_id:
+        return JsonResponse({"error": "Missing payment_detail_id"}, status=400)
 
     try:
-        alloc = PaymentAllocation.objects.select_related("payment").get(pk=allocation_id)
-    except PaymentAllocation.DoesNotExist:
+        alloc = PaymentDetail.objects.select_related("payment").get(pk=payment_detail_id)
+    except PaymentDetail.DoesNotExist:
         return JsonResponse({"error": "Allocation not found"}, status=404)
 
     lease_amt = _dec(request.POST.get("lease_amount"))
@@ -543,16 +543,16 @@ def allocation_update_api(request):
 
     return JsonResponse({
         "status": "ok",
-        "allocation_id": alloc.id
+        "payment_detail_id": alloc.id
     })
 
 from django.http import JsonResponse, Http404
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from invoices.services import security_deposit_totals
 
-def build_allocation_receipt_message(request, alloc: PaymentAllocation) -> str:
+def build_allocation_receipt_message(request, alloc: PaymentDetail) -> str:
     pay = alloc.payment
     lease = getattr(pay, "lease", None)
     tenant = getattr(lease, "tenant", None)
@@ -597,7 +597,7 @@ def build_allocation_receipt_message(request, alloc: PaymentAllocation) -> str:
 @login_required
 @require_GET
 def api_allocation_receipt_whatsapp(request, pk: int):
-    alloc = (PaymentAllocation.objects
+    alloc = (PaymentDetail.objects
              .select_related("payment", "payment__lease", "payment__lease__tenant",
                              "payment__lease__unit", "payment__lease__unit__property")
              .filter(pk=pk).first())
@@ -607,18 +607,18 @@ def api_allocation_receipt_whatsapp(request, pk: int):
     pay = alloc.payment
     phone = getattr(getattr(getattr(pay, "lease", None), "tenant", None), "phone", "") or ""
     message = build_allocation_receipt_message(request, alloc)
-    return JsonResponse({"phone": phone, "message": message, "allocation_id": alloc.pk})
+    return JsonResponse({"phone": phone, "message": message, "payment_detail_id": alloc.pk})
 
 from django.http import JsonResponse
 from django.views import View
 from django.shortcuts import get_object_or_404
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 
 class AllocationPrefillApi(View):
     def get(self, request, pk):
-        alloc = get_object_or_404(PaymentAllocation.objects.select_related("payment"), pk=pk)
+        alloc = get_object_or_404(PaymentDetail.objects.select_related("payment"), pk=pk)
         return JsonResponse({
-            "allocation_id": alloc.pk,
+            "payment_detail_id": alloc.pk,
             "payment_id": alloc.payment_id,
             "lease_amount": str(alloc.lease_amount or 0),
             "security_amount": str(alloc.security_amount or 0),
@@ -632,7 +632,7 @@ from django.views.decorators.http import require_POST, require_GET
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from payments.services.allocation import rebuild_allocation
 from invoices.services import security_deposit_totals
 
@@ -646,17 +646,17 @@ def _dec(v, default="0.00"):
 @require_GET
 def allocation_prefill_api(request):
     """
-    GET /payments/api/allocations/prefill/?allocation_id=123
+    GET /payments/api/allocations/prefill/?payment_detail_id=123
     Returns current allocation values for the modal.
     """
-    allocation_id = request.GET.get("allocation_id")
-    if not allocation_id:
-        return HttpResponseBadRequest("allocation_id required")
+    payment_detail_id = request.GET.get("payment_detail_id")
+    if not payment_detail_id:
+        return HttpResponseBadRequest("payment_detail_id required")
 
-    alloc = get_object_or_404(PaymentAllocation.objects.select_related("payment", "payment__lease"), pk=allocation_id)
+    alloc = get_object_or_404(PaymentDetail.objects.select_related("payment", "payment__lease"), pk=payment_detail_id)
 
     return JsonResponse({
-        "allocation_id": alloc.id,
+        "payment_detail_id": alloc.id,
         "payment_id": alloc.payment_id,
         "payment_amount": str(getattr(alloc.payment, "amount", "0.00") or "0.00"),
         "lease_amount": str(alloc.lease_amount or "0.00"),
@@ -670,13 +670,13 @@ def allocation_update_api(request):
     """
     POST /payments/api/allocations/update/
     FormData:
-      allocation_id, lease_amount, security_amount, security_type
+      payment_detail_id, lease_amount, security_amount, security_type
     """
-    allocation_id = request.POST.get("allocation_id")
-    if not allocation_id:
-        return HttpResponseBadRequest("allocation_id required")
+    payment_detail_id = request.POST.get("payment_detail_id")
+    if not payment_detail_id:
+        return HttpResponseBadRequest("payment_detail_id required")
 
-    alloc = get_object_or_404(PaymentAllocation.objects.select_related("payment", "payment__lease"), pk=allocation_id)
+    alloc = get_object_or_404(PaymentDetail.objects.select_related("payment", "payment__lease"), pk=payment_detail_id)
     payment = alloc.payment
     if not payment:
         return HttpResponseBadRequest("Allocation has no payment.")
@@ -710,7 +710,7 @@ def api_allocation_receipt_whatsapp(request, pk: int):
     """
     Returns JSON {phone, message} that frontend turns into wa.me URL.
     """
-    alloc = get_object_or_404(PaymentAllocation.objects.select_related(
+    alloc = get_object_or_404(PaymentDetail.objects.select_related(
         "payment", "payment__lease", "payment__lease__tenant", "payment__lease__unit", "payment__lease__unit__property"
     ), pk=pk)
 
@@ -760,4 +760,4 @@ def api_allocation_receipt_whatsapp(request, pk: int):
         f"Thank you"
     )
 
-    return JsonResponse({"phone": phone, "message": msg, "allocation_id": alloc.id})
+    return JsonResponse({"phone": phone, "message": msg, "payment_detail_id": alloc.id})

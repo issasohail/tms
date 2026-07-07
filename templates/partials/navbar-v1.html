@@ -13,7 +13,7 @@
 
       <!-- Center: single-line links (scrollable) -->
       <ul class="nav-center list-unstyled mb-0">
-        {% if perms.payments.view_payment %}<li><a class="mlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>{% endif %}
+        {% if perms.payments.view_payment %}<li><a class="mlink" href="{% url 'payments:payment_list' %}">Payments</a></li>{% endif %}
         {% if perms.tenants.view_tenant %}<li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
         {% if perms.leases.view_lease %}<li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
         {% if perms.invoices.view_invoice %}<li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
@@ -87,7 +87,7 @@
       <ul class="d-flex gap-2 mb-0 list-unstyled">
         {% if perms.properties.view_property %}<li><a class="dlink" href="{% url 'properties:property_list' %}">Properties</a></li>{% endif %}
         {% if perms.properties.view_unit %}<li><a class="dlink" href="{% url 'properties:unit_list' %}">Units</a></li>{% endif %}
-        {% if perms.payments.view_payment %}<li><a class="dlink" href="{% url 'payments:cash_ledger' %}">Payments</a></li>{% endif %}
+        {% if perms.payments.view_payment %}<li><a class="dlink" href="{% url 'payments:payment_list' %}">Payments</a></li>{% endif %}
         {% if perms.tenants.view_tenant %}<li><a class="dlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
         {% if perms.leases.view_lease %}<li><a class="dlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
         {% if perms.expenses.view_expense %}<li><a class="dlink" href="{% url 'expenses:expense_list' %}">Expenses</a></li>{% endif %}

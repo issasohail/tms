@@ -1,15 +1,11 @@
 # payments/views/__init__.py
 
-# Re-export the “main” views so urls.py can do: from . import views
+# Re-export the main views so urls.py can do: from . import views
 from .payments import (
-    PaymentListView,
-    PaymentDetailView,
     PaymentCreateView,
     PaymentUpdateView,
-    PaymentDeleteView,
     invoice_list,
     send_receipt,
-    payment_pdf_view,
     send_payment_email,
     public_payment_receipt,
     get_filtered_leases,
@@ -17,3 +13,5 @@ from .payments import (
     get_units_by_property,
     api_payment_receipt_whatsapp,
 )
+from .payment_detail import PaymentDeleteView, PaymentDetailView, PaymentPDFView
+from .payment_list import PaymentListView

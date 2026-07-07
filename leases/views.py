@@ -349,11 +349,11 @@ def public_lease_ledger(request, token):
             "tenant", "unit", "unit__property"
         ).prefetch_related(
             "invoices",
-            Prefetch("payments", queryset=Payment.objects.select_related("allocation")),
+            Prefetch("payments", queryset=Payment.objects.select_related("detail")),
             Prefetch(
                 "security_transactions",
                 queryset=SecurityDepositTransaction.objects.select_related(
-                    "allocation", "payment"
+                    "detail", "payment"
                 ).order_by("date", "id"),
             ),
         ),
@@ -374,7 +374,7 @@ def public_lease_ledger(request, token):
             }
         )
     for payment in lease.payments_qs:
-        allocation = getattr(payment, "allocation", None)
+        allocation = getattr(payment, "detail", None)
         lease_amount = getattr(allocation, "lease_amount", None) if allocation else None
         amount = (lease_amount if lease_amount is not None else payment.amount) or zero
         transactions.append(
@@ -484,10 +484,10 @@ def strip_html(text):
 def lease_applied_amount(payment) -> Decimal:
     """
     Amount that should affect Lease ledger balance.
-    - If PaymentAllocation exists: use allocation.lease_amount
+    - If PaymentDetail exists: use allocation.lease_amount
     - Else: legacy fallback to payment.amount
     """
-    alloc = getattr(payment, "allocation", None)
+    alloc = getattr(payment, "detail", None)
     if alloc:
         return alloc.lease_amount or ZERO
     return payment.amount or ZERO
@@ -680,8 +680,8 @@ class LeaseListView(SingleTableView):
                     Sum(
                         Case(
                             When(
-                                allocation__isnull=False,
-                                then=F("allocation__lease_amount"),
+                                detail__isnull=False,
+                                then=F("detail__lease_amount"),
                             ),
                             default=F("amount"),
                             output_field=money_field,
@@ -3035,7 +3035,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                         "lease__unit",
                         "lease__unit__property",
                         "payment_method",
-                    ).select_related("allocation"),
+                    ).select_related("detail"),
                 ),
                 Prefetch(
                     "invoices",
@@ -3082,7 +3082,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     "security_transactions",
                     queryset=SecurityDepositTransaction.objects.select_related(
                         "payment",
-                        "allocation",
+                        "detail",
                     ).order_by("date", "id"),
                 ),
             )
@@ -3626,14 +3626,14 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     ),
                     Prefetch(
                         "payments",
-                        queryset=Payment.objects.select_related("allocation").order_by(
+                        queryset=Payment.objects.select_related("detail").order_by(
                             "payment_date", "id"
                         ),
                     ),
                     Prefetch(
                         "security_transactions",
                         queryset=SecurityDepositTransaction.objects.select_related(
-                            "allocation", "payment"
+                            "detail", "payment"
                         ).order_by("date", "id"),
                     ),
                 ),
@@ -3745,9 +3745,9 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 }
             )
 
-        # IMPORTANT: Lease ledger must use allocation.lease_amount (NOT payment.amount)
+        # Lease ledger must use the payment detail lease amount, not total payment amount.
         for payment in lease.payments_qs:
-            alloc = getattr(payment, "allocation", None)
+            alloc = getattr(payment, "detail", None)
 
             # lease portion only
             lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
@@ -3763,12 +3763,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "description": payment.reference_number or f"Payment #{payment.id}",
                     "amount": amt,
                     "balance": balance,
-                    # keep payment detail url OR switch to allocation detail if you prefer
-                    "url": (
-                        reverse("payments:allocation_detail", args=[alloc.id])
-                        if alloc
-                        else reverse("payments:payment_detail", args=[payment.id])
-                    ),
+                    "url": reverse("payments:payment_detail", args=[payment.id]),
                 }
             )
 
@@ -3904,7 +3899,7 @@ def lease_ledger_pdf(request, lease_id):
                 ),
                 Prefetch(
                     "payments",
-                    queryset=Payment.objects.select_related("allocation").order_by(
+                    queryset=Payment.objects.select_related("detail").order_by(
                         "payment_date", "id"
                     ),
                 ),
@@ -3940,7 +3935,7 @@ def lease_ledger_pdf(request, lease_id):
 
         # Process payments
         for payment in lease.payments_qs:
-            alloc = getattr(payment, "allocation", None)
+            alloc = getattr(payment, "detail", None)
             lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
             amt = (
                 lease_amt
@@ -4074,7 +4069,7 @@ def export_ledger_excel(request, lease_id):
         invoices = Invoice.objects.filter(lease=lease).order_by("issue_date")
         payments = (
             Payment.objects.filter(lease=lease)
-            .select_related("allocation")
+            .select_related("detail")
             .order_by("payment_date")
         )
 
@@ -4097,7 +4092,7 @@ def export_ledger_excel(request, lease_id):
 
         # Process payments
         for payment in payments:
-            alloc = getattr(payment, "allocation", None)
+            alloc = getattr(payment, "detail", None)
             lease_amt = getattr(alloc, "lease_amount", None) if alloc else None
             amount = (
                 lease_amt

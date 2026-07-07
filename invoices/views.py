@@ -258,8 +258,8 @@ class InvoiceListView(SingleTableView):
                         Sum(
                             Case(
                                 When(
-                                    allocation__isnull=False,
-                                    then=F("allocation__lease_amount"),
+                                    detail__isnull=False,
+                                    then=F("detail__lease_amount"),
                                 ),
                                 default=F("amount"),
                                 output_field=money_field,
@@ -602,7 +602,7 @@ class InvoiceDetailView(DetailView):
                 "late_fee_reminders",
                 Prefetch(
                     "lease__payments",
-                    queryset=Payment.objects.select_related("allocation"),
+                    queryset=Payment.objects.select_related("detail"),
                 ),
                 "lease__security_transactions",
             )
@@ -682,7 +682,7 @@ def public_invoice_detail(request, token):
             Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
             "lease__invoices",
             Prefetch(
-                "lease__payments", queryset=Payment.objects.select_related("allocation")
+                "lease__payments", queryset=Payment.objects.select_related("detail")
             ),
             "lease__security_transactions",
         ),

@@ -85,11 +85,11 @@ from django.db.models import Q
 from django.db import transaction
 
 from invoices.models import SecurityDepositTransaction
-from payments.models import Payment, PaymentAllocation
-from payments.services import rebuild_allocation
+from payments.models import Payment, PaymentDetail
+from payments.services import rebuild_payment_detail
 # payments.py (top imports)
-from payments.forms import PaymentAllocationForm
-from payments.models import PaymentAllocation
+from payments.forms import PaymentDetailForm
+from payments.models import PaymentDetail
 from django.db.models import Sum, Case, When, F, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
@@ -110,12 +110,12 @@ from properties.models import Property
 
 from payments.models import Payment
 from payments.forms import PaymentForm
-from payments.services.allocation import rebuild_allocation  # ✅ the service function
+from payments.services.payment_detail import rebuild_payment_detail  # ✅ the service function
 
 logger = logging.getLogger(__name__)
 
 
-class PaymentListView(SingleTableView):
+class PaymentListViewV1(SingleTableView):
     model = Payment
     table_class = PaymentTable
     template_name = 'payments/payment_list.html'
@@ -124,7 +124,7 @@ class PaymentListView(SingleTableView):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
-            'lease__tenant', 'lease__unit', 'lease__unit__property', 'allocation')
+            'lease__tenant', 'lease__unit', 'lease__unit__property', 'detail')
 
         # Get filter parameters
         property_id = self.request.GET.get('property')
@@ -216,7 +216,7 @@ class PaymentListView(SingleTableView):
             total=Coalesce(
                 Sum(
                     Case(
-                        When(allocation__security_type="REFUND", then=-F("amount")),
+                        When(detail__security_type="REFUND", then=-F("amount")),
                         default=F("amount"),
                         output_field=DECIMAL,
                     )
@@ -276,7 +276,7 @@ class PaymentListView(SingleTableView):
                 total=Coalesce(
                     Sum(
                         Case(
-                            When(allocation__security_type="REFUND", then=-F("amount")),
+                            When(detail__security_type="REFUND", then=-F("amount")),
                             default=F("amount"),
                             output_field=DECIMAL,
                         )
@@ -310,7 +310,7 @@ class PaymentListView(SingleTableView):
 
         return super().get(request, *args, **kwargs)
 
-class PaymentDetailView(LoginRequiredMixin, DetailView):
+class PaymentDetailViewV1(LoginRequiredMixin, DetailView):
     model = Payment
     template_name = 'payments/payment_detail.html'
     context_object_name = 'payment'
@@ -333,7 +333,7 @@ class PaymentDetailView(LoginRequiredMixin, DetailView):
             }
 
         ctx["sec_totals"] = sec_totals
-        ctx["allocation"] = getattr(self.object, "allocation", None)
+        ctx["payment_detail"] = getattr(self.object, "detail", None)
 
         return ctx
 
@@ -370,7 +370,7 @@ def _attach_cached_lease_balances(payments):
             total=Coalesce(
                 Sum(
                     Case(
-                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        When(detail__isnull=False, then=F("detail__lease_amount")),
                         default=F("amount"),
                         output_field=money_field,
                     )
@@ -416,7 +416,7 @@ def _attach_cached_lease_financials(leases):
             total=Coalesce(
                 Sum(
                     Case(
-                        When(allocation__isnull=False, then=F("allocation__lease_amount")),
+                        When(detail__isnull=False, then=F("detail__lease_amount")),
                         default=F("amount"),
                         output_field=money_field,
                     )
@@ -530,8 +530,8 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        # Validate allocation subform (so lease_amount/security_amount errors show nicely if any)
-        allocation_form = PaymentAllocationForm(
+        # Validate payment_detail subform (so lease_amount/security_amount errors show nicely if any)
+        allocation_form = PaymentDetailForm(
             self.request.POST,
             payment_total=form.cleaned_data.get("amount"),
         )
@@ -595,12 +595,12 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         if lease_amt + sec_amt != payment_total:
             form.add_error(
                 None,
-                f"Allocation total ({lease_amt + sec_amt}) must equal Payment amount ({payment_total})."
+                f"payment_detail total ({lease_amt + sec_amt}) must equal Payment amount ({payment_total})."
             )
             return self.form_invalid(form)
 
-        # 5) Persist allocation + security ledger
-        alloc = rebuild_allocation(
+        # 5) Persist payment detail + security ledger
+        alloc = rebuild_payment_detail(
             payment=payment,
             lease_amount=lease_amt,
             security_amount=sec_amt,
@@ -611,8 +611,8 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
         messages.success(self.request, "Payment recorded successfully.")
 
-        # ✅ Redirect to allocation detail (what you want)
-        return redirect("payments:allocation_detail", pk=alloc.pk)
+        # ✅ Redirect to payment_detail detail (what you want)
+        return redirect("payments:payment_detail", pk=payment.pk)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -633,10 +633,10 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             "lease__unit",
             "lease__unit__property",
             "payment_method",
-            "allocation",
+            "detail",
         ).order_by("-id")[:size]
         context["recent_payments"] = _attach_cached_lease_balances(recent_payments)
-        context["allocation_form"] = PaymentAllocationForm(initial={
+        context["allocation_form"] = PaymentDetailForm(initial={
             "allocation_mode": "LEASE",
             "lease_amount": "0.00",
             "security_amount": "0.00",
@@ -675,7 +675,7 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        allocation_form = PaymentAllocationForm(
+        allocation_form = PaymentDetailForm(
             self.request.POST,
             payment_total=form.cleaned_data.get("amount"),
         )
@@ -722,11 +722,11 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         if lease_amt + sec_amt != payment_total:
             form.add_error(
                 None,
-                f"Allocation total ({lease_amt + sec_amt}) must equal Payment amount ({payment_total})."
+                f"payment_detail total ({lease_amt + sec_amt}) must equal Payment amount ({payment_total})."
             )
             return self.form_invalid(form)
 
-        alloc = rebuild_allocation(
+        alloc = rebuild_payment_detail(
             payment=payment,
             lease_amount=lease_amt,
             security_amount=sec_amt,
@@ -736,7 +736,7 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         )
 
         messages.success(self.request, "Payment updated successfully.")
-        return redirect("payments:allocation_detail", pk=alloc.pk)
+        return redirect("payments:payment_detail", pk=payment.pk)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -744,13 +744,13 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         # existing context code (if any)...
 
         payment = self.object
-        alloc = getattr(payment, "allocation", None)
+        alloc = getattr(payment, "detail", None)
 
         if alloc:
-            context["allocation_form"] = PaymentAllocationForm(instance=alloc)
+            context["allocation_form"] = PaymentDetailForm(instance=alloc)
         else:
-            # if allocation row doesn't exist, still show the UI with defaults
-            context["allocation_form"] = PaymentAllocationForm(initial={
+            # if payment_detail row doesn't exist, still show the UI with defaults
+            context["allocation_form"] = PaymentDetailForm(initial={
                 "allocation_mode": "LEASE",
                 "lease_amount": str(payment.amount or "0.00"),
                 "security_amount": "0.00",
@@ -844,10 +844,10 @@ def payment_create(request):
 
 
 
-class PaymentDeleteView(LoginRequiredMixin, DeleteView):
+class PaymentDeleteViewV1(LoginRequiredMixin, DeleteView):
     model = Payment
     template_name = 'payments/payment_confirm_delete.html'
-    success_url = reverse_lazy('payments:cash_ledger')
+    success_url = reverse_lazy('payments:payment_list')
 
     def delete(self, request, *args, **kwargs):
         messages.success(request, 'Payment deleted successfully.')
@@ -1186,7 +1186,7 @@ def build_payment_receipt_message(request, pay):
 
     payment_date = getattr(pay, "payment_date", None)
     amount = getattr(pay, "amount", 0) or Decimal("0.00")
-    alloc = getattr(pay, "allocation", None)
+    alloc = getattr(pay, "detail", None)
     is_refund = (getattr(alloc, "security_type", "") or "").upper() == "REFUND"
     is_lease_refund = (getattr(alloc, "lease_amount", amount) or Decimal("0.00")) < 0
     lease_portion = getattr(alloc, "lease_amount", None) if alloc else None
@@ -1251,10 +1251,10 @@ def api_payment_receipt_whatsapp(request, pk: int):
     message = build_payment_receipt_message(request, pay)
     return JsonResponse({"phone": phone, "message": message, "payment_id": pay.pk})
 
-class AllocationDetailView(LoginRequiredMixin, DetailView):
-    model = PaymentAllocation
+class PaymentDetailRecordViewV1(LoginRequiredMixin, DetailView):
+    model = PaymentDetail
     template_name = "payments/payment_detail.html"
-    context_object_name = "allocation"
+    context_object_name = "payment_detail"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -1269,30 +1269,18 @@ class AllocationDetailView(LoginRequiredMixin, DetailView):
             "sec_totals": security_deposit_totals(lease),
         })
         return ctx
-"""
-class AllocationPDFView(PDFTemplateView):
-    template_name = "payments/allocation_pdf.html"
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        alloc = get_object_or_404(PaymentAllocation, pk=self.kwargs["pk"])
-        ctx["allocation"] = alloc
-        ctx["payment"] = alloc.payment
-        return ctx
-
-        """
 from django.views import View
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from utils.pdf_export import AllocationReceiptPDF
 
 
-class AllocationPDFView(View):
+class PaymentDetailPDFViewV1(View):
     def get(self, request, pk):
-        allocation = get_object_or_404(
-            PaymentAllocation.objects.select_related(
+        payment_detail = get_object_or_404(
+            PaymentDetail.objects.select_related(
                 "payment",
                 "payment__lease",
                 "payment__lease__tenant",
@@ -1302,11 +1290,11 @@ class AllocationPDFView(View):
             pk=pk
         )
 
-        result = AllocationReceiptPDF.generate(allocation, request)
+        result = AllocationReceiptPDF.generate(payment_detail, request)
         if isinstance(result, tuple):
             pdf_bytes, filename = result
         else:
-            pdf_bytes, filename = result, f"allocation_{allocation.id}.pdf"
+            pdf_bytes, filename = result, f"payment_detail_{payment_detail.id}.pdf"
 
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'

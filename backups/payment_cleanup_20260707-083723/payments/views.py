@@ -28,7 +28,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Q
 from .models import Payment
-from .forms import PaymentAllocationForm, PaymentForm
+from .forms import PaymentDetailForm, PaymentForm
 from .tables import PaymentTable
 from notifications.utils import send_payment_receipt
 from django.urls import reverse_lazy
@@ -80,7 +80,7 @@ from django.db.models import Q
 from django.db import transaction
 from decimal import Decimal
 from invoices.models import SecurityDepositTransaction
-from .models import Payment, PaymentAllocation
+from .models import Payment, PaymentDetail
 from payments.services import rebuild_allocation
 from decimal import Decimal
 from django.db.models.functions import Coalesce
@@ -434,7 +434,7 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
         payment.lease = resolved_lease
 
-        allocation_form = PaymentAllocationForm(
+        allocation_form = PaymentDetailForm(
             self.request.POST,
             payment_total=payment.amount,
         )
@@ -487,7 +487,7 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         context["properties"] = Property.objects.all().order_by("property_name")
         context["today"] = timezone.now().date()
         context["nocache"] = timezone.now().timestamp()
-        context["allocation_form"] = PaymentAllocationForm(
+        context["allocation_form"] = PaymentDetailForm(
             self.request.POST or None,
             payment_total=_dec(self.request.POST.get("amount"), "0.00") if self.request.method == "POST" else None,
         )
@@ -519,7 +519,7 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         self.object = payment
 
         allocation = getattr(payment, "allocation", None)
-        allocation_form = PaymentAllocationForm(
+        allocation_form = PaymentDetailForm(
             self.request.POST,
             instance=allocation,
             payment_total=payment.amount,
@@ -545,13 +545,13 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         context = super().get_context_data(**kwargs)
         allocation = getattr(self.object, "allocation", None)
         if self.request.method == "POST":
-            context["allocation_form"] = PaymentAllocationForm(
+            context["allocation_form"] = PaymentDetailForm(
                 self.request.POST,
                 instance=allocation,
                 payment_total=_dec(self.request.POST.get("amount"), "0.00"),
             )
         else:
-            context["allocation_form"] = PaymentAllocationForm(instance=allocation)
+            context["allocation_form"] = PaymentDetailForm(instance=allocation)
         return context
 
 
@@ -1065,7 +1065,7 @@ def api_payment_receipt_whatsapp(request, pk: int):
     return JsonResponse({"phone": phone, "message": message, "payment_id": pay.pk})
 
 class AllocationDetailView(LoginRequiredMixin, DetailView):
-    model = PaymentAllocation
+    model = PaymentDetail
     template_name = "payments/payment_detail.html"
     context_object_name = "allocation"
 
@@ -1087,7 +1087,7 @@ class AllocationPDFView(PDFTemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        alloc = get_object_or_404(PaymentAllocation, pk=self.kwargs["pk"])
+        alloc = get_object_or_404(PaymentDetail, pk=self.kwargs["pk"])
         ctx["allocation"] = alloc
         ctx["payment"] = alloc.payment
         return ctx

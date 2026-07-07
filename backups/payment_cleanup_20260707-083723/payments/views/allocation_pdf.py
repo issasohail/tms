@@ -2,14 +2,14 @@ from django.views import View
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 
-from payments.models import PaymentAllocation
+from payments.models import PaymentDetail
 from utils.pdf_export import AllocationReceiptPDF
 
 
 class AllocationPDFView(View):
     def get(self, request, pk):
         allocation = get_object_or_404(
-            PaymentAllocation.objects.select_related(
+            PaymentDetail.objects.select_related(
                 "payment",
                 "payment__lease",
                 "payment__lease__tenant",

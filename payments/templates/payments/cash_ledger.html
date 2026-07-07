@@ -100,18 +100,804 @@
     white-space: nowrap;
   }
 </style>
+<style>
+  .cash-ledger-container {
+    max-width: 1700px;
+  }
+  .payment-list-dense {
+    /* Desktop cash ledger tweak panel */
+    --cash-desktop-table-font-size: 1.12492rem;
+    --cash-desktop-header-font-size: .78rem;
+    --cash-desktop-tenant-size: 1.92rem;
+    --cash-desktop-tenant-weight: 800;
+    --cash-desktop-unit-size: 1.192rem;
+    --cash-desktop-unit-weight: 800;
+    --cash-desktop-amount-size: 1.594rem;
+    --cash-desktop-amount-weight: 800;
+    --cash-col-sn: 3.5rem;
+    --cash-col-tenant: 13rem;
+    --cash-col-property: 8rem;
+    --cash-col-unit: 8rem;
+    --cash-col-date: 6.75rem;
+    --cash-col-amount: 13rem;
+    --cash-col-method: 6rem;
+    --cash-col-desc: 6rem;
+    --cash-col-balance: 8.75rem;
+    --cash-col-actions: 11.5rem;
+  }
+  .payment-page-compact.payment-list-dense {
+    margin-bottom: 1rem !important;
+    flex-wrap: wrap;
+    gap: .75rem;
+  }
+  .payment-page-compact.payment-list-dense:first-of-type {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: #f4f6f8;
+    padding: .45rem 0;
+    box-shadow: 0 1px 0 rgba(16,24,40,.08);
+  }
+  .payment-page-compact.payment-list-dense h2 {
+    font-size: 1.15rem;
+    margin: 0;
+  }
+  .payment-page-compact.payment-list-dense .btn {
+    font-size: .82rem;
+  }
+
+  .payment-filter-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .5rem;
+    align-items: end;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .payment-filter-grid .pf-field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .payment-filter-grid .pf-field-tenant {
+    flex: 1.35 1 0;
+  }
+  #payment-filter-form .form-label {
+    font-size: .76rem;
+    margin-bottom: .2rem !important;
+    white-space: nowrap;
+  }
+  #payment-filter-form .form-select,
+  #payment-filter-form .form-control,
+  #payment-filter-form .select2-container--default .select2-selection--single {
+    font-size: .8rem;
+  }
+
+  #total-card {
+    border-left: 3px solid #1a56db;
+    background-color: #f0f4ff;
+  }
+  #total-card .total-amount-display {
+    color: #16a34a !important;
+    font-weight: 700;
+  }
+
+  .payment-list-dense table.table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: var(--cash-desktop-table-font-size);
+    margin: 0;
+  }
+  .payment-list-dense table.table > :not(caption) > * > * {
+    padding: .4rem .5rem;
+    vertical-align: middle;
+  }
+  .payment-list-dense table.table thead th {
+    font-size: var(--cash-desktop-header-font-size);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: #374151;
+    background: #f3f4f6;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+  }
+  .payment-list-dense table.table tbody td {
+    border-bottom: 1px solid #f0f1f3;
+  }
+  .payment-list-dense td.col-tenant,
+  .payment-list-dense td.col-tenant a {
+    font-size: var(--cash-desktop-tenant-size);
+    font-weight: var(--cash-desktop-tenant-weight);
+  }
+  .payment-list-dense td.col-unit {
+    font-size: var(--cash-desktop-unit-size);
+    font-weight: var(--cash-desktop-unit-weight);
+  }
+  .payment-list-dense td.col-amount,
+  .payment-list-dense td.col-amount .fw-semibold,
+  .payment-list-dense td.col-amount .text-success,
+  .payment-list-dense td.col-amount .text-danger {
+    font-size: var(--cash-desktop-amount-size);
+    font-weight: var(--cash-desktop-amount-weight);
+  }
+  .payment-list-dense table.table tbody tr:nth-child(even) {
+    background: #f9fafb;
+  }
+  .payment-list-dense table.table tbody tr:hover {
+    background: #eff6ff;
+  }
+  .table-responsive.payment-list-dense {
+    background: #fff;
+    border: 1px solid #e4e7ec;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.06);
+  }
+  .payment-list-dense table.table thead th {
+    padding: 10px 9px;
+    color: #475467;
+    background: #f8fafc;
+    font-weight: 800;
+    text-transform: none;
+    letter-spacing: .01em;
+  }
+  .payment-list-dense table.table tbody td {
+    padding: 10px 9px;
+    font-weight: 600;
+    color: #101828;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .payment-list-dense table.table tbody tr:nth-child(even) td {
+    background: #fbfcfe;
+  }
+  .payment-list-dense table.table tbody tr:hover td {
+    background: #f2f6ff;
+  }
+  .payment-list-dense table.table a {
+    color: #06f;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .payment-list-dense th.col-source,
+  .payment-list-dense td.col-source {
+    width: 6.5rem;
+    white-space: nowrap;
+  }
+  .payment-list-dense th.col-sn,
+  .payment-list-dense td.col-sn {
+    width: 3.25rem;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+  }
+  .payment-list-dense th.col-amount,
+  .payment-list-dense td.col-amount,
+  .payment-list-dense th.col-balance,
+  .payment-list-dense td.col-balance,
+  .payment-list-dense th.col-lease-balance,
+  .payment-list-dense td.col-lease-balance,
+  .payment-list-dense th.col-security-balance,
+  .payment-list-dense td.col-security-balance {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .payment-list-dense td.col-date {
+    color: #6b7280;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+
+  .payment-list-dense .badge {
+    border-radius: 2rem;
+    font-size: .68rem;
+    padding: 2px 8px;
+    font-weight: 600;
+    letter-spacing: .01em;
+  }
+  .payment-list-dense .badge.bg-primary,
+  .payment-list-dense .badge[class*="bg-primary"] {
+    background: #e8f0fe !important;
+    color: #1a56db !important;
+  }
+  .payment-list-dense .badge.bg-warning,
+  .payment-list-dense .badge[class*="bg-warning"] {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+  }
+  .payment-list-dense .badge.bg-danger,
+  .payment-list-dense .badge[class*="bg-danger"] {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+  }
+  .payment-list-dense .badge.bg-info,
+  .payment-list-dense .badge[class*="bg-info"] {
+    background: #e0f2fe !important;
+    color: #075985 !important;
+  }
+  .payment-list-dense td .text-success {
+    color: #16a34a !important;
+    font-weight: 700;
+  }
+  .payment-list-dense td .text-danger {
+    color: #dc2626 !important;
+    font-weight: 700;
+  }
+  .payment-list-dense td small,
+  .payment-list-dense td .small,
+  .payment-list-dense td .split-breakdown {
+    display: block;
+    margin-top: 1px;
+    color: #6b7280 !important;
+    font-size: .68rem !important;
+    line-height: 1.25;
+  }
+  .payment-list-dense .unit-sub,
+  .payment-list-dense .balance-sub {
+    display: none !important;
+  }
+
+  .payment-list-dense td.col-actions {
+    white-space: nowrap;
+  }
+  .payment-list-dense td.col-actions .actions-wrap {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .25rem;
+    align-items: center;
+  }
+  .payment-list-dense td.col-actions .btn {
+    width: 1.95rem;
+    height: 1.75rem;
+    padding: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .76rem;
+  }
+
+  @media (min-width: 768px) {
+    .payment-list-dense th.col-unit,
+    .payment-list-dense td.col-unit {
+      min-width: var(--cash-col-unit);
+      width: var(--cash-col-unit);
+      white-space: normal;
+    }
+    .payment-list-dense th.col-sn,
+    .payment-list-dense td.col-sn { width: var(--cash-col-sn); }
+    .payment-list-dense th.col-tenant,
+    .payment-list-dense td.col-tenant { width: var(--cash-col-tenant); }
+    .payment-list-dense th.col-property,
+    .payment-list-dense td.col-property { width: var(--cash-col-property); }
+    .payment-list-dense th.col-date,
+    .payment-list-dense td.col-date { width: var(--cash-col-date); }
+    .payment-list-dense th.col-amount,
+    .payment-list-dense td.col-amount { width: var(--cash-col-amount); }
+    .payment-list-dense th.col-method,
+    .payment-list-dense td.col-method { width: var(--cash-col-method); }
+    .payment-list-dense th.col-description,
+    .payment-list-dense td.col-description { width: var(--cash-col-desc); }
+    .payment-list-dense th.col-lease-balance,
+    .payment-list-dense td.col-lease-balance,
+    .payment-list-dense th.col-security-balance,
+    .payment-list-dense td.col-security-balance,
+    .payment-list-dense th.col-balance,
+    .payment-list-dense td.col-balance { width: var(--cash-col-balance); }
+    .payment-list-dense th.col-actions,
+    .payment-list-dense td.col-actions { width: var(--cash-col-actions); }
+    .payment-list-dense td.col-actions .actions-wrap {
+      gap: 7px;
+    }
+    .payment-list-dense td.col-actions .btn {
+      width: 28px;
+      height: 30px;
+      border-radius: 6px !important;
+      border: 1px solid transparent !important;
+      color: #fff !important;
+      box-shadow: 0 1px 2px rgba(16,24,40,.08);
+    }
+    .payment-list-dense td.col-actions .btn-outline-secondary {
+      background: #667085 !important;
+    }
+    .payment-list-dense td.col-actions .btn-outline-success {
+      background: #12b76a !important;
+    }
+    .payment-list-dense td.col-actions .btn-outline-primary {
+      background: #0d6efd !important;
+    }
+    .payment-list-dense td.col-actions .btn-outline-danger {
+      background: #ef4444 !important;
+    }
+    .payment-list-dense td.col-actions .btn i {
+      color: #fff !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .payment-filter-grid {
+      display: grid !important;
+      grid-template-columns: repeat(3, 1fr) !important;
+      gap: .4rem .35rem !important;
+      overflow-x: visible;
+    }
+    #payment-filter-form .form-label {
+      font-size: .68rem;
+    }
+    #payment-filter-form .form-select,
+    #payment-filter-form .form-control,
+    #payment-filter-form .select2-container--default .select2-selection--single {
+      font-size: .72rem !important;
+      padding-top: .25rem !important;
+      padding-bottom: .25rem !important;
+    }
+
+    .payment-list-dense .table-responsive {
+      overflow-x: visible !important;
+    }
+    .payment-list-dense table.table thead {
+      display: none !important;
+    }
+    .payment-list-dense table.table,
+    .payment-list-dense table.table tbody {
+      display: block !important;
+      width: 100% !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      align-items: flex-start !important;
+      gap: .1rem .35rem;
+      border: 1px solid #e5e7eb !important;
+      border-radius: 10px !important;
+      padding: .65rem .75rem !important;
+      margin-bottom: .55rem !important;
+      background: #fff !important;
+    }
+    .payment-list-dense table.table tbody td {
+      border: 0 !important;
+      padding: .08rem .1rem !important;
+    }
+    .payment-list-dense td.col-sn {
+      order: 1 !important;
+      flex: 0 0 auto !important;
+      width: auto !important;
+      color: #9ca3af !important;
+      font-size: .72rem !important;
+      font-weight: 700 !important;
+    }
+    .payment-list-dense td.col-sn::before {
+      content: "#";
+    }
+    .payment-list-dense td.col-tenant {
+      order: 2 !important;
+      flex: 1 1 58% !important;
+      max-width: none !important;
+      font-weight: 700 !important;
+      font-size: .92rem !important;
+      white-space: normal !important;
+    }
+    .payment-list-dense td.col-source {
+      order: 3 !important;
+      flex: 0 0 auto !important;
+      margin-left: auto;
+      text-align: right;
+    }
+    .payment-list-dense td.col-property {
+      order: 4 !important;
+      flex: 1 1 55% !important;
+      max-width: none !important;
+      white-space: normal !important;
+      color: #6b7280;
+      font-size: .76rem !important;
+    }
+    .payment-list-dense td.col-amount {
+      order: 5 !important;
+      flex: 1 1 35% !important;
+      width: auto !important;
+      text-align: right !important;
+      font-weight: 700 !important;
+    }
+    .payment-list-dense td.col-date {
+      order: 6 !important;
+      flex: 1 1 100% !important;
+      width: auto !important;
+      color: #6b7280 !important;
+      font-size: .74rem !important;
+      margin-top: .15rem !important;
+    }
+    .payment-list-dense td.col-description {
+      order: 7 !important;
+      flex: 1 1 100% !important;
+      color: #6b7280;
+      font-size: .72rem !important;
+    }
+    .payment-list-dense td.col-actions {
+      order: 8 !important;
+      flex: 1 1 100% !important;
+      width: auto !important;
+      margin-top: .45rem !important;
+      padding-top: .5rem !important;
+      border-top: 1px dashed #eceef1 !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      display: flex;
+      flex-wrap: nowrap !important;
+      gap: .4rem !important;
+    }
+    .payment-list-dense td.col-actions .btn {
+      flex: 1 1 0;
+      width: auto;
+      height: 38px;
+      min-width: 0;
+      font-size: .78rem !important;
+    }
+    .payment-list-dense td.col-unit,
+    .payment-list-dense td.col-method,
+    .payment-list-dense td.col-lease-balance,
+    .payment-list-dense td.col-security-balance,
+    .payment-list-dense td.col-balance {
+      display: none !important;
+    }
+    .payment-list-dense .unit-sub,
+    .payment-list-dense .balance-sub {
+      display: block !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .payment-list-dense {
+      /* Mobile cash ledger tweak panel */
+      --cash-mobile-tenant-size: 2rem;
+      --cash-mobile-tenant-weight: 800;
+      --cash-mobile-sn-size: 1.72rem;
+      --cash-mobile-sn-weight: 700;
+      --cash-mobile-sn-width: 3.4rem;
+      --cash-mobile-sn-color: #101828;
+      --cash-mobile-property-size: 1.276rem;
+      --cash-mobile-unit-size: 1.76rem;
+      --cash-mobile-unit-weight: 700;
+      --cash-mobile-amount-size: 1.498rem;
+      --cash-mobile-amount-weight: 800;
+      --cash-mobile-amount-top: 1.65rem;
+      --cash-mobile-date-size: 1.78rem;
+      --cash-mobile-date-weight: 800;
+      --cash-mobile-date-color: #101828;
+      --cash-mobile-balance-size: 1.28rem;
+      --cash-mobile-balance-weight: 800;
+      --cash-mobile-balance-color: #101828;
+      --cash-mobile-split-size: .62rem;
+      --cash-mobile-split-weight: 500;
+      --cash-mobile-action-icon-size: 1.86rem;
+      --cash-mobile-action-height: 38px;
+    }
+    .table-responsive.payment-list-dense {
+      overflow-x: visible !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      position: relative;
+      gap: 0 .35rem !important;
+      padding: .78rem .78rem .7rem !important;
+      margin: 0 0 .62rem !important;
+      border-radius: 9px !important;
+      box-shadow: none !important;
+    }
+    .payment-list-dense table.table tbody td {
+      line-height: 1.25 !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+    .payment-list-dense td.col-sn {
+      order: 1 !important;
+      flex: 0 0 var(--cash-mobile-sn-width) !important;
+      width: var(--cash-mobile-sn-width) !important;
+      padding-top: .05rem !important;
+      color: var(--cash-mobile-sn-color) !important;
+      font-size: var(--cash-mobile-sn-size) !important;
+      font-weight: var(--cash-mobile-sn-weight) !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-tenant {
+      order: 2 !important;
+      flex: 1 1 calc(100% - var(--cash-mobile-sn-width) - .5rem) !important;
+      min-width: 0 !important;
+      padding-top: .05rem !important;
+      font-size: var(--cash-mobile-tenant-size) !important;
+      font-weight: 700 !important;
+      line-height: 1.15 !important;
+    }
+    .payment-list-dense td.col-tenant a {
+      color: #0d6efd !important;
+      font-weight: var(--cash-mobile-tenant-weight) !important;
+      max-width: 100%;
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
+      white-space: nowrap;
+    }
+    .payment-list-dense td.col-property {
+      order: 3 !important;
+      flex: 1 1 calc(62% - var(--cash-mobile-sn-width)) !important;
+      margin-left: var(--cash-mobile-sn-width) !important;
+      padding-top: .18rem !important;
+      color: #475569 !important;
+      font-size: var(--cash-mobile-property-size) !important;
+      font-weight: 400 !important;
+      line-height: 1.25 !important;
+    }
+    .payment-list-dense td.col-property > span[title] {
+      display: block !important;
+      margin-bottom: .12rem !important;
+    }
+    .payment-list-dense td.col-property .unit-sub,
+    .payment-list-dense td.col-property .subline.unit-sub {
+      color: #334155 !important;
+      display: block !important;
+      font-size: var(--cash-mobile-unit-size) !important;
+      font-weight: var(--cash-mobile-unit-weight) !important;
+      margin-top: .18rem !important;
+      line-height: 1.05 !important;
+    }
+    .payment-list-dense td.col-amount {
+      order: 4 !important;
+      flex: 0 0 34% !important;
+      margin-left: auto !important;
+      padding-top: var(--cash-mobile-amount-top) !important;
+      text-align: right !important;
+      font-size: var(--cash-mobile-amount-size) !important;
+      line-height: 1.1 !important;
+    }
+    .payment-list-dense td.col-amount .fw-semibold,
+    .payment-list-dense td.col-amount .text-success,
+    .payment-list-dense td.col-amount .text-danger {
+      font-size: var(--cash-mobile-amount-size) !important;
+      font-weight: var(--cash-mobile-amount-weight) !important;
+    }
+    .payment-list-dense td.col-amount .small {
+      display: inline-block !important;
+      margin-top: .22rem !important;
+      padding: 2px 6px !important;
+      border-radius: 4px !important;
+      background: #fef3c7 !important;
+      color: #92400e !important;
+      font-size: var(--cash-mobile-split-size) !important;
+      font-weight: var(--cash-mobile-split-weight) !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-date {
+      order: 5 !important;
+      flex: 1 1 100% !important;
+      display: flex !important;
+      align-items: baseline !important;
+      justify-content: space-between !important;
+      gap: .5rem !important;
+      margin-left: var(--cash-mobile-sn-width) !important;
+      padding-right: .1rem !important;
+      margin-top: .28rem !important;
+      color: var(--cash-mobile-date-color) !important;
+      font-size: var(--cash-mobile-date-size) !important;
+      font-weight: var(--cash-mobile-date-weight) !important;
+      line-height: 1.2 !important;
+    }
+    .payment-list-dense td.col-date .balance-sub {
+      display: inline !important;
+      margin-left: auto !important;
+      color: var(--cash-mobile-balance-color) !important;
+      font-size: var(--cash-mobile-balance-size) !important;
+      font-weight: var(--cash-mobile-balance-weight) !important;
+      text-align: right !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-description {
+      order: 6 !important;
+      flex: 1 1 100% !important;
+      margin-left: var(--cash-mobile-sn-width) !important;
+      margin-top: .18rem !important;
+      color: #64748b !important;
+      font-size: .68rem !important;
+      font-weight: 400 !important;
+    }
+    .payment-list-dense td.col-actions {
+      order: 7 !important;
+      flex: 1 1 100% !important;
+      margin-top: .62rem !important;
+      padding-top: .58rem !important;
+      border-top: 1px dashed #e5e7eb !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      width: 100% !important;
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(3.75rem, 1fr)) !important;
+      gap: .42rem !important;
+    }
+    .payment-list-dense td.col-actions .btn {
+      width: 100% !important;
+      height: var(--cash-mobile-action-height) !important;
+      min-width: 0 !important;
+      padding: 0 !important;
+      border-radius: 5px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    .payment-list-dense td.col-actions .btn i {
+      font-size: var(--cash-mobile-action-icon-size) !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .table-responsive.payment-list-dense {
+      overflow-x: visible !important;
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      width: 100% !important;
+      min-height: 0 !important;
+      align-items: flex-start !important;
+    }
+    .payment-list-dense table.table tbody td {
+      box-sizing: border-box !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      white-space: normal !important;
+    }
+    .payment-list-dense td.col-sn {
+      flex: 0 0 var(--cash-mobile-sn-width, 3.4rem) !important;
+      width: var(--cash-mobile-sn-width, 3.4rem) !important;
+      color: var(--cash-mobile-sn-color, #101828) !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-tenant {
+      flex: 1 1 calc(100% - var(--cash-mobile-sn-width, 3.4rem) - .5rem) !important;
+      min-width: 0 !important;
+    }
+    .payment-list-dense td.col-property {
+      flex: 1 1 calc(62% - var(--cash-mobile-sn-width, 3.4rem)) !important;
+      margin-left: var(--cash-mobile-sn-width, 3.4rem) !important;
+    }
+    .payment-list-dense td.col-amount {
+      flex: 0 0 34% !important;
+      margin-left: auto !important;
+      text-align: right !important;
+    }
+    .payment-list-dense td.col-date {
+      display: flex !important;
+      align-items: baseline !important;
+      justify-content: space-between !important;
+      gap: .5rem !important;
+      margin-left: var(--cash-mobile-sn-width, 3.4rem) !important;
+      color: var(--cash-mobile-date-color, #101828) !important;
+    }
+    .payment-list-dense td.col-date .balance-sub {
+      margin-left: auto !important;
+      color: var(--cash-mobile-balance-color, #101828) !important;
+      text-align: right !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-actions {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      width: 100% !important;
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      gap: .42rem !important;
+    }
+    .payment-list-dense td.col-actions .btn {
+      width: 100% !important;
+      height: var(--cash-mobile-action-height, 38px) !important;
+      min-width: 0 !important;
+      padding: 0 !important;
+      border-radius: 5px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: transparent !important;
+    }
+    .payment-list-dense td.col-actions .btn i {
+      font-size: var(--cash-mobile-action-icon-size, 1rem) !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .cash-ledger-container {
+      max-width: 100% !important;
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
+    .payment-list-dense table.table tbody tr {
+      display: grid !important;
+      grid-template-columns: var(--cash-mobile-sn-width, 3.4rem) minmax(0, 1fr) minmax(8rem, auto) !important;
+      gap: .28rem .35rem !important;
+      width: 100% !important;
+      padding: .78rem .78rem .72rem !important;
+      margin: 0 0 .62rem !important;
+    }
+    .payment-list-dense td.col-sn {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      align-self: baseline !important;
+      flex: none !important;
+      width: auto !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-tenant {
+      grid-column: 2 / 4 !important;
+      grid-row: 1 !important;
+      align-self: baseline !important;
+      flex: none !important;
+      width: auto !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-property {
+      grid-column: 2 !important;
+      grid-row: 2 !important;
+      align-self: start !important;
+      flex: none !important;
+      width: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-amount {
+      grid-column: 3 !important;
+      grid-row: 2 !important;
+      align-self: start !important;
+      flex: none !important;
+      width: auto !important;
+      margin: 0 !important;
+      padding: .12rem 0 0 !important;
+      text-align: right !important;
+    }
+    .payment-list-dense td.col-date {
+      grid-column: 2 / 4 !important;
+      grid-row: 3 !important;
+      flex: none !important;
+      width: auto !important;
+      margin: .18rem 0 0 !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-description {
+      grid-column: 2 / 4 !important;
+      grid-row: 4 !important;
+      flex: none !important;
+      width: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .payment-list-dense td.col-actions {
+      grid-column: 1 / 4 !important;
+      grid-row: 5 !important;
+      flex: none !important;
+      width: auto !important;
+      margin: .58rem 0 0 !important;
+      padding: .58rem 0 0 !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      width: 100% !important;
+    }
+  }
+</style>
 {% endblock %}
 
 {% block total_label %}Cash Movements:{% endblock %}
 {% block title %}Cash Ledger{% endblock %}
 {% block page_heading %}Cash Ledger{% endblock %}
 {% block filter_action %}{% url 'payments:cash_ledger' %}{% endblock %}
+{% block main_container_class %}container-fluid cash-ledger-container{% endblock %}
 
 {% block header_buttons %}
   <a href="{% url 'payments:payment_create' %}" class="btn btn-primary">
     <i class="fas fa-plus me-1"></i> Add Payment
   </a>
-  <a href="{% url 'payments:cash_ledger' %}" class="btn btn-link">Payments</a>
 {% endblock %}
 
 {% block totals_card %}

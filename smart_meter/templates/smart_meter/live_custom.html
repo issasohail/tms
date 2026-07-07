@@ -68,7 +68,7 @@
   @media (max-width: 576px) {
     :root {
       --w-sno: 18px;
-      --w-prop: 54px;
+      --w-prop: 44px;
       --w-unit: 70px;
       --w-tenant: 90px;
       --w-meter: 96px;
@@ -124,7 +124,7 @@
       --filter-maxw: 180px;
 
       --w-sno: 18px;
-      --w-prop: 50px;
+      --w-prop: 42px;
       --w-tenant: 80px;
       --w-meter: 88px;
       --w-updated: 58px;
@@ -150,10 +150,10 @@
     td.col-unit,
     th.col-tenant,
     td.col-tenant,
-    th.col-total_power,
-    td.col-total_power,
-    th.col-pf_total,
-    td.col-pf_total,
+    th[data-col="total_power"],
+    td[data-col="total_power"],
+    th[data-col="pf_total"],
+    td[data-col="pf_total"],
     th.col-status,
     td.col-status,
     /* hide Status column per request */
@@ -214,6 +214,12 @@
 
   .table-responsive {
     overflow-x: auto;
+  }
+
+  #captureArea.is-ajax-loading {
+    opacity: .65;
+    pointer-events: none;
+    transition: opacity .12s ease-in-out;
   }
 
   /* Width helpers */
@@ -515,10 +521,10 @@
     td.col-unit,
     th.col-tenant,
     td.col-tenant,
-    th.col-total_power,
-    td.col-total_power,
-    th.col-pf_total,
-    td.col-pf_total,
+    th[data-col="total_power"],
+    td[data-col="total_power"],
+    th[data-col="pf_total"],
+    td[data-col="pf_total"],
     th.col-status,
     td.col-status,
     /* hide Status column per request */
@@ -546,9 +552,20 @@
       white-space: nowrap;
     }
 
+    .col-prop .mobile-property {
+      display: block;
+      font-weight: 600;
+      line-height: 1;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .col-prop .mobile-unit {
       display: block;
       font-size: .52rem;
+      font-weight: 700;
       opacity: .85;
       margin-top: .12rem;
       line-height: 1.0;
@@ -1003,7 +1020,7 @@
     body.innerHTML = '';
     const key = keyForProfile(profile);
     const cols = loadPrefs(key) || (profile === 'mobile'
-      ? ['status', 'updated', 'total_power', 'pf_total', 'voltage_a', 'current_a', 'total_energy']
+      ? ['updated', 'total_energy']
       : ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a']
     );
     const frag = document.createDocumentFragment();
@@ -1128,7 +1145,7 @@
     document.body.classList.toggle('profile-desktop', !mqMobile.matches);
 
     const cols = loadPrefs() || (mqMobile.matches
-      ? ['status', 'updated', 'total_power', 'pf_total', 'voltage_a', 'current_a', 'total_energy']
+      ? ['updated', 'total_energy']
       : ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a']
     );
     applyCols(cols);
@@ -1154,7 +1171,7 @@
     const btnReset = document.getElementById('colsReset');
     btnEss && (btnEss.onclick = () => {
       const essential = activeProfile === 'mobile'
-        ? ['status', 'updated', 'total_power', 'pf_total', 'voltage_a', 'current_a', 'total_energy']
+        ? ['updated', 'total_energy']
         : ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a'];
       savePrefs(essential, keyForProfile(activeProfile)); applyCols(essential); buildColsUI(activeProfile);
     });
@@ -1169,6 +1186,99 @@
 </script>
 
 <!-- Updated cell: mark red if ≥ 2 hours -->
+<script>
+  function mobileDefaultCols() {
+    return ['updated', 'total_energy'];
+  }
+
+  function desktopDefaultCols() {
+    return ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a'];
+  }
+
+  function refreshLiveCustomEnhancements() {
+    document.body.classList.toggle('profile-mobile', mqMobile.matches);
+    document.body.classList.toggle('profile-desktop', !mqMobile.matches);
+
+    const defaults = mqMobile.matches ? mobileDefaultCols() : desktopDefaultCols();
+    if (typeof applyCols === 'function') applyCols(loadPrefs() || defaults);
+    if (typeof buildColsUI === 'function') buildColsUI(activeProfile);
+    if (typeof markStaleUpdatedCells === 'function') markStaleUpdatedCells();
+  }
+
+  async function ajaxLoadLiveCustom(url, pushState = true) {
+    const current = document.getElementById('captureArea');
+    if (!current) {
+      window.location.href = url;
+      return;
+    }
+
+    current.classList.add('is-ajax-loading');
+    try {
+      const res = await fetch(url, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error('Filter request failed');
+
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const next = doc.getElementById('captureArea');
+      if (!next) throw new Error('Updated content was not found');
+
+      current.replaceWith(next);
+      if (pushState) window.history.pushState({}, '', url);
+      refreshLiveCustomEnhancements();
+      setTimeout(refreshLiveRows, 200);
+    } catch (e) {
+      window.location.href = url;
+    }
+  }
+
+  function urlFromLiveFilterForm(form) {
+    const params = new URLSearchParams(new FormData(form));
+    [...params.entries()].forEach(([key, value]) => {
+      if (value === '') params.delete(key);
+    });
+    const query = params.toString();
+    return form.action + (query ? '?' + query : '');
+  }
+
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('form.filters-inline');
+    if (!form) return;
+    e.preventDefault();
+    ajaxLoadLiveCustom(urlFromLiveFilterForm(form));
+  });
+
+  document.addEventListener('change', (e) => {
+    const control = e.target.closest('form.filters-inline select, form.filters-inline input[type="checkbox"]');
+    if (!control) return;
+    const form = control.form;
+    if (!form) return;
+    if (control.name === 'property') {
+      const unit = form.querySelector('[name="unit"]');
+      const meter = form.querySelector('[name="meter"]');
+      if (unit) unit.value = '';
+      if (meter) meter.value = '';
+    } else if (control.name === 'unit') {
+      const meter = form.querySelector('[name="meter"]');
+      if (meter) meter.value = '';
+    }
+    ajaxLoadLiveCustom(urlFromLiveFilterForm(form));
+  });
+
+  document.addEventListener('click', (e) => {
+    const ajaxLink = e.target.closest('#captureArea .meter-chip, #captureArea form.filters-inline a.btn');
+    if (!ajaxLink) return;
+    e.preventDefault();
+    ajaxLoadLiveCustom(ajaxLink.href);
+  });
+
+  window.addEventListener('popstate', () => {
+    ajaxLoadLiveCustom(window.location.href, false);
+  });
+</script>
+
 <script>
   function markStaleUpdatedCells() {
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
@@ -1212,15 +1322,14 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const t = document.getElementById('btnCleanView');
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('#btnCleanView');
     if (!t) return;
-    t.addEventListener('click', () => {
-      document.body.classList.toggle('screenshot-mode');
-      t.innerHTML = document.body.classList.contains('screenshot-mode')
-        ? '<i class="fas fa-eye me-1"></i>Exit clean view'
-        : '<i class="fas fa-eye-slash me-1"></i>Clean view';
-    });
+    e.preventDefault();
+    document.body.classList.toggle('screenshot-mode');
+    t.innerHTML = document.body.classList.contains('screenshot-mode')
+      ? '<i class="fas fa-eye me-1"></i>Exit clean view'
+      : '<i class="fas fa-eye-slash me-1"></i>Clean view';
   });
 
   async function takeScreenshot() {
@@ -1299,9 +1408,11 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('btnScreenshot');
-    if (btn) btn.addEventListener('click', takeScreenshot);
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#btnScreenshot');
+    if (!btn) return;
+    e.preventDefault();
+    takeScreenshot();
   });
 </script>
 
@@ -1380,9 +1491,9 @@
         {% endif %}
 
         <!-- Filters / actions -->
-        <form method="get" class="filters-inline d-flex align-items-center flex-wrap gap-2 m-0 w-100">
+        <form method="get" action="{% url 'smart_meter:smart_meter_live_custom' %}" class="filters-inline d-flex align-items-center flex-wrap gap-2 m-0 w-100">
           <!-- Property -->
-          <select name="property" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+          <select name="property" class="form-select form-select-sm w-auto">
             <option value="">All properties</option>
             {% for p in all_properties %}
             <option value="{{ p.id }}" {% if p.is_selected %} selected{% endif %}>{{ p.property_name }}</option>
@@ -1395,7 +1506,7 @@
 
 
           <!-- Unit -->
-          <select name="unit" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+          <select name="unit" class="form-select form-select-sm w-auto">
             <option value="">All units</option>
             {% for u in filtered_units %}
             <option value="{{ u.id }}" {% if u.is_selected %} selected{% endif %}>{{ u.unit_number }}</option>
@@ -1411,7 +1522,7 @@
           <!-- Meter + Filter + Reset grouped on small -->
           <div class="meter-actions d-flex align-items-center gap-2">
             <select name="meter" class="form-select form-select-sm text-truncate"
-              style="min-width:var(--filter-minw);max-width:var(--filter-maxw)" onchange="this.form.submit()">
+              style="min-width:var(--filter-minw);max-width:var(--filter-maxw)">
               <option value="">All meters</option>
               {% for m in filtered_meters %}
               <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>
@@ -1424,7 +1535,7 @@
 
             </select>
 
-            <select name="active" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            <select name="active" class="form-select form-select-sm w-auto">
               <option value="active" {% if active_filter == "active" %}selected{% endif %}>Active</option>
               <option value="all" {% if active_filter == "all" %}selected{% endif %}>All</option>
               <option value="inactive" {% if active_filter == "inactive" %}selected{% endif %}>Inactive</option>
@@ -1439,11 +1550,9 @@
           <!-- Offline only -->
           <div class="d-flex align-items-center">
             {% if offline_only %}
-            <input class="form-check-input me-2 my-0" type="checkbox" id="offlineOnly" name="offline" value="1" checked
-              onchange="this.form.submit()">
+            <input class="form-check-input me-2 my-0" type="checkbox" id="offlineOnly" name="offline" value="1" checked>
             {% else %}
-            <input class="form-check-input me-2 my-0" type="checkbox" id="offlineOnly" name="offline" value="1"
-              onchange="this.form.submit()">
+            <input class="form-check-input me-2 my-0" type="checkbox" id="offlineOnly" name="offline" value="1">
             {% endif %}
             <label class="form-check-label small m-0" for="offlineOnly">Offline only</label>
           </div>
@@ -1506,9 +1615,9 @@
             </td>
 
             <td class="sticky-left col-prop text-center" title="{{ p.property_name }}">
-              {{ p.property_name|slice:":8" }}
+              <span class="mobile-property">{{ p.property_name|slice:":8" }}</span>
               <span class="mobile-unit" aria-hidden="true">{{ u.unit_number|default:"" }}</span>
-              <span class="mobile-tenant">{{ r.tenant_name|default:"Vacant" }}</span>
+              <span class="mobile-tenant" title="{{ r.tenant_name|default:"Vacant" }}">{{ r.tenant_name|default:"Vacant"|slice:":20" }}</span>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ u.unit_number }}">
@@ -1609,7 +1718,10 @@
 <dialog id="colsDlg" style="display:none"></dialog>
 
 <style>
-  /* Final mobile table-only tightening. Keeps chips and filters unchanged. */
+  /* Final mobile table-only tightening. Keeps chips and filters unchanged.
+     Mobile column width tweak point:
+     Change the width/min-width/max-width values below for each visible mobile column.
+     Visible mobile columns here are S/N, Property, Meter #, Updated, and Total Energy. */
   @media (max-width: 576px) {
     #captureArea .card .table-responsive {
       overflow-x: hidden;
@@ -1624,10 +1736,19 @@
 
     #captureArea table.table-compact th,
     #captureArea table.table-compact td {
-      padding: .12rem .10rem !important;
-      line-height: 1.05;
+      padding: .16rem .12rem !important;
+      line-height: 1.12;
       overflow: hidden;
       vertical-align: middle;
+    }
+
+    #captureArea table.table-compact thead th {
+      font-size: .46rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: #5d6773;
+      background: #f8fafc;
+      border-bottom-color: #d8dee6;
     }
 
     #captureArea table.table-compact th.sno,
@@ -1639,56 +1760,76 @@
 
     #captureArea table.table-compact th.col-prop,
     #captureArea table.table-compact td.col-prop {
-      width: 52px !important;
-      min-width: 52px !important;
-      max-width: 52px !important;
+      width: 72px !important;
+      min-width: 72px !important;
+      max-width: 72px !important;
       white-space: nowrap;
       text-overflow: ellipsis;
     }
 
     #captureArea table.table-compact th.col-meter,
     #captureArea table.table-compact td.col-meter {
-      width: 84px !important;
-      min-width: 84px !important;
-      max-width: 84px !important;
+      width: 80px !important;
+      min-width: 80px !important;
+      max-width: 80px !important;
       white-space: nowrap;
       text-overflow: ellipsis;
     }
 
     #captureArea table.table-compact th[data-col="updated"],
     #captureArea table.table-compact td[data-col="updated"] {
-      width: 58px !important;
-      min-width: 58px !important;
-      max-width: 58px !important;
+      width: 44px !important;
+      min-width: 44px !important;
+      max-width: 44px !important;
       white-space: nowrap;
       text-align: center;
     }
 
     #captureArea table.table-compact th[data-col="total_energy"],
     #captureArea table.table-compact td[data-col="total_energy"] {
-      width: 84px !important;
-      min-width: 84px !important;
-      max-width: 84px !important;
+      width: 76px !important;
+      min-width: 76px !important;
+      max-width: 76px !important;
       white-space: nowrap;
       text-align: right;
     }
 
+    #captureArea table.table-compact th[data-col="total_energy"] {
+      white-space: normal;
+      line-height: 1;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-property,
     #captureArea table.table-compact .col-prop .mobile-unit,
     #captureArea table.table-compact .col-prop .mobile-tenant {
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
       line-height: 1;
       margin-top: .08rem;
     }
 
+    #captureArea table.table-compact .col-prop .mobile-property {
+      font-size: .45rem;
+      font-weight: 600;
+      margin-top: 0;
+      white-space: nowrap;
+    }
+
     #captureArea table.table-compact .col-prop .mobile-unit {
       font-size: .43rem;
+      font-weight: 700;
+      color: #4b5563;
+      white-space: nowrap;
     }
 
     #captureArea table.table-compact .col-prop .mobile-tenant {
-      font-size: .40rem;
+      font-size: .39rem;
+      color: #6b7280;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      text-overflow: clip;
     }
 
     #captureArea table.table-compact .col-meter .mobile-actions {
@@ -1722,7 +1863,9 @@
     }
 
     #captureArea table.table-compact td[data-col="total_energy"] .total-energy-main {
-      font-size: .48rem;
+      font-size: .47rem;
+      font-weight: 700;
+      color: #111827;
     }
 
     #captureArea table.table-compact td[data-col="total_energy"] .mobile-voltage,
@@ -1735,30 +1878,30 @@
   @media (max-width: 360px) {
     #captureArea table.table-compact th.col-prop,
     #captureArea table.table-compact td.col-prop {
-      width: 48px !important;
-      min-width: 48px !important;
-      max-width: 48px !important;
+      width: 62px !important;
+      min-width: 62px !important;
+      max-width: 62px !important;
     }
 
     #captureArea table.table-compact th.col-meter,
     #captureArea table.table-compact td.col-meter {
-      width: 80px !important;
-      min-width: 80px !important;
-      max-width: 80px !important;
+      width: 76px !important;
+      min-width: 76px !important;
+      max-width: 76px !important;
     }
 
     #captureArea table.table-compact th[data-col="updated"],
     #captureArea table.table-compact td[data-col="updated"] {
-      width: 56px !important;
-      min-width: 56px !important;
-      max-width: 56px !important;
+      width: 42px !important;
+      min-width: 42px !important;
+      max-width: 42px !important;
     }
 
     #captureArea table.table-compact th[data-col="total_energy"],
     #captureArea table.table-compact td[data-col="total_energy"] {
-      width: 80px !important;
-      min-width: 80px !important;
-      max-width: 80px !important;
+      width: 72px !important;
+      min-width: 72px !important;
+      max-width: 72px !important;
     }
   }
 </style>

@@ -23,8 +23,7 @@ def _to_decimal(v):
 
 
 class CashLedgerTable(tables.Table):
-    sn = tables.Column(empty_values=(), orderable=False, attrs={"td": {"class": "text-center col-sn"}, "th": {"class": "col-sn"}})
-    source = tables.Column(verbose_name="Src")
+    sn = tables.Column(verbose_name="#", empty_values=(), orderable=False, attrs={"td": {"class": "text-center col-sn"}, "th": {"class": "text-center col-sn"}})
 
     tenant = tables.Column(accessor="lease.tenant",
                        attrs={"td": {"class": "col-tenant"}, "th": {"class": "col-tenant"}})
@@ -70,7 +69,11 @@ class CashLedgerTable(tables.Table):
         return self._global_settings
 
     def render_sn(self):
-        self.row_counter = getattr(self, "row_counter", 0) + 1
+        if not hasattr(self, "row_counter"):
+            page = getattr(self, "page", None)
+            self.row_counter = page.start_index() - 1 if page else 0
+
+        self.row_counter += 1
         return self.row_counter
 
     def render_source(self, value, record):
@@ -94,8 +97,12 @@ class CashLedgerTable(tables.Table):
             cls = "bg-warning text-dark"
             label = "Security"
 
+        base_label = label
         if getattr(record, "is_split", False):
             label = f"{label} • Split"
+
+        if getattr(record, "is_split", False):
+            label = f"{base_label} + Split"
 
         return format_html('<span class="badge {}">{}</span>', cls, label)
 
@@ -104,8 +111,7 @@ class CashLedgerTable(tables.Table):
     def render_property(self, value, record):
         # value might already be property name depending on accessor
         full = str(value or "")
-        short = _truncate(full, 8)
-        return format_html('<span title="{}">{}</span>', full, short)
+        return format_html('<span title="{}">{}</span>', full, full)
 
 
     def render_amount(self, value, record):
@@ -177,43 +183,34 @@ class CashLedgerTable(tables.Table):
 
         if view_url:
             btns.append(format_html(
-                '<a href="{}" class="btn btn-sm btn-primary" title="View">'
+                '<a href="{}" class="btn btn-sm btn-outline-secondary" title="View">'
                 '<i class="fas fa-eye"></i></a>',
                 view_url
-            ))
-
-        if edit_url:
-            btns.append(format_html(
-                '<a href="{}" class="btn btn-sm btn-secondary" title="Edit">'
-                '<i class="fas fa-edit"></i></a>',
-                edit_url
-            ))
-
-        if delete_url:
-            btns.append(format_html(
-                '<a href="{}" class="btn btn-sm btn-danger" title="Delete">'
-                '<i class="fas fa-trash"></i></a>',
-                delete_url
             ))
 
         if wa_url:
             # JS will read data-wa-url and open it
             api_object_id = record.source_id if getattr(record, "source", "") == "PAYMENT" else ""
             btns.append(format_html(
-                '<button type="button" class="btn btn-sm btn-success btn-wa-receipt" '
+                '<button type="button" class="btn btn-sm btn-outline-success btn-wa-receipt" '
                 'data-wa-url="{}" data-api-object-id="{}" title="WhatsApp Receipt">'
                 '<i class="fab fa-whatsapp"></i></button>',
                 wa_url,
                 api_object_id,
             ))
 
-        # Inline split edit button (modal)
-        if allocation_id:
+        if edit_url:
             btns.append(format_html(
-                '<button type="button" class="btn btn-sm btn-warning btn-split-edit" '
-                'data-allocation-id="{}" title="Edit Split">'
-                '<i class="fas fa-random"></i></button>',
-                allocation_id
+                '<a href="{}" class="btn btn-sm btn-outline-primary" title="Edit">'
+                '<i class="fas fa-edit"></i></a>',
+                edit_url
+            ))
+
+        if delete_url:
+            btns.append(format_html(
+                '<a href="{}" class="btn btn-sm btn-outline-danger" title="Delete">'
+                '<i class="fas fa-trash"></i></a>',
+                delete_url
             ))
 
         if not btns:
@@ -225,7 +222,7 @@ class CashLedgerTable(tables.Table):
         template_name = "django_tables2/bootstrap5-responsive.html"
         attrs = {"class": "table table-sm table-bordered table-hover align-middle"}
         fields = (
-            "sn", "source", "tenant", "property", "unit",
+            "sn", "tenant", "property", "unit",
             "date", "amount", "method","description",
             "lease_balance", "security_balance", "balance",
             "actions"

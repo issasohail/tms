@@ -9,8 +9,8 @@
         font-weight: bold;
     }
     @page {
-        size: A4;
-        margin: 18mm 14mm 18mm 14mm;
+        size: legal;
+        margin: 0.7in 0.55in 0.7in 0.55in;
 
         @bottom-center {
             content: "Page " counter(page) " of " counter(pages);
@@ -19,12 +19,59 @@
         }
     }
 
+    @page :first {
+        size: legal;
+        margin-top: 4.8in;
+        margin-left: 0.55in;
+        margin-right: 0.55in;
+        margin-bottom: 0.55in;
+    }
+
+    .agreement-preview {
+        font-family: "Times New Roman", Times, serif;
+        text-align: justify;
+        text-justify: inter-word;
+    }
+
+    .text-center,
+    .agreement-title {
+        text-align: center;
+    }
+
+    .agreement-title {
+        margin: 0 0 0.16in 0;
+    }
+
+    .agreement-preview p,
+    .agreement-preview .clause {
+        text-align: justify;
+        text-justify: inter-word;
+    }
+
+    .agreement-preview .text-center {
+        text-align: center;
+    }
+
+    .stamp-qr-reserve {
+        display: none;
+    }
+
+    @media print {
+        .stamp-qr-reserve {
+            display: block;
+            float: right;
+            width: 2in;
+            height: 4in;
+            margin-left: 0.18in;
+            margin-top: 1.75in;
+        }
+    }
+
 </style>
 
 <div id="agreement-doc" class="agreement-preview">
 
-    
-    <h2 class="text-center">RENT AGREEMENT</h2>
+    <h2 class="text-center agreement-title">RENT AGREEMENT</h2>
     <p class="text-center">This RENT AGREEMENT is made at Islamabad on this {{ agreement_date|date:"d-m-Y" }} BETWEEN </p>
     
     <div class="parties-section mt-4">
@@ -77,6 +124,9 @@
             </div>
             {% endif %}
         {% endwith %}
+        {% if clause.clause_number == 2 %}
+            <div class="stamp-qr-reserve"></div>
+        {% endif %}
         {% endfor %}
 
 

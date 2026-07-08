@@ -670,7 +670,6 @@
             </div>
           {% endif %}
           {% if family_members %}
-
             <div class="td-mobile-list td-mobile-people-list">
               {% for member in family_members %}
                 <div class="td-mobile-person-row">
@@ -1364,116 +1363,6 @@
 
   #tenantFamily .td-mobile-list {
     display: grid;
-  }
-
-  /* --------------------------------------------------------------------
-     FAMILY MEMBERS - DESKTOP COMPACT ROW
-     Purpose: make the desktop Family Members column match the mobile row
-     layout instead of showing a large full-width photo. On wider screens,
-     the action buttons sit in a right-side column; when there is not enough
-     room, they naturally wrap under the member details.
-     -------------------------------------------------------------------- */
-  @media (min-width: 769px) {
-    #tenantFamily .td-mobile-people-list {
-      gap: .45rem;
-    }
-
-    #tenantFamily .td-mobile-person-row {
-      display: grid;
-      grid-template-columns: 26px 58px minmax(0, 1fr);
-      gap: .5rem;
-      align-items: center;
-      border-bottom: 1px solid #e5e7eb;
-      padding: .55rem 0;
-    }
-
-    #tenantFamily .td-mobile-person-row:last-child {
-      border-bottom: 0;
-    }
-
-    #tenantFamily .td-mobile-photo img,
-    #tenantFamily .td-mobile-photo span {
-      width: 58px;
-      height: 58px;
-      border-radius: .45rem;
-      object-fit: cover;
-      border: 1px solid #d1d5db;
-      background: #f8fafc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #64748b;
-    }
-
-    #tenantFamily .td-mobile-sn {
-      color: #64748b;
-      text-align: center;
-      font-weight: 700;
-    }
-
-    #tenantFamily .td-mobile-person-detail {
-      min-width: 0;
-      line-height: 1.25;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      column-gap: .55rem;
-      align-items: center;
-    }
-
-    #tenantFamily .td-mobile-person-name,
-    #tenantFamily .td-mobile-muted,
-    #tenantFamily .td-mobile-phone {
-      grid-column: 1;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-
-    #tenantFamily .td-mobile-person-name {
-      font-weight: 800;
-    }
-
-    #tenantFamily .td-mobile-person-name span,
-    #tenantFamily .td-mobile-muted {
-      color: #64748b;
-      font-size: .72rem;
-      font-weight: 600;
-    }
-
-    #tenantFamily .td-mobile-phone {
-      font-size: .74rem;
-    }
-
-    #tenantFamily .td-mobile-actions {
-      grid-column: 2;
-      grid-row: 1 / span 4;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: .3rem;
-      margin-top: 0;
-      align-self: center;
-    }
-
-    #tenantFamily .td-mobile-actions .btn {
-      padding: .16rem .42rem;
-      font-size: .7rem;
-      line-height: 1.15;
-      white-space: nowrap;
-    }
-  }
-
-  /* Keep very narrow desktop/tablet cards readable: move actions below details. */
-  @media (min-width: 769px) and (max-width: 1080px) {
-    #tenantFamily .td-mobile-person-detail {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    #tenantFamily .td-mobile-actions {
-      grid-column: 1;
-      grid-row: auto;
-      justify-content: flex-start;
-      margin-top: .25rem;
-    }
   }
 
   @media (min-width: 1200px) {

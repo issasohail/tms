@@ -8,6 +8,7 @@
 - Never refactor unrelated code.
 - Never remove existing features without permission.
 - Never assume models, relationships, or field names - inspect first.
+- Never change Django settings files or `.env` files without explicit permission.
 
 ## Django Project Standards
 

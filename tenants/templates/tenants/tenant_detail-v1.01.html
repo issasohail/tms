@@ -26,6 +26,7 @@
           </a>
           <div class="td-mobile-docs">
             <div class="td-mobile-doc-item">
+              <span>CNIC Front</span>
               {% if tenant.cnic_front %}
                 <a href="{{ tenant.cnic_front.url }}" data-fancybox="tenant-mobile-documents" data-caption="CNIC Front">
                   <img src="{{ tenant.cnic_front.url }}" alt="CNIC Front">
@@ -35,6 +36,7 @@
               {% endif %}
             </div>
             <div class="td-mobile-doc-item">
+              <span>CNIC Back</span>
               {% if tenant.cnic_back %}
                 <a href="{{ tenant.cnic_back.url }}" data-fancybox="tenant-mobile-documents" data-caption="CNIC Back">
                   <img src="{{ tenant.cnic_back.url }}" alt="CNIC Back">
@@ -182,63 +184,12 @@
     </div>
   {% endif %}
 
-  {% if family_target_leases %}
-    <div class="modal fade" id="tenantVehicleAddModal" tabindex="-1" aria-labelledby="tenantVehicleAddModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" enctype="multipart/form-data" action="{% url 'tenants:tenant_vehicle_add' tenant.pk %}">
-            {% csrf_token %}
-            <div class="modal-header py-2">
-              <h5 class="modal-title h6" id="tenantVehicleAddModalLabel">Add Vehicle</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-              <div class="row g-2">
-                <div class="col-12">
-                  <label class="form-label small mb-1">Lease</label>
-                  <select name="lease" class="form-select form-select-sm">
-                    {% for lease_option in family_target_leases %}
-                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="col-6">
-                  <label class="form-label small mb-1">Vehicle Type</label>
-                  <select name="vehicle_type" class="form-select form-select-sm" required>
-                    <option value="">Select type</option>
-                    {% for vehicle_type in vehicle_types %}
-                      <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="col-6"><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm" required></div>
-                <div class="col-6"><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
-                <div class="col-6"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
-                <div class="col-12"><label class="form-label small mb-1">Registration Book</label><input name="registration_book_photo" type="file" accept="image/*,.pdf" class="form-control form-control-sm"></div>
-              </div>
-            </div>
-            <div class="modal-footer py-2">
-              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-              <button type="submit" class="btn btn-success btn-sm">Save Vehicle</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  {% endif %}
-
   <nav class="td-section-pills mb-3" aria-label="Tenant detail sections">
     <a href="#tenantContactInfo">Contact Info</a>
-    <a href="#tenantAddressInfo">Addresses</a>
-    <a href="#tenantInvoices">Invoice</a>
-    <a href="#tenantPayments">Payment</a>
-    <a href="#tenantFamily">Family</a>
+    <a href="#tenantAddressInfo">Address</a>
+    <a href="#tenantInvoices">Recent Invoice</a>
+    <a href="#tenantPayments">Recent Payment</a>
+    <a href="#tenantFamily">Family Members</a>
     <a href="#tenantVehicles">Vehicle</a>
     <a href="#tenantLeases">Leases</a>
   </nav>
@@ -251,91 +202,19 @@
           <h6 class="mb-0"><i class="fas fa-layer-group text-secondary me-2"></i>Vehicle &amp; Lease</h6>
         </div>
         <div class="card-body py-2">
-
-          {# --- Vehicles --- #}
-          <div class="td-side-subhead">
-            <span><i class="fas fa-car me-2"></i>Vehicles <strong class="td-side-count">{{ tenant_vehicles|length }}</strong></span>
-            {% if family_target_leases %}
-              <button class="btn btn-sm btn-outline-primary py-0" type="button" data-bs-toggle="modal" data-bs-target="#tenantVehicleAddModal">Add</button>
-            {% endif %}
-          </div>
-
-          {% if tenant_vehicles %}
-            <div class="td-side-mini-list mb-3">
-              {% for vehicle in tenant_vehicles %}
-                <div class="td-side-mini-card">
-                  <div class="td-side-mini-photo">
-                    {% if vehicle.vehicle_photo %}
-                      <a href="{{ vehicle.vehicle_photo.url }}" data-fancybox="tenant-vehicles" data-caption="{{ vehicle }}">
-                        <img src="{{ vehicle.vehicle_photo.url }}" alt="{{ vehicle }}">
-                      </a>
-                    {% else %}
-                      <span><i class="fas fa-car"></i></span>
-                    {% endif %}
-                  </div>
-                  <div class="td-side-mini-detail">
-                    <div class="td-side-mini-title">
-                      {{ vehicle.vehicle_type.name|default:"Vehicle" }} <span>{{ vehicle.registration_number }}</span>
-                    </div>
-                    <div class="td-side-mini-muted">
-                      {{ vehicle.color|default:"-" }}{% if vehicle.make or vehicle.model %}, {{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}
-                    </div>
-                    <div class="td-side-mini-actions">
-                      <a href="{% url 'leases:lease_vehicle_edit' vehicle.lease.pk vehicle.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
-                      <form method="post" action="{% url 'leases:lease_vehicle_delete' vehicle.lease.pk vehicle.pk %}" onsubmit="return confirm('Remove this vehicle from active list? History will be preserved.');">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-              {% endfor %}
+          <a href="#tenantVehicles" class="td-side-link">
+            <span><i class="fas fa-car me-2"></i>Vehicles</span>
+            <strong>{{ tenant_vehicles|length }}</strong>
+          </a>
+          <a href="#tenantLeases" class="td-side-link">
+            <span><i class="far fa-building me-2"></i>Leases</span>
+            <strong>{{ leases|length }}</strong>
+          </a>
+          {% if tenant.lease %}
+            <div class="td-side-note">
+              <strong>{{ tenant.lease.unit.property.property_name|default:"-" }} / {{ tenant.lease.unit.unit_number|default:"-" }}</strong>
+              <span>{{ tenant.lease.start_date|date:"M d, Y" }} - {{ tenant.lease.end_date|date:"M d, Y"|default:"Ongoing" }}</span>
             </div>
-          {% else %}
-            <p class="mb-0 small text-muted">No vehicles recorded.</p>
-          {% endif %}
-
-          <hr class="td-side-divider">
-
-          {# --- Leases --- #}
-          <div class="td-side-subhead">
-            <span><i class="far fa-building me-2"></i>Leases <strong class="td-side-count">{{ leases|length }}</strong></span>
-            <a class="btn btn-sm btn-outline-primary py-0" href="{% url 'leases:lease_create' %}?tenant={{ tenant.id }}">Add</a>
-          </div>
-
-          {% if leases %}
-            <div class="td-side-mini-list">
-              {% for lease in leases %}
-                <div class="td-side-mini-lease">
-                  <div class="td-side-mini-lease-top">
-                    <a href="{% url 'leases:lease_detail' lease.pk %}" class="text-decoration-none">
-                      {{ lease.unit.property.property_name|default:"-" }} / {{ lease.unit.unit_number|default:"-" }}
-                    </a>
-                    <span class="badge bg-{% if lease.is_active %}success{% else %}secondary{% endif %}">
-                      {% if lease.is_active %}Active{% else %}Inactive{% endif %}
-                    </span>
-                  </div>
-                  <div class="td-side-mini-muted">
-                    {{ lease.start_date|date:"M d, Y" }} - {{ lease.end_date|date:"M d, Y"|default:"Ongoing" }}
-                  </div>
-                  <div class="td-side-mini-money">
-                    <span>Monthly: {{ lease.get_total_payment|money:2 }}</span>
-                    <span>Total: {{ lease.tenant_detail_total_balance|default:0|money:2 }}</span>
-                  </div>
-                  <div class="td-side-mini-actions">
-                    <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-sm btn-primary">Detail</a>
-                    <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-dark">Ledger</a>
-                    <a href="{% url 'payments:payment_create' %}?tenant={{ tenant.id }}&lease={{ lease.id }}" class="btn btn-sm btn-outline-primary">Add</a>
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-            <div class="td-side-total-balance">
-              <span>Total Lease Balance</span>
-              <strong>{{ leases_total_balance|default:0|money:2 }}</strong>
-            </div>
-          {% else %}
-            <p class="mb-0 small text-muted">No leases found.</p>
           {% endif %}
         </div>
       </div>
@@ -478,7 +357,7 @@
           </h6>
           <a href="#tenantDetailTop" class="td-scroll-top">Top</a>
           {% if tenant.lease %}
-            <a href="{% url 'invoices:invoice_create' %}?tenant={{ tenant.pk }}&property={{ tenant.lease.unit.property.id }}&unit={{ tenant.lease.unit.id }}" class="btn btn-sm btn-outline-primary">Add</a>
+            <a href="{% url 'invoices:invoice_create' %}?tenant={{ tenant.pk }}&property={{ tenant.lease.unit.property.id }}&unit={{ tenant.lease.unit.id }}" class="btn btn-sm btn-outline-primary">Create</a>
           {% endif %}
         </div>
         <div class="card-body py-2">
@@ -540,7 +419,7 @@
           </h6>
           <a href="#tenantDetailTop" class="td-scroll-top">Top</a>
           <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" class="btn btn-sm btn-success">
-            <i class="fas fa-money-bill-wave me-1"></i> Add
+            <i class="fas fa-money-bill-wave me-1"></i> Record
           </a>
         </div>
         <div class="card-body py-2">
@@ -599,8 +478,8 @@
           <a href="#tenantDetailTop" class="td-scroll-top">Top</a>
           <div class="d-flex gap-1 small flex-wrap">
             <span class="badge bg-primary-subtle text-primary border">Adults: {{ family_adults|default:0 }}</span>
-            <span class="badge bg-info-subtle text-info-emphasis border">Children: {{ family_children|default:0 }}</span>
-            <span class="badge bg-dark-subtle text-dark border">Total: {{ family_total|default:0 }}</span>
+            <span class="badge bg-warning-subtle text-warning border">Children: {{ family_children|default:0 }}</span>
+            <span class="badge bg-success-subtle text-success border">Total: {{ family_total|default:0 }}</span>
             {% if family_target_leases %}
               <button class="btn btn-sm btn-outline-primary py-0" type="button" data-bs-toggle="collapse" data-bs-target="#tenantFamilyAddBox">Add</button>
             {% endif %}
@@ -670,7 +549,6 @@
             </div>
           {% endif %}
           {% if family_members %}
-
             <div class="td-mobile-list td-mobile-people-list">
               {% for member in family_members %}
                 <div class="td-mobile-person-row">
@@ -706,11 +584,98 @@
                 </div>
               {% endfor %}
             </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle td-table td-family-table mb-0">
+                <thead>
+                  <tr>
+                    <th>S.N</th>
+                    <th>Name (Age)</th>
+                    <th>Relation &amp; Phone</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for member in family_members %}
+                    <tr>
+                      <td>{{ forloop.counter }}</td>
+                      <td>
+                        <strong class="d-block text-wrap">{{ member.family_member.get_full_name }}</strong>
+                        {% if member.family_member.age %}
+                          <span class="text-muted">({{ member.family_member.age }})</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        <div>{{ member.relation|default:"-" }}</div>
+                        {% if member.family_member.phone %}
+                          <div class="small">
+                            {% include "tenants/_whatsapp_phone_link.html" with phone=member.family_member.phone label=member.family_member.phone name=member.family_member.get_full_name only %}
+                          </div>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">
+                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">View</a>
+                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
           {% else %}
             <p class="mb-0 small text-muted">No family members recorded.</p>
           {% endif %}
         </div>
       </div>
+    </div>
+  </div>
+  <div class="card td-card shadow-sm mb-3 td-listed-family-card">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+      <h6 class="mb-0">
+        <i class="fas fa-link me-2"></i>Listed As Family Member In Leases
+      </h6>
+      <a href="#tenantDetailTop" class="td-scroll-top">Top</a>
+    </div>
+    <div class="card-body py-2">
+      {% if family_lease_links %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle td-table mb-0">
+            <thead>
+              <tr>
+                <th>S.N</th>
+                <th>Property / Unit</th>
+                <th>Main Tenant</th>
+                <th>Relation</th>
+                <th>Status</th>
+                <th>End Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for link in family_lease_links %}
+                <tr>
+                  <td>{{ forloop.counter }}</td>
+                  <td>
+                    <a href="{% url 'leases:lease_detail' link.lease.pk %}">
+                      {{ link.lease.property|default:link.lease.unit.property|default:"-" }}
+                      /
+                      {{ link.lease.unit|default:"-" }}
+                    </a>
+                  </td>
+                  <td>
+                    <a href="{% url 'tenants:tenant_detail' link.lease.tenant.pk %}">
+                      {{ link.lease.tenant.get_full_name }}
+                    </a>
+                  </td>
+                  <td>{{ link.relationship_type.name|default:link.relationship|default:"-" }}</td>
+                  <td>{{ link.lease.get_status_display }}</td>
+                  <td>{{ link.lease.end_date|date:"M d, Y"|default:"-" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mb-0 small text-muted">This tenant is not listed as a family member in any lease.</p>
+      {% endif %}
     </div>
   </div>
 
@@ -719,10 +684,48 @@
       <h6 class="mb-0"><i class="fas fa-car me-2"></i>Tenant Vehicles</h6>
       <a href="#tenantDetailTop" class="td-scroll-top">Top</a>
       {% if family_target_leases %}
-        <button class="btn btn-sm btn-outline-primary py-0" type="button" data-bs-toggle="modal" data-bs-target="#tenantVehicleAddModal">Add</button>
+        <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tenantVehicleAddBox">
+          <i class="fas fa-plus me-1"></i> Add Vehicle
+        </button>
       {% endif %}
     </div>
     <div class="card-body py-2">
+      {% if family_target_leases %}
+        <div class="collapse mb-2" id="tenantVehicleAddBox">
+          <form method="post" enctype="multipart/form-data" action="{% url 'tenants:tenant_vehicle_add' tenant.pk %}" class="border rounded bg-light p-2 row g-2 align-items-end">
+            {% csrf_token %}
+            <div class="col-12 col-md-3">
+              <label class="form-label small mb-1">Lease</label>
+              <select name="lease" class="form-select form-select-sm">
+                {% for lease_option in family_target_leases %}
+                  <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small mb-1">Vehicle Type</label>
+              <select name="vehicle_type" class="form-select form-select-sm" required>
+                <option value="">Select type</option>
+                {% for vehicle_type in vehicle_types %}
+                  <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm" required></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm"></div>
+            <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-3"><label class="form-label small mb-1">Registration Book</label><input name="registration_book_photo" type="file" accept="image/*,.pdf" class="form-control form-control-sm"></div>
+            <div class="col-12 col-md-2"><button type="submit" class="btn btn-sm btn-success w-100">Save Vehicle</button></div>
+          </form>
+        </div>
+      {% endif %}
+
       {% if tenant_vehicles %}
         <div class="td-mobile-list td-mobile-vehicle-list">
           {% for vehicle in tenant_vehicles %}
@@ -807,7 +810,9 @@
         <div class="card-header d-flex justify-content-between align-items-center">
           <h6 class="mb-0"><i class="far fa-building text-primary me-2"></i>Leases</h6>
           <a href="#tenantDetailTop" class="td-scroll-top">Top</a>
-          <a class="btn btn-sm btn-outline-primary py-0" href="{% url 'leases:lease_create' %}?tenant={{ tenant.id }}">Add</a>
+          <a class="btn btn-sm btn-primary" href="{% url 'leases:lease_create' %}?tenant={{ tenant.id }}">
+            <i class="fas fa-plus me-1"></i> Add Lease
+          </a>
         </div>
         <div class="card-body py-2">
           {% if leases %}
@@ -910,14 +915,24 @@
 
   .td-mobile-id-strip .td-mobile-docs {
     display: grid;
-    grid-template-columns: repeat(2, 190px);
+    grid-template-columns: repeat(2, 118px);
     gap: .55rem;
+  }
+
+  .td-mobile-doc-item span {
+    display: block;
+    font-size: .7rem;
+    line-height: 1;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: .22rem;
+    color: #111827;
   }
 
   .td-mobile-doc-item img,
   .td-mobile-doc-empty {
-    width: 190px;
-    height: 120px;
+    width: 118px;
+    height: 82px;
     object-fit: cover;
     border-radius: .45rem;
     border: 1px solid #d1d5db;
@@ -1037,146 +1052,36 @@
     text-decoration: underline;
   }
 
-  /* --- Sidebar Vehicle & Lease mini content (desktop) --- */
-  .td-side-subhead {
+  .td-side-link {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: .5rem;
-    flex-wrap: wrap;
+    gap: .75rem;
+    padding: .55rem .65rem;
+    border: 1px solid #e5e7eb;
+    border-radius: .5rem;
+    color: #111827;
+    text-decoration: none;
     margin-bottom: .5rem;
-  }
-
-  .td-side-subhead span {
-    font-weight: 800;
-    font-size: .82rem;
-    color: #111827;
-  }
-
-  .td-side-count {
-    display: inline-block;
-    margin-left: .3rem;
-    color: #6b7280;
-    font-weight: 700;
-  }
-
-  .td-side-divider {
-    margin: .85rem 0;
-    border-top: 1px solid #e5e7eb;
-  }
-
-  .td-side-mini-list {
-    display: grid;
-    gap: .55rem;
-  }
-
-  .td-side-mini-card {
-    display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: .5rem;
-    padding-bottom: .55rem;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  .td-side-mini-list > .td-side-mini-card:last-child,
-  .td-side-mini-list > .td-side-mini-lease:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
-
-  .td-side-mini-photo img,
-  .td-side-mini-photo span {
-    width: 40px;
-    height: 40px;
-    border-radius: .4rem;
-    object-fit: cover;
-    border: 1px solid #d1d5db;
     background: #f8fafc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #64748b;
   }
 
-  .td-side-mini-detail {
-    min-width: 0;
-    line-height: 1.3;
-  }
-
-  .td-side-mini-title {
+  .td-side-link span {
     font-weight: 800;
-    font-size: .8rem;
-    overflow-wrap: anywhere;
   }
 
-  .td-side-mini-title span {
-    color: #6b7280;
-    font-weight: 600;
-  }
-
-  .td-side-mini-muted {
-    color: #6b7280;
-    font-size: .74rem;
-  }
-
-  .td-side-mini-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .3rem;
-    margin-top: .35rem;
-  }
-
-  .td-side-mini-actions .btn {
-    padding: .16rem .42rem;
-    font-size: .7rem;
-    line-height: 1.15;
-  }
-
-  .td-side-mini-actions form {
-    margin: 0;
-  }
-
-  .td-side-mini-lease {
+  .td-side-note {
     display: grid;
-    gap: .25rem;
-    padding-bottom: .55rem;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  .td-side-mini-lease-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .4rem;
-    font-weight: 800;
-    font-size: .8rem;
-  }
-
-  .td-side-mini-lease-top a {
-    overflow-wrap: anywhere;
-  }
-
-  .td-side-mini-money {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .3rem .6rem;
-    font-size: .74rem;
-    font-weight: 700;
-  }
-
-  .td-side-total-balance {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .5rem;
-    padding: .5rem .6rem;
-    margin-top: .6rem;
-    border-radius: .55rem;
-    background: #fef3c7;
-    border: 1px solid #f59e0b;
+    gap: .15rem;
+    padding: .55rem .65rem;
+    border-radius: .5rem;
+    background: #fff7ed;
     color: #111827;
-    font-weight: 800;
-    font-size: .82rem;
+    font-size: .78rem;
+  }
+
+  .td-side-note span {
+    color: #6b7280;
   }
 
   .td-hero-actions {
@@ -1358,136 +1263,31 @@
   }
 
 
+  .td-family-table th:nth-child(1),
+  .td-family-table td:nth-child(1) {
+    width: 52px;
+    text-align: center;
+  }
+
+  .td-family-table th:nth-child(4),
+  .td-family-table td:nth-child(4) {
+    width: 132px;
+    white-space: nowrap;
+  }
+
+  .td-family-table td {
+    vertical-align: middle;
+  }
+
   .td-leases-card {
     width: 100%;
   }
 
-  #tenantFamily .td-mobile-list {
-    display: grid;
-  }
-
-  /* --------------------------------------------------------------------
-     FAMILY MEMBERS - DESKTOP COMPACT ROW
-     Purpose: make the desktop Family Members column match the mobile row
-     layout instead of showing a large full-width photo. On wider screens,
-     the action buttons sit in a right-side column; when there is not enough
-     room, they naturally wrap under the member details.
-     -------------------------------------------------------------------- */
-  @media (min-width: 769px) {
-    #tenantFamily .td-mobile-people-list {
-      gap: .45rem;
-    }
-
-    #tenantFamily .td-mobile-person-row {
-      display: grid;
-      grid-template-columns: 26px 58px minmax(0, 1fr);
-      gap: .5rem;
-      align-items: center;
-      border-bottom: 1px solid #e5e7eb;
-      padding: .55rem 0;
-    }
-
-    #tenantFamily .td-mobile-person-row:last-child {
-      border-bottom: 0;
-    }
-
-    #tenantFamily .td-mobile-photo img,
-    #tenantFamily .td-mobile-photo span {
-      width: 58px;
-      height: 58px;
-      border-radius: .45rem;
-      object-fit: cover;
-      border: 1px solid #d1d5db;
-      background: #f8fafc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #64748b;
-    }
-
-    #tenantFamily .td-mobile-sn {
-      color: #64748b;
-      text-align: center;
-      font-weight: 700;
-    }
-
-    #tenantFamily .td-mobile-person-detail {
-      min-width: 0;
-      line-height: 1.25;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      column-gap: .55rem;
-      align-items: center;
-    }
-
-    #tenantFamily .td-mobile-person-name,
-    #tenantFamily .td-mobile-muted,
-    #tenantFamily .td-mobile-phone {
-      grid-column: 1;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-
-    #tenantFamily .td-mobile-person-name {
-      font-weight: 800;
-    }
-
-    #tenantFamily .td-mobile-person-name span,
-    #tenantFamily .td-mobile-muted {
-      color: #64748b;
-      font-size: .72rem;
-      font-weight: 600;
-    }
-
-    #tenantFamily .td-mobile-phone {
-      font-size: .74rem;
-    }
-
-    #tenantFamily .td-mobile-actions {
-      grid-column: 2;
-      grid-row: 1 / span 4;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: .3rem;
-      margin-top: 0;
-      align-self: center;
-    }
-
-    #tenantFamily .td-mobile-actions .btn {
-      padding: .16rem .42rem;
-      font-size: .7rem;
-      line-height: 1.15;
-      white-space: nowrap;
-    }
-  }
-
-  /* Keep very narrow desktop/tablet cards readable: move actions below details. */
-  @media (min-width: 769px) and (max-width: 1080px) {
-    #tenantFamily .td-mobile-person-detail {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    #tenantFamily .td-mobile-actions {
-      grid-column: 1;
-      grid-row: auto;
-      justify-content: flex-start;
-      margin-top: .25rem;
-    }
-  }
-
-  @media (min-width: 1200px) {
-    #tenantVehicles,
-    .td-leases-card {
-      display: none;
-    }
+  #tenantFamily {
+    display: none;
   }
 
   @media (max-width: 1200px) {
-    .td-side-summary-card {
-      display: none;
-    }
-
     .td-info-grid-6 {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -1547,8 +1347,8 @@
     .td-section-pills {
       display: flex;
       gap: .35rem;
-      overflow-x: visible;
-      flex-wrap: wrap;
+      overflow-x: auto;
+      flex-wrap: nowrap;
       padding: .35rem .05rem .45rem;
       position: sticky;
       top: .25rem;
@@ -1599,10 +1399,14 @@
       min-width: 0;
     }
 
+    .td-mobile-doc-item span {
+      font-size: .66rem;
+    }
+
     .td-mobile-doc-item img,
     .td-mobile-doc-empty {
       width: 100%;
-      height: 86px;
+      height: 68px;
       object-fit: cover;
       border-radius: .4rem;
       border: 1px solid #d1d5db;
@@ -1664,6 +1468,14 @@
       display: none;
     }
 
+    #tenantFamily {
+      display: block;
+    }
+
+    .td-listed-family-card {
+      display: none;
+    }
+
     .td-card .card-header h6,
     .td-card .card-header h6 .text-primary,
     .td-section-title-link {
@@ -1672,10 +1484,11 @@
 
     .td-interest-wrap {
       display: flex;
-      flex-wrap: wrap;
-      overflow-x: visible;
+      flex-wrap: nowrap;
+      overflow-x: auto;
       gap: .35rem;
       max-width: 100%;
+      padding-bottom: .1rem;
     }
 
     .td-interest-pill {
@@ -1717,21 +1530,30 @@
       line-height: 1.3;
     }
 
-    .td-address-grid > div {
-      grid-column: 1 / -1;
-    }
-
     .td-info-grid > div:nth-child(7),
     .td-info-grid > div:nth-child(8),
     .td-info-grid > div:nth-child(9),
     .td-info-grid > div:nth-child(10),
     .td-info-grid > div:nth-child(11),
+    .td-info-grid > div:nth-child(12),
+    .td-address-grid > div {
+      grid-column: 1 / -1;
+    }
+
+    .td-info-grid > div:nth-child(8),
+    .td-info-grid > div:nth-child(9),
+    .td-info-grid > div:nth-child(10),
+    .td-info-grid > div:nth-child(11),
     .td-info-grid > div:nth-child(12) {
-      grid-column: span 1;
       border: 1px solid #e5e7eb !important;
       border-radius: .55rem;
       margin: .35rem .45rem 0;
       background: #fafafa;
+    }
+
+    .td-info-grid > div:nth-child(11),
+    .td-info-grid > div:nth-child(12) {
+      grid-column: span 1;
     }
 
     .td-address-grid > div {
@@ -1745,6 +1567,7 @@
 
     #tenantInvoices .table-responsive,
     #tenantPayments .table-responsive,
+    #tenantFamily .table-responsive,
     #tenantVehicles .table-responsive,
     #tenantLeases .table-responsive {
       display: none;

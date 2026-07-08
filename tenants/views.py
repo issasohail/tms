@@ -845,7 +845,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         # but DO NOT override tenant.current_balance anymore.
         if lease:
             invoices = sorted(
-                list(lease.invoices.all()), key=lambda inv: inv.issue_date
+                list(lease.invoices.all()), key=lambda inv: inv.issue_date, reverse=True
             )
             payments = sorted(
                 list(lease.payments.all()),
@@ -1364,32 +1364,43 @@ class LeaseLedgerView(LoginRequiredMixin, SingleTableView):
 def tenant_search(request):
     search_term = request.GET.get("q", "").strip()
 
-    if not search_term:
-        return JsonResponse({"results": []})
-
-    tenants = (
-        Tenant.objects.filter(
+    tenants = Tenant.objects.all()
+    if search_term:
+        tenants = tenants.filter(
             Q(first_name__icontains=search_term)
             | Q(last_name__icontains=search_term)
             | Q(email__icontains=search_term)
+            | Q(phone__icontains=search_term)
+            | Q(phone2__icontains=search_term)
+            | Q(phone3__icontains=search_term)
+            | Q(cnic__icontains=search_term)
         )
-        .select_related("current_lease__unit__property")
-        .distinct()
-    )
+    tenants = tenants.distinct().order_by("first_name", "last_name")[:20]
 
     results = []
     for tenant in tenants:
         lease = tenant.current_lease
-        if lease:
-            results.append(
+        result = {
+            "id": tenant.id,
+            "text": tenant.get_full_name(),
+            "detail_url": reverse("tenants:tenant_detail", args=[tenant.pk]),
+            "property": "",
+            "unit": "",
+            "balance": "",
+        }
+        if lease and lease.unit:
+            balance_getter = getattr(lease, "get_balance_due", None) or getattr(
+                lease, "get_balance", None
+            )
+            balance = balance_getter() if callable(balance_getter) else balance_getter
+            result.update(
                 {
-                    "id": tenant.id,
-                    "text": f"{tenant.get_full_name()}",
-                    "property": lease.unit.property.property_name,
+                    "property": lease.unit.property.property_name if lease.unit.property else "",
                     "unit": lease.unit.unit_number,
-                    "balance": lease.get_balance_due(),
+                    "balance": balance if balance is not None else "",
                 }
             )
+        results.append(result)
 
     return JsonResponse({"results": results})
 

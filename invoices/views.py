@@ -193,6 +193,7 @@ class InvoiceListView(SingleTableView):
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")
         unit = r.GET.get("unit") or r.GET.get("unit_id")
+        tenant = r.GET.get("tenant") or r.GET.get("tenant_id")
         lease = r.GET.get("lease") or r.GET.get("lease_id")  # <= IMPORTANT
         start = r.GET.get("start_date")
         end = r.GET.get("end_date")
@@ -209,6 +210,8 @@ class InvoiceListView(SingleTableView):
             qs = qs.filter(lease__unit__property_id=prop)
         if unit:
             qs = qs.filter(lease__unit_id=unit)
+        if tenant:
+            qs = qs.filter(lease__tenant_id=tenant)
         if lease:
             qs = qs.filter(lease_id=lease)  # <= IMPORTANT
         if start:

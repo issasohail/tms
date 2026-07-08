@@ -46,8 +46,14 @@
   position: relative;
   width: calc(100vw - 40px);
   max-width: 1720px;
+  min-width: 0;
   left: 50%;
   transform: translateX(-50%);
+  box-sizing: border-box;
+}
+
+#lf-shell,
+#lf-shell * {
   box-sizing: border-box;
 }
 
@@ -151,6 +157,17 @@
 .lf-tenant-sub  { font-size: .65rem; color: #8a96b4; }
 .lf-status-dot  { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; margin-right: 3px; }
 
+.lf-mobile-summary {
+  display: none;
+}
+
+.lf-prop-name,
+.lf-prop-sub,
+.lf-tenant-name,
+.lf-tenant-sub {
+  overflow-wrap: anywhere;
+}
+
 .lf-nav-scroll { flex: 1; overflow-y: auto; }
 .lf-nav-section { padding: 6px 0; }
 .lf-nav-section + .lf-nav-section { border-top: 1px solid #eef0f6; }
@@ -220,7 +237,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .lf-breadcrumb i { font-size: 11px; }
 .lf-breadcrumb strong { color: #1a1f35; }
@@ -229,6 +247,7 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .lf-pill {
   font-size: .68rem;
@@ -280,6 +299,15 @@
 .lf-card-head i      { font-size: 13px; color: #2856c8; flex-shrink: 0; }
 .lf-card-title       { font-size: .72rem; font-weight: 700; color: #1a1f35; text-transform: uppercase; letter-spacing: .06em; }
 .lf-card-sub         { margin-left: auto; font-size: .68rem; color: #8a96b4; }
+.lf-card-head,
+.lf-card-title,
+.lf-card-sub {
+  min-width: 0;
+}
+.lf-card-title,
+.lf-card-sub {
+  overflow-wrap: anywhere;
+}
 .lf-card-dark .lf-card-head { background: #1a1f35; }
 .lf-card-dark .lf-card-title { color: #c8d4f0; }
 .lf-card-dark .lf-card-head i { color: #7eb3f5; }
@@ -302,7 +330,7 @@
   color: #9aa4c0;
   text-transform: uppercase;
   letter-spacing: .05em;
-  white-space: nowrap;
+  line-height: 1.15;
 }
 .lf-fv {
   font-size: .8rem;
@@ -322,6 +350,7 @@
   border-color: #e2e6f0;
   border-radius: 5px;
   color: #1a1f35;
+  max-width: 100%;
 }
 .lf-content .form-control:focus,
 .lf-content .form-select:focus {
@@ -337,7 +366,7 @@
   text-transform: uppercase;
   letter-spacing: .05em;
   margin-bottom: 2px;
-  white-space: nowrap;
+  line-height: 1.15;
 }
 .lf-content .input-group > .form-control { height: 2rem; }
 
@@ -492,6 +521,9 @@
   height: 32px !important;
   font-size: .8rem !important;
 }
+.lf-content .select2-container {
+  max-width: 100%;
+}
 
 /* ---- Two-column main layout ---- */
 .lf-two-col {
@@ -513,36 +545,188 @@
 
 /* iPad (< 992px): icon rail only, sidebar hidden, sidebar slides via toggle */
 @media (max-width: 991px) {
-  #lf-shell { height: auto; overflow: visible; flex-direction: column; }
+  #lf-shell {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: calc(100vh - 56px);
+    overflow: visible;
+    flex-direction: column;
+    left: auto;
+    transform: none;
+  }
   .lf-rail  { width: 100%; flex-direction: row; height: 44px; padding: 0 8px; gap: 4px; overflow-x: auto; }
   .lf-rail-logo { margin-bottom: 0; margin-right: 6px; }
   .lf-rail-sep  { display: none; }
   .lf-sidebar   { width: 100%; border-right: none; border-bottom: 1px solid #e2e6f0; flex-direction: column; }
+  .lf-sb-header { display: none; }
+  .lf-nav-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
   .lf-sidebar.collapsed { display: none; }
-  .lf-nav-section { display: flex; flex-wrap: wrap; padding: 4px 8px; gap: 2px; }
+  .lf-nav-section { display: flex; flex-wrap: nowrap; padding: 4px 8px; gap: 2px; }
   .lf-nav-section + .lf-nav-section { border-top: none; }
   .lf-nav-grp-label { display: none; }
-  .lf-nav-item { padding: 4px 10px; border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; }
+  .lf-nav-item { padding: 4px 10px; border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; white-space: nowrap; flex: 0 0 auto; }
   .lf-nav-item.active { border-bottom-color: #2856c8; border-radius: 0; }
+  .lf-main { overflow: visible; }
   .lf-two-col { grid-template-columns: 1fr; }
+  .lf-content { overflow: visible; }
   .lf-sec-grid { grid-template-columns: repeat(3, 1fr); }
+  .lf-fg-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lf-fg-6 { grid-template-columns: repeat(3, 1fr); }
   .lf-fg-4 { grid-template-columns: repeat(2, 1fr); }
+  .lf-doc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lf-doc-img,
+  .lf-doc-empty { height: 96px; }
+}
+
+/* Narrow tablets and large phones */
+@media (max-width: 767px) {
+  .lf-topbar {
+    align-items: flex-start;
+  }
+  .lf-tb-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .lf-fg-2,
+  .lf-fg-3,
+  .lf-fg-4,
+  .lf-fg-6 {
+    grid-template-columns: 1fr;
+  }
+  .lf-f[style*="grid-column"] {
+    grid-column: auto !important;
+  }
+  .lf-sec-grid,
+  .lf-inv-grid,
+  .lf-doc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .lf-card-head {
+    flex-wrap: wrap;
+  }
+  .lf-card-head .btn,
+  .lf-card-head [style*="margin-left:auto"] {
+    margin-left: 0 !important;
+  }
 }
 
 /* Mobile 360px */
 @media (max-width: 480px) {
   .lf-rail { display: none; }
-  .lf-topbar { padding: 5px 10px; }
+  .lf-sidebar {
+    display: block;
+    overflow: visible;
+  }
+  .lf-sb-header {
+    display: block;
+    padding: 8px 10px;
+    background: #fff;
+  }
+  .lf-sb-header > .lf-prop-row,
+  .lf-sb-header > .lf-tenant-row {
+    display: none;
+  }
+  .lf-mobile-summary {
+    display: block;
+    font-size: .72rem;
+    line-height: 1.35;
+    color: #1a1f35;
+  }
+  .lf-mobile-summary strong {
+    font-weight: 700;
+  }
+  .lf-mobile-summary .lf-mobile-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 8px;
+    margin-bottom: 2px;
+  }
+  .lf-nav-scroll {
+    overflow: visible;
+  }
+  .lf-nav-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 5px 8px;
+  }
+  .lf-nav-item {
+    width: calc(50% - 2px);
+    flex: 0 0 calc(50% - 2px);
+    white-space: normal;
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .lf-nav-badge {
+    margin-left: 0;
+  }
+  .lf-topbar { padding: 7px 10px; }
   .lf-breadcrumb { font-size: .65rem; }
   .lf-content { padding: 8px; }
   .lf-two-col { grid-template-columns: 1fr; }
-  .lf-fg-3 { grid-template-columns: 1fr 1fr; }
-  .lf-fg-4, .lf-fg-6 { grid-template-columns: 1fr 1fr; }
-  .lf-sec-grid { grid-template-columns: repeat(3, 1fr); }
-  .lf-inv-grid { grid-template-columns: repeat(3, 1fr); }
-  .lf-doc-grid { grid-template-columns: repeat(3, 1fr); }
-  .lf-nav-section { padding: 4px 6px; }
+  .lf-fg,
+  .lf-fg-2,
+  .lf-fg-3,
+  .lf-fg-4,
+  .lf-fg-6,
+  .lf-sec-grid,
+  .lf-inv-grid,
+  .lf-doc-grid {
+    grid-template-columns: 1fr;
+  }
+  .lf-property-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .lf-property-grid .lf-tenant-field {
+    grid-column: 1 / -1 !important;
+  }
+  .lf-period-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .lf-property-grid .form-label,
+  .lf-period-grid .form-label {
+    font-size: .54rem;
+    letter-spacing: .025em;
+    overflow-wrap: anywhere;
+  }
+  .lf-property-grid .form-control,
+  .lf-property-grid .form-select,
+  .lf-period-grid .form-control,
+  .lf-period-grid .form-select {
+    font-size: .72rem;
+    padding: .22rem .35rem;
+    height: 1.85rem;
+  }
+  .lf-doc-item {
+    text-align: left;
+  }
+  .lf-doc-img,
+  .lf-doc-empty {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 4px;
+  }
+  .lf-photo-doc.lf-doc-has-file .lf-doc-img {
+    width: 100%;
+    height: 190px;
+  }
+  .lf-tb-right .btn {
+    flex: 1 1 auto;
+  }
+  .lf-pill {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .table-responsive,
+  .lf-renewal-scroll {
+    margin-left: -8px;
+    margin-right: -8px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 
   /* Bottom nav bar on mobile */
   #lf-shell { padding-bottom: 52px; }
@@ -600,6 +784,22 @@
   {# ---- Sidebar ---- #}
   <div class="lf-sidebar" id="lf-sidebar">
     <div class="lf-sb-header">
+      <div class="lf-mobile-summary">
+        <div class="lf-mobile-line">
+          <span>Tenant: <strong>{% if form.instance.pk %}{{ form.instance.tenant }}{% else %}New tenant{% endif %}</strong></span>
+          <span>Unit: <strong>{% if form.instance.pk %}{{ form.instance.unit.unit_number|default:"-" }}{% else %}-{% endif %}</strong></span>
+        </div>
+        <div class="lf-mobile-line">
+          <span>Lease: <strong>{% if form.instance.status %}{{ form.instance.status|title }}{% else %}New{% endif %}</strong></span>
+          <span>
+            <strong>
+              {% if form.instance.start_date %}{{ form.instance.start_date }}{% else %}-{% endif %}
+              to
+              {% if form.instance.end_date %}{{ form.instance.end_date }}{% else %}-{% endif %}
+            </strong>
+          </span>
+        </div>
+      </div>
       <div class="lf-prop-row">
         <div class="lf-prop-icon"><i class="ti ti-building"></i></div>
         <div>
@@ -775,7 +975,7 @@
                   <i class="ti ti-home"></i>
                   <span class="lf-card-title">Property, Unit &amp; Tenant</span>
                 </div>
-                <div class="lf-fg lf-fg-3">
+                <div class="lf-fg lf-fg-3 lf-property-grid">
                   <div class="lf-f">
                     <label class="form-label">Property</label>
                     {{ form.property|add_class:"form-select form-select-sm" }}
@@ -790,7 +990,7 @@
                     <label class="form-label">Status</label>
                     {{ form.status|add_class:"form-select form-select-sm" }}
                   </div>
-                  <div class="lf-f" style="grid-column: span 3;">
+                  <div class="lf-f lf-tenant-field" style="grid-column: span 3;">
                     <label class="form-label">Tenant</label>
                     {{ form.tenant|add_class:"form-select form-select-sm" }}
                   </div>
@@ -802,7 +1002,7 @@
                   <i class="ti ti-calendar"></i>
                   <span class="lf-card-title">Period &amp; Charges</span>
                 </div>
-                <div class="lf-fg lf-fg-3">
+                <div class="lf-fg lf-fg-3 lf-period-grid">
                   <div class="lf-f">
                     <label class="form-label">Start Date</label>
                     {{ form.start_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_start_date" }}
@@ -899,7 +1099,7 @@
                 </div>
                 <div class="lf-doc-box" style="margin:8px;">
                   <div class="lf-doc-grid">
-                    <div class="lf-doc-item">
+                    <div class="lf-doc-item lf-photo-doc{% if form.instance.tenant_id and form.instance.tenant.photo %} lf-doc-has-file{% endif %}">
                       {% if form.instance.tenant_id and form.instance.tenant.photo %}
                         <a href="{{ form.instance.tenant.photo.url }}" target="_blank">
                           <img src="{{ form.instance.tenant.photo.url }}" alt="Photo" class="lf-doc-img">
@@ -910,7 +1110,7 @@
                       <span class="lf-doc-label">Photo</span>
                       <input type="file" name="tenant_photo" class="form-control form-control-sm" accept="image/*">
                     </div>
-                    <div class="lf-doc-item">
+                    <div class="lf-doc-item{% if form.instance.tenant_id and form.instance.tenant.cnic_front %} lf-doc-has-file{% endif %}">
                       {% if form.instance.tenant_id and form.instance.tenant.cnic_front %}
                         <a href="{{ form.instance.tenant.cnic_front.url }}" target="_blank">
                           <img src="{{ form.instance.tenant.cnic_front.url }}" alt="CNIC Front" class="lf-doc-img">
@@ -921,7 +1121,7 @@
                       <span class="lf-doc-label">CNIC Front</span>
                       <input type="file" name="tenant_cnic_front" class="form-control form-control-sm" accept="image/*">
                     </div>
-                    <div class="lf-doc-item">
+                    <div class="lf-doc-item{% if form.instance.tenant_id and form.instance.tenant.cnic_back %} lf-doc-has-file{% endif %}">
                       {% if form.instance.tenant_id and form.instance.tenant.cnic_back %}
                         <a href="{{ form.instance.tenant.cnic_back.url }}" target="_blank">
                           <img src="{{ form.instance.tenant.cnic_back.url }}" alt="CNIC Back" class="lf-doc-img">

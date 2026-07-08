@@ -7,8 +7,15 @@ from django.core.validators import MinValueValidator
 from django.utils import timezone
 from django.db.models import Sum
 from properties.models import Property
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from core.utils.text import smart_title
+
+
+def round_amount_up_to_nearest_10(amount):
+    if amount is None:
+        return amount
+    amount = Decimal(amount)
+    return ((amount / Decimal('10')).to_integral_value(rounding=ROUND_CEILING) * Decimal('10')).quantize(Decimal('0.01'))
 
 
 class Invoice(models.Model):
@@ -106,6 +113,13 @@ class InvoiceItem(models.Model):
 
     def __str__(self):
         return f"{self.description} - {self.amount}"
+
+    def save(self, *args, **kwargs):
+        self.amount = round_amount_up_to_nearest_10(self.amount)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "amount" not in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"amount"}
+        return super().save(*args, **kwargs)
 
     @property
     def total(self):

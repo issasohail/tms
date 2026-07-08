@@ -77,6 +77,45 @@ class MonthlyBillingRegressionTests(TestCase):
         self.assertEqual(invoice.issue_date, date(2026, 7, 1))
         self.assertEqual(invoice.due_date, date(2026, 7, 10))
 
+    def test_invoice_item_amount_rounds_up_to_nearest_10_on_save(self):
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 7, 1),
+            due_date=date(2026, 7, 10),
+        )
+
+        item = InvoiceItem.objects.create(
+            invoice=invoice,
+            category=self.category,
+            description="Rounded rent",
+            amount=Decimal("25001.25"),
+        )
+
+        self.assertEqual(item.amount, Decimal("25010.00"))
+
+    def test_invoice_total_uses_rounded_invoice_item_amounts(self):
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 7, 1),
+            due_date=date(2026, 7, 10),
+        )
+
+        InvoiceItem.objects.create(
+            invoice=invoice,
+            category=self.category,
+            description="Rent",
+            amount=Decimal("25000.00"),
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice,
+            category=self.category,
+            description="Electric",
+            amount=Decimal("501.01"),
+        )
+        invoice.refresh_from_db()
+
+        self.assertEqual(invoice.amount, Decimal("25510.00"))
+
     def test_recurring_rules_only_match_billing_month_window(self):
         future_rule = RecurringCharge.objects.create(
             lease=self.lease,

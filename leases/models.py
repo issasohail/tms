@@ -1965,8 +1965,8 @@ def lease_vehicle_photo_upload_to(instance, filename):
     lease = getattr(instance, "lease", None)
     tenant = getattr(instance, "tenant", None) or getattr(lease, "tenant", None)
     unit = getattr(lease, "unit", None)
-    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:40]
-    unit_label = slugify(str(unit or "unit"))[:40]
+    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:10] or "tenant"
+    unit_label = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
     registration = slugify(instance.registration_number or "vehicle")[:40]
     lease_id = getattr(instance, "lease_id", None) or "new"
     return (
@@ -1980,8 +1980,8 @@ def lease_vehicle_book_upload_to(instance, filename):
     lease = getattr(instance, "lease", None)
     tenant = getattr(instance, "tenant", None) or getattr(lease, "tenant", None)
     unit = getattr(lease, "unit", None)
-    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:40]
-    unit_label = slugify(str(unit or "unit"))[:40]
+    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:10] or "tenant"
+    unit_label = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
     registration = slugify(instance.registration_number or "vehicle")[:40]
     lease_id = getattr(instance, "lease_id", None) or "new"
     return (

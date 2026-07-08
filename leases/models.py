@@ -1965,8 +1965,8 @@ def lease_vehicle_photo_upload_to(instance, filename):
     lease = getattr(instance, "lease", None)
     tenant = getattr(instance, "tenant", None) or getattr(lease, "tenant", None)
     unit = getattr(lease, "unit", None)
-    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:10] or "tenant"
-    unit_label = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
+    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:10]
+    unit_label = slugify(getattr(unit, "unit_number", "") or "unit")
     registration = slugify(instance.registration_number or "vehicle")[:40]
     lease_id = getattr(instance, "lease_id", None) or "new"
     return (
@@ -1980,7 +1980,9 @@ def lease_vehicle_book_upload_to(instance, filename):
     lease = getattr(instance, "lease", None)
     tenant = getattr(instance, "tenant", None) or getattr(lease, "tenant", None)
     unit = getattr(lease, "unit", None)
-    tenant_name = slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:10] or "tenant"
+    tenant_name = (
+        slugify(getattr(tenant, "name", "") or str(tenant or "tenant"))[:10] or "tenant"
+    )
     unit_label = slugify(getattr(unit, "unit_number", "") or "unit")[:25] or "unit"
     registration = slugify(instance.registration_number or "vehicle")[:40]
     lease_id = getattr(instance, "lease_id", None) or "new"
@@ -2044,8 +2046,12 @@ class LeaseVehicle(models.Model):
             "registration_number",
         ]
         indexes = [
-            models.Index(fields=["lease", "is_active"], name="leases_leas_lease_i_d66a32_idx"),
-            models.Index(fields=["registration_number"], name="leases_leas_registr_271af8_idx"),
+            models.Index(
+                fields=["lease", "is_active"], name="leases_leas_lease_i_d66a32_idx"
+            ),
+            models.Index(
+                fields=["registration_number"], name="leases_leas_registr_271af8_idx"
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -2151,16 +2157,14 @@ class PendingLeaseVehicleSubmission(models.Model):
                 fields=["pending_tenant_submission", "status", "submitted_at"],
                 name="leases_pveh_reg_status_idx",
             ),
-            models.Index(fields=["status", "submitted_at"], name="leases_pend_status_37cd00_idx"),
+            models.Index(
+                fields=["status", "submitted_at"], name="leases_pend_status_37cd00_idx"
+            ),
         ]
 
     def clean(self):
         super().clean()
-        if not (
-            self.lease_id
-            or self.tenant_id
-            or self.pending_tenant_submission_id
-        ):
+        if not (self.lease_id or self.tenant_id or self.pending_tenant_submission_id):
             raise ValidationError(
                 "Pending vehicle submission must be linked to a lease, tenant, or pending tenant submission."
             )

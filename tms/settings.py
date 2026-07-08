@@ -369,7 +369,7 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(
     os.getenv(
         "MEDIA_ROOT",
-        "/home/ivs/tms_media" if not DEBUG else str(BASE_DIR / "media"),
+        "/home/ivs/tms_media",
     )
 )
 

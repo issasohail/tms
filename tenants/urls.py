@@ -24,6 +24,11 @@ urlpatterns = [
     path("", TenantListView.as_view(), name="tenant_list"),
     path("create/", TenantCreateView.as_view(), name="tenant_create"),
     path(
+        "registration/new/",
+        views.tenant_public_registration_new,
+        name="tenant_public_registration_new",
+    ),
+    path(
         "registration/<str:token>/",
         views.tenant_public_registration_update,
         name="tenant_public_registration",
@@ -59,6 +64,16 @@ urlpatterns = [
         "<int:pk>/family/create-and-add/",
         views.tenant_family_create_and_add,
         name="tenant_family_create_and_add",
+    ),
+    path(
+        "<int:pk>/inline-update/",
+        views.tenant_inline_update,
+        name="tenant_inline_update",
+    ),
+    path(
+        "<int:pk>/document-replace/",
+        views.tenant_document_replace,
+        name="tenant_document_replace",
     ),
     path("<int:pk>/", TenantDetailView.as_view(), name="tenant_detail"),
     path("<int:pk>/update/", TenantUpdateView.as_view(), name="tenant_update"),

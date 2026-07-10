@@ -12,41 +12,41 @@
     <!-- Action Buttons (Hidden when printing) -->
     <div class="d-flex justify-content-between mb-4">
         <div>
-            <button class="btn btn-secondary btn-sm" onclick="history.back()" title="Back">
-                    <i class="fas fa-arrow-left"></i> <span class="btn-label">Back</span>
+            <button class="btn btn-secondary btn-sm" onclick="history.back()">
+                    <i class="fas fa-arrow-left"></i> Back
                 </button>
-            <a href="{% url 'payments:payment_create' %}" class="btn btn-success btn-add-payment" title="Add Payment">
-                <i class="fas fa-money-bill-wave me-1"></i> <span class="btn-label">Add Payment</span>
+            <a href="{% url 'payments:payment_create' %}" class="btn btn-success">
+                <i class="fas fa-money-bill-wave me-1"></i> Add Payment
             </a>   
         </div>
         <div class="btn-group">
             <!-- Management Buttons -->
-            <a href="{% url 'payments:payment_update' payment.pk %}" class="btn btn-primary btn-sm me-1" title="Edit">
-                <i class="fas fa-edit me-1"></i> <span class="btn-label">Edit</span>
+            <a href="{% url 'payments:payment_update' payment.pk %}" class="btn btn-primary btn-sm me-1">
+                <i class="fas fa-edit me-1"></i> Edit
             </a>
-            <a href="{% url 'payments:payment_delete' payment.pk %}" class="btn btn-danger btn-sm me-1" title="Delete">
-                <i class="fas fa-trash-alt me-1"></i> <span class="btn-label">Delete</span>
+            <a href="{% url 'payments:payment_delete' payment.pk %}" class="btn btn-danger btn-sm me-1">
+                <i class="fas fa-trash-alt me-1"></i> Delete
             </a>
             
             <!-- Communication Buttons -->
-            <button onclick="window.print()" class="btn btn-primary btn-sm me-1" title="Print">
-                <i class="fas fa-print me-1"></i> <span class="btn-label">Print</span>
+            <button onclick="window.print()" class="btn btn-primary btn-sm me-1">
+                <i class="fas fa-print me-1"></i> Print
             </button>
-            <button type="button" onclick="downloadReceiptJPG()" class="btn btn-secondary btn-sm me-1" title="JPG">
-                <i class="fas fa-image me-1"></i> <span class="btn-label">JPG</span>
+            <button type="button" onclick="downloadReceiptJPG()" class="btn btn-secondary btn-sm me-1">
+                <i class="fas fa-image me-1"></i> JPG
             </button>
-            <button onclick="sendEmail()" class="btn btn-info btn-sm me-1" title="Email">
-                <i class="fas fa-envelope me-1"></i> <span class="btn-label">Email</span>
+            <button onclick="sendEmail()" class="btn btn-info btn-sm me-1">
+                <i class="fas fa-envelope me-1"></i> Email
             </button>
-            <a href="{% url 'payments:payment_pdf' payment.pk %}" class="btn btn-primary me-1" title="Download (PDF)">
-                <i class="fas fa-file-pdf me-1"></i> <span class="btn-label">Download (PDF)</span>
+            <a href="{% url 'payments:payment_pdf' payment.pk %}" class="btn btn-primary me-1">
+                Download (PDF)
             </a>
            
-            <button onclick="sendSMS()" class="btn btn-warning btn-sm me-1" title="SMS">
-                <i class="fas fa-sms me-1"></i> <span class="btn-label">SMS</span>
+            <button onclick="sendSMS()" class="btn btn-warning btn-sm me-1">
+                <i class="fas fa-sms me-1"></i> SMS
             </button>
-            <button onclick="sendWhatsApp()" class="btn btn-success btn-sm me-1" title="WhatsApp">
-                <i class="fab fa-whatsapp me-1"></i> <span class="btn-label">WhatsApp</span>
+            <button onclick="sendWhatsApp()" class="btn btn-success btn-sm me-1">
+                <i class="fab fa-whatsapp me-1"></i> WhatsApp
             </button>
             {% include "whatsapp/_dropdown.html" with phone=payment_detail.payment.lease.tenant.phone object_type="payment" object_id=payment_detail.payment.pk %}
 
@@ -180,6 +180,8 @@
 @media (max-width: 420px) {
   /* Page spacing & type */
   .no-print .d-flex { flex-wrap: wrap; gap: .4rem; }
+  .no-print .btn-group { flex-wrap: wrap; width: 100%; gap: .25rem; }
+  .no-print .btn-group .btn { flex: 1 1 calc(50% - .25rem); font-size: .75rem; padding: .35rem .4rem; }
 
   /* Receipt container */
   .printable-content { max-width: 100% !important; margin: 0 auto; font-size: 12px; }
@@ -227,6 +229,36 @@
   .table { page-break-inside: avoid; margin-bottom: .25rem !important; }
   .fs-5 { font-size: 1.1rem !important; }
 }
+@media (max-width: 420px) {
+  /* Make the whole action area a 2-row grid */
+  .no-print .btn-group {
+    display: grid !important;
+    grid-template-rows: repeat(2, auto); /* exactly two rows */
+    grid-auto-flow: column;               /* fill rows first, then add new columns */
+    grid-auto-columns: minmax(0, 1fr);    /* each column equal width */
+    gap: .25rem .25rem;
+    width: 100%;
+  }
+
+  /* Compact buttons so labels fit */
+  .no-print .btn-group .btn {
+    font-size: .72rem;
+    padding: .35rem .4rem;
+    line-height: 1.1;
+    min-width: 0;               /* allow shrink */
+    white-space: nowrap;        /* keep label on one line */
+    overflow: hidden;
+    text-overflow: ellipsis;    /* … if too long */
+  }
+
+  /* Tighten icon spacing a touch */
+  .no-print .btn i,
+  .no-print .btn .fa,
+  .no-print .btn [class^="fa-"] {
+    margin-right: .25rem;
+  }
+}
+
 /* ===== spacing cleanup (all screens) ===== */
 .no-print .top-bar,              /* wrap the header row if you have one */
 .no-print .d-flex.justify-content-between.align-items-center,
@@ -257,34 +289,25 @@
     grid-template-rows: repeat(2, auto);  /* exactly 2 rows */
     grid-auto-flow: column;               /* fill rows, then new column */
     grid-auto-columns: minmax(0, 1fr);
-    gap: .3rem .3rem;
+    gap: .25rem .25rem;
     width: 100%;
   }
   .no-print .btn-group .btn, .no-print .btn-bar .btn {
-    font-size: .95rem;
-    padding: .5rem .3rem;
+    font-size: .74rem;                    /* small but readable */
+    padding: .35rem .4rem;
     line-height: 1.1;
     min-width: 0;
-    min-height: 40px;
     white-space: nowrap;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   /* hide labels for all buttons… */
   .no-print .btn .btn-label { display:none !important; }
 
-  /* …except Add Payment (keep label visible, full-width row) */
-  .no-print .btn.btn-add-payment { font-size: .8rem; }
-  .no-print .btn.btn-add-payment .btn-label { display:inline !important; margin-left: .25rem; }
+  /* …except Add Payment (keep label visible) */
+  .no-print .btn.btn-add-payment .btn-label { display:inline !important; }
 
-  /* icon-only buttons: icon shouldn't carry a right margin with no text beside it */
-  .no-print .btn-group .btn i,
-  .no-print .btn-bar .btn i {
-    margin-right: 0 !important;
-    font-size: 1rem;
-  }
+  /* ensure icons have a touch of spacing where label is shown */
+  .no-print .btn i { margin-right: .25rem; }
 }
 </style>
 
@@ -345,6 +368,28 @@ h4.mb-1 { margin-bottom: .15rem !important; font-size: 1rem; }
   margin-top: .25rem !important;
   padding: .25rem !important;
   font-size: .75rem !important;
+}
+
+/* ===== Action bar: two rows on phones + icon-only except Add Payment ===== */
+@media (max-width: 420px){
+  .no-print .btn-group, .no-print .btn-bar {
+    display: grid !important;
+    grid-template-rows: repeat(2, auto);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: .25rem .25rem;
+    width: 100%;
+  }
+  .no-print .btn-group .btn, .no-print .btn-bar .btn {
+    font-size: .74rem;
+    padding: .35rem .4rem;
+    line-height: 1.1;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .no-print .btn .btn-label { display:none !important; } /* icon only */
+  .no-print .btn.btn-add-payment .btn-label { display:inline !important; } /* keep “+ Add Payment” */
+  .no-print .btn i { margin-right: .25rem; }
 }
 
 /* ===== Printing unchanged ===== */

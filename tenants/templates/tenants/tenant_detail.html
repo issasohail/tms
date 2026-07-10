@@ -17,30 +17,44 @@
     <div class="card-body py-3">
       <div class="d-flex flex-wrap align-items-center gap-3">
         <div class="td-mobile-id-strip">
-          <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="td-avatar-wrap text-decoration-none">
+          <div class="td-doc-replace-zone" data-tenant-document-zone data-field="photo">
             {% if tenant.photo %}
-              <img src="{{ tenant.photo.url }}" alt="Tenant Photo" class="td-avatar">
+              <a href="{{ tenant.photo.url }}" data-fancybox="tenant-documents" data-caption="Tenant Photo" class="td-avatar-wrap text-decoration-none">
+                <img src="{{ tenant.photo.url }}" alt="Tenant Photo" class="td-avatar" data-document-preview="photo">
+              </a>
             {% else %}
-              <div class="td-avatar td-avatar-empty"><i class="fas fa-user"></i></div>
+              <div class="td-avatar td-avatar-empty" data-document-preview="photo"><i class="fas fa-user"></i></div>
             {% endif %}
-          </a>
+            {% if can_inline_update_tenant %}
+              <button class="td-doc-replace-btn" type="button" data-document-replace="photo">Replace</button>
+              <input class="td-doc-replace-input" type="file" accept="image/*" data-document-input="photo">
+            {% endif %}
+          </div>
           <div class="td-mobile-docs">
-            <div class="td-mobile-doc-item">
+            <div class="td-mobile-doc-item td-doc-replace-zone" data-tenant-document-zone data-field="cnic_front">
               {% if tenant.cnic_front %}
                 <a href="{{ tenant.cnic_front.url }}" data-fancybox="tenant-mobile-documents" data-caption="CNIC Front">
-                  <img src="{{ tenant.cnic_front.url }}" alt="CNIC Front">
+                  <img src="{{ tenant.cnic_front.url }}" alt="CNIC Front" data-document-preview="cnic_front">
                 </a>
               {% else %}
-                <div class="td-mobile-doc-empty">No Front</div>
+                <div class="td-mobile-doc-empty" data-document-preview="cnic_front">No Front</div>
+              {% endif %}
+              {% if can_inline_update_tenant %}
+                <button class="td-doc-replace-btn" type="button" data-document-replace="cnic_front">Replace</button>
+                <input class="td-doc-replace-input" type="file" accept="image/*" data-document-input="cnic_front">
               {% endif %}
             </div>
-            <div class="td-mobile-doc-item">
+            <div class="td-mobile-doc-item td-doc-replace-zone" data-tenant-document-zone data-field="cnic_back">
               {% if tenant.cnic_back %}
                 <a href="{{ tenant.cnic_back.url }}" data-fancybox="tenant-mobile-documents" data-caption="CNIC Back">
-                  <img src="{{ tenant.cnic_back.url }}" alt="CNIC Back">
+                  <img src="{{ tenant.cnic_back.url }}" alt="CNIC Back" data-document-preview="cnic_back">
                 </a>
               {% else %}
-                <div class="td-mobile-doc-empty">No Back</div>
+                <div class="td-mobile-doc-empty" data-document-preview="cnic_back">No Back</div>
+              {% endif %}
+              {% if can_inline_update_tenant %}
+                <button class="td-doc-replace-btn" type="button" data-document-replace="cnic_back">Replace</button>
+                <input class="td-doc-replace-input" type="file" accept="image/*" data-document-input="cnic_back">
               {% endif %}
             </div>
           </div>
@@ -1912,6 +1926,71 @@
     }
   }
 
+
+
+  /* INLINE UPDATE: click-to-edit visual state for tenant_detail fields. */
+  .td-inline-editable {
+    cursor: pointer;
+    border-radius: .35rem;
+    padding: .08rem .18rem;
+  }
+
+  .td-inline-editable:hover {
+    background: #fff7ed;
+    outline: 1px dashed #fdba74;
+  }
+
+  .td-inline-editor {
+    width: 100%;
+    min-height: 30px;
+    border: 1px solid #0d6efd;
+    border-radius: .4rem;
+    padding: .25rem .45rem;
+    font-size: .8rem;
+  }
+
+  .td-inline-status {
+    display: inline-block;
+    margin-left: .25rem;
+    font-size: .68rem;
+    font-weight: 800;
+  }
+
+  .td-inline-saving { color: #d97706; }
+  .td-inline-saved { color: #198754; }
+  .td-inline-error { color: #dc3545; }
+
+  /* DOCUMENT REPLACE: overlay button keeps image click for preview while allowing file replacement. */
+  .td-doc-replace-zone {
+    position: relative;
+  }
+
+  .td-doc-replace-btn {
+    position: absolute;
+    top: .35rem;
+    right: .35rem;
+    z-index: 4;
+    border: 1px solid #0d6efd;
+    background: rgba(255,255,255,.94);
+    color: #0d6efd;
+    border-radius: 999px;
+    padding: .12rem .45rem;
+    font-size: .68rem;
+    font-weight: 800;
+    line-height: 1.2;
+    box-shadow: 0 1px 4px rgba(15,23,42,.15);
+  }
+
+  .td-doc-replace-btn:hover {
+    background: #0d6efd;
+    color: #fff;
+  }
+
+  .td-doc-replace-input {
+    display: none;
+  }
+
+  /* PRINT: hide actions and editable UI while printing. */
   @media print {
     .text-danger,
     .text-success {
@@ -1997,5 +2076,169 @@
       document.execCommand("copy");
     }
   });
+
+
+  /* INLINE UPDATE JS: appended only; existing tenant_detail JS above is unchanged. */
+  (function () {
+    const canInlineUpdate = "{% if can_inline_update_tenant %}1{% else %}0{% endif %}" === "1";
+    if (!canInlineUpdate) return;
+
+    const inlineUrl = "{% url 'tenants:tenant_inline_update' tenant.pk %}";
+    const documentUrl = "{% url 'tenants:tenant_document_replace' tenant.pk %}";
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return '';
+    }
+
+    const csrftoken = getCookie('csrftoken');
+
+    const labelToField = {
+      "CNIC": "cnic",
+      "Occupation": "occupation",
+      "Nationality": "nationality",
+      "Family Members": "number_of_family_member",
+      "Email": "email",
+      "Temporary Address": "temporary_address",
+      "Permanent Address": "permanent_address",
+      "Working Address": "working_address",
+      "Notes": "notes"
+    };
+
+    document.querySelectorAll('.td-info-grid > div, .td-address-grid > div').forEach(function (cell) {
+      const label = (cell.querySelector('span') || {}).textContent || '';
+      const field = labelToField[label.trim()];
+      const valueEl = cell.querySelector('strong');
+      if (!field || !valueEl) return;
+      valueEl.dataset.inlineField = field;
+      valueEl.dataset.inlineType = ['temporary_address', 'permanent_address', 'working_address', 'notes'].includes(field) ? 'textarea' : 'text';
+      valueEl.classList.add('td-inline-editable');
+      valueEl.title = 'Click to edit';
+    });
+
+    function setStatus(el, text, className) {
+      let status = el.parentElement.querySelector('.td-inline-status');
+      if (!status) {
+        status = document.createElement('span');
+        status.className = 'td-inline-status';
+        el.insertAdjacentElement('afterend', status);
+      }
+      status.textContent = text;
+      status.className = 'td-inline-status ' + className;
+      if (text !== 'Saving...') setTimeout(function () { status.textContent = ''; }, 1400);
+    }
+
+    async function saveInline(el, value) {
+      setStatus(el, 'Saving...', 'td-inline-saving');
+      const body = new FormData();
+      body.append('field', el.dataset.inlineField);
+      body.append('value', value);
+      const response = await fetch(inlineUrl, { method: 'POST', headers: {'X-CSRFToken': csrftoken}, body });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not save');
+      el.innerHTML = data.display || '-';
+      setStatus(el, 'Saved', 'td-inline-saved');
+    }
+
+    document.addEventListener('click', function (event) {
+      const el = event.target.closest('[data-inline-field]');
+      if (!el || el.dataset.editing === '1') return;
+      el.dataset.editing = '1';
+      const original = el.textContent.trim() === '-' ? '' : el.textContent.trim();
+      const type = el.dataset.inlineType || 'text';
+      const editor = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+      editor.className = 'td-inline-editor';
+      editor.value = original;
+      el.innerHTML = '';
+      el.appendChild(editor);
+      editor.focus();
+      editor.select();
+
+      async function finish(save) {
+        const value = editor.value.trim();
+        el.dataset.editing = '0';
+        if (!save || value === original) {
+          el.innerHTML = original || '-';
+          return;
+        }
+        el.innerHTML = value || '-';
+        try { await saveInline(el, value); }
+        catch (error) { el.innerHTML = original || '-'; setStatus(el, error.message, 'td-inline-error'); }
+      }
+
+      editor.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && type !== 'textarea') { e.preventDefault(); finish(true); }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      });
+      editor.addEventListener('blur', function () { finish(true); });
+    });
+
+    async function compressImage(file, maxSize, quality) {
+      if (!file.type || !file.type.startsWith('image/')) return file;
+      const bitmap = await createImageBitmap(file);
+      let width = bitmap.width;
+      let height = bitmap.height;
+      const ratio = Math.min(1, maxSize / Math.max(width, height));
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+    }
+
+    document.addEventListener('click', function (event) {
+      const btn = event.target.closest('[data-document-replace]');
+      if (!btn) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const input = document.querySelector('[data-document-input="' + btn.dataset.documentReplace + '"]');
+      if (input) input.click();
+    });
+
+    document.querySelectorAll('[data-document-input]').forEach(function (input) {
+      input.addEventListener('change', async function () {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const field = input.dataset.documentInput;
+        const btn = document.querySelector('[data-document-replace="' + field + '"]');
+        const oldText = btn ? btn.textContent : '';
+        if (btn) btn.textContent = 'Uploading...';
+        try {
+          const compressed = await compressImage(file, 1600, 0.82);
+          const body = new FormData();
+          body.append('field', field);
+          body.append('file', compressed);
+          const response = await fetch(documentUrl, { method: 'POST', headers: {'X-CSRFToken': csrftoken}, body });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || 'Upload failed');
+          const zone = document.querySelector('[data-tenant-document-zone][data-field="' + field + '"]');
+          if (zone) {
+            const current = zone.querySelector('[data-document-preview="' + field + '"]');
+            const img = document.createElement('img');
+            img.src = data.url + '?v=' + Date.now();
+            img.alt = data.label || field;
+            img.dataset.documentPreview = field;
+            if (field === 'photo') img.className = 'td-avatar';
+            if (current) current.replaceWith(img);
+            const link = zone.querySelector('a');
+            if (link) link.href = data.url;
+          }
+          if (btn) btn.textContent = 'Replaced';
+          setTimeout(function () { if (btn) btn.textContent = oldText || 'Replace'; }, 1200);
+        } catch (error) {
+          alert(error.message);
+          if (btn) btn.textContent = oldText || 'Replace';
+        } finally {
+          input.value = '';
+        }
+      });
+    });
+  })();
 </script>
 {% endblock %}

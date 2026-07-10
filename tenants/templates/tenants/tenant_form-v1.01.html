@@ -180,34 +180,26 @@
         {% if form.instance.pk %}
           <div class="collapse mb-2" id="tenantFamilyAddBox">
             <div class="border rounded bg-light p-2">
-              <div class="td-family-hidden-lease">
-                <select name="lease" form="tenantFamilyLinkForm">
-                  {% if family_target_leases %}
-                    {% for lease_option in family_target_leases %}
-                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
-                    {% endfor %}
-                  {% elif form.instance.leases.all %}
-                    {% for lease_option in form.instance.leases.all %}
-                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
-                    {% endfor %}
-                  {% elif form.instance.lease_set.all %}
-                    {% for lease_option in form.instance.lease_set.all %}
-                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
-                    {% endfor %}
-                  {% endif %}
-                </select>
-                <select name="lease" form="tenantFamilyCreateForm">
-                  {% if family_target_leases %}
-                    {% for lease_option in family_target_leases %}<option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>{% endfor %}
-                  {% elif form.instance.leases.all %}
-                    {% for lease_option in form.instance.leases.all %}<option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>{% endfor %}
-                  {% elif form.instance.lease_set.all %}
-                    {% for lease_option in form.instance.lease_set.all %}<option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>{% endfor %}
-                  {% endif %}
-                </select>
-              </div>
               <div class="td-family-add-line td-family-link-line mb-2">
                 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" form="tenantFamilyLinkForm">
+                <div>
+                  <label class="form-label small mb-1">Lease</label>
+                  <select name="lease" class="form-select form-select-sm" form="tenantFamilyLinkForm">
+                    {% if family_target_leases %}
+                      {% for lease_option in family_target_leases %}
+                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                      {% endfor %}
+                    {% elif form.instance.leases.all %}
+                      {% for lease_option in form.instance.leases.all %}
+                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                      {% endfor %}
+                    {% elif form.instance.lease_set.all %}
+                      {% for lease_option in form.instance.lease_set.all %}
+                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                      {% endfor %}
+                    {% endif %}
+                  </select>
+                </div>
                 <div>
                   <label class="form-label small mb-1">Existing Tenant</label>
                   <select name="family_member" class="form-select form-select-sm select2" form="tenantFamilyLinkForm">
@@ -228,28 +220,24 @@
                 </div>
                 <div><button type="submit" class="btn btn-sm btn-success w-100" form="tenantFamilyLinkForm">Link</button></div>
               </div>
-              <div class="td-family-create-wrap">
+              <div class="td-family-add-line td-family-create-line">
                 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" form="tenantFamilyCreateForm">
-                <div class="td-family-add-line td-family-create-line td-family-create-row-1">
-                  <div>
-                    <label class="form-label small mb-1">New Family Member Name</label>
-                    <input name="full_name" class="form-control form-control-sm" form="tenantFamilyCreateForm">
-                  </div>
-                  <div><label class="form-label small mb-1">CNIC</label><input name="cnic" class="form-control form-control-sm" form="tenantFamilyCreateForm"></div>
+                <div>
+                  <label class="form-label small mb-1">New Family Member Name</label>
+                  <input name="full_name" class="form-control form-control-sm" form="tenantFamilyCreateForm">
                 </div>
-                <div class="td-family-add-line td-family-create-line td-family-create-row-2">
-                  <div><label class="form-label small mb-1">Phone</label><input name="phone" class="form-control form-control-sm" form="tenantFamilyCreateForm"></div>
-                  <div>
-                    <label class="form-label small mb-1">Relationship</label>
-                    <select name="relation" class="form-select form-select-sm" required form="tenantFamilyCreateForm">
-                      <option value="">Select</option>
-                      {% for item in relationship_types %}
-                        <option value="{{ item.pk }}">{{ item.name }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div><button type="submit" class="btn btn-sm btn-primary w-100" form="tenantFamilyCreateForm">Create</button></div>
+                <div><label class="form-label small mb-1">CNIC</label><input name="cnic" class="form-control form-control-sm" form="tenantFamilyCreateForm"></div>
+                <div><label class="form-label small mb-1">Phone</label><input name="phone" class="form-control form-control-sm" form="tenantFamilyCreateForm"></div>
+                <div>
+                  <label class="form-label small mb-1">Relationship</label>
+                  <select name="relation" class="form-select form-select-sm" required form="tenantFamilyCreateForm">
+                    <option value="">Select</option>
+                    {% for item in relationship_types %}
+                      <option value="{{ item.pk }}">{{ item.name }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
+                <div><button type="submit" class="btn btn-sm btn-primary w-100" form="tenantFamilyCreateForm">Create</button></div>
               </div>
             </div>
           </div>
@@ -330,42 +318,34 @@
         {% if form.instance.pk and family_target_leases %}
           <div class="collapse mb-2" id="tenantVehicleAddBox">
             <div class="border rounded bg-light p-2">
-              <div class="td-vehicle-add-wrap">
+              <div class="td-vehicle-add-line">
                 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" form="tenantVehicleAddForm">
-                <div class="td-vehicle-add-line td-vehicle-add-topline">
-                  <div>
-                    <label class="form-label small mb-1">Lease</label>
-                    <select name="lease" class="form-select form-select-sm" form="tenantVehicleAddForm">
-                      {% for lease_option in family_target_leases %}
-                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label small mb-1">Photo</label>
-                    <input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm" form="tenantVehicleAddForm">
-                  </div>
+                <div>
+                  <label class="form-label small mb-1">Lease</label>
+                  <select name="lease" class="form-select form-select-sm" form="tenantVehicleAddForm">
+                    {% for lease_option in family_target_leases %}
+                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
-                <div class="td-vehicle-add-line td-vehicle-add-gridline">
-                  <div>
-                    <label class="form-label small mb-1">Vehicle Type</label>
-                    <select name="vehicle_type" class="form-select form-select-sm" required form="tenantVehicleAddForm">
-                      <option value="">Select type</option>
-                      {% for vehicle_type in vehicle_types %}
-                        <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm" required form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
-                  <div><button type="submit" class="btn btn-sm btn-primary w-100" form="tenantVehicleAddForm">Save Vehicle</button></div>
+                <div>
+                  <label class="form-label small mb-1">Vehicle Type</label>
+                  <select name="vehicle_type" class="form-select form-select-sm" required form="tenantVehicleAddForm">
+                    <option value="">Select type</option>
+                    {% for vehicle_type in vehicle_types %}
+                      <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
+                <div><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm" required form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><label class="form-label small mb-1">Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                <div><button type="submit" class="btn btn-sm btn-primary w-100" form="tenantVehicleAddForm">Save</button></div>
               </div>
             </div>
           </div>
@@ -1834,25 +1814,12 @@
     align-items: end;
   }
 
-  .td-family-hidden-lease {
-    display: none;
-  }
-
   .td-family-link-line {
-    grid-template-columns: minmax(220px, 1.5fr) minmax(150px, .9fr) 90px;
+    grid-template-columns: minmax(150px, 1.1fr) minmax(170px, 1.25fr) minmax(120px, .9fr) 90px;
   }
 
-  .td-family-create-wrap {
-    display: grid;
-    gap: .45rem;
-  }
-
-  .td-family-create-row-1 {
-    grid-template-columns: minmax(220px, 1.4fr) minmax(160px, .8fr);
-  }
-
-  .td-family-create-row-2 {
-    grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) 90px;
+  .td-family-create-line {
+    grid-template-columns: minmax(180px, 1.35fr) minmax(120px, .9fr) minmax(120px, .9fr) minmax(120px, .9fr) 90px;
   }
 
   .td-family-add-line .form-label {
@@ -1945,23 +1912,11 @@
     padding: .6rem .75rem;
   }
 
-  .td-vehicle-add-wrap {
-    display: grid;
-    gap: .5rem;
-  }
-
   .td-vehicle-add-line {
     display: grid;
+    grid-template-columns: minmax(160px, 1.25fr) minmax(130px, 1fr) minmax(120px, 1fr) repeat(5, minmax(95px, .75fr)) minmax(100px, .8fr) minmax(120px, .9fr) 82px;
     gap: .45rem;
     align-items: end;
-  }
-
-  .td-vehicle-add-topline {
-    grid-template-columns: minmax(260px, 1fr) minmax(220px, .8fr);
-  }
-
-  .td-vehicle-add-gridline {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .td-vehicle-add-line .form-label {
@@ -2152,11 +2107,8 @@
     .td-form-contact-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .td-family-link-line {
-      grid-template-columns: 1fr;
-    }
-    .td-family-create-row-1,
-    .td-family-create-row-2 {
+    .td-family-link-line,
+    .td-family-create-line {
       grid-template-columns: 1fr;
     }
     .td-form-personal-grid {
@@ -2188,43 +2140,9 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .td-vehicle-add-topline,
-    .td-vehicle-add-gridline {
+    .td-vehicle-add-line {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
-    /* Mobile: keep documents in one row: square photo + rectangular CNIC front/back. */
-    .td-form-doc-grid {
-      grid-template-columns: minmax(70px, .72fr) minmax(96px, 1.14fr) minmax(96px, 1.14fr);
-      gap: .38rem;
-      align-items: start;
-    }
-    .td-form-doc-slot:nth-child(3) {
-      grid-column: auto;
-    }
-    .td-form-doc-slot:first-child .td-form-doc-preview {
-      width: 100%;
-      height: 76px;
-      border-radius: .45rem;
-    }
-    .td-form-doc-preview {
-      width: 100%;
-      height: 76px;
-      border-radius: .45rem;
-    }
-    .td-form-doc-label {
-      font-size: .64rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* Mobile: push employer fields to the end of Contact/Employer/References. */
-    .td-form-contact-grid > .td-form-cell:nth-child(4),
-    .td-form-contact-grid > .td-form-cell:nth-child(5) {
-      order: 30;
-    }
-
     .td-form-personal-grid,
     .td-form-contact-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));

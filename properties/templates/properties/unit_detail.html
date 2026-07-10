@@ -444,6 +444,64 @@
 
     <div class="card unit-detail-card mb-3">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">Lease History</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="unit-desktop-table">
+                <table class="table table-sm table-striped unit-meter-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>S.N</th>
+                            <th>Tenant</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th class="text-end">Balance</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in lease_history_rows %}
+                            <tr>
+                                <td>{{ row.sn }}</td>
+                                <td><a href="{% url 'tenants:tenant_detail' row.tenant.pk %}">{{ row.tenant.get_full_name }}</a></td>
+                                <td>{{ row.start_date|date:"M d, Y" }}</td>
+                                <td>{{ row.end_date|date:"M d, Y" }}</td>
+                                <td class="text-end"><a href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">{{ row.balance|money }}</a></td>
+                                <td>
+                                    {% if row.is_current %}<span class="badge bg-success">Current</span>{% else %}<span class="badge bg-secondary">{{ row.lease.get_status_display }}</span>{% endif %}
+                                </td>
+                                <td><a href="{% url 'leases:lease_detail' row.lease.pk %}" class="btn btn-sm btn-outline-primary">View Lease</a></td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="7" class="text-muted text-center py-3">No lease history recorded.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="unit-mobile-list p-2">
+                {% for row in lease_history_rows %}
+                    <div class="unit-mobile-meter-card">
+                        <div class="unit-mobile-meter-title">
+                            <a href="{% url 'tenants:tenant_detail' row.tenant.pk %}"><strong>#{{ row.sn }} — {{ row.tenant.get_full_name }}</strong></a>
+                            {% if row.is_current %}<span class="badge bg-success">Current</span>{% else %}<span class="badge bg-secondary">{{ row.lease.get_status_display }}</span>{% endif %}
+                        </div>
+                        <div class="unit-meter-mini-grid">
+                            <div><span class="unit-info-label">Start</span><div>{{ row.start_date|date:"M d, Y" }}</div></div>
+                            <div><span class="unit-info-label">End</span><div>{{ row.end_date|date:"M d, Y" }}</div></div>
+                            <div><span class="unit-info-label">Balance</span><div><a href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">{{ row.balance|money }}</a></div></div>
+                            <div><span class="unit-info-label">Action</span><div><a href="{% url 'leases:lease_detail' row.lease.pk %}" class="btn btn-sm btn-outline-primary">View Lease</a></div></div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="text-muted text-center py-3 mb-0">No lease history recorded.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card unit-detail-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
             <h5 class="mb-0">Meters</h5>
             <div class="d-flex flex-wrap gap-2">
                 <a href="{% url 'smart_meter:install_meter_to_unit' unit.pk %}" class="btn btn-sm btn-primary">Install Meter</a>
@@ -455,6 +513,7 @@
                 <table class="table table-sm table-striped unit-meter-table mb-0">
                     <thead>
                         <tr>
+                            <th>S.N</th>
                             <th>Meter</th>
                             <th>Type</th>
                             <th>From</th>
@@ -468,6 +527,7 @@
                     <tbody>
                         {% for row in meter_history_rows %}
                             <tr>
+                                <td>{{ forloop.counter }}</td>
                                 <td><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}">{{ row.meter.meter_number }}</a></td>
                                 <td>{{ row.meter.get_meter_type_display }}</td>
                                 <td>{{ row.start_date|date:"M d, Y" }}</td>
@@ -478,7 +538,7 @@
                                 <td>{{ row.reason|default:"-" }}</td>
                             </tr>
                         {% empty %}
-                            <tr><td colspan="8" class="text-muted text-center py-3">No meter history recorded.</td></tr>
+                            <tr><td colspan="9" class="text-muted text-center py-3">No meter history recorded.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -487,7 +547,7 @@
                 {% for row in meter_history_rows %}
                     <div class="unit-mobile-meter-card">
                         <div class="unit-mobile-meter-title">
-                            <a href="{% url 'smart_meter:meter_detail' row.meter.pk %}"><strong>{{ row.meter.meter_number }}</strong></a>
+                            <a href="{% url 'smart_meter:meter_detail' row.meter.pk %}"><strong>#{{ forloop.counter }} — {{ row.meter.meter_number }}</strong></a>
                             {% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">History</span>{% endif %}
                         </div>
                         <div class="unit-meter-mini-grid">

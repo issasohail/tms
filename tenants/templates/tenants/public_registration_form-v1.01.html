@@ -425,31 +425,6 @@
     }
     @media (max-width: 768px) {
       .public-tenant-page { padding: .7rem .55rem 2rem; font-size: .82rem; }
-
-    /* Mobile: keep documents in one row with square photo and rectangular CNIC images. */
-    .td-form-doc-grid {
-      grid-template-columns: minmax(70px, .72fr) minmax(96px, 1.14fr) minmax(96px, 1.14fr) !important;
-      gap: .38rem;
-      padding: .55rem;
-    }
-    .td-form-doc-slot:first-child .td-form-doc-preview,
-    .td-form-doc-preview {
-      width: 100%;
-      height: 76px;
-      border-radius: .45rem;
-    }
-    .td-form-doc-label {
-      font-size: .64rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    /* Mobile: move employer fields to the end of the contact/ref grid. */
-    .td-form-grid-8 > .td-form-cell:nth-child(4),
-    .td-form-grid-8 > .td-form-cell:nth-child(5) {
-      order: 30;
-    }
-
       .public-title { font-size: 1.18rem; }
       .public-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
       .td-form-grid,
@@ -482,9 +457,8 @@
       .span-4,
       .span-3,
       .span-2 { grid-column: span 1; }
-      .td-form-doc-grid { grid-template-columns: minmax(58px, .7fr) minmax(82px, 1.15fr) minmax(82px, 1.15fr) !important; gap: .3rem; }
-      .td-form-doc-slot:first-child .td-form-doc-preview, .td-form-doc-preview { height: 68px; }
-      .td-form-doc-label { text-align: center; font-size: .6rem; }
+      .td-form-doc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .td-form-doc-label { text-align: center; font-size: .68rem; }
     }
   
     .public-family-main { min-width: 0; }
@@ -961,64 +935,6 @@
       }
     }
 
-
-
-    /* Dynamic Add Vehicle form: photo first, then compact 3-column field grid. */
-    .vehicle-add-template-wrap {
-      display: grid;
-      gap: .5rem;
-    }
-    .vehicle-add-template-top {
-      display: grid;
-      grid-template-columns: minmax(220px, .55fr);
-    }
-    .vehicle-add-template-wrap .vehicle-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-    @media (max-width: 768px) {
-      .vehicle-add-template-top,
-      .vehicle-add-template-wrap .vehicle-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-    @media (max-width: 420px) {
-      .vehicle-add-template-top,
-      .vehicle-add-template-wrap .vehicle-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-
-
-    /* Final mobile document override: keep all three uploads in one row. */
-    @media (max-width: 768px) {
-      .td-form-doc-grid {
-        grid-template-columns: minmax(70px, .72fr) minmax(96px, 1.14fr) minmax(96px, 1.14fr) !important;
-        gap: .38rem !important;
-        padding: .55rem !important;
-      }
-      .td-form-doc-slot:first-child .td-form-doc-preview,
-      .td-form-doc-preview {
-        width: 100% !important;
-        height: 76px !important;
-        border-radius: .45rem !important;
-      }
-      .td-form-grid-8 > .td-form-cell:nth-child(4),
-      .td-form-grid-8 > .td-form-cell:nth-child(5) {
-        order: 30 !important;
-      }
-    }
-    @media (max-width: 420px) {
-      .td-form-doc-grid {
-        grid-template-columns: minmax(58px, .7fr) minmax(82px, 1.15fr) minmax(82px, 1.15fr) !important;
-        gap: .3rem !important;
-      }
-      .td-form-doc-slot:first-child .td-form-doc-preview,
-      .td-form-doc-preview {
-        height: 68px !important;
-      }
-    }
-
 </style>
 </head>
 <body>
@@ -1386,21 +1302,17 @@
       <div class="family-card-num">Vehicle #<span class="vehicle-num"></span></div>
       <button type="button" class="btn-remove-family remove-vehicle"><i class="fas fa-times"></i> Remove</button>
     </div>
-    <div class="vehicle-add-template-wrap">
-      <div class="vehicle-add-template-top">
-        <div class="field-wrap"><label class="field-label">Vehicle Photo</label><input class="field-control" data-vehicle-field="vehicle_photo" type="file" accept="image/*"></div>
-      </div>
-      <div class="vehicle-grid">
-        <div class="field-wrap"><label class="field-label">Vehicle Type</label><select data-vehicle-field="vehicle_type" class="field-control"><option value="">Select type</option>{% for vehicle_type in vehicle_types %}<option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>{% endfor %}</select></div>
-        <div class="field-wrap"><label class="field-label">Registration #</label><input class="field-control" data-vehicle-field="registration_number"></div>
-        <div class="field-wrap"><label class="field-label">Make</label><input class="field-control" data-vehicle-field="make"></div>
-        <div class="field-wrap"><label class="field-label">Model</label><input class="field-control" data-vehicle-field="model"></div>
-        <div class="field-wrap"><label class="field-label">Color</label><input class="field-control" data-vehicle-field="color"></div>
-        <div class="field-wrap"><label class="field-label">Year</label><input class="field-control" data-vehicle-field="year" type="number" min="1900"></div>
-        <div class="field-wrap"><label class="field-label">Owner Name</label><input class="field-control" data-vehicle-field="owner_name"></div>
-        <div class="field-wrap"><label class="field-label">Owner CNIC</label><input class="field-control" data-vehicle-field="owner_cnic"></div>
-        <div class="field-wrap"><label class="field-label">Parking Slot</label><input class="field-control" data-vehicle-field="parking_slot"></div>
-      </div>
+    <div class="vehicle-grid">
+      <div class="field-wrap"><label class="field-label">Vehicle Type</label><select data-vehicle-field="vehicle_type" class="field-control"><option value="">Select type</option>{% for vehicle_type in vehicle_types %}<option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>{% endfor %}</select></div>
+      <div class="field-wrap"><label class="field-label">Registration #</label><input class="field-control" data-vehicle-field="registration_number"></div>
+      <div class="field-wrap"><label class="field-label">Make</label><input class="field-control" data-vehicle-field="make"></div>
+      <div class="field-wrap"><label class="field-label">Model</label><input class="field-control" data-vehicle-field="model"></div>
+      <div class="field-wrap"><label class="field-label">Color</label><input class="field-control" data-vehicle-field="color"></div>
+      <div class="field-wrap"><label class="field-label">Year</label><input class="field-control" data-vehicle-field="year" type="number" min="1900"></div>
+      <div class="field-wrap"><label class="field-label">Owner Name</label><input class="field-control" data-vehicle-field="owner_name"></div>
+      <div class="field-wrap"><label class="field-label">Owner CNIC</label><input class="field-control" data-vehicle-field="owner_cnic"></div>
+      <div class="field-wrap"><label class="field-label">Parking Slot</label><input class="field-control" data-vehicle-field="parking_slot"></div>
+      <div class="field-wrap"><label class="field-label">Vehicle Photo</label><input class="field-control" data-vehicle-field="vehicle_photo" type="file" accept="image/*"></div>
     </div>
   </div>
 </template>

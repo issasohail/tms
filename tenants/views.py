@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
+from urllib.parse import quote
 
 import openpyxl
 from django.apps import apps
@@ -15,6 +16,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import signing
+from django.core.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from django.core.signing import BadSignature, SignatureExpired
 from django.db.models import (
@@ -55,11 +57,20 @@ from weasyprint import HTML
 
 from core.models import GlobalSettings
 from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
-from leases.models import Lease, LeaseFamilyMember, LeaseVehicle, LeaseVehicleType
-from leases.services.vehicle_submissions import create_pending_vehicle_submissions_from_post
+from leases.models import (
+    Lease,
+    LeaseFamilyMember,
+    LeaseRelationshipType,
+    LeaseVehicle,
+    LeaseVehicleType,
+)
+from leases.services.vehicle_submissions import (
+    create_pending_vehicle_submissions_from_post,
+)
 from leases.whatsapp import build_whatsapp_url
 from payments.models import Payment
 from properties.models import Property, Unit
+from tenants.models import Tenant
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
 from whatsapp.services.external_links import record_external_link_access
 
@@ -101,6 +112,183 @@ def _split_registration_name(name):
     return parts[0], " ".join(parts[1:])
 
 
+# ===================== TENANT DETAIL INLINE UPDATE ADDITIONS =====================
+# Copy/paste this block into tenants/views.py near your other tenant_detail helper views.
+# Required import to add near the top if not already present:
+# from django.core.exceptions import ValidationError
+
+
+@login_required
+@require_POST
+def tenant_inline_update(request, pk):
+    """AJAX single-field update from tenant_detail.html.
+
+    Permission: user must have tenants.change_tenant.
+    This endpoint intentionally accepts only whitelisted fields.
+    """
+    if not request.user.has_perm("tenants.change_tenant"):
+        return JsonResponse({"ok": False, "error": "Permission denied."}, status=403)
+
+    tenant = get_object_or_404(Tenant, pk=pk)
+    field_name = (request.POST.get("field") or "").strip()
+    raw_value = request.POST.get("value", "")
+
+    allowed_fields = {
+        "prefix",
+        "first_name",
+        "relation",
+        "last_name",
+        "email",
+        "phone",
+        "phone2",
+        "phone3",
+        "cnic",
+        "occupation",
+        "employer_name",
+        "employer_phone",
+        "reference_name_1",
+        "reference_phone_1",
+        "reference_relation_1",
+        "reference_name_2",
+        "reference_phone_2",
+        "reference_relation_2",
+        "nationality",
+        "city",
+        "province",
+        "country",
+        "address",
+        "temporary_address",
+        "permanent_address",
+        "working_address",
+        "gender",
+        "date_of_birth",
+        "emergency_contact_name",
+        "emergency_contact_phone",
+        "emergency_contact_relation",
+        "number_of_family_member",
+        "family_member_adults",
+        "family_member_children",
+        "nadra_family_no",
+        "is_active",
+        "notes",
+        "police_verification_status",
+        "police_verification_date",
+        "police_verification_remarks",
+        "police_verification_follow_up_date",
+    }
+
+    if field_name not in allowed_fields:
+        return JsonResponse(
+            {"ok": False, "error": "This field cannot be updated inline."}, status=400
+        )
+
+    try:
+        model_field = Tenant._meta.get_field(field_name)
+        if model_field.get_internal_type() == "DateField":
+            value = parse_date(raw_value) if raw_value else None
+            if raw_value and value is None:
+                return JsonResponse(
+                    {"ok": False, "error": "Invalid date format."}, status=400
+                )
+        elif model_field.get_internal_type() == "BooleanField":
+            value = str(raw_value).lower() in {"1", "true", "yes", "on"}
+        elif model_field.get_internal_type() in {
+            "PositiveIntegerField",
+            "IntegerField",
+        }:
+            value = int(raw_value or 0)
+        else:
+            value = raw_value.strip()
+
+        setattr(tenant, field_name, value)
+        tenant.full_clean()
+        tenant.save()
+
+        display_value = getattr(tenant, field_name)
+        if model_field.get_internal_type() == "DateField" and display_value:
+            display_value = display_value.strftime("%b %d, %Y")
+        elif model_field.choices:
+            display_value = getattr(tenant, f"get_{field_name}_display")()
+        elif model_field.get_internal_type() == "BooleanField":
+            display_value = "Active" if display_value else "Inactive"
+        else:
+            display_value = str(display_value or "-")
+
+        return JsonResponse({"ok": True, "field": field_name, "display": display_value})
+    except ValidationError as exc:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages,
+            },
+            status=400,
+        )
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+
+@login_required
+@require_POST
+def tenant_document_replace(request, pk):
+    """AJAX document/photo replacement from tenant_detail.html.
+
+    The Tenant model already controls upload naming through upload_to and compresses
+    tenant files in save(), so this view does not duplicate filename logic.
+    """
+    if not request.user.has_perm("tenants.change_tenant"):
+        return JsonResponse({"ok": False, "error": "Permission denied."}, status=403)
+
+    tenant = get_object_or_404(Tenant, pk=pk)
+    field_name = (request.POST.get("field") or "").strip()
+    upload = request.FILES.get("file")
+
+    allowed_file_fields = {
+        "photo": "Tenant Photo",
+        "cnic_front": "CNIC Front",
+        "cnic_back": "CNIC Back",
+        "police_verification_document": "Police Verification Document",
+    }
+
+    if field_name not in allowed_file_fields:
+        return JsonResponse(
+            {"ok": False, "error": "This document field cannot be replaced."},
+            status=400,
+        )
+    if not upload:
+        return JsonResponse({"ok": False, "error": "No file was uploaded."}, status=400)
+
+    setattr(tenant, field_name, upload)
+    try:
+        tenant.full_clean(exclude=["photo_crop", "cnic_front_crop", "cnic_back_crop"])
+        tenant.save()
+    except ValidationError as exc:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages,
+            },
+            status=400,
+        )
+
+    file_field = getattr(tenant, field_name)
+    return JsonResponse(
+        {
+            "ok": True,
+            "field": field_name,
+            "label": allowed_file_fields[field_name],
+            "url": file_field.url if file_field else "",
+        }
+    )
+
+
+# In TenantDetailView.get_context_data(), add this before return context:
+# context["can_inline_update_tenant"] = self.request.user.has_perm("tenants.change_tenant")
+
+
 def _create_new_registration_shell(form=None):
     cleaned_data = getattr(form, "cleaned_data", {}) if form else {}
     first_name, last_name = _split_registration_name(
@@ -119,6 +307,38 @@ def _create_new_registration_shell(form=None):
     if cleaned_data.get("interested_in"):
         tenant.interested_in.set(cleaned_data["interested_in"])
     return tenant
+
+
+def _tenant_list_public_registration_payload(request):
+    """
+    Public no-login link for a brand-new tenant registration.
+
+    This is not tied to an existing tenant.
+    When opened, it creates a temporary tenant shell and redirects
+    to the existing secure public registration form.
+    """
+    link = request.build_absolute_uri(reverse("tenants:tenant_public_registration_new"))
+
+    message = (
+        f"Please complete your tenant registration using this public link:\n\n{link}"
+    )
+
+    return {
+        "link": link,
+        "whatsapp_url": f"https://wa.me/?text={quote(message)}",
+    }
+
+
+def tenant_public_registration_new(request):
+    """
+    No-login entry point for a new tenant with no prior tenant record.
+
+    It creates a temporary tenant shell only when the public link is opened,
+    then sends the user to the existing token-based public registration form.
+    """
+    tenant = _create_new_registration_shell()
+    token = tenant_registration_token(tenant)
+    return redirect("tenants:tenant_public_registration", token=token)
 
 
 def _registration_link_payload(request, tenant):
@@ -584,7 +804,9 @@ def tenant_vehicle_add(request, pk):
     registration_number = (request.POST.get("registration_number") or "").strip()
     if not registration_number:
         messages.error(request, "Vehicle registration number is required.")
-        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles"
+        )
 
     year = None
     year_raw = (request.POST.get("year") or "").strip()
@@ -593,7 +815,9 @@ def tenant_vehicle_add(request, pk):
             year = int(year_raw)
         except (TypeError, ValueError):
             messages.error(request, "Vehicle year must be a number.")
-            return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles")
+            return redirect(
+                f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles"
+            )
 
     try:
         LeaseVehicle.objects.create(
@@ -616,7 +840,9 @@ def tenant_vehicle_add(request, pk):
         messages.error(request, f"Vehicle not added: {exc}")
     else:
         messages.success(request, "Vehicle added.")
-    return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles")
+    return redirect(
+        f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantVehicles"
+    )
 
 
 @login_required
@@ -632,11 +858,15 @@ def tenant_family_add(request, pk):
     relation = (request.POST.get("relation") or "").strip()
     if not family_member_id:
         messages.error(request, "Please select a family member tenant.")
-        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
     family_member = get_object_or_404(Tenant, pk=family_member_id)
     if family_member.pk == tenant.pk:
         messages.error(request, "A tenant cannot be added as their own family member.")
-        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
 
     link, created = LeaseFamilyMember.objects.get_or_create(
         lease=lease,
@@ -647,16 +877,24 @@ def tenant_family_add(request, pk):
     if not created and relation:
         defaults = _family_relationship_defaults(relation)
         changed = []
-        if defaults.get("relationship_type") and link.relationship_type_id != defaults["relationship_type"].pk:
+        if (
+            defaults.get("relationship_type")
+            and link.relationship_type_id != defaults["relationship_type"].pk
+        ):
             link.relationship_type = defaults["relationship_type"]
             changed.append("relationship_type")
-        if defaults.get("relationship") and link.relationship != defaults["relationship"]:
+        if (
+            defaults.get("relationship")
+            and link.relationship != defaults["relationship"]
+        ):
             link.relationship = defaults["relationship"]
             changed.append("relationship")
         if changed:
             link.save(update_fields=changed)
     messages.success(request, f"{family_member.get_full_name()} added to family.")
-    return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+    return redirect(
+        f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+    )
 
 
 @login_required
@@ -679,15 +917,21 @@ def tenant_family_create_and_add(request, pk):
         first_name, last_name = _split_registration_name(full_name)
     if not first_name:
         messages.error(request, "Family member name is required.")
-        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
     if not last_name:
         last_name = "Family"
     if not relation:
         messages.error(request, "Relationship is required.")
-        return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
 
     cnic_digits = normalize_cnic(cnic)
-    family_member = Tenant.objects.filter(cnic_digits=cnic_digits).first() if cnic_digits else None
+    family_member = (
+        Tenant.objects.filter(cnic_digits=cnic_digits).first() if cnic_digits else None
+    )
     if not family_member:
         family_member = Tenant(
             first_name=first_name,
@@ -711,7 +955,9 @@ def tenant_family_create_and_add(request, pk):
         defaults=_family_relationship_defaults(relation),
     )
     messages.success(request, f"{family_member.get_full_name()} added to family.")
-    return redirect(f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily")
+    return redirect(
+        f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+    )
 
 
 class TenantDetailView(LoginRequiredMixin, DetailView):
@@ -940,21 +1186,23 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         context["family_lease_links"] = family_lease_links
         context["tenant_vehicles"] = (
             LeaseVehicle.objects.filter(Q(tenant=tenant) | Q(lease_id__in=lease_ids))
-            .select_related("lease", "lease__unit", "lease__unit__property", "vehicle_type")
+            .select_related(
+                "lease", "lease__unit", "lease__unit__property", "vehicle_type"
+            )
             .distinct()
             .order_by("vehicle_type__sort_order", "registration_number")
         )
-        context["vehicle_types"] = LeaseVehicleType.objects.filter(is_active=True).order_by(
-            "sort_order", "name"
-        )
+        context["vehicle_types"] = LeaseVehicleType.objects.filter(
+            is_active=True
+        ).order_by("sort_order", "name")
         context["relationship_types"] = (
             apps.get_model("leases", "LeaseRelationshipType")
             .objects.filter(is_active=True)
             .order_by("sort_order", "name")
         )
-        context["tenant_family_options"] = (
-            Tenant.objects.exclude(pk=tenant.pk).order_by("first_name", "last_name")
-        )
+        context["tenant_family_options"] = Tenant.objects.exclude(
+            pk=tenant.pk
+        ).order_by("first_name", "last_name")
         context.update(_family_counts(family_links))
 
         def get_object(self, queryset=None):
@@ -993,23 +1241,90 @@ class TenantCreateView(LoginRequiredMixin, CreateView):
             initial["unit"] = unit_id
         return initial
 
-    def form_valid(self, form):
-        """Add success message when form is valid"""
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
 
+        # Create form has no saved tenant yet, so no lease/family records can be linked here.
+        context["all_leases"] = []
+        context["leases"] = []
+        context["family_target_leases"] = []
+        context["family_target_lease_count"] = 0
+        context["existing_family"] = []
+        context["family_members"] = []
+        context["tenant_family_options"] = []
+
+        # Needed by the shared family template/dropdowns, even if family add is hidden on create.
+        context["relationship_types"] = LeaseRelationshipType.objects.filter(
+            is_active=True
+        ).order_by("sort_order", "name")
+
+        return context
+
+    def form_valid(self, form):
+        messages.success(self.request, "Tenant was created successfully!")
         return super().form_valid(form)
 
 
 class TenantUpdateView(LoginRequiredMixin, UpdateView):
     model = Tenant
     form_class = TenantForm
-    # Reuse the same template as create view
     template_name = "tenants/tenant_form.html"
     success_url = reverse_lazy("tenants:tenant_list")
 
     def form_valid(self, form):
-        """Add success message when form is valid"""
         messages.success(self.request, "Tenant was updated successfully!")
         return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        tenant = self.object
+
+        all_leases = (
+            Lease.objects.filter(tenant=tenant)
+            .select_related("unit", "unit__property")
+            .order_by("-start_date", "-id")
+        )
+
+        family_target_leases = [
+            lease for lease in all_leases if lease.status == "active"
+        ] or list(all_leases)
+
+        family_members = (
+            LeaseFamilyMember.objects.filter(primary_tenant=tenant)
+            .select_related(
+                "lease",
+                "lease__unit",
+                "lease__unit__property",
+                "family_member",
+                "relationship_type",
+            )
+            .order_by(
+                "sort_order",
+                "family_member__first_name",
+                "family_member__last_name",
+            )
+        )
+
+        existing_family_ids = family_members.values_list("family_member_id", flat=True)
+
+        context["all_leases"] = all_leases
+        context["leases"] = all_leases
+        context["family_target_leases"] = family_target_leases
+        context["family_target_lease_count"] = len(family_target_leases)
+        context["existing_family"] = family_members
+        context["family_members"] = family_members
+
+        context["tenant_family_options"] = (
+            Tenant.objects.exclude(pk=tenant.pk)
+            .exclude(pk__in=existing_family_ids)
+            .order_by("first_name", "last_name")
+        )
+
+        context["relationship_types"] = LeaseRelationshipType.objects.filter(
+            is_active=True
+        ).order_by("sort_order", "name")
+
+        return context
 
 
 class TenantDeleteView(LoginRequiredMixin, DeleteView):
@@ -1395,7 +1710,9 @@ def tenant_search(request):
             balance = balance_getter() if callable(balance_getter) else balance_getter
             result.update(
                 {
-                    "property": lease.unit.property.property_name if lease.unit.property else "",
+                    "property": lease.unit.property.property_name
+                    if lease.unit.property
+                    else "",
                     "unit": lease.unit.unit_number,
                     "balance": balance if balance is not None else "",
                 }
@@ -1856,7 +2173,9 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                 )
                 + recurring_by_lease.get(lease.id, zero)
             )
-            lease_monthly = Decimal(str(getattr(lease, "get_total_payment", zero) or zero))
+            lease_monthly = Decimal(
+                str(getattr(lease, "get_total_payment", zero) or zero)
+            )
 
             lease.cached_monthly_payment = (
                 recurring_total if recurring_total > 0 else lease_monthly
@@ -1877,18 +2196,18 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
         family_relations = (
             LeaseFamilyMember.objects.filter(
-                    family_member_id__in=[tenant.pk for tenant in page_tenants],
-                    lease__status="active",
-                    lease__start_date__lte=today,
-                    lease__end_date__gte=today,
-                )
-                .select_related(
-                    "lease__unit__property",
-                    "primary_tenant",
-                    "relationship_type",
-                )
-                .order_by("family_member_id", "-lease__start_date", "-id")
+                family_member_id__in=[tenant.pk for tenant in page_tenants],
+                lease__status="active",
+                lease__start_date__lte=today,
+                lease__end_date__gte=today,
             )
+            .select_related(
+                "lease__unit__property",
+                "primary_tenant",
+                "relationship_type",
+            )
+            .order_by("family_member_id", "-lease__start_date", "-id")
+        )
         family_map = {}
         for relation in family_relations:
             family_map.setdefault(relation.family_member_id, relation)
@@ -1934,7 +2253,9 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         context["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (
             60 * 60 * 24
         )
-
+        context["public_registration_payload"] = (
+            _tenant_list_public_registration_payload(self.request)
+        )
         context["pending_registration_count"] = (
             TenantRegistrationSubmission.objects.filter(status="pending").count()
         )

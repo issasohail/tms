@@ -1,9 +1,7 @@
 import json
 import logging
 import os
-from collections import defaultdict
 from datetime import datetime, timedelta
-from decimal import Decimal
 from io import BytesIO
 from urllib.parse import quote
 
@@ -22,9 +20,7 @@ from django.db.models import (
     OuterRef,
     Q,
     Subquery,
-    Sum,
 )
-from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -46,9 +42,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from core.models import GlobalSettings
-from invoices.models import Invoice
 from leases.models import Lease, LeaseRenewal, WhatsAppTemplate
-from payments.models import Payment
 from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
 from tenants.models import Tenant, TenantInterestType
 from utils.pdf_export import handle_export
@@ -396,69 +390,6 @@ def _attach_unit_occupancy(unit):
     return unit
 
 
-def _unit_lease_history_rows(unit):
-    leases = list(
-        Lease.objects.filter(unit=unit)
-        .select_related("tenant")
-        .order_by("-start_date", "-pk")
-    )
-    if not leases:
-        return []
-
-    lease_ids = [lease.id for lease in leases]
-
-    renewals_by_lease = defaultdict(list)
-    for renewal in LeaseRenewal.objects.filter(lease_id__in=lease_ids).order_by(
-        "renewal_number"
-    ):
-        renewals_by_lease[renewal.lease_id].append(renewal)
-
-    invoice_totals = {
-        row["lease_id"]: row["total"] or Decimal("0.00")
-        for row in (
-            Invoice.objects.filter(lease_id__in=lease_ids)
-            .values("lease_id")
-            .annotate(total=Coalesce(Sum("amount"), Decimal("0.00")))
-        )
-    }
-
-    # Lease ledger balance must use the payment detail's lease_amount (the
-    # portion of a payment actually applied to rent/invoices), not the raw
-    # payment.amount, since a payment can also cover security deposit etc.
-    payment_totals = defaultdict(lambda: Decimal("0.00"))
-    for payment in Payment.objects.filter(lease_id__in=lease_ids).select_related(
-        "detail"
-    ):
-        detail = getattr(payment, "detail", None)
-        lease_amt = getattr(detail, "lease_amount", None) if detail else None
-        payment_totals[payment.lease_id] += (
-            lease_amt if lease_amt is not None else (payment.amount or Decimal("0.00"))
-        )
-
-    current_lease_id = unit.current_lease.pk if unit.current_lease else None
-
-    rows = []
-    for index, lease in enumerate(leases, start=1):
-        renewals = renewals_by_lease.get(lease.id, [])
-        end_date = renewals[-1].end_date if renewals else lease.end_date
-        balance = invoice_totals.get(lease.id, Decimal("0.00")) - payment_totals.get(
-            lease.id, Decimal("0.00")
-        )
-        rows.append(
-            {
-                "sn": index,
-                "lease": lease,
-                "tenant": lease.tenant,
-                "start_date": lease.start_date,
-                "end_date": end_date,
-                "renewal_count": len(renewals),
-                "balance": balance,
-                "is_current": lease.id == current_lease_id,
-            }
-        )
-    return rows
-
-
 def _unit_detail_context(unit):
     _attach_unit_occupancy(unit)
     current_meter_rows, meter_history_rows = _unit_meter_rows(unit)
@@ -482,7 +413,6 @@ def _unit_detail_context(unit):
         "active_lease_history": unit.active_lease_history,
         "current_meter_rows": current_meter_rows,
         "meter_history_rows": meter_history_rows,
-        "lease_history_rows": _unit_lease_history_rows(unit),
     }
 
 

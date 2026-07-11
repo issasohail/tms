@@ -77,10 +77,6 @@ class LeaseRenewal(models.Model):
         "tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="lease_renewals_witnessed_as_second",
     )
-    witness1_name = models.CharField(max_length=100, null=True, blank=True)
-    witness1_cnic = models.CharField(max_length=20, null=True, blank=True)
-    witness2_name = models.CharField(max_length=100, null=True, blank=True)
-    witness2_cnic = models.CharField(max_length=20, null=True, blank=True)
     terms = models.TextField(null=True, blank=True)
     is_original = models.BooleanField(default=False)
     generated_agreement_pdf = models.FileField(
@@ -164,7 +160,6 @@ class LeaseRenewal(models.Model):
         )
 
     def save(self, *args, **kwargs):
-        normalize_title_fields(self, ("witness1_name", "witness2_name"))
         super().save(*args, **kwargs)
 
 

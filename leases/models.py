@@ -115,10 +115,6 @@ class Lease(models.Model):
     )
 
     # leases/models.py - Add to Lease model
-    witness1_name = models.CharField(max_length=100, null=True, blank=True)
-    witness1_cnic = models.CharField(max_length=20, null=True, blank=True)
-    witness2_name = models.CharField(max_length=100, null=True, blank=True)
-    witness2_cnic = models.CharField(max_length=20, null=True, blank=True)
     proposer = models.ForeignKey(
         Tenant, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="leases_proposed",
@@ -362,7 +358,6 @@ class Lease(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        normalize_title_fields(self, ("witness1_name", "witness2_name"))
         is_new = self.pk is None
         old_file = None
         if not is_new:
@@ -2206,3 +2201,29 @@ class PendingLeaseVehicleSubmission(models.Model):
         return (
             f"{vehicle_type} - {self.registration_number} - {self.get_status_display()}"
         )
+
+
+class AgreementSignatureTemplate(models.Model):
+    """Singleton-style editable wording/settings for the package signature page."""
+    name = models.CharField(max_length=100, unique=True, default="Default Signature Page")
+    heading = models.CharField(max_length=160, default="Proposer, Seconder and Witness Signatures")
+    proposer_declaration = models.TextField(default="I recommend the applicant for tenancy and confirm the information stated below.")
+    seconder_declaration = models.TextField(default="I support the proposal for tenancy and confirm the information stated below.")
+    witness_declaration = models.TextField(default="I confirm that I witnessed the execution of this agreement.")
+    footer_text = models.TextField(blank=True, default="")
+    show_phone = models.BooleanField(default=True)
+    show_address = models.BooleanField(default=True)
+    show_thumb_impression = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Agreement signature template"
+        verbose_name_plural = "Agreement signature templates"
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def current(cls):
+        return cls.objects.filter(is_active=True).order_by("pk").first() or cls.objects.create()

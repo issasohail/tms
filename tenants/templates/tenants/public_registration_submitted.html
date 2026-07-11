@@ -37,8 +37,8 @@
     </div>
     <div class="card-body text-center">
       <div class="mb-3">
-        {% if submission.photo %}
-          <img src="{{ submission.photo.url }}" class="registration-photo" alt="Tenant Photo">
+        {% if submitted_photo %}
+          <img src="{{ submitted_photo.url }}" class="registration-photo" alt="Tenant Photo">
         {% elif tenant.photo %}
           <img src="{{ tenant.photo.url }}" class="registration-photo" alt="Tenant Photo">
         {% else %}

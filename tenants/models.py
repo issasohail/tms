@@ -100,6 +100,7 @@ class Tenant(models.Model):
     occupation = models.CharField(max_length=120, blank=True, default="")
     employer_name = models.CharField(max_length=120, blank=True, default="")
     employer_phone = models.CharField(max_length=20, blank=True, default="")
+    employer_address = models.CharField(max_length=255, blank=True, default="")
     reference_name_1 = models.CharField(max_length=120, blank=True, default="")
     reference_phone_1 = models.CharField(max_length=20, blank=True, default="")
     reference_relation_1 = models.CharField(max_length=80, blank=True, default="")

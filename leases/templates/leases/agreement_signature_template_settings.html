@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-3" style="max-width:1000px">
+  <div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="mb-1">Agreement Signature Page</h3><div class="text-muted">Edit the wording and optional fields used in the combined PDF package.</div></div></div>
+  <form method="post" class="card card-body shadow-sm">{% csrf_token %}
+    <div class="mb-3"><label class="form-label">Heading</label>{{ form.heading }}</div>
+    <div class="row g-3"><div class="col-md-6"><label class="form-label">Proposer declaration</label>{{ form.proposer_declaration }}</div><div class="col-md-6"><label class="form-label">Seconder declaration</label>{{ form.seconder_declaration }}</div><div class="col-12"><label class="form-label">Witness declaration</label>{{ form.witness_declaration }}</div><div class="col-12"><label class="form-label">Footer text</label>{{ form.footer_text }}</div></div>
+    <div class="d-flex flex-wrap gap-4 my-3"><label>{{ form.show_phone }} Show phone</label><label>{{ form.show_address }} Show address</label><label>{{ form.show_thumb_impression }} Show thumb-impression line</label></div>
+    <div><button class="btn btn-primary"><i class="fas fa-save"></i> Save Signature Template</button></div>
+  </form>
+</div>
+{% endblock %}

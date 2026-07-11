@@ -93,11 +93,6 @@ from leases.models import (
     PendingLeaseVehicleSubmission,
     PendingPoliceVerificationSubmission,
 )
-from leases.services.vehicle_submissions import (
-    attach_pending_vehicle_submissions_to_lease,
-    copy_pending_vehicle_to_lease_vehicle,
-    create_pending_vehicle_submissions_from_post,
-)
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_history import ensure_original_history
 from leases.services.police_verification import (
@@ -108,6 +103,11 @@ from leases.services.police_verification import (
     get_valid_police_link,
     police_category_code,
     police_context_sections,
+)
+from leases.services.vehicle_submissions import (
+    attach_pending_vehicle_submissions_to_lease,
+    copy_pending_vehicle_to_lease_vehicle,
+    create_pending_vehicle_submissions_from_post,
 )
 from leases.utils import do_replace_placeholders
 from maintenance.public_links import make_public_maintenance_token
@@ -125,10 +125,10 @@ from .forms import (
     CustomRenewForm,
     LeaseFamilyFormSet,
     LeaseForm,
-    LeaseVehicleFormSet,
-    LeaseVehicleTypeForm,
     LeaseRenewalInlineFormSet,
     LeaseTemplateForm,
+    LeaseVehicleFormSet,
+    LeaseVehicleTypeForm,
     RenewLeaseForm,
 )
 from .models import (
@@ -717,16 +717,20 @@ def _pending_vehicle_dict(request, submission):
         "registration_book_url": _absolute_file_url(
             request, submission.registration_book_photo
         ),
-        "approve_url": reverse("leases:approve_pending_vehicle_submission", args=[submission.pk]),
-        "reject_url": reverse("leases:reject_pending_vehicle_submission", args=[submission.pk]),
+        "approve_url": reverse(
+            "leases:approve_pending_vehicle_submission", args=[submission.pk]
+        ),
+        "reject_url": reverse(
+            "leases:reject_pending_vehicle_submission", args=[submission.pk]
+        ),
     }
 
 
 def _lease_vehicle_payload(request, lease):
     vehicles = list(
-        lease.vehicles.filter(is_active=True).select_related("vehicle_type").order_by(
-            "vehicle_type__sort_order", "registration_number"
-        )
+        lease.vehicles.filter(is_active=True)
+        .select_related("vehicle_type")
+        .order_by("vehicle_type__sort_order", "registration_number")
     )
     pending = list(
         lease.pending_vehicle_submissions.filter(
@@ -780,7 +784,16 @@ def _json_or_redirect(request, payload, redirect_url):
 @require_http_methods(["GET", "POST"])
 def lease_vehicle_info_ajax(request, pk):
     lease = get_object_or_404(
-        Lease.objects.select_related("tenant", "unit", "unit__property"), pk=pk
+        Lease.objects.select_related(
+            "tenant",
+            "unit",
+            "unit__property",
+            "proposer",
+            "seconder",
+            "witness1_tenant",
+            "witness2_tenant",
+        ),
+        pk=pk,
     )
     if request.method == "GET":
         return JsonResponse(_lease_vehicle_payload(request, lease))
@@ -1532,14 +1545,24 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         )
         pending_submission = form.cleaned_data.get("pending_registration_submission")
         if pending_submission:
-            from tenants.services.registration_workflow import attach_registration_to_lease
+            from tenants.services.registration_workflow import (
+                attach_registration_to_lease,
+            )
+
             with transaction.atomic():
-                workflow_result = attach_registration_to_lease(pending_submission, self.object, self.request.user)
+                workflow_result = attach_registration_to_lease(
+                    pending_submission, self.object, self.request.user
+                )
                 pending_submission.status = "approved"
                 pending_submission.reviewed_by = self.request.user
                 pending_submission.reviewed_at = timezone.now()
-                pending_submission.save(update_fields=["status", "reviewed_by", "reviewed_at"])
-            messages.success(self.request, f"Pending registration linked: {len(workflow_result['people'])} people and {workflow_result['vehicles']} vehicles.")
+                pending_submission.save(
+                    update_fields=["status", "reviewed_by", "reviewed_at"]
+                )
+            messages.success(
+                self.request,
+                f"Pending registration linked: {len(workflow_result['people'])} people and {workflow_result['vehicles']} vehicles.",
+            )
 
         # Family links
         family_fs.instance = self.object
@@ -1717,7 +1740,9 @@ def lease_vehicle_add(request, pk):
     registration_number = (request.POST.get("registration_number") or "").strip()
     if not registration_number:
         messages.error(request, "Vehicle registration number is required.")
-        return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+        return redirect(
+            f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles"
+        )
 
     year = None
     year_raw = (request.POST.get("year") or "").strip()
@@ -1726,7 +1751,9 @@ def lease_vehicle_add(request, pk):
             year = int(year_raw)
         except (TypeError, ValueError):
             messages.error(request, "Vehicle year must be a number.")
-            return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+            return redirect(
+                f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles"
+            )
 
     try:
         LeaseVehicle.objects.create(
@@ -1751,7 +1778,9 @@ def lease_vehicle_add(request, pk):
             lease.has_vehicle = True
             lease.save(update_fields=["has_vehicle"])
         messages.success(request, "Vehicle added to lease.")
-    return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+    return redirect(
+        f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles"
+    )
 
 
 @login_required
@@ -1772,9 +1801,9 @@ def lease_vehicle_edit(request, pk, vehicle_id):
                 "vehicle_type_id": vehicle.vehicle_type_id,
                 "vehicle_types": [
                     {"id": item.pk, "name": item.name}
-                    for item in LeaseVehicleType.objects.filter(is_active=True).order_by(
-                        "sort_order", "name"
-                    )
+                    for item in LeaseVehicleType.objects.filter(
+                        is_active=True
+                    ).order_by("sort_order", "name")
                 ],
             }
         )
@@ -1839,7 +1868,9 @@ def lease_vehicle_delete(request, pk, vehicle_id):
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JsonResponse({"ok": True})
     messages.success(request, "Vehicle removed from active list.")
-    return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles")
+    return redirect(
+        f"{reverse('leases:lease_detail', args=[lease.pk])}#ld-tab-vehicles"
+    )
 
 
 @login_required
@@ -3769,9 +3800,9 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "pending_vehicle_count": lease.pending_vehicle_submissions.filter(
                     status=PendingLeaseVehicleSubmission.STATUS_PENDING
                 ).count(),
-                "vehicle_types": LeaseVehicleType.objects.filter(is_active=True).order_by(
-                    "sort_order", "name"
-                ),
+                "vehicle_types": LeaseVehicleType.objects.filter(
+                    is_active=True
+                ).order_by("sort_order", "name"),
                 "lease_documents": list(lease.documents.all()),
                 "lease_document_categories": list(
                     apps.get_model("leases", "LeaseDocumentCategory").objects.filter(
@@ -5215,6 +5246,7 @@ def edit_clauses(request, pk):
         ensure_original_history,
         latest_history,
     )
+    from tenants.models import Tenant
 
     lease = get_object_or_404(Lease, pk=pk)
     selected_lease_id = request.GET.get("lease_select")
@@ -5249,15 +5281,44 @@ def edit_clauses(request, pk):
         "internet_charges",
         "agreement_charges",
         "security_deposit",
-        "witness1_name",
-        "witness1_cnic",
-        "witness2_name",
-        "witness2_cnic",
         "terms",
         "rent_increase_percent",
     ]:
         if hasattr(history, field):
             setattr(lease_for_preview, field, getattr(history, field))
+
+    # Agreement parties are edited against the selected lease/history.
+    if request.method == "POST" and request.POST.get("party_update") == "1":
+
+        def selected(field):
+            value = request.POST.get(field)
+            return Tenant.objects.filter(pk=value).first() if value else None
+
+        lease.proposer = selected("proposer")
+        lease.seconder = selected("seconder")
+        history.witness1_tenant = selected("witness1_tenant")
+        history.witness2_tenant = selected("witness2_tenant")
+        if lease.proposer_id == lease.tenant_id or lease.seconder_id == lease.tenant_id:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": "Primary tenant cannot be proposer or seconder.",
+                },
+                status=400,
+            )
+        if lease.proposer_id and lease.proposer_id == lease.seconder_id:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": "Proposer and seconder must be different people.",
+                },
+                status=400,
+            )
+        lease.save(update_fields=["proposer", "seconder", "updated_at"])
+        history.save(update_fields=["witness1_tenant", "witness2_tenant", "updated_at"])
+        return JsonResponse(
+            {"status": "success", "message": "Agreement parties updated."}
+        )
 
     # ✅ Handle AJAX save
     if (
@@ -5330,6 +5391,9 @@ def edit_clauses(request, pk):
             "clauses": clauses,
             "agreement_date": history.agreement_date or history.start_date,
             "placeholders": _active_agreement_placeholders(),
+            "role_tenants": Tenant.objects.filter(is_active=True).order_by(
+                "first_name", "last_name"
+            ),
             **_edit_clause_filter_context(request, lease),
         },
     )
@@ -5343,13 +5407,34 @@ from .models import Lease
 @login_required
 def generate_agreement_pdf(request, pk):
     from leases.services.agreement_package import build_package
-    from leases.services.lease_history import copy_previous_history_clauses, ensure_original_history, latest_history
-    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property", "proposer", "seconder", "witness1_tenant", "witness2_tenant"), pk=pk)
+    from leases.services.lease_history import (
+        copy_previous_history_clauses,
+        ensure_original_history,
+        latest_history,
+    )
+
+    lease = get_object_or_404(
+        Lease.objects.select_related(
+            "tenant",
+            "unit__property",
+            "proposer",
+            "seconder",
+            "witness1_tenant",
+            "witness2_tenant",
+        ),
+        pk=pk,
+    )
     ensure_original_history(lease, user=request.user)
     history_id = request.GET.get("history")
-    history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
+    history = (
+        get_object_or_404(LeaseRenewal, pk=history_id, lease=lease)
+        if history_id
+        else latest_history(lease)
+    )
     copy_previous_history_clauses(lease, history)
-    clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
+    clauses = _filter_electricity_clauses(
+        history.clauses.all().order_by("clause_number"), lease
+    )
     try:
         pdf_bytes, filename, document = build_package(request, lease, history, clauses)
     except RuntimeError as exc:
@@ -5417,10 +5502,6 @@ def download_preview_pdf(request, lease_id):
         "internet_charges",
         "agreement_charges",
         "security_deposit",
-        "witness1_name",
-        "witness1_cnic",
-        "witness2_name",
-        "witness2_cnic",
         "terms",
         "rent_increase_percent",
     ]:
@@ -6315,10 +6396,6 @@ def download_preview_docx(request, lease_id):
         "internet_charges",
         "agreement_charges",
         "security_deposit",
-        "witness1_name",
-        "witness1_cnic",
-        "witness2_name",
-        "witness2_cnic",
         "terms",
         "rent_increase_percent",
     ]:
@@ -6395,4 +6472,25 @@ def reset_clauses_from_default(request, pk):
     messages.success(request, "Clauses reset to active default clauses.")
     return redirect(
         f"{reverse('leases:edit_clauses', kwargs={'pk': pk})}?history={history.pk}"
+    )
+
+
+@login_required
+def agreement_signature_template_settings(request):
+    from leases.forms import AgreementSignatureTemplateForm
+    from leases.models import AgreementSignatureTemplate
+
+    template = AgreementSignatureTemplate.current()
+    if request.method == "POST":
+        form = AgreementSignatureTemplateForm(request.POST, instance=template)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Agreement signature-page settings updated.")
+            return redirect("leases:agreement_signature_template_settings")
+    else:
+        form = AgreementSignatureTemplateForm(instance=template)
+    return render(
+        request,
+        "leases/agreement_signature_template_settings.html",
+        {"form": form, "template_config": template},
     )

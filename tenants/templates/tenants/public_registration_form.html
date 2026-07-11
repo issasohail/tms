@@ -1019,6 +1019,93 @@
       }
     }
 
+
+    /* Approved responsive registration layout: five compact cards on desktop, two on tablet, one on mobile. */
+    .registration-five-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.65rem; align-items:start; margin-bottom:.8rem; }
+    .registration-five-grid > .td-card { margin-bottom:0 !important; min-width:0; }
+    .registration-five-grid .party-card-body { padding:.55rem; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.38rem; }
+    .registration-five-grid .party-card-body .wide { grid-column:1/-1; }
+    .registration-five-grid .party-docs { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.3rem; }
+    .registration-five-grid .party-docs label { font-size:.62rem; font-weight:800; }
+    .registration-five-grid .party-docs input { font-size:.62rem; padding:.18rem; }
+    .registration-five-grid .vehicle-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .registration-five-grid .vehicle-add-template-top { margin-bottom:.35rem; }
+    .personal-compact .notes-cell { grid-column:span 4; }
+    .personal-compact textarea { min-height:32px !important; height:32px; resize:vertical; }
+    .contact-compact .employer-address-cell { grid-column:span 2; }
+    .family-member-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    .family-doc-row { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; padding:.45rem; border-top:1px solid #e5e7eb; }
+    .family-doc-row .field-wrap { border:0; padding:.25rem; }
+    @media (max-width:1199px) {
+      .registration-five-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .registration-five-grid > .td-card:first-child { grid-column:1/-1; }
+      .registration-five-grid .vehicle-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    }
+    @media (max-width:767px) {
+      .registration-five-grid { grid-template-columns:1fr; gap:.55rem; }
+      .registration-five-grid > .td-card:first-child { grid-column:auto; }
+      .registration-five-grid .vehicle-grid { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
+      .registration-five-grid .party-card-body { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .registration-five-grid .party-card-body .wide { grid-column:span 2; }
+      .registration-five-grid .party-docs { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .family-member-grid { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
+      .family-doc-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .personal-compact .notes-cell { grid-column:span 3; }
+    }
+    @media (max-width:420px) {
+      .registration-five-grid .vehicle-grid, .registration-five-grid .party-card-body, .family-member-grid { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
+      .field-wrap, .td-form-cell { padding:.38rem .34rem; }
+      .field-label, .td-form-cell label { font-size:.61rem !important; }
+      .field-control, .td-form-cell input, .td-form-cell select { font-size:.69rem !important; padding:.24rem .3rem !important; }
+    }
+
+    /* Mobile personal information: always keep a deliberate three-column grid.
+       The generic <=420px rule above changes td-form-grid to one column.
+       A notes cell spanning three columns would then create implicit, uneven
+       columns, which squeezed Prefix/Last name/DOB into narrow slivers. */
+    @media (max-width: 767px) {
+      .td-form-grid.personal-compact {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-auto-columns: minmax(0, 1fr);
+      }
+      .personal-compact > .td-form-cell {
+        grid-column: span 1 !important;
+        min-width: 0;
+        overflow: hidden;
+        border-right: 1px solid #e5e7eb !important;
+      }
+      .personal-compact > .td-form-cell:nth-child(3n) {
+        border-right: 0 !important;
+      }
+      .personal-compact > .notes-cell {
+        grid-column: 1 / -1 !important;
+        border-right: 0 !important;
+      }
+      .personal-compact input:not([type='checkbox']):not([type='radio']):not([type='file']),
+      .personal-compact select,
+      .personal-compact textarea {
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+      .personal-compact label {
+        line-height: 1.15;
+        min-height: 1.4em;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .personal-compact > .td-form-cell { padding: .34rem .28rem; }
+      .personal-compact label { font-size: .58rem !important; }
+      .personal-compact input:not([type='checkbox']):not([type='radio']):not([type='file']),
+      .personal-compact select,
+      .personal-compact textarea {
+        font-size: .66rem !important;
+        padding: .22rem .25rem !important;
+      }
+    }
+
 </style>
 </head>
 <body>
@@ -1092,14 +1179,12 @@
       <div class="td-card">
         <div class="td-card-header"><i class="far fa-user text-secondary"></i><h6>Personal Information</h6></div>
         <div class="td-card-body">
-          <div class="td-form-grid">
+          <div class="td-form-grid personal-compact">
             <div class="td-form-cell">{{ form.prefix.label_tag }}{{ form.prefix }}<div class="td-form-errors">{{ form.prefix.errors }}</div></div>
             <div class="td-form-cell">{{ form.first_name.label_tag }}{{ form.first_name }}<div class="td-form-errors">{{ form.first_name.errors }}</div></div>
             <div class="td-form-cell">{{ form.relation.label_tag }}{{ form.relation }}<div class="td-form-errors">{{ form.relation.errors }}</div></div>
             <div class="td-form-cell">{{ form.last_name.label_tag }}{{ form.last_name }}<div class="td-form-errors">{{ form.last_name.errors }}</div></div>
             <div class="td-form-cell">{{ form.number_of_family_member.label_tag }}{{ form.number_of_family_member }}<div class="td-form-errors">{{ form.number_of_family_member.errors }}</div></div>
-            <div class="td-form-cell td-checkbox-cell">{{ form.is_active.label_tag }}{{ form.is_active }}<div class="td-form-errors">{{ form.is_active.errors }}</div></div>
-
             <div class="td-form-cell">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
             <div class="td-form-cell">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}<div class="td-form-errors">{{ form.date_of_birth.errors }}</div></div>
             <div class="td-form-cell">{{ form.gender.label_tag }}{{ form.gender }}<div class="td-form-errors">{{ form.gender.errors }}</div></div>
@@ -1110,7 +1195,7 @@
             <div class="td-form-cell">{{ form.province.label_tag }}{{ form.province }}<div class="td-form-errors">{{ form.province.errors }}</div></div>
             <div class="td-form-cell">{{ form.country.label_tag }}{{ form.country }}<div class="td-form-errors">{{ form.country.errors }}</div></div>
             <div class="td-form-cell span-15">{{ form.email.label_tag }}{{ form.email }}<div class="td-form-errors">{{ form.email.errors }}</div></div>
-            <div class="td-form-cell span-rest">{{ form.notes.label_tag }}{{ form.notes }}<div class="td-form-errors">{{ form.notes.errors }}</div></div>
+            <div class="td-form-cell notes-cell">{{ form.notes.label_tag }}{{ form.notes }}<div class="td-form-errors">{{ form.notes.errors }}</div></div>
           </div>
         </div>
       </div>
@@ -1119,12 +1204,13 @@
     <div class="td-card mb-3">
       <div class="td-card-header"><i class="fas fa-phone text-secondary"></i><h6>Contact, Employer &amp; References</h6></div>
       <div class="td-card-body">
-        <div class="td-form-grid-8">
+        <div class="td-form-grid-8 contact-compact">
           <div class="td-form-cell">{{ form.phone.label_tag }}{{ form.phone }}<div class="td-form-errors">{{ form.phone.errors }}</div></div>
           <div class="td-form-cell">{{ form.phone2.label_tag }}{{ form.phone2 }}<div class="td-form-errors">{{ form.phone2.errors }}</div></div>
           <div class="td-form-cell">{{ form.phone3.label_tag }}{{ form.phone3 }}<div class="td-form-errors">{{ form.phone3.errors }}</div></div>
           <div class="td-form-cell">{{ form.employer_name.label_tag }}{{ form.employer_name }}<div class="td-form-errors">{{ form.employer_name.errors }}</div></div>
           <div class="td-form-cell">{{ form.employer_phone.label_tag }}{{ form.employer_phone }}<div class="td-form-errors">{{ form.employer_phone.errors }}</div></div>
+          <div class="td-form-cell employer-address-cell">{{ form.employer_address.label_tag }}{{ form.employer_address }}<div class="td-form-errors">{{ form.employer_address.errors }}</div></div>
           <div class="td-form-cell">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}<div class="td-form-errors">{{ form.emergency_contact_name.errors }}</div></div>
           <div class="td-form-cell">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}<div class="td-form-errors">{{ form.emergency_contact_phone.errors }}</div></div>
           <div class="td-form-cell">{{ form.emergency_contact_relation.label_tag }}{{ form.emergency_contact_relation }}<div class="td-form-errors">{{ form.emergency_contact_relation.errors }}</div></div>
@@ -1249,6 +1335,7 @@
       </div>
     </div>
 
+    <div class="registration-five-grid">
     <div class="td-card mb-3">
       <div class="td-card-header d-flex align-items-center gap-2">
         <i class="fas fa-car text-secondary"></i>
@@ -1353,16 +1440,36 @@
       </div>
     </div>
 
-    <div class="td-card mb-3">
-      <div class="td-card-header"><i class="fas fa-user-check text-secondary"></i><h6>Agreement Parties</h6></div>
-      <div class="p-3"><div class="alert alert-light border small mb-2"><b>Proposer:</b> person recommending the applicant for tenancy. <b>Seconder:</b> person supporting the proposal. <b>Witnesses:</b> persons intended to witness the agreement. All are optional.</div>
-      {% for prefix,title in agreement_party_fields %}{% endfor %}
-      <div class="row g-2">
-      {% for item in party_sections %}{% endfor %}
-      <div class="col-12 col-xl-6"><div class="border rounded p-2"><strong>Proposer</strong><div class="row g-2 mt-1"><div class="col-6"><input class="field-control" name="proposer-first_name" placeholder="First name"></div><div class="col-6"><input class="field-control" name="proposer-last_name" placeholder="Last / father name"></div><div class="col-6"><input class="field-control" name="proposer-cnic" placeholder="CNIC"></div><div class="col-6"><input class="field-control" name="proposer-phone" placeholder="Phone"></div><div class="col-12"><input class="field-control" name="proposer-address" placeholder="Address"></div><div class="col-4"><input type="file" class="field-control" name="proposer-photo" accept="image/*"></div><div class="col-4"><input type="file" class="field-control" name="proposer-cnic_front" accept="image/*"></div><div class="col-4"><input type="file" class="field-control" name="proposer-cnic_back" accept="image/*"></div></div></div></div>
-      <div class="col-12 col-xl-6"><div class="border rounded p-2"><strong>Seconder</strong><div class="row g-2 mt-1"><div class="col-6"><input class="field-control" name="seconder-first_name" placeholder="First name"></div><div class="col-6"><input class="field-control" name="seconder-last_name" placeholder="Last / father name"></div><div class="col-6"><input class="field-control" name="seconder-cnic" placeholder="CNIC"></div><div class="col-6"><input class="field-control" name="seconder-phone" placeholder="Phone"></div><div class="col-12"><input class="field-control" name="seconder-address" placeholder="Address"></div><div class="col-4"><input type="file" class="field-control" name="seconder-photo" accept="image/*"></div><div class="col-4"><input type="file" class="field-control" name="seconder-cnic_front" accept="image/*"></div><div class="col-4"><input type="file" class="field-control" name="seconder-cnic_back" accept="image/*"></div></div></div></div>
-      {% for number in "12" %}<div class="col-12 col-xl-6"><div class="border rounded p-2"><strong>Witness {{ number }}</strong><div class="row g-2 mt-1"><div class="col-6"><input class="field-control" name="witness{{ number }}-first_name" placeholder="First name"></div><div class="col-6"><input class="field-control" name="witness{{ number }}-last_name" placeholder="Last / father name"></div><div class="col-6"><input class="field-control" name="witness{{ number }}-cnic" placeholder="CNIC"></div><div class="col-6"><input class="field-control" name="witness{{ number }}-phone" placeholder="Phone"></div><div class="col-12"><input class="field-control" name="witness{{ number }}-address" placeholder="Address"></div><div class="col-4"><input type="file" class="field-control" name="witness{{ number }}-photo" accept="image/*"></div><div class="col-4"><input type="file" class="field-control" name="witness{{ number }}-cnic_front" accept="image/*"></div><div class="col-4"><input type="file" class="field-control" name="witness{{ number }}-cnic_back" accept="image/*"></div></div></div></div>{% endfor %}
-      </div></div>
+    {% for key,title,color in party_cards %}{% endfor %}
+    <div class="td-card party-role-card">
+      <div class="td-card-header"><i class="fas fa-user-check text-success"></i><h6>Proposer</h6></div>
+      <div class="party-card-body">
+        <div><label class="field-label">First Name</label><input class="field-control" name="proposer-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="proposer-last_name"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone"></div>
+        <div class="wide"><label class="field-label">Address</label><input class="field-control" name="proposer-address"></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="proposer-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="proposer-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="proposer-cnic_back" accept="image/*"></label></div>
+      </div>
+    </div>
+    <div class="td-card party-role-card">
+      <div class="td-card-header"><i class="fas fa-user-check text-warning"></i><h6>Seconder</h6></div>
+      <div class="party-card-body">
+        <div><label class="field-label">First Name</label><input class="field-control" name="seconder-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="seconder-last_name"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone"></div>
+        <div class="wide"><label class="field-label">Address</label><input class="field-control" name="seconder-address"></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="seconder-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="seconder-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="seconder-cnic_back" accept="image/*"></label></div>
+      </div>
+    </div>
+    {% for number in "12" %}
+    <div class="td-card party-role-card">
+      <div class="td-card-header"><i class="fas fa-users text-primary"></i><h6>Witness {{ number }}</h6></div>
+      <div class="party-card-body">
+        <div><label class="field-label">First Name</label><input class="field-control" name="witness{{ number }}-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="witness{{ number }}-last_name"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone"></div>
+        <div class="wide"><label class="field-label">Address</label><input class="field-control" name="witness{{ number }}-address"></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="witness{{ number }}-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="witness{{ number }}-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="witness{{ number }}-cnic_back" accept="image/*"></label></div>
+      </div>
+    </div>
+    {% endfor %}
     </div>
 
     <div class="public-footer">
@@ -1388,6 +1495,7 @@
       <div class="field-wrap"><label class="field-label">Relationship</label><select class="field-control" data-field="relationship_type"><option value="">Select…</option>{% for item in relationship_types %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
       <div class="field-wrap"><label class="field-label">Email</label><input type="email" class="field-control" data-field="email"></div>
       <div class="field-wrap span-3"><label class="field-label">Notes</label><input type="text" class="field-control" data-field="notes"></div>
+      <div class="family-doc-row"><div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control" data-field="photo"></div><div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control" data-field="cnic_front"></div><div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control" data-field="cnic_back"></div></div>
     </div>
   </div>
 </template>

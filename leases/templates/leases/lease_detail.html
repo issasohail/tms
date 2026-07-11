@@ -714,46 +714,13 @@
         </div>
       </div>
 
-      <!-- COL 2: Tenant & Police -->
+      <!-- COL 2: Agreement Parties -->
       <div class="ld-ov-col">
-        <div class="ld-ov-head">Tenant &amp; Police</div>
-        <div class="ld-f">
-          <div class="ld-f-label">CNIC</div>
-          <div class="ld-f-value">{{ lease.tenant.cnic|default:"&mdash;" }}</div>
-        </div>
-        <div class="ld-f">
-          <div class="ld-f-label">Phone</div>
-          <div class="ld-f-value">
-            {% if lease.tenant.phone %}<a href="tel:{{ lease.tenant.phone }}">{{ lease.tenant.phone }}</a>{% else %}&mdash;{% endif %}
-          </div>
-        </div>
-        <div class="ld-f">
-          <div class="ld-f-label">Verification</div>
-          <div class="ld-f-value">
-            <span class="ld-badge ld-police-{{ lease.police_verification_status|default:'not_started' }}">
-              {{ lease.get_police_verification_status_display }}
-            </span>
-          </div>
-        </div>
-        <div class="ld-f">
-          <div class="ld-f-label">Verified / Follow-up</div>
-          <div class="ld-f-value">
-            {{ lease.police_verification_date|date:"M d, Y"|default:"&mdash;" }}
-            {% if lease.police_verification_follow_up_date %} &middot; {{ lease.police_verification_follow_up_date|date:"M d, Y" }}{% endif %}
-          </div>
-        </div>
-        {% if lease.police_verification_document %}
-        <div class="ld-f">
-          <div class="ld-f-label">Police Document</div>
-          <div class="ld-f-value"><a href="{{ lease.police_verification_document.url }}" target="_blank">View</a></div>
-        </div>
-        {% endif %}
-        {% if lease.police_verification_remarks %}
-        <div class="ld-f">
-          <div class="ld-f-label">Remarks</div>
-          <div class="ld-f-value" style="font-size:12px;">{{ lease.police_verification_remarks }}</div>
-        </div>
-        {% endif %}
+        <div class="ld-ov-head d-flex justify-content-between align-items-center">Agreement Parties <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:edit_clauses' lease.pk %}{% if active_history %}?history={{ active_history.pk }}{% endif %}"><i class="fas fa-edit"></i> Edit</a></div>
+        <div class="ld-f"><div class="ld-f-label">Proposer</div><div class="ld-f-value">{% if lease.proposer %}<a href="{% url 'tenants:tenant_detail' lease.proposer.pk %}">{{ lease.proposer.get_full_name }}</a>{% else %}&mdash;{% endif %}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Seconder</div><div class="ld-f-value">{% if lease.seconder %}<a href="{% url 'tenants:tenant_detail' lease.seconder.pk %}">{{ lease.seconder.get_full_name }}</a>{% else %}&mdash;{% endif %}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Witness 1</div><div class="ld-f-value">{% if active_history.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' active_history.witness1_tenant.pk %}">{{ active_history.witness1_tenant.get_full_name }}</a>{% elif lease.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness1_tenant.pk %}">{{ lease.witness1_tenant.get_full_name }}</a>{% else %}&mdash;{% endif %}</div></div>
+        <div class="ld-f"><div class="ld-f-label">Witness 2</div><div class="ld-f-value">{% if active_history.witness2_tenant %}<a href="{% url 'tenants:tenant_detail' active_history.witness2_tenant.pk %}">{{ active_history.witness2_tenant.get_full_name }}</a>{% elif lease.witness2_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness2_tenant.pk %}">{{ lease.witness2_tenant.get_full_name }}</a>{% else %}&mdash;{% endif %}</div></div>
       </div>
 
       <!-- COL 3: Rent & Charges -->
@@ -1121,15 +1088,6 @@
         </div>
       </div>
 
-      <div class="ld-inner-card mb-3">
-        <div class="ld-inner-head"><span>Agreement Parties</span></div>
-        <div class="p-2"><div class="row g-2 small">
-          <div class="col-md-3"><b>Proposer:</b> {% if lease.proposer %}<a href="{% url 'tenants:tenant_detail' lease.proposer.pk %}">{{ lease.proposer.get_full_name }}</a>{% else %}&mdash;{% endif %}</div>
-          <div class="col-md-3"><b>Seconder:</b> {% if lease.seconder %}<a href="{% url 'tenants:tenant_detail' lease.seconder.pk %}">{{ lease.seconder.get_full_name }}</a>{% else %}&mdash;{% endif %}</div>
-          <div class="col-md-3"><b>Witness 1:</b> {% if lease.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness1_tenant.pk %}">{{ lease.witness1_tenant.get_full_name }}</a>{% else %}{{ lease.witness1_name|default:"—" }}{% endif %}</div>
-          <div class="col-md-3"><b>Witness 2:</b> {% if lease.witness2_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness2_tenant.pk %}">{{ lease.witness2_tenant.get_full_name }}</a>{% else %}{{ lease.witness2_name|default:"—" }}{% endif %}</div>
-        </div></div>
-      </div>
 
       <!-- ======== VEHICLES ======== -->
       <div class="ld-tab-pane" id="ld-tab-vehicles">

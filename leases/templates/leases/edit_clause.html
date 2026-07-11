@@ -122,16 +122,10 @@
             <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Back to Lease
             </a>
-            <button type="button" id="btnPreviewPdf" class="btn btn-dark btn-sm">
-                <i class="fas fa-download me-1"></i> Download Preview PDF
-            </button>
-
             <button type="button" id="btnPdf" class="btn btn-danger me-1">
                 <i class="fas fa-file-pdf"></i> Download PDF
             </button>
-            <button type="button" id="btnGenerateHistoryPdf" class="btn btn-outline-danger me-1">
-                <i class="fas fa-file-pdf"></i> Generate & Save PDF
-            </button>
+            <a class="btn btn-outline-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
             <button type="button" id="btnDocx" class="btn btn-success me-1">
             <i class="fas fa-file-word"></i> Download Word
             </button>
@@ -208,6 +202,17 @@
                 </select>
             </div>
         </div>
+    </form>
+
+    <form id="agreementPartyForm" method="post" action="{% url 'leases:edit_clauses' master_lease.pk %}?history={{ history.pk }}" class="card card-body py-2 mb-3">
+      {% csrf_token %}<input type="hidden" name="party_update" value="1">
+      <div class="row g-2 align-items-end">
+        <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Proposer</label><select name="proposer" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.proposer_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Seconder</label><select name="seconder" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.seconder_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Witness 1</label><select name="witness1_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness1_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Witness 2</label><select name="witness2_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness2_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        <div class="col-12 text-end"><button type="button" id="saveAgreementParties" class="btn btn-sm btn-primary"><i class="fas fa-save"></i> Update Agreement Parties</button></div>
+      </div>
     </form>
 
     <div class="row">
@@ -298,7 +303,7 @@
     let activeTextarea = null;
 
     if (window.$?.fn?.select2) {
-        $('.clause-filter-bar select').select2({theme: 'bootstrap-5', width: '100%'});
+        $('.clause-filter-bar select, .role-select').select2({theme: 'bootstrap-5', width: '100%'});
     }
 
     document.querySelectorAll('.js-clause-filter-select').forEach(select => {
@@ -331,7 +336,7 @@
         setTimeout(() => previewClause.classList.remove("preview-highlight"), 900);
     }
 
-      const GEN_PDF_URL  = "{% url 'leases:download_preview' master_lease.id %}?history={{ history.pk }}";
+      const GEN_PDF_URL  = "{% url 'leases:generate_agreement_pdf' master_lease.id %}?history={{ history.pk }}";
   const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
 
   function setSaveStatus(message, isError) {
@@ -391,13 +396,19 @@
     });
   }
 
+  
+  document.getElementById('saveAgreementParties')?.addEventListener('click', function () {
+    const form = document.getElementById('agreementPartyForm');
+    const data = new FormData(form);
+    fetch(form.action, {method:'POST', headers:{'X-CSRFToken':data.get('csrfmiddlewaretoken')}, body:data})
+      .then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body.message || 'Could not update parties'); return body; })
+      .then(body => { setSaveStatus(body.message, false); window.location.reload(); })
+      .catch(err => setSaveStatus(err.message, true));
+  });
+
   document.getElementById('btnSaveClauses')?.addEventListener('click', saveClauses);
-  document.getElementById('btnPreviewPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
-  document.getElementById('btnGenerateHistoryPdf')?.addEventListener('click', () => {
-    saveThenDownload("{% url 'leases:renewal_agreement' master_lease.pk history.pk %}");
-  });
 
 
 

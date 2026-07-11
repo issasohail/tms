@@ -71,15 +71,31 @@ def authorized_occupants_count(lease):
     return len(_authorized_occupant_rows(lease))
 
 def authorized_occupants_table(lease):
-    rows = _authorized_occupant_rows(lease)
-    body = []
-    if rows:
-        for i, link in enumerate(rows, 1):
-            person = link.family_member
-            body.append(f"<tr><td>{i}</td><td>{person.get_full_name()}</td><td>{person.cnic or ''}</td><td>{link.relation or ''}</td></tr>")
-    else:
-        body.append("<tr><td>1</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>")
-    return '<table class="authorized-occupants-table"><thead><tr><th>SN</th><th>Name</th><th>CNIC</th><th>Relationship to Tenant</th></tr></thead><tbody>'+''.join(body)+'</tbody></table>'
+    """Compact three-person-per-row occupant table, including the primary tenant."""
+    from django.utils.html import escape
+    occupants = [{
+        "name": lease.tenant.get_full_name(),
+        "cnic": lease.tenant.cnic or "",
+        "relationship": "Primary Tenant",
+    }]
+    for link in _authorized_occupant_rows(lease):
+        occupants.append({
+            "name": link.family_member.get_full_name(),
+            "cnic": link.family_member.cnic or "",
+            "relationship": link.relation or getattr(link.relationship_type, "name", "") or "Family Member",
+        })
+    cells = []
+    for index, item in enumerate(occupants, 1):
+        cells.append(
+            '<td class="occupant-card"><b>{idx}. {name}</b><br>'
+            '<span>CNIC: {cnic}</span><br><span>{rel}</span></td>'.format(
+                idx=index, name=escape(item["name"]), cnic=escape(item["cnic"]), rel=escape(item["relationship"])
+            )
+        )
+    while len(cells) % 3:
+        cells.append('<td class="occupant-card">&nbsp;<br>&nbsp;<br>&nbsp;</td>')
+    rows = ['<tr>' + ''.join(cells[i:i + 3]) + '</tr>' for i in range(0, len(cells), 3)]
+    return '<table class="authorized-occupants-table compact"><tbody>' + ''.join(rows) + '</tbody></table>'
 
 # Define the placeholder registry
 PLACEHOLDER_REGISTRY = {
@@ -183,8 +199,14 @@ def _lease_bank_account(lease):
 
 def _db_placeholders_for_lease(AgreementPlaceholder, lease=None):
     cache_attr = "_active_db_agreement_placeholders"
-    if lease is not None and hasattr(lease, cache_attr):
-        return getattr(lease, cache_attr)
+
+    # Read only a cache value that was explicitly stored on the instance.
+    # Using hasattr()/getattr() is unsafe with Mock objects and dynamic proxy
+    # objects because they may fabricate arbitrary attributes.
+    lease_dict = getattr(lease, "__dict__", {}) if lease is not None else {}
+    cached = lease_dict.get(cache_attr) if isinstance(lease_dict, dict) else None
+    if isinstance(cached, (list, tuple)):
+        return cached
 
     placeholders = list(
         AgreementPlaceholder.objects.filter(

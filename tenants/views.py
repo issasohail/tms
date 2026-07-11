@@ -553,6 +553,7 @@ def tenant_public_registration_update(request, token):
         "occupation": tenant.occupation,
         "employer_name": tenant.employer_name,
         "employer_phone": tenant.employer_phone,
+        "employer_address": tenant.employer_address,
         "reference_name_1": tenant.reference_name_1,
         "reference_phone_1": tenant.reference_phone_1,
         "reference_relation_1": tenant.reference_relation_1,
@@ -632,7 +633,7 @@ def tenant_public_registration_update(request, token):
                         cnic=cnic,
                         phone=(request.POST.get(base + "phone") or "").strip(),
                         date_of_birth=parse_date(
-                            request.POST.get(base + "date_of_birth") or ""
+                            request.POST.get(base + "date_of_birth") or request.POST.get(base + "dob") or ""
                         ),
                         address=(request.POST.get(base + "address") or "").strip(),
                         relationship=(
@@ -674,6 +675,7 @@ def tenant_public_registration_update(request, token):
                         "submitted_name": f"{submitted_data.get('first_name', '')} {submitted_data.get('last_name', '')}".strip(),
                         "submitted_phone": submitted_data.get("phone") or "",
                         "vehicle_message": vehicle_message,
+                        "submitted_photo": submission.photo,
                     },
                 )
     else:
@@ -784,6 +786,7 @@ def tenant_registration_submission_review(request, pk):
                 "occupation",
                 "employer_name",
                 "employer_phone",
+                "employer_address",
                 "reference_name_1",
                 "reference_phone_1",
                 "reference_relation_1",

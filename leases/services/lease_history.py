@@ -20,10 +20,8 @@ LEASE_TO_HISTORY_FIELDS = [
     "internet_charges",
     "agreement_charges",
     "security_deposit",
-    "witness1_name",
-    "witness1_cnic",
-    "witness2_name",
-    "witness2_cnic",
+    "witness1_tenant",
+    "witness2_tenant",
     "terms",
 ]
 

@@ -205,7 +205,7 @@ class LeaseForm(forms.ModelForm):
 class TenantPublicRegistrationForm(forms.Form):
     prefix = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     first_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
-    relation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    relation = forms.ChoiceField(required=False, choices=[("S/O.", "S/O."), ("D/O.", "D/O."), ("W/O.", "W/O."), ("H/O.", "H/O."), ("C/O.", "C/O."), ("", "Other / None")], widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
     last_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
     phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
@@ -215,6 +215,7 @@ class TenantPublicRegistrationForm(forms.Form):
     occupation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     employer_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     employer_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    employer_address = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     reference_name_1 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     reference_phone_1 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     reference_relation_1 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
@@ -260,6 +261,12 @@ class TenantPublicRegistrationForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+        self.fields["number_of_family_member"].label = "# of Family"
+        self.fields["phone"].label = "Phone 1"
+        self.fields["phone2"].label = "Phone 2"
+        self.fields["phone3"].label = "Phone 3"
+        self.fields["employer_phone"].label = "Employer Phone #"
+        self.fields["employer_address"].label = "Employer Address"
         add_auto_titlecase_class(self.fields)
 
 

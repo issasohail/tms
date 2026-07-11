@@ -74,6 +74,7 @@ from .views_renewal import (
 app_name = "leases"
 
 urlpatterns = [
+    path("settings/agreement-signature-template/", views.agreement_signature_template_settings, name="agreement_signature_template_settings"),
     path("", LeaseListView.as_view(), name="lease_list"),
     path("new/", LeaseCreateView.as_view(), name="lease_create"),
     path(

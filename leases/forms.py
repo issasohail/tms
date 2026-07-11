@@ -882,3 +882,21 @@ InspectionDamageChargeFormSet = inlineformset_factory(
     extra=1,
     can_delete=True,
 )
+
+
+class AgreementSignatureTemplateForm(forms.ModelForm):
+    class Meta:
+        from .models import AgreementSignatureTemplate
+        model = AgreementSignatureTemplate
+        fields = [
+            "heading", "proposer_declaration", "seconder_declaration",
+            "witness_declaration", "footer_text", "show_phone",
+            "show_address", "show_thumb_impression",
+        ]
+        widgets = {
+            "heading": forms.TextInput(attrs={"class": "form-control"}),
+            "proposer_declaration": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "seconder_declaration": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "witness_declaration": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "footer_text": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+        }

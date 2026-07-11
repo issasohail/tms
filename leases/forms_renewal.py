@@ -30,11 +30,7 @@ class LeaseRenewalForm(forms.ModelForm):
             "security_deposit",
             "rent_increase_percent",
             "witness1_tenant",
-            "witness1_name",
-            "witness1_cnic",
             "witness2_tenant",
-            "witness2_name",
-            "witness2_cnic",
             "police_verification_status",
             "police_verification_date",
             "police_verification_document",
@@ -54,10 +50,6 @@ class LeaseRenewalForm(forms.ModelForm):
             "agreement_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "security_deposit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "rent_increase_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
-            "witness1_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "witness1_cnic": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "witness2_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "witness2_cnic": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "police_verification_status": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "police_verification_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
             "police_verification_document": forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
@@ -91,10 +83,6 @@ class LeaseRenewalForm(forms.ModelForm):
                 "agreement_charges": lease.agreement_charges or Decimal("0.00"),
                 "security_deposit": lease.security_deposit or Decimal("0.00"),
                 "rent_increase_percent": increase,
-                "witness1_name": lease.witness1_name,
-                "witness1_cnic": lease.witness1_cnic,
-                "witness2_name": lease.witness2_name,
-                "witness2_cnic": lease.witness2_cnic,
             })
 
     def clean(self):
@@ -146,11 +134,7 @@ class LeaseHistoryEditForm(forms.ModelForm):
             "agreement_charges",
             "security_deposit",
             "witness1_tenant",
-            "witness1_name",
-            "witness1_cnic",
             "witness2_tenant",
-            "witness2_name",
-            "witness2_cnic",
             "notes",
         ]
         widgets = {
@@ -164,10 +148,6 @@ class LeaseHistoryEditForm(forms.ModelForm):
             "internet_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "agreement_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "security_deposit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
-            "witness1_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "witness1_cnic": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "witness2_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "witness2_cnic": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }
 

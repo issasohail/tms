@@ -392,19 +392,19 @@
               </tr>
               <tr>
                 <th>Witness 1 Name</th>
-                <td class="lh-left">{{ history.witness1_name|default:"—" }}</td>
+                <td class="lh-left">{% if history.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' history.witness1_tenant.pk %}">{{ history.witness1_tenant.get_full_name }}</a>{% else %}—{% endif %}</td>
               </tr>
               <tr>
                 <th>Witness 1 CNIC</th>
-                <td class="lh-left">{{ history.witness1_cnic|default:"—" }}</td>
+                <td class="lh-left">{{ history.witness1_tenant.cnic|default:"—" }}</td>
               </tr>
               <tr>
                 <th>Witness 2 Name</th>
-                <td class="lh-left">{{ history.witness2_name|default:"—" }}</td>
+                <td class="lh-left">{% if history.witness2_tenant %}<a href="{% url 'tenants:tenant_detail' history.witness2_tenant.pk %}">{{ history.witness2_tenant.get_full_name }}</a>{% else %}—{% endif %}</td>
               </tr>
               <tr>
                 <th>Witness 2 CNIC</th>
-                <td class="lh-left">{{ history.witness2_cnic|default:"—" }}</td>
+                <td class="lh-left">{{ history.witness2_tenant.cnic|default:"—" }}</td>
               </tr>
               <tr>
                 <th>Police Verification</th>

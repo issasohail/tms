@@ -52,12 +52,7 @@ def _lease_with_history_values(lease, history):
         "water_charges",
         "internet_charges",
         "agreement_charges",
-        "security_deposit",
-        "witness1_name",
-        "witness1_cnic",
-        "witness2_name",
-        "witness2_cnic",
-        "terms",
+        "security_deposit",        "terms",
         "rent_increase_percent",
     ]:
         if hasattr(history, field):
@@ -135,10 +130,6 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
             lease.internet_charges = renewal.internet_charges
             lease.agreement_charges = renewal.agreement_charges
             lease.security_deposit = renewal.security_deposit
-            lease.witness1_name = renewal.witness1_name
-            lease.witness1_cnic = renewal.witness1_cnic
-            lease.witness2_name = renewal.witness2_name
-            lease.witness2_cnic = renewal.witness2_cnic
             lease.rent_increase_percent = renewal.rent_increase_percent
             if lease.status != "active":
                 lease.status = "active"
@@ -153,12 +144,7 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
                 "bill_water_charges",
                 "internet_charges",
                 "agreement_charges",
-                "security_deposit",
-                "witness1_name",
-                "witness1_cnic",
-                "witness2_name",
-                "witness2_cnic",
-                "rent_increase_percent",
+                "security_deposit",                "rent_increase_percent",
                 "status",
                 "updated_at",
             ])

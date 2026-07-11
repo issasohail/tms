@@ -373,7 +373,21 @@ MEDIA_ROOT = Path(
     )
 )
 
+import os
 
+APP_ENVIRONMENT = (
+    os.getenv(
+        "APP_ENVIRONMENT",
+        "production",
+    )
+    .strip()
+    .lower()
+)
+
+APP_ENVIRONMENT_LABEL = os.getenv(
+    "APP_ENVIRONMENT_LABEL",
+    APP_ENVIRONMENT.upper(),
+).strip()
 # Reverse proxy path support for /tms/.
 # In local DEBUG runserver, leave this off so Django's staticfiles handler
 # serves /static/... correctly on Windows.

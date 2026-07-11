@@ -299,19 +299,9 @@
     /* ============================================================
        VIEWPORT DEBUGGER BAR
        ============================================================ */
-    html > .viewport-bar,
-    body > .viewport-bar {
-      position: fixed !important;
-      left: .75rem !important;
-      right: .75rem !important;
-      top: auto !important;
-      bottom: max(.55rem, env(safe-area-inset-bottom)) !important;
-      width: auto !important;
-      margin: 0 !important;
-      transform: none !important;
-      translate: none !important;
-      zoom: 1 !important;
-      contain: none !important;
+    .viewport-bar {
+      position: fixed;
+      left: .75rem; right: .75rem; bottom: .55rem;
       z-index: 1080;
       display: none;
       align-items: center;
@@ -327,7 +317,7 @@
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
     }
-    html.show-viewport-bar > .viewport-bar, body.show-viewport-bar > .viewport-bar { display: flex !important; }
+    body.show-viewport-bar .viewport-bar { display: flex; }
     .viewport-bar__track {
       position: relative;
       flex: 1 1 auto;
@@ -348,7 +338,7 @@
       box-shadow: 0 0 0 1px rgba(0,0,0,.25);
     }
     @media (max-width: 420px) {
-      html > .viewport-bar, body > .viewport-bar { left: .4rem !important; right: .4rem !important; bottom: max(.4rem, env(safe-area-inset-bottom)) !important; padding: .35rem .5rem; font-size: .68rem; }
+      .viewport-bar { left: .4rem; right: .4rem; bottom: .4rem; padding: .35rem .5rem; font-size: .68rem; }
       .viewport-bar__track { min-width: 4.5rem; }
     }
 
@@ -363,8 +353,26 @@
     /* ============================================================
        PRINT
        ============================================================ */
+    .environment-indicator {
+      position: fixed;
+      right: .65rem;
+      bottom: .65rem;
+      z-index: 1090;
+      padding: .28rem .55rem;
+      border: 1px solid rgba(120, 53, 15, .25);
+      border-radius: 999px;
+      background: rgba(255, 244, 214, .95);
+      color: #78350f;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(0,0,0,.10);
+      pointer-events: none;
+    }
+
     @media print {
-      .no-print, footer.tms-footer, .viewport-bar { display: none !important; }
+      .no-print, footer.tms-footer, .viewport-bar, .environment-indicator { display: none !important; }
       body { background: #fff; font-size: 11px; }
       .card { box-shadow: none; border: 1px solid #ddd; }
     }
@@ -382,6 +390,12 @@
   {% block extra_css %}{% endblock %}
 </head>
 <body class="env-{{ APP_ENVIRONMENT|default:'production'|lower }}{% if request.GET.embed == '1' %} tms-embedded-page{% endif %}">
+  {% if APP_ENVIRONMENT and APP_ENVIRONMENT != 'production' and request.GET.embed != '1' %}
+    <div class="environment-indicator no-print">
+      {{ APP_ENVIRONMENT_LABEL|default:APP_ENVIRONMENT }}
+    </div>
+  {% endif %}
+
 
   <!-- ============================================================
        NAVBAR — partials/navbar.html owns all nav content
@@ -423,7 +437,7 @@
   {% endif %}
 
   <!-- Viewport debug bar -->
-  <div class="viewport-bar no-print" id="tmsViewportBar" aria-live="polite">
+  <div class="viewport-bar no-print" aria-live="polite">
     <strong style="white-space:nowrap;">Viewport</strong>
     <div class="viewport-bar__track" aria-hidden="true">
       <span class="viewport-bar__marker" id="viewportMarker"></span>
@@ -521,69 +535,33 @@
   <!-- Viewport debugger -->
   <script>
     (function () {
-      const KEY = 'tmsViewportBar';
+      const KEY     = 'tmsViewportBar';
+      const sizeEl  = document.getElementById('viewportSize');
+      const marker  = document.getElementById('viewportMarker');
 
-      function getBar() {
-        return document.getElementById('tmsViewportBar');
-      }
-
-      function enabled() {
-        return localStorage.getItem(KEY) === '1';
-      }
-
-      function mountAtViewportRoot() {
-        const bar = getBar();
-        if (!bar) return;
-
-        /*
-         * Keep the debugger outside page wrappers that may use transform,
-         * zoom, fixed widths, or simulated-device sizing. This makes its
-         * fixed position follow the browser viewport rather than the page.
-         */
-        if (bar.parentElement !== document.documentElement) {
-          document.documentElement.appendChild(bar);
-        }
-      }
-
-      function setEnabled(value) {
-        localStorage.setItem(KEY, value ? '1' : '0');
-        document.documentElement.classList.toggle('show-viewport-bar', value);
-        document.body.classList.toggle('show-viewport-bar', value);
-        document.querySelectorAll('.js-viewport-toggle').forEach(function (toggle) {
-          toggle.checked = value;
-        });
+      function enabled()         { return localStorage.getItem(KEY) === '1'; }
+      function setEnabled(val) {
+        localStorage.setItem(KEY, val ? '1' : '0');
+        document.body.classList.toggle('show-viewport-bar', val);
+        document.querySelectorAll('.js-viewport-toggle').forEach(t => { t.checked = val; });
         update();
       }
-
       function update() {
-        const sizeEl = document.getElementById('viewportSize');
-        const marker = document.getElementById('viewportMarker');
         if (!sizeEl || !marker) return;
-
-        const viewport = window.visualViewport;
-        const width = Math.round(viewport ? viewport.width : window.innerWidth);
-        const height = Math.round(viewport ? viewport.height : window.innerHeight);
-
-        sizeEl.textContent = width + ' × ' + height;
-        marker.style.left = Math.max(0, Math.min(100, (width / 1440) * 100)) + '%';
+        const w = window.innerWidth  || document.documentElement.clientWidth  || 0;
+        const h = window.innerHeight || document.documentElement.clientHeight || 0;
+        sizeEl.textContent = w + ' × ' + h;
+        marker.style.left  = Math.max(0, Math.min(100, (w / 1440) * 100)) + '%';
       }
 
       document.addEventListener('DOMContentLoaded', function () {
-        mountAtViewportRoot();
-        document.querySelectorAll('.js-viewport-toggle').forEach(function (toggle) {
-          toggle.addEventListener('change', function () {
-            setEnabled(this.checked);
-          });
-        });
+        document.querySelectorAll('.js-viewport-toggle').forEach(t =>
+          t.addEventListener('change', function () { setEnabled(this.checked); })
+        );
         setEnabled(enabled());
       });
-
       window.addEventListener('resize', update);
       window.addEventListener('orientationchange', update);
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', update);
-        window.visualViewport.addEventListener('scroll', update);
-      }
     })();
   </script>
 

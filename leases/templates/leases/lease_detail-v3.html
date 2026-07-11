@@ -229,7 +229,6 @@
 .ld-act-d  { font-size:11px; color:#6b7280; }
 .ld-act-l  { color:#111827; }
 .ld-act-a  { font-weight:600; white-space:nowrap; }
-.ld-act-sn { font-size:11px; font-weight:700; color:#9ca3af; flex-shrink:0; }
 
 /* ---- tables ---- */
 .ld-tw { overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -329,18 +328,6 @@
 
 @media (max-width: 699.98px) {
   html { scroll-behavior:smooth; }
-
-  /* Show every action button on mobile — tablet still collapses Late Fee /
-     Agreement / Inspection into More, but mobile has room to show them all,
-     so drop the duplicate copies from the dropdown here. */
-  .ld-hide-tablet { display:inline-flex !important; }
-  .ld-show-tablet-only { display:none !important; }
-
-  /* Tighter inner-card spacing so key/value rows don't read as empty space. */
-  .ld-inner-head { padding:7px 10px; }
-  .ld-inner-body { padding:8px 10px; }
-  .ld-row { padding:3px 0; font-size:12.5px; }
-  .ld-rk { min-width:0; flex:0 0 44%; }
   .ld-page { padding:8px 0 36px; font-size:12px; overflow-x:hidden; }
   #lease-detail-top { scroll-margin-top:72px; }
 
@@ -432,49 +419,10 @@
   }
   .ld-tab-pane::after { content:""; display:block; clear:both; }
 
-  /* Avoid wide renewal and detail tables breaking the viewport. Tables opted into
-     .ld-mobile-cards render as a stack of cards instead of a scrolling table. */
+  /* Avoid wide renewal and detail tables breaking the viewport. */
   .ld-tw { width:100%; overflow-x:auto; }
   .ld-tbl { min-width:640px; }
   .ld-inner-card { clear:both; }
-
-  .ld-tw.ld-mobile-cards { overflow-x:visible; }
-  .ld-tw.ld-mobile-cards .ld-tbl { min-width:0 !important; width:100% !important; }
-  .ld-mobile-cards thead { display:none; }
-  .ld-mobile-cards tbody, .ld-mobile-cards tr, .ld-mobile-cards td { display:block; width:100%; }
-  .ld-mobile-cards tr {
-    border:1px solid #e5e7eb; border-radius:8px;
-    padding:8px 10px; margin:0 0 8px; background:#fff;
-  }
-  .ld-mobile-cards tr:last-child { margin-bottom:0; }
-  .ld-mobile-cards td {
-    display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
-    padding:3px 0 !important; border:0 !important; font-size:12px; text-align:right;
-  }
-  .ld-mobile-cards td::before {
-    content:attr(data-label); font-weight:700; color:#6b7280;
-    text-align:left; flex:0 0 42%;
-  }
-  .ld-mobile-cards td.ld-empty { display:block; text-align:center; }
-  .ld-mobile-cards td.ld-empty::before { content:none; }
-  .ld-mobile-cards td.ld-td-actions { text-align:left; }
-  .ld-mobile-cards td.ld-td-actions::before { content:none; }
-  .ld-mobile-cards td.ld-td-actions > div { justify-content:flex-start; }
-
-  /* Lease Renewal: same card stack, but fields lay out three-per-row. */
-  .ld-mobile-cards-3col tr { display:grid; grid-template-columns:repeat(3,1fr); gap:7px 8px; }
-  .ld-mobile-cards-3col td { display:block; text-align:left; padding:0 !important; font-size:11.5px; }
-  .ld-mobile-cards-3col td::before {
-    content:attr(data-label); display:block; text-align:left;
-    font-weight:700; color:#6b7280; font-size:9.5px;
-    text-transform:uppercase; letter-spacing:.02em; margin-bottom:1px;
-  }
-  .ld-mobile-cards-3col td.ld-td-actions {
-    grid-column:1 / -1; margin-top:2px; padding-top:6px !important;
-    border-top:1px dashed #e5e7eb;
-  }
-  .ld-mobile-cards-3col td.ld-td-actions::before { content:none; }
-  .ld-mobile-cards-3col td.ld-empty { grid-column:1 / -1; }
 }
 
 /* Very narrow phones remain usable below the requested 360px baseline. */
@@ -884,7 +832,7 @@
             <i class="fas fa-sync-alt me-1"></i> Renew Lease
           </a>
         </div>
-        <div class="ld-tw ld-mobile-cards ld-mobile-cards-3col">
+        <div class="ld-tw">
           <table class="ld-tbl">
             <thead>
               <tr>
@@ -901,7 +849,7 @@
             <tbody>
               {% for renewal in renewals %}
                 <tr>
-                  <td data-label="#">
+                  <td>
                     #{{ forloop.counter }}
                     {% if forloop.first %}
                       <span class="ld-badge ld-badge-blue ms-1">Original</span>
@@ -909,18 +857,18 @@
                       <span class="ld-badge ld-badge-purple ms-1">Renewal</span>
                     {% endif %}
                   </td>
-                  <td data-label="Start">{{ renewal.start_date|date:"M d, Y" }}</td>
-                  <td data-label="End">{{ renewal.end_date|date:"M d, Y" }}</td>
-                  <td data-label="Rent">{{ renewal.monthly_rent|default:0|money:0 }}</td>
-                  <td data-label="Total Monthly">{{ renewal.total_monthly_amount|default:0|money:0 }}</td>
-                  <td data-label="Signed">
+                  <td>{{ renewal.start_date|date:"M d, Y" }}</td>
+                  <td>{{ renewal.end_date|date:"M d, Y" }}</td>
+                  <td>{{ renewal.monthly_rent|default:0|money:0 }}</td>
+                  <td>{{ renewal.total_monthly_amount|default:0|money:0 }}</td>
+                  <td>
                     {% if renewal.is_agreement_signed %}
                       <span class="ld-badge ld-badge-green">Signed</span>
                     {% else %}
                       <span class="ld-badge ld-badge-amber">Pending</span>
                     {% endif %}
                   </td>
-                  <td data-label="Files">
+                  <td>
                     {% if renewal.generated_agreement_pdf %}
                       <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
                     {% endif %}
@@ -934,7 +882,7 @@
                       &mdash;
                     {% endif %}
                   </td>
-                  <td class="no-print ld-td-actions" data-label="Actions">
+                  <td class="no-print">
                     <div style="display:flex;flex-wrap:wrap;gap:4px;">
                       <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-dark">View</a>
                       <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-primary">Edit</a>
@@ -959,10 +907,7 @@
           <div class="ld-inner-card">
             <div class="ld-inner-head">
               Current Unit / Room
-              <div class="d-flex align-items-center gap-1">
-                <a href="{% url 'smart_meter:move_lease_unit' lease.pk %}" class="btn btn-sm btn-primary py-0 px-2 no-print" style="font-size:11px;">Move Tenant</a>
-                <a href="#lease-detail-top" class="ld-mobile-top-link no-print" style="float:none;margin:0;" aria-label="Back to top">Top</a>
-              </div>
+              <a href="{% url 'smart_meter:move_lease_unit' lease.pk %}" class="btn btn-sm btn-primary py-0 px-2 no-print" style="font-size:11px;">Move Tenant</a>
             </div>
             <div class="ld-inner-body">
               <div class="ld-row"><span class="ld-rk">Current Unit</span><span class="ld-rv"><a href="{% url 'properties:unit_detail' lease.current_unit.pk %}">{{ lease.current_unit.property.property_name }} {{ lease.current_unit.unit_number }}</a></span></div>
@@ -972,16 +917,16 @@
           </div>
           <div class="ld-inner-card">
             <div class="ld-inner-head">Unit Move History</div>
-            <div class="ld-tw ld-mobile-cards">
+            <div class="ld-tw">
               <table class="ld-tbl" style="min-width:340px;">
                 <thead><tr><th>Unit</th><th>Move In</th><th>Move Out</th><th>Notes</th></tr></thead>
                 <tbody>
                   {% for occ in lease.unit_occupancies.all %}
                     <tr>
-                      <td data-label="Unit"><a href="{% url 'properties:unit_detail' occ.unit.pk %}">{{ occ.unit }}</a></td>
-                      <td data-label="Move In">{{ occ.move_in_date|date:"M d, Y" }}</td>
-                      <td data-label="Move Out">{{ occ.move_out_date|date:"M d, Y"|default:"Current" }}</td>
-                      <td data-label="Notes" style="color:#6b7280;font-size:11px;">{{ occ.notes|default:"&mdash;" }}</td>
+                      <td><a href="{% url 'properties:unit_detail' occ.unit.pk %}">{{ occ.unit }}</a></td>
+                      <td>{{ occ.move_in_date|date:"M d, Y" }}</td>
+                      <td>{{ occ.move_out_date|date:"M d, Y"|default:"Current" }}</td>
+                      <td style="color:#6b7280;font-size:11px;">{{ occ.notes|default:"&mdash;" }}</td>
                     </tr>
                   {% empty %}
                     <tr><td colspan="4" class="ld-empty">No move history.</td></tr>
@@ -993,18 +938,18 @@
         </div>
         <div class="ld-inner-card" style="margin-top:12px;">
           <div class="ld-inner-head">Meter Billing History / Usage Breakdown</div>
-          <div class="ld-tw ld-mobile-cards">
+          <div class="ld-tw">
             <table class="ld-tbl">
               <thead><tr><th>Meter</th><th>Unit</th><th>Installed</th><th>Removed</th><th class="text-end">Start Reading</th><th class="text-end">End Reading</th></tr></thead>
               <tbody>
                 {% for inst in lease.meter_installations.all %}
                   <tr>
-                    <td data-label="Meter"><a href="{% url 'smart_meter:meter_detail' inst.meter.pk %}">{{ inst.meter.meter_number }}</a></td>
-                    <td data-label="Unit">{{ inst.unit }}</td>
-                    <td data-label="Installed">{{ inst.start_date|date:"M d, Y" }}</td>
-                    <td data-label="Removed">{{ inst.end_date|date:"M d, Y"|default:"Current" }}</td>
-                    <td data-label="Start Reading" class="text-end">{{ inst.start_reading }}</td>
-                    <td data-label="End Reading" class="text-end">{{ inst.end_reading|default:"&mdash;" }}</td>
+                    <td><a href="{% url 'smart_meter:meter_detail' inst.meter.pk %}">{{ inst.meter.meter_number }}</a></td>
+                    <td>{{ inst.unit }}</td>
+                    <td>{{ inst.start_date|date:"M d, Y" }}</td>
+                    <td>{{ inst.end_date|date:"M d, Y"|default:"Current" }}</td>
+                    <td class="text-end">{{ inst.start_reading }}</td>
+                    <td class="text-end">{{ inst.end_reading|default:"&mdash;" }}</td>
                   </tr>
                 {% empty %}
                   <tr><td colspan="6" class="ld-empty">No meter installations linked.</td></tr>
@@ -1077,7 +1022,7 @@
               <div class="form-text" id="leaseFamilySearchHelp">Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.</div>
             </div>
           </div>
-          <div class="ld-tw ld-mobile-cards">
+          <div class="ld-tw">
             <table class="ld-tbl">
               <thead>
                 <tr>
@@ -1094,14 +1039,14 @@
               <tbody id="leaseFamilyRows">
                 {% for member in family_members %}
                   <tr>
-                    <td data-label="S.N">{{ forloop.counter }}</td>
-                    <td data-label="Name"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
-                    <td data-label="Relationship">{{ member.relation }}</td>
-                    <td data-label="CNIC">{{ member.family_member.cnic|default:"&mdash;" }}</td>
-                    <td data-label="DOB">{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
-                    <td data-label="Phone">{{ member.family_member.phone|default:"&mdash;" }}</td>
-                    <td data-label="Age">{{ member.family_member.age|default:"&mdash;" }}</td>
-                    <td class="no-print ld-td-actions" data-label="Actions">
+                    <td>{{ forloop.counter }}</td>
+                    <td><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
+                    <td>{{ member.relation }}</td>
+                    <td>{{ member.family_member.cnic|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.phone|default:"&mdash;" }}</td>
+                    <td>{{ member.family_member.age|default:"&mdash;" }}</td>
+                    <td class="no-print">
                       <div class="d-flex flex-wrap gap-1">
                         <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
                         <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-primary">Edit</a>
@@ -1169,7 +1114,7 @@
               </form>
             </div>
           </div>
-          <div class="ld-tw ld-mobile-cards">
+          <div class="ld-tw">
             <table class="ld-tbl" style="min-width:900px;">
               <thead>
                 <tr>
@@ -1189,15 +1134,15 @@
               <tbody>
                 {% for vehicle in lease_vehicles %}
                   <tr id="vehicle-row-{{ vehicle.pk }}">
-                    <td data-label="S.N">{{ forloop.counter }}</td>
-                    <td data-label="Type">{{ vehicle.vehicle_type.name }}</td>
-                    <td data-label="Registration #">{{ vehicle.registration_number }}</td>
-                    <td data-label="Make / Model">{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
-                    <td data-label="Color">{{ vehicle.color|default:"-" }}</td>
-                    <td data-label="Owner">{{ vehicle.owner_name|default:"-" }}</td>
-                    <td data-label="Owner CNIC">{{ vehicle.owner_cnic|default:"-" }}</td>
-                    <td data-label="Parking">{{ vehicle.parking_slot|default:"-" }}</td>
-                    <td data-label="Photos">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ vehicle.vehicle_type.name }}</td>
+                    <td>{{ vehicle.registration_number }}</td>
+                    <td>{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
+                    <td>{{ vehicle.color|default:"-" }}</td>
+                    <td>{{ vehicle.owner_name|default:"-" }}</td>
+                    <td>{{ vehicle.owner_cnic|default:"-" }}</td>
+                    <td>{{ vehicle.parking_slot|default:"-" }}</td>
+                    <td>
                       {% if vehicle.vehicle_photo %}
                         <button type="button"
                                 class="ld-vehicle-photo-btn ld-image-preview-link"
@@ -1214,14 +1159,14 @@
                       {% if vehicle.registration_book_photo %}<a href="{{ vehicle.registration_book_photo.url }}" target="_blank" class="ms-1">Book</a>{% endif %}
                       {% if not vehicle.vehicle_photo and not vehicle.registration_book_photo %}-{% endif %}
                     </td>
-                    <td data-label="Status">
+                    <td>
                       {% if vehicle.is_active %}
                         <span class="ld-badge ld-badge-green">Active</span>
                       {% else %}
                         <span class="ld-badge">Inactive</span>
                       {% endif %}
                     </td>
-                    <td class="no-print ld-td-actions" data-label="Actions">
+                    <td class="no-print">
                       <div class="d-flex flex-wrap gap-1">
                         <button type="button"
                                 class="btn btn-sm btn-primary vehicle-edit-btn"
@@ -1246,7 +1191,7 @@
         {% if pending_vehicle_count %}
         <div class="ld-inner-card collapse" id="pendingVehicleSubmissionCard">
           <div class="ld-inner-head">Pending Vehicle Submissions</div>
-          <div class="ld-tw ld-mobile-cards">
+          <div class="ld-tw">
             <table class="ld-tbl" style="min-width:820px;">
               <thead>
                 <tr>
@@ -1263,14 +1208,14 @@
               <tbody>
                 {% for submission in pending_vehicle_submissions %}
                   <tr>
-                    <td data-label="S.N">{{ forloop.counter }}</td>
-                    <td data-label="Reg #">{{ submission.registration_number }}</td>
-                    <td data-label="Type">{{ submission.vehicle_type.name }}</td>
-                    <td data-label="Owner">{{ submission.owner_name|default:"-" }}</td>
-                    <td data-label="Source">{{ submission.source|default:"-" }}</td>
-                    <td data-label="Submitted">{{ submission.submitted_at|date:"M d, Y H:i" }}</td>
-                    <td data-label="Status">{{ submission.get_status_display }}</td>
-                    <td class="no-print ld-td-actions" data-label="Action">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ submission.registration_number }}</td>
+                    <td>{{ submission.vehicle_type.name }}</td>
+                    <td>{{ submission.owner_name|default:"-" }}</td>
+                    <td>{{ submission.source|default:"-" }}</td>
+                    <td>{{ submission.submitted_at|date:"M d, Y H:i" }}</td>
+                    <td>{{ submission.get_status_display }}</td>
+                    <td class="no-print">
                       {% if submission.status == "pending" and submission.lease_id %}
                         <div class="d-flex flex-wrap gap-1">
                           <form method="post" action="{% url 'leases:approve_pending_vehicle_submission' submission.pk %}">
@@ -1324,10 +1269,7 @@
               {% if recent_payments %}
                 {% for p in recent_payments %}
                   <div class="ld-act">
-                    <div class="d-flex align-items-baseline gap-2">
-                      <span class="ld-act-sn">{{ forloop.counter }}.</span>
-                      <div><div class="ld-act-d">{{ p.payment_date }}</div><div class="ld-act-l">{{ p.reference_number|default:"Payment" }}</div></div>
-                    </div>
+                    <div><div class="ld-act-d">{{ p.payment_date }}</div><div class="ld-act-l">{{ p.reference_number|default:"Payment" }}</div></div>
                     <div class="ld-act-a" style="color:#15803d;">{{ p.amount|money:0 }}</div>
                   </div>
                 {% endfor %}
@@ -1342,10 +1284,7 @@
               {% if invoices %}
                 {% for inv in invoices %}
                   <div class="ld-act">
-                    <div class="d-flex align-items-baseline gap-2">
-                      <span class="ld-act-sn">{{ forloop.counter }}.</span>
-                      <div><div class="ld-act-d">{{ inv.issue_date }}</div><div class="ld-act-l">{{ inv.description|default:"Invoice" }}</div></div>
-                    </div>
+                    <div><div class="ld-act-d">{{ inv.issue_date }}</div><div class="ld-act-l">{{ inv.description|default:"Invoice" }}</div></div>
                     <div class="ld-act-a" style="color:#dc2626;">{{ inv.amount|money:0 }}</div>
                   </div>
                 {% endfor %}
@@ -1465,7 +1404,7 @@
               <a class="btn btn-sm btn-dark" href="{% url 'leases:inspection_compare' lease.pk %}">Compare</a>
             </div>
           </div>
-          <div class="ld-tw ld-mobile-cards">
+          <div class="ld-tw">
             <table class="ld-tbl">
               <thead>
                 <tr>
@@ -1480,12 +1419,12 @@
               <tbody>
                 {% for inspection in lease.inspections.all %}
                   <tr>
-                    <td data-label="Date">{{ inspection.inspection_date }}</td>
-                    <td data-label="Type">{{ inspection.inspection_type }}</td>
-                    <td data-label="Template">{{ inspection.inspection_template|default:"&mdash;" }}</td>
-                    <td data-label="Status"><span class="ld-badge ld-badge-gray">{{ inspection.get_status_display }}</span></td>
-                    <td data-label="Complete">{{ inspection.completion_percent }}%</td>
-                    <td class="no-print ld-td-actions" data-label="Actions">
+                    <td>{{ inspection.inspection_date }}</td>
+                    <td>{{ inspection.inspection_type }}</td>
+                    <td>{{ inspection.inspection_template|default:"&mdash;" }}</td>
+                    <td><span class="ld-badge ld-badge-gray">{{ inspection.get_status_display }}</span></td>
+                    <td>{{ inspection.completion_percent }}%</td>
+                    <td class="no-print">
                       <div class="d-flex flex-wrap gap-1">
                         <a class="btn btn-sm btn-dark" href="{% url 'leases:inspection_detail' inspection.pk %}">View</a>
                         <a class="btn btn-sm btn-primary" href="{% url 'leases:inspection_edit' inspection.pk %}">Edit</a>
@@ -1614,19 +1553,19 @@
             This person is not in the tenant list. Enter their details once; TMS will create the tenant record and link it to this lease.
           </div>
           <div class="row g-2">
-            <div class="col-4 col-md-6">
+            <div class="col-12 col-md-6">
               <label class="form-label small fw-semibold">Full Name</label>
               <input class="form-control form-control-sm" name="full_name" id="newFamilyFullName">
             </div>
-            <div class="col-4 col-md-3">
+            <div class="col-12 col-md-3">
               <label class="form-label small fw-semibold">First Name</label>
               <input class="form-control form-control-sm" name="first_name" id="newFamilyFirstName">
             </div>
-            <div class="col-4 col-md-3">
+            <div class="col-12 col-md-3">
               <label class="form-label small fw-semibold">Last Name</label>
               <input class="form-control form-control-sm" name="last_name" id="newFamilyLastName">
             </div>
-            <div class="col-4 col-md-4">
+            <div class="col-12 col-md-4">
               <label class="form-label small fw-semibold">Relationship</label>
               <select class="form-select form-select-sm" name="relation" id="newFamilyRelation" required>
                 <option value="">Select relationship</option>
@@ -1635,19 +1574,19 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-4 col-md-4">
+            <div class="col-12 col-md-4">
               <label class="form-label small fw-semibold">CNIC / ID</label>
               <input class="form-control form-control-sm" name="cnic" required>
             </div>
-            <div class="col-4 col-md-4">
+            <div class="col-12 col-md-4">
               <label class="form-label small fw-semibold">Phone</label>
               <input class="form-control form-control-sm" name="phone">
             </div>
-            <div class="col-4 col-md-4">
+            <div class="col-12 col-md-4">
               <label class="form-label small fw-semibold">DOB</label>
               <input class="form-control form-control-sm" type="date" name="date_of_birth">
             </div>
-            <div class="col-4 col-md-4">
+            <div class="col-12 col-md-4">
               <label class="form-label small fw-semibold">Gender</label>
               <select class="form-select form-select-sm" name="gender">
                 <option value="M">Male</option>
@@ -1655,15 +1594,15 @@
                 <option value="O">Other</option>
               </select>
             </div>
-            <div class="col-4 col-md-4">
+            <div class="col-12 col-md-4">
               <label class="form-label small fw-semibold">Photo</label>
               <input class="form-control form-control-sm" type="file" name="photo" accept="image/*">
             </div>
-            <div class="col-4 col-md-6">
+            <div class="col-12 col-md-6">
               <label class="form-label small fw-semibold">ID Front</label>
               <input class="form-control form-control-sm" type="file" name="cnic_front" accept="image/*">
             </div>
-            <div class="col-4 col-md-6">
+            <div class="col-12 col-md-6">
               <label class="form-label small fw-semibold">ID Back</label>
               <input class="form-control form-control-sm" type="file" name="cnic_back" accept="image/*">
             </div>

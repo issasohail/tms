@@ -40,7 +40,6 @@ from django.urls import (
     reverse_lazy,
 )
 from django.utils import timezone
-from leases.services.lease_expiry import attach_lease_expiry_countdown
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 from django.views.generic import (
@@ -2157,9 +2156,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                     row["lease_id"], zero
                 ) + (row["total"] or zero)
 
-        today = timezone.localdate()
         for lease in leases:
-            attach_lease_expiry_countdown(lease, today=today)
             balance = invoice_totals.get(lease.id, zero) - payment_totals.get(
                 lease.id, zero
             )

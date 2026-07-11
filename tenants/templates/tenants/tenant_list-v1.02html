@@ -14,45 +14,7 @@
             <div class="text-muted small">Manage all tenants and their information</div>
         </div>
 
-        <!-- Mobile-only: Add Tenant + Registration Link group, next to the heading -->
-        <div class="mobile-header-actions d-lg-none">
-            <a href="{% url 'tenants:tenant_create' %}" class="mobile-header-add">
-                <i class="fas fa-plus"></i><span>Add</span>
-            </a>
-            <div class="mobile-header-reg">
-                <a href="{% url 'tenants:tenant_public_registration_new' %}"
-                   target="_blank"
-                   rel="noopener"
-                   class="mobile-header-reg-main"
-                   title="Open new tenant registration (no login)">
-                    <i class="fas fa-link"></i><span>Registration</span>
-                </a>
-                <button type="button" class="mobile-header-reg-icon js-copy-reg-link" title="Copy registration link">
-                    <i class="fas fa-copy"></i>
-                </button>
-                <a href="#" target="_blank" rel="noopener" class="mobile-header-reg-icon js-whatsapp-reg-link" title="Share via WhatsApp">
-                    <i class="fab fa-whatsapp"></i>
-                </a>
-            </div>
-        </div>
-
         <div class="tenant-top-actions">
-            <div class="reg-link-group tenant-main-action" role="group" aria-label="Registration link">
-                <a href="{% url 'tenants:tenant_public_registration_new' %}"
-                   target="_blank"
-                   rel="noopener"
-                   class="reg-link-main"
-                   title="Open new tenant registration (no login)">
-                    <i class="fas fa-link"></i> <span>Registration</span>
-                </a>
-                <button type="button" class="reg-link-icon js-copy-reg-link" title="Copy registration link">
-                    <i class="fas fa-copy"></i>
-                </button>
-                <a href="#" target="_blank" rel="noopener" class="reg-link-icon js-whatsapp-reg-link" title="Share via WhatsApp">
-                    <i class="fab fa-whatsapp"></i>
-                </a>
-            </div>
-
             <a href="{% url 'tenants:tenant_create' %}" class="btn btn-primary btn-sm tenant-main-action">
                 <i class="fas fa-plus"></i> <span>Add Tenant</span>
             </a>
@@ -83,6 +45,7 @@
             </label>
         </div>
     </div>
+
 
     <div class="modal fade" id="quickRegistrationModal" tabindex="-1" aria-labelledby="quickRegistrationModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -290,11 +253,35 @@
                 <span class="active-filter-chip is-muted">All Interests</span>
             {% endif %}
         </div>
+        <div class="mb-2 registration-link-panel" id="registrationLinkPanel">
+            <div class="border rounded p-2 bg-light d-flex flex-wrap align-items-center gap-2">
+                {% csrf_token %}
+                <a href="{% url 'tenants:tenant_public_registration_new' %}"
+                target="_blank"
+                rel="noopener"
+                class="btn btn-sm btn-primary"
+                id="createRegistrationLink">
+                    <i class="fas fa-link"></i> Registration Link
+                </a>
 
+                <input type="hidden" id="newRegistrationLink" value="{% if new_registration_payload %}{{ new_registration_payload.link }}{% endif %}">
+                <button type="button" class="btn btn-sm btn-outline-primary {% if not new_registration_payload %}disabled{% endif %}" id="copyRegistrationLink">Copy Link</button>
+                <a class="btn btn-sm btn-outline-dark {% if not new_registration_payload %}disabled{% endif %}" id="openRegistrationLink" href="{% if new_registration_payload %}{{ new_registration_payload.link }}{% else %}#{% endif %}" target="_blank" rel="noopener">Open</a>
+                <a class="btn btn-sm btn-success {% if not new_registration_payload or not new_registration_payload.whatsapp_url %}disabled{% endif %}" id="whatsappRegistrationLink" href="{% if new_registration_payload and new_registration_payload.whatsapp_url %}{{ new_registration_payload.whatsapp_url }}{% else %}#{% endif %}" target="_blank" rel="noopener">
+                    <i class="fab fa-whatsapp"></i> WhatsApp
+                </a>
+                
+            </div>
+        </div>
     </div>
 </form>
 
 <div class="mobile-action-toolbar d-lg-none" aria-label="Mobile tenant actions">
+    <a href="{% url 'tenants:tenant_create' %}" class="mobile-action-btn mobile-action-add">
+        <i class="fas fa-plus"></i>
+        <span>Add</span>
+    </a>
+
     <button type="button" class="mobile-action-btn mobile-action-filter" id="mobileFilterToggle" aria-expanded="false" aria-controls="filter-form">
         <i class="fas fa-filter"></i>
         <span>Filter</span>
@@ -387,15 +374,7 @@
                     {% with family_rel=tenant.current_family_relationship %}
                     {% if lease %}
                     <a href="{% url 'leases:lease_detail' lease.pk %}" class="lease-link"><strong>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</strong></a>
-                    <div class="lease-dates mt-1">
-                        <span>Start: {{ lease.start_date|date:"Y-m-d" }}</span>
-                        <span>
-                            End: <span class="{% if lease.expiry_countdown_label %}text-danger fw-bold{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span>
-                            {% if lease.expiry_countdown_label %}
-                                <small class="lease-expiry-countdown lease-expiry-countdown-desktop">{{ lease.expiry_countdown_label }}</small>
-                            {% endif %}
-                        </span>
-                    </div>
+                    <div class="lease-dates mt-1"><span>Start: {{ lease.start_date|date:"Y-m-d" }}</span><span>End: <span class="{% if lease.is_ending_soon %}text-danger fw-bold{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span></span></div>
                     {% elif family_rel %}
                     <div class="family-lease-compact">
                         <span class="badge bg-purple-soft text-purple border family-member-badge">Family Member</span>
@@ -551,26 +530,18 @@
                 </div>
 
                 <div class="tcv2-date-row">
-                    <span class="tcv2-date-start">
+                    <span>
                         <i class="far fa-calendar-alt"></i>
                         Start: {{ lease.start_date|date:"Y-m-d" }}
                     </span>
 
-                    {% if lease.expiry_countdown_label %}
-                        <span class="lease-expiry-countdown lease-expiry-countdown-mobile">{{ lease.expiry_countdown_label }}</span>
-                    {% endif %}
-
-                    <span class="tcv2-date-end">
+                    <span>
                         End:
-                        <span class="{% if lease.expiry_countdown_label %}text-danger fw-bold{% endif %}">
+                        <span class="{% if lease.is_ending_soon %}text-danger fw-bold{% endif %}">
                             {{ lease.end_date|date:"Y-m-d" }}
                         </span>
                     </span>
                 </div>
-
-                {% if lease.expiry_countdown_label %}
-                    <small class="lease-expiry-countdown lease-expiry-countdown-tablet">{{ lease.expiry_countdown_label }}</small>
-                {% endif %}
             {% else %}
                 <div class="tcv2-no-lease">
                     <i class="fas fa-file-circle-exclamation"></i>
@@ -1072,55 +1043,6 @@ img.is-missing,
     flex-direction:column;
     gap:.1rem;
     color:#344054;
-}
-
-/* Shared lease-expiry countdown used in the tenant list. */
-.lease-expiry-countdown{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:max-content;
-    max-width:100%;
-    padding:.12rem .42rem;
-    border:1px solid currentColor;
-    border-radius:999px;
-    background:rgba(240, 68, 56, .08);
-    color:#b42318;
-    font-size:.67rem;
-    font-weight:800;
-    line-height:1.25;
-    white-space:nowrap;
-}
-
-.lease-expiry-countdown-desktop{
-    display:flex;
-    margin-top:.14rem;
-}
-
-.lease-expiry-countdown-mobile{
-    display:none;
-}
-
-.lease-expiry-countdown-tablet{
-    margin-top:.35rem;
-}
-
-@keyframes lease-expiry-soft-pulse{
-    0%,
-    100%{
-        opacity:1;
-        background-color:rgba(240, 68, 56, .08);
-    }
-    50%{
-        opacity:.72;
-        background-color:rgba(240, 68, 56, .14);
-    }
-}
-
-@media (prefers-reduced-motion: reduce){
-    .lease-expiry-countdown{
-        animation:none !important;
-    }
 }
 
 .money-cell{
@@ -2589,7 +2511,7 @@ img.is-missing{
 
     .mobile-action-toolbar{
         display:grid !important;
-        grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+        grid-template-columns:repeat(4,minmax(0,1fr)) !important;
         gap:.46rem !important;
         align-items:center !important;
     }
@@ -2850,7 +2772,7 @@ img.is-missing{
     }
 
     .mobile-action-toolbar{
-        grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+        grid-template-columns:repeat(4,minmax(0,1fr)) !important;
         gap:.34rem !important;
     }
 
@@ -3128,7 +3050,26 @@ img.is-missing{
     background:#eef2f7 !important;
 }
 
-/* Mobile page head: title + mobile header actions row */
+/* Registration link panel: compact desktop placement */
+.registration-link-panel > div{
+    border-color:#d7deea !important;
+    background:#fff !important;
+    border-radius:10px !important;
+    box-shadow:0 2px 8px rgba(16,24,40,.04);
+}
+
+/* Desktop: when a registration link exists, align the panel content to the right */
+@media (min-width:992px){
+    .registration-link-panel{
+        margin-top:-.25rem;
+        margin-bottom:.6rem !important;
+    }
+    .registration-link-panel > div{
+        justify-content:flex-end !important;
+    }
+}
+
+/* Mobile: show registration link as a right-aligned compact pill near the Tenants heading */
 @media (max-width:575.98px){
     .tenant-page-head{
         display:flex !important;
@@ -3140,6 +3081,39 @@ img.is-missing{
         flex:1 1 auto !important;
         min-width:0 !important;
     }
+    .registration-link-panel{
+        order:2 !important;
+        margin:-.35rem 0 0 !important;
+        align-self:flex-end !important;
+    }
+    .registration-link-panel > div{
+        padding:.32rem .42rem !important;
+        gap:.32rem !important;
+        justify-content:flex-end !important;
+        box-shadow:none !important;
+    }
+    #registrationLinkStatus{
+        max-width:150px !important;
+        overflow:hidden !important;
+        text-overflow:ellipsis !important;
+        white-space:nowrap !important;
+        font-size:.62rem !important;
+    }
+    #registrationLinkPanel .form-text,
+    #registrationLinkPanel #openRegistrationLink{
+        display:none !important;
+    }
+    #copyRegistrationLink,
+    #whatsappRegistrationLink{
+        height:24px !important;
+        min-height:24px !important;
+        padding:.12rem .38rem !important;
+        border-radius:999px !important;
+        font-size:.6rem !important;
+        font-weight:850 !important;
+        line-height:1 !important;
+    }
+
     /* Summary chips: five chips fit in one 360px row; smaller screens wrap naturally */
     .tenant-summary-grid{
         display:flex !important;
@@ -3221,132 +3195,175 @@ img.is-missing{
     }
 }
 /* =========================================================
-   REGISTRATION LINK GROUP (desktop: inside tenant-top-actions)
+   REGISTRATION LINK PANEL
 ========================================================= */
-.reg-link-group{
-    display:flex !important;
-    align-items:stretch;
-    gap:0;
-    min-width:0 !important;
-    width:auto !important;
-    border-radius:6px;
+
+#registrationLinkPanel{
+    width:100%;
+}
+
+#registrationLinkPanel > div{
+    border-radius:12px !important;
+    background:#ffffff !important;
+    border:1px solid #dbe3ef !important;
+    box-shadow:0 4px 14px rgba(16,24,40,.06);
+}
+
+#registrationLinkStatus{
+    max-width:100%;
     overflow:hidden;
-}
-
-.reg-link-main{
-    display:inline-flex;
-    align-items:center;
-    gap:.35rem;
-    height:31px;
-    padding:0 .7rem;
-    background:#2563eb;
-    color:#fff;
-    font-size:.8rem;
-    font-weight:700;
+    text-overflow:ellipsis;
     white-space:nowrap;
-    text-decoration:none;
-    border-right:1px solid rgba(255,255,255,.3);
-}
-.reg-link-main:hover{
-    background:#1d4ed8;
-    color:#fff;
 }
 
-.reg-link-icon{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:32px;
-    height:31px;
-    border:0;
-    background:#2563eb;
-    color:#fff;
-    font-size:.85rem;
-    border-right:1px solid rgba(255,255,255,.3);
-}
-.reg-link-icon:last-child{
-    border-right:0;
-}
-.reg-link-icon:hover{
-    background:#1d4ed8;
-    color:#fff;
-}
-.reg-link-icon.copied{
-    background:#16a34a;
-    color:#fff;
-}
+@media (min-width:992px){
+    #registrationLinkPanel{
+        margin-left:auto;
+        max-width:760px;
+    }
 
-/* =========================================================
-   MOBILE HEADER ACTIONS (next to the Tenants heading)
-========================================================= */
-.mobile-header-actions{
-    display:none;
+    #registrationLinkPanel > div{
+        justify-content:flex-end;
+    }
 }
 
 @media (max-width:575.98px){
-    .mobile-header-actions{
-        display:flex !important;
-        align-items:center;
-        gap:.32rem;
-        flex-wrap:wrap;
-        justify-content:flex-end;
+    #registrationLinkPanel{
+        margin-top:.5rem;
     }
 
-    .mobile-header-add{
-        display:inline-flex;
-        align-items:center;
-        gap:.3rem;
-        height:30px;
-        padding:0 .55rem;
-        border-radius:7px;
-        background:#2563eb;
-        color:#fff;
+    #registrationLinkPanel > div{
+        display:grid !important;
+        grid-template-columns:1fr 1fr 1fr;
+        gap:.4rem !important;
+        padding:.55rem !important;
+    }
+
+    #registrationLinkStatus{
+        grid-column:1 / span 3;
+        font-size:.7rem;
+        text-align:left;
+    }
+
+    #copyRegistrationLink,
+    #openRegistrationLink,
+    #whatsappRegistrationLink{
+        width:100%;
         font-size:.68rem;
-        font-weight:800;
+        padding:.32rem .2rem;
         white-space:nowrap;
-        text-decoration:none;
     }
 
-    .mobile-header-reg{
-        display:flex;
-        align-items:stretch;
-        border-radius:7px;
-        overflow:hidden;
+    #registrationLinkPanel .form-text{
+        grid-column:1 / span 3;
+        font-size:.62rem;
+        line-height:1.2;
+    }
+}
+
+/* =========================================================
+   FINAL FIXES: REGISTRATION LINK + BROKEN IMAGE FALLBACKS
+========================================================= */
+
+/* Registration link panel is always visible; buttons are disabled until a link exists. */
+.registration-link-panel{
+    width:100% !important;
+    margin:.25rem 0 .75rem !important;
+}
+
+.registration-link-panel > div{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:flex-end !important;
+    gap:.45rem !important;
+    border-color:#d7deea !important;
+    background:#fff !important;
+    border-radius:10px !important;
+    box-shadow:0 2px 8px rgba(16,24,40,.04) !important;
+}
+
+#createRegistrationLink{
+    font-weight:850 !important;
+    border-radius:7px !important;
+    white-space:nowrap !important;
+}
+
+#registrationLinkStatus{
+    max-width:320px !important;
+    min-width:0 !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+    color:#334155 !important;
+}
+
+/* Desktop: keep registration panel aligned right above/near the Interested row. */
+@media (min-width:992px){
+    .registration-link-panel{
+        max-width:980px !important;
+        margin-left:auto !important;
+    }
+}
+
+/* Mobile: place registration link compactly under the heading/action area. */
+@media (max-width:575.98px){
+    .registration-link-panel{
+        order:2 !important;
+        margin:.05rem 0 0 !important;
     }
 
-    .mobile-header-reg-main{
-        display:inline-flex;
-        align-items:center;
-        gap:.28rem;
-        height:30px;
-        padding:0 .5rem;
-        background:#2563eb;
-        color:#fff;
-        font-size:.66rem;
-        font-weight:800;
-        white-space:nowrap;
-        text-decoration:none;
-        border-right:1px solid rgba(255,255,255,.3);
+    .tenant-filter-card{
+        order:3 !important;
     }
 
-    .mobile-header-reg-icon{
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        width:28px;
-        height:30px;
-        border:0;
-        background:#2563eb;
-        color:#fff;
-        font-size:.72rem;
-        border-right:1px solid rgba(255,255,255,.3);
+    .tenant-summary-grid{
+        order:4 !important;
     }
-    .mobile-header-reg-icon:last-child{
-        border-right:0;
+
+    .tenant-cards{
+        order:5 !important;
     }
-    .mobile-header-reg-icon.copied{
-        background:#16a34a;
-        color:#fff;
+
+    .registration-link-panel > div{
+        display:grid !important;
+        grid-template-columns:1fr 1fr 1fr;
+        gap:.38rem !important;
+        padding:.5rem !important;
+        justify-content:stretch !important;
+    }
+
+    #createRegistrationLink{
+        grid-column:1 / span 3;
+        width:100% !important;
+        height:32px !important;
+        font-size:.7rem !important;
+        padding:.25rem .4rem !important;
+    }
+
+    #registrationLinkStatus{
+        grid-column:1 / span 3;
+        max-width:100% !important;
+        font-size:.64rem !important;
+        text-align:center !important;
+    }
+
+    #copyRegistrationLink,
+    #openRegistrationLink,
+    #whatsappRegistrationLink{
+        width:100% !important;
+        height:28px !important;
+        min-height:28px !important;
+        font-size:.62rem !important;
+        padding:.2rem .15rem !important;
+        border-radius:7px !important;
+        white-space:nowrap !important;
+    }
+
+    #registrationLinkPanel .form-text{
+        grid-column:1 / span 3;
+        text-align:center;
+        font-size:.58rem !important;
+        line-height:1.15 !important;
     }
 }
 
@@ -3447,69 +3464,6 @@ img.is-missing{
     max-height:0 !important;
 }
 
-
-
-/* Tablet cards: keep the countdown below the lease end-date row. */
-@media (min-width:576px) and (max-width:991.98px){
-    .lease-expiry-countdown-tablet{
-        display:inline-flex;
-    }
-}
-
-/* Phone cards: keep Start, countdown, and End on one compact row. */
-@media (max-width:575.98px){
-    .tcv2-date-row{
-        display:grid !important;
-        grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr) !important;
-        gap:.22rem !important;
-        align-items:center !important;
-        padding:.4rem .42rem !important;
-        font-size:clamp(.54rem, 2.15vw, .64rem) !important;
-    }
-
-    .tcv2-date-row > span{
-        min-width:0;
-        white-space:nowrap;
-    }
-
-    .tcv2-date-start{
-        justify-self:start;
-    }
-
-    .tcv2-date-end{
-        justify-self:end;
-        text-align:right;
-    }
-
-    .lease-expiry-countdown-mobile{
-        display:inline-flex !important;
-        justify-self:center;
-        padding:.08rem .28rem !important;
-        font-size:clamp(.54rem, 2vw, .61rem) !important;
-        line-height:1.15;
-        animation:lease-expiry-soft-pulse 2.6s ease-in-out infinite;
-    }
-
-    .lease-expiry-countdown-tablet{
-        display:none !important;
-    }
-}
-
-@media (max-width:360px){
-    .tcv2-date-row{
-        gap:.12rem !important;
-        padding-left:.3rem !important;
-        padding-right:.3rem !important;
-    }
-
-    .tcv2-date-row i{
-        margin-right:.1rem;
-    }
-
-    .lease-expiry-countdown-mobile{
-        padding:.07rem .2rem !important;
-    }
-}
 </style>
 
 {% endblock %}
@@ -3654,6 +3608,12 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
   const registrationButton = document.getElementById("btnNewRegistrationLink");
+  const registrationPanel = document.getElementById("registrationLinkPanel");
+  const registrationInput = document.getElementById("newRegistrationLink");
+  const registrationStatus = document.getElementById("registrationLinkStatus");
+  const copyRegistrationLink = document.getElementById("copyRegistrationLink");
+  const openRegistrationLink = document.getElementById("openRegistrationLink");
+  const whatsappRegistrationLink = document.getElementById("whatsappRegistrationLink");
   const quickRegistrationForm = document.getElementById("quickRegistrationForm");
   const quickRegistrationSubmit = document.getElementById("quickRegistrationSubmit");
   const quickRegistrationModal = document.getElementById("quickRegistrationModal");
@@ -3722,7 +3682,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  if (quickRegistrationForm) {
+  if (quickRegistrationForm && registrationPanel && registrationInput) {
     quickRegistrationForm.addEventListener("submit", function (event) {
       event.preventDefault();
       clearQuickRegistrationErrors();
@@ -3749,6 +3709,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       })
       .then(function (data) {
+        registrationPanel.classList.remove("d-none");
+        registrationInput.value = data.link || "";
+        registrationStatus.textContent = data.masked_link || "Registration link ready";
+        if (copyRegistrationLink) {
+          copyRegistrationLink.classList.toggle("disabled", !data.link);
+        }
+        if (openRegistrationLink) {
+          openRegistrationLink.href = data.link || "#";
+          openRegistrationLink.classList.toggle("disabled", !data.link);
+        }
+        if (whatsappRegistrationLink) {
+          whatsappRegistrationLink.href = data.whatsapp_url || "#";
+          whatsappRegistrationLink.classList.toggle("disabled", !data.whatsapp_url);
+        }
         quickRegistrationForm.reset();
         if (quickRegistrationModal && window.bootstrap) {
           const modal = bootstrap.Modal.getInstance(quickRegistrationModal);
@@ -3772,43 +3746,26 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // --- Static no-login "new tenant" registration link: always-on copy + WhatsApp share ---
-  (function setupRegistrationLinkShortcuts() {
-    const regLinkPath = "{% url 'tenants:tenant_public_registration_new' %}";
-    const absoluteRegLink = window.location.origin + regLinkPath;
-    const waMessage = "Please complete your tenant registration using this link:\n\n" + absoluteRegLink;
-    const waHref = "https://wa.me/?text=" + encodeURIComponent(waMessage);
-
-    document.querySelectorAll(".js-whatsapp-reg-link").forEach(function (el) {
-      el.href = waHref;
+  if (copyRegistrationLink && registrationInput) {
+    copyRegistrationLink.addEventListener("click", function () {
+      const link = registrationInput.value || "";
+      if (!link) {
+        alert("Create a registration link first.");
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(function () {
+          copyRegistrationLink.textContent = "Copied";
+          setTimeout(function () { copyRegistrationLink.textContent = "Copy Link"; }, 1200);
+        });
+      } else {
+        registrationInput.type = "text";
+        registrationInput.select();
+        document.execCommand("copy");
+        registrationInput.type = "hidden";
+      }
     });
-
-    document.querySelectorAll(".js-copy-reg-link").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        const icon = btn.querySelector("i");
-        const originalClass = icon ? icon.className : null;
-        function showCopied() {
-          btn.classList.add("copied");
-          if (icon) icon.className = "fas fa-check";
-          setTimeout(function () {
-            btn.classList.remove("copied");
-            if (icon && originalClass) icon.className = originalClass;
-          }, 1200);
-        }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(absoluteRegLink).then(showCopied);
-        } else {
-          const tmp = document.createElement("input");
-          tmp.value = absoluteRegLink;
-          document.body.appendChild(tmp);
-          tmp.select();
-          document.execCommand("copy");
-          document.body.removeChild(tmp);
-          showCopied();
-        }
-      });
-    });
-  })();
+  }
 
   // --- Select2 tenant (type to search) + UX niceties ---
   $tenantSel.select2({

@@ -19,7 +19,6 @@ from properties.tables import ExportableTable
 from utils.pdf_export import handle_export
 
 from .models import Lease
-from .services.lease_expiry import get_lease_expiry_countdown
 
 
 def _global_settings():
@@ -345,9 +344,9 @@ class LeaseTable(ExportableTable):
 
         # For HTML display, show the same renewal action where the end date is red.
         if value:
-            countdown = get_lease_expiry_countdown(record)
-            if countdown:
-                days_label = countdown.label
+            remaining_days = (value - timezone.now().date()).days
+            if 0 <= remaining_days < 60:
+                days_label = f"{remaining_days} days left"
                 renew_button = ""
                 tenant_phone = getattr(getattr(record, "tenant", None), "phone", "")
                 if tenant_phone:

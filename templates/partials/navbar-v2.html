@@ -17,8 +17,8 @@
         {% if perms.payments.view_payment %}<li><a class="mlink" href="{% url 'payments:payment_list' %}">Payments</a></li>{% endif %}
         {% if perms.tenants.view_tenant  %}<li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
         {% if perms.leases.view_lease    %}<li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
-        {% if perms.smart_meter.view_meter%}<li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>{% endif %}
         {% if perms.invoices.view_invoice%}<li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
+        {% if perms.smart_meter.view_meter%}<li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>{% endif %}
       </ul>
 
       <!-- Right actions -->
@@ -106,11 +106,11 @@
         {% if perms.leases.view_lease         %}<li><a class="dlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
         {% if perms.expenses.view_expense     %}<li><a class="dlink" href="{% url 'expenses:expense_list' %}">Expenses</a></li>{% endif %}
         {% if perms.utilities.view_utility    %}<li><a class="dlink" href="{% url 'utilities:utility_list' %}">Utilities</a></li>{% endif %}
-        {% if perms.smart_meter.view_meter    %}<li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>{% endif %}
+        {% if perms.invoices.view_invoice     %}<li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
         {% if perms.reports.view_report       %}<li><a class="dlink" href="{% url 'reports:report_list' %}">Reports</a></li>{% endif %}
         {% if perms.maintenance.view_maintenancerequest %}<li><a class="dlink" href="{% url 'maintenance:request_list' %}">Maintenance</a></li>{% endif %}
         <li><a class="dlink" href="{% url 'handyman:handyman_list' %}">Handyman</a></li>
-        {% if perms.invoices.view_invoice     %}<li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
+        {% if perms.smart_meter.view_meter    %}<li><a class="dlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Smart Meter</a></li>{% endif %}
         {% if perms.core.view_globalsettings  %}<li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>{% endif %}
         {% if user.is_staff %}<li><a class="dlink" href="{% url 'accounts:user_access_list' %}">Users</a></li>{% endif %}
         <!-- Fast add -->

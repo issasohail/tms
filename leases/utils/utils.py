@@ -56,8 +56,40 @@ def inventory_wardrobes(lease):
     return getattr(unit, "wardrobes", 0) if unit else 0
 
 
+
+
+def _authorized_occupant_rows(lease):
+    manager = getattr(lease, "family_members", None)
+    if manager is None:
+        return []
+    return list(manager.select_related("family_member", "relationship_type").filter(lives_with_tenant=True))
+
+def authorized_occupants_names(lease):
+    return ", ".join(link.family_member.get_full_name() for link in _authorized_occupant_rows(lease))
+
+def authorized_occupants_count(lease):
+    return len(_authorized_occupant_rows(lease))
+
+def authorized_occupants_table(lease):
+    rows = _authorized_occupant_rows(lease)
+    body = []
+    if rows:
+        for i, link in enumerate(rows, 1):
+            person = link.family_member
+            body.append(f"<tr><td>{i}</td><td>{person.get_full_name()}</td><td>{person.cnic or ''}</td><td>{link.relation or ''}</td></tr>")
+    else:
+        body.append("<tr><td>1</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>")
+    return '<table class="authorized-occupants-table"><thead><tr><th>SN</th><th>Name</th><th>CNIC</th><th>Relationship to Tenant</th></tr></thead><tbody>'+''.join(body)+'</tbody></table>'
+
 # Define the placeholder registry
 PLACEHOLDER_REGISTRY = {
+    "authorized_occupants_table": authorized_occupants_table,
+    "authorized_occupants_names": authorized_occupants_names,
+    "authorized_occupants_count": authorized_occupants_count,
+    "AUTHORIZED_OCCUPANTS_TABLE": authorized_occupants_table,
+    "AUTHORIZED_OCCUPANTS_NAMES": authorized_occupants_names,
+    "AUTHORIZED_OCCUPANTS_COUNT": authorized_occupants_count,
+
     # Rent and Maintenance
     "MONTHLY_RENT": lambda lease: lease.monthly_rent,
     "SOCIETY_MAINTENANCE": lambda lease: lease.society_maintenance or 0,
@@ -200,8 +232,8 @@ def do_replace_placeholders(text, lease):
     ]
 
     for placeholder, func in PLACEHOLDER_REGISTRY.items():
-        search_str = f"[{placeholder}]"
-        if search_str in text:
+        tokens = (f"[{placeholder}]", f"{{{{{placeholder}}}}}")
+        if any(token in text for token in tokens):
             try:
                 replacement = func(lease)
 
@@ -212,7 +244,8 @@ def do_replace_placeholders(text, lease):
                     except (TypeError, ValueError):
                         replacement = f"<strong>{replacement}</strong>"
 
-                text = text.replace(search_str, str(replacement))
+                for search_str in tokens:
+                    text = text.replace(search_str, str(replacement))
             except Exception as e:
                 print(f"Error replacing {placeholder}: {e}")
 

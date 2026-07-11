@@ -1530,6 +1530,16 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             self.object,
             user=self.request.user if self.request.user.is_authenticated else None,
         )
+        pending_submission = form.cleaned_data.get("pending_registration_submission")
+        if pending_submission:
+            from tenants.services.registration_workflow import attach_registration_to_lease
+            with transaction.atomic():
+                workflow_result = attach_registration_to_lease(pending_submission, self.object, self.request.user)
+                pending_submission.status = "approved"
+                pending_submission.reviewed_by = self.request.user
+                pending_submission.reviewed_at = timezone.now()
+                pending_submission.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+            messages.success(self.request, f"Pending registration linked: {len(workflow_result['people'])} people and {workflow_result['vehicles']} vehicles.")
 
         # Family links
         family_fs.instance = self.object
@@ -5332,18 +5342,21 @@ from .models import Lease
 
 @login_required
 def generate_agreement_pdf(request, pk):
-    lease = get_object_or_404(Lease, pk=pk)
-
-    # 1) build HTML using your real preview template (best)
-    html = render_to_string("leases/agreement_preview.html", {"lease": lease})
-
-    # 2) convert HTML -> PDF bytes (use your existing PDF tool)
-    pdf_bytes = generate_agreement_pdf(html)  # use whatever you already use
-
-    filename = f"LeaseAgreement_{lease.pk}.pdf"
-    resp = HttpResponse(pdf_bytes, content_type="application/pdf")
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return resp
+    from leases.services.agreement_package import build_package
+    from leases.services.lease_history import copy_previous_history_clauses, ensure_original_history, latest_history
+    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property", "proposer", "seconder", "witness1_tenant", "witness2_tenant"), pk=pk)
+    ensure_original_history(lease, user=request.user)
+    history_id = request.GET.get("history")
+    history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
+    copy_previous_history_clauses(lease, history)
+    clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
+    try:
+        pdf_bytes, filename, document = build_package(request, lease, history, clauses)
+    except RuntimeError as exc:
+        return HttpResponse(str(exc), status=500, content_type="text/plain")
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def send_agreement_email(request, pk):

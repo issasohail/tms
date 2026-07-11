@@ -40,7 +40,6 @@ from django.urls import (
     reverse_lazy,
 )
 from django.utils import timezone
-from leases.services.lease_expiry import attach_lease_expiry_countdown
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 from django.views.generic import (
@@ -65,6 +64,8 @@ from leases.models import (
     LeaseVehicle,
     LeaseVehicleType,
 )
+from leases.models_renewal import LeaseRenewal
+from leases.services.lease_expiry import attach_lease_expiry_countdown
 from leases.services.vehicle_submissions import (
     create_pending_vehicle_submissions_from_post,
 )
@@ -81,7 +82,12 @@ from .forms import (
     TenantPublicRegistrationForm,
     TenantRegistrationSubmissionReviewForm,
 )
-from .models import Tenant, TenantRegistrationSubmission, normalize_cnic
+from .models import (
+    PendingRegistrationPerson,
+    Tenant,
+    TenantRegistrationSubmission,
+    normalize_cnic,
+)
 from .tables import (
     LedgerTable,  # We'll create this later
     TenantTable,
@@ -590,6 +596,59 @@ def tenant_public_registration_update(request, token):
                 cnic_front=request.FILES.get("cnic_front"),
                 cnic_back=request.FILES.get("cnic_back"),
             )
+            role_prefixes = {
+                "family": PendingRegistrationPerson.ROLE_FAMILY,
+                "proposer": PendingRegistrationPerson.ROLE_PROPOSER,
+                "seconder": PendingRegistrationPerson.ROLE_SECONDER,
+                "witness1": PendingRegistrationPerson.ROLE_WITNESS_1,
+                "witness2": PendingRegistrationPerson.ROLE_WITNESS_2,
+            }
+            for prefix, role in role_prefixes.items():
+                indexes = range(0, 20) if prefix == "family" else range(0, 1)
+                for index in indexes:
+                    base = f"{prefix}-{index}-" if prefix == "family" else f"{prefix}-"
+                    first_name = (request.POST.get(base + "first_name") or "").strip()
+                    last_name = (request.POST.get(base + "last_name") or "").strip()
+                    if prefix == "family" and not (first_name or last_name):
+                        full_name = (request.POST.get(base + "name") or "").strip()
+                        first_name, last_name = (
+                            _split_registration_name(full_name)
+                            if full_name
+                            else ("", "")
+                        )
+                    cnic = (request.POST.get(base + "cnic") or "").strip()
+                    if not any(
+                        (first_name, last_name, cnic, request.POST.get(base + "phone"))
+                    ):
+                        continue
+                    person = PendingRegistrationPerson.objects.create(
+                        submission=submission,
+                        role=role,
+                        first_name=first_name,
+                        last_name=last_name,
+                        father_husband_name=(
+                            request.POST.get(base + "father_husband_name") or ""
+                        ).strip(),
+                        cnic=cnic,
+                        phone=(request.POST.get(base + "phone") or "").strip(),
+                        date_of_birth=parse_date(
+                            request.POST.get(base + "date_of_birth") or ""
+                        ),
+                        address=(request.POST.get(base + "address") or "").strip(),
+                        relationship=(
+                            request.POST.get(base + "relationship") or ""
+                        ).strip(),
+                        relationship_type_id=(
+                            request.POST.get(base + "relationship_type") or None
+                        ),
+                        photo=request.FILES.get(base + "photo"),
+                        cnic_front=request.FILES.get(base + "cnic_front"),
+                        cnic_back=request.FILES.get(base + "cnic_back"),
+                    )
+                    from tenants.services.registration_workflow import proposed_changes
+
+                    person.proposed_updates = proposed_changes(person)
+                    person.save(update_fields=["proposed_updates", "updated_at"])
             vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
                 request,
                 tenant=tenant,
@@ -692,6 +751,9 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         )
         context["pending_vehicle_submissions"] = (
             self.object.pending_vehicle_submissions.select_related("vehicle_type")
+        )
+        context["pending_people"] = self.object.pending_people.select_related(
+            "matched_tenant", "processed_tenant"
         )
         return context
 
@@ -1205,6 +1267,9 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             pk=tenant.pk
         ).order_by("first_name", "last_name")
         context.update(_family_counts(family_links))
+        from tenants.services.role_history import tenant_role_history
+
+        context["role_history_rows"] = tenant_role_history(tenant)
 
         def get_object(self, queryset=None):
             tenant = super().get_object(queryset)
@@ -1224,6 +1289,45 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         # Debug print
         print(f"Tenant PK: {tenant.pk}, Name: {tenant.first_name} {tenant.last_name}")
         return tenant
+
+
+class TenantRoleHistoryView(LoginRequiredMixin, DetailView):
+    model = Tenant
+    template_name = "tenants/tenant_role_history.html"
+    context_object_name = "tenant"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from tenants.services.role_history import tenant_role_history
+
+        role = self.request.GET.get("role") or None
+        allowed = {None, "family_member", "proposer", "seconder", "witness"}
+        if role not in allowed:
+            role = None
+        rows = tenant_role_history(self.object, role)
+        sort = self.request.GET.get("sort", "status_date")
+        direction = self.request.GET.get("direction", "desc")
+        keymap = {
+            "role_type": lambda r: r.role_type,
+            "lease": lambda r: r.lease.pk,
+            "tenant": lambda r: r.related_tenant.get_full_name(),
+            "property_unit": lambda r: (str(r.property), str(r.unit)),
+            "lease_period": lambda r: (r.lease_start, r.lease_end),
+            "balance": lambda r: r.balance,
+            "status_date": lambda r: r.status_date,
+        }
+        rows.sort(
+            key=keymap.get(sort, keymap["status_date"]), reverse=direction != "asc"
+        )
+        context.update(
+            {
+                "role_history_rows": rows,
+                "role_filter": role or "",
+                "sort": sort,
+                "direction": direction,
+            }
+        )
+        return context
 
 
 class TenantCreateView(LoginRequiredMixin, CreateView):
@@ -2216,6 +2320,48 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             family_map.setdefault(relation.family_member_id, relation)
         for tenant in page_tenants:
             tenant.current_family_relationship = family_map.get(tenant.pk)
+
+        tenant_ids = [tenant.pk for tenant in page_tenants]
+        from django.db.models import Count
+
+        family_counts = dict(
+            LeaseFamilyMember.objects.filter(family_member_id__in=tenant_ids)
+            .values_list("family_member_id")
+            .annotate(c=Count("id"))
+        )
+        proposer_counts = dict(
+            Lease.objects.filter(proposer_id__in=tenant_ids)
+            .values_list("proposer_id")
+            .annotate(c=Count("id"))
+        )
+        seconder_counts = dict(
+            Lease.objects.filter(seconder_id__in=tenant_ids)
+            .values_list("seconder_id")
+            .annotate(c=Count("id"))
+        )
+        witness_counts = {}
+        for field in ("witness1_tenant_id", "witness2_tenant_id"):
+            for tenant_id, count in (
+                Lease.objects.filter(**{field + "__in": tenant_ids})
+                .values_list(field)
+                .annotate(c=Count("id"))
+            ):
+                witness_counts[tenant_id] = witness_counts.get(tenant_id, 0) + count
+        for field in ("witness1_tenant_id", "witness2_tenant_id"):
+            for tenant_id, count in (
+                LeaseRenewal.objects.filter(**{field + "__in": tenant_ids})
+                .values_list(field)
+                .annotate(c=Count("id"))
+            ):
+                witness_counts[tenant_id] = witness_counts.get(tenant_id, 0) + count
+        for tenant in page_tenants:
+            tenant.role_counts = {
+                "family_member": family_counts.get(tenant.pk, 0),
+                "proposer": proposer_counts.get(tenant.pk, 0),
+                "seconder": seconder_counts.get(tenant.pk, 0),
+                "witness": witness_counts.get(tenant.pk, 0),
+            }
+            tenant.role_total = sum(tenant.role_counts.values())
 
         # Add all tenants for the tenant dropdown
         context["all_tenants"] = Tenant.objects.only(

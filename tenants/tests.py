@@ -98,3 +98,13 @@ class TenantListExpiryMarkupTests(SimpleTestCase):
             reduced_motion_start : reduced_motion_start + 220
         ]
         self.assertIn("animation:none !important", reduced_motion_block)
+
+class PendingRegistrationWorkflowTests(SimpleTestCase):
+    def test_cnic_normalization_ignores_all_non_digits(self):
+        from tenants.models import normalize_cnic
+        self.assertEqual(normalize_cnic("61101-1234567-1"), "6110112345671")
+        self.assertEqual(normalize_cnic("61101 1234567 1"), "6110112345671")
+
+    def test_role_history_url_exists_in_urlconf(self):
+        from django.urls import reverse
+        self.assertTrue(reverse("tenants:tenant_role_history", args=[25]).endswith("/tenants/25/role-history/"))

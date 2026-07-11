@@ -11,6 +11,7 @@ from image_cropping import ImageRatioField
 from django.utils import timezone
 from django.apps import apps
 import re
+import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
 from core.upload_utils import compress_instance_file_field
@@ -427,3 +428,62 @@ class TenantRegistrationSubmission(models.Model):
         super().save(*args, **kwargs)
 
 
+
+
+def pending_registration_person_upload_to(instance, filename):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    return f"tenants/registration_people/{instance.submission_id or 'new'}/{instance.role}/{uuid.uuid4().hex}.{ext}"
+
+
+class PendingRegistrationPerson(models.Model):
+    ROLE_FAMILY = "family_member"
+    ROLE_PROPOSER = "proposer"
+    ROLE_SECONDER = "seconder"
+    ROLE_WITNESS_1 = "witness1"
+    ROLE_WITNESS_2 = "witness2"
+    ROLE_CHOICES = [
+        (ROLE_FAMILY, "Family Member"), (ROLE_PROPOSER, "Proposer"),
+        (ROLE_SECONDER, "Seconder"), (ROLE_WITNESS_1, "Witness 1"),
+        (ROLE_WITNESS_2, "Witness 2"),
+    ]
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REVIEW_LATER = "review_later"
+    STATUS_REJECTED = "rejected"
+    STATUS_PROCESSED = "processed"
+    STATUS_CHOICES = [(x, x.replace("_", " ").title()) for x in (STATUS_PENDING, STATUS_APPROVED, STATUS_REVIEW_LATER, STATUS_REJECTED, STATUS_PROCESSED)]
+    submission = models.ForeignKey(TenantRegistrationSubmission, on_delete=models.CASCADE, related_name="pending_people")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    relationship = models.CharField(max_length=30, blank=True)
+    relationship_type_id = models.PositiveIntegerField(null=True, blank=True)
+    first_name = models.CharField(max_length=50, blank=True)
+    last_name = models.CharField(max_length=50, blank=True)
+    father_husband_name = models.CharField(max_length=120, blank=True)
+    cnic = models.CharField(max_length=30, blank=True)
+    cnic_digits = models.CharField(max_length=13, blank=True, db_index=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    photo = models.ImageField(upload_to=pending_registration_person_upload_to, null=True, blank=True)
+    cnic_front = models.ImageField(upload_to=pending_registration_person_upload_to, null=True, blank=True)
+    cnic_back = models.ImageField(upload_to=pending_registration_person_upload_to, null=True, blank=True)
+    matched_tenant = models.ForeignKey(Tenant, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_registration_roles")
+    proposed_updates = models.JSONField(default=dict, blank=True)
+    field_decisions = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_pending_registration_people")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    processed_tenant = models.ForeignKey(Tenant, on_delete=models.SET_NULL, null=True, blank=True, related_name="processed_registration_roles")
+    processing_result = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["submission_id", "role", "id"]
+        indexes = [models.Index(fields=["submission", "role", "status"]), models.Index(fields=["cnic_digits"])]
+
+    def save(self, *args, **kwargs):
+        self.cnic_digits = normalize_cnic(self.cnic)
+        if self.cnic_digits and not self.matched_tenant_id:
+            self.matched_tenant = Tenant.objects.filter(cnic_digits=self.cnic_digits).first()
+        super().save(*args, **kwargs)

@@ -2241,4 +2241,9 @@
     });
   })();
 </script>
+
+<div class="card mt-3" id="tenantRoleHistory">
+  <div class="card-header d-flex justify-content-between"><strong>Tenant Role History</strong><a href="{% url 'tenants:tenant_role_history' tenant.pk %}" class="btn btn-sm btn-outline-primary">Full History</a></div>
+  <div class="card-body p-0">{% include "tenants/partials/_tenant_role_history_table.html" with rows=role_history_rows %}</div>
+</div>
 {% endblock %}

@@ -1087,10 +1087,14 @@
 
             {# Right: tenant docs #}
             <div>
-              {{ form.witness1_name.as_hidden }}
-              {{ form.witness1_cnic.as_hidden }}
-              {{ form.witness2_name.as_hidden }}
-              {{ form.witness2_cnic.as_hidden }}
+              <div class="row g-2 mt-1"><div class="col-12"><label class="form-label">Pending Registration</label>{{ form.pending_registration_submission }}<div class="form-text">{{ form.pending_registration_submission.help_text }}</div></div></div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-3"><label class="form-label">Proposer</label>{{ form.proposer }}</div>
+                <div class="col-md-3"><label class="form-label">Seconder</label>{{ form.seconder }}</div>
+                <div class="col-md-3"><label class="form-label">Witness 1</label>{{ form.witness1_tenant }}</div>
+                <div class="col-md-3"><label class="form-label">Witness 2</label>{{ form.witness2_tenant }}</div>
+              </div>
+              {{ form.witness1_name.as_hidden }}{{ form.witness1_cnic.as_hidden }}{{ form.witness2_name.as_hidden }}{{ form.witness2_cnic.as_hidden }}
 
               <div class="lf-card">
                 <div class="lf-card-head" style="background:#1d3461;">

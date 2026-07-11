@@ -69,6 +69,14 @@ class LeaseRenewal(models.Model):
         decimal_places=2,
         default=Decimal("10.00"),
     )
+    witness1_tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="lease_renewals_witnessed_as_first",
+    )
+    witness2_tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="lease_renewals_witnessed_as_second",
+    )
     witness1_name = models.CharField(max_length=100, null=True, blank=True)
     witness1_cnic = models.CharField(max_length=20, null=True, blank=True)
     witness2_name = models.CharField(max_length=100, null=True, blank=True)

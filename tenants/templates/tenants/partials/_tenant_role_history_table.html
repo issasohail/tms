@@ -1,0 +1,10 @@
+<div class="table-responsive">
+<table class="table table-sm table-striped align-middle mb-0 role-history-table">
+<thead><tr><th>SN</th><th>Role Type</th><th>Lease</th><th>Tenant</th><th>Property / Unit</th><th>Lease Period</th><th>Balance</th><th>Status Date</th><th>Action</th></tr></thead>
+<tbody>
+{% for row in rows %}<tr>
+<td>{{ forloop.counter }}</td><td>{{ row.role_type }}</td><td>{{ row.lease_label }}</td><td><a href="{% url 'tenants:tenant_detail' row.related_tenant.pk %}">{{ row.related_tenant.get_full_name }}</a></td>
+<td>{{ row.property }} / {{ row.unit }}</td><td>{{ row.lease_start|date:"d M Y" }} – {{ row.lease_end|date:"d M Y" }}</td><td>{{ row.balance }}</td><td>{{ row.status }}<br><small>{{ row.status_date|date:"d M Y" }}</small></td><td><a class="btn btn-sm btn-outline-primary" href="{{ row.detail_url }}">Open</a></td>
+</tr>{% empty %}<tr><td colspan="9" class="text-center text-muted py-3">No role history found.</td></tr>{% endfor %}
+</tbody></table></div>
+<style>@media(max-width:699px){.role-history-table{font-size:.68rem;min-width:920px}.role-history-table th,.role-history-table td{padding:.3rem}}</style>

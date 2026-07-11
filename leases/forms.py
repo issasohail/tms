@@ -22,6 +22,12 @@ from datetime import timedelta
 
 
 class LeaseForm(forms.ModelForm):
+    pending_registration_submission = forms.ModelChoiceField(
+        queryset=__import__("tenants.models", fromlist=["TenantRegistrationSubmission"]).TenantRegistrationSubmission.objects.none(),
+        required=False, label="Pending Registration",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm select2"}),
+        help_text="Optional: resolve and link all approved pending people and vehicles when this lease is created.",
+    )
     property = forms.ModelChoiceField(
         queryset=Property.objects.all(),
         required=True,
@@ -75,7 +81,11 @@ class LeaseForm(forms.ModelForm):
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'security_deposit_return_notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'status': forms.Select(attrs={'class': 'form-select form-select-sm'}),
-            'tenant': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'tenant': forms.Select(attrs={'class': 'form-select form-select-sm select2'}),
+            'proposer': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
+            'seconder': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
+            'witness1_tenant': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
+            'witness2_tenant': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
             'security_deposit_paid': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'security_deposit_returned': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'electricity_meter_reading': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
@@ -99,8 +109,12 @@ class LeaseForm(forms.ModelForm):
 
         # Start empty by default
         self.fields['unit'].queryset = Unit.objects.none()
-        self.fields['tenant'].queryset = Tenant.objects.order_by(
-            'first_name', 'last_name')
+        tenant_qs = Tenant.objects.order_by('first_name', 'last_name')
+        self.fields['tenant'].queryset = tenant_qs
+        for role_field in ('proposer', 'seconder', 'witness1_tenant', 'witness2_tenant'):
+            if role_field in self.fields:
+                self.fields[role_field].queryset = tenant_qs
+                self.fields[role_field].required = False
 
         optional_police_fields = [
             "police_verification_status",
@@ -131,6 +145,8 @@ class LeaseForm(forms.ModelForm):
             self.fields['unit'].queryset = Unit.objects.select_related("property").filter(
                 property=self.instance.unit.property
             )
+        from tenants.models import TenantRegistrationSubmission
+        self.fields["pending_registration_submission"].queryset = TenantRegistrationSubmission.objects.filter(status__in=["pending", "approved"]).select_related("tenant").order_by("-submitted_at")
         add_auto_titlecase_class(self.fields)
 
     def clean(self):
@@ -139,6 +155,15 @@ class LeaseForm(forms.ModelForm):
         end_date = cleaned_data.get('end_date')
         if start_date and end_date and end_date < start_date:
             raise forms.ValidationError("End date cannot be before start date")
+        tenant = cleaned_data.get("tenant")
+        proposer = cleaned_data.get("proposer")
+        seconder = cleaned_data.get("seconder")
+        if tenant and proposer == tenant:
+            self.add_error("proposer", "Primary tenant cannot be proposer on the same lease.")
+        if tenant and seconder == tenant:
+            self.add_error("seconder", "Primary tenant cannot be seconder on the same lease.")
+        if proposer and proposer == seconder:
+            self.add_error("seconder", "The same person cannot be proposer and seconder on the same lease.")
         if not cleaned_data.get("police_verification_status"):
             cleaned_data["police_verification_status"] = "not_started"
         return cleaned_data

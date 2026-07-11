@@ -1121,6 +1121,16 @@
         </div>
       </div>
 
+      <div class="ld-inner-card mb-3">
+        <div class="ld-inner-head"><span>Agreement Parties</span></div>
+        <div class="p-2"><div class="row g-2 small">
+          <div class="col-md-3"><b>Proposer:</b> {% if lease.proposer %}<a href="{% url 'tenants:tenant_detail' lease.proposer.pk %}">{{ lease.proposer.get_full_name }}</a>{% else %}&mdash;{% endif %}</div>
+          <div class="col-md-3"><b>Seconder:</b> {% if lease.seconder %}<a href="{% url 'tenants:tenant_detail' lease.seconder.pk %}">{{ lease.seconder.get_full_name }}</a>{% else %}&mdash;{% endif %}</div>
+          <div class="col-md-3"><b>Witness 1:</b> {% if lease.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness1_tenant.pk %}">{{ lease.witness1_tenant.get_full_name }}</a>{% else %}{{ lease.witness1_name|default:"—" }}{% endif %}</div>
+          <div class="col-md-3"><b>Witness 2:</b> {% if lease.witness2_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness2_tenant.pk %}">{{ lease.witness2_tenant.get_full_name }}</a>{% else %}{{ lease.witness2_name|default:"—" }}{% endif %}</div>
+        </div></div>
+      </div>
+
       <!-- ======== VEHICLES ======== -->
       <div class="ld-tab-pane" id="ld-tab-vehicles">
         <div class="ld-inner-card mb-3">

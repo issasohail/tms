@@ -119,6 +119,23 @@ class Lease(models.Model):
     witness1_cnic = models.CharField(max_length=20, null=True, blank=True)
     witness2_name = models.CharField(max_length=100, null=True, blank=True)
     witness2_cnic = models.CharField(max_length=20, null=True, blank=True)
+    proposer = models.ForeignKey(
+        Tenant, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="leases_proposed",
+    )
+    seconder = models.ForeignKey(
+        Tenant, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="leases_seconded",
+    )
+    witness1_tenant = models.ForeignKey(
+        Tenant, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="leases_witnessed_as_first",
+    )
+    witness2_tenant = models.ForeignKey(
+        Tenant, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="leases_witnessed_as_second",
+    )
+
     electric_unit_rate = models.IntegerField(blank=True, null=True, default=50)
     electricity_bill_by_owner = models.BooleanField(
         default=True,
@@ -323,6 +340,18 @@ class Lease(models.Model):
             # Clause 26
             "That the Tenant shall not engage in any illegal or immoral activities on the premises.",
         ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.tenant_id and self.proposer_id == self.tenant_id:
+            errors["proposer"] = "Primary tenant cannot be proposer on the same lease."
+        if self.tenant_id and self.seconder_id == self.tenant_id:
+            errors["seconder"] = "Primary tenant cannot be seconder on the same lease."
+        if self.proposer_id and self.proposer_id == self.seconder_id:
+            errors["seconder"] = "The same person cannot be proposer and seconder on the same lease."
+        if errors:
+            raise ValidationError(errors)
 
     class Meta:
         ordering = ["-start_date"]
@@ -1449,6 +1478,9 @@ class AgreementVersion(models.Model):
         blank=True,
         null=True,
     )
+
+    party_snapshot = models.JSONField(default=dict, blank=True)
+    finalized_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(

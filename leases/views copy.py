@@ -6191,46 +6191,6 @@ def add_signature_block(doc, lease, history=None):
     set_cell(tw.cell(2, 1), ["Date: _________________________"])
 
 
-def _add_first_page_top_reserve(doc):
-    """Mirror the PDF's 4.8-inch first-page top reserve without changing later pages."""
-    p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.space_after = Pt(0)
-    p.paragraph_format.line_spacing = 1.0
-    p.add_run("")
-    # Normal top margin is 0.70in; add 4.10in so content begins at 4.80in.
-    p.paragraph_format.space_after = Pt(4.10 * 72)
-
-
-def _add_floating_reserve_box(doc, width=4.0, height=2.0):
-    """Add the agreement's reserved 4 x 2 inch box, aligned to the left."""
-    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
-    from docx.enum.text import WD_BREAK
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    from docx.shared import Inches
-
-    table = doc.add_table(rows=1, cols=1)
-    table.autofit = False
-    table.alignment = WD_TABLE_ALIGNMENT.LEFT
-    table.columns[0].width = Inches(width)
-    cell = table.cell(0, 0)
-    cell.width = Inches(width)
-    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    row = table.rows[0]
-    tr_pr = row._tr.get_or_add_trPr()
-    tr_height = OxmlElement("w:trHeight")
-    tr_height.set(qn("w:val"), str(int(height * 1440)))
-    tr_height.set(qn("w:hRule"), "exact")
-    tr_pr.append(tr_height)
-    # Keep the box compact and blank.
-    cell.text = ""
-    for paragraph in cell.paragraphs:
-        paragraph.paragraph_format.space_before = Pt(0)
-        paragraph.paragraph_format.space_after = Pt(0)
-    return table
-
-
 def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
     soup = BeautifulSoup(html, "html.parser")
     container = soup.select_one("#agreement-doc") or soup.body or soup
@@ -6239,7 +6199,6 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
     _set_doc_defaults(doc)  # set font size etc
     set_doc_margins(doc, left=0.55, right=0.55, top=0.70, bottom=0.70)
     add_page_number_footer(doc)  # Page X of Y
-    _add_first_page_top_reserve(doc)
 
     # 1) Title
     title = container.select_one("h1,h2,h3")
@@ -6313,7 +6272,7 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
 
     # 4) Clauses (tight, number + text same line)
     doc.add_paragraph("")  # ✅ blank line like PDF
-    for clause_index, clause_div in enumerate(container.select(".clauses-section > .clause"), 1):
+    for clause_div in container.select(".clauses-section > .clause"):
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.JUSTIFY)
 
         strong = clause_div.find("strong")
@@ -6325,9 +6284,6 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
 
         for child in clause_div.children:
             _append_inline(p, child, br_as_space=False)
-
-        if clause_index == 2:
-            _add_floating_reserve_box(doc, width=4.0, height=2.0)
 
     # 5) Signature (table look + spacing)
     add_signature_block(doc, lease, history=history)

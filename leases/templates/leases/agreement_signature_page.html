@@ -3,31 +3,97 @@
 <head>
 <meta charset="utf-8">
 <style>
-@page { size: Letter portrait; margin: 0.42in; }
+@page { size: Legal portrait; margin: 0.70in 0.55in; }
 * { box-sizing: border-box; }
-body { font-family: Arial, sans-serif; font-size: 8.7pt; line-height: 1.12; color: #111; margin: 0; }
-h1 { text-align: center; font-size: 14pt; margin: 0 0 7px; text-transform: uppercase; }
-h2 { font-size: 10.5pt; margin: 5px 0 3px; padding-bottom: 2px; border-bottom: 1px solid #444; }
-p { margin: 0 0 4px; text-align: justify; }
-.party { page-break-inside: avoid; margin-bottom: 6px; }
-.details { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 3px 0; }
-.details th, .details td { border: 1px solid #666; padding: 3px 4px; vertical-align: top; overflow-wrap: anywhere; }
-.details th { background: #f1f1f1; font-size: 7.7pt; text-align: left; }
-.details td { min-height: 18px; }
-.signature-row { display: grid; grid-template-columns: 1fr 1fr{% if signature_config.show_thumb_impression %} 1fr{% endif %}; gap: 12px; margin: 7px 0 3px; }
-.line { display: inline-block; border-bottom: 1px solid #111; min-width: 125px; height: 12px; }
-.witnesses { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 5px; }
-.witnesses td { width: 50%; border: 1px solid #777; padding: 4px; vertical-align: top; }
-.footer { margin-top: 5px; font-size: 7.8pt; }
+body {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10.5pt;
+  line-height: 1.28;
+  color: #111;
+  margin: 0;
+}
+.page-title {
+  text-align: center;
+  font-size: 17pt;
+  font-weight: 700;
+  margin: 0 0 18px;
+  padding-bottom: 7px;
+  border-bottom: 2px solid #222;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+}
+.party-card {
+  border: 1.2px solid #555;
+  margin: 0 0 18px;
+  padding: 0 14px 12px;
+  page-break-inside: avoid;
+}
+.party-heading {
+  margin: 0 -14px 10px;
+  padding: 7px 12px;
+  font-size: 12.5pt;
+  font-weight: 700;
+  background: #ececec;
+  border-bottom: 1px solid #777;
+}
+.declaration {
+  margin: 0 0 11px;
+  text-align: justify;
+  text-justify: inter-word;
+}
+.details {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 7px 0 12px;
+}
+.details th,
+.details td {
+  border: 1px solid #666;
+  padding: 6px 7px;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.details th {
+  background: #f2f2f2;
+  font-size: 9pt;
+  text-align: left;
+  white-space: nowrap;
+}
+.details td { font-size: 10pt; min-height: 24px; }
+.signatures {
+  display: table;
+  width: 100%;
+  margin-top: 10px;
+}
+.signature-item {
+  display: table-cell;
+  width: 50%;
+  vertical-align: bottom;
+  padding-right: 24px;
+  white-space: nowrap;
+  font-size: 10.5pt;
+}
+.signature-item:last-child { padding-right: 0; padding-left: 24px; }
+.line {
+  display: inline-block;
+  width: 2.35in;
+  border-bottom: 1px solid #111;
+  height: 14px;
+  vertical-align: bottom;
+}
+.thumb-row { margin-top: 12px; font-size: 10.5pt; }
+.thumb-line { display:inline-block; width:2.2in; border-bottom:1px solid #111; height:14px; vertical-align:bottom; }
+.footer { margin-top: 8px; font-size: 8.5pt; text-align: center; color: #444; }
 </style>
 </head>
 <body>
-<h1>{{ signature_config.heading|default:"Proposer and Seconder Declaration" }}</h1>
+<div class="page-title">{{ signature_config.heading|default:"Proposer and Seconder Declaration" }}</div>
 
 {% with p=parties.proposer %}
-<section class="party">
-  <h2>Proposer Declaration</h2>
-  <p>{{ proposer_declaration }}</p>
+<section class="party-card">
+  <div class="party-heading">Proposer Declaration</div>
+  <p class="declaration">{{ proposer_declaration }}</p>
   <table class="details">
     <tr><th>Full Name</th><th>CNIC</th><th>Phone Number</th><th>Relationship to Tenant</th></tr>
     <tr>
@@ -37,18 +103,18 @@ p { margin: 0 0 4px; text-align: justify; }
       <td>{% if p.relationship %}{{ p.relationship }}{% else %}________________{% endif %}</td>
     </tr>
   </table>
-  <div class="signature-row">
-    <div>Signature: <span class="line"></span></div>
-    <div>Date: <span class="line"></span></div>
-    {% if signature_config.show_thumb_impression %}<div>Thumb Impression: <span class="line"></span></div>{% endif %}
+  <div class="signatures">
+    <div class="signature-item">Signature: <span class="line"></span></div>
+    <div class="signature-item">Date: <span class="line"></span></div>
   </div>
+  {% if signature_config.show_thumb_impression %}<div class="thumb-row">Thumb Impression: <span class="thumb-line"></span></div>{% endif %}
 </section>
 {% endwith %}
 
 {% with p=parties.seconder %}
-<section class="party">
-  <h2>Seconder Declaration</h2>
-  <p>{{ seconder_declaration }}</p>
+<section class="party-card">
+  <div class="party-heading">Seconder Declaration</div>
+  <p class="declaration">{{ seconder_declaration }}</p>
   <table class="details">
     <tr><th>Full Name</th><th>CNIC</th><th>Phone Number</th><th>Relationship to Tenant</th></tr>
     <tr>
@@ -58,23 +124,14 @@ p { margin: 0 0 4px; text-align: justify; }
       <td>{% if p.relationship %}{{ p.relationship }}{% else %}________________{% endif %}</td>
     </tr>
   </table>
-  <div class="signature-row">
-    <div>Signature: <span class="line"></span></div>
-    <div>Date: <span class="line"></span></div>
-    {% if signature_config.show_thumb_impression %}<div>Thumb Impression: <span class="line"></span></div>{% endif %}
+  <div class="signatures">
+    <div class="signature-item">Signature: <span class="line"></span></div>
+    <div class="signature-item">Date: <span class="line"></span></div>
   </div>
+  {% if signature_config.show_thumb_impression %}<div class="thumb-row">Thumb Impression: <span class="thumb-line"></span></div>{% endif %}
 </section>
 {% endwith %}
 
-<table class="witnesses">
-  <tr>
-    <td><strong>Witness 1:</strong> {% if parties.witness1.name %}{{ parties.witness1.name }}{% else %}________________{% endif %}<br>
-        <strong>CNIC:</strong> {% if parties.witness1.cnic %}{{ parties.witness1.cnic }}{% else %}________________{% endif %}</td>
-    <td><strong>Witness 2:</strong> {% if parties.witness2.name %}{{ parties.witness2.name }}{% else %}________________{% endif %}<br>
-        <strong>CNIC:</strong> {% if parties.witness2.cnic %}{{ parties.witness2.cnic }}{% else %}________________{% endif %}</td>
-  </tr>
-  <tr><td>Signature: ____________________ &nbsp; Date: ____________________</td><td>Signature: ____________________ &nbsp; Date: ____________________</td></tr>
-</table>
 {% if signature_config.footer_text %}<p class="footer">{{ signature_config.footer_text }}</p>{% endif %}
 </body>
 </html>

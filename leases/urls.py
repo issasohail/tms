@@ -75,6 +75,7 @@ app_name = "leases"
 
 urlpatterns = [
     path("settings/agreement-signature-template/", views.agreement_signature_template_settings, name="agreement_signature_template_settings"),
+    path("relationship-types/create-ajax/", views.create_relationship_type_ajax, name="create_relationship_type_ajax"),
     path("", LeaseListView.as_view(), name="lease_list"),
     path("new/", LeaseCreateView.as_view(), name="lease_create"),
     path(

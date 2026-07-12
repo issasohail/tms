@@ -156,11 +156,13 @@
                 <p>_________________________</p>
                 <p><strong>Witness 1:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}_________________________{% endif %}</p>
                 <p><strong>CNIC:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic }}{% else %}_________________________{% endif %}</p>
+                <p><strong>Phone:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
             </td>
             <td style="width: 50%; padding-left: 20px;">
                 <p>_________________________</p>
                 <p><strong>Witness 2:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}_________________________{% endif %}</p>
                 <p><strong>CNIC:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic }}{% else %}_________________________{% endif %}</p>
+                <p><strong>Phone:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
             </td>
         </tr>
     </table>

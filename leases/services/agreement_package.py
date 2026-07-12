@@ -318,37 +318,105 @@ def _add_police_docx(doc, lease):
 
 
 def _add_signature_docx(doc, context):
-    from docx.shared import Inches, Pt
+    from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
+
     doc.add_page_break()
-    _add_heading(doc, context["signature_config"].heading or "Proposer and Seconder Declaration", 13)
-    for role, title, declaration in (
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_after = Pt(10)
+    run = title.add_run(context["signature_config"].heading or "Proposer and Seconder Declaration")
+    run.bold = True
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(16)
+
+    def shade(cell, fill):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:fill"), fill)
+        tc_pr.append(shd)
+
+    for role, title_text, declaration in (
         ("proposer", "Proposer Declaration", context["proposer_declaration"]),
         ("seconder", "Seconder Declaration", context["seconder_declaration"]),
     ):
-        p = doc.add_paragraph()
+        heading_table = doc.add_table(rows=1, cols=1)
+        heading_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        heading_table.autofit = False
+        heading_table.columns[0].width = Inches(7.35)
+        cell = heading_table.cell(0, 0)
+        cell.width = Inches(7.35)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        shade(cell, "EDEDED")
+        p = cell.paragraphs[0]
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after = Pt(2)
-        r = p.add_run(title); r.bold = True; r.font.size = Pt(10)
-        p = doc.add_paragraph(declaration)
-        p.paragraph_format.space_after = Pt(3)
-        p.paragraph_format.line_spacing = 1.0
-        for run in p.runs: run.font.size = Pt(8.5)
+        r = p.add_run(title_text)
+        r.bold = True
+        r.font.name = "Times New Roman"
+        r.font.size = Pt(11.5)
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        p.paragraph_format.space_before = Pt(4)
+        p.paragraph_format.space_after = Pt(6)
+        p.paragraph_format.line_spacing = 1.05
+        r = p.add_run(declaration)
+        r.font.name = "Times New Roman"
+        r.font.size = Pt(10)
+
         party = context["parties"][role]
-        table = doc.add_table(rows=2, cols=4); table.style = "Table Grid"
+        table = doc.add_table(rows=2, cols=4)
+        table.style = "Table Grid"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        widths = (2.15, 1.65, 1.55, 2.00)
         labels = ("Full Name", "CNIC", "Phone Number", "Relationship to Tenant")
-        vals = (party["name"] or "________________", party["cnic"] or "________________", party["phone"] or "________________", party["relationship"] or "________________")
-        for i, label in enumerate(labels): _set_cell_text(table.cell(0, i), label, True, 7.5)
-        for i, value in enumerate(vals): _set_cell_text(table.cell(1, i), value, False, 8)
-        sig = doc.add_paragraph("Signature: __________________________    Date: __________________________")
-        sig.paragraph_format.space_after = Pt(2)
+        vals = (
+            party["name"] or "________________",
+            party["cnic"] or "________________",
+            party["phone"] or "________________",
+            party["relationship"] or "________________",
+        )
+        for i, width in enumerate(widths):
+            for row in table.rows:
+                row.cells[i].width = Inches(width)
+        for i, label in enumerate(labels):
+            shade(table.cell(0, i), "F2F2F2")
+            _set_cell_text(table.cell(0, i), label, True, 8.5)
+        for i, value in enumerate(vals):
+            _set_cell_text(table.cell(1, i), value, False, 9.5)
+
+        sig_table = doc.add_table(rows=1, cols=2)
+        sig_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        sig_table.autofit = False
+        sig_table.columns[0].width = Inches(3.65)
+        sig_table.columns[1].width = Inches(3.65)
+        left = sig_table.cell(0, 0).paragraphs[0]
+        right = sig_table.cell(0, 1).paragraphs[0]
+        for paragraph in (left, right):
+            paragraph.paragraph_format.space_before = Pt(8)
+            paragraph.paragraph_format.space_after = Pt(2)
+        left.add_run("Signature: ______________________________")
+        right.add_run("Date: ______________________________")
+        for paragraph in (left, right):
+            for run in paragraph.runs:
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(10)
+
         if context["signature_config"].show_thumb_impression:
-            doc.add_paragraph("Thumb Impression: __________________________")
-    # Witnesses remain simple signature fields; there is deliberately no witness declaration.
-    witnesses = doc.add_table(rows=2, cols=2); witnesses.style = "Table Grid"
-    for col, role in enumerate(("witness1", "witness2")):
-        party = context["parties"][role]
-        _set_cell_text(witnesses.cell(0, col), f"{role.title().replace('Witness', 'Witness ')}: {party['name'] or '________________'}\nCNIC: {party['cnic'] or '________________'}", False, 8)
-        _set_cell_text(witnesses.cell(1, col), "Signature: ____________________    Date: ____________________", False, 8)
+            p = doc.add_paragraph("Thumb Impression: ______________________________")
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(5)
+            for run in p.runs:
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(10)
+        else:
+            spacer = doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
 
 
 def build_docx_package(request, lease, history, clauses):
@@ -362,7 +430,7 @@ def build_docx_package(request, lease, history, clauses):
     from leases.views import html_to_docx_bytes
     from docx import Document
     try:
-        agreement_bytes = html_to_docx_bytes(html, lease)
+        agreement_bytes = html_to_docx_bytes(html, lease, history=history)
         doc = Document(BytesIO(agreement_bytes))
     except Exception as exc:
         raise RuntimeError(f"Agreement Word generation failed: {exc}") from exc

@@ -6,7 +6,31 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def ensure_lease_police_columns(apps, schema_editor):
+    """Create legacy state-only Lease columns on fresh databases, without touching existing columns."""
+    Lease = apps.get_model("leases", "Lease")
+    table_name = Lease._meta.db_table
+    with schema_editor.connection.cursor() as cursor:
+        description = schema_editor.connection.introspection.get_table_description(cursor, table_name)
+    existing = {column.name for column in description}
+    for field_name in (
+        "police_verification_date",
+        "police_verification_document",
+        "police_verification_follow_up_date",
+        "police_verification_remarks",
+    ):
+        field = Lease._meta.get_field(field_name)
+        if field.column not in existing:
+            schema_editor.add_field(Lease, field)
+            existing.add(field.column)
+
+
+
 class Migration(migrations.Migration):
+
+    # This historical migration performs conditional DDL for fresh databases.
+    # MySQL cannot execute that DDL inside Django's atomic migration wrapper.
+    atomic = False
 
     dependencies = [
         ('leases', '0036_whatsapptemplate'),
@@ -39,6 +63,7 @@ class Migration(migrations.Migration):
             ],
             database_operations=[],
         ),
+        migrations.RunPython(ensure_lease_police_columns, migrations.RunPython.noop),
         migrations.AddField(
             model_name='lease',
             name='police_verification_status',

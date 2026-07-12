@@ -1089,10 +1089,12 @@
             <div>
               <div class="row g-2 mt-1"><div class="col-12"><label class="form-label">Pending Registration</label>{{ form.pending_registration_submission }}<div class="form-text">{{ form.pending_registration_submission.help_text }}</div></div></div>
               <div class="row g-2 mt-1">
-                <div class="col-md-3"><label class="form-label">Proposer</label>{{ form.proposer }}</div>
-                <div class="col-md-3"><label class="form-label">Seconder</label>{{ form.seconder }}</div>
-                <div class="col-md-3"><label class="form-label">Witness 1</label>{{ form.witness1_tenant }}</div>
-                <div class="col-md-3"><label class="form-label">Witness 2</label>{{ form.witness2_tenant }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Proposer</label>{{ form.proposer }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Proposer Relation</label>{{ form.proposer_relationship }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Seconder</label>{{ form.seconder }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Seconder Relation</label>{{ form.seconder_relationship }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Witness 1</label>{{ form.witness1_tenant }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Witness 2</label>{{ form.witness2_tenant }}</div>
               </div>
 
               <div class="lf-card">

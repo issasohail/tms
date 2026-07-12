@@ -52,14 +52,20 @@ def seed_document_categories(apps, schema_editor):
 
 
 def copy_legacy_family_members(apps, schema_editor):
+    Lease = apps.get_model("leases", "Lease")
     LeaseFamily = apps.get_model("leases", "LeaseFamily")
     LeaseFamilyMember = apps.get_model("leases", "LeaseFamilyMember")
-    for legacy in LeaseFamily.objects.select_related("lease", "tenant"):
-        relationship = RELATION_MAP.get((legacy.relation or "").strip().lower(), "other")
+
+    primary_by_lease = dict(Lease.objects.values_list("id", "tenant_id"))
+    for legacy in LeaseFamily.objects.values("lease_id", "tenant_id", "relation").iterator():
+        primary_tenant_id = primary_by_lease.get(legacy["lease_id"])
+        if not primary_tenant_id or not legacy["tenant_id"]:
+            continue
+        relationship = RELATION_MAP.get((legacy["relation"] or "").strip().lower(), "other")
         LeaseFamilyMember.objects.get_or_create(
-            lease_id=legacy.lease_id,
-            primary_tenant_id=legacy.lease.tenant_id,
-            family_member_id=legacy.tenant_id,
+            lease_id=legacy["lease_id"],
+            primary_tenant_id=primary_tenant_id,
+            family_member_id=legacy["tenant_id"],
             defaults={"relationship": relationship, "lives_with_tenant": True},
         )
 

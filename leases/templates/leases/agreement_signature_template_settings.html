@@ -1,12 +1,28 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="container py-3" style="max-width:1000px">
-  <div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="mb-1">Agreement Signature Page</h3><div class="text-muted">Edit the wording and optional fields used in the combined PDF package.</div></div></div>
+<div class="container py-3" style="max-width:1100px">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h3 class="mb-1">Lease Parties Declaration</h3><div class="text-muted">Edit the proposer and seconder wording used in both PDF and Word agreement packages. Supported placeholders are shown below.</div></div>
+  </div>
   <form method="post" class="card card-body shadow-sm">{% csrf_token %}
-    <div class="mb-3"><label class="form-label">Heading</label>{{ form.heading }}</div>
-    <div class="row g-3"><div class="col-md-6"><label class="form-label">Proposer declaration</label>{{ form.proposer_declaration }}</div><div class="col-md-6"><label class="form-label">Seconder declaration</label>{{ form.seconder_declaration }}</div><div class="col-12"><label class="form-label">Witness declaration</label>{{ form.witness_declaration }}</div><div class="col-12"><label class="form-label">Footer text</label>{{ form.footer_text }}</div></div>
-    <div class="d-flex flex-wrap gap-4 my-3"><label>{{ form.show_phone }} Show phone</label><label>{{ form.show_address }} Show address</label><label>{{ form.show_thumb_impression }} Show thumb-impression line</label></div>
-    <div><button class="btn btn-primary"><i class="fas fa-save"></i> Save Signature Template</button></div>
+    <div class="mb-3"><label class="form-label">Page heading</label>{{ form.heading }}</div>
+    <div class="row g-3">
+      <div class="col-lg-6"><label class="form-label">Proposer declaration</label>{{ form.proposer_declaration }}</div>
+      <div class="col-lg-6"><label class="form-label">Seconder declaration</label>{{ form.seconder_declaration }}</div>
+      <div class="col-12"><label class="form-label">Optional footer text</label>{{ form.footer_text }}</div>
+    </div>
+    <div class="alert alert-light border small my-3 mb-2">
+      <strong>Available placeholders:</strong><br>
+      {% verbatim %}<code>{{ lease_number }}</code>, <code>{{ tenant_name }}</code>, <code>{{ tenant_cnic }}</code>,
+      <code>{{ property_unit }}</code>, <code>{{ lease_start_date }}</code>, <code>{{ lease_end_date }}</code>,
+      <code>{{ proposer_name }}</code>, <code>{{ proposer_cnic }}</code>, <code>{{ proposer_relationship }}</code>,
+      <code>{{ seconder_name }}</code>, <code>{{ seconder_cnic }}</code>, <code>{{ seconder_relationship }}</code>.{% endverbatim %}
+    </div>
+    <div class="d-flex flex-wrap gap-4 my-3">
+      <label class="form-check-label">{{ form.show_phone }} Show phone number in details</label>
+      <label class="form-check-label">{{ form.show_thumb_impression }} Show thumb-impression lines</label>
+    </div>
+    <div><button class="btn btn-primary"><i class="fas fa-save"></i> Save Lease Parties Template</button></div>
   </form>
 </div>
 {% endblock %}

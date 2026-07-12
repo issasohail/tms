@@ -1,9 +1,80 @@
-<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;font-size:11px;color:#111}h1{text-align:center;font-size:18px}.meta{width:100%;border-collapse:collapse;margin-bottom:18px}.meta td{border:1px solid #777;padding:5px}.party{margin:15px 0 22px;page-break-inside:avoid}.party h2{font-size:14px;border-bottom:1px solid #333;padding-bottom:4px}.line{display:inline-block;border-bottom:1px solid #111;min-width:220px;height:16px}.sig{margin-top:25px;display:grid;grid-template-columns:1fr 1fr;gap:30px}</style></head><body>
-<h1>{{ signature_config.heading|default:"Proposer, Seconder and Witness Signatures" }}</h1><table class="meta"><tr><td><b>Lease:</b> #{{ lease.pk }}{% if history and not history.is_original %} — Renewal #{{ history.renewal_number }}{% endif %}</td><td><b>Tenant:</b> {{ lease.tenant.get_full_name }}</td></tr><tr><td><b>Property / Unit:</b> {{ lease.unit.property }} / {{ lease.unit }}</td><td><b>Period:</b> {% if history %}{{ history.start_date }} to {{ history.end_date }}{% else %}{{ lease.start_date }} to {{ lease.end_date }}{% endif %}</td></tr></table>
-{% for key,title,declaration in party_sections %}{% endfor %}
-{% with p=parties.proposer %}<div class="party"><h2>Proposer</h2><p>{{ signature_config.proposer_declaration }}</p><p>Name: {% if p.name %}{{ p.name }}{% else %}<span class="line"></span>{% endif %}</p><p>CNIC: {% if p.cnic %}{{ p.cnic }}{% else %}<span class="line"></span>{% endif %}{% if signature_config.show_phone %} &nbsp; Phone: {% if p.phone %}{{ p.phone }}{% else %}<span class="line"></span>{% endif %}{% endif %}</p>{% if signature_config.show_address %}<p>Address: {% if p.address %}{{ p.address }}{% else %}<span class="line" style="min-width:500px"></span>{% endif %}</p>{% endif %}<div class="sig"><div>Signature: <span class="line"></span></div><div>Date: <span class="line"></span></div></div></div>{% endwith %}
-{% with p=parties.seconder %}<div class="party"><h2>Seconder</h2><p>{{ signature_config.seconder_declaration }}</p><p>Name: {% if p.name %}{{ p.name }}{% else %}<span class="line"></span>{% endif %}</p><p>CNIC: {% if p.cnic %}{{ p.cnic }}{% else %}<span class="line"></span>{% endif %}{% if signature_config.show_phone %} &nbsp; Phone: {% if p.phone %}{{ p.phone }}{% else %}<span class="line"></span>{% endif %}{% endif %}</p>{% if signature_config.show_address %}<p>Address: {% if p.address %}{{ p.address }}{% else %}<span class="line" style="min-width:500px"></span>{% endif %}</p>{% endif %}<div class="sig"><div>Signature: <span class="line"></span></div><div>Date: <span class="line"></span></div></div></div>{% endwith %}
-{% for p in witness_list %}{% endfor %}
-{% with p=parties.witness1 %}<div class="party"><h2>Witness 1</h2><p>{{ signature_config.witness_declaration }}</p><p>Name: {% if p.name %}{{ p.name }}{% else %}<span class="line"></span>{% endif %}</p><p>CNIC: {% if p.cnic %}{{ p.cnic }}{% else %}<span class="line"></span>{% endif %}{% if signature_config.show_phone %} &nbsp; Phone: {% if p.phone %}{{ p.phone }}{% else %}<span class="line"></span>{% endif %}{% endif %}</p><div class="sig"><div>Signature: <span class="line"></span></div><div>Date: <span class="line"></span></div></div></div>{% endwith %}
-{% with p=parties.witness2 %}<div class="party"><h2>Witness 2</h2><p>{{ signature_config.witness_declaration }}</p><p>Name: {% if p.name %}{{ p.name }}{% else %}<span class="line"></span>{% endif %}</p><p>CNIC: {% if p.cnic %}{{ p.cnic }}{% else %}<span class="line"></span>{% endif %}{% if signature_config.show_phone %} &nbsp; Phone: {% if p.phone %}{{ p.phone }}{% else %}<span class="line"></span>{% endif %}{% endif %}</p><div class="sig"><div>Signature: <span class="line"></span></div><div>Date: <span class="line"></span></div></div></div>{% endwith %}
-{% if signature_config.footer_text %}<p style="margin-top:20px">{{ signature_config.footer_text }}</p>{% endif %}</body></html>
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page { size: Letter portrait; margin: 0.42in; }
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; font-size: 8.7pt; line-height: 1.12; color: #111; margin: 0; }
+h1 { text-align: center; font-size: 14pt; margin: 0 0 7px; text-transform: uppercase; }
+h2 { font-size: 10.5pt; margin: 5px 0 3px; padding-bottom: 2px; border-bottom: 1px solid #444; }
+p { margin: 0 0 4px; text-align: justify; }
+.party { page-break-inside: avoid; margin-bottom: 6px; }
+.details { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 3px 0; }
+.details th, .details td { border: 1px solid #666; padding: 3px 4px; vertical-align: top; overflow-wrap: anywhere; }
+.details th { background: #f1f1f1; font-size: 7.7pt; text-align: left; }
+.details td { min-height: 18px; }
+.signature-row { display: grid; grid-template-columns: 1fr 1fr{% if signature_config.show_thumb_impression %} 1fr{% endif %}; gap: 12px; margin: 7px 0 3px; }
+.line { display: inline-block; border-bottom: 1px solid #111; min-width: 125px; height: 12px; }
+.witnesses { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 5px; }
+.witnesses td { width: 50%; border: 1px solid #777; padding: 4px; vertical-align: top; }
+.footer { margin-top: 5px; font-size: 7.8pt; }
+</style>
+</head>
+<body>
+<h1>{{ signature_config.heading|default:"Proposer and Seconder Declaration" }}</h1>
+
+{% with p=parties.proposer %}
+<section class="party">
+  <h2>Proposer Declaration</h2>
+  <p>{{ proposer_declaration }}</p>
+  <table class="details">
+    <tr><th>Full Name</th><th>CNIC</th><th>Phone Number</th><th>Relationship to Tenant</th></tr>
+    <tr>
+      <td>{% if p.name %}{{ p.name }}{% else %}________________{% endif %}</td>
+      <td>{% if p.cnic %}{{ p.cnic }}{% else %}________________{% endif %}</td>
+      <td>{% if p.phone %}{{ p.phone }}{% else %}________________{% endif %}</td>
+      <td>{% if p.relationship %}{{ p.relationship }}{% else %}________________{% endif %}</td>
+    </tr>
+  </table>
+  <div class="signature-row">
+    <div>Signature: <span class="line"></span></div>
+    <div>Date: <span class="line"></span></div>
+    {% if signature_config.show_thumb_impression %}<div>Thumb Impression: <span class="line"></span></div>{% endif %}
+  </div>
+</section>
+{% endwith %}
+
+{% with p=parties.seconder %}
+<section class="party">
+  <h2>Seconder Declaration</h2>
+  <p>{{ seconder_declaration }}</p>
+  <table class="details">
+    <tr><th>Full Name</th><th>CNIC</th><th>Phone Number</th><th>Relationship to Tenant</th></tr>
+    <tr>
+      <td>{% if p.name %}{{ p.name }}{% else %}________________{% endif %}</td>
+      <td>{% if p.cnic %}{{ p.cnic }}{% else %}________________{% endif %}</td>
+      <td>{% if p.phone %}{{ p.phone }}{% else %}________________{% endif %}</td>
+      <td>{% if p.relationship %}{{ p.relationship }}{% else %}________________{% endif %}</td>
+    </tr>
+  </table>
+  <div class="signature-row">
+    <div>Signature: <span class="line"></span></div>
+    <div>Date: <span class="line"></span></div>
+    {% if signature_config.show_thumb_impression %}<div>Thumb Impression: <span class="line"></span></div>{% endif %}
+  </div>
+</section>
+{% endwith %}
+
+<table class="witnesses">
+  <tr>
+    <td><strong>Witness 1:</strong> {% if parties.witness1.name %}{{ parties.witness1.name }}{% else %}________________{% endif %}<br>
+        <strong>CNIC:</strong> {% if parties.witness1.cnic %}{{ parties.witness1.cnic }}{% else %}________________{% endif %}</td>
+    <td><strong>Witness 2:</strong> {% if parties.witness2.name %}{{ parties.witness2.name }}{% else %}________________{% endif %}<br>
+        <strong>CNIC:</strong> {% if parties.witness2.cnic %}{{ parties.witness2.cnic }}{% else %}________________{% endif %}</td>
+  </tr>
+  <tr><td>Signature: ____________________ &nbsp; Date: ____________________</td><td>Signature: ____________________ &nbsp; Date: ____________________</td></tr>
+</table>
+{% if signature_config.footer_text %}<p class="footer">{{ signature_config.footer_text }}</p>{% endif %}
+</body>
+</html>

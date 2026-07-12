@@ -5,6 +5,16 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def ensure_itemcategory_table(apps, schema_editor):
+    """Create the physical table on fresh databases when legacy installs already had it."""
+    ItemCategory = apps.get_model("invoices", "ItemCategory")
+    table_name = ItemCategory._meta.db_table
+    existing = set(schema_editor.connection.introspection.table_names())
+    if table_name not in existing:
+        schema_editor.create_model(ItemCategory)
+
+
+
 def seed_default_category(apps, schema_editor):
     ItemCategory = apps.get_model('invoices', 'ItemCategory')
     InvoiceItem = apps.get_model('invoices', 'InvoiceItem')
@@ -19,6 +29,10 @@ def seed_default_category(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+
+    # This historical migration performs conditional DDL for fresh databases.
+    # MySQL cannot execute that DDL inside Django's atomic migration wrapper.
+    atomic = False
 
     dependencies = [
         ('invoices', '0001_initial'),
@@ -42,6 +56,7 @@ class Migration(migrations.Migration):
             ],
             database_operations=[],
         ),
+        migrations.RunPython(ensure_itemcategory_table, migrations.RunPython.noop),
 
         # tax_rate: STATE ONLY removal (column already gone in DB)
         migrations.SeparateDatabaseAndState(

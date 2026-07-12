@@ -176,6 +176,7 @@ CONTROL_LISTENER_PORT = 7000         # whatever your forwarder listens on
 # tms/settings.py
 
 # Celery Configuration
+
 CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Using Redis as the broker
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'

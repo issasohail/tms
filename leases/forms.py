@@ -84,6 +84,8 @@ class LeaseForm(forms.ModelForm):
             'tenant': forms.Select(attrs={'class': 'form-select form-select-sm select2'}),
             'proposer': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
             'seconder': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
+            'proposer_relationship': forms.Select(attrs={'class': 'form-select form-select-sm select2'}),
+            'seconder_relationship': forms.Select(attrs={'class': 'form-select form-select-sm select2'}),
             'witness1_tenant': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
             'witness2_tenant': forms.Select(attrs={'class': 'form-select form-select-sm select2 tenant-role-select'}),
             'security_deposit_paid': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -115,6 +117,11 @@ class LeaseForm(forms.ModelForm):
             if role_field in self.fields:
                 self.fields[role_field].queryset = tenant_qs
                 self.fields[role_field].required = False
+        relationship_qs = LeaseRelationshipType.objects.filter(is_active=True).order_by('sort_order', 'name')
+        for field_name in ('proposer_relationship', 'seconder_relationship'):
+            if field_name in self.fields:
+                self.fields[field_name].queryset = relationship_qs
+                self.fields[field_name].required = False
 
         optional_police_fields = [
             "police_verification_status",
@@ -890,8 +897,7 @@ class AgreementSignatureTemplateForm(forms.ModelForm):
         model = AgreementSignatureTemplate
         fields = [
             "heading", "proposer_declaration", "seconder_declaration",
-            "witness_declaration", "footer_text", "show_phone",
-            "show_address", "show_thumb_impression",
+            "footer_text", "show_phone", "show_thumb_impression",
         ]
         widgets = {
             "heading": forms.TextInput(attrs={"class": "form-control"}),

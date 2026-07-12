@@ -10,18 +10,26 @@ def backfill_links(apps, schema_editor):
     Tenant = apps.get_model("tenants", "Tenant")
     Lease = apps.get_model("leases", "Lease")
     Renewal = apps.get_model("leases", "LeaseRenewal")
-    by_cnic = {digits(row.cnic): row.pk for row in Tenant.objects.exclude(cnic="") if digits(row.cnic)}
+    by_cnic = {
+        digits(cnic): pk
+        for pk, cnic in Tenant.objects.exclude(cnic="").values_list("pk", "cnic")
+        if digits(cnic)
+    }
+    fields = [
+        "pk",
+        "witness1_tenant_id", "witness1_cnic",
+        "witness2_tenant_id", "witness2_cnic",
+    ]
     for model in (Lease, Renewal):
-        for row in model.objects.all().iterator():
-            updates = []
+        for row in model.objects.values(*fields).iterator():
+            updates = {}
             for number in (1, 2):
                 link = f"witness{number}_tenant_id"
-                cnic = getattr(row, f"witness{number}_cnic", "")
-                if not getattr(row, link, None) and digits(cnic) in by_cnic:
-                    setattr(row, link, by_cnic[digits(cnic)])
-                    updates.append(link)
+                matched_id = by_cnic.get(digits(row.get(f"witness{number}_cnic")))
+                if not row.get(link) and matched_id:
+                    updates[link] = matched_id
             if updates:
-                row.save(update_fields=updates)
+                model.objects.filter(pk=row["pk"]).update(**updates)
 
 
 class Migration(migrations.Migration):

@@ -123,6 +123,14 @@ class Lease(models.Model):
         Tenant, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="leases_seconded",
     )
+    proposer_relationship = models.ForeignKey(
+        "LeaseRelationshipType", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="proposer_leases",
+    )
+    seconder_relationship = models.ForeignKey(
+        "LeaseRelationshipType", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="seconder_leases",
+    )
     witness1_tenant = models.ForeignKey(
         Tenant, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="leases_witnessed_as_first",

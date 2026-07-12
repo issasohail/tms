@@ -59,6 +59,9 @@
       <a class="settings-tab-card" href="#settings-tool-placeholders" data-settings-target="settings-tool-placeholders">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-braces"></i></span><span>Placeholders</span>
       </a>
+      <a class="settings-tab-card" href="#settings-tool-lease-parties" data-settings-target="settings-tool-lease-parties">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-file-signature"></i></span><span>Lease Parties</span>
+      </a>
       <a class="settings-tab-card" href="#settings-tool-whatsapp-templates" data-settings-target="settings-tool-whatsapp-templates">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fab fa-whatsapp"></i></span><span>WhatsApp Templates</span>
       </a>
@@ -297,6 +300,17 @@
         </div>
         <iframe class="settings-inline-frame" src="{% url 'leases:agreement_placeholder_list' %}?embed=1" title="Agreement Placeholders"></iframe>
         <div class="mt-3"><a class="btn btn-outline-primary" href="{% url 'leases:agreement_signature_template_settings' %}"><i class="bi bi-pen"></i> Edit Agreement Signature Page</a></div>
+      </div>
+    </div>
+
+
+    <div class="settings-tab-panel d-none" id="settings-tool-lease-parties">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="fas fa-file-signature me-2"></i>Proposer and Seconder Declaration</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:agreement_signature_template_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'leases:agreement_signature_template_settings' %}?embed=1" title="Lease Parties Declaration Settings"></iframe>
       </div>
     </div>
 
@@ -557,7 +571,8 @@
         <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
           <thead class="table-light">
             <tr>
-              <th style="width:38%">Name</th>
+              <th style="width:8%">S.N</th>
+              <th style="width:30%">Name</th>
               <th style="width:27%">Code</th>
               <th style="width:15%">Active</th>
               <th style="width:20%">Actions</th>

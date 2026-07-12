@@ -6,16 +6,22 @@ def backfill_occupancies(apps, schema_editor):
     LeaseUnitOccupancy = apps.get_model("leases", "LeaseUnitOccupancy")
 
     rows = []
-    for lease in Lease.objects.filter(unit_id__isnull=False).iterator():
-        exists = LeaseUnitOccupancy.objects.filter(lease_id=lease.pk).exists()
-        if exists:
+    lease_rows = Lease.objects.filter(unit_id__isnull=False).values(
+        "id", "unit_id", "start_date", "end_date", "status"
+    )
+    existing_ids = set(
+        LeaseUnitOccupancy.objects.filter(lease_id__in=lease_rows.values("id"))
+        .values_list("lease_id", flat=True)
+    )
+    for lease in lease_rows.iterator():
+        if lease["id"] in existing_ids:
             continue
         rows.append(
             LeaseUnitOccupancy(
-                lease_id=lease.pk,
-                unit_id=lease.unit_id,
-                move_in_date=lease.start_date,
-                move_out_date=None if lease.status == "active" else lease.end_date,
+                lease_id=lease["id"],
+                unit_id=lease["unit_id"],
+                move_in_date=lease["start_date"],
+                move_out_date=None if lease["status"] == "active" else lease["end_date"],
                 notes="Backfilled from Lease.unit during occupancy history migration.",
             )
         )

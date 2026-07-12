@@ -207,8 +207,14 @@
     <form id="agreementPartyForm" method="post" action="{% url 'leases:edit_clauses' master_lease.pk %}?history={{ history.pk }}" class="card card-body py-2 mb-3">
       {% csrf_token %}<input type="hidden" name="party_update" value="1">
       <div class="row g-2 align-items-end">
-        <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Proposer</label><select name="proposer" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.proposer_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
-        <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Seconder</label><select name="seconder" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.seconder_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        <div class="col-xl-3 col-md-6">
+          <label class="form-label small mb-1">Proposer</label><select name="proposer" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.proposer_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select>
+          <label class="form-label small mt-1 mb-1">Relationship to Tenant</label><select name="proposer_relationship" class="form-select form-select-sm relationship-select"><option value="">Blank</option>{% for relation in relationship_types %}<option value="{{ relation.pk }}" {% if master_lease.proposer_relationship_id == relation.pk %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}</select>
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <label class="form-label small mb-1">Seconder</label><select name="seconder" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.seconder_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select>
+          <label class="form-label small mt-1 mb-1">Relationship to Tenant</label><select name="seconder_relationship" class="form-select form-select-sm relationship-select"><option value="">Blank</option>{% for relation in relationship_types %}<option value="{{ relation.pk }}" {% if master_lease.seconder_relationship_id == relation.pk %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}</select>
+        </div>
         <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Witness 1</label><select name="witness1_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness1_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
         <div class="col-xl-3 col-md-6"><label class="form-label small mb-1">Witness 2</label><select name="witness2_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness2_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
         <div class="col-12 text-end"><button type="button" id="saveAgreementParties" class="btn btn-sm btn-primary"><i class="fas fa-save"></i> Update Agreement Parties</button></div>
@@ -303,7 +309,7 @@
     let activeTextarea = null;
 
     if (window.$?.fn?.select2) {
-        $('.clause-filter-bar select, .role-select').select2({theme: 'bootstrap-5', width: '100%'});
+        $('.clause-filter-bar select, .role-select, .relationship-select').select2({theme: 'bootstrap-5', width: '100%'});
     }
 
     document.querySelectorAll('.js-clause-filter-select').forEach(select => {

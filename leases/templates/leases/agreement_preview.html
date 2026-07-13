@@ -1,131 +1,47 @@
 {% load lease_tags %}
 
 <style>
-    .and-separator {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 10%;
-        font-weight: bold;
-    }
+    .and-separator { display:flex; align-items:center; justify-content:center; width:10%; font-weight:bold; }
+    {% if legal_page %}
     @page {
         size: legal;
-        margin: 0.7in 0.55in 0.7in 0.55in;
-
+        margin: 0.55in 0.55in {{ legal_identity_bottom_reserve|default:"3.10" }}in 0.55in;
     }
-
     @page :first {
         size: legal;
-        margin-top: 4.8in;
+        margin-top: {{ legal_first_page_top_reserve|default:"4.80" }}in;
         margin-left: 0.55in;
         margin-right: 0.55in;
         margin-bottom: 0.55in;
     }
+    {% else %}
+    @page { size: letter; margin: 0.5in; }
+    {% endif %}
 
-    .agreement-preview {
-        font-family: "Times New Roman", Times, serif;
-        text-align: justify;
-        text-justify: inter-word;
-    }
-
-    .text-center,
-    .agreement-title {
-        text-align: center;
-    }
-
-    .agreement-title {
-        margin: 0 0 0.16in 0;
-    }
-
-    .agreement-preview p,
-    .agreement-preview .clause {
-        text-align: justify;
-        text-justify: inter-word;
-    }
-
-    .agreement-preview .text-center {
-        text-align: center;
-    }
-
-    .stamp-qr-reserve {
-        display: none;
-    }
-
+    .agreement-preview { font-family:"Times New Roman", Times, serif; text-align:justify; text-justify:inter-word; }
+    .text-center, .agreement-title { text-align:center; }
+    .agreement-title { margin:0 0 0.16in 0; }
+    .agreement-preview p, .agreement-preview .clause { text-align:justify; text-justify:inter-word; }
+    .agreement-preview .text-center { text-align:center; }
+    .stamp-qr-reserve { display:none; }
+    {% if legal_page %}
     @media print {
         .stamp-qr-reserve {
-            display: block;
-            float: right;
-            width: 2in;
-            height: 4in;
-            margin-left: 0.18in;
-            margin-top: 1.75in;
+            display:block;
+            float:right;
+            width:{{ legal_qr_reserve_width|default:"4.00" }}in;
+            height:{{ legal_qr_reserve_height|default:"2.00" }}in;
+            margin-left:0.18in;
+            margin-top:0.12in;
         }
     }
-
-.authorized-occupants-table{width:100%;border-collapse:collapse;margin:6px 0}.authorized-occupants-table td{border:1px solid #777;padding:5px;width:25%;vertical-align:top;font-size:10px;line-height:1.25}
-    .signature-section table { margin-bottom: 12px !important; }
+    {% endif %}
+    .authorized-occupants-table{width:100%;border-collapse:collapse;margin:6px 0}.authorized-occupants-table td{border:1px solid #777;padding:5px;width:25%;vertical-align:top;font-size:10px;line-height:1.25}
+    .signature-section table { margin-bottom: 4px !important; }
     .signature-section td { vertical-align: top; }
-    .signature-section p { margin: 0 0 2px !important; line-height: 1.12; }
-    .signature-section { margin-top: 32px !important; }
-    .signature-section .footer { text-align: left !important; margin-top: 8px !important; }
-
-    .agreement-id-cards {
-        width: 94%;
-        border-collapse: separate;
-        border-spacing: 0.06in 0;
-        margin: 0.12in auto 0;
-        page-break-inside: avoid;
-        break-inside: avoid;
-        table-layout: fixed;
-    }
-
-    .agreement-id-person {
-        width: 25%;
-        border: 1px solid #444;
-        padding: 0.05in;
-        text-align: center;
-        vertical-align: top;
-    }
-
-    .agreement-id-role {
-        font-size: 8pt;
-        font-weight: 700;
-        line-height: 1.05;
-        margin-bottom: 0.03in;
-    }
-
-    .agreement-id-name {
-        font-size: 6.5pt;
-        line-height: 1.05;
-        min-height: 0.18in;
-        overflow: hidden;
-        margin-bottom: 0.03in;
-    }
-
-    .agreement-id-image {
-        height: 1.05in;
-        border: 1px solid #888;
-        margin-top: 0.04in;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        background: #fff;
-    }
-
-    .agreement-id-image img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-    }
-
-    .agreement-id-image-label {
-        font-size: 6pt;
-        color: #555;
-        line-height: 1;
-    }
-
+    .signature-section p { margin: 0 !important; line-height: 1.05; }
+    .signature-section { margin-top: 18px !important; }
+    .signature-section .footer { text-align: left !important; margin-top: 4px !important; }
 </style>
 
 <div id="agreement-doc" class="agreement-preview">
@@ -229,35 +145,5 @@
     <div class="footer" style="text-align: center; margin-top: 15px;">
         <p>Generated at: {% now "d M Y" %}.</p>
     </div>
-    {% if legal_page and identity_people %}
-    <table class="agreement-id-cards" aria-label="Agreement identity cards">
-        <tr>
-        {% for person in identity_people %}
-        <td class="agreement-id-person">
-            <div class="agreement-id-role">{{ person.role }}</div>
-            <div class="agreement-id-name">{{ person.name|default:"________________" }}</div>
-            <div class="agreement-id-image">
-                {% if person.front_url %}
-                    <img src="{{ person.front_url }}" alt="{{ person.role }} CNIC front">
-                {% else %}
-                    <span class="agreement-id-image-label">CNIC Front</span>
-                {% endif %}
-            </div>
-            <div class="agreement-id-image">
-                {% if person.back_url %}
-                    <img src="{{ person.back_url }}" alt="{{ person.role }} CNIC back">
-                {% else %}
-                    <span class="agreement-id-image-label">CNIC Back</span>
-                {% endif %}
-            </div>
-        </td>
-        {% endfor %}
-        </tr>
-    </table>
-    {% endif %}
-
-</div>
-
-    
-    
+    </div>
 </div>

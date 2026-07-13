@@ -3066,7 +3066,7 @@ from leases.utils.billing import (
 )
 
 from .forms import LeaseForm
-from .models import Lease
+from .models import AgreementSignatureTemplate, Lease
 
 
 def detect_lease_changes(old_lease, new_lease) -> Dict[str, Any]:
@@ -6385,15 +6385,15 @@ def _add_agreement_identity_cards_docx(doc, lease, history=None):
                 add_blank_box(cell, label)
 
 
-def _add_first_page_top_reserve(doc):
-    """Mirror the PDF's 4.8-inch first-page top reserve without changing later pages."""
+def _add_first_page_top_reserve(doc, top_reserve=4.8):
+    """Mirror the configured PDF first-page top reserve in Word."""
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(0)
     p.paragraph_format.space_after = Pt(0)
     p.paragraph_format.line_spacing = 1.0
     p.add_run("")
-    # Normal top margin is 0.70in; add 4.10in so content begins at 4.80in.
-    p.paragraph_format.space_after = Pt(4.10 * 72)
+    # Word keeps a 0.5in section margin; add only the remaining reserve.
+    p.paragraph_format.space_after = Pt(max(0, float(top_reserve) - 0.5) * 72)
 
 
 def _add_floating_reserve_box(doc, width=4.0, height=2.0):
@@ -6432,10 +6432,14 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
     doc = Document()
     _set_doc_defaults(doc)  # set font size etc
     legal = bool(getattr(history, "print_on_legal_page", False))
+    layout_config = AgreementSignatureTemplate.current()
+    first_top = float(getattr(layout_config, "legal_first_page_top_reserve", 4.8) or 4.8)
+    qr_width = float(getattr(layout_config, "legal_qr_reserve_width", 4.0) or 0)
+    qr_height = float(getattr(layout_config, "legal_qr_reserve_height", 2.0) or 0)
     set_doc_margins(doc, legal=legal)
     add_page_number_footer(doc)  # Page X of Y
     if legal:
-        _add_first_page_top_reserve(doc)
+        _add_first_page_top_reserve(doc, first_top)
 
     # 1) Title
     title = container.select_one("h1,h2,h3")
@@ -6522,8 +6526,8 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         for child in clause_div.children:
             _append_inline(p, child, br_as_space=False)
 
-        if legal and clause_index == 2:
-            _add_floating_reserve_box(doc, width=4.0, height=2.0)
+        if legal and clause_index == 2 and qr_width > 0 and qr_height > 0:
+            _add_floating_reserve_box(doc, width=qr_width, height=qr_height)
 
     # 5) Signature (table look + spacing)
     add_signature_block(doc, lease, history=history)

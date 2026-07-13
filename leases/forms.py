@@ -898,11 +898,17 @@ class AgreementSignatureTemplateForm(forms.ModelForm):
         fields = [
             "heading", "proposer_declaration", "seconder_declaration",
             "footer_text", "show_phone", "show_thumb_impression",
+            "legal_first_page_top_reserve", "legal_qr_reserve_width",
+            "legal_qr_reserve_height", "legal_identity_bottom_reserve",
         ]
         widgets = {
             "heading": forms.TextInput(attrs={"class": "form-control"}),
-            "proposer_declaration": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            "seconder_declaration": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "proposer_declaration": forms.Textarea(attrs={"class": "form-control declaration-editor", "rows": 12}),
+            "seconder_declaration": forms.Textarea(attrs={"class": "form-control declaration-editor", "rows": 12}),
             "witness_declaration": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "footer_text": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "legal_first_page_top_reserve": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
+            "legal_qr_reserve_width": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
+            "legal_qr_reserve_height": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
+            "legal_identity_bottom_reserve": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
         }

@@ -83,9 +83,152 @@ def _render_template_text(text, values):
     return rendered
 
 
+
+def _agreement_layout_settings():
+    config = AgreementSignatureTemplate.current()
+    return {
+        "config": config,
+        "first_top": float(getattr(config, "legal_first_page_top_reserve", 4.80) or 4.80),
+        "qr_width": float(getattr(config, "legal_qr_reserve_width", 4.00) or 0),
+        "qr_height": float(getattr(config, "legal_qr_reserve_height", 2.00) or 0),
+        "identity_bottom": float(getattr(config, "legal_identity_bottom_reserve", 3.10) or 3.10),
+    }
+
+
+def _field_bytes(field):
+    try:
+        if not field:
+            return b""
+        with field.open("rb") as source:
+            return source.read()
+    except (OSError, ValueError, AttributeError):
+        return b""
+
+
+def _draw_fitted_image(canvas_obj, payload, x, y, width, height):
+    if not payload:
+        return False
+    try:
+        from reportlab.lib.utils import ImageReader
+        image = ImageReader(BytesIO(payload))
+        image_width, image_height = image.getSize()
+        if not image_width or not image_height:
+            return False
+        scale = min(width / image_width, height / image_height)
+        draw_width = image_width * scale
+        draw_height = image_height * scale
+        canvas_obj.drawImage(
+            image,
+            x + (width - draw_width) / 2,
+            y + (height - draw_height) / 2,
+            width=draw_width,
+            height=draw_height,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _identity_overlay_page(width, height, people, reserve_inches):
+    from reportlab.pdfgen import canvas
+    packet = BytesIO()
+    pdf = canvas.Canvas(packet, pagesize=(float(width), float(height)))
+
+    reserve_height = max(2.0, min(5.0, float(reserve_inches))) * 72
+    left = 0.55 * 72
+    right = 0.55 * 72
+    footer_clearance = 28
+    panel_y = footer_clearance
+    panel_height = max(112, reserve_height - footer_clearance - 7)
+    gap = 6
+    available = float(width) - left - right
+    card_width = (available - gap * 3) / 4
+    header_height = 24
+    inner_gap = 4
+    image_height = max(38, (panel_height - header_height - inner_gap * 3) / 2)
+
+    pdf.setLineWidth(0.55)
+    for index, person in enumerate((people or [])[:4]):
+        x = left + index * (card_width + gap)
+        pdf.rect(x, panel_y, card_width, panel_height, stroke=1, fill=0)
+
+        role = str(person.get("role") or "")
+        name = str(person.get("name") or "________________")
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawCentredString(x + card_width / 2, panel_y + panel_height - 10, role)
+        pdf.setFont("Helvetica", 5.8)
+        clipped_name = name if len(name) <= 31 else name[:28] + "..."
+        pdf.drawCentredString(x + card_width / 2, panel_y + panel_height - 19, clipped_name)
+
+        source_person = person.get("person")
+        fields = (
+            ("CNIC Front", getattr(source_person, "cnic_front", None) if source_person else None),
+            ("CNIC Back", getattr(source_person, "cnic_back", None) if source_person else None),
+        )
+        image_top = panel_y + panel_height - header_height - inner_gap
+        for image_index, (label, field) in enumerate(fields):
+            image_y = image_top - (image_index + 1) * image_height - image_index * inner_gap
+            image_x = x + inner_gap
+            image_width = card_width - inner_gap * 2
+            pdf.setLineWidth(0.35)
+            pdf.rect(image_x, image_y, image_width, image_height, stroke=1, fill=0)
+            if not _draw_fitted_image(pdf, _field_bytes(field), image_x + 2, image_y + 2, image_width - 4, image_height - 4):
+                pdf.setFont("Helvetica", 6)
+                pdf.drawCentredString(image_x + image_width / 2, image_y + image_height / 2 - 2, label)
+
+    pdf.save()
+    packet.seek(0)
+    from pypdf import PdfReader
+    return PdfReader(packet).pages[0]
+
+
+def _pin_identity_cards_to_second_page(pdf_bytes, lease, history, reserve_inches):
+    """Keep the four CNIC cards at the bottom of Legal agreement page 2.
+
+    Agreement pages reserve the same bottom region from page 2 onward. The
+    cards are then drawn as a PDF overlay, so longer clause text flows to page
+    3 instead of pushing the cards away from page 2.
+    """
+    try:
+        from pypdf import PageObject, PdfReader, PdfWriter
+    except ImportError as exc:
+        raise RuntimeError("pypdf is required for fixed Legal-page CNIC placement.") from exc
+
+    reader = PdfReader(BytesIO(pdf_bytes))
+    pages = list(reader.pages)
+    if not pages:
+        return pdf_bytes
+    while len(pages) < 2:
+        pages.append(PageObject.create_blank_page(
+            width=pages[0].mediabox.width,
+            height=pages[0].mediabox.height,
+        ))
+
+    page = pages[1]
+    people = identity_context(lease, history).get("identity_people", [])
+    overlay = _identity_overlay_page(
+        page.mediabox.width,
+        page.mediabox.height,
+        people,
+        reserve_inches,
+    )
+    page.merge_page(overlay, over=True)
+
+    writer = PdfWriter()
+    for item in pages:
+        writer.add_page(item)
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def agreement_pdf(request, lease, history, clauses):
     for clause in clauses:
         clause.rendered_text = do_replace_placeholders(clause.template_text, lease)
+    legal_page = bool(getattr(history, "print_on_legal_page", False))
+    layout = _agreement_layout_settings()
     html = render_to_string(
         "leases/agreement_preview.html",
         {
@@ -94,13 +237,20 @@ def agreement_pdf(request, lease, history, clauses):
             "clauses": clauses,
             "agreement_date": getattr(history, "agreement_date", None)
             or getattr(history, "start_date", lease.start_date),
-            "legal_page": bool(getattr(history, "print_on_legal_page", False)),
-            "identity_people": identity_context(lease, history)["identity_people"],
+            "legal_page": legal_page,
+            "legal_first_page_top_reserve": layout["first_top"],
+            "legal_qr_reserve_width": layout["qr_width"],
+            "legal_qr_reserve_height": layout["qr_height"],
+            "legal_identity_bottom_reserve": layout["identity_bottom"],
         },
         request=request,
     )
-    return _pdf(html, request)
-
+    pdf_bytes = _pdf(html, request)
+    if legal_page:
+        pdf_bytes = _pin_identity_cards_to_second_page(
+            pdf_bytes, lease, history, layout["identity_bottom"]
+        )
+    return pdf_bytes
 
 def _inspection_template_name_for_lease(lease):
     unit = lease.unit
@@ -602,11 +752,15 @@ def build_docx_package(request, lease, history, clauses):
     # Reuse the current agreement converter, then append the three package components.
     for clause in clauses:
         clause.rendered_text = do_replace_placeholders(clause.template_text, lease)
+    layout = _agreement_layout_settings()
     html = render_to_string("leases/agreement_preview.html", {
         "lease": lease, "history": history, "clauses": clauses,
         "agreement_date": getattr(history, "agreement_date", None) or getattr(history, "start_date", lease.start_date),
         "legal_page": bool(getattr(history, "print_on_legal_page", False)),
-        "identity_people": identity_context(lease, history)["identity_people"],
+        "legal_first_page_top_reserve": layout["first_top"],
+        "legal_qr_reserve_width": layout["qr_width"],
+        "legal_qr_reserve_height": layout["qr_height"],
+        "legal_identity_bottom_reserve": layout["identity_bottom"],
     }, request=request)
     from leases.views import html_to_docx_bytes
     from docx import Document

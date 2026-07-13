@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.core.validators import FileExtensionValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Case, DecimalField, F, Sum, When
 from django.db.models.functions import Coalesce
@@ -2222,6 +2222,26 @@ class AgreementSignatureTemplate(models.Model):
     show_phone = models.BooleanField(default=True)
     show_address = models.BooleanField(default=True)
     show_thumb_impression = models.BooleanField(default=False)
+    legal_first_page_top_reserve = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("4.80"),
+        validators=[MinValueValidator(Decimal("0.50")), MaxValueValidator(Decimal("8.00"))],
+        help_text="Top blank area, in inches, on the first Legal agreement page.",
+    )
+    legal_qr_reserve_width = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("4.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("7.50"))],
+        help_text="Width, in inches, of the QR/stamp reserve on the first Legal page.",
+    )
+    legal_qr_reserve_height = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("2.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("5.00"))],
+        help_text="Height, in inches, of the QR/stamp reserve on the first Legal page.",
+    )
+    legal_identity_bottom_reserve = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("3.10"),
+        validators=[MinValueValidator(Decimal("2.00")), MaxValueValidator(Decimal("5.00"))],
+        help_text="Bottom area, in inches, reserved for the four CNIC cards on Legal agreement page 2.",
+    )
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 

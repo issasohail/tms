@@ -159,6 +159,8 @@
     {% render_table table %}
   </div>
 
+  <div class="ll-card-grid" id="leaseCardGrid" aria-label="Lease cards"></div>
+
 </div>
 
 <div class="modal fade" id="vehicleInfoModal" tabindex="-1" aria-labelledby="vehicleInfoModalLabel" aria-hidden="true">
@@ -814,6 +816,185 @@
   }
 }
 
+/* Dedicated tablet/mobile lease cards. Desktop table remains unchanged. */
+.ll-card-grid { display: none; }
+
+@media (max-width: 999.98px) {
+  .ll-layout-switch { display: none !important; }
+  .ll-table-wrap { display: none !important; }
+  .ll-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .ll-card {
+    min-width: 0;
+    background: #fff;
+    border: 1px solid #d7e0ea;
+    border-radius: 12px;
+    padding: 9px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.08);
+  }
+  .ll-card-head {
+    display: grid;
+    grid-template-columns: 28px minmax(0,1fr) auto;
+    align-items: start;
+    gap: 7px;
+    margin-bottom: 7px;
+  }
+  .ll-card-sn {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #0aa36c;
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 900;
+  }
+  .ll-card-title { min-width: 0; }
+  .ll-card-tenant {
+    display: block;
+    color: #101828;
+    font-size: .82rem;
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-card-unit {
+    display: block;
+    margin-top: 3px;
+    color: #06f;
+    font-size: .68rem;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-card-status {
+    border: 1px solid #7dd3a8;
+    border-radius: 999px;
+    padding: 2px 6px;
+    background: #ecfdf3;
+    color: #087443;
+    font-size: .58rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .ll-card-status.is-ended {
+    border-color: #fda29b;
+    background: #fff1f0;
+    color: #b42318;
+  }
+  .ll-card-money {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    border: 1px solid #c7d7fe;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+  }
+  .ll-card-money-item {
+    min-width: 0;
+    padding: 5px 3px;
+    text-align: center;
+    background: #f8fbff;
+    border-right: 1px solid #dbe5ff;
+  }
+  .ll-card-money-item:last-child { border-right: 0; }
+  .ll-card-label {
+    display: block;
+    color: #344054;
+    font-size: .52rem;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .ll-card-value {
+    display: block;
+    margin-top: 2px;
+    color: #101828;
+    font-size: .66rem;
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-card-value.is-balance { color: #dc3545; }
+  .ll-card-value.is-security { color: #078044; }
+  .ll-card-dates {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    align-items: center;
+    gap: 5px;
+    padding: 5px 4px;
+    border: 1px solid #c7d7fe;
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    font-size: .57rem;
+    font-weight: 800;
+  }
+  .ll-card-date { min-width: 0; white-space: nowrap; }
+  .ll-card-date:last-child { text-align: right; }
+  .ll-card-countdown {
+    color: #dc3545;
+    font-size: .56rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .ll-card-countdown .ll-renew-btn { display: none !important; }
+  .ll-card-meta {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 5px;
+    margin-top: 7px;
+  }
+  .ll-card-meta-item {
+    min-width: 0;
+    padding: 4px 3px;
+    border-radius: 6px;
+    background: #f8fafc;
+    text-align: center;
+    font-size: .57rem;
+    font-weight: 800;
+    overflow: hidden;
+  }
+  .ll-card-meta-item > * { max-width: 100%; }
+  .ll-card-meta-item form { justify-content: center; }
+  .ll-card-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .ll-card-actions .btn {
+    width: 100% !important;
+    height: 32px !important;
+    min-width: 0;
+    padding: 0 5px !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-size: .66rem !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    text-decoration: none !important;
+  }
+  .ll-card-actions .btn > span { display: inline !important; margin: 0 !important; }
+  .ll-card-actions .btn i { margin: 0 !important; }
+  .ll-card-actions .btn-ledger { color: #fff !important; }
+}
+
+@media (max-width: 699.98px) {
+  .ll-card-grid { grid-template-columns: minmax(0,1fr); gap: 9px; }
+}
+
 @media (max-width: 767.98px) {
   .container,
   .container-fluid,
@@ -1123,6 +1304,97 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+
+  (function buildLeaseCards() {
+    const grid = document.getElementById('leaseCardGrid');
+    const rows = document.querySelectorAll('.ll-table-wrap tbody tr');
+    if (!grid || !rows.length) return;
+
+    const text = (row, selector) => {
+      const el = row.querySelector(selector);
+      return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    };
+    const cleanDate = value => value.replace(/\s*(?:\d+\s+days?\s+(?:left|overdue)).*$/i, '').trim();
+
+    rows.forEach((row, index) => {
+      const card = document.createElement('article');
+      card.className = 'll-card';
+
+      const sn = text(row, '.col-sn') || String(index + 1);
+      const tenantCell = row.querySelector('.col-tenant');
+      const tenantName = tenantCell?.querySelector('[title]')?.getAttribute('title') || text(row, '.col-tenant') || 'Tenant';
+      const tenantHref = tenantCell?.querySelector('a')?.href || '#';
+      const unit = text(row, '.col-unit');
+      const property = text(row, '.col-property');
+      const status = text(row, '.col-status') || '-';
+      const statusEnded = /ended|terminated|inactive/i.test(status);
+      const monthly = text(row, '.col-monthly') || '-';
+      const balance = text(row, '.col-balance') || '-';
+      const security = text(row, '.col-sec') || '-';
+      const start = cleanDate(text(row, '.col-start')) || '-';
+      const endCell = row.querySelector('.col-end');
+      const end = cleanDate(text(row, '.col-end')) || '-';
+      const countdown = endCell?.querySelector('.ll-days-left')?.textContent.trim() || '';
+
+      card.innerHTML = `
+        <div class="ll-card-head">
+          <span class="ll-card-sn">${sn}</span>
+          <div class="ll-card-title">
+            <a class="ll-card-tenant" href="${tenantHref}" title="${tenantName.replace(/"/g, '&quot;')}">${tenantName}</a>
+            <span class="ll-card-unit">${property ? property + ' · ' : ''}${unit}</span>
+          </div>
+          <span class="ll-card-status${statusEnded ? ' is-ended' : ''}">${status}</span>
+        </div>
+        <div class="ll-card-money">
+          <div class="ll-card-money-item"><span class="ll-card-label">Monthly</span><span class="ll-card-value">${monthly}</span></div>
+          <div class="ll-card-money-item"><span class="ll-card-label">Balance</span><span class="ll-card-value is-balance">${balance}</span></div>
+          <div class="ll-card-money-item"><span class="ll-card-label">Sec. Balance</span><span class="ll-card-value is-security">${security}</span></div>
+        </div>
+        <div class="ll-card-dates">
+          <span class="ll-card-date">▣ Start ${start}</span>
+          <span class="ll-card-countdown">${countdown}</span>
+          <span class="ll-card-date">End ${end}</span>
+        </div>
+        <div class="ll-card-meta"></div>
+        <div class="ll-card-actions"></div>`;
+
+      const meta = card.querySelector('.ll-card-meta');
+      [
+        ['.col-family', 'Family'],
+        ['.col-vehicle', 'Vehicle'],
+        ['.col-police', 'Police'],
+        ['.col-bill-water', 'Water']
+      ].forEach(([selector, label]) => {
+        const source = row.querySelector(selector);
+        if (!source) return;
+        const item = document.createElement('div');
+        item.className = 'll-card-meta-item';
+        item.title = label;
+        Array.from(source.childNodes).forEach(node => item.appendChild(node.cloneNode(true)));
+        meta.appendChild(item);
+      });
+
+      const actionTarget = card.querySelector('.ll-card-actions');
+      const sourceActions = row.querySelector('.actions-wrap');
+      if (sourceActions) {
+        const order = ['.btn-view', '.btn-edit', '.btn-pay', '.btn-ledger', '.btn-wa-remind', '.btn-delete'];
+        order.forEach(selector => {
+          const source = sourceActions.querySelector(selector);
+          if (!source) return;
+          const clone = source.cloneNode(true);
+          const labelMap = {
+            '.btn-view': 'View', '.btn-edit': 'Edit', '.btn-pay': 'Pay',
+            '.btn-ledger': 'Ledger', '.btn-wa-remind': 'WhatsApp', '.btn-delete': 'Delete'
+          };
+          let span = clone.querySelector('span');
+          if (!span) { span = document.createElement('span'); clone.appendChild(span); }
+          span.textContent = labelMap[selector];
+          actionTarget.appendChild(clone);
+        });
+      }
+      grid.appendChild(card);
+    });
+  })();
 
   $('#id_tenant').select2({
     placeholder: "Search tenant...",
@@ -1525,8 +1797,14 @@ function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balanc
 }
 
 function leaseReminderRows() {
+  const seen = new Set();
   return Array.from(document.querySelectorAll(".btn-wa-remind[data-object-id]"))
-    .filter(btn => !btn.classList.contains("disabled") && parseFloat(btn.dataset.balance || "0") > 0)
+    .filter(btn => {
+      const id = btn.dataset.objectId || "";
+      if (!id || seen.has(id) || btn.classList.contains("disabled") || parseFloat(btn.dataset.balance || "0") <= 0) return false;
+      seen.add(id);
+      return true;
+    })
     .map(btn => ({
       id: btn.dataset.objectId,
       phone: btn.dataset.phone || "",

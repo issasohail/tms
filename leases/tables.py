@@ -455,6 +455,7 @@ class LeaseTable(ExportableTable):
                 "delete_url": reverse("leases:lease_delete", args=[record.pk]),
                 "make_payment_url": reverse("payments:payment_create")
                 + f"?lease={record.pk}",
+                "view_ledger_url": reverse("leases:lease_ledger_by_pk", args=[record.pk]),
                 "whatsapp_url": whatsapp_url,
                 "has_balance": has_balance,
                 "is_lease_row": True,

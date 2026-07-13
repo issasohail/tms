@@ -71,12 +71,12 @@ def authorized_occupants_count(lease):
     return len(_authorized_occupant_rows(lease))
 
 def authorized_occupants_table(lease):
-    """Compact three-person-per-row occupant table, including the primary tenant."""
+    """Compact four-person-per-row occupant table, including the tenant."""
     from django.utils.html import escape
     occupants = [{
         "name": lease.tenant.get_full_name(),
         "cnic": lease.tenant.cnic or "",
-        "relationship": "Primary Tenant",
+        "relationship": "Tenant",
     }]
     for link in _authorized_occupant_rows(lease):
         occupants.append({
@@ -88,13 +88,13 @@ def authorized_occupants_table(lease):
     for index, item in enumerate(occupants, 1):
         cells.append(
             '<td class="occupant-card"><b>{idx}. {name}</b><br>'
-            '<span>CNIC: {cnic}</span><br><span>{rel}</span></td>'.format(
+            '<span>CNIC: {cnic}</span><br><span>Relationship: {rel}</span></td>'.format(
                 idx=index, name=escape(item["name"]), cnic=escape(item["cnic"]), rel=escape(item["relationship"])
             )
         )
-    while len(cells) % 3:
+    while len(cells) % 4:
         cells.append('<td class="occupant-card">&nbsp;<br>&nbsp;<br>&nbsp;</td>')
-    rows = ['<tr>' + ''.join(cells[i:i + 3]) + '</tr>' for i in range(0, len(cells), 3)]
+    rows = ['<tr>' + ''.join(cells[i:i + 4]) + '</tr>' for i in range(0, len(cells), 4)]
     return '<table class="authorized-occupants-table compact"><tbody>' + ''.join(rows) + '</tbody></table>'
 
 # Define the placeholder registry

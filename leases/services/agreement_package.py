@@ -1,11 +1,16 @@
 from io import BytesIO
+import base64
+import mimetypes
+import re
 
 from django.core.files.base import ContentFile
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.html import conditional_escape
 from weasyprint import HTML
 
 from leases.models import AgreementSignatureTemplate, LeaseDocument
+from tenants.models import Tenant
 from leases.utils import do_replace_placeholders
 
 
@@ -33,8 +38,8 @@ def party_snapshot(lease, history=None):
             "relationship": _relationship_name(relationship),
         }
 
-    witness1 = getattr(history, "witness1_tenant", None) if history else lease.witness1_tenant
-    witness2 = getattr(history, "witness2_tenant", None) if history else lease.witness2_tenant
+    witness1 = (getattr(history, "witness1_tenant", None) if history else None) or lease.witness1_tenant
+    witness2 = (getattr(history, "witness2_tenant", None) if history else None) or lease.witness2_tenant
     occupants = [{
         "name": row.family_member.get_full_name(),
         "cnic": row.family_member.cnic or "",
@@ -53,7 +58,6 @@ def party_snapshot(lease, history=None):
 def _declaration_values(lease, history, parties):
     start_date, end_date = _period(lease, history)
     values = {
-        "lease_number": str(lease.pk),
         "tenant_name": lease.tenant.get_full_name() or "________________",
         "tenant_cnic": lease.tenant.cnic or "________________",
         "property_unit": f"{lease.unit.property} / {lease.unit}",
@@ -90,6 +94,8 @@ def agreement_pdf(request, lease, history, clauses):
             "clauses": clauses,
             "agreement_date": getattr(history, "agreement_date", None)
             or getattr(history, "start_date", lease.start_date),
+            "legal_page": bool(getattr(history, "print_on_legal_page", False)),
+            "identity_people": identity_context(lease, history)["identity_people"],
         },
         request=request,
     )
@@ -154,8 +160,14 @@ def inspection_pdf(request, lease):
 
 
 def police_context(lease):
+    property_obj = lease.unit.property
+    owner_person = _owner_tenant(property_obj)
+    owner_photo = getattr(property_obj, "owner_photo", None) or getattr(owner_person, "photo", None)
+    tenant_photo = getattr(lease.tenant, "photo", None)
     return {
-        "lease": lease, "tenant": lease.tenant, "property": lease.unit.property,
+        "lease": lease, "tenant": lease.tenant, "property": property_obj,
+        "owner_photo_url": _file_data_uri(owner_photo),
+        "tenant_photo_url": _file_data_uri(tenant_photo),
         "unit": lease.unit,
         "family_members": lease.family_members.select_related("family_member", "relationship_type"),
         "vehicles": lease.vehicles.filter(is_active=True).select_related("vehicle_type"),
@@ -165,6 +177,98 @@ def police_context(lease):
 
 def police_pdf(request, lease):
     return _pdf(render_to_string("leases/police_verification_summary_pdf.html", police_context(lease), request=request), request)
+
+
+def _safe_file_url(field):
+    try:
+        return field.url if field else ""
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _file_data_uri(field):
+    """Embed local media in generated PDFs so reverse-proxy/media URLs are not required."""
+    try:
+        if not field:
+            return ""
+        with field.open("rb") as source:
+            payload = base64.b64encode(source.read()).decode("ascii")
+        mime = mimetypes.guess_type(getattr(field, "name", ""))[0] or "image/jpeg"
+        return f"data:{mime};base64,{payload}"
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def _normalise_cnic(value):
+    return re.sub(r"\D", "", value or "")
+
+
+def _owner_tenant(property_obj):
+    """Find an existing Tenant record for the property owner by CNIC, without adding fields."""
+    owner_cnic = _normalise_cnic(getattr(property_obj, "owner_cnic", ""))
+    if not owner_cnic:
+        return None
+    # CNIC values may be stored with or without hyphens, so compare normalized values.
+    for person in Tenant.objects.exclude(cnic="").only("id", "cnic", "photo", "cnic_front", "cnic_back"):
+        if _normalise_cnic(person.cnic) == owner_cnic:
+            return person
+    return None
+
+
+def identity_context(lease, history=None):
+    witness1 = getattr(history, "witness1_tenant", None) if history else lease.witness1_tenant
+    witness2 = getattr(history, "witness2_tenant", None) if history else lease.witness2_tenant
+    tenant = lease.tenant
+    property_obj = lease.unit.property
+    owner_person = _owner_tenant(property_obj)
+
+    def tenant_person(role, person, show_phone=False):
+        return {
+            "role": role,
+            "name": person.get_full_name() if person else "",
+            "cnic": getattr(person, "cnic", "") or "",
+            "phone": getattr(person, "phone", "") or "",
+            "show_phone": show_phone,
+            "front_url": _file_data_uri(getattr(person, "cnic_front", None)) if person else "",
+            "back_url": _file_data_uri(getattr(person, "cnic_back", None)) if person else "",
+            "person": person,
+        }
+
+    owner_row = {
+        "role": "Owner",
+        "name": getattr(property_obj, "owner_name", "") or "",
+        "cnic": getattr(property_obj, "owner_cnic", "") or "",
+        "phone": getattr(property_obj, "owner_phone", "") or "",
+        "show_phone": False,
+        "front_url": _file_data_uri(getattr(owner_person, "cnic_front", None)) if owner_person else "",
+        "back_url": _file_data_uri(getattr(owner_person, "cnic_back", None)) if owner_person else "",
+        "person": owner_person,
+    }
+    return {"lease": lease, "history": history, "identity_people": [
+        owner_row,
+        tenant_person("Tenant", tenant),
+        tenant_person("Witness 1", witness1, True),
+        tenant_person("Witness 2", witness2, True),
+    ]}
+
+
+def identity_pdf(request, lease, history=None):
+    return _pdf(render_to_string("leases/agreement_identity_documents.html", identity_context(lease, history), request=request), request)
+
+
+def _bold(value):
+    return "<strong>" + conditional_escape(value or "________________") + "</strong>"
+
+
+def _declaration_sections(lease, history, parties):
+    v = _declaration_values(lease, history, parties)
+    common4 = f'If any dispute, misunderstanding, payment issue, complaint, or other matter arises between the Tenant and the Management/Landlord, I shall, when reasonably requested, be willing to assist in good faith in communicating with the parties and helping them reach an amicable resolution. I confirm that I am giving this declaration voluntarily and authorize the Management/Landlord to contact me for verification of my identity, relationship with the Tenant, and the information provided in this declaration. I understand that this declaration is a personal reference only and does not make me financially liable for the Tenant’s obligations unless I separately sign a written guarantee.'
+    sections=[]
+    for role, heading in (("proposer","Proposer Declaration"),("seconder","Seconder Declaration")):
+        p=parties[role]
+        para3 = ('Based on my personal knowledge of the Tenant’s character, conduct, and financial responsibility, I believe that the Tenant is trustworthy, responsible, suitable for tenancy, and capable of paying the agreed rent, utility charges, and other lawful amounts on time. I recommend and vouch for the Tenant’s suitability for this tenancy.' if role=="proposer" else 'Based on my personal knowledge of the Tenant’s character, conduct, and financial responsibility, I believe that the Tenant is trustworthy, responsible, suitable for tenancy, and capable of paying the agreed rent, utility charges, and other lawful amounts on time. I support and second the proposal for this tenancy.')
+        sections.append({"heading":heading,"party":p,"paragraphs":[f'I, {_bold(v[role+"_name"])}, holding CNIC No. {_bold(v[role+"_cnic"])}, and having the relationship of {_bold(v[role+"_relationship"])} with the Tenant, hereby declare that I personally know {_bold(v["tenant_name"])}, holding CNIC No. {_bold(v["tenant_cnic"])}.', f'I understand that the Tenant is entering into a tenancy for {_bold(v["property_unit"])}, for the period from {_bold(v["lease_start_date"])} to {_bold(v["lease_end_date"])}.', para3, common4]})
+    return sections
 
 
 def signature_context(lease, history=None, snapshot=None):
@@ -177,32 +281,94 @@ def signature_context(lease, history=None, snapshot=None):
         "proposer_declaration": _render_template_text(config.proposer_declaration, values),
         "seconder_declaration": _render_template_text(config.seconder_declaration, values),
         "generated_at": timezone.now(),
+        "declaration_sections": _declaration_sections(lease, history, parties),
     }
 
 
 def signature_pdf(request, lease, history=None, snapshot=None):
-    return _pdf(render_to_string("leases/agreement_signature_page.html", signature_context(lease, history, snapshot), request=request), request)
+    return _pdf(render_to_string("leases/proposer_seconder_declaration.html", signature_context(lease, history, snapshot), request=request), request)
 
 
-def merge_pdfs(parts):
+def _clean_filename_part(value):
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    text = re.sub(r"[^A-Za-z0-9._ -]+", "", text)
+    return text.replace(" ", "_").strip("._-") or "blank"
+
+
+def _package_labels(lease, history):
+    start_date, end_date = _period(lease, history)
+    tenant_name = lease.tenant.get_full_name() or "Tenant"
+    property_name = getattr(lease.unit.property, "property_name", "") or str(lease.unit.property)
+    unit_name = getattr(lease.unit, "unit_number", "") or str(lease.unit)
+    start_text = start_date.strftime("%Y-%m-%d") if start_date else "blank"
+    end_text = end_date.strftime("%Y-%m-%d") if end_date else "blank"
+    title = "Lease_{}-{}-{}-{}To{}".format(
+        _clean_filename_part(tenant_name),
+        _clean_filename_part(property_name),
+        _clean_filename_part(unit_name),
+        start_text,
+        end_text,
+    )
+    center = "{}_{}_{}-{} to {}".format(
+        tenant_name,
+        property_name,
+        unit_name,
+        start_text,
+        end_text,
+    )
+    return title, center
+
+
+def _footer_overlay(width, height, left_text, center_text, right_text):
+    from reportlab.pdfgen import canvas
+    packet = BytesIO()
+    pdf = canvas.Canvas(packet, pagesize=(float(width), float(height)))
+    pdf.setFont("Helvetica", 7.5)
+    y = 16
+    pdf.drawString(28, y, left_text)
+    pdf.drawCentredString(float(width) / 2, y, center_text)
+    pdf.drawRightString(float(width) - 28, y, right_text)
+    pdf.save()
+    packet.seek(0)
+    from pypdf import PdfReader
+    return PdfReader(packet).pages[0]
+
+
+def merge_pdfs(parts, lease=None, history=None):
     try:
         from pypdf import PdfReader, PdfWriter
-    except ImportError:
-        from PyPDF2 import PdfReader, PdfWriter
-    writer = PdfWriter()
+    except ImportError as exc:
+        raise RuntimeError("pypdf is required to merge the agreement package.") from exc
+
+    pages = []
     for part in parts:
-        reader = PdfReader(BytesIO(part))
-        for page in reader.pages:
-            writer.add_page(page)
+        pages.extend(PdfReader(BytesIO(part)).pages)
+
+    total = len(pages)
+    title, center_text = _package_labels(lease, history) if lease else ("Lease Agreement", "")
+    timestamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
+    writer = PdfWriter()
+    for index, page in enumerate(pages, 1):
+        width = page.mediabox.width
+        height = page.mediabox.height
+        overlay = _footer_overlay(
+            width,
+            height,
+            timestamp,
+            center_text,
+            f"Page {index} of {total}",
+        )
+        page.merge_page(overlay, over=True)
+        writer.add_page(page)
+    writer.add_metadata({"/Title": title, "/Subject": center_text})
     out = BytesIO()
     writer.write(out)
     return out.getvalue()
 
 
 def _package_basename(lease, history):
-    suffix = f"-renewal-{history.renewal_number}" if history and not history.is_original else ""
-    return f"lease-{lease.pk}{suffix}-agreement-package"
-
+    title, _ = _package_labels(lease, history)
+    return title
 
 def _save_document(request, lease, history, filename, content):
     doc = LeaseDocument(
@@ -233,7 +399,7 @@ def build_package(request, lease, history, clauses):
         components.append(signature_pdf(request, lease, history))
     except Exception as exc:
         raise RuntimeError(f"Signature page generation failed: {exc}") from exc
-    merged = merge_pdfs(components)
+    merged = merge_pdfs(components, lease=lease, history=history)
     filename = _package_basename(lease, history) + ".pdf"
     return merged, filename, _save_document(request, lease, history, filename, merged)
 
@@ -259,6 +425,29 @@ def _add_heading(doc, text, size=14):
     run = p.add_run(text)
     run.bold = True
     run.font.size = Pt(size)
+
+
+def _add_identity_docx(doc, lease, history):
+    from docx.shared import Inches, Pt
+    doc.add_page_break(); _add_heading(doc, "IDENTITY DOCUMENTS")
+    people = identity_context(lease, history)["identity_people"]
+    table = doc.add_table(rows=2, cols=2); table.style="Table Grid"
+    for idx, person in enumerate(people):
+        cell=table.cell(idx//2, idx%2); cell.text=""
+        p=cell.paragraphs[0]; r=p.add_run(person["role"]); r.bold=True; r.font.size=Pt(10)
+        for label,key in (("Full Name","name"),("CNIC","cnic")):
+            q=cell.add_paragraph(); q.paragraph_format.space_after=Pt(1); q.add_run(label+": ").bold=True; q.add_run(person[key] or "________________").bold=True
+        if person["show_phone"]:
+            q=cell.add_paragraph(); q.paragraph_format.space_after=Pt(1); q.add_run("Phone: ").bold=True; q.add_run(person["phone"] or "________________").bold=True
+        for label,url_key in (("CNIC Front","front_url"),("CNIC Back","back_url")):
+            q=cell.add_paragraph(); q.add_run(label).bold=True
+            url=person[url_key]
+            source_person = person.get("person")
+            field = getattr(source_person, "cnic_front" if "Front" in label else "cnic_back", None) if source_person else None
+            try:
+                if field and field.path: cell.add_paragraph().add_run().add_picture(field.path, width=Inches(2.9))
+                else: cell.add_paragraph("[                                                ]")
+            except (ValueError, OSError, AttributeError): cell.add_paragraph("[                                                ]")
 
 
 def _add_inspection_docx(doc, inspection):
@@ -339,10 +528,9 @@ def _add_signature_docx(doc, context):
         shd.set(qn("w:fill"), fill)
         tc_pr.append(shd)
 
-    for role, title_text, declaration in (
-        ("proposer", "Proposer Declaration", context["proposer_declaration"]),
-        ("seconder", "Seconder Declaration", context["seconder_declaration"]),
-    ):
+    for section in context["declaration_sections"]:
+        role = "proposer" if section["heading"].startswith("Proposer") else "seconder"
+        title_text = section["heading"]
         heading_table = doc.add_table(rows=1, cols=1)
         heading_table.alignment = WD_TABLE_ALIGNMENT.CENTER
         heading_table.autofit = False
@@ -359,14 +547,22 @@ def _add_signature_docx(doc, context):
         r.font.name = "Times New Roman"
         r.font.size = Pt(11.5)
 
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p.paragraph_format.space_before = Pt(4)
-        p.paragraph_format.space_after = Pt(6)
-        p.paragraph_format.line_spacing = 1.05
-        r = p.add_run(declaration)
-        r.font.name = "Times New Roman"
-        r.font.size = Pt(10)
+        from bs4 import BeautifulSoup
+        for paragraph_html in section["paragraphs"]:
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(7)
+            p.paragraph_format.line_spacing = 1.3
+            soup = BeautifulSoup(paragraph_html, "html.parser")
+            for node in soup.contents:
+                if getattr(node, "name", None) == "strong":
+                    r = p.add_run(node.get_text())
+                    r.bold = True
+                else:
+                    r = p.add_run(str(node))
+                r.font.name = "Times New Roman"
+                r.font.size = Pt(10.5)
 
         party = context["parties"][role]
         table = doc.add_table(rows=2, cols=4)
@@ -390,33 +586,16 @@ def _add_signature_docx(doc, context):
         for i, value in enumerate(vals):
             _set_cell_text(table.cell(1, i), value, False, 9.5)
 
-        sig_table = doc.add_table(rows=1, cols=2)
-        sig_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        sig_table.autofit = False
-        sig_table.columns[0].width = Inches(3.65)
-        sig_table.columns[1].width = Inches(3.65)
-        left = sig_table.cell(0, 0).paragraphs[0]
-        right = sig_table.cell(0, 1).paragraphs[0]
-        for paragraph in (left, right):
-            paragraph.paragraph_format.space_before = Pt(8)
-            paragraph.paragraph_format.space_after = Pt(2)
-        left.add_run("Signature: ______________________________")
-        right.add_run("Date: ______________________________")
-        for paragraph in (left, right):
-            for run in paragraph.runs:
-                run.font.name = "Times New Roman"
-                run.font.size = Pt(10)
-
+        sig = doc.add_paragraph()
+        sig.paragraph_format.space_before = Pt(8)
+        sig.paragraph_format.space_after = Pt(6)
         if context["signature_config"].show_thumb_impression:
-            p = doc.add_paragraph("Thumb Impression: ______________________________")
-            p.paragraph_format.space_before = Pt(4)
-            p.paragraph_format.space_after = Pt(5)
-            for run in p.runs:
-                run.font.name = "Times New Roman"
-                run.font.size = Pt(10)
+            text = "Signature: __________________    Date: ______________    Thumb Impression: ______________"
         else:
-            spacer = doc.add_paragraph()
-            spacer.paragraph_format.space_after = Pt(6)
+            text = "Signature: ____________________________    Date: ____________________________"
+        r = sig.add_run(text)
+        r.font.name = "Times New Roman"
+        r.font.size = Pt(10)
 
 
 def build_docx_package(request, lease, history, clauses):
@@ -426,6 +605,8 @@ def build_docx_package(request, lease, history, clauses):
     html = render_to_string("leases/agreement_preview.html", {
         "lease": lease, "history": history, "clauses": clauses,
         "agreement_date": getattr(history, "agreement_date", None) or getattr(history, "start_date", lease.start_date),
+        "legal_page": bool(getattr(history, "print_on_legal_page", False)),
+        "identity_people": identity_context(lease, history)["identity_people"],
     }, request=request)
     from leases.views import html_to_docx_bytes
     from docx import Document

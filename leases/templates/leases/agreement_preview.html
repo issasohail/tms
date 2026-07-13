@@ -12,11 +12,6 @@
         size: legal;
         margin: 0.7in 0.55in 0.7in 0.55in;
 
-        @bottom-center {
-            content: "Page " counter(page) " of " counter(pages);
-            font-family: "Times New Roman";
-            font-size: 10pt;
-        }
     }
 
     @page :first {
@@ -67,7 +62,71 @@
         }
     }
 
-.authorized-occupants-table{width:100%;border-collapse:collapse;margin:8px 0}.authorized-occupants-table td{border:1px solid #777;padding:6px;width:33.33%;vertical-align:top;font-size:11px;line-height:1.35} </style>
+.authorized-occupants-table{width:100%;border-collapse:collapse;margin:6px 0}.authorized-occupants-table td{border:1px solid #777;padding:5px;width:25%;vertical-align:top;font-size:10px;line-height:1.25}
+    .signature-section table { margin-bottom: 12px !important; }
+    .signature-section td { vertical-align: top; }
+    .signature-section p { margin: 0 0 2px !important; line-height: 1.12; }
+    .signature-section { margin-top: 32px !important; }
+    .signature-section .footer { text-align: left !important; margin-top: 8px !important; }
+
+    .agreement-id-cards {
+        width: 94%;
+        border-collapse: separate;
+        border-spacing: 0.06in 0;
+        margin: 0.12in auto 0;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        table-layout: fixed;
+    }
+
+    .agreement-id-person {
+        width: 25%;
+        border: 1px solid #444;
+        padding: 0.05in;
+        text-align: center;
+        vertical-align: top;
+    }
+
+    .agreement-id-role {
+        font-size: 8pt;
+        font-weight: 700;
+        line-height: 1.05;
+        margin-bottom: 0.03in;
+    }
+
+    .agreement-id-name {
+        font-size: 6.5pt;
+        line-height: 1.05;
+        min-height: 0.18in;
+        overflow: hidden;
+        margin-bottom: 0.03in;
+    }
+
+    .agreement-id-image {
+        height: 1.05in;
+        border: 1px solid #888;
+        margin-top: 0.04in;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #fff;
+    }
+
+    .agreement-id-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+    }
+
+    .agreement-id-image-label {
+        font-size: 6pt;
+        color: #555;
+        line-height: 1;
+    }
+
+</style>
 
 <div id="agreement-doc" class="agreement-preview">
 
@@ -132,8 +191,8 @@
 
     </div>
     
-    <div class="signature-section" style="margin-top: 60px; font-family: 'Times New Roman', Times, serif; font-size: 14px;">
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
+    <div class="signature-section" style="font-family: 'Times New Roman', Times, serif; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse;">
         <tr>
             <td style="width: 50%; padding-right: 20px;">
                 <p>_________________________</p>
@@ -167,9 +226,36 @@
         </tr>
     </table>
 
-    <div class="footer" style="text-align: center; margin-top: 40px;">
+    <div class="footer" style="text-align: center; margin-top: 15px;">
         <p>Generated at: {% now "d M Y" %}.</p>
     </div>
+    {% if legal_page and identity_people %}
+    <table class="agreement-id-cards" aria-label="Agreement identity cards">
+        <tr>
+        {% for person in identity_people %}
+        <td class="agreement-id-person">
+            <div class="agreement-id-role">{{ person.role }}</div>
+            <div class="agreement-id-name">{{ person.name|default:"________________" }}</div>
+            <div class="agreement-id-image">
+                {% if person.front_url %}
+                    <img src="{{ person.front_url }}" alt="{{ person.role }} CNIC front">
+                {% else %}
+                    <span class="agreement-id-image-label">CNIC Front</span>
+                {% endif %}
+            </div>
+            <div class="agreement-id-image">
+                {% if person.back_url %}
+                    <img src="{{ person.back_url }}" alt="{{ person.role }} CNIC back">
+                {% else %}
+                    <span class="agreement-id-image-label">CNIC Back</span>
+                {% endif %}
+            </div>
+        </td>
+        {% endfor %}
+        </tr>
+    </table>
+    {% endif %}
+
 </div>
 
     

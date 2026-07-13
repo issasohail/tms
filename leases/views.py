@@ -2698,14 +2698,8 @@ def lease_police_verification_link(request, pk):
         html = render_to_string(
             "leases/police_verification_summary_pdf.html",
             {
-                "lease": lease,
-                "tenant": lease.tenant,
-                "property": lease.unit.property,
-                "unit": lease.unit,
-                "family_members": lease.family_members.select_related(
-                    "family_member"
-                ).all(),
-                "generated_at": timezone.localtime(),
+                **__import__("leases.services.agreement_package", fromlist=["police_context"]).police_context(lease),
+                "family_members": lease.family_members.select_related("family_member").all(),
             },
             request=request,
         )
@@ -3627,13 +3621,9 @@ def police_verification_summary_pdf(request, pk):
     html = render_to_string(
         "leases/police_verification_summary_pdf.html",
         {
-            "lease": lease,
-            "tenant": lease.tenant,
-            "property": lease.unit.property,
-            "unit": lease.unit,
+            **__import__("leases.services.agreement_package", fromlist=["police_context"]).police_context(lease),
             "family_members": lease.family_members.all(),
             "vehicles": vehicles,
-            "generated_at": timezone.localtime(),
         },
         request=request,
     )
@@ -5207,10 +5197,138 @@ def _edit_clause_filter_context(request, current_lease):
 
 
 @login_required
+def agreement_clause_filter_options_ajax(request):
+    """Return dependent Unit and Lease options for the agreement clause filters."""
+    property_id = (request.GET.get("property") or "").strip()
+    unit_id = (request.GET.get("unit") or "").strip()
+    tenant_id = (request.GET.get("tenant") or "").strip()
+    lease_status = (request.GET.get("lease_status") or "active").strip().lower()
+    today = timezone.localdate()
+
+    units_qs = Unit.objects.select_related("property").order_by(
+        "property__property_name", "unit_number"
+    )
+    if property_id:
+        units_qs = units_qs.filter(property_id=property_id)
+
+    leases_qs = Lease.objects.select_related("tenant", "unit", "unit__property")
+    if property_id:
+        leases_qs = leases_qs.filter(unit__property_id=property_id)
+    if unit_id:
+        leases_qs = leases_qs.filter(unit_id=unit_id)
+    if tenant_id:
+        leases_qs = leases_qs.filter(tenant_id=tenant_id)
+    if lease_status != "all":
+        leases_qs = leases_qs.filter(
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+    leases_qs = leases_qs.order_by(
+        "tenant__first_name",
+        "tenant__last_name",
+        "unit__property__property_name",
+        "unit__unit_number",
+        "-start_date",
+    )[:300]
+
+    units = [
+        {
+            "id": unit.pk,
+            "text": f"{unit.property.property_name} - {unit.unit_number}",
+        }
+        for unit in units_qs
+    ]
+    leases = [
+        {
+            "id": lease.pk,
+            "text": (
+                f"{lease.tenant.get_full_name()} | "
+                f"{lease.unit.property.property_name} | {lease.unit.unit_number} | "
+                f"{lease.get_status_display()}"
+            ),
+            "url": reverse("leases:edit_clauses", kwargs={"pk": lease.pk}),
+        }
+        for lease in leases_qs
+    ]
+    return JsonResponse({"ok": True, "units": units, "leases": leases})
+
+
+@login_required
+@require_POST
+def create_agreement_party_ajax(request):
+    """Create a minimal Tenant record for proposer/seconder/witness Select2."""
+    from django.core.exceptions import ValidationError
+    from tenants.models import Tenant, normalize_cnic
+
+    if not (request.user.has_perm("tenants.add_tenant") or request.user.is_superuser):
+        return JsonResponse(
+            {"ok": False, "message": "You do not have permission to add tenants."},
+            status=403,
+        )
+
+    first_name = " ".join((request.POST.get("first_name") or "").split())
+    last_name = " ".join((request.POST.get("last_name") or "").split())
+    cnic = (request.POST.get("cnic") or "").strip()
+    phone = (request.POST.get("phone") or "").strip()
+    prefix = (request.POST.get("prefix") or "Mr.").strip() or "Mr."
+    relation = (request.POST.get("relation") or "S/O.").strip() or "S/O."
+
+    if not first_name or not last_name or not cnic:
+        return JsonResponse(
+            {"ok": False, "message": "First name, father/husband name, and CNIC are required."},
+            status=400,
+        )
+
+    cnic_digits = normalize_cnic(cnic)
+    if len(cnic_digits) != 13:
+        return JsonResponse(
+            {"ok": False, "message": "CNIC must contain exactly 13 digits."},
+            status=400,
+        )
+
+    existing = Tenant.objects.filter(cnic_digits=cnic_digits).first()
+    if existing:
+        changed = []
+        if not existing.is_active:
+            existing.is_active = True
+            changed.append("is_active")
+        if phone and not existing.phone:
+            existing.phone = phone
+            changed.append("phone")
+        if changed:
+            existing.save(update_fields=changed + ["updated_at"] if "updated_at" not in changed else changed)
+        return JsonResponse({
+            "ok": True, "id": existing.pk,
+            "text": f"{existing.get_full_name()} — {existing.phone or ''}",
+            "created": False,
+        })
+
+    tenant = Tenant(
+        prefix=prefix[:10], first_name=first_name[:50], relation=relation[:10],
+        last_name=last_name[:50], cnic=cnic[:15], phone=phone[:20], is_active=True,
+    )
+    try:
+        tenant.full_clean()
+        tenant.save()
+    except ValidationError as exc:
+        message = "; ".join(
+            str(item) for values in exc.message_dict.values() for item in values
+        ) if hasattr(exc, "message_dict") else str(exc)
+        return JsonResponse({"ok": False, "message": message}, status=400)
+
+    return JsonResponse({
+        "ok": True, "id": tenant.pk,
+        "text": f"{tenant.get_full_name()} — {tenant.phone or ''}",
+        "created": True,
+    })
+
+
+@login_required
 @require_POST
 def create_relationship_type_ajax(request):
     """Create or reactivate a shared Tenant Relationship Type from Select2."""
-    if not (request.user.has_perm("leases.add_leaserelationshiptype") or request.user.has_perm("leases.change_lease") or request.user.is_superuser):
+    if not (request.user.has_perm("leases.add_leaserelationshiptype") or request.user.is_superuser):
         return JsonResponse({"ok": False, "message": "You do not have permission to add relationship types."}, status=403)
 
     name = " ".join((request.POST.get("name") or "").split())
@@ -5402,6 +5520,7 @@ def generate_agreement_pdf(request, pk):
     history_id = request.GET.get("history")
     history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
     copy_previous_history_clauses(lease, history)
+    history.print_on_legal_page = request.GET.get("legal") in ("1", "true", "on", "yes")
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
         pdf_bytes, filename, document = build_package(request, lease, history, clauses)
@@ -6038,11 +6157,10 @@ from docx.shared import Inches
 from .models import Lease
 
 
-def set_doc_margins(doc, left=0.55, right=0.55, top=0.70, bottom=0.70):
-    # Legal portrait, matching the PDF agreement margins.
+def set_doc_margins(doc, left=0.5, right=0.5, top=0.5, bottom=0.5, legal=False):
     for section in doc.sections:
         section.page_width = Inches(8.5)
-        section.page_height = Inches(14)
+        section.page_height = Inches(14 if legal else 11)
         section.left_margin = Inches(left)
         section.right_margin = Inches(right)
         section.top_margin = Inches(top)
@@ -6191,6 +6309,82 @@ def add_signature_block(doc, lease, history=None):
     set_cell(tw.cell(2, 1), ["Date: _________________________"])
 
 
+def _add_agreement_identity_cards_docx(doc, lease, history=None):
+    """Place Owner, Tenant, Witness 1 and Witness 2 CNICs below signatures.
+
+    This is intentionally part of the legal agreement itself rather than a
+    separate package component. Each person's front and back images are
+    stacked in one of four compact columns.
+    """
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+    from docx.shared import Inches, Pt
+    from leases.services.agreement_package import identity_context
+
+    people = identity_context(lease, history).get("identity_people", [])
+    if not people:
+        return
+
+    table = doc.add_table(rows=1, cols=4)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+
+    def add_blank_box(cell, label):
+        box = cell.add_table(rows=1, cols=1)
+        box.autofit = False
+        box.columns[0].width = Inches(1.52)
+        box_cell = box.cell(0, 0)
+        box_cell.width = Inches(1.52)
+        box_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        row = box.rows[0]
+        tr_pr = row._tr.get_or_add_trPr()
+        tr_height = OxmlElement("w:trHeight")
+        tr_height.set(qn("w:val"), str(int(0.92 * 1440)))
+        tr_height.set(qn("w:hRule"), "exact")
+        tr_pr.append(tr_height)
+        p = box_cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        run = p.add_run(label)
+        run.font.size = Pt(6)
+
+    for index, person in enumerate(people[:4]):
+        cell = table.cell(0, index)
+        cell.width = Inches(1.62)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        cell.text = ""
+
+        role_p = cell.paragraphs[0]
+        role_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        role_p.paragraph_format.space_before = Pt(0)
+        role_p.paragraph_format.space_after = Pt(0)
+        role_run = role_p.add_run(person.get("role", ""))
+        role_run.bold = True
+        role_run.font.size = Pt(8)
+
+        name_p = cell.add_paragraph()
+        name_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        name_p.paragraph_format.space_before = Pt(0)
+        name_p.paragraph_format.space_after = Pt(1)
+        name_run = name_p.add_run(person.get("name") or "________________")
+        name_run.font.size = Pt(6.5)
+
+        source_person = person.get("person")
+        for label, field_name in (("CNIC Front", "cnic_front"), ("CNIC Back", "cnic_back")):
+            field = getattr(source_person, field_name, None) if source_person else None
+            try:
+                if field and field.path:
+                    picture_p = cell.add_paragraph()
+                    picture_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    picture_p.paragraph_format.space_before = Pt(1)
+                    picture_p.paragraph_format.space_after = Pt(1)
+                    picture_p.add_run().add_picture(field.path, width=Inches(1.50))
+                else:
+                    add_blank_box(cell, label)
+            except (ValueError, OSError, AttributeError):
+                add_blank_box(cell, label)
+
+
 def _add_first_page_top_reserve(doc):
     """Mirror the PDF's 4.8-inch first-page top reserve without changing later pages."""
     p = doc.add_paragraph()
@@ -6237,9 +6431,11 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
 
     doc = Document()
     _set_doc_defaults(doc)  # set font size etc
-    set_doc_margins(doc, left=0.55, right=0.55, top=0.70, bottom=0.70)
+    legal = bool(getattr(history, "print_on_legal_page", False))
+    set_doc_margins(doc, legal=legal)
     add_page_number_footer(doc)  # Page X of Y
-    _add_first_page_top_reserve(doc)
+    if legal:
+        _add_first_page_top_reserve(doc)
 
     # 1) Title
     title = container.select_one("h1,h2,h3")
@@ -6326,7 +6522,7 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         for child in clause_div.children:
             _append_inline(p, child, br_as_space=False)
 
-        if clause_index == 2:
+        if legal and clause_index == 2:
             _add_floating_reserve_box(doc, width=4.0, height=2.0)
 
     # 5) Signature (table look + spacing)
@@ -6340,6 +6536,12 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
         for child in ptag.children:
             _append_inline(p, child, br_as_space=True)
+
+    # 7) In Legal mode, keep all four identity cards on agreement page 2.
+    # They are appended directly below the signature/generated-at area and are
+    # no longer emitted as a separate Word package page.
+    if legal:
+        _add_agreement_identity_cards_docx(doc, lease, history=history)
 
     out = BytesIO()
     doc.save(out)
@@ -6401,6 +6603,7 @@ def download_preview_docx(request, lease_id):
     history_id = request.GET.get("history")
     history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
     copy_previous_history_clauses(lease, history)
+    history.print_on_legal_page = request.GET.get("legal") in ("1", "true", "on", "yes")
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
         docx_bytes, filename, document = build_docx_package(request, lease, history, clauses)

@@ -24,7 +24,9 @@
   <div class="photo-row">
     <div class="photo-box">
       <strong>Owner Photo</strong>
-      {% if property.owner_photo %}
+      {% if owner_photo_url %}
+        <img class="photo-frame" src="{{ owner_photo_url }}" alt="Owner photo">
+      {% elif property.owner_photo %}
         <img class="photo-frame" src="{{ property.owner_photo.url }}" alt="Owner photo">
       {% else %}
         <div class="photo-empty">No photo</div>
@@ -32,7 +34,9 @@
     </div>
     <div class="photo-box">
       <strong>Tenant Photo</strong>
-      {% if tenant.photo %}
+      {% if tenant_photo_url %}
+        <img class="photo-frame" src="{{ tenant_photo_url }}" alt="Tenant photo">
+      {% elif tenant.photo %}
         <img class="photo-frame" src="{{ tenant.photo.url }}" alt="Tenant photo">
       {% else %}
         <div class="photo-empty">No photo</div>

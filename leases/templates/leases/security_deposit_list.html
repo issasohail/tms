@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% load humanize %}
 
+{# LEGACY: retained only for backward-compatible direct URLs. Do not link to this template; use lease_ledger.html. #}
+
 {% block content %}
 <div class="container mt-3">
 
@@ -18,7 +20,7 @@
         Payment In
       </a>
       {% if security_totals.currently_held > 0 %}
-      <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_totals.currently_held }}"
+      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_totals.currently_held }}&amp;security_amount={{ security_totals.currently_held }}&amp;security_type=REFUND"
         class="btn btn-danger btn-sm">
         Refund Security
       </a>
@@ -79,9 +81,9 @@
           Payment In
         </a>
         {% if security_totals.currently_held > 0 %}
-        <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_totals.currently_held }}"
+        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_totals.currently_held }}&amp;security_amount={{ security_totals.currently_held }}&amp;security_type=REFUND"
           class="btn btn-danger btn-sm">
-          Refund
+          Security Refund
         </a>
         {% endif %}
       </div>

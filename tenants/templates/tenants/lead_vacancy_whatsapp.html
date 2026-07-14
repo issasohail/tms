@@ -18,7 +18,7 @@
     <div class="card">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
             <strong>Preview</strong>
-            <span class="small text-muted">{{ phone|default:"No phone" }}</span>
+            <span class="small text-muted">{{ phone|format_phone|default:"No phone" }}</span>
         </div>
         <div class="card-body">
             {% if message_text %}

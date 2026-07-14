@@ -119,7 +119,8 @@
 {% endblock %}
 
 
-<div class="table-responsive payment-list-dense"
+{# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+<div class="table-responsive payment-list-dense desktop-sticky-list"
      style="--lg-tenant-w: 24rem;">
   {% render_table table %}
 </div>

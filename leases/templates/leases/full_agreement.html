@@ -20,11 +20,11 @@
 
     <div>
         
-        <p>{{ lease.unit.property.owner_name }} holding CNIC NO. {{ lease.unit.property.owner_cnic }}
+        <p>{{ lease.unit.property.owner_name }} holding CNIC NO. {{ lease.unit.property.owner_cnic|format_cnic }}
         {{ lease.unit.property.owner_address }} (Hereinafter called "Owner")
         
         <strong>AND</strong><br>
-        {{ lease.tenant.get_full_name }} holding CNIC NO. {{ lease.tenant.cnic }}
+        {{ lease.tenant.get_full_name }} holding CNIC NO. {{ lease.tenant.cnic|format_cnic }}
         {{ lease.tenant.address }} (Hereinafter called "Tenant")
     </div>
 
@@ -44,14 +44,14 @@
                 <div class="signature-box">
                     <p>_________________________</p>
                     Owner: {{ lease.unit.property.owner_name }}<br>
-                    CNIC: {{ lease.unit.property.owner_cnic }}<br>
+                    CNIC: {{ lease.unit.property.owner_cnic|format_cnic }}<br>
                 </div>
             </div>
              <div class="col-md-6">
                 <div class="signature-box">
                     <p>_________________________</p>
                     Tenant: {{ lease.tenant.get_full_name }}<br>
-                    CNIC: {{ lease.tenant.cnic }}<br>
+                    CNIC: {{ lease.tenant.cnic|format_cnic }}<br>
                 </div>
             </div>
         </div>
@@ -61,14 +61,14 @@
                 <div class="signature-box">
                     <p>_________________________</p>
                     Witness 1: {{ lease.witness1_name|default:"_________________________" }}<br>
-                    CNIC: {{ lease.witness1_cnic|default:"_________________________" }}<br>
+                    CNIC: {{ lease.witness1_cnic|format_cnic|default:"_________________________" }}<br>
                 </div>
            
             <div class="col-md-6">
                 <div class="signature-box">
                     <p>_________________________</p>
                     Witness 2: {{ lease.witness2_name|default:"_________________________" }}</br>
-                    CNIC: {{ lease.witness2_cnic|default:"_________________________" }}<br>
+                    CNIC: {{ lease.witness2_cnic|format_cnic|default:"_________________________" }}<br>
                 </div>
             </div>
         </div>

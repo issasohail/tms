@@ -1042,6 +1042,11 @@
                     </div>
                   </div>
                   <div class="lf-f">
+                    <label class="form-label">Move-out Proration</label>
+                    {{ form.proration_interval_days|add_class:"form-select form-select-sm" }}
+                    <div class="form-text">Blank uses the system default.</div>
+                  </div>
+                  <div class="lf-f">
                     <label class="form-label">Internet Charges</label>
                     {{ form.internet_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
                   </div>

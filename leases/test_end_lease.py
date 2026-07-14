@@ -1,0 +1,445 @@
+from calendar import monthrange
+from datetime import date, timedelta
+from decimal import Decimal
+from types import SimpleNamespace
+
+from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
+
+from invoices.models import Invoice, InvoiceItem, ItemCategory, SecurityDepositTransaction
+from invoices.services import security_deposit_totals
+from payments.forms import PaymentDetailForm
+from payments.models import Payment
+from payments.services.payment_detail import rebuild_payment_detail
+from leases.models import Lease, LeaseUnitOccupancy
+from leases.utils.end_lease import (
+    ZERO,
+    _billable_days,
+    _proration_window,
+    build_end_lease_preview,
+    end_lease,
+    money,
+    move_out_charge_defaults,
+    rollback_end_lease,
+    tenant_message,
+)
+from properties.models import Property, Unit
+from tenants.models import Tenant
+
+
+class EndLeaseCalculationTests(SimpleTestCase):
+    def test_signed_amounts_derive_payment_and_refund_types(self):
+        positive = PaymentDetailForm(
+            data={
+                "payment_type": "LEASE_REFUND",
+                "lease_amount": "100.00",
+                "security_amount": "0.00",
+                "security_type": "PAYMENT",
+            },
+            payment_total=Decimal("100.00"),
+        )
+        self.assertTrue(positive.is_valid(), positive.errors)
+        self.assertEqual(positive.cleaned_data["payment_type"], "LEASE")
+
+        negative = PaymentDetailForm(
+            data={
+                "payment_type": "LEASE_REFUND",
+                "lease_amount": "-100.00",
+                "security_amount": "0.00",
+                "security_type": "PAYMENT",
+            },
+            payment_total=Decimal("-100.00"),
+        )
+        self.assertTrue(negative.is_valid(), negative.errors)
+        self.assertEqual(negative.cleaned_data["payment_type"], "LEASE_REFUND")
+        self.assertEqual(negative.cleaned_data["lease_amount"], Decimal("-100.00"))
+
+        security_refund = PaymentDetailForm(
+            data={
+                "lease_amount": "0.00",
+                "security_amount": "-100.00",
+            },
+            payment_total=Decimal("-100.00"),
+        )
+        self.assertTrue(security_refund.is_valid(), security_refund.errors)
+        self.assertEqual(security_refund.cleaned_data["payment_type"], "REFUND")
+        self.assertEqual(security_refund.cleaned_data["security_type"], "REFUND")
+        self.assertEqual(security_refund.cleaned_data["security_amount"], Decimal("100.00"))
+
+    def test_refund_payment_type_is_named_security_refund(self):
+        form = PaymentDetailForm()
+        self.assertIn(("REFUND", "Security Refund"), form.fields["payment_type"].choices)
+
+    def test_proration_uses_inclusive_end_date(self):
+        lease = SimpleNamespace(start_date=date(2026, 1, 1))
+        self.assertEqual(_proration_window(lease, date(2026, 7, 13)), (13, 31))
+
+    def test_proration_respects_midmonth_lease_start(self):
+        lease = SimpleNamespace(start_date=date(2026, 7, 10))
+        self.assertEqual(_proration_window(lease, date(2026, 7, 13)), (4, 31))
+
+    def test_proration_rounds_up_to_configured_billing_block(self):
+        self.assertEqual(_billable_days(13, 31, 1), 13)
+        self.assertEqual(_billable_days(13, 31, 5), 15)
+        self.assertEqual(_billable_days(13, 31, 7), 14)
+        self.assertEqual(_billable_days(13, 31, 10), 20)
+        self.assertEqual(_billable_days(13, 31, 15), 15)
+        self.assertEqual(_billable_days(31, 31, 15), 31)
+
+    def test_invalid_money_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            money("not-an-amount")
+
+    def test_move_out_charge_defaults_follow_building_type(self):
+        lease = SimpleNamespace(
+            unit=SimpleNamespace(
+                interest_type=SimpleNamespace(
+                    inspection_incomplete_charge=Decimal("7500.00"),
+                    key_card_not_returned_charge=Decimal("1250.00"),
+                ),
+                inspection_incomplete_charge=Decimal("5000.00"),
+                key_card_not_returned_charge=Decimal("1000.00"),
+            )
+        )
+        defaults = move_out_charge_defaults(lease)
+        self.assertEqual(defaults["inspection_charge"], Decimal("7500.00"))
+        self.assertEqual(defaults["key_charge"], Decimal("1250.00"))
+
+    def test_refund_message_requests_account_details(self):
+        tenant = SimpleNamespace(get_full_name=lambda: "Test Tenant")
+        lease = SimpleNamespace(tenant=tenant)
+        result = {
+            "lease": lease,
+            "end_date": date(2026, 7, 13),
+            "amount_payable": Decimal("0.00"),
+            "refund_due": Decimal("1250.00"),
+            "gross_balance": Decimal("-250.00"),
+            "security_applied": Decimal("0.00"),
+        }
+        message = tenant_message(result)
+        self.assertIn("account/IBAN", message)
+        self.assertIn("Rs. 1,250.00", message)
+
+
+class EndLeasePostingTests(TestCase):
+    def test_future_electricity_is_projected_then_transferred_only_once(self):
+        today = date.today()
+        month_first = today.replace(day=1)
+        future_date = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
+        property_obj = Property.objects.create(
+            property_name="Electric Transfer Property",
+            owner_name="Owner",
+            owner_cnic="6110112345691",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(
+            property=property_obj, unit_number="E-1", is_smart_meter=False
+        )
+        tenant = Tenant.objects.create(
+            first_name="Electric",
+            last_name="Tenant",
+            cnic="6110112345692",
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=month_first,
+            end_date=today + timedelta(days=180),
+            monthly_rent=ZERO,
+            society_maintenance=ZERO,
+            water_charges=ZERO,
+            internet_charges=ZERO,
+            status="active",
+        )
+        future_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=future_date,
+            due_date=future_date,
+            description=f"Monthly charges {future_date:%b %Y}",
+        )
+        electric_category = ItemCategory.objects.create(name="Electricity")
+        InvoiceItem.objects.bulk_create(
+            [
+                InvoiceItem(
+                    invoice=future_invoice,
+                    category=electric_category,
+                    description=(
+                        f"Electric bill; Billing Period={month_first:%Y-%m-%d} "
+                        f"to {today:%Y-%m-%d}"
+                    ),
+                    amount=Decimal("4654.00"),
+                )
+            ]
+        )
+        Invoice.objects.filter(pk=future_invoice.pk).update(amount=Decimal("4654.00"))
+
+        preview = build_end_lease_preview(
+            lease,
+            end_date=today,
+            future_invoice_action="cancel",
+            inspection_complete=True,
+            keys_returned=True,
+        )
+        self.assertEqual(preview["electricity_transfer_on_confirm"], Decimal("4654.00"))
+        self.assertFalse(
+            preview["invoice"].items.filter(category__name__istartswith="Electric").exists()
+        )
+        self.assertEqual(preview["gross_balance"], Decimal("4654.00"))
+
+        result = end_lease(
+            lease,
+            end_date=today,
+            future_invoice_action="cancel",
+            inspection_complete=True,
+            keys_returned=True,
+        )
+        future_invoice.refresh_from_db()
+        result["invoice"].refresh_from_db()
+        self.assertEqual(future_invoice.status, "cancelled")
+        electric_items = result["invoice"].items.filter(
+            category__name__istartswith="Electric"
+        )
+        self.assertEqual(electric_items.count(), 1)
+        self.assertEqual(electric_items.get().amount, Decimal("4654.00"))
+        self.assertEqual(result["invoice"].amount, Decimal("4654.00"))
+
+    def test_posts_proration_applies_security_and_leaves_pending_refund(self):
+        today = date.today()
+        month_first = today.replace(day=1)
+        days_in_month = monthrange(today.year, today.month)[1]
+        property_obj = Property.objects.create(
+            property_name="Test Property",
+            owner_name="Owner",
+            owner_cnic="6110112345671",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="A-1", is_smart_meter=False)
+        tenant = Tenant.objects.create(
+            first_name="Test",
+            last_name="Tenant",
+            cnic="6110112345672",
+            phone="03001234567",
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=month_first,
+            end_date=today + timedelta(days=180),
+            monthly_rent=Decimal(days_in_month * 1000),
+            society_maintenance=ZERO,
+            water_charges=ZERO,
+            internet_charges=ZERO,
+            security_deposit=Decimal("100000.00"),
+            status="active",
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=lease,
+            unit=unit,
+            move_in_date=month_first,
+        )
+        invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=month_first,
+            due_date=month_first,
+            description=f"Monthly charges {month_first:%b %Y}",
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice,
+            category=ItemCategory.objects.create(name="Rent"),
+            description=f"Rent {month_first:%b %Y}",
+            amount=Decimal(days_in_month * 1000),
+        )
+        future_issue_date = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
+        future_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=future_issue_date,
+            due_date=future_issue_date,
+            description=f"Monthly charges {future_issue_date:%b %Y}",
+            amount=Decimal("5000.00"),
+        )
+        SecurityDepositTransaction.objects.create(
+            lease=lease,
+            type="PAYMENT",
+            amount=Decimal("100000.00"),
+        )
+
+        cancel_preview = build_end_lease_preview(
+            lease,
+            end_date=today,
+            final_electric_amount="1000.00",
+            other_amount="0",
+            future_invoice_action="cancel",
+        )
+        keep_preview = build_end_lease_preview(
+            lease,
+            end_date=today,
+            final_electric_amount="1000.00",
+            other_amount="0",
+            future_invoice_action="keep",
+        )
+        self.assertEqual(cancel_preview["future_invoices"], [future_invoice])
+        self.assertEqual(
+            keep_preview["gross_balance"] - cancel_preview["gross_balance"],
+            Decimal("5000.00"),
+        )
+
+        result = end_lease(
+            lease,
+            end_date=today,
+            final_electric_amount="1000.00",
+            other_amount="0",
+        )
+
+        lease.refresh_from_db()
+        future_invoice.refresh_from_db()
+        self.assertEqual(lease.status, "ended")
+        self.assertEqual(future_invoice.status, "cancelled")
+        self.assertIn("Original amount: Rs. 5,000.00", future_invoice.notes)
+        self.assertEqual(lease.end_date, today)
+        expected_gross = Decimal(today.day * 1000 + 1000 + 5000 + 1000)
+        self.assertEqual(result["gross_balance"], expected_gross)
+        self.assertEqual(result["amount_payable"], ZERO)
+        self.assertEqual(result["refund_due"], Decimal("100000.00") - expected_gross)
+        self.assertTrue(
+            SecurityDepositTransaction.objects.filter(
+                lease=lease, type="REFUND", refund_status="PENDING"
+            ).exists()
+        )
+        self.assertEqual(
+            security_deposit_totals(lease)["currently_held"], result["refund_due"]
+        )
+        self.assertEqual(
+            LeaseUnitOccupancy.objects.get(lease=lease).move_out_date,
+            today,
+        )
+        self.assertEqual(lease.financial_summary["balance"], ZERO)
+
+        rollback = rollback_end_lease(
+            lease,
+            restored_end_date=today + timedelta(days=180),
+            notes="Test rollback",
+        )
+        lease.refresh_from_db()
+        future_invoice.refresh_from_db()
+        result["invoice"].refresh_from_db()
+        self.assertEqual(lease.status, "active")
+        self.assertEqual(future_invoice.status, "sent")
+        self.assertEqual(result["invoice"].status, "cancelled")
+        self.assertEqual(rollback["restored_end_date"], today + timedelta(days=180))
+        self.assertFalse(
+            SecurityDepositTransaction.objects.filter(
+                lease=lease, type="REFUND"
+            ).exclude(refund_status="CANCELLED").exists()
+        )
+
+
+class SecurityRefundLinkTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="refund-tester",
+            email="refund@example.com",
+            password="test-password",
+        )
+        property_obj = Property.objects.create(
+            property_name="Refund Property",
+            owner_name="Owner",
+            owner_cnic="6110112345681",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="R-1")
+        tenant = Tenant.objects.create(
+            first_name="Refund",
+            last_name="Tenant",
+            cnic="6110112345682",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            monthly_rent=Decimal("10000.00"),
+            society_maintenance=ZERO,
+            security_deposit=Decimal("15300.00"),
+        )
+        SecurityDepositTransaction.objects.create(
+            lease=self.lease,
+            type="PAYMENT",
+            amount=Decimal("15300.00"),
+        )
+        self.client.force_login(self.user)
+
+    def test_security_refund_link_opens_prefilled_payment_form(self):
+        ledger = self.client.get(
+            reverse("leases:lease_security_list", args=[self.lease.pk])
+        )
+        expected_query = (
+            f"lease={self.lease.pk}&amp;payment_type=REFUND&amp;amount=15300.00"
+            "&amp;security_amount=15300.00&amp;security_type=REFUND"
+        )
+        self.assertContains(ledger, expected_query)
+
+        payment_form = self.client.get(
+            reverse("payments:payment_create"),
+            {
+                "lease": self.lease.pk,
+                "payment_type": "REFUND",
+                "amount": "15300.00",
+                "security_amount": "15300.00",
+                "security_type": "REFUND",
+            },
+        )
+        self.assertEqual(payment_form.status_code, 200)
+        self.assertEqual(str(payment_form.context["form"]["amount"].value()), "-15300.00")
+        self.assertEqual(
+            str(payment_form.context["form"]["lease"].value()), str(self.lease.pk)
+        )
+        detail_form = payment_form.context["payment_detail_form"]
+        self.assertEqual(detail_form["payment_type"].value(), "REFUND")
+        self.assertEqual(str(detail_form["lease_amount"].value()), "0.00")
+        self.assertEqual(str(detail_form["security_amount"].value()), "-15300.00")
+        self.assertEqual(detail_form["security_type"].value(), "REFUND")
+
+    def test_posting_refund_payment_completes_existing_pending_refund(self):
+        pending = SecurityDepositTransaction.objects.create(
+            lease=self.lease,
+            type="REFUND",
+            amount=Decimal("15300.00"),
+            refund_status="PENDING",
+            notes="Pending security refund; awaiting tenant account details.",
+        )
+        payment = Payment.objects.create(
+            lease=self.lease,
+            payment_date=date.today(),
+            amount=Decimal("-15300.00"),
+            description="Security refund",
+        )
+        rebuild_payment_detail(
+            payment=payment,
+            lease_amount=ZERO,
+            security_amount=Decimal("15300.00"),
+            security_type="REFUND",
+            user=self.user,
+            reason="Refund paid",
+        )
+        pending.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertEqual(pending.refund_status, "PAID")
+        self.assertEqual(payment.amount, Decimal("-15300.00"))
+        self.assertEqual(pending.payment_id, payment.pk)
+        self.assertEqual(
+            SecurityDepositTransaction.objects.filter(
+                lease=self.lease, type="REFUND"
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            security_deposit_totals(self.lease)["currently_held"], ZERO
+        )

@@ -11,9 +11,20 @@
 
     {# Left cluster: navigation + export #}
     <div class="action-cluster">
+      {% if settlement_mode %}
+      <button type="button" class="btn btn-primary btn-sm" id="returnToSettlementBtn">
+        <i class="fas fa-arrow-left me-1"></i> Return to Settlement
+      </button>
+      <button type="button" class="btn btn-warning btn-sm" id="prorateForMoveOutBtn"
+              data-url="{% url 'invoices:invoice_move_out_prorate' invoice.pk %}"
+              data-end-date="{{ settlement_end_date|date:'Y-m-d' }}">
+        <i class="fas fa-calculator me-1"></i> Prorate for Move-out
+      </button>
+      {% else %}
       <a href="{% url 'invoices:invoice_list' %}" class="btn btn-primary btn-sm">
         <i class="fas fa-arrow-left me-1"></i> Go Back
       </a>
+      {% endif %}
       <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary btn-sm">
         <i class="fas fa-plus me-1"></i> New Invoice
       </a>
@@ -39,10 +50,10 @@
 
     {# Right cluster: record actions #}
     <div class="action-cluster">
-      <a href="{% url 'invoices:invoice_update' invoice.pk %}" class="btn btn-primary btn-sm">
+      <a href="{% url 'invoices:invoice_update' invoice.pk %}{% if settlement_mode %}?{{ settlement_query }}{% endif %}" class="btn btn-primary btn-sm">
         <i class="fas fa-edit me-1"></i> Edit
       </a>
-      <a href="{% url 'invoices:invoice_delete' invoice.pk %}" class="btn btn-danger btn-sm">
+      <a href="{% url 'invoices:invoice_delete' invoice.pk %}{% if settlement_mode %}?{{ settlement_query }}{% endif %}" class="btn btn-danger btn-sm">
         <i class="fas fa-trash-alt me-1"></i> Delete
       </a>
       <button onclick="window.print()" class="btn btn-primary btn-sm">
@@ -94,7 +105,7 @@
         <div class="col-12 col-md-6">
           <p class="mb-0 text-muted inv-field-label">To</p>
           <p class="mb-0 fw-semibold">{{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }}</p>
-          <p class="mb-0 text-muted">{{ invoice.lease.tenant.phone }}</p>
+          <p class="mb-0 text-muted">{{ invoice.lease.tenant.phone|format_phone }}</p>
           <p class="mb-0 text-muted">{{ invoice.lease.unit.unit_number }}, {{ invoice.lease.unit.property.property_name }}</p>
         </div>
         <div class="col-12 col-md-6">
@@ -150,11 +161,11 @@
               </span>
               {# Edit state #}
               <span class="cell-edit d-none">
-                <input class="form-control form-control-sm mb-1 category-edit"
-                       list="categoryOptions"
-                       value="{{ item.category.name|default:item.category|default:'' }}"
-                       placeholder="Category"
-                       maxlength="80">
+                <select class="form-select form-select-sm mb-1 category-edit" data-current="{{ item.category.name|default:item.category|default:'' }}">
+                  {% for c in categories %}
+                    <option value="{{ c.name }}" {% if item.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                  {% endfor %}
+                </select>
                 <input class="form-control form-control-sm description-edit"
                        value="{{ item.description|default:'' }}"
                        placeholder="Description">
@@ -259,7 +270,7 @@
   /* ── Knobs ──────────────────────────────────────────── */
   :root {
     --base-fs:   .88rem;
-    --cell-pad:  .25rem;
+    --cell-pad:  .15rem .25rem;
     --card-pad:  .5rem;
     --btn-py:    .30rem;
     --btn-px:    .55rem;
@@ -343,7 +354,7 @@
 
   /* ── Category+Description merged cell ───────────────── */
   .category-view { display: block; }
-  .desc-view     { font-size: .8rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .desc-view     { font-size: .78rem; line-height: 1.15; overflow-wrap: anywhere; margin-top: .1rem !important; }
 
   /* ── Icon action buttons (desktop default) ───────────── */
   .item-actions { white-space: nowrap; text-align: right; vertical-align: top; }
@@ -351,7 +362,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px; height: 26px;
+    width: 22px; height: 22px;
     border-radius: 5px;
     border: 1px solid;
     background: transparent;
@@ -455,13 +466,54 @@
     return '{{ CURRENCY_SYMBOL }} ' + Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  const settlementMode = {% if settlement_mode %}true{% else %}false{% endif %};
+  function notifySettlementChanged(closeAfter) {
+    if (!settlementMode) return false;
+    const message = {type: 'tms-settlement-refresh', leaseId: '{{ invoice.lease_id }}', invoiceId: '{{ invoice.pk }}'};
+    localStorage.setItem('tms:settlement-refresh:{{ invoice.lease_id }}', String(Date.now()));
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(message, window.location.origin);
+      if (closeAfter) window.close();
+      return true;
+    }
+    return false;
+  }
+
+  const returnButton = document.getElementById('returnToSettlementBtn');
+  if (returnButton) {
+    returnButton.addEventListener('click', function() {
+      if (!notifySettlementChanged(true)) window.location.href = '{{ settlement_return_url|default:""|escapejs }}';
+    });
+  }
+  const prorateButton = document.getElementById('prorateForMoveOutBtn');
+  if (prorateButton) {
+    prorateButton.addEventListener('click', async function() {
+      const original = this.innerHTML;
+      this.disabled = true;
+      this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Prorating';
+      try {
+        const response = await fetch(this.dataset.url, {
+          method: 'POST',
+          headers: {'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest'},
+          body: new URLSearchParams({end_date: this.dataset.endDate})
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || 'Proration failed.');
+        notifySettlementChanged(false);
+        window.location.reload();
+      } catch (error) {
+        alert(error.message || 'Proration failed.');
+        this.disabled = false;
+        this.innerHTML = original;
+      }
+    });
+  }
+
   /* ── category auto-create ── */
   async function ensureCategory(name) {
     const opts = Array.from(document.querySelectorAll('#categoryOptions option'));
     const found = opts.find(o => o.value.toLowerCase() === name.toLowerCase());
     if (found) return { id: found.dataset.id, name: found.value };
-
-    if (!confirm(`Category "${name}" not found. Add it?`)) throw new Error('Category not added');
 
     const res = await fetch("{% url 'invoices:category_create_ajax' %}", {
       method: 'POST',
@@ -472,6 +524,11 @@
     const opt = Object.assign(document.createElement('option'), { value: data.name });
     opt.dataset.id = data.id;
     document.getElementById('categoryOptions').appendChild(opt);
+    document.querySelectorAll('.category-edit').forEach(select => {
+      if (!Array.from(select.options).some(option => option.value.toLowerCase() === data.name.toLowerCase())) {
+        select.appendChild(new Option(data.name, data.name));
+      }
+    });
     return { id: data.id, name: data.name };
   }
 
@@ -487,12 +544,27 @@
     tr.querySelector('.btn-delete-item').classList.add('d-none');
     tr.querySelector('.btn-save-item').classList.remove('d-none');
     tr.querySelector('.btn-cancel-item').classList.remove('d-none');
-    tr.querySelector('.category-edit').focus();
+    const categorySelect = tr.querySelector('.category-edit');
+    if (window.jQuery && jQuery.fn.select2 && !jQuery(categorySelect).hasClass('select2-hidden-accessible')) {
+      jQuery(categorySelect).select2({
+        tags: true,
+        width: '100%',
+        dropdownParent: jQuery('.invoice-sheet'),
+        createTag: params => ({id: params.term.trim(), text: params.term.trim(), newTag: true})
+      });
+    }
+    if (window.jQuery && jQuery(categorySelect).hasClass('select2-hidden-accessible')) {
+      jQuery(categorySelect).select2('open');
+    } else {
+      categorySelect.focus();
+    }
   }
 
   function exitEdit(tr, reset) {
     if (reset) {
-      tr.querySelector('.category-edit').value  = tr.querySelector('.category-view').textContent.trim();
+      const categoryValue = tr.querySelector('.category-view').textContent.trim();
+      tr.querySelector('.category-edit').value = categoryValue;
+      if (window.jQuery) jQuery(tr.querySelector('.category-edit')).val(categoryValue).trigger('change');
       tr.querySelector('.description-edit').value = (tr.querySelector('.desc-view')?.textContent || '').trim();
       tr.querySelector('.amount-edit').value     = tr.querySelector('.amount-view').textContent.replace(/[^\d.-]/g, '');
     }
@@ -507,7 +579,7 @@
   }
 
   async function saveRow(tr) {
-    const name = tr.querySelector('.category-edit').value.trim();
+    const name = String(tr.querySelector('.category-edit').value || '').trim();
     const desc = tr.querySelector('.description-edit').value.trim();
     const amt  = tr.querySelector('.amount-edit').value.trim();
 
@@ -518,7 +590,12 @@
     const res = await fetch(tr.dataset.updateUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
-      body: JSON.stringify({ category_name: cat.name, description: desc, amount: amt })
+      body: JSON.stringify({
+        category_name: cat.name,
+        description: desc,
+        amount: amt,
+        settlement_end_date: settlementMode ? '{{ settlement_end_date|date:"Y-m-d" }}' : ''
+      })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || 'Save failed');
@@ -543,21 +620,22 @@
     if (cdEl) cdEl.textContent = parts.join(', ') || '—';
 
     exitEdit(tr);
+    notifySettlementChanged(false);
   }
 
   async function deleteRow(tr) {
-    const label = tr.querySelector('.category-view')?.textContent.trim() || 'this item';
-    if (!confirm(`Delete "${label}"? The invoice total will be recalculated.`)) return;
-
     const res = await fetch(tr.dataset.deleteUrl, {
       method: 'POST',
       headers: { 'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
-      body: new URLSearchParams({ confirm_delete: 'yes' })
+      body: new URLSearchParams({
+        settlement_end_date: settlementMode ? '{{ settlement_end_date|date:"Y-m-d" }}' : ''
+      })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || 'Delete failed');
 
     tr.remove();
+    notifySettlementChanged(false);
 
     /* renumber */
     document.querySelectorAll('#itemsTable tbody tr.item-row').forEach((r, i) => {

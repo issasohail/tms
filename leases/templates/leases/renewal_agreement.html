@@ -23,7 +23,7 @@
   <table>
     <tr><th>Renewal</th><td>#{{ renewal.renewal_number }}</td></tr>
     <tr><th>Agreement Date</th><td>{{ renewal.agreement_date|date:"M d, Y"|default:"-" }}</td></tr>
-    <tr><th>Tenant</th><td>{{ lease.tenant.get_full_name }}{% if lease.tenant.cnic %} (CNIC {{ lease.tenant.cnic }}){% endif %}</td></tr>
+    <tr><th>Tenant</th><td>{{ lease.tenant.get_full_name }}{% if lease.tenant.cnic %} (CNIC {{ lease.tenant.cnic|format_cnic }}){% endif %}</td></tr>
     <tr><th>Property / Unit</th><td>{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</td></tr>
     <tr><th>Renewal Period</th><td>{{ renewal.start_date|date:"M d, Y" }} to {{ renewal.end_date|date:"M d, Y" }}</td></tr>
     <tr><th>Monthly Rent</th><td>Rs {{ renewal.monthly_rent|floatformat:0|intcomma }}</td></tr>

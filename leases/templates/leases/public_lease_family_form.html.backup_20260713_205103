@@ -1,0 +1,647 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add Family Members</title>
+  <style>
+    :root{
+      --blue:#0d6efd;
+      --blue-soft:#e8f1ff;
+      --green:#15803d;
+      --red:#dc2626;
+      --muted:#64748b;
+      --border:#dbe3ef;
+      --bg:#f3f4f6;
+      --card:#ffffff;
+      --soft:#f8fafc;
+    }
+    *{ box-sizing:border-box; }
+    body { margin:0; font-family: Arial, sans-serif; background:var(--bg); color:#111827; }
+    .wrap { max-width:1060px; margin:14px auto; padding:0 10px; }
+    .card { background:var(--card); border:1px solid #d1d5db; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); overflow:hidden; }
+    .head { padding:14px 16px; border-bottom:1px solid #e5e7eb; }
+    h1 { margin:0 0 4px; font-size:23px; line-height:1.15; }
+    h2 { margin:0 0 8px; font-size:17px; }
+    .muted { color:var(--muted); font-size:12px; }
+    .body { padding:14px 16px 18px; }
+    .alert { border-radius:8px; padding:9px 11px; margin-bottom:10px; font-size:13px; }
+    .alert-danger { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .alert-success { background:#ecfdf5; border:1px solid #bbf7d0; color:#166534; }
+
+    .member-card {
+      border:1px solid #cfe0f7;
+      border-radius:10px;
+      padding:12px;
+      margin-bottom:12px;
+      background:#fbfdff;
+    }
+    .member-card-head { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px; }
+    .member-title { font-size:16px; font-weight:800; color:#0f172a; }
+    .remove-member { display:none; }
+    .member-card.extra .remove-member { display:inline-block; }
+
+    .grid {
+      display:grid;
+      grid-template-columns:repeat(4, minmax(0, 1fr));
+      gap:9px 10px;
+      align-items:start;
+    }
+    .full { grid-column:1 / -1; }
+    label { display:block; font-size:11px; font-weight:800; margin-bottom:3px; color:#0f172a; }
+    input, select, textarea {
+      width:100%;
+      padding:7px 8px;
+      border:1px solid #cbd5e1;
+      border-radius:6px;
+      font-size:13px;
+      background:#fff;
+    }
+    textarea { min-height:52px; resize:vertical; }
+    .note { font-size:11px; color:#6b7280; margin-top:4px; line-height:1.25; }
+    .actions { margin-top:12px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+    button, .btn {
+      border:0;
+      border-radius:7px;
+      padding:8px 12px;
+      font-weight:800;
+      background:var(--blue);
+      color:white;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-block;
+      font-size:13px;
+      line-height:1.1;
+    }
+    .btn-secondary { background:#475569; }
+    .btn-danger { background:var(--red); }
+    .btn-light { background:#eef2ff; color:#1d4ed8; border:1px solid #c7d2fe; }
+    .btn-green { background:var(--green); }
+    .btn-xs { padding:6px 9px; font-size:12px; }
+    .section { border-top:1px solid #e5e7eb; margin-top:18px; padding-top:16px; }
+
+    .file-box input { padding:5px; font-size:12px; }
+    .preview-row { display:flex; gap:6px; align-items:center; margin-top:5px; flex-wrap:wrap; }
+    .preview-img {
+      display:none;
+      width:58px;
+      height:58px;
+      object-fit:cover;
+      border:1px solid #cbd5e1;
+      border-radius:8px;
+      background:#fff;
+    }
+    .preview-img.id-preview { object-fit:contain; background:#f8fafc; }
+    .mini-tools { display:none; gap:5px; flex-wrap:wrap; }
+    .mini-tools button { padding:5px 7px; font-size:11px; background:#475569; }
+
+    .list-card { border:1px solid #e5e7eb; border-radius:10px; padding:12px; margin-bottom:10px; background:#fff; }
+    .family-row { display:grid; grid-template-columns:66px 1fr 260px; gap:12px; align-items:start; }
+    .thumb {
+      width:58px;
+      height:58px;
+      object-fit:cover;
+      border-radius:8px;
+      border:1px solid #e5e7eb;
+      background:#f8fafc;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#94a3b8;
+      font-size:11px;
+      text-align:center;
+    }
+    .info-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:5px 12px; font-size:12px; margin-top:7px; }
+    .info-grid strong { color:#374151; }
+    .pill { display:inline-block; padding:2px 7px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:11px; font-weight:800; }
+    .file-links a { margin-right:8px; font-size:12px; }
+    .update-toggle-row { margin-top:9px; display:flex; gap:7px; flex-wrap:wrap; }
+    .update-box { display:none; margin-top:10px; padding:10px; border:1px dashed #bfdbfe; border-radius:9px; background:#f8fbff; }
+    .update-box.show { display:block; }
+
+    .pending-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .pending-table th, .pending-table td { border-bottom:1px solid #e5e7eb; padding:7px; text-align:left; vertical-align:top; }
+    .pending-table th { background:#f8fafc; font-size:11px; }
+
+    @media (max-width:900px){
+      .wrap { max-width:100%; margin:10px auto; }
+      .grid { grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; }
+      .family-row { grid-template-columns:60px 1fr; }
+      .remove-box { grid-column:1 / -1; }
+      .info-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width:640px){
+      .wrap { margin:8px auto; padding:0 7px; }
+      .head { padding:12px; }
+      .body { padding:12px; }
+      h1 { font-size:20px; }
+      h2 { font-size:16px; }
+      .grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+      .full { grid-column:1 / -1; }
+      input, select, textarea { padding:7px; font-size:12px; }
+      .member-card { padding:10px; }
+      .family-row { grid-template-columns:50px 1fr; gap:9px; }
+      .thumb { width:46px; height:46px; }
+      .info-grid { grid-template-columns:1fr; }
+      .actions { justify-content:stretch; }
+      button, .btn { width:100%; text-align:center; }
+      .pending-table { display:block; overflow-x:auto; white-space:nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <h1>Add Family Members</h1>
+        <div class="muted">
+          {{ lease.tenant.get_full_name }} - {{ lease.unit.property|default:"-" }} / {{ lease.unit|default:"-" }}
+        </div>
+        <div class="muted">This link expires {{ expires_at|date:"M d, Y H:i" }}. Submissions will be reviewed before they are added.</div>
+      </div>
+
+      <div class="body">
+        {% if submitted_count %}
+          <div class="alert alert-success">
+            {{ submitted_count }} family member{% if submitted_count != 1 %}s{% endif %} submitted for approval.
+          </div>
+        {% endif %}
+        {% if update_submitted %}
+          <div class="alert alert-success">
+            Update request for {{ update_submitted.get_full_name }} submitted for approval.
+          </div>
+        {% endif %}
+        {% if remove_submitted %}
+          <div class="alert alert-success">
+            Removal request for {{ remove_submitted.get_full_name }} submitted for approval.
+          </div>
+        {% endif %}
+        {% if errors %}
+          <div class="alert alert-danger">
+            {% for error in errors %}
+              <div>{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" id="familyForm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add">
+          <input type="hidden" name="family-TOTAL_FORMS" id="familyTotalForms" value="1">
+
+          <div id="memberForms">
+            <div class="member-card" data-member-card data-index="0">
+              <div class="member-card-head">
+                <div class="member-title">Family Member 1</div>
+                <button type="button" class="btn-danger btn-xs remove-member" data-remove-member>Remove</button>
+              </div>
+
+              <div class="grid">
+                <div>
+                  <label>First Name *</label>
+                  <input name="family-0-first_name" required data-first-name autocomplete="given-name">
+                </div>
+                <div>
+                  <label>Last Name</label>
+                  <input name="family-0-last_name" data-last-name autocomplete="family-name">
+                </div>
+                <div>
+                  <label>Relationship *</label>
+                  <select name="family-0-relation" required>
+                    <option value="">Select relationship</option>
+                    {% for item in relationship_types %}
+                      <option value="{{ item.id }}">{{ item.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label>CNIC / ID *</label>
+                  <input name="family-0-cnic" inputmode="numeric" required data-cnic>
+                  <div class="note" data-cnic-note>Duplicate IDs cannot be submitted.</div>
+                </div>
+
+                <div>
+                  <label>Phone</label>
+                  <input name="family-0-phone" inputmode="tel" autocomplete="tel">
+                </div>
+                <div>
+                  <label>Date of Birth</label>
+                  <input name="family-0-date_of_birth" type="date">
+                </div>
+                <div>
+                  <label>Gender</label>
+                  <select name="family-0-gender">
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                    <option value="O">Other</option>
+                  </select>
+                </div>
+                <div class="file-box">
+                  <label>Photo</label>
+                  <input name="family-0-photo" type="file" accept="image/*" data-image-input data-kind="photo">
+                  <div class="preview-row">
+                    <img class="preview-img" alt="Photo preview">
+                    <span class="mini-tools" data-photo-tools>
+                      <button type="button" data-rotate-left>↶ Rotate</button>
+                      <button type="button" data-rotate-right>↷ Rotate</button>
+                    </span>
+                  </div>
+                  <div class="note">Photo will be compressed before upload.</div>
+                </div>
+
+                <div class="file-box">
+                  <label>ID Front</label>
+                  <input name="family-0-cnic_front" type="file" accept="image/*" data-image-input data-kind="id">
+                  <div class="preview-row"><img class="preview-img id-preview" alt="ID front preview"></div>
+                </div>
+                <div class="file-box">
+                  <label>ID Back</label>
+                  <input name="family-0-cnic_back" type="file" accept="image/*" data-image-input data-kind="id">
+                  <div class="preview-row"><img class="preview-img id-preview" alt="ID back preview"></div>
+                </div>
+                <div class="full">
+                  <label>Notes</label>
+                  <textarea name="family-0-notes"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions" style="justify-content:space-between;">
+            <button type="button" class="btn-light" id="addMemberBtn">+ Add Another Family Member</button>
+            <button type="submit">Submit All For Approval</button>
+          </div>
+        </form>
+
+        <div class="section">
+          <h2>Current Family Members</h2>
+          <div class="muted" style="margin-bottom:10px;">
+            Verify this list. You can request removal, or request updates for fields except name and CNIC / ID.
+          </div>
+
+          {% if family_members %}
+            {% for member in family_members %}
+              <div class="list-card">
+                <div class="family-row">
+                  {% if member.family_member.photo %}
+                    <img class="thumb" src="{{ member.family_member.photo.url }}" alt="Photo">
+                  {% else %}
+                    <div class="thumb">No Photo</div>
+                  {% endif %}
+
+                  <div>
+                    <strong>{{ member.family_member.get_full_name }}</strong>
+                    <span class="pill">{{ member.relationship_type.name|default:member.relationship }}</span>
+
+                    <div class="info-grid">
+                      <div><strong>CNIC / ID:</strong> {{ member.family_member.cnic|default:"-" }}</div>
+                      <div><strong>Phone:</strong> {{ member.family_member.phone|default:"-" }}</div>
+                      <div><strong>Gender:</strong> {{ member.family_member.get_gender_display|default:"-" }}</div>
+                      <div><strong>DOB:</strong> {{ member.family_member.date_of_birth|date:"M d, Y"|default:"-" }}</div>
+                    </div>
+
+                    <div class="file-links" style="margin-top:7px;">
+                      {% if member.family_member.cnic_front %}<a href="{{ member.family_member.cnic_front.url }}" target="_blank">View ID Front</a>{% endif %}
+                      {% if member.family_member.cnic_back %}<a href="{{ member.family_member.cnic_back.url }}" target="_blank">View ID Back</a>{% endif %}
+                    </div>
+
+                    <div class="update-toggle-row">
+                      <button type="button" class="btn-light btn-xs" data-toggle-update>Update Info</button>
+                    </div>
+
+                    <form method="post" enctype="multipart/form-data" class="update-box" data-update-box>
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="update">
+                      <input type="hidden" name="existing_member_id" value="{{ member.pk }}">
+
+                      <div class="grid">
+                        <div>
+                          <label>Name</label>
+                          <input value="{{ member.family_member.get_full_name }}" disabled>
+                          <div class="note">Name cannot be changed from this link.</div>
+                        </div>
+                        <div>
+                          <label>CNIC / ID</label>
+                          <input value="{{ member.family_member.cnic|default:'-' }}" disabled>
+                          <div class="note">CNIC / ID cannot be changed.</div>
+                        </div>
+                        <div>
+                          <label>Relationship</label>
+                          <select name="update_relation">
+                            <option value="">Select relationship</option>
+                            {% for item in relationship_types %}
+                              <option value="{{ item.id }}" {% if member.relationship_type_id == item.id %}selected{% endif %}>{{ item.name }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div>
+                          <label>Phone</label>
+                          <input name="update_phone" inputmode="tel" value="{{ member.family_member.phone|default:'' }}">
+                        </div>
+                        <div>
+                          <label>Date of Birth</label>
+                          <input name="update_date_of_birth" type="date" value="{{ member.family_member.date_of_birth|date:'Y-m-d' }}">
+                        </div>
+                        <div>
+                          <label>Gender</label>
+                          <select name="update_gender">
+                            <option value="M" {% if member.family_member.gender == "M" %}selected{% endif %}>Male</option>
+                            <option value="F" {% if member.family_member.gender == "F" %}selected{% endif %}>Female</option>
+                            <option value="O" {% if member.family_member.gender == "O" %}selected{% endif %}>Other</option>
+                          </select>
+                        </div>
+                        <div class="file-box">
+                          <label>New Photo</label>
+                          <input name="update_photo" type="file" accept="image/*" data-image-input data-kind="photo">
+                          <div class="preview-row">
+                            <img class="preview-img" alt="New photo preview">
+                            <span class="mini-tools" data-photo-tools>
+                              <button type="button" data-rotate-left>↶ Rotate</button>
+                              <button type="button" data-rotate-right>↷ Rotate</button>
+                            </span>
+                          </div>
+                        </div>
+                        <div class="file-box">
+                          <label>New ID Front</label>
+                          <input name="update_cnic_front" type="file" accept="image/*" data-image-input data-kind="id">
+                          <div class="preview-row"><img class="preview-img id-preview" alt="New ID front preview"></div>
+                        </div>
+                        <div class="file-box">
+                          <label>New ID Back</label>
+                          <input name="update_cnic_back" type="file" accept="image/*" data-image-input data-kind="id">
+                          <div class="preview-row"><img class="preview-img id-preview" alt="New ID back preview"></div>
+                        </div>
+                        <div class="full">
+                          <label>Notes</label>
+                          <textarea name="update_notes">{{ member.family_member.notes|default:'' }}</textarea>
+                        </div>
+                      </div>
+
+                      <div class="actions">
+                        <button type="submit" class="btn-green" onclick="return confirm('Submit update request for approval?');">
+                          Submit Update Request
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  <form method="post" class="remove-box" style="min-width:220px;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="remove">
+                    <input type="hidden" name="existing_member_id" value="{{ member.pk }}">
+                    <label for="remove_reason_{{ member.pk }}">Removal reason</label>
+                    <input id="remove_reason_{{ member.pk }}" name="remove_reason" placeholder="Optional reason">
+                    <button type="submit" class="btn-danger" style="margin-top:8px;" onclick="return confirm('Submit removal request for {{ member.family_member.get_full_name }}?');">
+                      Request Removal
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="muted">No family members are linked yet.</div>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>Pending Family Requests</h2>
+          {% if pending_family_requests %}
+            <table class="pending-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Name</th>
+                  <th>Relationship</th>
+                  <th>CNIC / ID</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for pending in pending_family_requests %}
+                  <tr>
+                    <td>{{ pending.get_action_display }}</td>
+                    <td>{{ pending.first_name }} {{ pending.last_name }}</td>
+                    <td>{{ pending.relationship_type.name|default:pending.relationship }}</td>
+                    <td>{{ pending.cnic|default:"-" }}</td>
+                    <td><span class="pill">{{ pending.get_status_display }}</span></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <div class="muted">No pending family requests.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const memberForms = document.getElementById('memberForms');
+    const addMemberBtn = document.getElementById('addMemberBtn');
+    const totalForms = document.getElementById('familyTotalForms');
+    const cnicCheckUrl = "{% url 'leases:public_lease_family_cnic_check' token %}";
+
+    function renumberCards() {
+      const cards = memberForms.querySelectorAll('[data-member-card]');
+      cards.forEach((card, index) => {
+        card.dataset.index = index;
+        card.classList.toggle('extra', index > 0);
+        card.querySelector('.member-title').textContent = `Family Member ${index + 1}`;
+        card.querySelectorAll('input, select, textarea').forEach(field => {
+          if (field.name) {
+            field.name = field.name.replace(/family-\d+-/, `family-${index}-`);
+          }
+        });
+      });
+      totalForms.value = cards.length;
+    }
+
+    async function fileToBitmap(file) {
+      if ('createImageBitmap' in window) return await createImageBitmap(file);
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    async function compressImageFile(file, maxSize = 1200, quality = 0.72, rotation = 0) {
+      if (!file || !file.type.startsWith('image/')) return file;
+
+      const bitmap = await fileToBitmap(file);
+      let sourceWidth = bitmap.width;
+      let sourceHeight = bitmap.height;
+      let width = sourceWidth;
+      let height = sourceHeight;
+
+      if (width > height && width > maxSize) {
+        height = Math.round(height * maxSize / width);
+        width = maxSize;
+      } else if (height > maxSize) {
+        width = Math.round(width * maxSize / height);
+        height = maxSize;
+      }
+
+      const rotated = rotation % 180 !== 0;
+      const canvas = document.createElement('canvas');
+      canvas.width = rotated ? height : width;
+      canvas.height = rotated ? width : height;
+
+      const ctx = canvas.getContext('2d');
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(rotation * Math.PI / 180);
+      ctx.drawImage(bitmap, -width / 2, -height / 2, width, height);
+      ctx.restore();
+
+      return new Promise(resolve => {
+        canvas.toBlob(blob => {
+          if (!blob) return resolve(file);
+          const safeName = (file.name || 'photo.jpg').replace(/\.\w+$/, '.jpg');
+          resolve(new File([blob], safeName, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          }));
+        }, 'image/jpeg', quality);
+      });
+    }
+
+    async function applyImageInput(input, rotation = 0) {
+      const original = input._originalFile || (input.files && input.files[0]);
+      if (!original) return;
+
+      input._originalFile = original;
+      const kind = input.dataset.kind || 'id';
+      const maxSize = kind === 'photo' ? 900 : 1400;
+      const quality = kind === 'photo' ? 0.72 : 0.78;
+
+      const compressed = await compressImageFile(original, maxSize, quality, rotation);
+      const dt = new DataTransfer();
+      dt.items.add(compressed);
+      input.files = dt.files;
+
+      const box = input.closest('.file-box');
+      const preview = box?.querySelector('.preview-img');
+      const tools = box?.querySelector('[data-photo-tools]');
+
+      if (preview) {
+        preview.src = URL.createObjectURL(compressed);
+        preview.style.display = 'block';
+      }
+      if (tools && kind === 'photo') {
+        tools.style.display = 'flex';
+      }
+    }
+
+    function bindImageInputs(scope) {
+      scope.querySelectorAll('[data-image-input]').forEach(input => {
+        if (input.dataset.boundImage === '1') return;
+        input.dataset.boundImage = '1';
+        input._rotation = 0;
+
+        input.addEventListener('change', async function () {
+          this._originalFile = this.files && this.files[0];
+          this._rotation = 0;
+          try { await applyImageInput(this, this._rotation); }
+          catch (e) { console.warn('Image compression skipped.', e); }
+        });
+
+        const box = input.closest('.file-box');
+        box?.querySelector('[data-rotate-left]')?.addEventListener('click', async function () {
+          input._rotation = ((input._rotation || 0) - 90 + 360) % 360;
+          try { await applyImageInput(input, input._rotation); }
+          catch (e) { console.warn('Rotate skipped.', e); }
+        });
+        box?.querySelector('[data-rotate-right]')?.addEventListener('click', async function () {
+          input._rotation = ((input._rotation || 0) + 90) % 360;
+          try { await applyImageInput(input, input._rotation); }
+          catch (e) { console.warn('Rotate skipped.', e); }
+        });
+      });
+    }
+
+    function bindCard(card) {
+      const cnicInput = card.querySelector('[data-cnic]');
+      const cnicNote = card.querySelector('[data-cnic-note]');
+      let cnicTimer = null;
+
+      cnicInput?.addEventListener('input', function () {
+        window.clearTimeout(cnicTimer);
+        cnicTimer = window.setTimeout(function () {
+          const digits = cnicInput.value.replace(/\D/g, '');
+          if (digits.length !== 13) {
+            cnicNote.textContent = 'Enter 13 CNIC / ID digits.';
+            cnicNote.style.color = '#6b7280';
+            return;
+          }
+          fetch(cnicCheckUrl + '?cnic=' + encodeURIComponent(cnicInput.value))
+            .then(response => response.json())
+            .then(data => {
+              cnicNote.textContent = data.message || '';
+              cnicNote.style.color = data.exists ? '#b91c1c' : '#15803d';
+            })
+            .catch(() => {
+              cnicNote.textContent = 'Could not check ID right now. It will be checked on submit.';
+              cnicNote.style.color = '#92400e';
+            });
+        }, 350);
+      });
+
+      card.querySelector('[data-remove-member]')?.addEventListener('click', function () {
+        card.remove();
+        renumberCards();
+      });
+
+      bindImageInputs(card);
+    }
+
+    bindCard(memberForms.querySelector('[data-member-card]'));
+    bindImageInputs(document);
+
+    addMemberBtn?.addEventListener('click', function () {
+      const first = memberForms.querySelector('[data-member-card]');
+      const clone = first.cloneNode(true);
+
+      clone.querySelectorAll('input, textarea').forEach(field => {
+        if (field.type === 'file') {
+          field.value = '';
+          field._originalFile = null;
+          field._rotation = 0;
+          delete field.dataset.boundImage;
+        } else {
+          field.value = '';
+        }
+      });
+
+      clone.querySelectorAll('select').forEach(field => field.selectedIndex = 0);
+      clone.querySelectorAll('.preview-img').forEach(img => {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      });
+      clone.querySelectorAll('[data-photo-tools]').forEach(tools => {
+        tools.style.display = 'none';
+      });
+      clone.querySelectorAll('[data-cnic-note]').forEach(note => {
+        note.textContent = 'Duplicate IDs cannot be submitted.';
+        note.style.color = '#6b7280';
+      });
+
+      memberForms.appendChild(clone);
+      bindCard(clone);
+      renumberCards();
+    });
+
+    document.querySelectorAll('[data-toggle-update]').forEach(button => {
+      button.addEventListener('click', function () {
+        const box = this.closest('.list-card')?.querySelector('[data-update-box]');
+        if (!box) return;
+        box.classList.toggle('show');
+        this.textContent = box.classList.contains('show') ? 'Hide Update Info' : 'Update Info';
+      });
+    });
+  </script>
+</body>
+</html>

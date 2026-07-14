@@ -49,7 +49,7 @@
       </div>
 
       <h4 class="mb-1">{{ submitted_name|default:tenant.get_full_name }}</h4>
-      <div class="text-muted mb-3">{{ submitted_phone|default:"Phone not provided" }}</div>
+      <div class="text-muted mb-3">{{ submitted_phone|format_phone|default:"Phone not provided" }}</div>
 
       <div class="alert alert-success py-2 mb-3">
         Thank you. Your tenant registration was submitted for admin review.

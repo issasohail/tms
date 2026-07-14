@@ -10,7 +10,7 @@
       Lease #{{ lease.id }} ({{ lease.tenant.get_full_name }})
     </h4>
     <div class="d-flex flex-wrap gap-2">
-      <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-secondary btn-sm">
+      <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="btn btn-secondary btn-sm">
         Back to Ledger
       </a>
     </div>
@@ -75,7 +75,7 @@
         </div>
       </div>
       <div class="card-footer d-flex justify-content-between">
-        <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-secondary btn-sm">
+        <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="btn btn-secondary btn-sm">
           Cancel
         </a>
         <button type="submit" class="btn btn-primary btn-sm">

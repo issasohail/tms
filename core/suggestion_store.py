@@ -4,6 +4,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
+from core.utils.identity import normalize_phone
 
 
 STATUS_CHOICES = [
@@ -224,7 +225,7 @@ def create_whatsapp_ticket(message, phone_number="", user_name="", screen_name="
         priority=priority or "NORMAL",
         screen_name=screen_name or "WhatsApp",
         user_name_snapshot=user_name or "WhatsApp",
-        phone_snapshot=phone_number or "",
+        phone_snapshot=normalize_phone(phone_number),
         created_at=now,
         updated_at=now,
         photos=[],

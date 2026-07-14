@@ -188,7 +188,7 @@
       <div class="to-grid">
         <div class="to-col">
           <p><strong>To:</strong></p>
-          <p>{{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }}{% if invoice.lease.tenant.phone %} - {{ invoice.lease.tenant.phone }}{% endif %}</p>
+          <p>{{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }}{% if invoice.lease.tenant.phone %} - {{ invoice.lease.tenant.phone|format_phone }}{% endif %}</p>
           <p>{{ invoice.lease.unit.unit_number }}, {{ invoice.lease.unit.property.property_name }}</p>
         </div>
         <div class="to-col">

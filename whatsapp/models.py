@@ -1,7 +1,10 @@
+import builtins
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
-import uuid
+from core.model_fields import NormalizedPhoneField
 
 
 def whatsapp_pending_upload_to(instance, filename):
@@ -11,6 +14,10 @@ def whatsapp_pending_upload_to(instance, filename):
 
 def whatsapp_external_link_token():
     return uuid.uuid4().hex + uuid.uuid4().hex
+
+
+def whatsapp_handover_reference():
+    return f"WH-{timezone.localdate():%Y}-{uuid.uuid4().hex[:8].upper()}"
 
 
 class WhatsAppMessageLog(models.Model):
@@ -48,6 +55,8 @@ class WhatsAppMessageLog(models.Model):
     MESSAGE_TYPE_TEMPLATE = "template"
     MESSAGE_TYPE_DOCUMENT = "document"
     MESSAGE_TYPE_IMAGE = "image"
+    MESSAGE_TYPE_AUDIO = "audio"
+    MESSAGE_TYPE_VIDEO = "video"
     MESSAGE_TYPE_PDF = "pdf"
     MESSAGE_TYPE_WEBHOOK = "webhook"
     MESSAGE_TYPE_STATUS = "status"
@@ -57,6 +66,8 @@ class WhatsAppMessageLog(models.Model):
         (MESSAGE_TYPE_TEMPLATE, "Template"),
         (MESSAGE_TYPE_DOCUMENT, "Document"),
         (MESSAGE_TYPE_IMAGE, "Image"),
+        (MESSAGE_TYPE_AUDIO, "Audio"),
+        (MESSAGE_TYPE_VIDEO, "Video"),
         (MESSAGE_TYPE_PDF, "PDF"),
         (MESSAGE_TYPE_WEBHOOK, "Webhook"),
         (MESSAGE_TYPE_STATUS, "Status"),
@@ -98,7 +109,7 @@ class WhatsAppMessageLog(models.Model):
         blank=True,
         related_name="whatsapp_messages",
     )
-    phone_number = models.CharField(max_length=32, blank=True)
+    phone_number = NormalizedPhoneField(max_length=32, blank=True)
     conversation_id = models.CharField(max_length=120, blank=True)
     wa_message_id = models.CharField(max_length=160, blank=True, db_index=True)
     template_name = models.CharField(max_length=120, blank=True)
@@ -224,13 +235,15 @@ class WhatsAppConversation(models.Model):
     MODE_GUEST = "guest"
     MODE_TENANT = "tenant"
     MODE_STAFF = "staff"
+    MODE_HANDOVER = "handover"
     MODE_CHOICES = [
         (MODE_GUEST, "Guest"),
         (MODE_TENANT, "Tenant"),
         (MODE_STAFF, "Staff"),
+        (MODE_HANDOVER, "Handover"),
     ]
 
-    phone_number = models.CharField(max_length=32, unique=True, db_index=True)
+    phone_number = NormalizedPhoneField(max_length=32, unique=True, db_index=True)
     selected_mode = models.CharField(max_length=20, choices=MODE_CHOICES, blank=True)
     mode_expires_at = models.DateTimeField(null=True, blank=True)
     staff_user = models.ForeignKey(
@@ -270,6 +283,17 @@ class WhatsAppConversation(models.Model):
     )
     pending_state = models.CharField(max_length=80, blank=True)
     context = models.JSONField(default=dict, blank=True)
+    ai_enabled = models.BooleanField(default=True)
+    handover_active = models.BooleanField(default=False)
+    assigned_staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_whatsapp_conversations",
+    )
+    last_ai_confidence = models.PositiveSmallIntegerField(default=0)
+    preferred_language = models.CharField(max_length=20, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     last_message_at = models.DateTimeField(null=True, blank=True)
     last_inbound_message_at = models.DateTimeField(null=True, blank=True)
@@ -303,8 +327,19 @@ class WhatsAppAIInteractionLog(models.Model):
         blank=True,
         related_name="ai_logs",
     )
-    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    phone_number = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     intent = models.CharField(max_length=80, blank=True)
+    model = models.CharField(max_length=80, blank=True)
+    provider = models.CharField(max_length=30, blank=True)
+    input_summary = models.TextField(blank=True)
+    decision_json = models.JSONField(default=dict, blank=True)
+    tool_calls = models.JSONField(default=list, blank=True)
+    tool_results_summary = models.JSONField(default=list, blank=True)
+    confidence = models.PositiveSmallIntegerField(default=0)
+    language = models.CharField(max_length=20, blank=True)
+    fallback_used = models.BooleanField(default=False)
+    handover_triggered = models.BooleanField(default=False)
+    handover_reason = models.CharField(max_length=160, blank=True)
     ai_prompt = models.TextField(blank=True)
     ai_response = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
@@ -338,7 +373,7 @@ class PendingWhatsAppPayment(models.Model):
     lease = models.ForeignKey("leases.Lease", on_delete=models.SET_NULL, null=True, blank=True)
     property = models.ForeignKey("properties.Property", on_delete=models.SET_NULL, null=True, blank=True)
     unit = models.ForeignKey("properties.Unit", on_delete=models.SET_NULL, null=True, blank=True)
-    phone = models.CharField(max_length=32, blank=True, db_index=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     screenshot = models.FileField(upload_to=whatsapp_pending_upload_to, blank=True, null=True, max_length=255)
     ocr_json = models.JSONField(default=dict, blank=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -420,7 +455,7 @@ class PendingWhatsAppMedia(models.Model):
 
     conversation = models.ForeignKey(WhatsAppConversation, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_media")
     original_whatsapp_message = models.ForeignKey(WhatsAppMessageLog, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_media")
-    phone = models.CharField(max_length=32, blank=True, db_index=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     file = models.FileField(upload_to=whatsapp_pending_upload_to, max_length=255)
     original_filename = models.CharField(max_length=255, blank=True)
     media_type = models.CharField(max_length=30, blank=True)
@@ -457,7 +492,7 @@ class PendingWhatsAppMaintenance(models.Model):
 
     conversation = models.ForeignKey(WhatsAppConversation, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_maintenance")
     original_whatsapp_message = models.ForeignKey(WhatsAppMessageLog, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_maintenance")
-    phone = models.CharField(max_length=32, blank=True, db_index=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
     lease = models.ForeignKey("leases.Lease", on_delete=models.SET_NULL, null=True, blank=True)
     property = models.ForeignKey("properties.Property", on_delete=models.SET_NULL, null=True, blank=True)
@@ -529,7 +564,7 @@ class WhatsAppStaffActionLog(models.Model):
         blank=True,
         related_name="whatsapp_staff_action_logs",
     )
-    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    phone_number = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     role_name = models.CharField(max_length=80, blank=True)
     selected_mode = models.CharField(max_length=20, blank=True)
     action = models.CharField(max_length=120)
@@ -556,6 +591,178 @@ class WhatsAppStaffActionLog(models.Model):
 
     def __str__(self):
         return f"{self.staff_user or self.phone_number} {self.action} ({self.status})"
+
+
+class WhatsAppHandover(models.Model):
+    STATUS_NEW = "new"
+    STATUS_NOTIFIED = "notified"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_WAITING_FOR_TENANT = "waiting_for_tenant"
+    STATUS_WAITING_FOR_STAFF = "waiting_for_staff"
+    STATUS_CALL_REQUESTED = "call_requested"
+    STATUS_CALLED = "called"
+    STATUS_RESOLVED = "resolved"
+    STATUS_CLOSED = "closed"
+    STATUS_RETURNED_TO_AI = "returned_to_ai"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_NEW, "New"),
+        (STATUS_NOTIFIED, "Notified"),
+        (STATUS_ACCEPTED, "Accepted"),
+        (STATUS_WAITING_FOR_TENANT, "Waiting for tenant"),
+        (STATUS_WAITING_FOR_STAFF, "Waiting for staff"),
+        (STATUS_CALL_REQUESTED, "Call requested"),
+        (STATUS_CALLED, "Called"),
+        (STATUS_RESOLVED, "Resolved"),
+        (STATUS_CLOSED, "Closed"),
+        (STATUS_RETURNED_TO_AI, "Returned to AI"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+    ACTIVE_STATUSES = {
+        STATUS_NEW,
+        STATUS_NOTIFIED,
+        STATUS_ACCEPTED,
+        STATUS_WAITING_FOR_TENANT,
+        STATUS_WAITING_FOR_STAFF,
+        STATUS_CALL_REQUESTED,
+        STATUS_CALLED,
+    }
+    PRIORITY_LOW = "low"
+    PRIORITY_NORMAL = "normal"
+    PRIORITY_HIGH = "high"
+    PRIORITY_URGENT = "urgent"
+    PRIORITY_CHOICES = [
+        (PRIORITY_LOW, "Low"),
+        (PRIORITY_NORMAL, "Normal"),
+        (PRIORITY_HIGH, "High"),
+        (PRIORITY_URGENT, "Urgent"),
+    ]
+
+    reference = models.CharField(max_length=24, unique=True, default=whatsapp_handover_reference)
+    conversation = models.ForeignKey(
+        WhatsAppConversation, on_delete=models.CASCADE, related_name="handovers"
+    )
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
+    lease = models.ForeignKey("leases.Lease", on_delete=models.SET_NULL, null=True, blank=True)
+    property = models.ForeignKey("properties.Property", on_delete=models.SET_NULL, null=True, blank=True)
+    unit = models.ForeignKey("properties.Unit", on_delete=models.SET_NULL, null=True, blank=True)
+    tenant_phone = NormalizedPhoneField(max_length=32, db_index=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_NEW, db_index=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_NORMAL)
+    department = models.CharField(max_length=30, blank=True)
+    reason = models.CharField(max_length=160)
+    tenant_message = models.TextField(blank=True)
+    ai_summary = models.TextField(blank=True)
+    assigned_staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_whatsapp_handovers",
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    last_staff_message_at = models.DateTimeField(null=True, blank=True)
+    last_tenant_message_at = models.DateTimeField(null=True, blank=True)
+    call_requested_at = models.DateTimeField(null=True, blank=True)
+    called_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    returned_to_ai_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["status", "priority", "created_at"]),
+            models.Index(fields=["assigned_staff", "status"]),
+            models.Index(fields=["property", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.reference} ({self.status})"
+
+    @builtins.property
+    def is_active(self):
+        return self.status in self.ACTIVE_STATUSES
+
+
+class WhatsAppHandoverMessage(models.Model):
+    SENDER_TENANT = "tenant"
+    SENDER_STAFF = "staff"
+    SENDER_SYSTEM = "system"
+    SENDER_CHOICES = [
+        (SENDER_TENANT, "Tenant"),
+        (SENDER_STAFF, "Staff"),
+        (SENDER_SYSTEM, "System"),
+    ]
+    DIRECTION_INBOUND = "inbound"
+    DIRECTION_RELAYED = "relayed"
+    DIRECTION_INTERNAL = "internal"
+    DIRECTION_CHOICES = [
+        (DIRECTION_INBOUND, "Inbound"),
+        (DIRECTION_RELAYED, "Relayed"),
+        (DIRECTION_INTERNAL, "Internal"),
+    ]
+
+    handover = models.ForeignKey(WhatsAppHandover, on_delete=models.CASCADE, related_name="messages")
+    source_message = models.ForeignKey(
+        WhatsAppMessageLog,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="handover_source_messages",
+    )
+    relayed_message = models.ForeignKey(
+        WhatsAppMessageLog,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="handover_relayed_messages",
+    )
+    sender_type = models.CharField(max_length=20, choices=SENDER_CHOICES)
+    staff_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    original_text = models.TextField(blank=True)
+    relayed_text = models.TextField(blank=True)
+    media = models.ForeignKey(PendingWhatsAppMedia, on_delete=models.SET_NULL, null=True, blank=True)
+    direction = models.CharField(max_length=20, choices=DIRECTION_CHOICES, default=DIRECTION_INBOUND)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+
+class WhatsAppStaffRoutingRule(models.Model):
+    DEPARTMENT_GENERAL = "general"
+    DEPARTMENT_ACCOUNTS = "accounts"
+    DEPARTMENT_MAINTENANCE = "maintenance"
+    DEPARTMENT_LEASING = "leasing"
+    DEPARTMENT_MANAGEMENT = "management"
+    DEPARTMENT_CHOICES = [
+        (DEPARTMENT_GENERAL, "General support"),
+        (DEPARTMENT_ACCOUNTS, "Accounts"),
+        (DEPARTMENT_MAINTENANCE, "Maintenance"),
+        (DEPARTMENT_LEASING, "Leasing"),
+        (DEPARTMENT_MANAGEMENT, "Management"),
+    ]
+
+    property = models.ForeignKey("properties.Property", on_delete=models.CASCADE, null=True, blank=True)
+    category = models.CharField(max_length=80, blank=True)
+    department = models.CharField(max_length=30, choices=DEPARTMENT_CHOICES, default=DEPARTMENT_GENERAL)
+    staff_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    priority = models.PositiveSmallIntegerField(default=50)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["priority", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "department", "staff_user"],
+                name="unique_whatsapp_staff_route",
+            )
+        ]
 
 
 class WhatsAppExternalLinkToken(models.Model):
@@ -586,7 +793,7 @@ class WhatsAppExternalLinkToken(models.Model):
 
     token = models.CharField(max_length=64, unique=True, default=whatsapp_external_link_token)
     link_type = models.CharField(max_length=40, choices=LINK_TYPE_CHOICES)
-    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    phone_number = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
     staff_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -640,7 +847,7 @@ class TrustedDeviceRegistry(models.Model):
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default=USER_TYPE_GUEST)
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
     staff_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    phone_number = models.CharField(max_length=32, blank=True, db_index=True)
+    phone_number = NormalizedPhoneField(max_length=32, blank=True, db_index=True)
     whatsapp_id = models.CharField(max_length=80, blank=True, db_index=True)
     device_name = models.CharField(max_length=120, blank=True)
     mac_address = models.CharField(max_length=80, blank=True, null=True)

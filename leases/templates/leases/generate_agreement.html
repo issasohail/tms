@@ -111,13 +111,13 @@
     <div class="parties-section">
         <div class="party">
             <div class="party-header">BETWEEN</div>
-            <p>{{ owner_name }}, S/O {{ owner_father_name }}, holding CNIC NO. {{ owner_cnic }},</p>
+            <p>{{ owner_name }}, S/O {{ owner_father_name }}, holding CNIC NO. {{ owner_cnic|format_cnic }},</p>
             <p>Residing at {{ owner_address }} (Hereinafter called the "Owner")</p>
         </div>
         
         <div class="party">
             <div class="party-header">AND</div>
-            <p>{{ tenant_name }}, S/O {{ tenant_father_name }}, holding CNIC NO. {{ tenant_cnic }},</p>
+            <p>{{ tenant_name }}, S/O {{ tenant_father_name }}, holding CNIC NO. {{ tenant_cnic|format_cnic }},</p>
             <p>Residing at {{ tenant_address }} (Hereinafter called the "Tenant")</p>
         </div>
     </div>
@@ -321,15 +321,15 @@
         <div class="signature-box">
             <div class="signature-line"></div>
             <p>Owner: {{ owner_name }}</p>
-            <p>CNIC: {{ owner_cnic }}</p>
-            <p>Phone: {{ owner_phone }}</p>
+            <p>CNIC: {{ owner_cnic|format_cnic }}</p>
+            <p>Phone: {{ owner_phone|format_phone }}</p>
         </div>
         
         <div class="signature-box">
             <div class="signature-line"></div>
             <p>Tenant: {{ tenant_name }}</p>
-            <p>CNIC: {{ tenant_cnic }}</p>
-            <p>Phone: {{ tenant_phone }}</p>
+            <p>CNIC: {{ tenant_cnic|format_cnic }}</p>
+            <p>Phone: {{ tenant_phone|format_phone }}</p>
         </div>
         
         <div style="clear: both;"></div>
@@ -338,13 +338,13 @@
             <div class="signature-box">
                 <div class="signature-line"></div>
                 <p>Witness 1: {{ witness1_name }}</p>
-                <p>CNIC: {{ witness1_cnic }}</p>
+                <p>CNIC: {{ witness1_cnic|format_cnic }}</p>
             </div>
             
             <div class="signature-box">
                 <div class="signature-line"></div>
                 <p>Witness 2: {{ witness2_name }}</p>
-                <p>CNIC: {{ witness2_cnic }}</p>
+                <p>CNIC: {{ witness2_cnic|format_cnic }}</p>
             </div>
         </div>
     </div>

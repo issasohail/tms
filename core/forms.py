@@ -4,6 +4,7 @@ from django import forms
 from .models import GlobalSettings
 from zoneinfo import available_timezones
 from core.utils.text import add_auto_titlecase_class
+from core.utils.identity import normalize_phone
 
 
 class GlobalSettingsForm(forms.ModelForm):
@@ -28,6 +29,7 @@ class GlobalSettingsForm(forms.ModelForm):
                   "late_fee_reminder_interval_days", "late_fee_max_reminders",
                   "late_fee_auto_send_reminders", "late_fee_auto_apply",
                   "billing_cap_amount",
+                  "end_lease_proration_interval_days",
                   "lease_file_share_valid_days",
                   "police_verification_document_category_code",
                   "police_verification_link_valid_hours",
@@ -36,6 +38,23 @@ class GlobalSettingsForm(forms.ModelForm):
                   "time_zone",  # ← NEW
                   "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
                   "whatsapp_ai_ocr_provider", "whatsapp_ai_use_celery",
+                  "whatsapp_ai_routing_enabled", "whatsapp_ai_generated_responses_enabled",
+                  "whatsapp_ai_multiple_tools_enabled", "whatsapp_handover_enabled",
+                  "whatsapp_ai_satisfaction_enabled", "whatsapp_ai_temperature",
+                  "whatsapp_ai_max_tool_rounds", "whatsapp_ai_min_confidence",
+                  "whatsapp_ai_history_limit", "whatsapp_ai_fallback_to_rules",
+                  "whatsapp_ai_max_reply_length", "whatsapp_ai_enable_urdu",
+                  "whatsapp_ai_enable_roman_urdu", "whatsapp_ai_mask_sensitive_fields",
+                  "whatsapp_ai_store_logs", "whatsapp_handover_reminder_interval_minutes",
+                  "whatsapp_handover_escalation_timeout_minutes", "whatsapp_handover_max_reminders",
+                  "whatsapp_handover_notify_multiple_staff",
+                  "whatsapp_staff_reply_prefix", "whatsapp_allow_manual_call_action",
+                  "whatsapp_future_calling_enabled", "whatsapp_allow_staff_reply_relay",
+                  "whatsapp_allow_staff_media_relay", "whatsapp_allow_handover_reassignment",
+                  "whatsapp_return_to_ai_after_close", "whatsapp_handover_ai_summary_enabled",
+                  "whatsapp_default_support_staff", "whatsapp_accounts_staff",
+                  "whatsapp_maintenance_staff", "whatsapp_leasing_staff",
+                  "whatsapp_escalation_staff",
                   "handyman_assignment_default_status",
                   "handyman_enable_whatsapp_profile_updates",
                   "handyman_enable_whatsapp_job_uploads",
@@ -53,6 +72,7 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Billing Scale & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
+            "end_lease_proration_interval_days",
         ]),
         ("Police Verification", "fas fa-shield-alt", [
             "police_verification_document_category_code",
@@ -74,6 +94,23 @@ class GlobalSettingsForm(forms.ModelForm):
         ("WhatsApp AI Assistant", "fas fa-robot", [
             "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
             "whatsapp_ai_ocr_provider", "whatsapp_ai_use_celery",
+            "whatsapp_ai_routing_enabled", "whatsapp_ai_generated_responses_enabled",
+            "whatsapp_ai_multiple_tools_enabled", "whatsapp_handover_enabled",
+            "whatsapp_ai_satisfaction_enabled", "whatsapp_ai_temperature",
+            "whatsapp_ai_max_tool_rounds", "whatsapp_ai_min_confidence",
+            "whatsapp_ai_history_limit", "whatsapp_ai_fallback_to_rules",
+            "whatsapp_ai_max_reply_length", "whatsapp_ai_enable_urdu",
+            "whatsapp_ai_enable_roman_urdu", "whatsapp_ai_mask_sensitive_fields",
+            "whatsapp_ai_store_logs", "whatsapp_handover_ai_summary_enabled",
+            "whatsapp_handover_reminder_interval_minutes",
+            "whatsapp_handover_escalation_timeout_minutes", "whatsapp_handover_max_reminders",
+            "whatsapp_handover_notify_multiple_staff",
+            "whatsapp_staff_reply_prefix", "whatsapp_allow_manual_call_action",
+            "whatsapp_future_calling_enabled", "whatsapp_allow_staff_reply_relay",
+            "whatsapp_allow_staff_media_relay", "whatsapp_allow_handover_reassignment",
+            "whatsapp_return_to_ai_after_close", "whatsapp_default_support_staff",
+            "whatsapp_accounts_staff", "whatsapp_maintenance_staff",
+            "whatsapp_leasing_staff", "whatsapp_escalation_staff",
         ]),
         ("Email / SMTP", "fas fa-envelope", [
             "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user",
@@ -131,6 +168,10 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
+        self.fields["end_lease_proration_interval_days"].label = "Move-out proration interval"
+        self.fields["end_lease_proration_interval_days"].help_text = (
+            "Daily is exact. Other choices round occupied days upward to the next billing block."
+        )
         self.fields["police_verification_document_category_code"].label = "Police document category code"
         self.fields["police_verification_link_valid_hours"].label = "Police link validity hours"
         self.fields["police_verification_whatsapp_command"].label = "Police WhatsApp command"
@@ -145,6 +186,42 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["whatsapp_ai_model"].label = "OpenAI model"
         self.fields["whatsapp_ai_ocr_provider"].label = "Payment OCR provider"
         self.fields["whatsapp_ai_use_celery"].label = "Use Celery for WhatsApp AI"
+        whatsapp_labels = {
+            "whatsapp_ai_routing_enabled": "Enable AI routing",
+            "whatsapp_ai_generated_responses_enabled": "Enable generated responses",
+            "whatsapp_ai_multiple_tools_enabled": "Enable multiple tool calls",
+            "whatsapp_handover_enabled": "Enable tenant-to-staff handover",
+            "whatsapp_ai_satisfaction_enabled": "Enable satisfaction question",
+            "whatsapp_ai_temperature": "AI temperature",
+            "whatsapp_ai_max_tool_rounds": "Maximum tool rounds",
+            "whatsapp_ai_min_confidence": "Minimum AI confidence",
+            "whatsapp_ai_history_limit": "Conversation history limit",
+            "whatsapp_ai_fallback_to_rules": "Fallback to hardcoded rules",
+            "whatsapp_ai_max_reply_length": "Maximum AI reply length",
+            "whatsapp_ai_enable_urdu": "Enable Urdu",
+            "whatsapp_ai_enable_roman_urdu": "Enable Roman Urdu",
+            "whatsapp_ai_mask_sensitive_fields": "Mask sensitive AI context",
+            "whatsapp_ai_store_logs": "Store AI interaction logs",
+            "whatsapp_handover_ai_summary_enabled": "Enable handover AI summary",
+            "whatsapp_handover_reminder_interval_minutes": "Handover reminder interval (minutes)",
+            "whatsapp_handover_escalation_timeout_minutes": "Handover escalation timeout (minutes)",
+            "whatsapp_handover_max_reminders": "Maximum handover reminders",
+            "whatsapp_handover_notify_multiple_staff": "Notify multiple eligible staff",
+            "whatsapp_staff_reply_prefix": "Staff reply prefix",
+            "whatsapp_allow_manual_call_action": "Allow manual call action",
+            "whatsapp_future_calling_enabled": "Enable future WhatsApp calling",
+            "whatsapp_allow_staff_reply_relay": "Allow staff reply relay",
+            "whatsapp_allow_staff_media_relay": "Allow staff media relay",
+            "whatsapp_allow_handover_reassignment": "Allow handover reassignment",
+            "whatsapp_return_to_ai_after_close": "Return to AI after close",
+            "whatsapp_default_support_staff": "Default support staff",
+            "whatsapp_accounts_staff": "Accounts staff",
+            "whatsapp_maintenance_staff": "Maintenance staff",
+            "whatsapp_leasing_staff": "Leasing staff",
+            "whatsapp_escalation_staff": "Escalation staff",
+        }
+        for field_name, label in whatsapp_labels.items():
+            self.fields[field_name].label = label
         self.fields["handyman_assignment_default_status"].label = "Default assignment status"
         self.fields["handyman_enable_whatsapp_profile_updates"].label = "Allow WhatsApp profile updates"
         self.fields["handyman_enable_whatsapp_job_uploads"].label = "Allow WhatsApp job uploads"
@@ -158,6 +235,14 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["enable_debug_toolbar"].label = "Enable Django Debug Toolbar (local development only)"
         self.fields["enable_debug_toolbar"].help_text = "Only works when DEBUG=True and host is local. It will not show in production."
         add_auto_titlecase_class(self.fields, {"site_name"})
+
+    def clean_twilio_from_number(self):
+        return normalize_phone(self.cleaned_data.get("twilio_from_number"))
+
+    def clean_whatsapp_pending_request_staff_numbers(self):
+        raw = self.cleaned_data.get("whatsapp_pending_request_staff_numbers") or ""
+        values = raw.replace("\r", "\n").replace(";", ",").replace("\n", ",").split(",")
+        return ", ".join(number for number in (normalize_phone(value) for value in values) if number)
 
 
 # core/forms.py

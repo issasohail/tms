@@ -6,6 +6,7 @@ from .models import Tenant
 from django.template.loader import render_to_string
 from properties.tables import ExportableTable
 from django.utils.safestring import mark_safe
+from core.utils.identity import format_cnic, format_phone
 from django_tables2 import Table, Column
 from django.utils.html import format_html
 from django.urls import reverse
@@ -55,6 +56,9 @@ class TenantTable(ExportableTable):
             "th": {"class": "text-truncate", "style": "max-width: 80px;"}
         }
     )
+
+    def render_phone(self, value):
+        return format_phone(value)
 
     property = tables.Column(
         verbose_name='Property',
@@ -561,6 +565,15 @@ class TenantDetailTable(tables.Table):
         """Auto-incrementing serial number"""
         self.row_counter = getattr(self, 'row_counter', 0) + 1
         return self.row_counter
+
+    def render_phone(self, value):
+        return format_phone(value)
+
+    def render_cnic(self, value):
+        return format_cnic(value)
+
+    def render_emergency_contact_phone(self, value):
+        return format_phone(value)
 
     class Meta:
         model = Tenant

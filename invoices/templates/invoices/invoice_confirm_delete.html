@@ -75,7 +75,7 @@
     </button>
 
     {# Adjust this URL name to match your project if needed #}
-    <a href="{% url 'invoices:invoice_detail' object.pk %}"
+    <a href="{% url 'invoices:invoice_detail' object.pk %}{% if request.GET.settlement == '1' %}?settlement=1&amp;lease_id={{ request.GET.lease_id }}&amp;end_date={{ request.GET.end_date }}{% endif %}"
        style="text-decoration:none; border:1px solid #ccc; padding:.55rem 1rem; border-radius:8px;">
       Cancel
     </a>

@@ -202,6 +202,8 @@ urlpatterns = [
         name="lease_vehicle_info_ajax",
     ),
     path("<int:pk>/", LeaseDetailView.as_view(), name="lease_detail"),
+    path("<int:pk>/end/", views.lease_end_action, name="lease_end_action"),
+    path("<int:pk>/end/rollback/", views.lease_end_rollback_action, name="lease_end_rollback_action"),
     path(
         "<int:pk>/late-fee-settings/",
         views_late_fee.lease_late_fee_settings,

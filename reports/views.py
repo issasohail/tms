@@ -12,6 +12,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django_tables2 import SingleTableView
 from django.utils import timezone
+from core.utils.identity import format_phone
 from datetime import timedelta
 from io import BytesIO
 from reportlab.pdfgen import canvas
@@ -189,7 +190,7 @@ def generate_tenant_statement(request, tenant_id):
         ["Name:", f"{tenant.first_name} {tenant.last_name}"],
         ["Unit:", f"{tenant.unit.property.propertry_name} - Unit {tenant.unit.unit_number}"],
         ["Email:", tenant.email],
-        ["Phone:", tenant.phone],
+        ["Phone:", format_phone(tenant.phone)],
         ["Move-in Date:", tenant.move_in_date.strftime('%Y-%m-%d')],
         ["Lease End Date:", tenant.lease_end_date.strftime('%Y-%m-%d')],
         ["Current Balance:", f"${tenant.current_balance:,.2f}"],
@@ -536,7 +537,7 @@ class SecurityDepositReportView(LoginRequiredMixin, TemplateView):
                 "property_name": lease.unit.property.property_name,
                 "unit_number": lease.unit.unit_number,
                 "tenant_name": lease.tenant.get_full_name(),
-                "phone": lease.tenant.phone or "",
+                "phone": format_phone(lease.tenant.phone),
                 "end_date": end_date,
                 "is_expiring": is_expiring,
                 "is_expired": is_expired,

@@ -260,7 +260,7 @@ class PaymentDetailForm(forms.ModelForm):
         ("LEASE", "Lease"),
         ("LEASE_REFUND", "Lease Refund"),
         ("SECURITY", "Security"),
-        ("REFUND", "Refund"),
+        ("REFUND", "Security Refund"),
         ("SPLIT", "Split"),
     ]
 
@@ -269,7 +269,7 @@ class PaymentDetailForm(forms.ModelForm):
         choices=MODE_CHOICES,
         required=False,
         initial="LEASE",
-        widget=forms.Select(attrs={"class": "form-select"}),
+        widget=forms.HiddenInput(),
     )
 
     class Meta:
@@ -277,8 +277,8 @@ class PaymentDetailForm(forms.ModelForm):
         fields = ["payment_type", "lease_amount", "security_amount", "security_type"]
         widgets = {
             "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
-            "security_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0", "class": "form-control"}),
-            "security_type": forms.Select(attrs={"class": "form-select"}),
+            "security_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
+            "security_type": forms.HiddenInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -308,49 +308,51 @@ class PaymentDetailForm(forms.ModelForm):
             # If the field already has initial/posted value, don't fight it; but for GET edit this fixes display.
             if "payment_type" not in self.data:
                 self.initial["payment_type"] = mode
+            if sec_type == "REFUND" and sec_amt > 0 and "security_amount" not in self.data:
+                self.initial["security_amount"] = -sec_amt
         else:
             self.fields["payment_type"].initial = "LEASE"
 
     def clean(self):
         cleaned_data = super().clean()
-        mode = (cleaned_data.get("payment_type") or "LEASE").upper()
         lease_amount = cleaned_data.get("lease_amount") or Decimal("0.00")
         security_amount = cleaned_data.get("security_amount") or Decimal("0.00")
 
-        payment_total = self.payment_total
-        if payment_total is not None:
-            payment_total = Decimal(payment_total or "0.00")
-            if payment_total < 0:
-                mode = "LEASE_REFUND"
+        if lease_amount < 0 and security_amount != 0:
+            raise forms.ValidationError(
+                "Record a lease refund separately; its security amount must be zero."
+            )
+        if security_amount < 0 and lease_amount != 0:
+            raise forms.ValidationError(
+                "Record a security refund separately; its lease amount must be zero."
+            )
 
-        if lease_amount < 0 and mode != "LEASE_REFUND":
-            self.add_error("lease_amount", "Lease amount cannot be negative unless Payment Type is Lease Refund.")
-        if security_amount < 0:
-            self.add_error("security_amount", "Security amount cannot be negative.")
+        signed_total = lease_amount + security_amount
+        if lease_amount < 0:
+            mode = "LEASE_REFUND"
+            security_type = "PAYMENT"
+        elif security_amount < 0:
+            mode = "REFUND"
+            security_type = "REFUND"
+        elif lease_amount > 0 and security_amount > 0:
+            mode = "SPLIT"
+            security_type = "PAYMENT"
+        elif security_amount > 0:
+            mode = "SECURITY"
+            security_type = "PAYMENT"
+        else:
+            mode = "LEASE"
+            security_type = "PAYMENT"
 
-        if payment_total is not None:
-            if mode == "LEASE":
-                lease_amount = payment_total
-                security_amount = Decimal("0.00")
-            elif mode == "LEASE_REFUND":
-                lease_amount = payment_total
-                security_amount = Decimal("0.00")
-            elif mode == "SECURITY":
-                lease_amount = Decimal("0.00")
-                security_amount = payment_total
-            elif mode == "REFUND":
-                lease_amount = Decimal("0.00")
-                security_amount = payment_total
-                cleaned_data["security_type"] = "REFUND"
-            elif lease_amount + security_amount != payment_total:
+        if self.payment_total is not None:
+            payment_total = Decimal(self.payment_total or "0.00")
+            if payment_total != signed_total:
                 raise forms.ValidationError(
-                    f"Payment detail total ({lease_amount + security_amount}) must equal Payment amount ({payment_total})."
+                    f"Total amount ({payment_total}) must equal lease plus security ({signed_total})."
                 )
 
         cleaned_data["payment_type"] = mode
         cleaned_data["lease_amount"] = lease_amount
-        cleaned_data["security_amount"] = security_amount
-        cleaned_data["security_type"] = (cleaned_data.get("security_type") or "PAYMENT").upper()
-        if mode == "REFUND":
-            cleaned_data["security_type"] = "REFUND"
+        cleaned_data["security_amount"] = abs(security_amount) if mode == "REFUND" else security_amount
+        cleaned_data["security_type"] = security_type
         return cleaned_data

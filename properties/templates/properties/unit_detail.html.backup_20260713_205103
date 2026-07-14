@@ -1,0 +1,681 @@
+{% extends 'base.html' %}
+{% load money_tags %}
+
+{% block title %}{{ unit }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .unit-detail-page {
+    max-width: 1320px;
+    margin: 0 auto;
+  }
+
+  .unit-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: 1rem;
+  }
+
+  .unit-page-title {
+    color: #111827;
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 0;
+    word-break: break-word;
+  }
+
+  .unit-action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .45rem;
+  }
+
+  .unit-action-bar .btn {
+    margin: 0 !important;
+    white-space: nowrap;
+  }
+
+  .unit-detail-card {
+    border: 1px solid #dde3ea;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+    overflow: hidden;
+  }
+
+  .unit-detail-card .card-header {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    border-bottom: 1px solid #dde3ea;
+    padding: .72rem .9rem;
+  }
+
+  .unit-detail-card h5 {
+    color: #111827;
+    font-size: 1.02rem;
+    font-weight: 700;
+  }
+
+  .unit-detail-card .card-body {
+    padding: .85rem .95rem;
+  }
+
+  .unit-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .78rem 1rem;
+  }
+
+  .unit-info-item {
+    min-width: 0;
+  }
+
+  .unit-info-label {
+    color: #374151;
+    display: block;
+    font-size: .76rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: .18rem;
+  }
+
+  .unit-info-value {
+    color: #111827;
+    font-size: .86rem;
+    line-height: 1.28;
+    overflow-wrap: anywhere;
+  }
+
+  .unit-info-wide {
+    grid-column: span 2;
+  }
+
+  .unit-meter-table th {
+    color: #64748b;
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .unit-meter-table td {
+    font-size: .82rem;
+    vertical-align: middle;
+  }
+
+  .unit-mobile-list {
+    display: none;
+  }
+
+  .unit-mobile-meter-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: .65rem .7rem;
+  }
+
+  .unit-mobile-meter-card + .unit-mobile-meter-card {
+    margin-top: .55rem;
+  }
+
+  .unit-mobile-meter-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .35rem;
+  }
+
+  .unit-meter-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .35rem .7rem;
+  }
+
+  .unit-photo-thumb {
+    height: 90px;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  .unit-photo-card {
+    position: relative;
+  }
+
+  .unit-photo-delete {
+    align-items: center;
+    border-radius: 999px;
+    bottom: .35rem;
+    display: flex;
+    height: 1.75rem;
+    justify-content: center;
+    opacity: .95;
+    padding: 0;
+    position: absolute;
+    right: .35rem;
+    width: 1.75rem;
+  }
+
+  .unit-photo-description {
+    cursor: text;
+    min-height: 1.2rem;
+  }
+
+  @media (max-width: 991.98px) {
+    .unit-page-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .unit-action-bar {
+      justify-content: flex-start;
+    }
+
+    .unit-info-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .unit-detail-page {
+      font-size: .68rem;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    .unit-page-title {
+      font-size: 1.32rem;
+    }
+
+    .unit-action-bar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: 100%;
+    }
+
+    .unit-action-bar .btn {
+      font-size: .68rem;
+      min-height: 32px;
+      padding: .32rem .38rem;
+      white-space: normal;
+    }
+
+    .unit-detail-card {
+      border-radius: 8px;
+      margin-bottom: .85rem !important;
+    }
+
+    .unit-detail-card .card-header {
+      padding: .58rem .7rem;
+    }
+
+    .unit-detail-card h5 {
+      font-size: .9rem;
+    }
+
+    .unit-detail-card .card-body {
+      padding: .68rem .7rem;
+    }
+
+    .unit-info-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .62rem .65rem;
+    }
+
+    .unit-info-label {
+      font-size: .68rem;
+    }
+
+    .unit-info-value {
+      font-size: .68rem;
+    }
+
+    .unit-info-wide {
+      grid-column: 1 / -1;
+    }
+
+    .unit-desktop-table {
+      display: none !important;
+    }
+
+    .unit-mobile-list {
+      display: block;
+    }
+
+    .unit-meter-mini-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .28rem .5rem;
+    }
+
+    .unit-mobile-meter-card,
+    .unit-mobile-meter-card a,
+    .unit-mobile-meter-card .badge,
+    .unit-detail-page .text-muted,
+    .unit-detail-page .btn,
+    .unit-detail-page p {
+      font-size: .68rem;
+    }
+
+    .unit-photo-thumb {
+      height: 72px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="unit-detail-page">
+    <div class="unit-page-header">
+        <h2 class="unit-page-title">Unit: {{ unit.unit_number }}</h2>
+        <div class="unit-action-bar">
+            <button class="btn btn-outline-secondary" onclick="history.back()">Go Back</button>
+            {% if unit.pk %}
+                <a href="{% url 'properties:unit_update' unit.pk %}" class="btn btn-secondary">Edit</a>
+                <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-outline-primary">Photos</a>
+                <a href="{% url 'properties:unit_vacancy_whatsapp' unit.pk %}" class="btn btn-success">Vacancy WhatsApp</a>
+                <a href="{% url 'properties:unit_delete' unit.pk %}" class="btn btn-danger">Delete</a>
+            {% else %}
+                <span class="text-muted">No Unit ID</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-xl-4">
+            <div class="card unit-detail-card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Basic Information & Charges</h5>
+                </div>
+                <div class="card-body">
+                    <div class="unit-info-grid">
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Property</span>
+                            <div class="unit-info-value"><a href="{% url 'properties:property_detail' unit.property.pk %}">{{ unit.property }}</a></div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Unit #</span>
+                            <div class="unit-info-value">{{ unit.unit_number }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Building Type / Interest Type</span>
+                            <div class="unit-info-value">{{ unit.interest_type|default:"-" }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Occupancy</span>
+                            <div class="unit-info-value">
+                                <span class="badge bg-{% if unit.is_currently_occupied %}success{% elif unit.status == 'maintenance' %}info{% else %}warning text-dark{% endif %}">
+                                    {% if unit.is_currently_occupied %}Occupied{% elif unit.status == 'maintenance' %}Maintenance{% else %}Vacant{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Unit State</span>
+                            <div class="unit-info-value">{{ unit.get_status_display }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Smart Meter</span>
+                            <div class="unit-info-value">{% if unit.is_smart_meter %}Yes{% else %}No{% endif %}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Monthly Rent</span>
+                            <div class="unit-info-value">{{ unit.monthly_rent|money }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Security Deposit</span>
+                            <div class="unit-info-value">{{ unit.security_requires|default:"-" }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Society Maintenance</span>
+                            <div class="unit-info-value">{{ unit.society_maintenance|default:"0.00"|money }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Water Charges</span>
+                            <div class="unit-info-value">{{ unit.water_charges|default:"0.00"|money }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Electric Meter</span>
+                            <div class="unit-info-value">{{ unit.electric_meter_num|default:"-" }}</div>
+                        </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Gas Meter</span>
+                            <div class="unit-info-value">{{ unit.gas_meter_num|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card unit-detail-card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Rooms, Amenities & Condition</h5>
+                </div>
+                <div class="card-body">
+                    <div class="unit-info-grid">
+                        <div class="unit-info-item"><span class="unit-info-label">Bedrooms</span><div class="unit-info-value">{{ unit.bedrooms|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Bathrooms</span><div class="unit-info-value">{{ unit.bathrooms|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Kitchens</span><div class="unit-info-value">{{ unit.kitchens|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Hall</span><div class="unit-info-value">{{ unit.hall|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Square Footage</span><div class="unit-info-value">{{ unit.square_footage|default:"-" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Ceiling Fans</span><div class="unit-info-value">{{ unit.ceiling_fan|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Exhaust Fans</span><div class="unit-info-value">{{ unit.exhaust_fan|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Ceiling Lights</span><div class="unit-info-value">{{ unit.ceiling_lights|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Stove</span><div class="unit-info-value">{{ unit.stove|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Wardrobes</span><div class="unit-info-value">{{ unit.wardrobes|default:"0" }}</div></div>
+                        <div class="unit-info-item"><span class="unit-info-label">Keys</span><div class="unit-info-value">{{ unit.keys|default:"0" }}</div></div>
+                        <div class="unit-info-item unit-info-wide"><span class="unit-info-label">Paint Condition</span><div class="unit-info-value">{{ unit.paint_condition|default:"-" }}</div></div>
+                        <div class="unit-info-item unit-info-wide"><span class="unit-info-label">Comments</span><div class="unit-info-value">{{ unit.comments|default:"-" }}</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card unit-detail-card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Tenant Information</h5>
+                </div>
+                <div class="card-body">
+                    {% if current_tenant and current_lease %}
+                        <div class="unit-info-grid mb-3">
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Tenant Name</span>
+                                <div class="unit-info-value">{{ current_tenant.get_full_name }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Phone</span>
+                                <div class="unit-info-value">{{ current_tenant.phone|default:"-" }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">CNIC</span>
+                                <div class="unit-info-value">{{ current_tenant.cnic|default:"-" }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Lease Start</span>
+                                <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.start_date|date:"M d, Y" }}{% else %}{{ current_lease.start_date|date:"M d, Y" }}{% endif %}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Lease End</span>
+                                <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.end_date|date:"M d, Y" }}{% else %}{{ current_lease.end_date|date:"M d, Y" }}{% endif %}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Lease Status</span>
+                                <div class="unit-info-value">{{ current_lease.get_status_display }}</div>
+                            </div>
+                            <div class="unit-info-item">
+                                <span class="unit-info-label">Monthly Total</span>
+                                <div class="unit-info-value">{% if active_lease_history %}{{ active_lease_history.total_monthly_amount|money }}{% else %}{{ current_lease.total_payment|money }}{% endif %}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{% url 'tenants:tenant_detail' current_tenant.pk %}" class="btn btn-sm btn-primary">View Tenant</a>
+                            <a href="{% url 'leases:lease_detail' current_lease.pk %}" class="btn btn-sm btn-outline-primary">View Lease</a>
+                            <a href="{% url 'leases:lease_ledger_by_pk' current_lease.pk %}" class="btn btn-sm btn-outline-secondary">Ledger</a>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No current tenant</p>
+                        <a href="{% url 'leases:lease_create' %}?property={{ unit.property_id }}&unit={{ unit.pk }}" class="btn btn-sm btn-success">
+                            Add Lease / Assign Tenant
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card unit-detail-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">Payment Instructions</h5>
+        </div>
+        <div class="card-body">
+            <div class="unit-info-grid">
+                <div class="unit-info-item">
+                    <span class="unit-info-label">Use Property Bank Account</span>
+                    <div class="unit-info-value">{% if unit.use_property_bank_account %}Yes{% else %}No{% endif %}</div>
+                </div>
+                <div class="unit-info-item unit-info-wide">
+                    <span class="unit-info-label">Unit Bank Account Details</span>
+                    <div class="unit-info-value">{{ unit.bank_account_details|linebreaksbr|default:"-" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card unit-detail-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">Lease History</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="unit-desktop-table">
+                <table class="table table-sm table-striped unit-meter-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>S.N</th>
+                            <th>Tenant</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th class="text-end">Balance</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in lease_history_rows %}
+                            <tr>
+                                <td>{{ row.sn }}</td>
+                                <td><a href="{% url 'tenants:tenant_detail' row.tenant.pk %}">{{ row.tenant.get_full_name }}</a></td>
+                                <td>{{ row.start_date|date:"M d, Y" }}</td>
+                                <td>{{ row.end_date|date:"M d, Y" }}</td>
+                                <td class="text-end"><a href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">{{ row.balance|money }}</a></td>
+                                <td>
+                                    {% if row.is_current %}<span class="badge bg-success">Current</span>{% else %}<span class="badge bg-secondary">{{ row.lease.get_status_display }}</span>{% endif %}
+                                </td>
+                                <td><a href="{% url 'leases:lease_detail' row.lease.pk %}" class="btn btn-sm btn-outline-primary">View Lease</a></td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="7" class="text-muted text-center py-3">No lease history recorded.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="unit-mobile-list p-2">
+                {% for row in lease_history_rows %}
+                    <div class="unit-mobile-meter-card">
+                        <div class="unit-mobile-meter-title">
+                            <a href="{% url 'tenants:tenant_detail' row.tenant.pk %}"><strong>#{{ row.sn }} — {{ row.tenant.get_full_name }}</strong></a>
+                            {% if row.is_current %}<span class="badge bg-success">Current</span>{% else %}<span class="badge bg-secondary">{{ row.lease.get_status_display }}</span>{% endif %}
+                        </div>
+                        <div class="unit-meter-mini-grid">
+                            <div><span class="unit-info-label">Start</span><div>{{ row.start_date|date:"M d, Y" }}</div></div>
+                            <div><span class="unit-info-label">End</span><div>{{ row.end_date|date:"M d, Y" }}</div></div>
+                            <div><span class="unit-info-label">Balance</span><div><a href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">{{ row.balance|money }}</a></div></div>
+                            <div><span class="unit-info-label">Action</span><div><a href="{% url 'leases:lease_detail' row.lease.pk %}" class="btn btn-sm btn-outline-primary">View Lease</a></div></div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="text-muted text-center py-3 mb-0">No lease history recorded.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card unit-detail-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">Meters</h5>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'smart_meter:install_meter_to_unit' unit.pk %}" class="btn btn-sm btn-primary">Install Meter</a>
+                <a href="{% url 'smart_meter:switch_meter' unit.pk %}" class="btn btn-sm btn-outline-primary">Change / Switch Meter</a>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="unit-desktop-table">
+                <table class="table table-sm table-striped unit-meter-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>S.N</th>
+                            <th>Meter</th>
+                            <th>Type</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th class="text-end">Start</th>
+                            <th class="text-end">End / Current</th>
+                            <th>Status</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in meter_history_rows %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}">{{ row.meter.meter_number }}</a></td>
+                                <td>{{ row.meter.get_meter_type_display }}</td>
+                                <td>{{ row.start_date|date:"M d, Y" }}</td>
+                                <td>{{ row.end_date|date:"M d, Y"|default:"Current" }}</td>
+                                <td class="text-end">{{ row.start_reading|default_if_none:"-" }}</td>
+                                <td class="text-end">{% if row.is_active %}{{ row.meter.latest_live.total_energy|default:row.end_reading|default:"-" }}{% else %}{{ row.end_reading|default_if_none:"-" }}{% endif %}</td>
+                                <td>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">History</span>{% endif %}</td>
+                                <td>{{ row.reason|default:"-" }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="9" class="text-muted text-center py-3">No meter history recorded.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="unit-mobile-list p-2">
+                {% for row in meter_history_rows %}
+                    <div class="unit-mobile-meter-card">
+                        <div class="unit-mobile-meter-title">
+                            <a href="{% url 'smart_meter:meter_detail' row.meter.pk %}"><strong>#{{ forloop.counter }} — {{ row.meter.meter_number }}</strong></a>
+                            {% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">History</span>{% endif %}
+                        </div>
+                        <div class="unit-meter-mini-grid">
+                            <div><span class="unit-info-label">Type</span><div>{{ row.meter.get_meter_type_display }}</div></div>
+                            <div><span class="unit-info-label">Reason</span><div>{{ row.reason|default:"-" }}</div></div>
+                            <div><span class="unit-info-label">From</span><div>{{ row.start_date|date:"M d, Y" }}</div></div>
+                            <div><span class="unit-info-label">To</span><div>{{ row.end_date|date:"M d, Y"|default:"Current" }}</div></div>
+                            <div><span class="unit-info-label">Start</span><div>{{ row.start_reading|default_if_none:"-" }}</div></div>
+                            <div><span class="unit-info-label">End / Current</span><div>{% if row.is_active %}{{ row.meter.latest_live.total_energy|default:row.end_reading|default:"-" }}{% else %}{{ row.end_reading|default_if_none:"-" }}{% endif %}</div></div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="text-muted text-center py-3 mb-0">No meter history recorded.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card unit-detail-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">Unit Photos</h5>
+            <a href="{% url 'properties:unit_media' unit.pk %}" class="btn btn-sm btn-primary">Manage Photos</a>
+        </div>
+        <div class="card-body">
+            {% if media_files %}
+                <div class="row g-2" id="unit-photo-grid">
+                    {% for media in media_files %}
+                    <div class="col-6 col-md-2 unit-photo-item" data-media-id="{{ media.pk }}">
+                        <div class="unit-photo-card">
+                            {% if media.file_type == "image" %}
+                                <a href="{{ media.display_url }}" target="_blank" rel="noopener">
+                                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border unit-photo-thumb" alt="{{ media.description|default:media.original_filename }}">
+                                </a>
+                            {% else %}
+                                <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="d-flex align-items-center justify-content-center border rounded text-decoration-none small" style="height:90px;">
+                                    {{ media.get_file_type_display }}
+                                </a>
+                            {% endif %}
+                            <button type="button"
+                                    class="btn btn-danger btn-sm unit-photo-delete"
+                                    title="Delete"
+                                    data-delete-url="{% url 'properties:unit_media_delete' unit.pk media.pk %}">&times;</button>
+                        </div>
+                        <div class="small text-muted mt-1 unit-photo-description"
+                             title="Click to edit"
+                             data-update-url="{% url 'properties:unit_media_update' unit.pk media.pk %}">{{ media.description|default:"No Description" }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">No photos uploaded.</p>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<script>
+(() => {
+  const csrf = '{{ csrf_token }}';
+
+  document.querySelectorAll('.unit-photo-description').forEach(view => {
+    view.addEventListener('click', () => {
+      if (view.dataset.editing === '1') return;
+      view.dataset.editing = '1';
+      const original = view.textContent.trim() === 'No Description' ? '' : view.textContent.trim();
+      const input = document.createElement('textarea');
+      input.className = 'form-control form-control-sm mt-1';
+      input.rows = 2;
+      input.maxLength = 300;
+      input.value = original;
+      view.replaceWith(input);
+      input.focus();
+
+      const save = () => {
+        const data = new FormData();
+        data.append('description', input.value.trim());
+        fetch(view.dataset.updateUrl, {
+          method: 'POST',
+          headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+          body: data
+        })
+          .then(response => response.json())
+          .then(data => {
+            const savedDescription = data.description === 'No description' ? '' : (data.description || '');
+            view.textContent = data.success ? (savedDescription || 'No Description') : original || 'No Description';
+            input.replaceWith(view);
+            view.dataset.editing = '0';
+          })
+          .catch(() => {
+            view.textContent = original || 'No Description';
+            input.replaceWith(view);
+            view.dataset.editing = '0';
+          });
+      };
+
+      input.addEventListener('blur', save, {once: true});
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          view.textContent = original || 'No Description';
+          input.replaceWith(view);
+          view.dataset.editing = '0';
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll('.unit-photo-delete').forEach(button => {
+    button.addEventListener('click', () => {
+      const data = new FormData();
+      data.append('confirm_delete', 'yes');
+      fetch(button.dataset.deleteUrl, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+        body: data
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            button.closest('.unit-photo-item')?.remove();
+          } else {
+            alert(data.error || 'Could not delete media.');
+          }
+        })
+        .catch(() => alert('Could not delete media.'));
+    });
+  });
+})();
+</script>
+{% endblock %}

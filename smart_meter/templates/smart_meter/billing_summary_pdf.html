@@ -55,7 +55,7 @@
             <td>{{ r.sn }}</td>
             <td>{{ r.unit.unit_number }}</td>
             <td>{{ r.tenant_name }}</td>
-            <td>{{ r.tenant_phone }}</td>
+            <td>{{ r.tenant_phone|format_phone }}</td>
             {% for cell in r.cells %}
               {% if cell.kind == 'whatsapp' %}
                 {# skip in PDF #}

@@ -47,14 +47,14 @@
   <h2>Owner Information</h2>
   <table>
     <tr><th>Name</th><td>{{ property.owner_name|default:"-" }}</td><th>Father Name</th><td>{{ property.owner_father_name|default:"-" }}</td></tr>
-    <tr><th>CNIC</th><td>{{ property.owner_cnic|default:"-" }}</td><th>Mobile</th><td>{{ property.owner_phone|default:"-" }}</td></tr>
+    <tr><th>CNIC</th><td>{{ property.owner_cnic|format_cnic|default:"-" }}</td><th>Mobile</th><td>{{ property.owner_phone|format_phone|default:"-" }}</td></tr>
     <tr><th>Address</th><td colspan="3">{{ property.owner_address|default:"-" }}</td></tr>
   </table>
 
   <h2>Tenant Information</h2>
   <table>
     <tr><th>Name</th><td>{{ tenant.get_full_name }}</td><th>Father/Husband</th><td>{{ tenant.last_name|default:"-" }}</td></tr>
-    <tr><th>CNIC</th><td>{{ tenant.cnic|default:"-" }}</td><th>Mobile</th><td>{{ tenant.phone|default:"-" }}</td></tr>
+    <tr><th>CNIC</th><td>{{ tenant.cnic|format_cnic|default:"-" }}</td><th>Mobile</th><td>{{ tenant.phone|format_phone|default:"-" }}</td></tr>
     <tr><th>Occupation</th><td>{{ tenant.occupation|default:"-" }}</td><th>Nationality</th><td>{{ tenant.nationality|default:"-" }}</td></tr>
     <tr><th>Address</th><td colspan="3">{{ tenant.address|default:"-" }}</td></tr>
     <tr><th>Temporary Address</th><td colspan="3">{{ tenant.temporary_address|default:"-" }}</td></tr>
@@ -71,9 +71,9 @@
           <td>{{ forloop.counter }}</td>
           <td>{{ member.family_member.get_full_name }}</td>
           <td>{{ member.relation }}</td>
-          <td>{{ member.family_member.cnic|default:"-" }}</td>
+          <td>{{ member.family_member.cnic|format_cnic|default:"-" }}</td>
           <td>{{ member.family_member.date_of_birth|date:"Y-m-d"|default:"-" }}</td>
-          <td>{{ member.family_member.phone|default:"-" }}</td>
+          <td>{{ member.family_member.phone|format_phone|default:"-" }}</td>
         </tr>
       {% empty %}
         <tr><td colspan="6">No family members recorded.</td></tr>
@@ -93,7 +93,7 @@
           <td>{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
           <td>{{ vehicle.color|default:"-" }}</td>
           <td>{{ vehicle.owner_name|default:"-" }}</td>
-          <td>{{ vehicle.owner_cnic|default:"-" }}</td>
+          <td>{{ vehicle.owner_cnic|format_cnic|default:"-" }}</td>
           <td>{{ vehicle.parking_slot|default:"-" }}</td>
         </tr>
       {% empty %}

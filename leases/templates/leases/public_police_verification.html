@@ -284,8 +284,8 @@
                     <tr>
                       <td>{{ member.family_member.get_full_name }}</td>
                       <td>{{ member.relation }}</td>
-                      <td>{{ member.family_member.phone|default:"-" }}</td>
-                      <td>{{ member.family_member.cnic|default:"-" }}</td>
+                      <td>{{ member.family_member.phone|format_phone|default:"-" }}</td>
+                      <td>{{ member.family_member.cnic|format_cnic|default:"-" }}</td>
                       <td>Saved</td>
                     </tr>
                   {% endfor %}
@@ -293,8 +293,8 @@
                     <tr>
                       <td>{{ pending.first_name }} {{ pending.last_name }}</td>
                       <td>{{ pending.relation }}</td>
-                      <td>{{ pending.phone|default:"-" }}</td>
-                      <td>{{ pending.cnic|default:"-" }}</td>
+                      <td>{{ pending.phone|format_phone|default:"-" }}</td>
+                      <td>{{ pending.cnic|format_cnic|default:"-" }}</td>
                       <td>Pending approval</td>
                     </tr>
                   {% empty %}

@@ -6,6 +6,7 @@ import logging
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlencode
 from django.conf import settings
 from django.apps import apps  # (ensure this import exists at the top)
 from django.conf import settings
@@ -591,7 +592,13 @@ class InvoiceUpdateView(LoginRequiredMixin, UpdateView):
         return response
 
     def get_success_url(self):
-        return reverse("invoices:invoice_detail", kwargs={"pk": self.object.pk})
+        url = reverse("invoices:invoice_detail", kwargs={"pk": self.object.pk})
+        settlement = {
+            key: self.request.GET.get(key) or self.request.POST.get(key)
+            for key in ("settlement", "lease_id", "end_date")
+        }
+        settlement = {key: value for key, value in settlement.items() if value}
+        return f"{url}?{urlencode(settlement)}" if settlement else url
 
 
 # invoices/views.py
@@ -680,6 +687,38 @@ class InvoiceDetailView(DetailView):
 
         ctx["sec_totals"] = sec_totals
 
+        settlement_end_date = None
+        if self.request.GET.get("settlement") == "1" and inv.lease_id:
+            try:
+                settlement_end_date = datetime.strptime(
+                    self.request.GET.get("end_date", ""), "%Y-%m-%d"
+                ).date()
+            except ValueError:
+                settlement_end_date = None
+        ctx["settlement_mode"] = bool(
+            settlement_end_date
+            and str(inv.lease_id) == str(self.request.GET.get("lease_id") or inv.lease_id)
+        )
+        if ctx["settlement_mode"]:
+            ctx["settlement_end_date"] = settlement_end_date
+            ctx["settlement_query"] = urlencode(
+                {
+                    "settlement": "1",
+                    "lease_id": inv.lease_id,
+                    "end_date": settlement_end_date.isoformat(),
+                }
+            )
+            ctx["settlement_return_url"] = (
+                reverse("leases:lease_detail", args=[inv.lease_id])
+                + "?"
+                + urlencode(
+                    {
+                        "open_end_lease": "1",
+                        "end_date": settlement_end_date.isoformat(),
+                    }
+                )
+            )
+
         return ctx
 
 
@@ -757,6 +796,53 @@ class InvoiceDeleteView(LoginRequiredMixin, DeleteView):
     def delete(self, request, *args, **kwargs):
         messages.success(self.request, "Invoice deleted successfully.")
         return super().delete(request, *args, **kwargs)
+
+    def get_success_url(self):
+        if self.request.GET.get("settlement") == "1":
+            lease_id = self.request.GET.get("lease_id") or self.object.lease_id
+            end_date = self.request.GET.get("end_date") or ""
+            return reverse("leases:lease_detail", args=[lease_id]) + "?" + urlencode(
+                {
+                    "settlement_return": "1",
+                    "open_end_lease": "1",
+                    "end_date": end_date,
+                }
+            )
+        return str(self.success_url)
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def invoice_move_out_prorate(request, pk):
+    invoice = get_object_or_404(
+        Invoice.objects.select_related("lease", "lease__unit"), pk=pk
+    )
+    if invoice.status in {"paid", "cancelled"}:
+        return JsonResponse(
+            {"ok": False, "error": "Paid or cancelled invoices cannot be prorated."},
+            status=400,
+        )
+    try:
+        end_date = datetime.strptime(request.POST.get("end_date", ""), "%Y-%m-%d").date()
+        from leases.utils.end_lease import prorate_invoice_for_move_out
+
+        result = prorate_invoice_for_move_out(invoice, end_date)
+    except (ValidationError, ValueError, ArithmeticError) as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        return JsonResponse({"ok": False, "error": error}, status=400)
+    return JsonResponse(
+        {
+            "ok": True,
+            "invoice_total": str(result["invoice"].amount or Decimal("0.00")),
+            "occupied_days": result["occupied_days"],
+            "billable_days": result["billable_days"],
+            "days_in_month": result["days_in_month"],
+            "interval_days": result["interval_days"],
+            "interval_label": result["interval_label"],
+            "electric_amount": str(result["electric_amount"]),
+        }
+    )
 
 
 @login_required
@@ -907,9 +993,13 @@ def category_create_ajax(request):
     name = (request.POST.get("name") or "").strip()
     if not name:
         return HttpResponseBadRequest("Missing name")
-    cat, created = ItemCategory.objects.get_or_create(
-        name=name, defaults={"is_active": True}
-    )
+    cat = ItemCategory.objects.filter(name__iexact=name).first()
+    created = cat is None
+    if cat is None:
+        cat = ItemCategory.objects.create(name=name, is_active=True)
+    elif not cat.is_active:
+        cat.is_active = True
+        cat.save(update_fields=["is_active"])
     return JsonResponse({"id": cat.id, "name": cat.name, "created": created})
 
 
@@ -1359,6 +1449,17 @@ def invoice_item_inline_update(request, pk):
     item.amount = amount
     item.save()
 
+    settlement_end_date = (payload.get("settlement_end_date") or "").strip()
+    if settlement_end_date:
+        try:
+            datetime.strptime(settlement_end_date, "%Y-%m-%d")
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "Invalid settlement end date."}, status=400)
+        marker = f"END_LEASE_MANUAL_ITEM:{item.pk}:{settlement_end_date}"
+        if marker not in (item.invoice.notes or ""):
+            item.invoice.notes = "\n".join(filter(None, [item.invoice.notes, marker]))
+            item.invoice.save(update_fields=["notes", "updated_at"])
+
     # recompute invoice total (if you already have signals, this is optional)
     total = item.invoice.items.aggregate(t=Sum("amount"))["t"] or Decimal("0.00")
 
@@ -1382,15 +1483,6 @@ def invoice_item_inline_delete(request, pk):
         InvoiceItem.objects.select_related("invoice", "category"), pk=pk
     )
     invoice = item.invoice
-
-    if request.POST.get("confirm_delete") != "yes":
-        return JsonResponse(
-            {
-                "ok": False,
-                "error": "Deletion was not confirmed.",
-            },
-            status=400,
-        )
 
     if invoice.status == "paid":
         return JsonResponse(
@@ -1420,6 +1512,30 @@ def invoice_item_inline_delete(request, pk):
         )
 
     deleted_id = item.pk
+    settlement_end_date = (request.POST.get("settlement_end_date") or "").strip()
+    if settlement_end_date:
+        try:
+            datetime.strptime(settlement_end_date, "%Y-%m-%d")
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "Invalid settlement end date."}, status=400)
+        category_name = item.category.name
+        canonical_categories = {
+            "maintenance": "Society Maintenance",
+            "society maintenance": "Society Maintenance",
+            "water": "Water Charges",
+            "water charges": "Water Charges",
+            "rent": "Rent",
+            "internet": "Internet",
+        }
+        marker_category = (
+            "Electricity"
+            if category_name.lower().startswith("electric")
+            else canonical_categories.get(category_name.lower(), category_name)
+        )
+        marker = f"END_LEASE_SUPPRESS_CATEGORY:{marker_category}:{settlement_end_date}"
+        if marker not in (invoice.notes or ""):
+            invoice.notes = "\n".join(filter(None, [invoice.notes, marker]))
+            invoice.save(update_fields=["notes", "updated_at"])
     item.delete()
 
     total = invoice.items.aggregate(t=Sum("amount"))["t"] or Decimal("0.00")

@@ -40,7 +40,8 @@
     </div>
     {% endif %}
 
-    <div class="table-responsive" style="font-size: 12px;">
+    {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+    <div class="table-responsive desktop-sticky-list" style="font-size: 12px;">
         {% render_table table %}
     </div>
 {%endblock%}        

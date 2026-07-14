@@ -13,3 +13,12 @@ def process_whatsapp_ai_message_task(self, message_log_id):
     message_log = WhatsAppMessageLog.objects.get(pk=message_log_id)
     process_inbound_whatsapp_message(message_log)
     logger.info("Processed WhatsApp AI message %s through Celery", message_log_id)
+
+
+@shared_task
+def process_whatsapp_handover_reminders_task():
+    from whatsapp.services.handover.reminders import send_due_handover_reminders
+
+    result = send_due_handover_reminders()
+    logger.info("Processed WhatsApp handover reminders: %s", result)
+    return result

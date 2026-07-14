@@ -19,8 +19,8 @@
     <div class="card">
         <div class="card-body">
             <dl class="row mb-0">
-                <dt class="col-sm-3">Phone</dt><dd class="col-sm-9">{{ lead.phone|default:"-" }}</dd>
-                <dt class="col-sm-3">WhatsApp</dt><dd class="col-sm-9">{{ lead.whatsapp_number|default:"-" }}</dd>
+                <dt class="col-sm-3">Phone</dt><dd class="col-sm-9">{{ lead.phone|format_phone|default:"-" }}</dd>
+                <dt class="col-sm-3">WhatsApp</dt><dd class="col-sm-9">{{ lead.whatsapp_number|format_phone|default:"-" }}</dd>
                 <dt class="col-sm-3">Interested Building</dt><dd class="col-sm-9">{{ lead.interested_building|default:"-" }}</dd>
                 <dt class="col-sm-3">Interested Unit</dt><dd class="col-sm-9">{{ lead.interested_unit|default:"-" }}</dd>
                 <dt class="col-sm-3">Budget</dt><dd class="col-sm-9">{{ lead.budget|default:"-" }}</dd>

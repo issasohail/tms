@@ -367,7 +367,7 @@
             {# Row 1 #}
             <div>
               <span>CNIC</span>
-              <strong>{{ tenant.cnic|default:"-" }}</strong>
+              <strong>{{ tenant.cnic|format_cnic|default:"-" }}</strong>
             </div>
             <div>
               <span>DOB / Gender</span>
@@ -639,7 +639,7 @@
                     <select name="family_member" class="form-select form-select-sm select2">
                       <option value="">Select tenant</option>
                       {% for item in tenant_family_options %}
-                        <option value="{{ item.pk }}">{{ item.get_full_name }}{% if item.cnic %} - {{ item.cnic }}{% endif %}</option>
+                        <option value="{{ item.pk }}">{{ item.get_full_name }}{% if item.cnic %} - {{ item.cnic|format_cnic }}{% endif %}</option>
                       {% endfor %}
                     </select>
                   </div>

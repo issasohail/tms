@@ -5,7 +5,9 @@ git push
 
 
 
-
+cd /home/ivs/apps/tms
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 
 cd /home/ivs/apps/tms
 

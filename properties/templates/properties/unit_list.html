@@ -64,7 +64,8 @@
 
 
     {% csrf_token %}
-<div class="table-responsive unit-table-wrap">
+{# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+<div class="table-responsive unit-table-wrap desktop-sticky-list">
     {% render_table table %}
 </div>
 {{ building_type_options|json_script:"buildingTypeOptions" }}
@@ -1124,7 +1125,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
             select.disabled = true;
-            saveUnitField(span.dataset.unitId, "interest_type", select.value)
+            saveUnitField(span.dataset.unitId, "building_type", select.value)
                 .then(function (payload) {
                     span.dataset.currentValue = select.value;
                     span.textContent = payload.new_value || "-";

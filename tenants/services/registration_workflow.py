@@ -9,6 +9,19 @@ PERSON_FIELDS = ("first_name", "last_name", "phone", "date_of_birth", "address")
 FILE_FIELDS = ("photo", "cnic_front", "cnic_back")
 
 
+def family_member_can_have_blank_cnic(person):
+    """Allow a blank CNIC for a family member who is 18 or younger."""
+    if person.role != PendingRegistrationPerson.ROLE_FAMILY or normalize_cnic(person.cnic):
+        return False
+    if not person.date_of_birth:
+        return False
+    today = timezone.localdate()
+    age = today.year - person.date_of_birth.year - (
+        (today.month, today.day) < (person.date_of_birth.month, person.date_of_birth.day)
+    )
+    return age <= 18
+
+
 def match_tenant_by_cnic(cnic):
     digits = normalize_cnic(cnic)
     return Tenant.objects.filter(cnic_digits=digits).first() if digits else None
@@ -56,7 +69,9 @@ def resolve_pending_person(person):
         )
         for field in FILE_FIELDS:
             _copy_file(person, tenant, field)
-        tenant.full_clean()
+        tenant.full_clean(
+            exclude=["cnic"] if family_member_can_have_blank_cnic(person) else None
+        )
         tenant.save()
         created = True
     else:

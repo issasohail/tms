@@ -178,7 +178,7 @@
                         <div class="xxsmall">{{ tenant.number_of_family_member }} Family - {{ tenant.get_gender_display }}</div>
                     </td>
                     <td class="contact-cell">
-                        <div>{{ tenant.phone }}</div>
+                        <div>{{ tenant.phone|format_phone }}</div>
                         <div class="xxsmall">{{ tenant.email }}</div>
                     </td>
                     <td class="xxsmall">
@@ -195,7 +195,7 @@
                     </td>
                     <td class="xxsmall">
                         {{ tenant.emergency_contact_name }}<br>
-                        {{ tenant.emergency_contact_phone }}
+                        {{ tenant.emergency_contact_phone|format_phone }}
                     </td>
                     <td class="cnic-cell">
                         {% if tenant.cnic_front %}

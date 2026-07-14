@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+{% load report_extras %}
+{% load humanize %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap">
+    <h2 class="h5 mb-1">Security Deposit Report</h2>
+
+    <div class="btn-group mb-1">
+      <a href="?{% if current_property %}property={{ current_property }}&{% endif %}{% if active_only %}active_only=on&{% endif %}export=csv"
+         class="btn btn-outline-secondary btn-sm">
+        CSV
+      </a>
+      <a href="?{% if current_property %}property={{ current_property }}&{% endif %}{% if active_only %}active_only=on&{% endif %}export=xlsx"
+         class="btn btn-outline-success btn-sm">
+        Excel
+      </a>
+      <a href="?{% if current_property %}property={{ current_property }}&{% endif %}{% if active_only %}active_only=on&{% endif %}export=pdf"
+         class="btn btn-outline-danger btn-sm">
+        PDF
+      </a>
+      <a href="?{% if current_property %}property={{ current_property }}&{% endif %}{% if active_only %}active_only=on&{% endif %}export=jpg"
+         class="btn btn-outline-primary btn-sm">
+        JPG
+      </a>
+    </div>
+  </div>
+
+  <form method="get" id="filter-form" class="mb-2">
+    <div class="row g-2 align-items-end small">
+      <div class="col-8 col-sm-4 col-md-3">
+        <label for="id_property" class="form-label mb-1">Property</label>
+        <select name="property" id="id_property" class="form-select form-select-sm">
+          <option value="">All</option>
+          {% for p in properties %}
+            <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>
+              {{ p.property_name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-4 col-sm-3 col-md-2">
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" name="active_only"
+                 id="id_active_only" {% if active_only %}checked{% endif %}>
+          <label class="form-check-label" for="id_active_only">
+            Active leases only
+          </label>
+        </div>
+      </div>
+
+      <div class="col-12 col-sm-5 col-md-3 text-sm-end mt-2 mt-sm-0">
+        <button type="submit" class="btn btn-primary btn-sm me-1">Filter</button>
+        <a href="{% url 'reports:security_deposit_report' %}" class="btn btn-secondary btn-sm">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  {% if not rows %}
+    <div class="alert alert-info small">No leases found for this filter.</div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped table-hover align-middle mb-2 security-table">
+        <thead class="table-light">
+          <tr class="small">
+            <th style="width: 40px;">SN</th>
+            <th>Property</th>
+            <th>Unit</th>
+            <th>Tenant</th>
+            <th>Phone</th>
+            <th class="text-center">Lease End</th>
+            <th class="text-end">Sec. Required</th>
+            <th class="text-end">Paid</th>
+            <th class="text-end">Refunded</th>
+            <th class="text-end">Held (Balance)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {# regroup rows by property_name for visual grouping #}
+          {% regroup rows by property_name as property_groups %}
+
+          {% for group in property_groups %}
+            {# property header row #}
+            <tr class="table-secondary">
+              <td colspan="10" class="fw-bold small">
+                {{ group.grouper }}
+              </td>
+            </tr>
+
+            {% for r in group.list %}
+              <tr class="small">
+                <td>{{ r.sn }}</td>
+                <td class="text-muted">{{ r.property_name }}</td>
+                <td>{{ r.unit_number }}</td>
+                <td>{{ r.tenant_name }}</td>
+                <td>
+                  {% if r.phone %}
+                    <a href="tel:{{ r.phone }}">{{ r.phone }}</a>
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                {# Lease end date → lease_detail, red if expired/expiring #}
+                <td class="text-center">
+                  {% if r.end_date %}
+                    <a href="{% url 'leases:lease_detail' r.lease_id %}"
+                       class="text-decoration-none">
+                      <span class="{% if r.is_expired or r.is_expiring %}text-danger fw-bold{% endif %}">
+                        {{ r.end_date|date:"Y-m-d" }}
+                      </span>
+                    </a>
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td class="text-end">Rs {{ r.required|floatformat:0|intcomma }}</td>
+                <td class="text-end">Rs {{ r.paid|floatformat:0|intcomma }}</td>
+                <td class="text-end">Rs {{ r.refunded|floatformat:0|intcomma }}</td>
+
+                {# Held balance → lease ledger link #}
+                <td class="text-end">
+                  {% if r.balance > 0 %}
+                    <a href="{% url 'leases:lease_ledger_by_pk' r.lease_id %}"
+                       class="text-danger fw-bold text-decoration-none">
+                      Rs {{ r.balance|floatformat:0|intcomma }}
+                    </a>
+                  {% else %}
+                    <span class="text-success">Rs 0</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+
+            {# property subtotal row #}
+            {% with totals=property_totals|dict_get:group.grouper %}
+              {% if totals %}
+                <tr class="table-secondary small fw-bold">
+                  <td></td>
+                  <td colspan="4">Subtotal {{ group.grouper }}</td>
+                  <td></td>
+                  <td class="text-end">Rs {{ totals.required|floatformat:0|intcomma }}</td>
+                  <td class="text-end">Rs {{ totals.paid|floatformat:0|intcomma }}</td>
+                  <td class="text-end">Rs {{ totals.refunded|floatformat:0|intcomma }}</td>
+                  <td class="text-end">Rs {{ totals.balance|floatformat:0|intcomma }}</td>
+                </tr>
+              {% endif %}
+            {% endwith %}
+          {% endfor %}
+
+          {# grand total row #}
+          {% if grand_totals %}
+            <tr class="table-dark text-white small fw-bold">
+              <td></td>
+              <td colspan="4">GRAND TOTAL</td>
+              <td></td>
+              <td class="text-end">Rs {{ grand_totals.required|floatformat:0|intcomma }}</td>
+              <td class="text-end">Rs {{ grand_totals.paid|floatformat:0|intcomma }}</td>
+              <td class="text-end">Rs {{ grand_totals.refunded|floatformat:0|intcomma }}</td>
+              <td class="text-end">Rs {{ grand_totals.balance|floatformat:0|intcomma }}</td>
+            </tr>
+          {% endif %}
+        </tbody>
+
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .security-table td,
+  .security-table th {
+    font-size: 0.78rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  @media (max-width: 576px) {
+    .security-table td,
+    .security-table th {
+      font-size: 0.7rem;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // auto-submit filters
+  document.addEventListener('DOMContentLoaded', function () {
+    const propertySelect = document.getElementById('id_property');
+    const activeOnly = document.getElementById('id_active_only');
+    const form = document.getElementById('filter-form');
+
+    if (propertySelect) {
+      propertySelect.addEventListener('change', () => form.submit());
+    }
+    if (activeOnly) {
+      activeOnly.addEventListener('change', () => form.submit());
+    }
+  });
+</script>
+{% endblock %}

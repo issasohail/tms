@@ -298,8 +298,8 @@
                             <div class="unit-info-value">{{ unit.unit_number }}</div>
                         </div>
                         <div class="unit-info-item">
-                            <span class="unit-info-label">Building Type / Interest Type</span>
-                            <div class="unit-info-value">{{ unit.interest_type|default:"-" }}</div>
+                            <span class="unit-info-label">Building Type</span>
+                            <div class="unit-info-value">{{ unit.building_type|default:"-" }}</div>
                         </div>
                         <div class="unit-info-item">
                             <span class="unit-info-label">Occupancy</span>
@@ -385,11 +385,11 @@
                             </div>
                             <div class="unit-info-item">
                                 <span class="unit-info-label">Phone</span>
-                                <div class="unit-info-value">{{ current_tenant.phone|default:"-" }}</div>
+                                <div class="unit-info-value">{{ current_tenant.phone|format_phone|default:"-" }}</div>
                             </div>
                             <div class="unit-info-item">
                                 <span class="unit-info-label">CNIC</span>
-                                <div class="unit-info-value">{{ current_tenant.cnic|default:"-" }}</div>
+                                <div class="unit-info-value">{{ current_tenant.cnic|format_cnic|default:"-" }}</div>
                             </div>
                             <div class="unit-info-item">
                                 <span class="unit-info-label">Lease Start</span>

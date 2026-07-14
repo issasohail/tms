@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .hm-detail-wrap { max-width:1500px; }
+  .hm-box { background:#fff; border:1px solid rgba(13,93,181,.22); border-radius:14px; box-shadow:0 10px 30px rgba(15,23,42,.07); overflow:hidden; }
+  .hm-detail-head { display:flex; justify-content:space-between; align-items:center; gap:.75rem; padding:1rem 1.15rem .6rem; background:linear-gradient(180deg,#fff 0%,#f8fbff 100%); }
+  .hm-title { font-size:1.02rem; font-weight:800; margin:0; color:#0f172a; }
+  .hm-detail-head .btn, .hm-actions-mobile .btn { border-radius:7px; font-weight:700; }
+  .hm-hero { display:grid; grid-template-columns:minmax(0,1fr) 210px 190px; gap:1rem; padding:1rem 1.15rem; align-items:center; }
+  .hm-profile { display:grid; grid-template-columns:92px 1fr; gap:1rem; align-items:center; }
+  .hm-photo-lg { width:86px; height:86px; border-radius:50%; object-fit:cover; background:#e5e7eb; box-shadow:0 0 0 4px #f1f5f9; }
+  .hm-chip { display:inline-flex; border-radius:999px; padding:.14rem .42rem; font-size:.64rem; font-weight:800; background:#eaf2ff; color:#0b5ed7; border:1px solid #d8e9ff; line-height:1.2; }
+  .hm-chip.green { background:#dcfce7; color:#166534; border-color:#bbf7d0; } .hm-chip.gold { background:#fff6d8; color:#9a6700; border-color:#ffe7a3; }
+  .hm-stars { color:#f59e0b; letter-spacing:.02em; }
+  .hm-stat { border-left:1px solid #edf2f7; padding-left:1rem; min-height:76px; display:flex; flex-direction:column; justify-content:center; }
+  .hm-actions-mobile { padding:0 1.15rem 1rem; display:flex; gap:.45rem; }
+  .hm-tabs { display:grid; grid-template-columns:.9fr 1.15fr 1.15fr; gap:1rem; padding:1rem 1.15rem 1.15rem; border-top:1px solid #eef2f7; background:#fbfdff; }
+  .hm-card { border:1px solid #e5edf7; border-radius:12px; padding:.9rem; background:#fff; box-shadow:0 6px 18px rgba(15,23,42,.035); }
+  .hm-card h6 { font-size:.82rem; font-weight:800; margin:0 0 .75rem; }
+  .hm-job-row { display:grid; grid-template-columns:1fr auto; gap:.5rem; padding:.5rem 0; border-bottom:1px solid #f1f5f9; font-size:.76rem; }
+  .hm-job-row:last-child { border-bottom:0; }
+  .hm-doc-thumb { width:72px; height:52px; object-fit:cover; border:1px solid #e5e7eb; border-radius:5px; }
+  @media (max-width: 1000px) { .hm-hero { grid-template-columns:1fr 150px 130px; } .hm-tabs { grid-template-columns:1fr 1fr; } }
+  @media (max-width: 650px) {
+    .hm-detail-wrap { padding:0; margin-top:0!important; }
+    .hm-box { border:0; border-radius:0; box-shadow:none; min-height:100vh; }
+    .hm-detail-head { background:#082746; color:#fff; padding:.65rem .75rem; position:sticky; top:0; z-index:5; }
+    .hm-title, .hm-detail-head a { color:#fff!important; }
+    .hm-detail-head .btn { background:#fff; color:#082746; border-color:#fff; }
+    .hm-hero { grid-template-columns:1fr 1fr; padding:.85rem; gap:.75rem; }
+    .hm-profile { grid-column:span 2; grid-template-columns:76px 1fr; }
+    .hm-photo-lg { width:70px; height:70px; }
+    .hm-stat { border-left:0; border-top:1px solid #edf2f7; padding:.7rem 0 0; text-align:center; min-height:auto; }
+    .hm-tabs { grid-template-columns:1fr; padding:.65rem; gap:.55rem; background:#fff; }
+    .hm-card { box-shadow:none; }
+    .hm-actions-mobile { display:grid !important; grid-template-columns:1fr 1fr; gap:.4rem; padding:.65rem; }
+  }
+</style>
+<div class="container hm-detail-wrap mt-3">
+  <div class="hm-box">
+    <div class="hm-detail-head">
+      <h5 class="hm-title"><a href="{% url 'handyman:handyman_list' %}" class="text-dark text-decoration-none"><i class="bi bi-arrow-left me-1"></i></a> Handyman Detail</h5>
+      <a href="{% url 'handyman:handyman_edit' handyman.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil me-1"></i>Edit</a>
+    </div>
+    <div class="hm-hero">
+      <div class="hm-profile">
+        {% if handyman.photo %}<img class="hm-photo-lg" src="{{ handyman.photo.url }}" alt="">{% else %}<div class="hm-photo-lg"></div>{% endif %}
+        <div>
+          <div class="fw-bold fs-6">{{ handyman.full_name }} {% if handyman.is_active %}<span class="hm-chip green ms-1">Active</span>{% endif %}{% if handyman.is_preferred %}<span class="hm-chip gold ms-1">Preferred</span>{% endif %}</div>
+          <div class="small text-muted mt-1"><i class="bi bi-telephone me-1"></i>{{ handyman.display_phone|default:"-" }}</div>
+          <div class="small text-muted"><i class="bi bi-geo-alt me-1"></i>{{ handyman.address|default:"-" }}</div>
+        </div>
+      </div>
+      <div class="hm-stat">
+        {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
+          <div class="small text-muted">Average Rating</div>
+          <div class="fs-3 fw-bold">{{ handyman.average_rating }}</div>
+          <div class="hm-stars">★★★★★</div>
+          <div class="small text-muted">({{ handyman.rating_count }} Ratings)</div>
+        {% else %}
+          <div class="small text-muted">Ratings</div>
+          <div class="fs-6 fw-bold">Off</div>
+          <div class="small text-muted">Disabled in settings</div>
+        {% endif %}
+      </div>
+      <div class="hm-stat">
+        <div class="small text-muted">Completed Jobs</div>
+        <div class="fs-3 fw-bold">{{ handyman.completed_jobs_count }}</div>
+      </div>
+    </div>
+    <div class="hm-actions-mobile">
+      <a class="btn btn-success btn-sm" href="https://wa.me/{{ handyman.display_phone }}"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+      <a class="btn btn-primary btn-sm" href="{% url 'maintenance:request_list' %}"><i class="bi bi-tools me-1"></i>Assign to Job</a>
+    </div>
+    <div class="hm-tabs">
+      <div class="hm-card">
+        <h6>Categories</h6>
+        {% for category in handyman.categories.all %}<span class="hm-chip me-1 mb-1">{{ category.name }}</span>{% empty %}<span class="small text-muted">No categories.</span>{% endfor %}
+        <h6 class="mt-3">About</h6>
+        <div class="small">{{ handyman.notes|default:"-"|linebreaksbr }}</div>
+      </div>
+      <div class="hm-card">
+        <h6>Assignments</h6>
+        {% for assignment in handyman.assignments.all|slice:":6" %}
+          <div class="hm-job-row">
+            <div><strong>{{ assignment.maintenance_request.title }}</strong><div class="small text-muted">{{ assignment.maintenance_request.building }} / {{ assignment.maintenance_request.unit }}</div></div>
+            <span class="hm-chip">{{ assignment.get_status_display }}</span>
+          </div>
+        {% empty %}<div class="small text-muted">No assignments yet.</div>{% endfor %}
+      </div>
+      <div class="hm-card">
+        <h6>Ratings & Reviews</h6>
+        {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
+          {% for rating in handyman.ratings.all|slice:":6" %}
+            <div class="hm-job-row">
+              <div><span class="hm-stars">★★★★★</span><div class="small">{{ rating.comments|default:"-" }}</div><div class="small text-muted">{{ rating.tenant_name_snapshot }} - {{ rating.property_name_snapshot }} {{ rating.unit_name_snapshot }}</div></div>
+              <span class="fw-bold">{{ rating.rating }}</span>
+            </div>
+          {% empty %}<div class="small text-muted">No ratings yet.</div>{% endfor %}
+        {% else %}
+          <div class="small text-muted">Ratings are disabled in settings.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

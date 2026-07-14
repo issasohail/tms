@@ -14,6 +14,7 @@ from decimal import Decimal
 from io import BytesIO
 from math import ceil
 from typing import Any, Dict
+from urllib.parse import urlencode
 
 import openpyxl
 from bs4 import NavigableString, Tag
@@ -81,7 +82,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from weasyprint import HTML
 
-from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
+from invoices.models import (
+    Invoice,
+    InvoiceItem,
+    ItemCategory,
+    RecurringCharge,
+    SecurityDepositTransaction,
+)
 from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
@@ -115,6 +122,7 @@ from payments.models import Payment
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant, normalize_cnic
+from core.utils.identity import format_cnic, format_phone, normalize_phone
 from utils.pdf_export import handle_export
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
 from whatsapp.services.external_links import record_external_link_access
@@ -156,6 +164,14 @@ from .utils.move_out_billing import (
     apply_move_out_settlement,
     build_move_out_settlement_preview,
     move_out_billing_trigger,
+)
+from .utils.end_lease import (
+    accounts_staff_for_lease,
+    build_end_lease_preview,
+    end_lease,
+    rollback_end_lease,
+    staff_message as end_lease_staff_message,
+    tenant_message as end_lease_tenant_message,
 )
 
 # --- Security deposit helpers ------------------------------------
@@ -685,6 +701,7 @@ def _vehicle_dict(request, vehicle):
         "year": vehicle.year or "",
         "owner_name": vehicle.owner_name,
         "owner_cnic": vehicle.owner_cnic,
+        "owner_cnic_display": format_cnic(vehicle.owner_cnic),
         "parking_slot": vehicle.parking_slot,
         "notes": vehicle.notes,
         "is_active": vehicle.is_active,
@@ -706,6 +723,7 @@ def _pending_vehicle_dict(request, submission):
         "year": submission.year or "",
         "owner_name": submission.owner_name,
         "owner_cnic": submission.owner_cnic,
+        "owner_cnic_display": format_cnic(submission.owner_cnic),
         "parking_slot": submission.parking_slot,
         "source": submission.source,
         "status": submission.status,
@@ -3817,6 +3835,14 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 else None
             )
         )
+        ctx["rollback_default_end_date"] = (
+            ctx["active_history"].end_date
+            if (
+                ctx["active_history"]
+                and ctx["active_history"].end_date > lease.end_date
+            )
+            else None
+        )
         non_original_renewals = [
             renewal for renewal in renewals if not renewal.is_original
         ]
@@ -3842,6 +3868,8 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             if tx.type == "PAYMENT":
                 dep_balance += amt
                 signed_amt = amt
+            elif tx.type == "REFUND" and tx.refund_status != "PAID":
+                signed_amt = -(amt + (tx.deduction_amount or ZERO))
             elif tx.type in ("REFUND", "DAMAGE"):
                 deduction = (
                     (tx.deduction_amount or ZERO) if tx.type == "REFUND" else ZERO
@@ -3876,6 +3904,323 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         )
 
         return ctx
+
+
+@login_required
+@require_POST
+def lease_end_action(request, pk):
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit", "unit__property"),
+        pk=pk,
+    )
+    try:
+        end_date = datetime.strptime(
+            (request.POST.get("end_date") or "").strip(), "%Y-%m-%d"
+        ).date()
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "Enter a valid lease end date."}, status=400)
+
+    kwargs = {
+        "end_date": end_date,
+        "final_electric_amount": request.POST.get("final_electric_amount"),
+        "other_amount": request.POST.get("other_amount"),
+        "other_description": request.POST.get("other_description", ""),
+        "future_invoice_action": request.POST.get("future_invoice_action") or "cancel",
+        "inspection_complete": (
+            True if request.POST.get("inspection_complete") == "yes"
+            else False if request.POST.get("inspection_complete") == "no"
+            else None
+        ),
+        "keys_returned": (
+            True if request.POST.get("keys_returned") == "yes"
+            else False if request.POST.get("keys_returned") == "no"
+            else None
+        ),
+        "inspection_charge": request.POST.get("inspection_charge"),
+        "key_charge": request.POST.get("key_charge"),
+    }
+    action = request.POST.get("action") or "preview"
+    try:
+        if action in {"add_item", "edit_item", "delete_item"}:
+            result = build_end_lease_preview(lease, **kwargs)
+            if action == "add_item":
+                invoice_id = request.POST.get("invoice_id") or result["invoice"].pk
+                invoice = get_object_or_404(Invoice, pk=invoice_id, lease=lease)
+                if invoice.status == "paid":
+                    raise ValidationError("A paid invoice cannot be changed here.")
+                category_name = (request.POST.get("category") or "Other Charges").strip()
+                category = ItemCategory.objects.filter(name__iexact=category_name).first()
+                if category is None:
+                    category = ItemCategory.objects.create(name=category_name)
+                elif not category.is_active:
+                    category.is_active = True
+                    category.save(update_fields=["is_active"])
+                amount = Decimal((request.POST.get("amount") or "0").replace(",", ""))
+                if amount < ZERO:
+                    raise ValidationError("Invoice line amount cannot be negative.")
+                InvoiceItem.objects.create(
+                    invoice=invoice,
+                    category=category,
+                    description=(request.POST.get("description") or "").strip(),
+                    amount=amount,
+                    is_recurring=False,
+                )
+            else:
+                item = get_object_or_404(
+                    InvoiceItem.objects.select_related("invoice"),
+                    pk=request.POST.get("item_id"),
+                    invoice__lease=lease,
+                )
+                if item.invoice.status == "paid":
+                    raise ValidationError("A paid invoice cannot be changed here.")
+                if action == "delete_item":
+                    if item.description in {
+                        "Move-out inspection sheet not completed",
+                        "Key/key card not recorded as returned",
+                    }:
+                        suppression = f"END_LEASE_SUPPRESS:{item.description}"
+                        if suppression not in (item.invoice.notes or ""):
+                            item.invoice.notes = "\n".join(
+                                filter(None, [item.invoice.notes, suppression])
+                            )
+                            item.invoice.save(update_fields=["notes", "updated_at"])
+                    item.delete()
+                else:
+                    category_name = (request.POST.get("category") or "").strip()
+                    if not category_name:
+                        raise ValidationError("Select or enter a category.")
+                    category = ItemCategory.objects.filter(name__iexact=category_name).first()
+                    if category is None:
+                        category = ItemCategory.objects.create(name=category_name)
+                    elif not category.is_active:
+                        category.is_active = True
+                        category.save(update_fields=["is_active"])
+                    amount = Decimal((request.POST.get("amount") or "0").replace(",", ""))
+                    if amount < ZERO:
+                        raise ValidationError("Invoice line amount cannot be negative.")
+                    item.category = category
+                    item.description = (request.POST.get("description") or "").strip()
+                    item.amount = amount
+                    item.is_recurring = False
+                    item.save(update_fields=["category", "description", "amount", "is_recurring"])
+            return JsonResponse({"ok": True})
+
+        if action == "preview":
+            result = build_end_lease_preview(lease, **kwargs)
+            if request.headers.get("x-requested-with") != "XMLHttpRequest":
+                return render(
+                    request,
+                    "leases/end_lease_preview.html",
+                    {
+                        "lease": lease,
+                        "result": result,
+                        "form_values": {
+                            **kwargs,
+                            "notes": request.POST.get("notes", ""),
+                            "send_whatsapp": request.POST.get("send_whatsapp") == "1",
+                        },
+                    },
+                )
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "occupied_days": result["occupied_days"],
+                    "billable_days": result["billable_days"],
+                    "days_in_month": result["days_in_month"],
+                    "proration_interval_days": result["proration_interval_days"],
+                    "proration_interval_label": result["proration_interval_label"],
+                    "lines": [
+                        {
+                            "id": row["id"],
+                            "category_id": row["category_id"],
+                            "category": row["category"],
+                            "description": row["description"],
+                            "amount": str(row["amount"]),
+                        }
+                        for row in result["lines"]
+                    ],
+                    "invoice_total": str(result["invoice_total"]),
+                    "account_balance": str(result["gross_balance"]),
+                    "invoice": {
+                        "id": result["invoice"].pk,
+                        "number": result["invoice"].invoice_number,
+                        "issue_date": result["invoice"].issue_date.isoformat(),
+                        "status": result["invoice"].get_status_display(),
+                        "detail_url": reverse("invoices:invoice_detail", args=[result["invoice"].pk]),
+                        "pdf_url": reverse("invoices:invoice_pdf", args=[result["invoice"].pk]),
+                    },
+                    "categories": list(
+                        ItemCategory.objects.filter(is_active=True)
+                        .order_by("name")
+                        .values_list("name", flat=True)
+                    ),
+                    "inspection": {
+                        "complete": result["inspection_state"]["inspection_complete"],
+                        "keys_returned": result["inspection_state"]["keys_returned"],
+                        "outstanding_keys": result["inspection_state"]["outstanding_keys"],
+                        "inspection_charge": str(result["inspection_charge"]),
+                        "key_charge": str(result["key_charge"]),
+                        "building_type": (
+                            result["move_out_building_type"].name
+                            if result["move_out_building_type"]
+                            else "No building type assigned"
+                        ),
+                        "url": (
+                            reverse("leases:inspection_detail", args=[result["inspection_state"]["inspection"].pk])
+                            if result["inspection_state"]["inspection"]
+                            else reverse("leases:lease_inspection_create", args=[lease.pk])
+                        ),
+                    },
+                    "gross_balance": str(result["gross_balance"]),
+                    "security_held": str(result["security_held"]),
+                    "security_applied": str(result["security_applied"]),
+                    "amount_payable": str(result["amount_payable"]),
+                    "refund_due": str(result["refund_due"]),
+                    "tenant_phone": normalize_phone(lease.tenant.phone or ""),
+                    "whatsapp_message": (
+                        f"Settlement preview for {lease.tenant.get_full_name()} - lease end "
+                        f"{result['end_date']:%Y-%m-%d}. Balance before security: "
+                        f"Rs. {result['gross_balance']:,.2f}. Security applied: "
+                        f"Rs. {result['security_applied']:,.2f}. "
+                        + (
+                            f"Tenant payable: Rs. {result['amount_payable']:,.2f}."
+                            if result["amount_payable"] > ZERO
+                            else f"Refund due: Rs. {result['refund_due']:,.2f}."
+                            if result["refund_due"] > ZERO
+                            else "Account settled."
+                        )
+                    ),
+                    "future_invoice_action": result["future_invoice_action"],
+                    "future_invoice_total": str(result["future_invoice_total"]),
+                    "future_invoices": [
+                        {
+                            "id": invoice.pk,
+                            "number": invoice.invoice_number,
+                            "issue_date": invoice.issue_date.isoformat(),
+                            "description": invoice.description or "",
+                            "amount": str(invoice.amount or ZERO),
+                            "status": invoice.get_status_display(),
+                            "detail_url": reverse("invoices:invoice_detail", args=[invoice.pk])
+                            + "?"
+                            + urlencode(
+                                {
+                                    "settlement": "1",
+                                    "lease_id": lease.pk,
+                                    "end_date": end_date.isoformat(),
+                                }
+                            ),
+                            "is_current_period": invoice.pk == result["final_period_invoice"].pk,
+                            "update_url": reverse("invoices:invoice_update", args=[invoice.pk]),
+                            "pdf_url": reverse("invoices:invoice_pdf", args=[invoice.pk]),
+                            "items": [
+                                {
+                                    "id": item.pk,
+                                    "category": item.category.name,
+                                    "description": item.description or "",
+                                    "amount": str(item.amount),
+                                }
+                                for item in invoice.items.select_related("category").order_by("id")
+                            ],
+                        }
+                        for invoice in result["review_invoices"]
+                    ],
+                }
+            )
+
+        result = end_lease(
+            lease,
+            user=request.user,
+            notes=request.POST.get("notes", ""),
+            **kwargs,
+        )
+    except (ValidationError, ArithmeticError, ValueError) as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"ok": False, "error": error}, status=400)
+        messages.error(request, error)
+        return redirect("leases:lease_detail", pk=lease.pk)
+
+    send_whatsapp = request.POST.get("send_whatsapp") == "1"
+    sent_to_tenant = False
+    staff_sent = 0
+    send_errors = []
+    if send_whatsapp:
+        service = WhatsAppService(created_by=request.user)
+        if lease.tenant.phone:
+            try:
+                response = service.send_text(
+                    lease.tenant.phone,
+                    end_lease_tenant_message(result),
+                    tenant=lease.tenant,
+                    lease=lease,
+                    invoice=result["invoice"],
+                )
+                sent_to_tenant = bool(response.get("ok"))
+                if not sent_to_tenant:
+                    send_errors.append(response.get("error") or "tenant WhatsApp failed")
+            except Exception as exc:
+                send_errors.append(f"tenant WhatsApp failed: {exc}")
+
+        for staff_user in accounts_staff_for_lease(lease):
+            if not getattr(staff_user, "whatsapp_number", ""):
+                continue
+            try:
+                response = service.send_text(
+                    staff_user.whatsapp_number,
+                    end_lease_staff_message(result),
+                    tenant=lease.tenant,
+                    lease=lease,
+                    invoice=result["invoice"],
+                )
+                if response.get("ok"):
+                    staff_sent += 1
+            except Exception as exc:
+                send_errors.append(f"staff WhatsApp failed: {exc}")
+
+    messages.success(
+        request,
+        f"Lease ended. Final bill Rs. {result['gross_balance']:,.2f}; "
+        f"security applied Rs. {result['security_applied']:,.2f}; "
+        f"payable Rs. {result['amount_payable']:,.2f}; refund due Rs. {result['refund_due']:,.2f}. "
+        f"{len(result['future_invoices'])} future invoice(s) "
+        f"{'cancelled' if result['future_invoice_action'] == 'cancel' else 'kept as approved charges'}.",
+    )
+    if send_whatsapp and not lease.tenant.phone:
+        messages.warning(request, "Lease was ended, but the tenant has no WhatsApp phone number.")
+    elif send_whatsapp and not sent_to_tenant:
+        messages.warning(request, "Lease was ended, but the tenant WhatsApp message was not sent.")
+    if send_whatsapp and result["refund_due"] > ZERO and not staff_sent:
+        messages.warning(request, "Refund is pending, but no accounts staff WhatsApp recipient was reached.")
+    if send_errors:
+        messages.warning(request, " ".join(send_errors[:2]))
+    return redirect("leases:lease_detail", pk=lease.pk)
+
+
+@login_required
+@require_POST
+def lease_end_rollback_action(request, pk):
+    lease = get_object_or_404(Lease, pk=pk)
+    try:
+        restored_end_date = datetime.strptime(
+            (request.POST.get("restored_end_date") or "").strip(), "%Y-%m-%d"
+        ).date()
+        result = rollback_end_lease(
+            lease,
+            restored_end_date=restored_end_date,
+            user=request.user,
+            notes=request.POST.get("notes", ""),
+        )
+    except (ValidationError, ValueError, ArithmeticError) as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        messages.error(request, error)
+        return redirect("leases:lease_detail", pk=lease.pk)
+    messages.success(
+        request,
+        f"Lease end rolled back. End date restored to {result['restored_end_date']:%Y-%m-%d}; "
+        f"{len(result['restored_invoices'])} invoice(s) restored and "
+        f"Rs. {result['reversed_security']:,.2f} security application reversed.",
+    )
+    return redirect("leases:lease_detail", pk=lease.pk)
 
 
 def lease_print(request, pk):
@@ -4360,6 +4705,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
 
             deposit_tx.append(
                 {
+                    "obj": tx,
                     "date": tx.date,
                     "type": tx.get_type_display(),
                     "description": tx.notes or "",
@@ -5300,13 +5646,15 @@ def create_agreement_party_ajax(request):
             existing.save(update_fields=changed + ["updated_at"] if "updated_at" not in changed else changed)
         return JsonResponse({
             "ok": True, "id": existing.pk,
-            "text": f"{existing.get_full_name()} — {existing.phone or ''}",
+            "text": f"{existing.get_full_name()} — {format_phone(existing.phone)}",
+            "phone": existing.phone or "",
+            "phone_display": format_phone(existing.phone),
             "created": False,
         })
 
     tenant = Tenant(
         prefix=prefix[:10], first_name=first_name[:50], relation=relation[:10],
-        last_name=last_name[:50], cnic=cnic[:15], phone=phone[:20], is_active=True,
+        last_name=last_name[:50], cnic=cnic_digits, phone=normalize_phone(phone), is_active=True,
     )
     try:
         tenant.full_clean()
@@ -5319,7 +5667,9 @@ def create_agreement_party_ajax(request):
 
     return JsonResponse({
         "ok": True, "id": tenant.pk,
-        "text": f"{tenant.get_full_name()} — {tenant.phone or ''}",
+        "text": f"{tenant.get_full_name()} — {format_phone(tenant.phone)}",
+        "phone": tenant.phone or "",
+        "phone_display": format_phone(tenant.phone),
         "created": True,
     })
 
@@ -5663,8 +6013,8 @@ class LeaseSecurityMixin(LoginRequiredMixin):
         return ctx
 
     def get_success_url(self):
-        # After add/edit/delete go back to the security ledger list
-        return reverse("leases:lease_security_list", kwargs={"lease_pk": self.lease.pk})
+        # The security deposit ledger now lives on the main lease ledger page.
+        return reverse("leases:lease_ledger_by_pk", kwargs={"pk": self.lease.pk})
 
 
 class SecurityDepositListView(LeaseSecurityMixin, ListView):
@@ -6271,9 +6621,9 @@ def add_signature_block(doc, lease, history=None):
 
     # row 2: CNICs
     set_cell(
-        t.cell(2, 0), [f"CNIC: {lease.unit.property.owner_cnic}"], bold_prefix=True
+        t.cell(2, 0), [f"CNIC: {format_cnic(lease.unit.property.owner_cnic)}"], bold_prefix=True
     )
-    set_cell(t.cell(2, 1), [f"CNIC: {lease.tenant.cnic}"], bold_prefix=True)
+    set_cell(t.cell(2, 1), [f"CNIC: {format_cnic(lease.tenant.cnic)}"], bold_prefix=True)
 
     # row 3: spacer row (optional)
     set_cell(t.cell(3, 0), [""])
@@ -6297,8 +6647,8 @@ def add_signature_block(doc, lease, history=None):
     def witness_lines(label, person):
         return [
             f"{label}: {person.get_full_name() if person else '_________________________'}",
-            f"CNIC: {(person.cnic or '_________________________') if person else '_________________________'}",
-            f"Phone: {(person.phone or '_________________________') if person else '_________________________'}",
+            f"CNIC: {format_cnic(person.cnic) if person and person.cnic else '_________________________'}",
+            f"Phone: {format_phone(person.phone) if person and person.phone else '_________________________'}",
         ]
 
     set_cell(tw.cell(0, 0), witness_lines("Witness 1", witness1), bold_prefix=True)

@@ -114,6 +114,8 @@ PLACEHOLDER_REGISTRY = {
     "TOTAL_MONTHLY_IN_WORDS": lambda lease: number_to_words(int(lease.monthly_rent + (lease.society_maintenance or 0))),
     "LEASE_DURATION_MONTHS": lambda lease: (lambda rd: rd.years * 12 + rd.months)(relativedelta((lease.end_date + timedelta(days=1)), lease.start_date)),
     "DUE_DATE": lambda lease: lease.due_date,
+    "PRORATION_INTERVAL_DAYS": lambda lease: lease.effective_proration_interval_days,
+    "PRORATION_INTERVAL_LABEL": lambda lease: lease.effective_proration_interval_label,
 
     # Security Deposit
     "SECURITY_DEPOSIT": lambda lease: lease.security_deposit,

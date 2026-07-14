@@ -102,7 +102,7 @@
                 <p><strong>Email:</strong> {{ tenant.email|default:"Not provided" }}</p>
             </div>
             <div class="col-md-4">
-                <p><strong>Phone:</strong> {{ tenant.phone|default:"Not provided" }}</p>
+                <p><strong>Phone:</strong> {{ tenant.phone|format_phone|default:"Not provided" }}</p>
             </div>
             <div class="col-md-4">
                 <p><strong>Current Balance:</strong> 

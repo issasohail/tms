@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
+from core.utils.identity import format_phone
 
 from invoices.models import Invoice
 from invoices.public_links import make_public_invoice_token
@@ -34,6 +35,16 @@ from whatsapp.models import (
     WhatsAppConversation,
 )
 from whatsapp.services.ai_config import get_whatsapp_ai_config
+from whatsapp.services.ai.orchestrator import WhatsAppAIOrchestrator
+from whatsapp.services.ai.safety import safe_summary
+from whatsapp.services.handover.lifecycle import create_handover
+from whatsapp.services.handover.notifications import notify_new_handover
+from whatsapp.services.handover.workflow import (
+    detect_handover_request,
+    handle_active_tenant_message,
+    handle_staff_handover_media,
+    handle_staff_handover_message,
+)
 from whatsapp.services.maintenance_ai import create_pending_maintenance, detect_maintenance_issue
 from whatsapp.services.media_processor import create_pending_media, run_payment_ocr
 from whatsapp.services.payment_matching import extract_payment_text_fields, match_payment_to_active_lease
@@ -102,6 +113,7 @@ class WhatsAppAIAssistant:
     def __init__(self, service=None):
         self.service = service or WhatsAppService()
         self.ai_config = get_whatsapp_ai_config()
+        self.orchestrator = WhatsAppAIOrchestrator(self.ai_config, service=self.service)
 
     def _clear_context_keys(self, conversation, *keys):
         for key in keys:
@@ -116,6 +128,13 @@ class WhatsAppAIAssistant:
         error_text = ""
         try:
             response, intent, metadata = self._handle(message_log, conversation)
+            deferred_ai_audit = (conversation.context or {}).pop("_deferred_ai_audit", None)
+            if deferred_ai_audit:
+                # Preserve attempted/denied tool calls even when the legacy fallback
+                # ultimately owns the user-facing response.
+                for key, value in deferred_ai_audit.items():
+                    metadata.setdefault(key, value)
+                conversation.save(update_fields=["context", "updated_at"])
             if response:
                 self.service.send_text(
                     message_log.phone_number,
@@ -129,15 +148,29 @@ class WhatsAppAIAssistant:
             response = "Thanks. We received your message and our office team will review it shortly."
             self.service.send_text(message_log.phone_number, response)
         finally:
-            WhatsAppAIInteractionLog.objects.create(
+            if self.ai_config.store_logs:
+                WhatsAppAIInteractionLog.objects.create(
                 conversation=conversation,
                 message_log=message_log,
                 phone_number=message_log.phone_number,
                 intent=intent,
+                model=self.ai_config.model,
+                provider=self.ai_config.provider,
+                input_summary=safe_summary(_payload_text(message_log.payload or {}), 500),
+                decision_json=_json_safe(metadata.get("ai_decision") or {}),
+                tool_calls=_json_safe(metadata.get("tool_calls") or []),
+                tool_results_summary=_json_safe(metadata.get("tool_results") or []),
+                confidence=int((metadata.get("ai_decision") or {}).get("confidence") or 0),
+                language=str((metadata.get("ai_decision") or {}).get("language") or "")[:20],
+                fallback_used=bool(metadata.get("fallback_used")),
+                handover_triggered=bool(metadata.get("handover_id")),
+                handover_reason=str((metadata.get("ai_decision") or {}).get("handover_reason") or "")[:160],
                 ai_prompt=CENTRAL_ASSISTANT_PROMPT.strip(),
                 ai_response=response,
                 metadata=_json_safe(metadata),
                 latency_ms=int((time.monotonic() - started) * 1000),
+                prompt_tokens=int((metadata.get("usage") or {}).get("prompt_tokens") or 0),
+                completion_tokens=int((metadata.get("usage") or {}).get("completion_tokens") or 0),
                 error_text=error_text,
             )
 
@@ -147,7 +180,24 @@ class WhatsAppAIAssistant:
         text = _payload_text(payload)
         identity = identify_sender(message_log.phone_number)
 
-        if message_type in {"image", "document", "video"}:
+        # Active tenant handovers suppress substantive AI replies and relay updates to staff.
+        staff_switch = (text or "").strip().lower() in {"staff", "staff mode", "staff inbox"}
+        if conversation.handover_active and identity.has_active_tenant and not staff_switch:
+            media = None
+            if message_type in {"image", "document", "video", "audio"}:
+                media = create_pending_media(message_log, conversation, conversation.selected_lease)
+            reply = handle_active_tenant_message(message_log, conversation, text, media=media, service=self.service)
+            if reply:
+                return reply, "handover_tenant_update", {"tenant": identity.tenant, "lease": conversation.selected_lease}
+
+        if message_type in {"image", "document", "video", "audio"} and identity.has_staff:
+            staff_media_reply = handle_staff_handover_media(
+                message_log, conversation, text, identity.staff_user, service=self.service
+            )
+            if staff_media_reply:
+                return staff_media_reply, "handover_staff_media_reply", {"staff_user": identity.staff_user}
+
+        if message_type in {"image", "document", "video", "audio"}:
             handyman_media_response = handle_handyman_media_message(message_log, conversation, text, message_type, identity)
             if handyman_media_response:
                 return handyman_media_response
@@ -167,6 +217,12 @@ class WhatsAppAIAssistant:
         )
         mode = resolve_mode(conversation, text, identity)
 
+        if mode == "ambiguous_identity":
+            return (
+                "This WhatsApp number matches more than one account. For privacy, no account details were opened. Our staff will review the identity match.",
+                "ambiguous_identity",
+                {},
+            )
         if mode == "choose_mode":
             return mode_selection_text(), "mode_selection", {"staff_user": identity.staff_user, "tenant": identity.tenant}
         if mode == WhatsAppConversation.MODE_GUEST:
@@ -175,6 +231,34 @@ class WhatsAppAIAssistant:
             return self._handle_staff_message(message_log, conversation, text, message_type, identity), "staff", {
                 "staff_user": identity.staff_user,
             }
+
+        handover_request = detect_handover_request(text) if self.ai_config.handover_enabled else None
+        if handover_request:
+            reason, department, priority = handover_request
+            handover, _created = create_handover(
+                conversation,
+                message_log,
+                reason=reason,
+                department=department,
+                priority=priority,
+                ai_summary=text,
+            )
+            notify_new_handover(handover, service=self.service)
+            return (
+                f"Your message has been sent to management. Reference: {handover.reference}. Staff will decide whether to reply or call you.",
+                "handover",
+                {
+                    "tenant": identity.tenant,
+                    "lease": conversation.selected_lease,
+                    "handover_id": handover.pk,
+                    "ai_decision": {
+                        "handover": True,
+                        "handover_reason": reason,
+                        "confidence": 100,
+                        "language": conversation.preferred_language,
+                    },
+                },
+            )
 
         selected_lease = self._selected_active_lease(conversation)
         lowered = (text or "").strip().lower()
@@ -286,6 +370,14 @@ class WhatsAppAIAssistant:
         lease = selected_lease or self._resolve_or_request_lease(message_log.phone_number, conversation)
         if isinstance(lease, str):
             return lease, "lease_lookup", {}
+
+        orchestration = self.orchestrator.handle(text, identity, conversation, message_log, lease=lease)
+        if orchestration.handled:
+            orchestration.metadata.update({"tenant": lease.tenant, "lease": lease})
+            return orchestration.reply, orchestration.intent, orchestration.metadata
+        if orchestration.metadata:
+            conversation.context["_deferred_ai_audit"] = _json_safe(orchestration.metadata)
+            conversation.save(update_fields=["context", "updated_at"])
 
         guided_maintenance_response = self._consume_guided_maintenance(message_log, conversation, text, lease)
         if guided_maintenance_response:
@@ -645,6 +737,11 @@ class WhatsAppAIAssistant:
 
     def _handle_staff_message(self, message_log, conversation, text, message_type, identity):
         staff_user = identity.staff_user
+        handover_response = handle_staff_handover_message(
+            message_log, conversation, text, staff_user, service=self.service
+        )
+        if handover_response:
+            return handover_response
         lowered = (text or "").strip().lower()
         if message_type in {"image", "document", "video"}:
             media = create_pending_media(message_log, conversation)
@@ -1177,7 +1274,7 @@ class WhatsAppAIAssistant:
         return (
             f"Tenant Summary\n\n"
             f"Name: {tenant.get_full_name()}\n"
-            f"Phone: {tenant.phone or '-'}\n"
+            f"Phone: {format_phone(tenant.phone) or '-'}\n"
             f"Property: {lease.unit.property.property_name}\n"
             f"Unit: {lease.unit.unit_number}\n"
             f"Lease: {lease.start_date} to {lease.end_date}\n"
@@ -2272,7 +2369,7 @@ class WhatsAppAIAssistant:
             for index, member in enumerate(members, start=1):
                 tenant = member.family_member
                 relation = member.relationship_type.name if member.relationship_type else member.relationship
-                phone = f" - {tenant.phone}" if tenant.phone else ""
+                phone = f" - {format_phone(tenant.phone)}" if tenant.phone else ""
                 lines.append(f"{index}. {tenant.get_full_name()} ({relation}){phone}")
         else:
             lines.append("No family members are linked yet.")

@@ -68,6 +68,7 @@ class LeaseForm(forms.ModelForm):
             'water_charges': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'bill_water_charges': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'bill_recurring_charges': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'proration_interval_days': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'min': 1, 'step': 1}),
             'internet_charges': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'agreement_charges': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'security_deposit': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),

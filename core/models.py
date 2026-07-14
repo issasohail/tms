@@ -1,5 +1,7 @@
 from django.core.cache import cache
 from django.db import models
+from django.core.validators import MinValueValidator
+from core.model_fields import NormalizedPhoneField
 from core.utils.text import smart_title
 
 
@@ -21,7 +23,7 @@ class GlobalSettings(models.Model):
     smtp_password = models.CharField(max_length=512, blank=True)   # ok for dev
 
     # WhatsApp / Twilio
-    whatsapp_number = models.CharField(max_length=40, blank=True)
+    whatsapp_number = NormalizedPhoneField(max_length=40, blank=True)
     twilio_account_sid = models.CharField(max_length=128, blank=True)
     twilio_auth_token = models.CharField(max_length=128, blank=True)
     twilio_from_number = models.CharField(max_length=40, blank=True)
@@ -76,6 +78,11 @@ class GlobalSettings(models.Model):
         default=0,
         help_text="Optional invoice cap. Use 0 for no cap.",
     )
+    end_lease_proration_interval_days = models.PositiveSmallIntegerField(
+        default=7,
+        validators=[MinValueValidator(1)],
+        help_text="Default billing-day block used when monthly charges are prorated at move-out.",
+    )
     lease_file_share_valid_days = models.PositiveIntegerField(
         default=7,
         help_text="Default number of days public lease file share links remain valid.",
@@ -129,6 +136,53 @@ class GlobalSettings(models.Model):
     whatsapp_ai_use_celery = models.BooleanField(
         default=False,
         help_text="Queue WhatsApp AI work through Celery when a worker is running; otherwise TMS uses a local background thread.",
+    )
+    whatsapp_ai_routing_enabled = models.BooleanField(default=False)
+    whatsapp_ai_generated_responses_enabled = models.BooleanField(default=False)
+    whatsapp_ai_multiple_tools_enabled = models.BooleanField(default=True)
+    whatsapp_handover_enabled = models.BooleanField(default=False)
+    whatsapp_ai_satisfaction_enabled = models.BooleanField(default=False)
+    whatsapp_ai_temperature = models.DecimalField(max_digits=3, decimal_places=2, default=0.20)
+    whatsapp_ai_max_tool_rounds = models.PositiveSmallIntegerField(default=3)
+    whatsapp_ai_min_confidence = models.PositiveSmallIntegerField(default=65)
+    whatsapp_ai_history_limit = models.PositiveSmallIntegerField(default=8)
+    whatsapp_ai_fallback_to_rules = models.BooleanField(default=True)
+    whatsapp_ai_max_reply_length = models.PositiveIntegerField(default=1200)
+    whatsapp_ai_enable_urdu = models.BooleanField(default=True)
+    whatsapp_ai_enable_roman_urdu = models.BooleanField(default=True)
+    whatsapp_ai_mask_sensitive_fields = models.BooleanField(default=True)
+    whatsapp_ai_store_logs = models.BooleanField(default=True)
+    whatsapp_handover_reminder_interval_minutes = models.PositiveIntegerField(default=30)
+    whatsapp_handover_escalation_timeout_minutes = models.PositiveIntegerField(default=60)
+    whatsapp_handover_max_reminders = models.PositiveSmallIntegerField(default=3)
+    whatsapp_handover_notify_multiple_staff = models.BooleanField(default=False)
+    whatsapp_staff_reply_prefix = models.CharField(max_length=80, default="Management:")
+    whatsapp_allow_manual_call_action = models.BooleanField(default=True)
+    whatsapp_future_calling_enabled = models.BooleanField(default=False)
+    whatsapp_allow_staff_reply_relay = models.BooleanField(default=True)
+    whatsapp_allow_staff_media_relay = models.BooleanField(default=True)
+    whatsapp_allow_handover_reassignment = models.BooleanField(default=True)
+    whatsapp_return_to_ai_after_close = models.BooleanField(default=False)
+    whatsapp_handover_ai_summary_enabled = models.BooleanField(default=True)
+    whatsapp_default_support_staff = models.ForeignKey(
+        "accounts.Account", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="default_whatsapp_support_settings",
+    )
+    whatsapp_accounts_staff = models.ForeignKey(
+        "accounts.Account", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="accounts_whatsapp_support_settings",
+    )
+    whatsapp_maintenance_staff = models.ForeignKey(
+        "accounts.Account", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="maintenance_whatsapp_support_settings",
+    )
+    whatsapp_leasing_staff = models.ForeignKey(
+        "accounts.Account", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="leasing_whatsapp_support_settings",
+    )
+    whatsapp_escalation_staff = models.ForeignKey(
+        "accounts.Account", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="escalation_whatsapp_support_settings",
     )
 
     # Handyman

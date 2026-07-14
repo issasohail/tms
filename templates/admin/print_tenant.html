@@ -177,7 +177,7 @@ img.document {
         </div>
         <div class="info-row">
             <div class="label">Phone:</div>
-            <div>{{ tenant.phone }}</div>
+            <div>{{ tenant.phone|format_phone }}</div>
         </div>
         <div class="info-row">
             <div class="label">Gender:</div>
@@ -194,7 +194,7 @@ img.document {
         </div>
         <div class="info-row">
             <div class="label">CNIC:</div>
-            <div>{{ tenant.cnic }}</div>
+            <div>{{ tenant.cnic|format_cnic }}</div>
         </div>
         <div class="info-row">
             <div class="label">Address:</div>
@@ -210,7 +210,7 @@ img.document {
         </div>
         <div class="info-row">
             <div class="label">Emergency Contact Phone:</div>
-            <div>{{ tenant.emergency_contact_phone }}</div>
+            <div>{{ tenant.emergency_contact_phone|format_phone }}</div>
         </div>
         <div class="info-row">
             <div class="label">Emergency Contact Relation:</div>

@@ -586,6 +586,15 @@
       {% endif %}
 
       <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</a>
+      {% if lease.status == "active" %}
+        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#endLeaseModal">
+          <i class="fas fa-door-open"></i> End Lease
+        </button>
+      {% elif lease.status == "ended" %}
+        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rollbackEndLeaseModal">
+          <i class="fas fa-undo"></i> Roll Back Lease End
+        </button>
+      {% endif %}
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
       <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-warning ld-hide-tablet"><i class="fas fa-clock"></i> Late Fee</a>
 
@@ -617,7 +626,6 @@
           <li class="ld-show-tablet-only"><hr class="dropdown-divider"></li>
 
           <li><a class="dropdown-item" href="{% url 'leases:lease_renew' lease.pk %}"><i class="fas fa-sync-alt"></i> Renew</a></li>
-          <li><a class="dropdown-item" href="{% url 'leases:lease_security_list' lease.id %}"><i class="fas fa-piggy-bank"></i> Deposit Ledger</a></li>
           {% if lease.signed_agreement %}
             <li><a class="dropdown-item" href="{{ lease.signed_agreement.url }}" target="_blank"><i class="fas fa-file-signature"></i> Signed Agreement</a></li>
           {% endif %}
@@ -741,6 +749,13 @@
         <div class="ld-f">
           <div class="ld-f-label">Rent Increase %</div>
           <div class="ld-f-value">{{ lease.rent_increase_percent|default:0 }}%</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Move-out Proration</div>
+          <div class="ld-f-value">
+            {{ lease.effective_proration_interval_label }}
+            <small class="d-block text-muted">{% if lease.proration_interval_days %}Lease override{% else %}System default{% endif %}</small>
+          </div>
         </div>
         <div class="ld-f">
           <div class="ld-f-label">Total Payment</div>
@@ -1064,9 +1079,9 @@
                     <td data-label="S.N">{{ forloop.counter }}</td>
                     <td data-label="Name"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
                     <td data-label="Relationship">{{ member.relation }}</td>
-                    <td data-label="CNIC">{{ member.family_member.cnic|default:"&mdash;" }}</td>
+                    <td data-label="CNIC">{{ member.family_member.cnic|format_cnic|default:"&mdash;" }}</td>
                     <td data-label="DOB">{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
-                    <td data-label="Phone">{{ member.family_member.phone|default:"&mdash;" }}</td>
+                    <td data-label="Phone">{{ member.family_member.phone|format_phone|default:"&mdash;" }}</td>
                     <td data-label="Age">{{ member.family_member.age|default:"&mdash;" }}</td>
                     <td class="no-print ld-td-actions" data-label="Actions">
                       <div class="d-flex flex-wrap gap-1">
@@ -1163,7 +1178,7 @@
                     <td data-label="Make / Model">{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
                     <td data-label="Color">{{ vehicle.color|default:"-" }}</td>
                     <td data-label="Owner">{{ vehicle.owner_name|default:"-" }}</td>
-                    <td data-label="Owner CNIC">{{ vehicle.owner_cnic|default:"-" }}</td>
+                    <td data-label="Owner CNIC">{{ vehicle.owner_cnic|format_cnic|default:"-" }}</td>
                     <td data-label="Parking">{{ vehicle.parking_slot|default:"-" }}</td>
                     <td data-label="Photos">
                       {% if vehicle.vehicle_photo %}
@@ -1508,6 +1523,559 @@
     </div>
   </div>
 </div>
+
+{% if lease.status == "ended" %}
+<div class="modal fade" id="rollbackEndLeaseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{% url 'leases:lease_end_rollback_action' lease.pk %}">
+        {% csrf_token %}
+        <div class="modal-header py-2">
+          <h5 class="modal-title">Roll Back Lease End</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning py-2 small">
+            This reactivates the lease, cancels the final-settlement invoice and pending refund,
+            restores invoices cancelled by End Lease, and reverses any security applied to the lease balance.
+            Messages already sent cannot be recalled.
+          </div>
+          <label class="form-label small fw-semibold">Restore Contract End Date</label>
+          <input type="date" name="restored_end_date" class="form-control form-control-sm"
+                 value="{{ rollback_default_end_date|date:'Y-m-d' }}" required>
+          <label class="form-label small fw-semibold mt-2">Rollback Notes</label>
+          <input type="text" name="notes" class="form-control form-control-sm" maxlength="250"
+                 placeholder="Reason for reopening the lease">
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-danger">Confirm Rollback</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if lease.status == "active" %}
+<style>
+  #endLeaseModal .table-sm > :not(caption) > * > * { padding:.2rem .35rem; line-height:1.15; vertical-align:middle; }
+  #endLeaseModal #endLeaseLines .form-control-sm,
+  #endLeaseModal #endLeaseLines .form-select-sm { min-height:28px; padding:.15rem .35rem; font-size:.78rem; }
+  #endLeaseModal #endLeaseLines .select2-container .select2-selection--single { min-height:28px; height:28px; }
+  #endLeaseModal #endLeaseLines .select2-selection__rendered { line-height:26px; font-size:.78rem; }
+  #endLeaseModal #endLeaseLines .select2-selection__arrow { height:26px; }
+  @media (max-width: 575.98px) {
+    #endLeaseModal .modal-dialog { margin:.35rem; }
+    #endLeaseModal .modal-body { padding:.65rem; }
+    #endLeaseModal .row.g-2 { --bs-gutter-x:.45rem; --bs-gutter-y:.4rem; }
+    #endLeaseModal .form-label { font-size:.7rem; line-height:1.05; }
+    #endLeaseModal .form-text { font-size:.62rem; line-height:1.1; }
+    #endLeaseModal .end-lease-field .form-control,
+    #endLeaseModal .end-lease-field .form-select { min-width:0; font-size:.75rem; padding-left:.35rem; padding-right:.35rem; }
+    #endLeaseModal #endLeaseFutureInvoices .settlement-invoice-row { align-items:flex-start !important; }
+    #endLeaseModal #endLeaseFutureInvoices .settlement-invoice-summary { display:grid; grid-template-columns:1fr 1fr; gap:.1rem .35rem; }
+  }
+</style>
+<div class="modal fade" id="endLeaseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="endLeaseForm" method="post" action="{% url 'leases:lease_end_action' lease.pk %}">
+        {% csrf_token %}
+        {% firstof lease.unit.building_type.inspection_incomplete_charge lease.unit.interest_type.inspection_incomplete_charge lease.unit.inspection_incomplete_charge as moveout_inspection_default %}
+        {% firstof lease.unit.building_type.key_card_not_returned_charge lease.unit.interest_type.key_card_not_returned_charge lease.unit.key_card_not_returned_charge as moveout_key_default %}
+        <input type="hidden" name="action" id="endLeaseAction" value="preview">
+        <input type="hidden" name="inspection_complete" id="endLeaseInspectionAnswer" value="">
+        <input type="hidden" name="keys_returned" id="endLeaseKeysAnswer" value="">
+        <input type="hidden" name="inspection_charge" id="endLeaseInspectionCharge" value="{{ moveout_inspection_default }}">
+        <input type="hidden" name="key_charge" id="endLeaseKeyCharge" value="{{ moveout_key_default }}">
+        <div class="modal-header py-2">
+          <h5 class="modal-title">End Lease &amp; Post Final Settlement</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning py-2 small">
+            This ends the lease, prorates this month's rent and regular charges, posts electricity/other charges,
+            applies held security to the balance, and records any remaining refund as pending.
+          </div>
+          <div class="row g-2">
+            <div class="col-6 col-md-4 end-lease-field">
+              <label class="form-label small mb-1">Lease End Date</label>
+              <input type="date" name="end_date" class="form-control form-control-sm" value="{% now 'Y-m-d' %}" required>
+            </div>
+            <div class="col-6 col-md-4 end-lease-field">
+              <label class="form-label small mb-1">Final Electricity (optional)</label>
+              <input type="number" name="final_electric_amount" class="form-control form-control-sm" min="0" step="0.01" placeholder="Auto from smart meter">
+              <div class="form-text">Leave blank for smart-meter calculation.</div>
+            </div>
+            <div class="col-6 col-md-4 end-lease-field">
+              <label class="form-label small mb-1">Other Final Charge</label>
+              <input type="number" name="other_amount" class="form-control form-control-sm" min="0" step="0.01" value="0">
+            </div>
+            <div class="col-6 col-md-6 end-lease-field">
+              <label class="form-label small mb-1">Other Charge Description</label>
+              <input type="text" name="other_description" class="form-control form-control-sm" maxlength="160" placeholder="Keys, cleaning, repairs, etc.">
+            </div>
+            <div class="col-6 col-md-6 end-lease-field">
+              <label class="form-label small mb-1">Internal Notes</label>
+              <input type="text" name="notes" class="form-control form-control-sm" maxlength="250" placeholder="Notice received / settlement notes">
+            </div>
+            <div class="col-6 col-md-12 end-lease-field">
+              <label class="form-label small mb-1">Invoices After Lease End Date</label>
+              <select name="future_invoice_action" class="form-select form-select-sm">
+                <option value="cancel" selected>Cancel future invoices (recommended; keep audit record)</option>
+                <option value="keep">Keep and approve future invoices as valid charges</option>
+              </select>
+              <div class="form-text">The preview will list every invoice dated after the selected end date.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-check-label small">
+                <input type="checkbox" name="send_whatsapp" value="1" class="form-check-input me-1" checked>
+                Send final-bill WhatsApp to tenant and settlement information to accounts staff
+              </label>
+            </div>
+          </div>
+
+          <div id="endLeaseError" class="alert alert-danger py-2 mt-3 mb-0 d-none"></div>
+          <details class="mt-2 small" id="endLeaseDebugDetails">
+            <summary class="btn btn-sm btn-outline-secondary py-0"><span id="endLeaseDebugToggleLabel">Show Debug</span></summary>
+            <pre id="endLeaseDebug" class="bg-light border rounded p-2 mt-1 mb-0" style="white-space:pre-wrap;max-height:130px;overflow:auto;">JavaScript has not loaded. Clicking Review will use the server fallback.</pre>
+          </details>
+          <div id="endLeasePreview" class="mt-3 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <strong>Invoices Included in Settlement Review</strong>
+              <span id="endLeaseDays" class="badge bg-secondary"></span>
+            </div>
+            <div id="endLeaseFutureInvoices" class="border rounded p-2 small mb-2"></div>
+            <div class="table-responsive border rounded">
+              <table class="table table-sm mb-0 small">
+                <tbody>
+                  <tr><th>Total lease balance</th><th class="text-end" id="endLeaseGross"></th></tr>
+                  <tr><th>Security applied</th><th class="text-end" id="endLeaseSecurity"></th></tr>
+                  <tr id="endLeaseOutcomeRow"><th id="endLeaseOutcomeLabel">Tenant payable</th><th class="text-end" id="endLeaseOutcomeValue"></th></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="endLeasePreviewBtn" onclick="if (window.reviewEndLeaseSettlement) { return window.reviewEndLeaseSettlement(event); } return true;">Review Settlement</button>
+          <button type="submit" class="btn btn-danger btn-sm d-none" id="endLeaseConfirmBtn">Confirm &amp; End Lease</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="endLeaseChecklistPrompt" class="d-none" style="position:fixed;inset:0;z-index:1095;background:rgba(0,0,0,.45);padding:1rem;">
+  <div class="card shadow" style="max-width:520px;margin:10vh auto 0;">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+      <strong>Move-out Checklist</strong>
+      <button type="button" class="btn-close" id="endLeaseChecklistClose" aria-label="Close"></button>
+    </div>
+    <div class="card-body py-2">
+      <div class="mb-2">
+        <label class="form-label small fw-semibold mb-1">Have you completed the inspection?</label>
+        <input type="hidden" id="endLeaseInspectionChoice" value="">
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="yes">Yes</button>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="no">No</button>
+        </div>
+        <div id="endLeaseInspectionChargeNotice" class="small text-danger mt-1 d-none">
+          <label class="form-label small mb-1">Inspection charge{% if lease.unit.building_type %} — {{ lease.unit.building_type.name }} default{% endif %}</label>
+          <input type="number" min="0" step="0.01" id="endLeaseInspectionChargeInput" class="form-control form-control-sm" value="{{ moveout_inspection_default }}">
+        </div>
+      </div>
+      <div>
+        <label class="form-label small fw-semibold mb-1">Has the tenant returned the keys/key card?</label>
+        <input type="hidden" id="endLeaseKeysChoice" value="">
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="yes">Yes</button>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="no">No</button>
+        </div>
+        <div id="endLeaseKeysChargeNotice" class="small text-danger mt-1 d-none">
+          <label class="form-label small mb-1">Key charge{% if lease.unit.building_type %} — {{ lease.unit.building_type.name }} default{% endif %}</label>
+          <input type="number" min="0" step="0.01" id="endLeaseKeyChargeInput" class="form-control form-control-sm" value="{{ moveout_key_default }}">
+        </div>
+      </div>
+      <div id="endLeaseChecklistError" class="small text-danger mt-2 d-none">Answer both questions before proceeding.</div>
+    </div>
+    <div class="card-footer py-2 text-end">
+      <button type="button" class="btn btn-sm btn-secondary" id="endLeaseChecklistCancel">Cancel</button>
+      <button type="button" class="btn btn-sm btn-primary" id="endLeaseChecklistProceed">Proceed to Review</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if lease.status == "active" %}
+<script>
+(function () {
+  var form = document.getElementById('endLeaseForm');
+  if (!form) return;
+  var previewBtn = document.getElementById('endLeasePreviewBtn');
+  var confirmBtn = document.getElementById('endLeaseConfirmBtn');
+  var action = document.getElementById('endLeaseAction');
+  var previewBox = document.getElementById('endLeasePreview');
+  var errorBox = document.getElementById('endLeaseError');
+  var debugBox = document.getElementById('endLeaseDebug');
+  var endpoint = form.getAttribute('action');
+  var checklistPrompt = document.getElementById('endLeaseChecklistPrompt');
+  var inspectionChoice = document.getElementById('endLeaseInspectionChoice');
+  var keysChoice = document.getElementById('endLeaseKeysChoice');
+  var inspectionChargeInput = document.getElementById('endLeaseInspectionChargeInput');
+  var keyChargeInput = document.getElementById('endLeaseKeyChargeInput');
+  var settlementDraftKey = 'tms:end-lease-draft:{{ lease.pk }}';
+
+  function persistSettlementDraft() {
+    var draft = {};
+    new FormData(form).forEach(function(value, key) {
+      if (key !== 'csrfmiddlewaretoken' && key !== 'action') draft[key] = value;
+    });
+    draft.inspection_choice = inspectionChoice.value;
+    draft.keys_choice = keysChoice.value;
+    sessionStorage.setItem(settlementDraftKey, JSON.stringify(draft));
+  }
+
+  function restoreSettlementDraft() {
+    var raw = sessionStorage.getItem(settlementDraftKey);
+    if (!raw) return false;
+    try {
+      var draft = JSON.parse(raw);
+      Object.keys(draft).forEach(function(key) {
+        var field = form.elements.namedItem(key);
+        if (!field || key === 'inspection_choice' || key === 'keys_choice') return;
+        if (field.type === 'checkbox') field.checked = Boolean(draft[key]);
+        else field.value = draft[key];
+      });
+      setChecklistChoice('inspection', draft.inspection_choice || draft.inspection_complete || '');
+      setChecklistChoice('keys', draft.keys_choice || draft.keys_returned || '');
+      document.getElementById('endLeaseInspectionAnswer').value = inspectionChoice.value;
+      document.getElementById('endLeaseKeysAnswer').value = keysChoice.value;
+      inspectionChargeInput.value = document.getElementById('endLeaseInspectionCharge').value;
+      keyChargeInput.value = document.getElementById('endLeaseKeyCharge').value;
+      return Boolean(inspectionChoice.value && keysChoice.value);
+    } catch (ignore) {
+      return false;
+    }
+  }
+  document.getElementById('endLeaseDebugDetails').addEventListener('toggle', function() {
+    document.getElementById('endLeaseDebugToggleLabel').textContent = this.open ? 'Hide Debug' : 'Show Debug';
+  });
+
+  function closeChecklistPrompt() {
+    checklistPrompt.classList.add('d-none');
+  }
+  function refreshChecklistNotices() {
+    document.getElementById('endLeaseInspectionChargeNotice').classList.toggle('d-none', inspectionChoice.value !== 'no');
+    document.getElementById('endLeaseKeysChargeNotice').classList.toggle('d-none', keysChoice.value !== 'no');
+  }
+  function setChecklistChoice(group, value) {
+    var input = group === 'inspection' ? inspectionChoice : keysChoice;
+    input.value = value;
+    document.querySelectorAll('.checklist-choice[data-choice-group="' + group + '"]').forEach(function(button) {
+      var selected = button.dataset.choiceValue === value;
+      var isYes = button.dataset.choiceValue === 'yes';
+      button.classList.toggle(isYes ? 'btn-success' : 'btn-danger', selected);
+      button.classList.toggle(isYes ? 'btn-outline-success' : 'btn-outline-danger', !selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+    refreshChecklistNotices();
+  }
+  document.querySelectorAll('.checklist-choice').forEach(function(button) {
+    button.addEventListener('click', function() {
+      setChecklistChoice(this.dataset.choiceGroup, this.dataset.choiceValue);
+      document.getElementById('endLeaseChecklistError').classList.add('d-none');
+    });
+  });
+  inspectionChargeInput.addEventListener('input', function() {
+    document.getElementById('endLeaseInspectionCharge').value = this.value;
+  });
+  keyChargeInput.addEventListener('input', function() {
+    document.getElementById('endLeaseKeyCharge').value = this.value;
+  });
+  document.getElementById('endLeaseChecklistClose').addEventListener('click', closeChecklistPrompt);
+  document.getElementById('endLeaseChecklistCancel').addEventListener('click', closeChecklistPrompt);
+  document.getElementById('endLeaseChecklistProceed').addEventListener('click', function() {
+    var promptError = document.getElementById('endLeaseChecklistError');
+    if (!inspectionChoice.value || !keysChoice.value) {
+      promptError.classList.remove('d-none');
+      return;
+    }
+    promptError.classList.add('d-none');
+    document.getElementById('endLeaseInspectionAnswer').value = inspectionChoice.value;
+    document.getElementById('endLeaseKeysAnswer').value = keysChoice.value;
+    document.getElementById('endLeaseInspectionCharge').value = inspectionChargeInput.value;
+    document.getElementById('endLeaseKeyCharge').value = keyChargeInput.value;
+    closeChecklistPrompt();
+    window.reviewEndLeaseSettlement(null, true);
+  });
+
+  function debug(message) {
+    var stamp = new Date().toLocaleTimeString();
+    debugBox.textContent += '\n[' + stamp + '] ' + message;
+    debugBox.scrollTop = debugBox.scrollHeight;
+    if (window.console && console.log) console.log('[End Lease] ' + message);
+  }
+  debugBox.textContent = 'JavaScript loaded. Endpoint: ' + endpoint;
+  window.addEventListener('error', function (event) {
+    debug('Browser error: ' + (event.message || 'unknown error'));
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    debug('Promise error: ' + String(event.reason || 'unknown rejection'));
+  });
+
+  function pkr(value) {
+    var number = Number(value || 0);
+    return 'Rs. ' + number.toLocaleString('en-PK', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+  function safe(value) {
+    return String(value || '').replace(/[&<>"']/g, '');
+  }
+  function ensureSettlementElement(id, tagName, className) {
+    var element = document.getElementById(id);
+    if (element) return element;
+    element = document.createElement(tagName || 'div');
+    element.id = id;
+    if (className) element.className = className;
+    previewBox.insertBefore(element, previewBox.firstChild);
+    debug('Recreated missing preview element: ' + id);
+    return element;
+  }
+  function invalidatePreview() {
+    action.value = 'preview';
+    persistSettlementDraft();
+    previewBox.classList.add('d-none');
+    confirmBtn.classList.add('d-none');
+    previewBtn.classList.remove('d-none');
+  }
+  function settlementRow(row, index, invoiceId) {
+    return '<tr data-item-id="' + row.id + '" data-invoice-id="' + invoiceId + '" data-category="' + safe(row.category) +
+      '" data-description="' + safe(row.description) + '" data-amount="' + safe(row.amount) + '">' +
+      '<td>' + index + '</td><td>' + safe(row.category) + '</td><td>' + safe(row.description) + '</td>' +
+      '<td class="text-end">' + pkr(row.amount) + '</td><td>' +
+      '<div class="d-flex flex-nowrap gap-1"><button type="button" class="btn btn-sm btn-outline-primary settlement-edit">Edit</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-danger settlement-delete">Delete</button></div></td></tr>';
+  }
+  function editSettlementRow(row, isNew) {
+    var category = isNew ? 'Other Charges' : (row.dataset.category || 'Other Charges');
+    var description = isNew ? '' : (row.dataset.description || '');
+    var amount = isNew ? '0.00' : String(row.dataset.amount || '0.00').replace(/,/g, '');
+    var categories = [];
+    try { categories = JSON.parse(previewBox.dataset.categories || '[]'); } catch (ignore) {}
+    if (category && categories.indexOf(category) === -1) categories.push(category);
+    var categoryOptions = categories.map(function(name) {
+      return '<option value="' + safe(name) + '"' + (name === category ? ' selected' : '') + '>' + safe(name) + '</option>';
+    }).join('');
+    row.innerHTML = '<td>' + (isNew ? 'New' : row.children[0].textContent) + '</td>' +
+      '<td><select class="form-select form-select-sm settlement-category">' + categoryOptions + '</select></td>' +
+      '<td><input class="form-control form-control-sm settlement-description" value="' + safe(description) + '"></td>' +
+      '<td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end settlement-amount" value="' + safe(amount) + '"></td>' +
+      '<td><div class="d-flex flex-nowrap gap-1"><button type="button" class="btn btn-sm btn-success settlement-save">Save</button>' +
+      '<button type="button" class="btn btn-sm btn-secondary settlement-cancel">Cancel</button></div></td>';
+    row.dataset.newItem = isNew ? '1' : '0';
+    var categorySelect = row.querySelector('.settlement-category');
+    if (window.jQuery && jQuery.fn.select2) {
+      jQuery(categorySelect).select2({
+        tags: true,
+        width: '100%',
+        dropdownParent: jQuery('#endLeaseModal'),
+        createTag: function(params) {
+          var term = String(params.term || '').trim();
+          return term ? {id: term, text: term, newTag: true} : null;
+        }
+      });
+    }
+    row.querySelector('.settlement-amount').focus();
+  }
+  function mutateSettlement(row, requestedAction) {
+    var data = new FormData(form);
+    data.set('action', requestedAction);
+    if (row.dataset.invoiceId) data.set('invoice_id', row.dataset.invoiceId);
+    if (row.dataset.itemId) data.set('item_id', row.dataset.itemId);
+    if (requestedAction !== 'delete_item') {
+      var categorySelect = row.querySelector('.settlement-category');
+      var categoryValue = String(categorySelect.value || '').trim();
+      if (!categoryValue) {
+        errorBox.textContent = 'Enter the new category name.';
+        errorBox.classList.remove('d-none');
+        return Promise.resolve();
+      }
+      data.set('category', categoryValue);
+      data.set('description', row.querySelector('.settlement-description').value);
+      data.set('amount', row.querySelector('.settlement-amount').value);
+    }
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: {'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value, 'X-Requested-With': 'XMLHttpRequest'},
+      body: data,
+      credentials: 'same-origin'
+    }).then(function(response) {
+      return response.json().then(function(payload) {
+        if (!response.ok || !payload.ok) throw new Error(payload.error || 'Invoice line could not be saved.');
+        action.value = 'preview';
+        return window.reviewEndLeaseSettlement();
+      });
+    }).catch(function(error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.remove('d-none');
+      debug('Invoice line action failed: ' + error.message);
+    });
+  }
+  form.querySelectorAll('input:not([name="csrfmiddlewaretoken"]), textarea, select').forEach(function (input) {
+    if (input.name !== 'action' && input.name !== 'send_whatsapp') {
+      input.addEventListener('change', invalidatePreview);
+    }
+  });
+
+  window.reviewEndLeaseSettlement = function (event, checklistAnswered) {
+    if (event) event.preventDefault();
+    if (!checklistAnswered && (
+      !document.getElementById('endLeaseInspectionAnswer').value ||
+      !document.getElementById('endLeaseKeysAnswer').value
+    )) {
+      checklistPrompt.classList.remove('d-none');
+      return false;
+    }
+    debug('Review clicked. End date: ' + (form.querySelector('[name="end_date"]').value || '(blank)'));
+    persistSettlementDraft();
+    errorBox.classList.add('d-none');
+    previewBtn.disabled = true;
+    var original = previewBtn.innerHTML;
+    previewBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calculating';
+    var data = new FormData(form);
+    data.set('action', 'preview');
+    debug('POST ' + endpoint + ' using AJAX preview.');
+    fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: data,
+      credentials: 'same-origin'
+    })
+      .then(function (response) {
+        debug('HTTP response: ' + response.status + ' ' + response.statusText);
+        return response.json().then(function (payload) {
+          return {ok: response.ok, payload: payload};
+        });
+      })
+      .then(function (responseData) {
+        var payload = responseData.payload;
+        if (!responseData.ok || !payload.ok) {
+          throw new Error(payload.error || 'Could not calculate the settlement.');
+        }
+        debug('Preview received. Future invoices: ' + payload.future_invoices.length + '.');
+        var daysEl = document.getElementById('endLeaseDays');
+        if (daysEl) daysEl.textContent = payload.billable_days + '/' + payload.days_in_month + ' billed · ' + payload.proration_interval_label;
+        else debug('Missing preview element: endLeaseDays');
+        [
+          ['endLeaseGross', pkr(payload.gross_balance)],
+          ['endLeaseSecurity', pkr(payload.security_applied)]
+        ].forEach(function (entry) {
+          var element = document.getElementById(entry[0]);
+          if (element) element.textContent = entry[1];
+          else debug('Missing preview element: ' + entry[0]);
+        });
+        var outcomeRow = document.getElementById('endLeaseOutcomeRow');
+        var outcomeLabel = document.getElementById('endLeaseOutcomeLabel');
+        var outcomeValue = document.getElementById('endLeaseOutcomeValue');
+        if (Number(payload.amount_payable) > 0) {
+          outcomeRow.className = 'table-warning';
+          outcomeLabel.textContent = 'Tenant payable';
+          outcomeValue.textContent = pkr(payload.amount_payable);
+        } else if (Number(payload.refund_due) > 0) {
+          outcomeRow.className = 'table-success';
+          outcomeLabel.textContent = 'Refund due';
+          outcomeValue.textContent = pkr(payload.refund_due);
+        } else {
+          outcomeRow.className = 'table-success';
+          outcomeLabel.textContent = 'Account settled';
+          outcomeValue.textContent = pkr(0);
+        }
+        var futureBox = document.getElementById('endLeaseFutureInvoices');
+        if (!futureBox) {
+          futureBox = document.createElement('div');
+          futureBox.id = 'endLeaseFutureInvoices';
+          futureBox.className = 'alert alert-secondary py-2 small mb-2';
+          previewBox.insertBefore(futureBox, previewBox.querySelector('.table-responsive'));
+          debug('Recreated missing preview element: endLeaseFutureInvoices');
+        }
+        if (payload.future_invoices.length) {
+          futureBox.innerHTML = payload.future_invoices.map(function (invoice) {
+            return '<div class="settlement-invoice-row d-flex align-items-center gap-2 border rounded bg-white mt-1 px-2 py-1">' +
+              '<span class="flex-grow-1"><strong>#' + safe(invoice.number) + '</strong> · ' + safe(invoice.issue_date) +
+              ' · ' + safe(invoice.status) + ' · <strong>' + pkr(invoice.amount) + '</strong></span>' +
+              '<a class="btn btn-sm btn-outline-primary" target="_blank" href="' + safe(invoice.detail_url) + '">Detail</a></div>';
+          }).join('');
+          futureBox.classList.remove('d-none');
+        } else {
+          futureBox.innerHTML = '<strong>No invoices exist after the selected lease end date.</strong>';
+          futureBox.classList.remove('d-none');
+        }
+
+        previewBox.classList.remove('d-none');
+        action.value = 'confirm';
+        previewBtn.classList.add('d-none');
+        confirmBtn.classList.remove('d-none');
+      })
+      .catch(function (error) {
+        debug('Preview failed: ' + error.message + (error.stack ? '\n' + error.stack : ''));
+        errorBox.textContent = error.message;
+        errorBox.classList.remove('d-none');
+      })
+      .finally(function () {
+        previewBtn.disabled = false;
+        previewBtn.innerHTML = original;
+      });
+    return false;
+  };
+
+  form.addEventListener('submit', function (event) {
+    if (action.value !== 'confirm') {
+      event.preventDefault();
+      window.reviewEndLeaseSettlement(event);
+      return;
+    }
+    sessionStorage.removeItem(settlementDraftKey);
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ending Lease';
+  });
+
+  window.addEventListener('message', function(event) {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== 'tms-settlement-refresh') return;
+    if (String(event.data.leaseId) !== '{{ lease.pk }}') return;
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('endLeaseModal')).show();
+    }
+    window.reviewEndLeaseSettlement(null, true);
+  });
+  window.addEventListener('storage', function(event) {
+    if (event.key !== 'tms:settlement-refresh:{{ lease.pk }}' || !event.newValue) return;
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('endLeaseModal')).show();
+    }
+    window.reviewEndLeaseSettlement(null, true);
+  });
+
+  var returnParams = new URLSearchParams(window.location.search);
+  if (returnParams.get('settlement_return') === '1' && window.opener && !window.opener.closed) {
+    window.opener.postMessage({type: 'tms-settlement-refresh', leaseId: '{{ lease.pk }}'}, window.location.origin);
+    window.close();
+  } else if (returnParams.get('open_end_lease') === '1' || sessionStorage.getItem(settlementDraftKey)) {
+    window.setTimeout(function() {
+      var ready = restoreSettlementDraft();
+      if (window.bootstrap && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('endLeaseModal')).show();
+      }
+      if (ready) window.reviewEndLeaseSettlement(null, true);
+    }, 0);
+  }
+})();
+</script>
+{% endif %}
 
 <div class="modal fade" id="vehicleEditModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">

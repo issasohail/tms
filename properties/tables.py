@@ -3,10 +3,9 @@ from django.contrib.humanize.templatetags.humanize import intcomma
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.html import format_html
+from core.utils.identity import format_phone
 
-from tenants.models import TenantInterestType
-
-from .models import Property, Unit
+from .models import BuildingType, Property, Unit
 
 
 class ExportableTable(tables.Table):
@@ -47,7 +46,7 @@ class UnitTable(ExportableTable):
     )
 
     property = tables.Column(verbose_name="Property")
-    interest_type = tables.Column(verbose_name="Building Type", empty_values=())
+    building_type = tables.Column(verbose_name="Building Type", empty_values=())
 
     monthly_rent = tables.Column(verbose_name="Rent")
     electric_meter_num = tables.Column(verbose_name="Electric Meter#")
@@ -87,22 +86,17 @@ class UnitTable(ExportableTable):
     )
 
     def __init__(self, *args, **kwargs):
-        lead_interest_types = kwargs.pop("lead_interest_types", None)
+        building_types = kwargs.pop("building_types", None)
         super().__init__(*args, **kwargs)
-        self.lead_interest_types = (
-            list(lead_interest_types)
-            if lead_interest_types is not None
+        self.building_types = (
+            list(building_types)
+            if building_types is not None
             else list(
-                TenantInterestType.objects.filter(is_active=True).order_by(
+                BuildingType.objects.filter(is_active=True).order_by(
                     "sort_order", "name"
                 )
             )
         )
-        self.default_interest_types = {
-            item.code: item
-            for item in self.lead_interest_types
-            if item.code in {"single_room_attached_bath_kitchen", "two_room_flat"}
-        }
 
     def _format_decimal(self, value):
         if value is None:
@@ -158,13 +152,9 @@ class UnitTable(ExportableTable):
     def value_security_requires(self, value, record):
         return value or ""
 
-    def render_interest_type(self, value, record):
-        selected_id = record.interest_type_id or self._default_interest_type_id(record)
-        selected_name = ""
-        for interest_type in self.lead_interest_types:
-            if selected_id == interest_type.pk:
-                selected_name = interest_type.name
-                break
+    def render_building_type(self, value, record):
+        selected_id = record.building_type_id
+        selected_name = record.building_type.name if record.building_type else ""
         return format_html(
             '<span class="unit-building-type-edit" data-unit-id="{}" '
             'data-current-value="{}" tabindex="0">{}</span>',
@@ -173,23 +163,8 @@ class UnitTable(ExportableTable):
             selected_name or "-",
         )
 
-    def value_interest_type(self, value, record):
-        if record.interest_type:
-            return record.interest_type.name
-        default_interest_type = self._default_interest_type(record)
-        return default_interest_type.name if default_interest_type else ""
-
-    def _default_interest_type(self, record):
-        property_name = (
-            record.property.property_name if record.property else ""
-        ).lower()
-        if "f56" in property_name and "basement" in property_name:
-            return self.default_interest_types.get("single_room_attached_bath_kitchen")
-        return self.default_interest_types.get("two_room_flat")
-
-    def _default_interest_type_id(self, record):
-        default_interest_type = self._default_interest_type(record)
-        return default_interest_type.pk if default_interest_type else None
+    def value_building_type(self, value, record):
+        return record.building_type.name if record.building_type else ""
 
     def render_status(self, value, record):
         if getattr(record, "has_ending_soon_lease_history", False) or getattr(
@@ -301,7 +276,7 @@ class UnitTable(ExportableTable):
             "sn": 40,  # Slightly wider for better visibility
             "unit_number": 70,
             "property": 70,  # More space for property names
-            "interest_type": 60,
+            "building_type": 60,
             "monthly_rent": 60,
             "electric_meter_num": 80,
             "gas_meter_num": 80,
@@ -320,7 +295,7 @@ class UnitTable(ExportableTable):
             "sn",
             "unit_number",
             "property",
-            "interest_type",
+            "building_type",
             "monthly_rent",
             "electric_meter_num",
             "gas_meter_num",
@@ -356,6 +331,12 @@ class PropertyTable(ExportableTable):
     pdf_export_title = "Properties Reports"
 
     created_at = tables.DateColumn(verbose_name="Created", format="Y-m-d")
+
+    def render_owner_contact(self, value):
+        return format_phone(value)
+
+    def render_caretaker_contact(self, value):
+        return format_phone(value)
 
     def render_actions(self, record):
         return render_to_string(

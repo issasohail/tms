@@ -14,6 +14,8 @@ from whatsapp.models import (
     WhatsAppStaffPropertyAccess,
 )
 from whatsapp.services.tenant_context import find_active_leases_for_phone, normalize_phone
+from whatsapp.services.identity.mode_resolver import infer_mode
+from whatsapp.services.identity.sender_resolver import resolve_sender
 
 
 ROLE_GROUP_NAMES = [
@@ -25,7 +27,7 @@ ROLE_GROUP_NAMES = [
     "Administrator",
 ]
 
-MODE_COMMANDS = {"menu", "switch", "staff", "tenant"}
+MODE_COMMANDS = {"menu", "switch", "switch mode", "staff", "staff mode", "staff inbox", "tenant", "tenant mode", "my account", "my tenant account"}
 MODE_TTL_MINUTES = getattr(settings, "WHATSAPP_MODE_SESSION_MINUTES", 60)
 
 
@@ -51,32 +53,22 @@ def ensure_whatsapp_role_groups():
 
 
 def identify_sender(phone_number):
-    normalized = normalize_phone(phone_number)
-    digits = _digits(normalized)
-    staff_user = _find_staff_user(digits)
-    tenant = _find_tenant(digits)
-    active_leases = list(find_active_leases_for_phone(normalized))
-    if active_leases and not tenant:
-        tenant = active_leases[0].tenant
-    return SenderIdentity(
-        phone_number=normalized,
-        staff_user=staff_user,
-        tenant=tenant,
-        active_leases=active_leases,
-    )
+    return resolve_sender(phone_number)
 
 
 def resolve_mode(conversation, text, identity):
     command = (text or "").strip().lower()
+    if getattr(identity, "ambiguous", False):
+        return "ambiguous_identity"
     choosing_mode = conversation.pending_state == "mode_selection" or not conversation.selected_mode_is_valid
-    if command == "staff" and identity.has_staff:
+    if command in {"staff", "staff mode", "staff inbox"} and identity.has_staff:
         return _set_mode(conversation, WhatsAppConversation.MODE_STAFF, identity)
-    if command == "tenant" and identity.has_active_tenant:
+    if command in {"tenant", "tenant mode", "my account", "my tenant account"} and identity.has_active_tenant:
         return _set_mode(conversation, WhatsAppConversation.MODE_TENANT, identity)
     if command == "1" and choosing_mode and identity.has_staff and identity.has_active_tenant:
-        return _set_mode(conversation, WhatsAppConversation.MODE_STAFF, identity)
-    if command == "2" and choosing_mode and identity.has_staff and identity.has_active_tenant:
         return _set_mode(conversation, WhatsAppConversation.MODE_TENANT, identity)
+    if command == "2" and choosing_mode and identity.has_staff and identity.has_active_tenant:
+        return _set_mode(conversation, WhatsAppConversation.MODE_STAFF, identity)
     if command in MODE_COMMANDS:
         conversation.selected_mode = ""
         conversation.mode_expires_at = None
@@ -94,6 +86,10 @@ def resolve_mode(conversation, text, identity):
             return conversation.selected_mode
 
     if identity.has_staff and identity.has_active_tenant:
+        inferred_mode, confidence = infer_mode(text, identity)
+        if inferred_mode:
+            conversation.context["mode_inference_confidence"] = confidence
+            return _set_mode(conversation, inferred_mode, identity)
         conversation.pending_state = "mode_selection"
         conversation.save(update_fields=["pending_state", "updated_at"])
         return "choose_mode"
@@ -106,10 +102,10 @@ def resolve_mode(conversation, text, identity):
 
 def mode_selection_text():
     return (
-        "You are registered as both Staff and Tenant.\n\n"
-        "1. Continue as Staff\n"
-        "2. Continue as Tenant\n\n"
-        "Reply with a number."
+        "You are registered as both a tenant and a staff member.\n\n"
+        "1. My Tenant Account\n"
+        "2. Staff Inbox\n\n"
+        "Reply with a number or type Tenant / Staff."
     )
 
 
@@ -126,7 +122,8 @@ def guest_menu_text():
 
 def staff_menu_text(user=None):
     return (
-        "Staff Menu\n\n"
+        "Staff Inbox / Menu\n\n"
+        "Type Handovers to view tenant handovers.\n\n"
         "1. Tenant Management\n"
         "2. Lease Management\n"
         "3. Billing\n"
@@ -279,12 +276,21 @@ def _set_mode(conversation, mode, identity):
     conversation.selected_mode = mode
     conversation.mode_expires_at = timezone.now() + timedelta(minutes=MODE_TTL_MINUTES)
     conversation.pending_state = "" if conversation.pending_state == "mode_selection" else conversation.pending_state
+    conversation.context = {
+        **(conversation.context or {}),
+        "identity_resolution": {
+            "staff_matches": len(identity.staff_matches),
+            "tenant_matches": len(identity.tenant_matches),
+            "ambiguous": identity.ambiguous,
+        },
+    }
     conversation.save(update_fields=[
         "selected_mode",
         "mode_expires_at",
         "pending_state",
         "staff_user",
         "tenant",
+        "context",
         "updated_at",
     ])
     return mode

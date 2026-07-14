@@ -248,6 +248,27 @@ class WhatsAppService:
             payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context
         )
 
+    def send_audio_bytes(
+        self,
+        phone_number,
+        audio_bytes,
+        filename="voice.ogg",
+        mime_type="audio/ogg",
+        **context,
+    ):
+        media_result = self._upload_media(audio_bytes, filename, mime_type)
+        if not media_result.get("ok"):
+            return media_result
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": self.normalize_phone_number(phone_number),
+            "type": "audio",
+            "audio": {"id": media_result["media_id"]},
+        }
+        return self._send(
+            payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_AUDIO, **context
+        )
+
     def send_pdf(self, phone_number, pdf_url, filename=None, caption=None, **context):
         filename = filename or self._filename_from_url(pdf_url) or "document.pdf"
         return self.send_document(

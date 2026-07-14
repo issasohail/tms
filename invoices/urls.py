@@ -53,6 +53,7 @@ urlpatterns = [
     path('public/<path:token>/', views.public_invoice_detail, name='public_invoice_detail'),
     path('<int:pk>/update/', InvoiceUpdateView.as_view(), name='invoice_update'),
     path('<int:pk>/delete/', InvoiceDeleteView.as_view(), name='invoice_delete'),
+    path('<int:pk>/move-out-prorate/', views.invoice_move_out_prorate, name='invoice_move_out_prorate'),
 
     # Actions
     path('<int:pk>/send-email/', send_invoice_email, name='send_email'),

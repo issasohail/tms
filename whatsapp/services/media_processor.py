@@ -1,12 +1,24 @@
 import logging
 import os
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 
 from whatsapp.models import PendingWhatsAppMedia
 from whatsapp.services.whatsapp import WhatsAppService
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_MEDIA_MIME_TYPES = {
+    # Explicit allowlist: reject executable/unknown uploads before persistence.
+    "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif",
+    "application/pdf", "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain", "text/csv",
+    "audio/ogg", "audio/mpeg", "audio/mp4", "video/mp4",
+}
 
 
 PAYMENT_WORDS = {"payment", "paid", "receipt", "easypaisa", "jazzcash", "raast", "bank", "transfer", "slip"}
@@ -36,6 +48,9 @@ def create_pending_media(message_log, conversation, lease=None):
     message_type = payload.get("type") or message_log.message_type
     media_payload = payload.get(message_type) or {}
     media_id = media_payload.get("id", "")
+    mime_type = (media_payload.get("mime_type") or "").split(";", 1)[0].lower()
+    if mime_type and mime_type not in ALLOWED_MEDIA_MIME_TYPES:
+        raise ValueError("This WhatsApp media type is not allowed.")
     caption = media_payload.get("caption", "") or media_payload.get("filename", "")
     purpose, confidence = detect_media_purpose(caption, message_type)
 
@@ -43,6 +58,9 @@ def create_pending_media(message_log, conversation, lease=None):
     filename = media_payload.get("filename") or f"whatsapp-{media_id or message_log.pk}.{_extension(message_type)}"
     if media_id:
         content = WhatsAppService().download_media_bytes(media_id)
+    max_bytes = int(getattr(settings, "WHATSAPP_MAX_INBOUND_MEDIA_BYTES", 16 * 1024 * 1024))
+    if content and len(content) > max_bytes:
+        raise ValueError("This WhatsApp media file is too large.")
 
     pending = PendingWhatsAppMedia(
         conversation=conversation,
@@ -93,6 +111,8 @@ def _extension(message_type):
         return "jpg"
     if message_type == "video":
         return "mp4"
+    if message_type == "audio":
+        return "ogg"
     if message_type == "document":
         return "pdf"
     return "bin"

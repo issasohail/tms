@@ -151,7 +151,7 @@
         <h2 class="tenant-header">{{ tenant.get_full_name }} — {{ lease.unit.unit_number }}</h2>
         <div class="header-info">
             <div class="header-left">
-                <p class="compact-info"><strong>Phone:</strong> {{ tenant_phone }}</p>
+                <p class="compact-info"><strong>Phone:</strong> {{ tenant_phone|format_phone }}</p>
                 <p class="compact-info"><strong>Monthly Rent:</strong> Rs. {{ lease.monthly_rent|floatformat:0|intcomma }}</p>
                 <p class="compact-info"><strong>Society Maint.:</strong> Rs.{{ lease.society_maintenance|floatformat:0|intcomma }}</p>
                 <p class="compact-info"><strong>Monthly Total:</strong> Rs.{{ monthly_total|floatformat:0|intcomma }}</p>

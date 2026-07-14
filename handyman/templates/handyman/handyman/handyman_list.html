@@ -95,8 +95,8 @@
         <div class="hm-row" data-update-url="{% url 'handyman:handyman_inline_update' handyman.pk %}">
           <div>{{ forloop.counter }}</div>
           <div>{% if handyman.photo %}<img class="hm-photo" src="{{ handyman.photo.url }}" alt="">{% else %}<div class="hm-photo"></div>{% endif %}</div>
-          <div><a class="hm-name text-decoration-none" href="{{ handyman.get_absolute_url }}">{{ handyman.full_name }}</a><div class="hm-muted d-lg-none">{{ handyman.display_phone|default:"-" }}</div></div>
-          <div><span class="hm-editable" data-field="phone" data-value="{{ handyman.phone|default:'' }}">{{ handyman.display_phone|default:"-" }}</span></div>
+          <div><a class="hm-name text-decoration-none" href="{{ handyman.get_absolute_url }}">{{ handyman.full_name }}</a><div class="hm-muted d-lg-none">{{ handyman.display_phone|format_phone|default:"-" }}</div></div>
+          <div><span class="hm-editable" data-field="phone" data-value="{{ handyman.phone|default:'' }}">{{ handyman.display_phone|format_phone|default:"-" }}</span></div>
           <div>
             <span class="hm-editable" data-field="categories" data-value="{% for category in handyman.categories.all %}{{ category.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
               {% for category in handyman.categories.all %}<span class="hm-badge me-1">{{ category.name }}</span>{% empty %}<span class="hm-muted">-</span>{% endfor %}
@@ -125,7 +125,7 @@
           <div>{% if handyman.photo %}<img class="hm-photo" src="{{ handyman.photo.url }}" alt="">{% else %}<div class="hm-photo"></div>{% endif %}</div>
           <div>
             <div class="d-flex justify-content-between gap-2"><span class="hm-name">{{ handyman.full_name }}</span>{% if handyman.is_preferred %}<span class="hm-badge gold">Preferred</span>{% endif %}</div>
-            <div class="hm-muted">{{ handyman.display_phone|default:"-" }}</div>
+            <div class="hm-muted">{{ handyman.display_phone|format_phone|default:"-" }}</div>
             <div class="hm-muted">{% for category in handyman.categories.all %}{{ category.name }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</div>
             <div class="d-flex gap-2 align-items-center mt-1">
               {% if GLOBAL_SETTINGS.handyman_enable_ratings %}

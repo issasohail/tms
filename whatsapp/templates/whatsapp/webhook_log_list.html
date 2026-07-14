@@ -53,7 +53,7 @@
                 <tr class="{% if selected_phone == item.phone_number %}table-primary{% endif %}">
                   <td>{{ item.sn }}</td>
                   <td class="text-nowrap">
-                    <a href="?phone={{ item.phone_number }}">{{ item.phone_number }}</a>
+                    <a href="?phone={{ item.phone_number }}">{{ item.phone_number|format_phone }}</a>
                   </td>
                   <td>
                     {% if item.tenant_id %}
@@ -97,7 +97,7 @@
   <div class="col-12 col-xl-6">
     <div class="card shadow-sm">
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <strong>Conversation{% if selected_phone %}: {{ selected_phone }}{% endif %}</strong>
+        <strong>Conversation{% if selected_phone %}: {{ selected_phone|format_phone }}{% endif %}</strong>
         <div class="d-flex align-items-center flex-wrap gap-2">
           <label class="form-check form-check-inline small mb-0">
             <input class="form-check-input" type="checkbox" id="showMessageIds">
@@ -187,7 +187,7 @@
           <form method="post" class="border rounded p-2">
             {% csrf_token %}
             <input type="hidden" name="phone_number" value="{{ selected_phone }}">
-            <label class="form-label small fw-semibold" for="message_text">Reply to {{ selected_phone }}</label>
+            <label class="form-label small fw-semibold" for="message_text">Reply to {{ selected_phone|format_phone }}</label>
             <textarea class="form-control mb-2" id="message_text" name="message_text" rows="3" required></textarea>
             <button class="btn btn-sm btn-success" type="submit">
               <i class="fab fa-whatsapp me-1"></i> Send Reply

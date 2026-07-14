@@ -52,7 +52,7 @@
                         {% for lead in leads %}
                         <tr>
                             <td><a href="{% url 'tenants:lead_detail' lead.pk %}">{{ lead.name }}</a></td>
-                            <td>{{ lead.whatsapp_number|default:lead.phone }}</td>
+                            <td>{{ lead.whatsapp_number|default:lead.phone|format_phone }}</td>
                             <td>
                                 {% if lead.interested_unit %}
                                     {{ lead.interested_unit.property.property_name }} - {{ lead.interested_unit.unit_number }}

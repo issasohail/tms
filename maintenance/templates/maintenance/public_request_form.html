@@ -50,7 +50,7 @@
             <div class="info-row"><span class="label">Property</span><span class="value">{{ lease.unit.property.property_name }}</span></div>
             <div class="info-row"><span class="label">Unit</span><span class="value">{{ lease.unit.unit_number }}</span></div>
             <div class="info-row"><span class="label">Tenant</span><span class="value">{{ lease.tenant.get_full_name }}</span></div>
-            <div class="info-row"><span class="label">Phone</span><span class="value">{{ tenant_phone|default:"-" }}</span></div>
+            <div class="info-row"><span class="label">Phone</span><span class="value">{{ tenant_phone|format_phone|default:"-" }}</span></div>
           </div>
           {% if form_error %}<div class="error">{{ form_error }}</div>{% endif %}
           <form method="post" enctype="multipart/form-data">

@@ -57,7 +57,7 @@
     <div class="parties-container">
         <div class="party">
             <p><strong>LANDLORD:</strong></p>
-            <p>{{ landlord.name }}, {{ landlord.relation }} holding CNIC NO. {{ landlord.cnic }}</p>
+            <p>{{ landlord.name }}, {{ landlord.relation }} holding CNIC NO. {{ landlord.cnic|format_cnic }}</p>
             <p>Residing at {{ landlord.address }}</p>
             <p>(Hereinafter called the "Owner") of the ONE Part.</p>
         </div>
@@ -66,7 +66,7 @@
         
         <div class="party">
             <p><strong>TENANT:</strong></p>
-            <p>{{ tenant.name }}, holding CNIC NO. {{ tenant.cnic }}</p>
+            <p>{{ tenant.name }}, holding CNIC NO. {{ tenant.cnic|format_cnic }}</p>
             <p>Residing at {{ tenant.address }}</p>
             <p>(Hereinafter called the "Tenant")</p>
         </div>

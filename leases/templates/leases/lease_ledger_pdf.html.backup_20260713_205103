@@ -1,0 +1,271 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Lease Ledger -{{ tenant.get_full_name }} — {{ lease.unit.unit_number }} {{ lease.id }}</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.5cm;
+            @bottom-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 12px;
+            }
+        }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            line-height: 1.35;
+        }
+        .header {
+            margin-bottom: 3px;
+            padding-bottom: 2px;
+            border-bottom: 1px solid #333;
+        }
+        .tenant-header {
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 1px 0;
+        }
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+        }
+        .header-left {
+            width: 50%;
+        }
+        .header-right {
+            width: 48%;
+            text-align: right;
+        }
+        .compact-info {
+            margin: 1px 0;
+        }
+        .transaction-container {
+            margin-top: 3px;
+        }
+        .transaction-columns {
+            display: flex;
+            justify-content: space-between;
+            gap: 5px;
+        }
+        .transaction-column {
+            width: 100%;
+        }
+        .multi-column .transaction-column {
+            width: 49.5%;
+        }
+        table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            margin: 2px 0;
+            border: 1px solid #ddd;
+            font-size: 10.5px;
+        }
+        th {
+            background-color: #f2f2f2;
+            text-align: left;
+            padding: 3px;
+            border: 1px solid #ddd;
+        }
+        td {
+            padding: 3px;
+            border: 1px solid #ddd;
+        }
+        .positive {
+            color: #28a745;
+        }
+        .negative {
+            color: #dc3545;
+        }
+        .current-balance {
+            font-weight: bold;
+            font-size: 12px;
+            margin: 2px 0;
+        }
+        .totals {
+            margin-top: 10px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .footer {
+            margin-top: 10px;
+            font-size: 10px;
+            text-align: center;
+            color: #666;
+        }
+        .serial-no {
+            width: 6%;
+            text-align: center;
+        }
+        .amount-column {
+            text-align: right;
+            width: 19%;
+            white-space: nowrap;
+        }
+        .balance-column {
+            text-align: right;
+            width: 19%;
+            white-space: nowrap;
+        }
+        .date-column {
+            width: 15%;
+            white-space: nowrap;
+        }
+        .type-column {
+            width: 12%;
+            white-space: nowrap;
+        }
+        .description-column {
+            width: 29%;
+        }
+        .description-cell {
+            width: 29%;
+            max-width: 29%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .description-text {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .description-cell a {
+            color: #0d6efd;
+            text-decoration: none;
+        }
+        .page-break {
+            page-break-after: always;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 class="tenant-header">{{ tenant.get_full_name }} — {{ lease.unit.unit_number }}</h2>
+        <div class="header-info">
+            <div class="header-left">
+                <p class="compact-info"><strong>Phone:</strong> {{ tenant_phone }}</p>
+                <p class="compact-info"><strong>Monthly Rent:</strong> Rs. {{ lease.monthly_rent|floatformat:0|intcomma }}</p>
+                <p class="compact-info"><strong>Society Maint.:</strong> Rs.{{ lease.society_maintenance|floatformat:0|intcomma }}</p>
+                <p class="compact-info"><strong>Monthly Total:</strong> Rs.{{ monthly_total|floatformat:0|intcomma }}</p>
+            </div>
+            <div class="header-right">
+                <p class="compact-info"><strong>Lease Period:</strong> {{ lease.start_date|date:"M d, Y" }} to {{ lease.end_date|date:"M d, Y" }}</p>
+                <p class="compact-info"><strong>Security Deposit:</strong> Rs.{{ lease.security_deposit|floatformat:0|intcomma }}</p>
+                <p class="current-balance {% if current_balance >= 0 %}positive{% else %}negative{% endif %}">
+                    <strong>Current Balance:</strong> Rs.{{ current_balance|floatformat:0|intcomma }}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="transaction-container {% if transactions|length > 25 %}multi-column{% endif %}">
+        <div class="transaction-columns">
+            {% for column in transaction_columns %}
+            <div class="transaction-column">
+                <table>
+                    <colgroup>
+                        <col class="serial-no">
+                        <col class="date-column">
+                        <col class="type-column">
+                        <col class="description-column">
+                        <col class="amount-column">
+                        <col class="balance-column">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="serial-no">#</th>
+                            <th class="date-column">Date</th>
+                            <th class="type-column">Type</th>
+                            <th class="description-column">Description</th>
+                            <th class="amount-column">Amount</th>
+                            <th class="balance-column">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in column %}
+                        <tr>
+                            <td class="serial-no">{{ t.serial_no }}</td>
+                            <td>{{ t.date|date:"m/d/Y" }}</td>
+                            <td>{{ t.type }}</td>
+                            <td class="description-cell">
+                                <span class="description-text">
+                                    {% if t.url %}
+                                        <a href="{{ t.url }}">{{ t.description|default:"Invoice" }}</a>
+                                    {% else %}
+                                        {{ t.description }}
+                                    {% endif %}
+                                </span>
+                            </td>
+                            <td class="amount-column {% if t.is_credit %}positive{% else %}negative{% endif %}">
+                                {% if t.is_credit %}Rs. {{ t.display_amount|floatformat:0|intcomma }}{% else %}-Rs. {{ t.display_amount|floatformat:0|intcomma }}{% endif %}
+                            </td>
+                            <td class="balance-column">Rs. {{ t.balance|floatformat:0|intcomma }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if security_rows %}
+    <div class="transaction-container">
+        <h3 style="margin:6px 0 2px;font-size:12px;">Security Deposit Ledger</h3>
+        <p class="compact-info">
+            Required: Rs. {{ security_totals.required|floatformat:0|intcomma }}
+            | Paid In: Rs. {{ security_totals.paid_in|floatformat:0|intcomma }}
+            | Refunded: Rs. {{ security_totals.refunded|floatformat:0|intcomma }}
+            | Currently Held: Rs. {{ security_totals.currently_held|floatformat:0|intcomma }}
+        </p>
+        <table>
+            <colgroup>
+                <col class="serial-no">
+                <col class="date-column">
+                <col class="type-column">
+                <col class="description-column">
+                <col class="amount-column">
+                <col class="balance-column">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="serial-no">#</th>
+                    <th class="date-column">Date</th>
+                    <th class="type-column">Type</th>
+                    <th class="description-column">Description</th>
+                    <th class="amount-column">Amount</th>
+                    <th class="balance-column">Held Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in security_rows %}
+                <tr>
+                    <td class="serial-no">{{ t.serial_no }}</td>
+                    <td>{{ t.date|date:"m/d/Y" }}</td>
+                    <td>{{ t.type }}</td>
+                    <td class="description-cell"><span class="description-text">{{ t.description }}</span></td>
+                    <td class="amount-column {% if t.is_credit %}positive{% else %}negative{% endif %}">
+                        {% if t.is_credit %}Rs. {{ t.display_amount|floatformat:0|intcomma }}{% else %}-Rs. {{ t.display_amount|floatformat:0|intcomma }}{% endif %}
+                    </td>
+                    <td class="balance-column">Rs. {{ t.balance|floatformat:0|intcomma }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p>Document Generated on: {{ generated_on|date:"Y-m-d" }}
+</p>
+    </div>
+</body>
+</html>

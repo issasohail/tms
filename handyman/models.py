@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from core.upload_utils import compress_instance_file_field
 from core.utils.text import smart_title
+from core.model_fields import NormalizedPhoneField
 
 
 HANDYMAN_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "heic", "heif"]
@@ -64,8 +65,8 @@ class HandymanProfile(models.Model):
         related_name="handyman_profile",
     )
     full_name = models.CharField(max_length=140)
-    phone = models.CharField(max_length=30, blank=True)
-    whatsapp_number = models.CharField(max_length=30, blank=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True)
+    whatsapp_number = NormalizedPhoneField(max_length=32, blank=True)
     categories = models.ManyToManyField(HandymanCategory, blank=True, related_name="handymen")
     address = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
@@ -232,7 +233,7 @@ class HandymanRating(models.Model):
     property_name_snapshot = models.CharField(max_length=160, blank=True)
     unit_name_snapshot = models.CharField(max_length=80, blank=True)
     tenant_name_snapshot = models.CharField(max_length=160, blank=True)
-    tenant_phone_snapshot = models.CharField(max_length=40, blank=True)
+    tenant_phone_snapshot = NormalizedPhoneField(max_length=40, blank=True)
     job_title_snapshot = models.CharField(max_length=180, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

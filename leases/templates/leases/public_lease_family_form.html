@@ -295,8 +295,8 @@
                     <span class="pill">{{ member.relationship_type.name|default:member.relationship }}</span>
 
                     <div class="info-grid">
-                      <div><strong>CNIC / ID:</strong> {{ member.family_member.cnic|default:"-" }}</div>
-                      <div><strong>Phone:</strong> {{ member.family_member.phone|default:"-" }}</div>
+                      <div><strong>CNIC / ID:</strong> {{ member.family_member.cnic|format_cnic|default:"-" }}</div>
+                      <div><strong>Phone:</strong> {{ member.family_member.phone|format_phone|default:"-" }}</div>
                       <div><strong>Gender:</strong> {{ member.family_member.get_gender_display|default:"-" }}</div>
                       <div><strong>DOB:</strong> {{ member.family_member.date_of_birth|date:"M d, Y"|default:"-" }}</div>
                     </div>
@@ -323,7 +323,7 @@
                         </div>
                         <div>
                           <label>CNIC / ID</label>
-                          <input value="{{ member.family_member.cnic|default:'-' }}" disabled>
+                          <input value="{{ member.family_member.cnic|format_cnic|default:'-' }}" disabled>
                           <div class="note">CNIC / ID cannot be changed.</div>
                         </div>
                         <div>
@@ -423,7 +423,7 @@
                     <td>{{ pending.get_action_display }}</td>
                     <td>{{ pending.first_name }} {{ pending.last_name }}</td>
                     <td>{{ pending.relationship_type.name|default:pending.relationship }}</td>
-                    <td>{{ pending.cnic|default:"-" }}</td>
+                    <td>{{ pending.cnic|format_cnic|default:"-" }}</td>
                     <td><span class="pill">{{ pending.get_status_display }}</span></td>
                   </tr>
                 {% endfor %}

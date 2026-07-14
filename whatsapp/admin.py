@@ -15,12 +15,40 @@ from .models import (
     WhatsAppAIInteractionLog,
     WhatsAppConversation,
     WhatsAppExternalLinkToken,
+    WhatsAppHandover,
+    WhatsAppHandoverMessage,
     WhatsAppMessageLog,
     WhatsAppStaffActionLog,
     WhatsAppStaffPropertyAccess,
+    WhatsAppStaffRoutingRule,
     WhatsAppUtilityTemplate,
     WhatsAppWebhookLog,
 )
+
+
+class WhatsAppHandoverMessageInline(admin.TabularInline):
+    model = WhatsAppHandoverMessage
+    extra = 0
+    readonly_fields = ("sender_type", "staff_user", "original_text", "relayed_text", "media", "direction", "created_at")
+    can_delete = False
+
+
+@admin.register(WhatsAppHandover)
+class WhatsAppHandoverAdmin(admin.ModelAdmin):
+    list_display = ("reference", "status", "priority", "department", "tenant", "property", "unit", "assigned_staff", "updated_at")
+    list_filter = ("status", "priority", "department", "property", "created_at")
+    search_fields = ("reference", "tenant_phone", "reason", "tenant_message", "ai_summary", "tenant__first_name", "tenant__last_name")
+    raw_id_fields = ("conversation", "tenant", "lease", "property", "unit", "assigned_staff")
+    readonly_fields = ("reference", "created_at", "updated_at")
+    inlines = (WhatsAppHandoverMessageInline,)
+
+
+@admin.register(WhatsAppStaffRoutingRule)
+class WhatsAppStaffRoutingRuleAdmin(admin.ModelAdmin):
+    list_display = ("staff_user", "property", "department", "category", "priority", "is_active")
+    list_filter = ("is_active", "department", "property")
+    search_fields = ("staff_user__username", "staff_user__first_name", "staff_user__last_name", "category", "property__property_name")
+    raw_id_fields = ("staff_user", "property")
 
 
 @admin.register(WhatsAppMessageLog)

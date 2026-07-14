@@ -12,23 +12,39 @@ from django.utils import timezone
 from django.apps import apps
 import re
 import uuid
+from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models
 from core.upload_utils import compress_instance_file_field
 from core.utils.text import normalize_title_fields, smart_title
-
-CNIC_DIGITS = re.compile(r'\D+')
-
-
-def normalize_cnic(value: str) -> str:
-    return CNIC_DIGITS.sub('', value or '')
-
+from core.model_fields import NormalizedCNICField, NormalizedPhoneField
+from core.utils.identity import normalize_cnic
 
 class TenantInterestType(models.Model):
+    building_type = models.OneToOneField(
+        "properties.BuildingType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lead_interest_type",
+        help_text="Building Type that manages this internal lead-interest option.",
+    )
     name = models.CharField(max_length=120)
     code = models.SlugField(max_length=80, unique=True)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=50)
+    inspection_incomplete_charge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("5000.00"),
+        help_text="Default move-out charge when inspection is not completed.",
+    )
+    key_card_not_returned_charge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("1000.00"),
+        help_text="Default move-out charge when keys or key cards are not returned.",
+    )
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -93,19 +109,19 @@ class Tenant(models.Model):
         max_length=10, null=True, blank=True, default="S/O.")
     last_name = models.CharField(max_length=50)
     email = models.EmailField(null=True, blank=True)
-    phone = models.CharField(max_length=20, null=True, blank=True)
-    phone2 = models.CharField(max_length=20, null=True, blank=True)
-    phone3 = models.CharField(max_length=20, null=True, blank=True)
-    cnic = models.CharField(max_length=15)
+    phone = NormalizedPhoneField(max_length=32, null=True, blank=True)
+    phone2 = NormalizedPhoneField(max_length=32, null=True, blank=True)
+    phone3 = NormalizedPhoneField(max_length=32, null=True, blank=True)
+    cnic = NormalizedCNICField(max_length=15)
     occupation = models.CharField(max_length=120, blank=True, default="")
     employer_name = models.CharField(max_length=120, blank=True, default="")
-    employer_phone = models.CharField(max_length=20, blank=True, default="")
+    employer_phone = NormalizedPhoneField(max_length=32, blank=True, default="")
     employer_address = models.CharField(max_length=255, blank=True, default="")
     reference_name_1 = models.CharField(max_length=120, blank=True, default="")
-    reference_phone_1 = models.CharField(max_length=20, blank=True, default="")
+    reference_phone_1 = NormalizedPhoneField(max_length=32, blank=True, default="")
     reference_relation_1 = models.CharField(max_length=80, blank=True, default="")
     reference_name_2 = models.CharField(max_length=120, blank=True, default="")
-    reference_phone_2 = models.CharField(max_length=20, blank=True, default="")
+    reference_phone_2 = NormalizedPhoneField(max_length=32, blank=True, default="")
     reference_relation_2 = models.CharField(max_length=80, blank=True, default="")
     nationality = models.CharField(max_length=80, blank=True, default="Pakistani")
     city = models.CharField(max_length=80, blank=True, default="")
@@ -124,8 +140,8 @@ class Tenant(models.Model):
     date_of_birth = models.DateField(blank=True, null=True)
     emergency_contact_name = models.CharField(
         max_length=100, null=True, blank=True)
-    emergency_contact_phone = models.CharField(
-        max_length=20, null=True, blank=True)
+    emergency_contact_phone = NormalizedPhoneField(
+        max_length=32, null=True, blank=True)
     emergency_contact_relation = models.CharField(
         max_length=20, null=True, blank=True)
     number_of_family_member = models.CharField(max_length=2, default=4)
@@ -460,10 +476,10 @@ class PendingRegistrationPerson(models.Model):
     first_name = models.CharField(max_length=50, blank=True)
     last_name = models.CharField(max_length=50, blank=True)
     father_husband_name = models.CharField(max_length=120, blank=True)
-    cnic = models.CharField(max_length=30, blank=True)
+    cnic = NormalizedCNICField(max_length=30, blank=True)
     cnic_digits = models.CharField(max_length=13, blank=True, db_index=True)
     date_of_birth = models.DateField(null=True, blank=True)
-    phone = models.CharField(max_length=20, blank=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True)
     address = models.TextField(blank=True)
     photo = models.ImageField(upload_to=pending_registration_person_upload_to, null=True, blank=True)
     cnic_front = models.ImageField(upload_to=pending_registration_person_upload_to, null=True, blank=True)

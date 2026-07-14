@@ -1,5 +1,6 @@
 import builtins
 import os
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -10,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from core.upload_utils import compress_instance_file_field
 from core.utils.text import normalize_title_fields, smart_title
+from core.model_fields import NormalizedCNICField, NormalizedPhoneField
 
 
 class ExpenseDistribution(models.Model):
@@ -46,10 +48,10 @@ class Property(models.Model):
     owner_name = models.CharField(max_length=100)
     owner_father_name = models.CharField(max_length=100, blank=True, null=True)
     relation = models.CharField(max_length=10, null=True, blank=True, default="S/O")
-    owner_phone = models.CharField(max_length=20, blank=True, null=True)
+    owner_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
     owner_address = models.CharField(max_length=200, blank=True, null=True)
-    owner_cnic = models.CharField(max_length=15)
-    owner_phone = models.CharField(max_length=25, blank=True, null=True)
+    owner_cnic = NormalizedCNICField(max_length=15)
+    owner_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
     owner_photo = models.ImageField(upload_to=property_owner_photo_upload_to, blank=True, null=True)
     caretaker_prefix = models.CharField(
         max_length=5, null=True, blank=True, default="Mr."
@@ -63,8 +65,8 @@ class Property(models.Model):
         max_length=10, null=True, blank=True, default="S/O"
     )
     caretaker_address = models.CharField(max_length=200, blank=True, null=True)
-    caretaker_cnic = models.CharField(max_length=15, blank=True, null=True)
-    caretaker_phone = models.CharField(max_length=25, blank=True, null=True)
+    caretaker_cnic = NormalizedCNICField(max_length=15, blank=True, null=True)
+    caretaker_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
     property_address1 = models.CharField(max_length=200, blank=True, null=True)
     property_address2 = models.TextField(max_length=100, blank=True, null=True)
     property_city = models.CharField(max_length=20, blank=True, null=True)
@@ -136,6 +138,33 @@ class Property(models.Model):
         verbose_name_plural = "Properties"
 
 
+class BuildingType(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    code = models.SlugField(max_length=100, unique=True)
+    inspection_incomplete_charge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("5000.00"),
+        help_text="Default move-out charge when inspection is not completed.",
+    )
+    key_card_not_returned_charge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("1000.00"),
+        help_text="Default move-out charge when keys or key cards are not returned.",
+    )
+    sort_order = models.PositiveIntegerField(default=50)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name = "Building Type"
+        verbose_name_plural = "Building Types"
+
+    def __str__(self):
+        return self.name
+
+
 class Unit(models.Model):
     UNIT_STATUS = [
         ("vacant", "Vacant"),
@@ -145,6 +174,14 @@ class Unit(models.Model):
 
     property = models.ForeignKey(
         "Property", on_delete=models.CASCADE, related_name="units"
+    )
+    building_type = models.ForeignKey(
+        "BuildingType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="units",
+        help_text="Building type used for unit classification and move-out charge defaults.",
     )
     interest_type = models.ForeignKey(
         "tenants.TenantInterestType",
@@ -167,6 +204,18 @@ class Unit(models.Model):
     )
     water_charges = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True, default="6000.00"
+    )
+    inspection_incomplete_charge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("5000.00"),
+        help_text="Move-out charge when the inspection sheet is not completed.",
+    )
+    key_card_not_returned_charge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("1000.00"),
+        help_text="Move-out charge when keys/key cards are not recorded as returned.",
     )
     use_property_bank_account = models.BooleanField(
         default=True,

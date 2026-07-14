@@ -81,7 +81,7 @@
                         <!-- LEFT COLUMN: From, Phone, Security -->
                         <div>
                         <p class="mb-1"><strong>From:</strong> {{ payment_detail.payment.lease.tenant.first_name }} {{ payment_detail.payment.lease.tenant.last_name }}</p>
-                        <p class="mb-1"><strong>Phone:</strong> {{ payment_detail.payment.lease.tenant.phone|default:"—" }}</p>
+                        <p class="mb-1"><strong>Phone:</strong> {{ payment_detail.payment.lease.tenant.phone|format_phone|default:"—" }}</p>
                         <p class="mb-0">
                             <strong>Security:</strong>
                             {{ payment_detail.payment.lease.security_deposit|money:2 }}

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from core.utils.identity import format_phone
 
 from .models import (
     HandymanCategory,
@@ -23,11 +24,15 @@ class HandymanCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(HandymanProfile)
 class HandymanProfileAdmin(admin.ModelAdmin):
-    list_display = ("id", "full_name", "display_phone", "is_preferred", "is_active", "average_rating", "completed_jobs_count")
+    list_display = ("id", "full_name", "display_phone_formatted", "is_preferred", "is_active", "average_rating", "completed_jobs_count")
     list_filter = ("is_active", "is_preferred", "categories")
     search_fields = ("full_name", "phone", "whatsapp_number")
     filter_horizontal = ("categories",)
     inlines = [MaintenanceHandymanAssignmentInline]
+
+    @admin.display(description="Phone")
+    def display_phone_formatted(self, obj):
+        return format_phone(obj.display_phone)
 
 
 @admin.register(MaintenanceHandymanAssignment)

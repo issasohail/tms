@@ -76,7 +76,7 @@
                   <tr>
                     <td>{{ forloop.counter }}</td>
                     <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">{{ item.created_at|date:"M d, Y H:i" }}</td>
-                    <td class="pending-nowrap" title="{{ item.phone|default:'-' }}">{{ item.phone|default:"-" }}</td>
+                    <td class="pending-nowrap" title="{{ item.phone|format_phone|default:'-' }}">{{ item.phone|format_phone|default:"-" }}</td>
                     {% if section.kind == "family" %}
                       <td>
                         {% if item.photo %}

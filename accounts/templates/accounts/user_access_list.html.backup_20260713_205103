@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}User Access{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h2 class="fs-5 mb-0">User Access</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'accounts:group_access_list' %}" class="btn btn-outline-primary btn-sm">Groups</a>
+    <a href="{% url 'accounts:user_access_create' %}" class="btn btn-primary btn-sm">New User</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+    <div class="table-responsive desktop-sticky-list">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="text-center" style="width:54px;">#</th>
+            <th>Username</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>WhatsApp</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in users %}
+            <tr>
+              <td class="text-center text-muted">{{ forloop.counter }}</td>
+              <td>{{ account.username }}</td>
+              <td>{{ account.first_name }} {{ account.last_name }}</td>
+              <td>{{ account.email }}</td>
+              <td>{{ account.whatsapp_number|default:"-" }}</td>
+              <td>
+                {% if account.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                {% if account.is_staff %}<span class="badge bg-info text-dark">Staff</span>{% endif %}
+              </td>
+              <td class="text-end">
+                <a href="{% url 'accounts:user_access_update' account.pk %}" class="btn btn-outline-primary btn-sm">Edit</a>
+                {% if account.pk != request.user.pk and account.is_active %}
+                  <form method="post" action="{% url 'accounts:impersonate_start' account.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-dark btn-sm">Impersonate</button>
+                  </form>
+                {% endif %}
+                {% if account.pk != request.user.pk %}
+                  <form method="post" action="{% url 'accounts:user_access_delete' account.pk %}" class="d-inline" onsubmit="return confirm('Delete user {{ account.username|escapejs }}?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-muted p-3">No users found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

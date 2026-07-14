@@ -363,7 +363,8 @@
   </div>
 </div>
 
-<div class="table-wrap" id="captureArea">
+{# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+<div class="table-wrap desktop-sticky-list" id="captureArea">
   <table id="billingTbl">
     <thead>
       <tr>
@@ -399,7 +400,7 @@
             <td data-col="sn">{{ r.sn }}</td>
             <td data-col="unit">{{ r.unit.unit_number }}</td>
             <td data-col="tenant" class="tenant"><span class="name" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span></td>
-            <td data-col="phone">{{ r.tenant_phone }}</td>
+            <td data-col="phone">{{ r.tenant_phone|format_phone }}</td>
 
             {% for cell in r.cells %}
               {% if cell.kind == 'cat' %}
@@ -720,6 +721,7 @@ ${(data.trace||'').slice(0,2000)}
           if (!window.html2canvas) { alert('html2canvas not loaded'); return; }
 
           const clone = capture.cloneNode(true);
+          clone.classList.remove('desktop-sticky-list'); // Export the complete list, not only the desktop scroll viewport.
           clone.style.position = 'absolute';
           clone.style.left = '-99999px';
           clone.style.top = '0';
@@ -815,6 +817,7 @@ ${(data.trace||'').slice(0,2000)}
 
     // Clone off-screen so we can strip WhatsApp col from the screenshot
     const clone = area.cloneNode(true);
+    clone.classList.remove('desktop-sticky-list'); // Export the complete list, not only the desktop scroll viewport.
     clone.style.position = 'absolute';
     clone.style.left = '-99999px';
     clone.style.top = '0';

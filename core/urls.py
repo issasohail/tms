@@ -8,6 +8,19 @@ app_name = "core"
 urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("settings/", SettingsView.as_view(), name="settings"),
+    path(
+        "settings/move-out-charges/unit/<int:pk>/",
+        views.unit_move_out_charge_update,
+        name="unit_move_out_charge_update",
+    ),
+    path(
+        "settings/move-out-charges/building-type/<int:pk>/",
+        views.building_type_move_out_charge_update,
+        name="building_type_move_out_charge_update",
+    ),
+    path("building-types/get/<int:pk>/", views.building_type_get, name="building_type_get"),
+    path("building-types/toggle/<int:pk>/", views.building_type_toggle, name="building_type_toggle"),
+    path("building-types/save/", views.building_type_save, name="building_type_save"),
     path("settings/test-whatsapp-pending-alert/", views.test_whatsapp_pending_request_alert, name="test_whatsapp_pending_request_alert"),
     path("pending-approvals/", views.pending_approvals, name="pending_approvals"),
     path("pending-approvals/<str:kind>/<int:pk>/", views.pending_approval_detail, name="pending_approval_detail"),

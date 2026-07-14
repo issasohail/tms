@@ -224,7 +224,7 @@
       <div class="row g-2">
         <div class="col-xl-2 col-md-4 col-6 party-field" data-field="proposer">
           <span class="party-field-label">Proposer</span><button type="button" class="party-pill" data-empty="Select proposer">{{ master_lease.proposer.get_full_name|default:"Select proposer" }}</button>
-          <div class="party-editor"><select name="proposer" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.proposer_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+          <div class="party-editor"><select name="proposer" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.proposer_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|format_phone|default:"" }}</option>{% endfor %}</select></div>
         </div>
         <div class="col-xl-2 col-md-4 col-6 party-field" data-field="proposer_relationship">
           <span class="party-field-label">Proposer Relationship</span><button type="button" class="party-pill" data-empty="Select relationship">{{ master_lease.proposer_relationship.name|default:"Select relationship" }}</button>
@@ -232,7 +232,7 @@
         </div>
         <div class="col-xl-2 col-md-4 col-6 party-field" data-field="seconder">
           <span class="party-field-label">Seconder</span><button type="button" class="party-pill" data-empty="Select seconder">{{ master_lease.seconder.get_full_name|default:"Select seconder" }}</button>
-          <div class="party-editor"><select name="seconder" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.seconder_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+          <div class="party-editor"><select name="seconder" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.seconder_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|format_phone|default:"" }}</option>{% endfor %}</select></div>
         </div>
         <div class="col-xl-2 col-md-4 col-6 party-field" data-field="seconder_relationship">
           <span class="party-field-label">Seconder Relationship</span><button type="button" class="party-pill" data-empty="Select relationship">{{ master_lease.seconder_relationship.name|default:"Select relationship" }}</button>
@@ -240,11 +240,11 @@
         </div>
         <div class="col-xl-2 col-md-4 col-6 party-field" data-field="witness1_tenant">
           <span class="party-field-label">Witness 1</span><button type="button" class="party-pill" data-empty="Select witness 1">{{ history.witness1_tenant.get_full_name|default:"Select witness 1" }}</button>
-          <div class="party-editor"><select name="witness1_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness1_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+          <div class="party-editor"><select name="witness1_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness1_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|format_phone|default:"" }}</option>{% endfor %}</select></div>
         </div>
         <div class="col-xl-2 col-md-4 col-6 party-field" data-field="witness2_tenant">
           <span class="party-field-label">Witness 2</span><button type="button" class="party-pill" data-empty="Select witness 2">{{ history.witness2_tenant.get_full_name|default:"Select witness 2" }}</button>
-          <div class="party-editor"><select name="witness2_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness2_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+          <div class="party-editor"><select name="witness2_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness2_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|format_phone|default:"" }}</option>{% endfor %}</select></div>
         </div>
       </div>
       <div id="partySaveIndicator" class="party-save-indicator text-end text-muted"></div>

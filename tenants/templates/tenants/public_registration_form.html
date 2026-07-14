@@ -1263,8 +1263,8 @@
                       <span class="public-record-badge">{{ member.relation|default:member.relationship_type|default:"Family" }}</span>
                     </div>
                     <div class="public-record-muted">
-                      CNIC / ID: {{ member.family_member.cnic|default:"—" }}
-                      {% if member.family_member.phone %} &nbsp; Phone: {{ member.family_member.phone }}{% endif %}
+                      CNIC / ID: {{ member.family_member.cnic|format_cnic|default:"—" }}
+                      {% if member.family_member.phone %} &nbsp; Phone: {{ member.family_member.phone|format_phone }}{% endif %}
                     </div>
                     <div class="public-record-muted">
                       Gender: {{ member.family_member.get_gender_display|default:member.family_member.gender|default:"—" }}
@@ -1307,7 +1307,7 @@
                   </div>
                   <div class="public-record-main">
                     <div class="public-record-name">{{ member.family_member.get_full_name }} <span class="public-record-badge">{{ member.relation|default:member.relationship_type|default:"Family" }}</span></div>
-                    <div class="public-record-muted">CNIC / ID: {{ member.family_member.cnic|default:"—" }}{% if member.family_member.phone %} &nbsp; Phone: {{ member.family_member.phone }}{% endif %}</div>
+                    <div class="public-record-muted">CNIC / ID: {{ member.family_member.cnic|format_cnic|default:"—" }}{% if member.family_member.phone %} &nbsp; Phone: {{ member.family_member.phone|format_phone }}{% endif %}</div>
                     <div class="public-record-muted">Gender: {{ member.family_member.get_gender_display|default:member.family_member.gender|default:"—" }} &nbsp; DOB: {% if member.family_member.date_of_birth %}{{ member.family_member.date_of_birth|date:"M d, Y" }}{% else %}—{% endif %}</div>
                   </div>
                   <div class="public-record-actions">
@@ -1357,7 +1357,7 @@
                 <div class="public-record-main">
                   <div class="public-record-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span class="public-record-badge">{{ vehicle.registration_number|default:"No Reg #" }}</span></div>
                   <div class="public-record-muted">{{ vehicle.color|default:"—" }}{% if vehicle.make or vehicle.model %} &nbsp; {{ vehicle.make|default:"" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div>
-                  <div class="public-record-muted">Owner: {{ vehicle.owner_name|default:"—" }}{% if vehicle.owner_cnic %} &nbsp; CNIC: {{ vehicle.owner_cnic }}{% endif %}{% if vehicle.parking_slot %} &nbsp; Parking: {{ vehicle.parking_slot }}{% endif %}</div>
+                  <div class="public-record-muted">Owner: {{ vehicle.owner_name|default:"—" }}{% if vehicle.owner_cnic %} &nbsp; CNIC: {{ vehicle.owner_cnic|format_cnic }}{% endif %}{% if vehicle.parking_slot %} &nbsp; Parking: {{ vehicle.parking_slot }}{% endif %}</div>
                 </div>
                 <div class="public-record-actions">
                   <button class="btn-record-small" type="button" data-bs-toggle="collapse" data-bs-target="#vehicleUpdate{{ vehicle.pk }}"><i class="fas fa-pen"></i> Edit</button>
@@ -1408,7 +1408,7 @@
                 <div class="public-record-main">
                   <div class="public-record-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span class="public-record-badge">{{ vehicle.registration_number|default:"No Reg #" }}</span></div>
                   <div class="public-record-muted">{{ vehicle.color|default:"—" }}{% if vehicle.make or vehicle.model %} &nbsp; {{ vehicle.make|default:"" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div>
-                  <div class="public-record-muted">Owner: {{ vehicle.owner_name|default:"—" }}{% if vehicle.owner_cnic %} &nbsp; CNIC: {{ vehicle.owner_cnic }}{% endif %}{% if vehicle.parking_slot %} &nbsp; Parking: {{ vehicle.parking_slot }}{% endif %}</div>
+                  <div class="public-record-muted">Owner: {{ vehicle.owner_name|default:"—" }}{% if vehicle.owner_cnic %} &nbsp; CNIC: {{ vehicle.owner_cnic|format_cnic }}{% endif %}{% if vehicle.parking_slot %} &nbsp; Parking: {{ vehicle.parking_slot }}{% endif %}</div>
                 </div>
                 <div class="public-record-actions">
                   <button class="btn-record-small" type="button" data-bs-toggle="collapse" data-bs-target="#vehicleUpdateTenantRel{{ vehicle.pk }}"><i class="fas fa-pen"></i> Edit</button>
@@ -1425,7 +1425,7 @@
               <div class="public-vehicle-row">
                 <div class="public-record-sn">{{ forloop.counter }}</div>
                 <div class="public-record-photo">{% if vehicle.vehicle_photo %}<img src="{{ vehicle.vehicle_photo.url }}" alt="{{ vehicle }}">{% else %}<span><i class="fas fa-car"></i></span>{% endif %}</div>
-                <div class="public-record-main"><div class="public-record-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span class="public-record-badge">{{ vehicle.registration_number|default:"No Reg #" }}</span></div><div class="public-record-muted">{{ vehicle.color|default:"—" }}{% if vehicle.make or vehicle.model %} &nbsp; {{ vehicle.make|default:"" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div><div class="public-record-muted">Owner: {{ vehicle.owner_name|default:"—" }}{% if vehicle.owner_cnic %} &nbsp; CNIC: {{ vehicle.owner_cnic }}{% endif %}{% if vehicle.parking_slot %} &nbsp; Parking: {{ vehicle.parking_slot }}{% endif %}</div></div>
+                <div class="public-record-main"><div class="public-record-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span class="public-record-badge">{{ vehicle.registration_number|default:"No Reg #" }}</span></div><div class="public-record-muted">{{ vehicle.color|default:"—" }}{% if vehicle.make or vehicle.model %} &nbsp; {{ vehicle.make|default:"" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div><div class="public-record-muted">Owner: {{ vehicle.owner_name|default:"—" }}{% if vehicle.owner_cnic %} &nbsp; CNIC: {{ vehicle.owner_cnic|format_cnic }}{% endif %}{% if vehicle.parking_slot %} &nbsp; Parking: {{ vehicle.parking_slot }}{% endif %}</div></div>
                 <div class="public-record-actions"><button class="btn-record-small" type="button" data-bs-toggle="collapse" data-bs-target="#vehicleUpdateLeaseRel{{ vehicle.pk }}"><i class="fas fa-pen"></i> Edit</button><div class="public-record-action-row"><input class="field-control" name="remove_vehicle_reason_{{ vehicle.pk }}" placeholder="Optional removal reason"><label class="btn-record-small btn-record-danger mb-0"><input type="checkbox" name="remove_vehicle_ids" value="{{ vehicle.pk }}" class="me-1"> Request Remove</label></div></div>
                 <div class="collapse public-update-panel" id="vehicleUpdateLeaseRel{{ vehicle.pk }}"><div class="public-update-grid-vehicle"><div class="field-wrap"><label class="field-label">Registration #</label><input class="field-control" name="vehicle_update-{{ vehicle.pk }}-registration_number" value="{{ vehicle.registration_number|default:'' }}"></div><div class="field-wrap"><label class="field-label">Make</label><input class="field-control" name="vehicle_update-{{ vehicle.pk }}-make" value="{{ vehicle.make|default:'' }}"></div><div class="field-wrap"><label class="field-label">Model</label><input class="field-control" name="vehicle_update-{{ vehicle.pk }}-model" value="{{ vehicle.model|default:'' }}"></div><div class="field-wrap"><label class="field-label">Color</label><input class="field-control" name="vehicle_update-{{ vehicle.pk }}-color" value="{{ vehicle.color|default:'' }}"></div><div class="field-wrap"><label class="field-label">Vehicle Photo</label><input class="field-control" type="file" accept="image/*" name="vehicle_update-{{ vehicle.pk }}-vehicle_photo"></div><input type="hidden" name="vehicle_update_ids" value="{{ vehicle.pk }}"></div></div>
               </div>

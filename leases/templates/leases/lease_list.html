@@ -155,7 +155,8 @@
     </a>
   </div>
 
-  <div class="ll-table-wrap">
+  {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+  <div class="ll-table-wrap desktop-sticky-list">
     {% render_table table %}
   </div>
 
@@ -2008,7 +2009,7 @@ function vehicleCard(item, pending) {
         <div class="vehicle-modal-line"><span>Color</span><span>${escapeHtml(item.color || "-")}</span></div>
         <div class="vehicle-modal-line"><span>Year</span><span>${escapeHtml(item.year || "-")}</span></div>
         <div class="vehicle-modal-line"><span>Owner</span><span>${escapeHtml(item.owner_name || "-")}</span></div>
-        <div class="vehicle-modal-line"><span>CNIC</span><span>${escapeHtml(item.owner_cnic || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>CNIC</span><span>${escapeHtml(item.owner_cnic_display || item.owner_cnic || "-")}</span></div>
         <div class="vehicle-modal-line"><span>Parking</span><span>${escapeHtml(item.parking_slot || "-")}</span></div>
         <div class="vehicle-modal-actions">
           ${vehicleFileActions(item.vehicle_photo_url, "Vehicle Photo")}

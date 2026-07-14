@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from maintenance.models import MaintenanceRequest
+from core.utils.identity import format_phone, normalize_phone
 
 from .forms import HandymanCategoryForm, HandymanProfileForm, MaintenanceHandymanAssignmentForm
 from .models import HandymanCategory, HandymanProfile
@@ -32,7 +33,11 @@ class HandymanListView(LoginRequiredMixin, ListView):
         preferred = self.request.GET.get("preferred")
         active = self.request.GET.get("active")
         if q:
-            qs = qs.filter(Q(full_name__icontains=q) | Q(phone__icontains=q) | Q(whatsapp_number__icontains=q))
+            search_query = Q(full_name__icontains=q)
+            normalized = normalize_phone(q)
+            if normalized:
+                search_query |= Q(phone__icontains=normalized) | Q(whatsapp_number__icontains=normalized)
+            qs = qs.filter(search_query)
         if category:
             qs = qs.filter(categories__id=category)
         if preferred == "1":
@@ -135,9 +140,10 @@ def handyman_inline_update(request, pk):
     field = request.POST.get("field")
     value = request.POST.get("value")
     if field in {"phone", "whatsapp_number"}:
-        setattr(handyman, field, (value or "").strip())
+        setattr(handyman, field, normalize_phone(value))
         handyman.save(update_fields=[field, "updated_at"])
-        return JsonResponse({"ok": True, "value": getattr(handyman, field) or "-"})
+        normalized = getattr(handyman, field) or ""
+        return JsonResponse({"ok": True, "value": normalized or "-", "display_value": format_phone(normalized) or "-"})
     if field == "categories":
         ids = request.POST.getlist("value")
         categories = HandymanCategory.objects.filter(pk__in=ids, is_active=True)

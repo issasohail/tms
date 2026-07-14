@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .hm-wrap { max-width: 1540px; }
+  .hm-shell { background:#fff; border:1px solid rgba(13,93,181,.20); border-radius:14px; box-shadow:0 10px 30px rgba(15,23,42,.07); overflow:hidden; }
+  .hm-topbar { display:flex; justify-content:space-between; align-items:center; gap:.75rem; padding:1rem 1.15rem .75rem; background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%); }
+  .hm-title { font-size:1.05rem; font-weight:800; margin:0; color:#0f172a; letter-spacing:-.01em; }
+  .hm-crumb { font-size:.68rem; color:#64748b; margin-top:.15rem; }
+  .hm-topbar .btn { border-radius:7px; font-weight:700; }
+  .hm-filters { display:grid; grid-template-columns: minmax(220px,1.25fr) 160px 130px 120px 150px auto; gap:.5rem; padding:.75rem 1.15rem; border-top:1px solid #edf2f7; border-bottom:1px solid #edf2f7; background:#fbfdff; }
+  .hm-filters .form-control, .hm-filters .form-select, .hm-filters .btn { border-radius:7px; font-size:.74rem; min-height:32px; }
+  .hm-table { padding:.8rem 1.15rem 1.1rem; }
+  .hm-head, .hm-row { display:grid; grid-template-columns:42px 54px minmax(150px,1.08fr) minmax(138px,1fr) minmax(150px,1.05fr) 90px 90px 68px 82px 102px; gap:.55rem; align-items:center; }
+  .hm-head { font-size:.66rem; color:#64748b; font-weight:800; padding:.45rem .6rem; text-transform:uppercase; letter-spacing:.025em; background:#f8fafc; border:1px solid #edf2f7; border-radius:9px; }
+  .hm-row { min-height:62px; margin-top:.38rem; padding:.48rem .6rem; border:1px solid #edf2f7; border-radius:10px; font-size:.76rem; background:#fff; transition:box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+  .hm-row:hover { border-color:#cfe3ff; box-shadow:0 8px 22px rgba(15,23,42,.06); transform:translateY(-1px); }
+  .hm-photo { width:38px; height:38px; border-radius:50%; object-fit:cover; background:#e5e7eb; box-shadow:0 0 0 3px #f1f5f9; }
+  .hm-name { font-weight:800; color:#0f172a; }
+  .hm-muted { color:#64748b; font-size:.68rem; }
+  .hm-badge { display:inline-flex; align-items:center; border-radius:999px; padding:.14rem .42rem; font-size:.62rem; font-weight:800; background:#eef6ff; color:#0b5ed7; border:1px solid #d8e9ff; line-height:1.2; }
+  .hm-badge.gold { background:#fff6d8; color:#9a6700; border-color:#ffe7a3; }
+  .hm-badge.green { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+  .hm-badge.red { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+  .hm-stars { color:#f59e0b; white-space:nowrap; font-weight:800; }
+  .hm-actions { display:flex; justify-content:flex-end; gap:.25rem; }
+  .hm-actions .btn { width:27px; height:25px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:7px; }
+  .hm-editable { cursor:pointer; border-radius:6px; padding:2px 4px; display:inline-block; max-width:100%; }
+  .hm-editable:hover { background:#eef5ff; box-shadow: inset 0 0 0 1px #b6d4fe; }
+  .hm-inline-editor { width:100%; min-height:28px; font-size:.72rem; }
+  .hm-card-grid { display:none; }
+  @media (max-width: 1100px) {
+    .hm-filters { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .hm-filters .wide { grid-column:span 2; }
+    .hm-table { display:none; }
+    .hm-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.7rem; padding:.85rem; background:#f8fafc; }
+    .hm-person-card { border:1px solid #e5edf7; border-radius:12px; padding:.72rem; display:grid; grid-template-columns:48px 1fr auto; gap:.6rem; align-items:start; background:#fff; box-shadow:0 6px 18px rgba(15,23,42,.045); }
+  }
+  @media (max-width: 560px) {
+    .hm-wrap { padding-left:.45rem; padding-right:.45rem; margin-top:0!important; }
+    .hm-shell { border:0; border-radius:0; box-shadow:none; margin-left:-.45rem; margin-right:-.45rem; min-height:100vh; }
+    .hm-topbar { background:#082746; color:#fff; padding:.55rem .65rem; position:sticky; top:0; z-index:5; }
+    .hm-title { color:#fff; font-size:.9rem; }
+    .hm-crumb { display:none; }
+    .hm-topbar .btn { padding:.25rem .45rem; font-size:.68rem; }
+    .hm-topbar .btn-outline-primary { background:#fff; border-color:#fff; color:#082746; }
+    .hm-filters { grid-template-columns:1fr 1fr 1fr; padding:.55rem; gap:.35rem; background:#f8fafc; }
+    .hm-filters .wide { grid-column:1 / 4; }
+    .hm-filters .sort-field { display:none; }
+    .hm-filters .btn { grid-column:3; }
+    .hm-card-grid { grid-template-columns:1fr; padding:.35rem .55rem .85rem; gap:.25rem; background:#fff; }
+    .hm-person-card { border:0; border-bottom:1px solid #edf2f7; border-radius:0; padding:.58rem 0; grid-template-columns:46px 1fr 18px; box-shadow:none; }
+    .hm-photo { width:40px; height:40px; }
+  }
+</style>
+
+<div class="container hm-wrap mt-3">
+  <div class="hm-shell">
+    <div class="hm-topbar">
+      <div>
+        <h4 class="hm-title">Handyman List</h4>
+        <div class="hm-crumb">Home / Handyman / Handyman List</div>
+      </div>
+      <div class="d-flex flex-wrap gap-1 justify-content-end">
+        <a href="{% url 'handyman:handyman_add' %}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Handyman</a>
+        <a href="{% url 'handyman:category_settings' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Categories</a>
+      </div>
+    </div>
+    <form method="get" class="hm-filters" id="hm-filter-form">
+      <input name="q" value="{{ filters.q }}" class="form-control form-control-sm wide" placeholder="Search by name or phone...">
+      <select name="category" class="form-select form-select-sm">
+        <option value="">All Categories</option>
+        {% for category in categories %}<option value="{{ category.id }}" {% if filters.category == category.id|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>{% endfor %}
+      </select>
+      <select name="preferred" class="form-select form-select-sm">
+        <option value="">Preferred</option>
+        <option value="1" {% if filters.preferred == "1" %}selected{% endif %}>Preferred only</option>
+      </select>
+      <select name="active" class="form-select form-select-sm">
+        <option value="">All Status</option>
+        <option value="1" {% if filters.active == "1" %}selected{% endif %}>Active</option>
+        <option value="0" {% if filters.active == "0" %}selected{% endif %}>Inactive</option>
+      </select>
+      <select class="form-select form-select-sm sort-field">
+        <option>Sort: Preferred First</option>
+      </select>
+      <button class="btn btn-primary btn-sm">Apply</button>
+    </form>
+
+    <div class="hm-table">
+      <div class="hm-head">
+        <div>SN</div><div>Photo</div><div>Name</div><div>Phone / WhatsApp</div><div>Categories</div><div>Preferred</div><div>Rating</div><div>Jobs</div><div>Status</div><div class="text-end">Actions</div>
+      </div>
+      {% for handyman in handymen %}
+        <div class="hm-row" data-update-url="{% url 'handyman:handyman_inline_update' handyman.pk %}">
+          <div>{{ forloop.counter }}</div>
+          <div>{% if handyman.photo %}<img class="hm-photo" src="{{ handyman.photo.url }}" alt="">{% else %}<div class="hm-photo"></div>{% endif %}</div>
+          <div><a class="hm-name text-decoration-none" href="{{ handyman.get_absolute_url }}">{{ handyman.full_name }}</a><div class="hm-muted d-lg-none">{{ handyman.display_phone|default:"-" }}</div></div>
+          <div><span class="hm-editable" data-field="phone" data-value="{{ handyman.phone|default:'' }}">{{ handyman.display_phone|default:"-" }}</span></div>
+          <div>
+            <span class="hm-editable" data-field="categories" data-value="{% for category in handyman.categories.all %}{{ category.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
+              {% for category in handyman.categories.all %}<span class="hm-badge me-1">{{ category.name }}</span>{% empty %}<span class="hm-muted">-</span>{% endfor %}
+            </span>
+          </div>
+          <div><span class="hm-editable" data-field="is_preferred" data-value="{{ handyman.is_preferred|yesno:'1,0' }}">{% if handyman.is_preferred %}<span class="hm-badge gold">Preferred</span>{% else %}<span class="hm-muted">-</span>{% endif %}</span></div>
+          <div>
+            {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
+              <span class="hm-stars">★</span> {{ handyman.rating_avg|floatformat:1|default:"0.0" }} ({{ handyman.ratings_total|default:0 }})
+            {% else %}
+              <span class="hm-muted">Off</span>
+            {% endif %}
+          </div>
+          <div>{{ handyman.completed_jobs_total|default:0 }}</div>
+          <div><span class="hm-editable" data-field="is_active" data-value="{{ handyman.is_active|yesno:'1,0' }}"><span class="hm-badge {% if handyman.is_active %}green{% else %}red{% endif %}">{% if handyman.is_active %}Active{% else %}Inactive{% endif %}</span></span></div>
+          <div class="hm-actions"><a class="btn btn-outline-primary btn-sm" href="{{ handyman.get_absolute_url }}"><i class="bi bi-eye"></i></a><a class="btn btn-outline-secondary btn-sm" href="{% url 'handyman:handyman_edit' handyman.pk %}"><i class="bi bi-pencil"></i></a></div>
+        </div>
+      {% empty %}
+        <div class="text-muted small p-3">No handymen found.</div>
+      {% endfor %}
+    </div>
+
+    <div class="hm-card-grid">
+      {% for handyman in handymen %}
+        <a class="hm-person-card text-decoration-none text-reset" href="{{ handyman.get_absolute_url }}">
+          <div>{% if handyman.photo %}<img class="hm-photo" src="{{ handyman.photo.url }}" alt="">{% else %}<div class="hm-photo"></div>{% endif %}</div>
+          <div>
+            <div class="d-flex justify-content-between gap-2"><span class="hm-name">{{ handyman.full_name }}</span>{% if handyman.is_preferred %}<span class="hm-badge gold">Preferred</span>{% endif %}</div>
+            <div class="hm-muted">{{ handyman.display_phone|default:"-" }}</div>
+            <div class="hm-muted">{% for category in handyman.categories.all %}{{ category.name }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</div>
+            <div class="d-flex gap-2 align-items-center mt-1">
+              {% if GLOBAL_SETTINGS.handyman_enable_ratings %}
+                <span><span class="hm-stars">★</span> {{ handyman.rating_avg|floatformat:1|default:"0.0" }}</span>
+              {% else %}
+                <span class="hm-muted">Ratings off</span>
+              {% endif %}
+              <span class="hm-badge {% if handyman.is_active %}green{% else %}red{% endif %}">{% if handyman.is_active %}Active{% else %}Inactive{% endif %}</span>
+            </div>
+          </div>
+          <i class="bi bi-chevron-right text-muted"></i>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    const form = document.getElementById("hm-filter-form");
+    if (!form) return;
+    let timer = null;
+    form.querySelectorAll("select").forEach(field => {
+      field.addEventListener("change", () => form.submit());
+    });
+    const search = form.querySelector("input[name='q']");
+    if (search) {
+      search.addEventListener("input", () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => form.submit(), 500);
+      });
+    }
+    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || "{{ csrf_token }}";
+    const categoryOptions = `{% for category in categories %}<option value="{{ category.id }}">{{ category.name|escapejs }}</option>{% endfor %}`;
+    function postInline(row, field, values) {
+      const body = new URLSearchParams();
+      body.append("field", field);
+      if (Array.isArray(values)) values.forEach(v => body.append("value", v));
+      else body.append("value", values);
+      return fetch(row.dataset.updateUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded"},
+        body
+      }).then(r => r.json().then(data => ({ok:r.ok, data}))).then(({ok, data}) => {
+        if (!ok || !data.ok) throw new Error(data.error || "Update failed");
+        return data;
+      });
+    }
+    function renderValue(field, value) {
+      if (field === "is_active") return `<span class="hm-badge ${value === "Active" ? "green" : "red"}">${value}</span>`;
+      if (field === "is_preferred") return value === "Preferred" ? '<span class="hm-badge gold">Preferred</span>' : '<span class="hm-muted">-</span>';
+      if (field === "categories") return value === "-" ? '<span class="hm-muted">-</span>' : value.split(", ").map(v => `<span class="hm-badge me-1">${v}</span>`).join("");
+      return value || "-";
+    }
+    document.querySelectorAll(".hm-row .hm-editable").forEach(el => {
+      el.addEventListener("click", function (event) {
+        event.stopPropagation();
+        if (el.querySelector(".hm-inline-editor")) return;
+        const row = el.closest(".hm-row");
+        const field = el.dataset.field;
+        const current = el.dataset.value || "";
+        const original = el.innerHTML;
+        let editor;
+        if (field === "categories") {
+          editor = document.createElement("select");
+          editor.multiple = true;
+          editor.innerHTML = categoryOptions;
+          editor.className = "form-select form-select-sm hm-inline-editor";
+          current.split(",").filter(Boolean).forEach(v => {
+            const opt = editor.querySelector(`option[value="${CSS.escape(v)}"]`);
+            if (opt) opt.selected = true;
+          });
+        } else if (field === "is_active" || field === "is_preferred") {
+          editor = document.createElement("select");
+          editor.className = "form-select form-select-sm hm-inline-editor";
+          editor.innerHTML = field === "is_active" ? '<option value="1">Active</option><option value="0">Inactive</option>' : '<option value="1">Preferred</option><option value="0">Not Preferred</option>';
+          editor.value = current || "0";
+        } else {
+          editor = document.createElement("input");
+          editor.className = "form-control form-control-sm hm-inline-editor";
+          editor.value = current;
+        }
+        el.innerHTML = "";
+        el.appendChild(editor);
+        editor.focus();
+        const save = () => {
+          const value = editor.multiple ? Array.from(editor.selectedOptions).map(o => o.value) : editor.value;
+          postInline(row, field, value).then(data => {
+            el.dataset.value = Array.isArray(value) ? value.join(",") : value;
+            el.innerHTML = renderValue(field, data.value);
+          }).catch(err => {
+            alert(err.message);
+            el.innerHTML = original;
+          });
+        };
+        editor.addEventListener("change", save);
+        editor.addEventListener("blur", () => { if (field === "phone") save(); }, true);
+        editor.addEventListener("keydown", e => {
+          if (e.key === "Enter") { e.preventDefault(); save(); }
+          if (e.key === "Escape") el.innerHTML = original;
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}

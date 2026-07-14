@@ -40,7 +40,7 @@
         </div>
         <div class="text-muted small">
           {% if request_obj.lease %}{{ request_obj.lease.tenant|default:"-" }}{% else %}-{% endif %}
-          {% if request_obj.lease.tenant.phone %} - {{ request_obj.lease.tenant.phone }}{% endif %}
+          {% if request_obj.lease.tenant.phone %} - {{ request_obj.lease.tenant.phone|format_phone }}{% endif %}
         </div>
         <div class="text-muted small">Request date: {{ request_obj.reported_date|date:"Y-m-d" }}</div>
         <div class="text-muted small">This secure link is valid for {{ expires_days }} days from when it was created.</div>

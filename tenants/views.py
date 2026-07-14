@@ -56,6 +56,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from weasyprint import HTML
 
 from core.models import GlobalSettings
+from core.utils.identity import format_cnic, format_phone, normalize_cnic, normalize_phone, validate_cnic
 from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
 from leases.models import (
     Lease,
@@ -86,7 +87,6 @@ from .models import (
     PendingRegistrationPerson,
     Tenant,
     TenantRegistrationSubmission,
-    normalize_cnic,
 )
 from .tables import (
     LedgerTable,  # We'll create this later
@@ -211,8 +211,21 @@ def tenant_inline_update(request, pk):
         tenant.full_clean()
         tenant.save()
 
-        display_value = getattr(tenant, field_name)
-        if model_field.get_internal_type() == "DateField" and display_value:
+        normalized_value = getattr(tenant, field_name)
+        display_value = normalized_value
+        if field_name == "cnic":
+            display_value = format_cnic(normalized_value)
+        elif field_name in {
+            "phone",
+            "phone2",
+            "phone3",
+            "employer_phone",
+            "reference_phone_1",
+            "reference_phone_2",
+            "emergency_contact_phone",
+        }:
+            display_value = format_phone(normalized_value)
+        elif model_field.get_internal_type() == "DateField" and display_value:
             display_value = display_value.strftime("%b %d, %Y")
         elif model_field.choices:
             display_value = getattr(tenant, f"get_{field_name}_display")()
@@ -221,7 +234,15 @@ def tenant_inline_update(request, pk):
         else:
             display_value = str(display_value or "-")
 
-        return JsonResponse({"ok": True, "field": field_name, "display": display_value})
+        return JsonResponse(
+            {
+                "ok": True,
+                "field": field_name,
+                "value": normalized_value,
+                "display": display_value,
+                "display_value": display_value,
+            }
+        )
     except ValidationError as exc:
         return JsonResponse(
             {
@@ -307,7 +328,7 @@ def _create_new_registration_shell(form=None):
         last_name=last_name or "Registration",
         phone=(cleaned_data.get("phone") or "").strip(),
         email=(cleaned_data.get("email") or "").strip(),
-        cnic=f"NEW{uuid.uuid4().hex[:10]}",
+        cnic="",
         is_active=False,
         notes=notes or "Created from quick tenant registration.",
     )
@@ -468,7 +489,7 @@ def _apply_family_members_from_submission(tenant, family_members):
             family_tenant = Tenant.objects.create(
                 first_name=first_name,
                 last_name=last_name,
-                cnic=cnic or f"FM{uuid.uuid4().hex[:10]}",
+                cnic=cnic,
                 phone=row.get("phone") or "",
                 occupation=row.get("occupation") or "",
                 nationality=row.get("nationality") or "Pakistani",
@@ -1463,7 +1484,7 @@ def create_export(self, export_format):
                 [
                     tenant.id,
                     f"{tenant.first_name} {tenant.last_name}",
-                    tenant.phone,
+                    format_phone(tenant.phone),
                     lease.unit.property.property_name if lease else "",
                     lease.unit.unit_number if lease else "",
                     lease.get_total_payment if lease else "",
@@ -1491,7 +1512,7 @@ def create_export(self, export_format):
                 [
                     tenant.id,
                     f"{tenant.first_name} {tenant.last_name}",
-                    tenant.phone,
+                    format_phone(tenant.phone),
                     lease.unit.property.property_name if lease else "",
                     lease.unit.unit_number if lease else "",
                     lease.get_total_payment if lease else "",
@@ -1786,18 +1807,21 @@ class LeaseLedgerView(LoginRequiredMixin, SingleTableView):
 
 def tenant_search(request):
     search_term = request.GET.get("q", "").strip()
+    identity_term = normalize_phone(search_term)
+    cnic_term = normalize_cnic(search_term)
 
     tenants = Tenant.objects.all()
     if search_term:
-        tenants = tenants.filter(
+        search_query = (
             Q(first_name__icontains=search_term)
             | Q(last_name__icontains=search_term)
             | Q(email__icontains=search_term)
-            | Q(phone__icontains=search_term)
-            | Q(phone2__icontains=search_term)
-            | Q(phone3__icontains=search_term)
-            | Q(cnic__icontains=search_term)
         )
+        if identity_term:
+            search_query |= Q(phone__icontains=identity_term) | Q(phone2__icontains=identity_term) | Q(phone3__icontains=identity_term)
+        if cnic_term:
+            search_query |= Q(cnic_digits__icontains=cnic_term)
+        tenants = tenants.filter(search_query)
     tenants = tenants.distinct().order_by("first_name", "last_name")[:20]
 
     results = []
@@ -1945,9 +1969,6 @@ def get_units_by_property(request):
 
 # tenants/views.py (update_tenant_field)
 
-CNIC_DIGITS = re.compile(r"\D+")
-
-
 @login_required
 @require_POST
 def update_tenant_field(request, tenant_id):
@@ -1971,22 +1992,16 @@ def update_tenant_field(request, tenant_id):
             return JsonResponse({"success": False, "error": "Invalid field"})
 
         if field == "cnic":
-            digits = CNIC_DIGITS.sub("", value)
-            if digits and len(digits) != 13:
+            digits = normalize_cnic(value)
+            try:
+                validate_cnic(digits)
+            except ValidationError as exc:
                 return JsonResponse(
-                    {"success": False, "error": "CNIC must contain exactly 13 digits."}
+                    {"success": False, "error": exc.messages[0]}
                 )
 
             # Duplicate check
-            qs = (
-                Tenant.objects.annotate(
-                    cnic_digits_db=Replace(
-                        Replace(F("cnic"), Value("-"), Value("")), Value(" "), Value("")
-                    )
-                )
-                .exclude(pk=tenant.pk)
-                .filter(cnic_digits_db=digits)
-            )
+            qs = Tenant.objects.exclude(pk=tenant.pk).filter(cnic_digits=digits)
             if digits and qs.exists():
                 return JsonResponse(
                     {
@@ -1995,9 +2010,17 @@ def update_tenant_field(request, tenant_id):
                     }
                 )
 
+            value = digits
+        elif field == "phone":
+            value = normalize_phone(value)
         setattr(tenant, field, value)
-        tenant.save(update_fields=[field])
-        return JsonResponse({"success": True})
+        update_fields = [field, "cnic_digits"] if field == "cnic" else [field]
+        tenant.save(update_fields=update_fields)
+        return JsonResponse({
+            "success": True,
+            "value": getattr(tenant, field) or "",
+            "display_value": format_cnic(getattr(tenant, field)) if field == "cnic" else format_phone(getattr(tenant, field)) if field == "phone" else getattr(tenant, field),
+        })
     except Tenant.DoesNotExist:
         return JsonResponse({"success": False, "error": "Tenant not found"})
     except Exception as e:
@@ -2076,15 +2099,14 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             return queryset.filter(id=tenant_id).order_by("first_name", "last_name")
 
         if phone:
-            queryset = queryset.filter(
-                Q(phone__icontains=phone)
-                | Q(phone2__icontains=phone)
-                | Q(phone3__icontains=phone)
-                | Q(first_name__icontains=phone)
-                | Q(last_name__icontains=phone)
-                | Q(cnic__icontains=phone)
-                | Q(cnic_digits__icontains=phone)
-            )
+            normalized_phone = normalize_phone(phone)
+            normalized_cnic = normalize_cnic(phone)
+            phone_query = Q(first_name__icontains=phone) | Q(last_name__icontains=phone)
+            if normalized_phone:
+                phone_query |= Q(phone__icontains=normalized_phone) | Q(phone2__icontains=normalized_phone) | Q(phone3__icontains=normalized_phone)
+            if normalized_cnic:
+                phone_query |= Q(cnic_digits__icontains=normalized_cnic)
+            queryset = queryset.filter(phone_query)
 
         if interest_ids:
             queryset = queryset.filter(interested_in__id__in=interest_ids).distinct()
@@ -2325,45 +2347,111 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             tenant.current_family_relationship = family_map.get(tenant.pk)
 
         tenant_ids = [tenant.pk for tenant in page_tenants]
-        from django.db.models import Count
+        role_targets = {
+            tenant_id: {
+                "family_member": [],
+                "proposer": [],
+                "seconder": [],
+                "witness": [],
+            }
+            for tenant_id in tenant_ids
+        }
+        role_target_urls = {
+            tenant_id: {key: set() for key in targets}
+            for tenant_id, targets in role_targets.items()
+        }
 
-        family_counts = dict(
+        def add_role_target(tenant_id, role_key, lease, renewal=None):
+            if not tenant_id or tenant_id not in role_targets:
+                return
+            if renewal is None:
+                detail_url = reverse("leases:lease_detail", args=[lease.pk])
+                period_start, period_end = lease.start_date, lease.end_date
+                destination_type = "Lease"
+            else:
+                detail_url = reverse(
+                    "leases:lease_history_detail", args=[lease.pk, renewal.pk]
+                )
+                period_start, period_end = renewal.start_date, renewal.end_date
+                destination_type = f"Renewal #{renewal.renewal_number}"
+            if detail_url in role_target_urls[tenant_id][role_key]:
+                return
+            role_target_urls[tenant_id][role_key].add(detail_url)
+            role_targets[tenant_id][role_key].append(
+                {
+                    "url": detail_url,
+                    "label": (
+                        f"{lease.unit.property.property_name}-"
+                        f"{lease.unit.unit_number} · {destination_type} #{lease.pk}"
+                        if renewal is None
+                        else (
+                            f"{lease.unit.property.property_name}-"
+                            f"{lease.unit.unit_number} · {destination_type}"
+                        )
+                    ),
+                    "period": f"{period_start:%Y-%m-%d} to {period_end:%Y-%m-%d}",
+                }
+            )
+
+        for link in (
             LeaseFamilyMember.objects.filter(family_member_id__in=tenant_ids)
-            .values_list("family_member_id")
-            .annotate(c=Count("id"))
+            .select_related("lease__unit__property")
+            .order_by("lease__start_date", "lease_id")
+        ):
+            add_role_target(link.family_member_id, "family_member", link.lease)
+
+        role_leases = (
+            Lease.objects.filter(
+                Q(proposer_id__in=tenant_ids)
+                | Q(seconder_id__in=tenant_ids)
+                | Q(witness1_tenant_id__in=tenant_ids)
+                | Q(witness2_tenant_id__in=tenant_ids)
+            )
+            .select_related("unit__property")
+            .order_by("start_date", "id")
         )
-        proposer_counts = dict(
-            Lease.objects.filter(proposer_id__in=tenant_ids)
-            .values_list("proposer_id")
-            .annotate(c=Count("id"))
+        for role_lease in role_leases:
+            add_role_target(role_lease.proposer_id, "proposer", role_lease)
+            add_role_target(role_lease.seconder_id, "seconder", role_lease)
+            add_role_target(role_lease.witness1_tenant_id, "witness", role_lease)
+            add_role_target(role_lease.witness2_tenant_id, "witness", role_lease)
+
+        role_renewals = (
+            LeaseRenewal.objects.filter(
+                Q(witness1_tenant_id__in=tenant_ids)
+                | Q(witness2_tenant_id__in=tenant_ids)
+            )
+            .select_related("lease__unit__property")
+            .order_by("start_date", "id")
         )
-        seconder_counts = dict(
-            Lease.objects.filter(seconder_id__in=tenant_ids)
-            .values_list("seconder_id")
-            .annotate(c=Count("id"))
+        for renewal in role_renewals:
+            add_role_target(
+                renewal.witness1_tenant_id, "witness", renewal.lease, renewal
+            )
+            add_role_target(
+                renewal.witness2_tenant_id, "witness", renewal.lease, renewal
+            )
+
+        role_labels = (
+            ("family_member", "Family Member"),
+            ("proposer", "Proposer"),
+            ("seconder", "Seconder"),
+            ("witness", "Witness"),
         )
-        witness_counts = {}
-        for field in ("witness1_tenant_id", "witness2_tenant_id"):
-            for tenant_id, count in (
-                Lease.objects.filter(**{field + "__in": tenant_ids})
-                .values_list(field)
-                .annotate(c=Count("id"))
-            ):
-                witness_counts[tenant_id] = witness_counts.get(tenant_id, 0) + count
-        for field in ("witness1_tenant_id", "witness2_tenant_id"):
-            for tenant_id, count in (
-                LeaseRenewal.objects.filter(**{field + "__in": tenant_ids})
-                .values_list(field)
-                .annotate(c=Count("id"))
-            ):
-                witness_counts[tenant_id] = witness_counts.get(tenant_id, 0) + count
         for tenant in page_tenants:
             tenant.role_counts = {
-                "family_member": family_counts.get(tenant.pk, 0),
-                "proposer": proposer_counts.get(tenant.pk, 0),
-                "seconder": seconder_counts.get(tenant.pk, 0),
-                "witness": witness_counts.get(tenant.pk, 0),
+                key: len(role_targets[tenant.pk][key]) for key, _label in role_labels
             }
+            tenant.role_badges = [
+                {
+                    "key": key,
+                    "label": label,
+                    "targets": role_targets[tenant.pk][key],
+                    "count": tenant.role_counts[key],
+                }
+                for key, label in role_labels
+                if role_targets[tenant.pk][key]
+            ]
             tenant.role_total = sum(tenant.role_counts.values())
 
         # Add all tenants for the tenant dropdown
@@ -2506,7 +2594,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             tenant.id,
                             tenant.first_name,
                             tenant.last_name,
-                            tenant.phone,
+                            format_phone(tenant.phone),
                             lease.unit.property.property_name if lease else "",
                             lease.unit.unit_number if lease else "",
                             lease.get_total_payment if lease else "",
@@ -2604,7 +2692,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             idx - 1,  # SN
                             tenant.first_name,
                             tenant.last_name,
-                            tenant.phone,
+                            format_phone(tenant.phone),
                             tenant.email,
                             lease.unit.property.property_name if lease else "",
                             lease.unit.unit_number if lease else "",
@@ -2616,7 +2704,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             tenant.number_of_family_member,
                             tenant.get_gender_display(),
                             tenant.emergency_contact_name,
-                            tenant.emergency_contact_phone,
+                            format_phone(tenant.emergency_contact_phone),
                             "",  # Photo placeholder
                             "",  # CNIC Front placeholder
                             "",  # CNIC Back placeholder
@@ -2790,7 +2878,19 @@ def tenant_ajax_update(request):
             tenant = Tenant.objects.get(pk=pk)
             setattr(tenant, name, value)
             tenant.save()
-            return JsonResponse({"status": "success"})
+            normalized_value = getattr(tenant, name)
+            payload = {"status": "success"}
+            if name == "cnic":
+                payload["value"] = normalized_value
+                payload["display_value"] = format_cnic(normalized_value)
+            elif name in {
+                "phone", "phone2", "phone3", "employer_phone",
+                "reference_phone_1", "reference_phone_2",
+                "emergency_contact_phone",
+            }:
+                payload["value"] = normalized_value
+                payload["display_value"] = format_phone(normalized_value)
+            return JsonResponse(payload)
         except Tenant.DoesNotExist:
             return JsonResponse(
                 {"status": "error", "message": "Tenant not found"}, status=404
@@ -2817,7 +2917,7 @@ def tenant_lead_inline_update(request, pk):
         )
 
     if field == "phone":
-        tenant.phone = (data.get("value") or "").strip()[:20]
+        tenant.phone = normalize_phone(data.get("value"))
         tenant.save(update_fields=["phone"])
     else:
         raw_ids = data.get("value") or []
@@ -2840,6 +2940,7 @@ def tenant_lead_inline_update(request, pk):
             "tenant": {
                 "id": tenant.pk,
                 "phone": tenant.phone or "",
+                "phone_display": format_phone(tenant.phone),
                 "interested_in": [
                     {"id": item.pk, "name": item.name}
                     for item in tenant.interested_in.all()

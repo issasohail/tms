@@ -361,12 +361,57 @@
     ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.28); }
 
     /* ============================================================
+       DESKTOP LIST HEADERS
+       Opt-in only: add .desktop-sticky-list to a list table wrapper.
+       Grid-based lists use .desktop-sticky-grid-list on the scrolling
+       container and .desktop-sticky-grid-header on their header row.
+       Mobile/tablet layouts remain unchanged below 992px.
+       ============================================================ */
+    @media (min-width: 992px) {
+      .tms-main .desktop-sticky-list {
+        max-height: calc(100vh - 150px);
+        overflow: auto !important;
+      }
+
+      .tms-main .desktop-sticky-list table thead th,
+      .tms-main table.desktop-sticky-list thead th {
+        position: sticky !important;
+        top: 0;
+        z-index: 20;
+        background-color: #f8f9fa !important;
+        font-weight: 800 !important;
+      }
+
+      .tms-main .desktop-sticky-grid-list {
+        max-height: calc(100vh - 150px);
+        overflow: auto !important;
+      }
+
+      .tms-main .desktop-sticky-grid-header {
+        position: sticky !important;
+        top: 0;
+        z-index: 20;
+        background: #f8fafc;
+        font-weight: 800 !important;
+      }
+
+      /* Export modes must capture the complete list instead of the scroll viewport. */
+      body.meter-exporting .desktop-sticky-list,
+      body.screenshot-mode .desktop-sticky-list {
+        max-height: none !important;
+        overflow: visible !important;
+      }
+    }
+
+    /* ============================================================
        PRINT
        ============================================================ */
     @media print {
       .no-print, footer.tms-footer, .viewport-bar { display: none !important; }
       body { background: #fff; font-size: 11px; }
       .card { box-shadow: none; border: 1px solid #ddd; }
+      .desktop-sticky-list,
+      .desktop-sticky-grid-list { max-height: none !important; overflow: visible !important; }
     }
     body.tms-embedded-page {
       background: transparent;

@@ -53,15 +53,15 @@
 
         <p>
             <strong>{{ lease.unit.property.owner_prefix }} {{ lease.unit.property.owner_name }} {{lease.unit.property.relation}}
-             {{lease.unit.property.owner_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.owner_cnic }}</strong> R/O
+             {{lease.unit.property.owner_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.owner_cnic|format_cnic }}</strong> R/O
         {{ lease.unit.property.owner_address }} (Hereinafter called "Owner") of the <strong>ONE PART. through
          {{ lease.unit.property.caretaker_prefix }} {{ lease.unit.property.caretaker_name }} {{lease.unit.property.caretaker_relation}} 
-         {{lease.unit.property.caretaker_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.caretaker_cnic }}</strong> R/O
+         {{lease.unit.property.caretaker_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.caretaker_cnic|format_cnic }}</strong> R/O
         {{ lease.unit.property.caretaker_address }}.
         
         <strong>AND</strong><br>
        
-        <strong>{{ lease.tenant.prefix }} {{ lease.tenant.get_full_name_agreement }}</strong> holding CNIC NO. <strong>{{ lease.tenant.cnic }}</strong> R/O
+        <strong>{{ lease.tenant.prefix }} {{ lease.tenant.get_full_name_agreement }}</strong> holding CNIC NO. <strong>{{ lease.tenant.cnic|format_cnic }}</strong> R/O
         {{ lease.tenant.address }} (Hereinafter called "Tenant")
 
         
@@ -113,12 +113,12 @@
             <td style="width: 50%; padding-right: 20px;">
                 <p>_________________________</p>
                 <p><strong>Owner:</strong> {{ lease.unit.property.owner_name }}</p>
-                <p><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic }}</p>
+                <p><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic|format_cnic }}</p>
             </td>
             <td style="width: 50%; padding-left: 20px;">
                 <p>_________________________</p>
                 <p><strong>Tenant:</strong>  {{ lease.tenant.get_full_name }}</p>
-                <p><strong>CNIC:</strong> {{ lease.tenant.cnic }}</p>
+                <p><strong>CNIC:</strong> {{ lease.tenant.cnic|format_cnic }}</p>
             </td>
         </tr>
     </table>
@@ -130,14 +130,14 @@
             <td style="width: 50%; padding-right: 20px;">
                 <p>_________________________</p>
                 <p><strong>Witness 1:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}_________________________{% endif %}</p>
-                <p><strong>CNIC:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic }}{% else %}_________________________{% endif %}</p>
-                <p><strong>Phone:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
+                <p><strong>CNIC:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.cnic|format_cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic|format_cnic }}{% else %}_________________________{% endif %}</p>
+                <p><strong>Phone:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|format_phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
             </td>
             <td style="width: 50%; padding-left: 20px;">
                 <p>_________________________</p>
                 <p><strong>Witness 2:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}_________________________{% endif %}</p>
-                <p><strong>CNIC:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic }}{% else %}_________________________{% endif %}</p>
-                <p><strong>Phone:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
+                <p><strong>CNIC:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.cnic|format_cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic|format_cnic }}{% else %}_________________________{% endif %}</p>
+                <p><strong>Phone:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|format_phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
             </td>
         </tr>
     </table>

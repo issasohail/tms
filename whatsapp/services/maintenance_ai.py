@@ -31,9 +31,18 @@ def detect_maintenance_issue(text):
     return issue, urgency, confidence
 
 
-def create_pending_maintenance(message_log, conversation, lease=None, media=None):
+def create_pending_maintenance(message_log, conversation, lease=None, media=None, extracted=None):
     text = _message_text(message_log.payload or {})
     issue, urgency, confidence = detect_maintenance_issue(text)
+    extracted = extracted or {}
+    issue = str(extracted.get("issue_type") or issue)[:80]
+    urgency = str(extracted.get("urgency") or urgency)[:20]
+    description = str(extracted.get("description") or text)
+    location = str(extracted.get("location") or "").strip()
+    if location and location.lower() not in description.lower():
+        description = f"{description}\nLocation: {location}".strip()
+    if extracted:
+        confidence = max(confidence, 75)
     pending = PendingWhatsAppMaintenance.objects.create(
         conversation=conversation,
         original_whatsapp_message=message_log,
@@ -44,9 +53,12 @@ def create_pending_maintenance(message_log, conversation, lease=None, media=None
         unit=getattr(lease, "unit", None),
         issue_type=issue,
         urgency=urgency,
-        description=text,
+        description=description,
         ai_confidence=confidence,
-        ai_notes="Maintenance request staged for admin approval.",
+        ai_notes=(
+            "Maintenance request staged for admin approval."
+            + (f" Follow-up: {str(extracted.get('follow_up_question'))[:300]}" if extracted.get("follow_up_question") else "")
+        ),
     )
     if media:
         pending.media.add(media)

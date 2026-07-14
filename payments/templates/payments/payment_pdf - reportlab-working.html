@@ -24,7 +24,7 @@
                             <div class="col-md-6">
                                 <p class="mb-1"><strong>From:</strong></p>
                                 <p class="mb-1">{{ payment.lease.tenant.first_name }} {{ payment.lease.tenant.last_name }}</p>
-                                <p class="mb-0">{{ payment.lease.tenant.phone }}</p>
+                                <p class="mb-0">{{ payment.lease.tenant.phone|format_phone }}</p>
                             </div>
                             <div class="col-md-6">
                                 <p class="mb-1"><strong>Property:</strong> {{ payment.lease.unit.property.property_name }}</p>

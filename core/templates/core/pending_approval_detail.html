@@ -35,7 +35,7 @@
             <dd class="col-7">{{ item.created_at|date:"M d, Y H:i" }}</dd>
 
             <dt class="col-5">Phone</dt>
-            <dd class="col-7">{{ item.phone|default:"-" }}</dd>
+            <dd class="col-7">{{ item.phone|format_phone|default:"-" }}</dd>
 
             <dt class="col-5">Tenant</dt>
             <dd class="col-7">{% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}</dd>
@@ -73,9 +73,9 @@
               <dt class="col-5">Request</dt><dd class="col-7"><span class="badge {% if item.action == 'remove' %}bg-danger{% else %}bg-primary{% endif %}">{{ item.get_action_display }}</span></dd>
               <dt class="col-5">Submitted Name</dt><dd class="col-7">{{ item.first_name }} {{ item.last_name }}</dd>
               <dt class="col-5">Relationship</dt><dd class="col-7">{{ item.relationship_type.name|default:item.relationship }}</dd>
-              <dt class="col-5">CNIC / ID</dt><dd class="col-7">{{ item.cnic }}</dd>
+              <dt class="col-5">CNIC / ID</dt><dd class="col-7">{{ item.cnic|format_cnic }}</dd>
               <dt class="col-5">DOB</dt><dd class="col-7">{{ item.date_of_birth|default:"-" }}</dd>
-              <dt class="col-5">Submitted Phone</dt><dd class="col-7">{{ item.phone|default:"-" }}</dd>
+              <dt class="col-5">Submitted Phone</dt><dd class="col-7">{{ item.phone|format_phone|default:"-" }}</dd>
               <dt class="col-5">Expires</dt><dd class="col-7">{{ item.expires_at|date:"M d, Y H:i" }}</dd>
             {% elif kind == "police" %}
               <dt class="col-5">Source</dt><dd class="col-7">{{ item.get_source_display }}</dd>

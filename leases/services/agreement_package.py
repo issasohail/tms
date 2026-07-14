@@ -12,6 +12,7 @@ from weasyprint import HTML
 from leases.models import AgreementSignatureTemplate, LeaseDocument
 from tenants.models import Tenant
 from leases.utils import do_replace_placeholders
+from core.utils.identity import format_cnic, format_phone, normalize_cnic
 
 
 def _pdf(html, request):
@@ -33,8 +34,8 @@ def party_snapshot(lease, history=None):
     def data(person, relationship=""):
         return {
             "name": person.get_full_name() if person else "",
-            "cnic": (getattr(person, "cnic", "") or "") if person else "",
-            "phone": (getattr(person, "phone", "") or "") if person else "",
+            "cnic": format_cnic(getattr(person, "cnic", "")) if person else "",
+            "phone": format_phone(getattr(person, "phone", "")) if person else "",
             "relationship": _relationship_name(relationship),
         }
 
@@ -42,7 +43,7 @@ def party_snapshot(lease, history=None):
     witness2 = (getattr(history, "witness2_tenant", None) if history else None) or lease.witness2_tenant
     occupants = [{
         "name": row.family_member.get_full_name(),
-        "cnic": row.family_member.cnic or "",
+        "cnic": format_cnic(row.family_member.cnic),
         "relationship": str(row.relationship_type or row.relationship or ""),
     } for row in lease.family_members.select_related("family_member", "relationship_type").filter(lives_with_tenant=True)]
 
@@ -59,7 +60,7 @@ def _declaration_values(lease, history, parties):
     start_date, end_date = _period(lease, history)
     values = {
         "tenant_name": lease.tenant.get_full_name() or "________________",
-        "tenant_cnic": lease.tenant.cnic or "________________",
+        "tenant_cnic": format_cnic(lease.tenant.cnic) or "________________",
         "property_unit": f"{lease.unit.property} / {lease.unit}",
         "lease_start_date": start_date.strftime("%B %d, %Y") if start_date else "________________",
         "lease_end_date": end_date.strftime("%B %d, %Y") if end_date else "________________",
@@ -350,7 +351,7 @@ def _file_data_uri(field):
 
 
 def _normalise_cnic(value):
-    return re.sub(r"\D", "", value or "")
+    return normalize_cnic(value)
 
 
 def _owner_tenant(property_obj):
@@ -376,8 +377,8 @@ def identity_context(lease, history=None):
         return {
             "role": role,
             "name": person.get_full_name() if person else "",
-            "cnic": getattr(person, "cnic", "") or "",
-            "phone": getattr(person, "phone", "") or "",
+            "cnic": format_cnic(getattr(person, "cnic", "")),
+            "phone": format_phone(getattr(person, "phone", "")),
             "show_phone": show_phone,
             "front_url": _file_data_uri(getattr(person, "cnic_front", None)) if person else "",
             "back_url": _file_data_uri(getattr(person, "cnic_back", None)) if person else "",
@@ -387,8 +388,8 @@ def identity_context(lease, history=None):
     owner_row = {
         "role": "Owner",
         "name": getattr(property_obj, "owner_name", "") or "",
-        "cnic": getattr(property_obj, "owner_cnic", "") or "",
-        "phone": getattr(property_obj, "owner_phone", "") or "",
+        "cnic": format_cnic(getattr(property_obj, "owner_cnic", "")),
+        "phone": format_phone(getattr(property_obj, "owner_phone", "")),
         "show_phone": False,
         "front_url": _file_data_uri(getattr(owner_person, "cnic_front", None)) if owner_person else "",
         "back_url": _file_data_uri(getattr(owner_person, "cnic_back", None)) if owner_person else "",
@@ -635,8 +636,8 @@ def _add_police_docx(doc, lease):
     table = doc.add_table(rows=0, cols=2)
     table.style = "Table Grid"
     rows = [
-        ("Tenant", lease.tenant.get_full_name()), ("Tenant CNIC", lease.tenant.cnic or ""),
-        ("Phone", lease.tenant.phone or ""), ("Property / Unit", f"{lease.unit.property} / {lease.unit}"),
+        ("Tenant", lease.tenant.get_full_name()), ("Tenant CNIC", format_cnic(lease.tenant.cnic)),
+        ("Phone", format_phone(lease.tenant.phone)), ("Property / Unit", f"{lease.unit.property} / {lease.unit}"),
         ("Lease Period", f"{lease.start_date} to {lease.end_date}"),
         ("Address", lease.tenant.address or ""),
     ]
@@ -650,7 +651,7 @@ def _add_police_docx(doc, lease):
         _set_cell_text(fam.rows[0].cells[i], text, True)
     for idx, row in enumerate(lease.family_members.select_related("family_member", "relationship_type"), 1):
         cells = fam.add_row().cells
-        vals = (idx, row.family_member.get_full_name(), row.family_member.cnic or "", str(row.relationship_type or row.relationship or ""))
+        vals = (idx, row.family_member.get_full_name(), format_cnic(row.family_member.cnic), str(row.relationship_type or row.relationship or ""))
         for i, value in enumerate(vals): _set_cell_text(cells[i], value)
     doc.add_paragraph("Verification Remarks: ______________________________________________________________")
     doc.add_paragraph("Police Station / Officer: __________________________    Date: __________________________")

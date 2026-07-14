@@ -57,7 +57,7 @@
             <dt class="col-sm-5">Tenant</dt>
             <dd class="col-sm-7">{{ lease.tenant.get_full_name }}</dd>
             <dt class="col-sm-5">Phone</dt>
-            <dd class="col-sm-7">{{ phone|default:"Missing" }}</dd>
+            <dd class="col-sm-7">{{ phone|format_phone|default:"Missing" }}</dd>
             <dt class="col-sm-5">Property</dt>
             <dd class="col-sm-7">{{ lease.unit.property.property_name }}</dd>
             <dt class="col-sm-5">Unit</dt>

@@ -1,0 +1,787 @@
+{% extends 'base.html' %}
+{% load static lease_tags %}
+
+{% block extra_css %}
+<style>
+.clause-editor {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    line-height: 1.35;
+
+    padding: 8px;
+    height: auto;
+    min-height: 0;
+    min-height: unset !important;
+    overflow: hidden;     /* important */
+    resize: none;         /* optional */
+    text-align: left;
+    white-space: pre-wrap;
+}
+.clause-editor{
+  text-indent: 0 !important;
+  padding-left: 1px;     /* keep consistent */
+  white-space: pre-wrap;  /* ok */
+}
+
+.clause-row{
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.clause-editor{
+  box-sizing: border-box;
+}
+
+.clause-no{
+  width: 28px;                 /* fixed width for alignment */
+  flex: 0 0 48px;
+  text-align: right;
+  font-weight: 700;
+  padding-top: 6px;            /* aligns with first line of textarea text */
+  color: #111;
+}
+
+.clause-textarea{
+  flex: 1 1 auto;
+}
+
+.panel-scroll{
+  height: 80vh;          /* same height on both sides */
+  overflow-y: auto;      /* scroll inside panel */
+  overflow-x: hidden;
+}
+
+/* optional: keep card header visible while scrolling */
+.card .card-header{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.agreement-preview {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.clauses-section {
+    margin: 20px 0;
+}
+.clause {
+    margin-bottom: 15px;
+    text-align: justify;
+}
+.signature-box {
+    margin-top: 80px;
+}
+.preview-highlight {
+    background-color: #fff9c4;
+    transition: background-color 0.3s ease;
+}
+.clause-editor{
+  min-height: calc(1.35em + 16px); /* 1 line + top/bottom padding */
+}
+.placeholder-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.placeholder-token {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.clause-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .75rem;
+}
+.clause-action-wrap { flex: 0 0 auto; min-width: 0; }
+.clause-action-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  justify-content: flex-end;
+  align-items: flex-start;
+  white-space: nowrap;
+}
+.clause-action-bar > .btn,
+.clause-action-bar > form > .btn,
+.clause-action-bar > .d-inline-flex > .btn {
+  height: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+.clause-save-status { min-height: 18px; font-size: 12px; text-align: right; }
+@media (max-width: 991.98px) {
+  .clause-page-header { flex-wrap: wrap; }
+  .clause-action-wrap { width: 100%; }
+  .clause-action-bar { flex-wrap: wrap; justify-content: flex-start; white-space: normal; }
+  .clause-save-status { text-align: left; }
+}
+.party-summary-card { padding: .55rem .7rem; }
+.party-pill { border: 1px solid #d7dde5; background: #f8f9fa; color: #212529; cursor: pointer; display: block; width: 100%; text-align: left; padding: .38rem .58rem; border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-pill:hover, .party-pill:focus { background: #eef4ff; border-color: #86b7fe; }
+.party-field-label { font-size: 11px; color: #212529; font-weight: 700; margin: 0 0 2px 8px; display:block; }
+.lease-context-subheading { font-size: 12px; color: #495057; line-height: 1.25; margin-top: 2px; }
+.lease-context-subheading strong { color: #212529; }
+.party-editor { display:none; }
+.party-field.is-editing .party-pill { display:none; }
+.party-field.is-editing .party-editor { display:block; }
+.party-save-indicator { font-size: 11px; min-height: 16px; }
+.quick-tenant-grid { display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:.65rem; }
+@media (max-width: 767.98px) { .quick-tenant-grid { grid-template-columns:1fr; } }
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container pt-2">
+    <div class="clause-page-header mb-2">
+        <div>
+          <h2 class="mb-0">Edit Lease Agreement Clauses</h2>
+          <div class="lease-context-subheading">
+            <strong>{{ master_lease.tenant.get_full_name }}</strong> &middot;
+            {{ master_lease.unit.property.property_name }} &middot;
+            {{ master_lease.unit.unit_number }} &middot;
+            {{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }}
+          </div>
+        </div>
+        <div class="clause-action-wrap">
+        <div class="clause-action-bar">
+        <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
+        <div class="d-inline-flex flex-column align-items-center me-1">
+            <button type="button" id="btnPdf" class="btn btn-danger"><i class="fas fa-file-pdf"></i> PDF</button>
+            <label class="form-check-label small mt-1 text-nowrap" for="printOnLegalPage"><input class="form-check-input me-1" type="checkbox" id="printOnLegalPage">Print on Legal Page</label>
+        </div>
+        <a class="btn btn-outline-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
+        <button type="button" id="btnDocx" class="btn btn-success me-1"><i class="fas fa-file-word"></i> Word</button>
+        <form method="post" action="{% url 'leases:reset_clauses_from_default' master_lease.pk %}?history={{ history.pk }}" onsubmit="return confirm('This will overwrite your current clauses. Continue?');" class="d-inline">
+            {% csrf_token %}<input type="hidden" name="history_id" value="{{ history.pk }}">
+            <button class="btn btn-warning"><i class="fas fa-undo"></i> Load Default Clause</button>
+        </form>
+        <a href="{% url 'leases:send_agreement_email' master_lease.pk %}" class="btn btn-info"><i class="fas fa-envelope"></i> Email</a>
+        </div>
+        <div id="clauseSaveStatus" class="clause-save-status text-muted"></div>
+        </div>
+    </div>
+
+    <form method="get" class="card card-body py-2 mb-2 clause-filter-bar">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3 col-6">
+                <label class="form-label small mb-1">Property</label>
+                <select name="property" id="clausePropertyFilter" class="form-select form-select-sm clause-filter-select">
+                    <option value="">All Properties</option>
+                    {% for property in filter_properties %}
+                        <option value="{{ property.pk }}" {% if filter_property == property.pk|stringformat:"s" %}selected{% endif %}>{{ property.property_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label small mb-1">Unit</label>
+                <select name="unit" id="clauseUnitFilter" class="form-select form-select-sm clause-filter-select">
+                    <option value="">All Units</option>
+                    {% for unit in filter_units %}
+                        <option value="{{ unit.pk }}" {% if filter_unit == unit.pk|stringformat:"s" %}selected{% endif %}>{{ unit.property.property_name }} - {{ unit.unit_number }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 col-12">
+                <label class="form-label small mb-1">Lease Tenant</label>
+                <select name="tenant" id="clauseTenantFilter" class="form-select form-select-sm clause-filter-select">
+                    <option value="">All Tenants</option>
+                    {% for tenant in filter_tenants %}
+                        <option value="{{ tenant.pk }}" {% if filter_tenant == tenant.pk|stringformat:"s" %}selected{% endif %}>{{ tenant.get_full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label small mb-1">Status</label>
+                <select name="lease_status" id="clauseStatusFilter" class="form-select form-select-sm clause-filter-select">
+                    <option value="active" {% if filter_lease_status == "active" %}selected{% endif %}>Active</option>
+                    <option value="all" {% if filter_lease_status == "all" %}selected{% endif %}>All</option>
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label small mb-1">Lease</label>
+                <select name="lease_select" id="clauseLeaseSelect" class="form-select form-select-sm clause-filter-select">
+                    <option value="">Choose Lease</option>
+                    {% for item in filter_lease_choices %}
+                        <option value="{{ item.id }}" data-url="{{ item.url }}" {% if filter_current_lease == item.id|stringformat:"s" %}selected{% endif %}>{{ item.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </form>
+
+    <form id="agreementPartyForm" method="post" action="{% url 'leases:edit_clauses' master_lease.pk %}?history={{ history.pk }}" class="card party-summary-card mb-2">
+      {% csrf_token %}<input type="hidden" name="party_update" value="1">
+      <div class="row g-2">
+        <div class="col-xl-2 col-md-4 col-6 party-field" data-field="proposer">
+          <span class="party-field-label">Proposer</span><button type="button" class="party-pill" data-empty="Select proposer">{{ master_lease.proposer.get_full_name|default:"Select proposer" }}</button>
+          <div class="party-editor"><select name="proposer" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.proposer_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 party-field" data-field="proposer_relationship">
+          <span class="party-field-label">Proposer Relationship</span><button type="button" class="party-pill" data-empty="Select relationship">{{ master_lease.proposer_relationship.name|default:"Select relationship" }}</button>
+          <div class="party-editor"><select name="proposer_relationship" class="form-select form-select-sm relationship-select"><option value="">Blank</option>{% for relation in relationship_types %}<option value="{{ relation.pk }}" {% if master_lease.proposer_relationship_id == relation.pk %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 party-field" data-field="seconder">
+          <span class="party-field-label">Seconder</span><button type="button" class="party-pill" data-empty="Select seconder">{{ master_lease.seconder.get_full_name|default:"Select seconder" }}</button>
+          <div class="party-editor"><select name="seconder" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if master_lease.seconder_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 party-field" data-field="seconder_relationship">
+          <span class="party-field-label">Seconder Relationship</span><button type="button" class="party-pill" data-empty="Select relationship">{{ master_lease.seconder_relationship.name|default:"Select relationship" }}</button>
+          <div class="party-editor"><select name="seconder_relationship" class="form-select form-select-sm relationship-select"><option value="">Blank</option>{% for relation in relationship_types %}<option value="{{ relation.pk }}" {% if master_lease.seconder_relationship_id == relation.pk %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 party-field" data-field="witness1_tenant">
+          <span class="party-field-label">Witness 1</span><button type="button" class="party-pill" data-empty="Select witness 1">{{ history.witness1_tenant.get_full_name|default:"Select witness 1" }}</button>
+          <div class="party-editor"><select name="witness1_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness1_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 party-field" data-field="witness2_tenant">
+          <span class="party-field-label">Witness 2</span><button type="button" class="party-pill" data-empty="Select witness 2">{{ history.witness2_tenant.get_full_name|default:"Select witness 2" }}</button>
+          <div class="party-editor"><select name="witness2_tenant" class="form-select form-select-sm role-select"><option value="">Blank</option>{% for person in role_tenants %}<option value="{{ person.pk }}" {% if history.witness2_tenant_id == person.pk %}selected{% endif %}>{{ person.get_full_name }} — {{ person.phone|default:"" }}</option>{% endfor %}</select></div>
+        </div>
+      </div>
+      <div id="partySaveIndicator" class="party-save-indicator text-end text-muted"></div>
+    </form>
+
+    <div class="modal fade" id="quickTenantModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><form class="modal-content" id="quickTenantForm">
+        <div class="modal-header"><h5 class="modal-title">Quick Add Agreement Party</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="quickTenantError" class="alert alert-danger py-2 d-none"></div><div class="quick-tenant-grid">
+          <div><label class="form-label small">Prefix</label><select name="prefix" class="form-select"><option>Mr.</option><option>Mrs.</option><option>Ms.</option><option>Dr.</option></select></div>
+          <div><label class="form-label small">First Name *</label><input name="first_name" class="form-control" required></div>
+          <div><label class="form-label small">Relation</label><select name="relation" class="form-select"><option>S/O.</option><option>D/O.</option><option>W/O.</option></select></div>
+          <div><label class="form-label small">Father/Husband Name *</label><input name="last_name" class="form-control" required></div>
+          <div><label class="form-label small">CNIC *</label><input name="cnic" class="form-control" maxlength="15" required placeholder="00000-0000000-0"></div>
+          <div><label class="form-label small">Phone</label><input name="phone" class="form-control" maxlength="20"></div>
+        </div></div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Party</button></div>
+      </form></div>
+    </div>
+
+    <div class="row">
+        <!-- Preview Column -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Agreement Preview</h5>
+                </div>
+                <div class="card-body panel-scroll" id="agreementPreview">
+                    {% include 'leases/agreement_preview.html' %}
+                </div>
+
+            </div>
+        </div>
+
+        
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Edit Clauses</h5>
+                </div>
+                <div class="card-body panel-scroll" id="clauseEditorPanel">
+                    <form id="clauseForm" method="post" action="{% url 'leases:edit_clauses' master_lease.pk %}?history={{ history.pk }}">
+
+                        {% csrf_token %}
+                        <input type="hidden" name="history_id" value="{{ history.pk }}">
+                        <div class="mb-3">
+                            <label class="form-label">Lease History</label>
+                            <select class="form-select form-select-sm" onchange="window.location.href='{% url 'leases:edit_clauses' master_lease.pk %}?history=' + this.value;">
+                                {% for row in histories %}
+                                    <option value="{{ row.pk }}" {% if row.pk == history.pk %}selected{% endif %}>
+                                        #{{ row.renewal_number }} - {% if row.is_original %}Original Lease{% else %}Renewal{% endif %}
+                                        ({{ row.start_date|date:'M d, Y' }} to {{ row.end_date|date:'M d, Y' }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Agreement Date</label>
+                            <input type="date" class="form-control" 
+                                   name="agreement_date" 
+                                   value="{{ agreement_date|date:'Y-m-d' }}" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                                <label class="form-label mb-0">Placeholders</label>
+                                <input type="search" id="clausePlaceholderSearch" class="form-control form-control-sm" style="max-width: 210px;" placeholder="Search">
+                            </div>
+                            <div class="placeholder-toolbar border rounded p-2 bg-light">
+                                {% for placeholder in placeholders %}
+                                    <button type="button" class="btn btn-outline-secondary btn-sm placeholder-token" data-token="[{{ placeholder.key }}]" data-search="{{ placeholder.key }} {{ placeholder.label }} {{ placeholder.category }}" title="{{ placeholder.label }}{% if placeholder.category %} - {{ placeholder.category }}{% endif %}">
+                                        [{{ placeholder.key }}]
+                                    </button>
+                                {% empty %}
+                                    <span class="text-muted small">No active placeholders found.</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        {% for clause in clauses %}
+                            <div class="mb-3 clause-row">
+                            <div class="clause-no">
+                                {{ clause.clause_number }}.
+                            </div>
+
+                            <textarea class="form-control clause-editor clause-textarea"
+                                name="clause_{{ clause.id }}"
+                                id="clause_{{ clause.id }}">{{ clause.template_text }}</textarea>
+                            </div>
+
+                        {% endfor %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+    const textareas = document.querySelectorAll('.clause-editor');
+    const previewContainer = document.getElementById('agreementPreview');
+    let activeTextarea = null;
+
+    if (window.$?.fn?.select2) {
+        $('.role-select').select2({theme: 'bootstrap-5', width: '100%', tags: true, createTag: createPartyTag});
+
+        const relationshipCreateUrl = "{% url 'leases:create_relationship_type_ajax' %}";
+        $('.relationship-select').each(function () {
+            const $select = $(this);
+            $select.select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                tags: true,
+                createTag: function (params) {
+                    const term = $.trim(params.term || '');
+                    if (!term) return null;
+                    const duplicate = Array.from(this.$element[0].options).some(
+                        option => option.text.trim().toLowerCase() === term.toLowerCase()
+                    );
+                    if (duplicate) return null;
+                    return {id: '__new__:' + term, text: 'Add “' + term + '”', newTag: true, relationshipName: term};
+                }
+            });
+
+            $select.on('select2:select', async function (event) {
+                const selected = event.params.data;
+                if (!selected?.newTag && !String(selected?.id || '').startsWith('__new__:')) return;
+                const name = selected.relationshipName || String(selected.id).replace('__new__:', '');
+                const csrf = document.querySelector('#agreementPartyForm input[name=csrfmiddlewaretoken]')?.value;
+                const body = new FormData();
+                body.append('name', name);
+                body.append('csrfmiddlewaretoken', csrf || '');
+                $select.prop('disabled', true);
+                try {
+                    const response = await fetch(relationshipCreateUrl, {method: 'POST', headers: {'X-CSRFToken': csrf || ''}, body});
+                    const result = await response.json();
+                    if (!response.ok || !result.ok) throw new Error(result.message || 'Could not add relationship.');
+                    // Remove the temporary tag and add the saved relationship to both
+                    // proposer and seconder Select2 controls without reloading the page.
+                    $('.relationship-select').each(function () {
+                        const $relationship = $(this);
+                        $relationship.find('option').filter(function () {
+                            return String(this.value) === String(selected.id);
+                        }).remove();
+                        if (!$relationship.find('option[value="' + result.id + '"]').length) {
+                            $relationship.append(new Option(result.text, result.id, false, false));
+                        }
+                    });
+                    $select.val(String(result.id)).trigger('change');
+                    setSaveStatus('Relationship “' + result.text + '” is selected and available in both relationship lists.', false);
+                } catch (error) {
+                    $select.val('').trigger('change');
+                    setSaveStatus(error.message, true);
+                } finally {
+                    $select.prop('disabled', false);
+                }
+            });
+        });
+    }
+
+    const clauseFilterUrl = "{% url 'leases:agreement_clause_filter_options_ajax' %}";
+    const propertyFilter = document.getElementById('clausePropertyFilter');
+    const unitFilter = document.getElementById('clauseUnitFilter');
+    const tenantFilter = document.getElementById('clauseTenantFilter');
+    const statusFilter = document.getElementById('clauseStatusFilter');
+    const leaseFilter = document.getElementById('clauseLeaseSelect');
+    let filterRequestSerial = 0;
+
+    function currentFilterValue(select) {
+      return select ? String(select.value || '') : '';
+    }
+
+    function replaceSelectOptions(select, items, placeholder, selectedValue) {
+      if (!select) return;
+      const previous = String(selectedValue || '');
+      select.innerHTML = '';
+      select.appendChild(new Option(placeholder, '', false, false));
+      items.forEach(item => {
+        const option = new Option(item.text, String(item.id), false, String(item.id) === previous);
+        if (item.url) option.dataset.url = item.url;
+        select.appendChild(option);
+      });
+      if (window.$?.fn?.select2) $(select).trigger('change.select2');
+    }
+
+    async function refreshClauseFilters({propertyChanged=false, unitChanged=false, tenantChanged=false, statusChanged=false} = {}) {
+      const serial = ++filterRequestSerial;
+      if (propertyChanged) {
+        unitFilter.value = '';
+        if (window.$?.fn?.select2) $(unitFilter).trigger('change.select2');
+      }
+      const params = new URLSearchParams({
+        property: currentFilterValue(propertyFilter),
+        unit: currentFilterValue(unitFilter),
+        tenant: currentFilterValue(tenantFilter),
+        lease_status: currentFilterValue(statusFilter) || 'active',
+      });
+      leaseFilter.disabled = true;
+      if (propertyChanged) unitFilter.disabled = true;
+      try {
+        const response = await fetch(`${clauseFilterUrl}?${params.toString()}`, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.message || 'Could not update lease filters.');
+        if (serial !== filterRequestSerial) return;
+        if (propertyChanged) replaceSelectOptions(unitFilter, data.units || [], 'All Units', '');
+        replaceSelectOptions(leaseFilter, data.leases || [], 'Choose Lease', '');
+        if ((unitChanged || tenantChanged || statusChanged || propertyChanged) && (data.leases || []).length === 1) {
+          window.location.href = data.leases[0].url;
+        }
+      } catch (error) {
+        setSaveStatus(error.message, true);
+      } finally {
+        if (serial === filterRequestSerial) {
+          leaseFilter.disabled = false;
+          unitFilter.disabled = false;
+        }
+      }
+    }
+
+    function bindClauseFilterChange(select, handler) {
+      if (!select) return;
+      if (window.$?.fn?.select2) $(select).on('change.clauseFilters', handler);
+      else select.addEventListener('change', handler);
+    }
+
+    if (window.$?.fn?.select2) {
+      $('.clause-filter-select').select2({theme:'bootstrap-5', width:'100%'});
+    }
+    bindClauseFilterChange(propertyFilter, () => refreshClauseFilters({propertyChanged:true}));
+    bindClauseFilterChange(unitFilter, () => refreshClauseFilters({unitChanged:true}));
+    bindClauseFilterChange(tenantFilter, () => refreshClauseFilters({tenantChanged:true}));
+    bindClauseFilterChange(statusFilter, () => refreshClauseFilters({statusChanged:true}));
+    bindClauseFilterChange(leaseFilter, function () {
+      const selected = this.selectedOptions?.[0];
+      if (selected?.value && selected.dataset.url) window.location.href = selected.dataset.url;
+    });
+
+    function autoResize(el) {
+    el.style.height = "auto";
+
+    // subtract 2px to avoid 1-line overflow from rounding
+    el.style.height = (el.scrollHeight - 2) + "px";
+    }
+
+
+    function updatePreview(clauseId, content) {
+        const previewText = document.querySelector(`.clause[data-clause-id="${clauseId}"] .clause-text`);
+        const previewClause = document.querySelector(`.clause[data-clause-id="${clauseId}"]`);
+        if (!previewText || !previewClause) return;
+
+        // NOTE: this is still "raw template text" preview (no placeholder render yet)
+        previewText.textContent = content;
+
+        previewClause.classList.add("preview-highlight");
+        setTimeout(() => previewClause.classList.remove("preview-highlight"), 900);
+    }
+
+      const GEN_PDF_URL  = "{% url 'leases:generate_agreement_pdf' master_lease.id %}?history={{ history.pk }}";
+  const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
+
+  function setSaveStatus(message, isError) {
+    const status = document.getElementById('clauseSaveStatus');
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('text-danger', Boolean(isError));
+    status.classList.toggle('text-success', Boolean(message && !isError));
+    status.classList.toggle('text-muted', !message);
+  }
+
+  function saveClausesRequest() {
+    const form = document.getElementById('clauseForm');
+    const formData = new FormData(form);
+    setSaveStatus('Saving...', false);
+
+    return fetch(form.action, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+      },
+      body: formData
+    })
+    .then(r => {
+      if (!r.ok) throw new Error("Failed to save clauses");
+      return r.json();
+    })
+    .then(data => {
+      setSaveStatus(data.message || 'Clauses saved.', false);
+      return data;
+    })
+    .catch(err => {
+      setSaveStatus(err.message, true);
+      console.error(err);
+      throw err;
+    });
+  }
+
+  function saveClauses() {
+    saveClausesRequest()
+    .catch(err => {
+      alert("Error: " + err.message);
+    });
+  }
+
+  window.saveClauses = saveClauses;
+
+  function saveThenDownload(url) {
+    saveClausesRequest()
+    .then(() => {
+      const legal = document.getElementById("printOnLegalPage")?.checked ? "1" : "0";
+      const separator = url.includes("?") ? "&" : "?";
+      window.location.href = `${url}${separator}legal=${legal}`;
+    })
+    .catch(err => {
+      alert("Error: " + err.message);
+      console.error(err);
+    });
+  }
+
+  
+  const partyForm = document.getElementById('agreementPartyForm');
+  const partyIndicator = document.getElementById('partySaveIndicator');
+  const quickTenantUrl = "{% url 'leases:create_agreement_party_ajax' %}";
+  let activePartySelect = null;
+  let partySaveTimer = null;
+
+  function createPartyTag(params) {
+    const term = $.trim(params.term || '');
+    if (!term) return null;
+    const duplicate = Array.from(this.$element[0].options).some(o => o.text.split('—')[0].trim().toLowerCase() === term.toLowerCase());
+    if (duplicate) return null;
+    return {id:'__new_party__:' + term, text:'Add “' + term + '”', newParty:true, partyName:term};
+  }
+
+  function pillTextForSelect(select) {
+    const option = select.selectedOptions?.[0];
+    if (!option || !option.value) return select.closest('.party-field')?.querySelector('.party-pill')?.dataset.empty || 'Select';
+    return option.text.split('—')[0].trim();
+  }
+
+  function closePartyEditor(select) {
+    const field = select.closest('.party-field');
+    if (!field) return;
+    field.querySelector('.party-pill').textContent = pillTextForSelect(select);
+    field.classList.remove('is-editing');
+  }
+
+  async function saveAgreementParties(changedSelect) {
+    clearTimeout(partySaveTimer);
+    partyIndicator.textContent = 'Saving…';
+    partyIndicator.className = 'party-save-indicator text-end text-muted';
+    const data = new FormData(partyForm);
+    try {
+      const response = await fetch(partyForm.action, {method:'POST', headers:{'X-CSRFToken':data.get('csrfmiddlewaretoken'), 'X-Requested-With':'XMLHttpRequest'}, body:data});
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || 'Could not update agreement parties.');
+      partyIndicator.textContent = body.message || 'Saved';
+      partyIndicator.className = 'party-save-indicator text-end text-success';
+      if (changedSelect) closePartyEditor(changedSelect);
+      setTimeout(() => { if (partyIndicator.textContent !== 'Saving…') partyIndicator.textContent = ''; }, 1600);
+    } catch (error) {
+      partyIndicator.textContent = error.message;
+      partyIndicator.className = 'party-save-indicator text-end text-danger';
+    }
+  }
+
+  document.querySelectorAll('.party-pill').forEach(pill => pill.addEventListener('click', function () {
+    document.querySelectorAll('.party-field').forEach(f => f.classList.remove('is-editing'));
+    const field = this.closest('.party-field');
+    field.classList.add('is-editing');
+    const select = field.querySelector('select');
+    if (window.$?.fn?.select2) $(select).select2('open'); else select.focus();
+  }));
+
+  $('.role-select').on('select2:clear', function () { saveAgreementParties(this); });
+  $('.role-select').on('select2:select', function (event) {
+    const item = event.params.data;
+    if (item?.newParty || String(item?.id || '').startsWith('__new_party__:')) {
+      activePartySelect = this;
+      const rawName = item.partyName || String(item.id).replace('__new_party__:','');
+      const parts = rawName.trim().split(/\s+/);
+      document.querySelector('#quickTenantForm [name=first_name]').value = parts.shift() || '';
+      document.querySelector('#quickTenantForm [name=last_name]').value = parts.join(' ');
+      $(this).find('option[value="' + item.id + '"]').remove();
+      $(this).val('').trigger('change');
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('quickTenantModal')).show();
+      return;
+    }
+    saveAgreementParties(this);
+  });
+  $('.relationship-select').on('change', function () { if (!String(this.value).startsWith('__new__:')) saveAgreementParties(this); });
+
+  document.getElementById('quickTenantForm')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const errorBox = document.getElementById('quickTenantError');
+    errorBox.classList.add('d-none');
+    const data = new FormData(this);
+    data.append('csrfmiddlewaretoken', partyForm.querySelector('[name=csrfmiddlewaretoken]').value);
+    try {
+      const response = await fetch(quickTenantUrl, {method:'POST', headers:{'X-CSRFToken':data.get('csrfmiddlewaretoken')}, body:data});
+      const body = await response.json();
+      if (!response.ok || !body.ok) throw new Error(body.message || 'Could not add party.');
+      $('.role-select').each(function () {
+        if (!$(this).find('option[value="' + body.id + '"]').length) $(this).append(new Option(body.text, body.id, false, false));
+      });
+      if (activePartySelect) {
+        $(activePartySelect).val(String(body.id)).trigger('change');
+        await saveAgreementParties(activePartySelect);
+      }
+      bootstrap.Modal.getInstance(document.getElementById('quickTenantModal'))?.hide();
+      this.reset(); activePartySelect = null;
+    } catch (error) { errorBox.textContent = error.message; errorBox.classList.remove('d-none'); }
+  });
+
+  document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
+  document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
+
+
+
+    function generateFile(type) {
+    const leaseId = "{{ master_lease.pk }}";
+
+    const url = (type === 'pdf') ? GEN_PDF_URL : GEN_DOCX_URL;
+
+    const form = document.getElementById('clauseForm');
+    const formData = new FormData(form);
+
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+        },
+        body: formData
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("Failed to save clauses");
+        return res.json(); // your save view returns JSON (OK)
+    })
+    .then(() => {
+        // trigger file download (do NOT fetch as JSON)
+        window.location.href = url;
+    })
+    .catch(err => {
+        alert("Error: " + err.message);
+        console.error(err);
+    });
+    }
+
+    const PREVIEW_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
+
+    function generateWordAfterSave() {
+        const form = document.getElementById('clauseForm');
+        const formData = new FormData(form);
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+            },
+            body: formData
+        })
+        .then(r => {
+            if (!r.ok) throw new Error("Failed to save clauses");
+            return r.json();
+        })
+        .then(() => {
+            window.location.href = PREVIEW_DOCX_URL;
+        })
+        .catch(err => alert("Error: " + err.message));
+    }
+
+    function generatePDFUrl() {
+        return "{% url 'leases:generate_agreement_pdf' master_lease.pk %}";
+    }
+    function generateDOCXUrl() {
+        return "{% url 'leases:generate_agreement_docx' master_lease.pk %}";
+    }
+    function scrollPreviewToClause(clauseId) {
+        const clauseEl = document.querySelector(`.clause[data-clause-id="${clauseId}"]`);
+        if (!clauseEl) return;
+
+        clauseEl.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        clauseEl.classList.add("preview-highlight");
+        setTimeout(() => clauseEl.classList.remove("preview-highlight"), 900);
+    }
+
+    // init + bind events
+    textareas.forEach(textarea => {
+        autoResize(textarea);
+
+        const clauseId = textarea.id.split('_')[1];
+
+        textarea.addEventListener('focus', () => {
+        activeTextarea = textarea;
+        scrollPreviewToClause(clauseId);
+        });
+
+        textarea.addEventListener('input', function() {
+        autoResize(this);
+        updatePreview(clauseId, this.value);
+        });
+    });
+
+    const placeholderSearch = document.getElementById('clausePlaceholderSearch');
+    const placeholderButtons = Array.from(document.querySelectorAll('.placeholder-token'));
+
+    placeholderButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+        const textarea = activeTextarea || document.querySelector('.clause-editor');
+        if (!textarea) return;
+
+        const token = this.dataset.token;
+        const start = textarea.selectionStart || 0;
+        const end = textarea.selectionEnd || 0;
+        textarea.value = textarea.value.slice(0, start) + token + textarea.value.slice(end);
+        textarea.focus();
+        textarea.selectionStart = textarea.selectionEnd = start + token.length;
+        autoResize(textarea);
+        updatePreview(textarea.id.split('_')[1], textarea.value);
+        });
+    });
+
+    placeholderSearch?.addEventListener('input', function() {
+        const term = this.value.trim().toLowerCase();
+        placeholderButtons.forEach(btn => {
+        const searchableText = (btn.dataset.search || btn.dataset.token || '').toLowerCase();
+        btn.classList.toggle('d-none', term && !searchableText.includes(term));
+        });
+    });
+    });
+</script>
+
+{% endblock %}

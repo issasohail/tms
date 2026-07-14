@@ -68,6 +68,12 @@
       <a class="settings-tab-card" href="#settings-tool-inspections" data-settings-target="settings-tool-inspections">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-clipboard-check"></i></span><span>Inspections</span>
       </a>
+      <a class="settings-tab-card" href="#settings-building-types" data-settings-target="settings-building-types">
+        <span class="settings-tab-icon"><i class="fas fa-building"></i></span><span>Building Types</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-move-out-charges" data-settings-target="settings-move-out-charges">
+        <span class="settings-tab-icon settings-tab-icon-warning"><i class="fas fa-door-open"></i></span><span>Move-out Charges</span>
+      </a>
       <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Webhook Logs</span>
       </a>
@@ -82,9 +88,6 @@
       </a>
       <a class="settings-tab-card" href="#settings-lease-vehicle-types" data-settings-target="settings-lease-vehicle-types">
         <span class="settings-tab-icon"><i class="fas fa-car"></i></span><span>Lease Vehicle Types</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-interest-types" data-settings-target="settings-interest-types">
-        <span class="settings-tab-icon"><i class="fas fa-list-check"></i></span><span>Lead Interest Options</span>
       </a>
       <a class="settings-tab-card" href="#settings-relationship-types" data-settings-target="settings-relationship-types">
         <span class="settings-tab-icon"><i class="fas fa-people-arrows"></i></span><span>Tenant Relationship Types</span>
@@ -442,6 +445,59 @@
     </div>
   </div>
 
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-building-types">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h4 class="mb-0"><i class="fas fa-building me-2"></i>Building Types</h4>
+        <div class="small text-muted">Used by units and move-out defaults, and automatically supplies the matching tenant-lead interest choices.</div>
+      </div>
+      <button class="btn btn-sm btn-primary" id="btn-add-building-type" type="button">+ Add Building Type</button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light"><tr><th>S.N</th><th>Name</th><th>Code</th><th>Sort</th><th>Active</th><th>Actions</th></tr></thead>
+          <tbody>
+            {% for item in building_types %}
+            <tr>
+              <td>{{ forloop.counter }}</td><td>{{ item.name }}</td><td><code>{{ item.code }}</code></td><td>{{ item.sort_order }}</td>
+              <td>{% if item.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+              <td class="text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-building-type-edit" data-url="{% url 'core:building_type_get' item.pk %}">Edit</button>
+                <button type="button" class="btn btn-sm {% if item.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %} btn-building-type-toggle" data-url="{% url 'core:building_type_toggle' item.pk %}">{% if item.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+              </td>
+            </tr>
+            {% empty %}<tr><td colspan="6" class="text-center text-muted py-3">No building types configured.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-move-out-charges">
+    <div class="card-header py-2">
+      <h4 class="mb-0"><i class="fas fa-door-open me-2"></i>Move-out Charges by Building Type</h4>
+      <div class="small text-muted">These defaults apply to every unit assigned to the building type and can be overridden during settlement.</div>
+    </div>
+    <div class="card-body">
+      {% if move_out_charge_building_types %}
+      <div class="row g-2 align-items-end move-out-charge-row">
+        <div class="col-12 col-md-4">
+          <label class="form-label small fw-semibold">Building Type</label>
+          <select class="form-select form-select-sm" id="move-out-building-type">
+            {% for building_type in move_out_charge_building_types %}
+            <option value="{{ building_type.pk }}" data-url="{% url 'core:building_type_move_out_charge_update' building_type.pk %}" data-inspection="{{ building_type.inspection_incomplete_charge }}" data-key="{{ building_type.key_card_not_returned_charge }}">{{ building_type.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Inspection not completed</label><input type="number" min="0" step="0.01" class="form-control form-control-sm inspection-charge"></div>
+        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Keys not returned</label><input type="number" min="0" step="0.01" class="form-control form-control-sm key-charge"></div>
+        <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-primary save-move-out-charge">Save Defaults</button> <span class="small move-out-save-status"></span></div>
+      </div>
+      {% else %}<div class="text-center text-muted py-3">Add and activate a Building Type first.</div>{% endif %}
+    </div>
+  </div>
+
   <div class="card shadow-sm settings-tab-panel d-none" id="settings-doc-categories">
     <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h4 class="mb-0"><i class="fas fa-folder-open me-2"></i>Lease Document Categories</h4>
@@ -505,57 +561,6 @@
         <a class="btn btn-sm btn-outline-success" href="{% url 'leases:lease_vehicle_type_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
       </div>
       <iframe class="settings-inline-frame" src="{% url 'leases:lease_vehicle_type_settings' %}?embed=1" title="Lease Vehicle Types"></iframe>
-    </div>
-  </div>
-
-  <div class="card shadow-sm settings-tab-panel d-none" id="settings-interest-types">
-    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <h4 class="mb-0"><i class="fas fa-list-check me-2"></i>Lead Interest Options</h4>
-      <button class="btn btn-sm btn-primary" id="btn-add-interest-type" type="button">
-        + Add Option
-      </button>
-    </div>
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
-          <thead class="table-light">
-            <tr>
-              <th style="width:6%">SN</th>
-              <th style="width:34%">Name</th>
-              <th style="width:25%">Code</th>
-              <th style="width:15%">Active</th>
-              <th style="width:20%">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in tenant_interest_types %}
-            <tr>
-              <td>{{ item.name }}</td>
-              <td>{{ item.code }}</td>
-              <td>
-                {% if item.is_active %}
-                  <span class="badge bg-success">Active</span>
-                {% else %}
-                  <span class="badge bg-secondary">Inactive</span>
-                {% endif %}
-              </td>
-              <td>
-                <div class="d-flex flex-wrap gap-1">
-                  <button type="button" class="btn btn-sm btn-outline-secondary btn-interest-edit" data-url="{% url 'core:tenant_interest_type_get' item.id %}">Edit</button>
-                  {% if item.is_active %}
-                    <button type="button" class="btn btn-sm btn-outline-danger btn-interest-toggle" data-url="{% url 'core:tenant_interest_type_toggle' item.id %}">Remove</button>
-                  {% else %}
-                    <button type="button" class="btn btn-sm btn-outline-success btn-interest-toggle" data-url="{% url 'core:tenant_interest_type_toggle' item.id %}">Restore</button>
-                  {% endif %}
-                </div>
-              </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="4" class="text-center py-3 text-muted">No lead interest options added.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
     </div>
   </div>
 
@@ -886,41 +891,19 @@
   </div>
 </div>
 
-<div class="modal fade" id="interestTypeModal" tabindex="-1">
+<div class="modal fade" id="buildingTypeModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form id="interest-type-form">
-        {% csrf_token %}
-        <input type="hidden" id="interest-type-id" name="id">
-        <div class="modal-header">
-          <h5 class="modal-title" id="interestTypeModalTitle">Add Lead Interest Option</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
+      <form id="building-type-form">
+        {% csrf_token %}<input type="hidden" id="building-type-id" name="id">
+        <div class="modal-header"><h5 class="modal-title" id="buildingTypeModalTitle">Add Building Type</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Name</label>
-            <input class="form-control" id="interest-type-name" name="name" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Code (auto generated if left empty)</label>
-            <input class="form-control" id="interest-type-code" name="code">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Sort Order</label>
-            <input type="number" class="form-control" id="interest-type-sort" name="sort_order" value="50">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Active</label>
-            <select id="interest-type-active" name="is_active" class="form-select">
-              <option value="1">Active</option>
-              <option value="0">Inactive</option>
-            </select>
-          </div>
+          <div class="mb-3"><label class="form-label">Name</label><input class="form-control" id="building-type-name" name="name" required></div>
+          <div class="mb-3"><label class="form-label">Code (auto generated if empty)</label><input class="form-control" id="building-type-code" name="code"></div>
+          <div class="mb-3"><label class="form-label">Sort Order</label><input type="number" min="0" class="form-control" id="building-type-sort" name="sort_order" value="50"></div>
+          <div class="mb-3"><label class="form-label">Active</label><select id="building-type-active" name="is_active" class="form-select"><option value="1">Active</option><option value="0">Inactive</option></select></div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary btn-sm">Save</button>
-        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary btn-sm">Save</button></div>
       </form>
     </div>
   </div>
@@ -1114,8 +1097,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const modal = new bootstrap.Modal(modalEl);
   const docCategoryModalEl = document.getElementById("docCategoryModal");
   const docCategoryModal = new bootstrap.Modal(docCategoryModalEl);
-  const interestTypeModalEl = document.getElementById("interestTypeModal");
-  const interestTypeModal = new bootstrap.Modal(interestTypeModalEl);
+  const buildingTypeModalEl = document.getElementById("buildingTypeModal");
+  const buildingTypeModal = new bootstrap.Modal(buildingTypeModalEl);
   const relationshipTypeModalEl = document.getElementById("relationshipTypeModal");
   const relationshipTypeModal = new bootstrap.Modal(relationshipTypeModalEl);
 
@@ -1123,8 +1106,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnAdd = document.getElementById("btn-add-method");
   const docCategoryForm = document.getElementById("doc-category-form");
   const btnAddDocCategory = document.getElementById("btn-add-doc-category");
-  const interestTypeForm = document.getElementById("interest-type-form");
-  const btnAddInterestType = document.getElementById("btn-add-interest-type");
+  const buildingTypeForm = document.getElementById("building-type-form");
+  const btnAddBuildingType = document.getElementById("btn-add-building-type");
   const relationshipTypeForm = document.getElementById("relationship-type-form");
   const btnAddRelationshipType = document.getElementById("btn-add-relationship-type");
 
@@ -1341,61 +1324,45 @@ document.addEventListener("DOMContentLoaded", function () {
     .catch(err => alert("Could not save category: " + err.message));
   });
 
-  btnAddInterestType.addEventListener("click", function () {
-    document.getElementById("interestTypeModalTitle").innerText = "Add Lead Interest Option";
-    document.getElementById("interest-type-id").value = "";
-    document.getElementById("interest-type-name").value = "";
-    document.getElementById("interest-type-code").value = "";
-    document.getElementById("interest-type-sort").value = "50";
-    document.getElementById("interest-type-active").value = "1";
-    interestTypeModal.show();
+  btnAddBuildingType.addEventListener("click", function () {
+    document.getElementById("buildingTypeModalTitle").innerText = "Add Building Type";
+    document.getElementById("building-type-id").value = "";
+    document.getElementById("building-type-name").value = "";
+    document.getElementById("building-type-code").value = "";
+    document.getElementById("building-type-sort").value = "50";
+    document.getElementById("building-type-active").value = "1";
+    buildingTypeModal.show();
   });
 
-  document.querySelectorAll(".btn-interest-edit").forEach(btn => {
+  document.querySelectorAll(".btn-building-type-edit").forEach(btn => {
     btn.addEventListener("click", function () {
-      fetch(this.dataset.url)
-        .then(r => r.json())
-        .then(data => {
-          document.getElementById("interestTypeModalTitle").innerText = "Edit Lead Interest Option";
-          document.getElementById("interest-type-id").value = data.id;
-          document.getElementById("interest-type-name").value = data.name;
-          document.getElementById("interest-type-code").value = data.code || "";
-          document.getElementById("interest-type-sort").value = data.sort_order || 50;
-          document.getElementById("interest-type-active").value = data.is_active ? "1" : "0";
-          interestTypeModal.show();
-        });
+      fetch(this.dataset.url).then(r => r.json()).then(data => {
+        document.getElementById("buildingTypeModalTitle").innerText = "Edit Building Type";
+        document.getElementById("building-type-id").value = data.id;
+        document.getElementById("building-type-name").value = data.name;
+        document.getElementById("building-type-code").value = data.code || "";
+        document.getElementById("building-type-sort").value = data.sort_order || 50;
+        document.getElementById("building-type-active").value = data.is_active ? "1" : "0";
+        buildingTypeModal.show();
+      });
     });
   });
 
-  document.querySelectorAll(".btn-interest-toggle").forEach(btn => {
+  document.querySelectorAll(".btn-building-type-toggle").forEach(btn => {
     btn.addEventListener("click", function () {
-      fetch(this.dataset.url, {
-        method: "POST",
-        headers: {"X-CSRFToken": csrftoken},
-      })
-      .then(r => r.json())
-      .then(_ => window.location.reload())
-      .catch(err => alert("Error updating lead interest option: " + err.message));
+      fetch(this.dataset.url, {method: "POST", headers: {"X-CSRFToken": csrftoken}})
+        .then(r => r.json().then(data => ({ok: r.ok, data: data})))
+        .then(result => { if (!result.ok) throw new Error(result.data.error || "Update failed"); window.location.reload(); })
+        .catch(err => alert("Could not update building type: " + err.message));
     });
   });
 
-  interestTypeForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    const formData = new FormData(interestTypeForm);
-    fetch("{% url 'core:tenant_interest_type_save' %}", {
-      method: "POST",
-      headers: {"X-CSRFToken": csrftoken},
-      body: formData,
-    })
-    .then(r => {
-      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
-      return r.json();
-    })
-    .then(_ => {
-      interestTypeModal.hide();
-      window.location.reload();
-    })
-    .catch(err => alert("Could not save lead interest option: " + err.message));
+  buildingTypeForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    fetch("{% url 'core:building_type_save' %}", {method: "POST", headers: {"X-CSRFToken": csrftoken}, body: new FormData(buildingTypeForm)})
+      .then(r => r.json().then(data => ({ok: r.ok, data: data})))
+      .then(result => { if (!result.ok || !result.data.ok) throw new Error(result.data.error || "Save failed"); buildingTypeModal.hide(); window.location.reload(); })
+      .catch(err => alert("Could not save building type: " + err.message));
   });
 
   btnAddRelationshipType.addEventListener("click", function () {
@@ -1453,6 +1420,47 @@ document.addEventListener("DOMContentLoaded", function () {
       window.location.reload();
     })
     .catch(err => alert("Could not save relationship type: " + err.message));
+  });
+
+  const moveOutBuildingType = document.getElementById("move-out-building-type");
+  const moveOutRow = moveOutBuildingType ? moveOutBuildingType.closest(".move-out-charge-row") : null;
+  function loadMoveOutCharges() {
+    if (!moveOutBuildingType || !moveOutRow) return;
+    const option = moveOutBuildingType.options[moveOutBuildingType.selectedIndex];
+    moveOutRow.querySelector(".inspection-charge").value = option.dataset.inspection || "0.00";
+    moveOutRow.querySelector(".key-charge").value = option.dataset.key || "0.00";
+  }
+  if (moveOutBuildingType) {
+    moveOutBuildingType.addEventListener("change", loadMoveOutCharges);
+    loadMoveOutCharges();
+  }
+
+  document.querySelectorAll(".save-move-out-charge").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const row = this.closest(".move-out-charge-row");
+      const option = moveOutBuildingType.options[moveOutBuildingType.selectedIndex];
+      const status = row.querySelector(".move-out-save-status");
+      const data = new FormData();
+      data.set("inspection_incomplete_charge", row.querySelector(".inspection-charge").value);
+      data.set("key_card_not_returned_charge", row.querySelector(".key-charge").value);
+      this.disabled = true;
+      status.className = "small move-out-save-status text-muted";
+      status.textContent = "Saving...";
+      fetch(option.dataset.url, {method: "POST", headers: {"X-CSRFToken": csrftoken}, body: data})
+        .then(r => r.json().then(payload => ({ok: r.ok, payload: payload})))
+        .then(result => {
+          if (!result.ok || !result.payload.ok) throw new Error(result.payload.error || "Save failed");
+          status.className = "small move-out-save-status text-success";
+          status.textContent = "Saved";
+          option.dataset.inspection = row.querySelector(".inspection-charge").value;
+          option.dataset.key = row.querySelector(".key-charge").value;
+        })
+        .catch(error => {
+          status.className = "small move-out-save-status text-danger";
+          status.textContent = error.message;
+        })
+        .finally(() => { btn.disabled = false; });
+    });
   });
 });
 </script>

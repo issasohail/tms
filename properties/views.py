@@ -55,7 +55,7 @@ from utils.pdf_export import handle_export
 
 from .filters import UnitFilter
 from .forms import PropertyForm, UnitForm
-from .models import Property, PropertyMedia, Unit, UnitMedia
+from .models import BuildingType, Property, PropertyMedia, Unit, UnitMedia
 from .tables import PropertyTable, UnitTable
 
 logger = logging.getLogger(__name__)
@@ -204,14 +204,14 @@ class UnitListView(SingleTableMixin, FilterView):
     filterset_class = UnitFilter
     table_pagination = {"per_page": 25, "paginator_class": LazyPaginator}
 
-    def _get_interest_types(self):
-        if not hasattr(self, "_interest_types_cache"):
-            self._interest_types_cache = list(
-                TenantInterestType.objects.filter(is_active=True).order_by(
+    def _get_building_types(self):
+        if not hasattr(self, "_building_types_cache"):
+            self._building_types_cache = list(
+                BuildingType.objects.filter(is_active=True).order_by(
                     "sort_order", "name"
                 )
             )
-        return self._interest_types_cache
+        return self._building_types_cache
 
     def get_queryset(self):
         today = timezone.now().date()
@@ -243,10 +243,11 @@ class UnitListView(SingleTableMixin, FilterView):
         queryset = (
             super()
             .get_queryset()
-            .select_related("property", "interest_type")
+            .select_related("property", "building_type", "interest_type")
             .only(
                 "id",
                 "property_id",
+                "building_type_id",
                 "interest_type_id",
                 "unit_number",
                 "monthly_rent",
@@ -259,6 +260,11 @@ class UnitListView(SingleTableMixin, FilterView):
                 "status",
                 "property__id",
                 "property__property_name",
+                "building_type__id",
+                "building_type__name",
+                "building_type__code",
+                "building_type__is_active",
+                "building_type__sort_order",
                 "interest_type__id",
                 "interest_type__name",
                 "interest_type__code",
@@ -308,7 +314,7 @@ class UnitListView(SingleTableMixin, FilterView):
 
     def get_table_kwargs(self):
         kwargs = super().get_table_kwargs()
-        kwargs["lead_interest_types"] = self._get_interest_types()
+        kwargs["building_types"] = self._get_building_types()
         return kwargs
 
     def get_context_data(self, **kwargs):
@@ -320,8 +326,8 @@ class UnitListView(SingleTableMixin, FilterView):
         )
         context["current_status"] = self.request.GET.get("status", "")
         context["building_type_options"] = [
-            {"id": interest_type.pk, "name": interest_type.name}
-            for interest_type in self._get_interest_types()
+            {"id": building_type.pk, "name": building_type.name}
+            for building_type in self._get_building_types()
         ]
         return context
 
@@ -630,6 +636,11 @@ def _lead_money(value):
 
 
 def _default_unit_interest_type(unit):
+    linked_interest_type = getattr(
+        getattr(unit, "building_type", None), "lead_interest_type", None
+    )
+    if linked_interest_type:
+        return linked_interest_type
     property_name = (unit.property.property_name if unit.property else "").lower()
     code = (
         "single_room_attached_bath_kitchen"
@@ -667,7 +678,9 @@ def _vacant_notice_message(request, unit, tenant, photos_link=""):
 def unit_vacant_notice_leads(request, pk):
     today = timezone.now().date()
     unit = get_object_or_404(
-        Unit.objects.select_related("property", "interest_type"),
+        Unit.objects.select_related(
+            "property", "building_type__lead_interest_type", "interest_type"
+        ),
         pk=pk,
     )
     has_active_lease = (
@@ -910,7 +923,9 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "unit"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("property", "interest_type")
+        return super().get_queryset().select_related(
+            "property", "building_type", "interest_type"
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -920,7 +935,8 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
 
 def unit_detail(request, pk):
     unit = get_object_or_404(
-        Unit.objects.select_related("property", "interest_type"), pk=pk
+        Unit.objects.select_related("property", "building_type", "interest_type"),
+        pk=pk,
     )
     return render(
         request,
@@ -967,6 +983,7 @@ def unit_inline_update(request):
         value = data.get("value")
 
         allowed_fields = {
+            "building_type",
             "interest_type",
             "monthly_rent",
             "society_maintenance",
@@ -984,6 +1001,29 @@ def unit_inline_update(request):
             )
 
         unit = get_object_or_404(Unit, pk=unit_id)
+
+        if field == "building_type":
+            if value:
+                building_type = get_object_or_404(
+                    BuildingType, pk=value, is_active=True
+                )
+                unit.building_type = building_type
+                unit.interest_type = getattr(
+                    building_type, "lead_interest_type", None
+                )
+                new_value = building_type.name
+            else:
+                unit.building_type = None
+                unit.interest_type = None
+                new_value = ""
+            unit.save(update_fields=["building_type", "interest_type"])
+            return JsonResponse(
+                {
+                    "success": True,
+                    "new_value": new_value,
+                    "building_type_id": unit.building_type_id or "",
+                }
+            )
 
         if field == "interest_type":
             if value:

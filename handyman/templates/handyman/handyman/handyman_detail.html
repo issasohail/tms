@@ -48,7 +48,7 @@
         {% if handyman.photo %}<img class="hm-photo-lg" src="{{ handyman.photo.url }}" alt="">{% else %}<div class="hm-photo-lg"></div>{% endif %}
         <div>
           <div class="fw-bold fs-6">{{ handyman.full_name }} {% if handyman.is_active %}<span class="hm-chip green ms-1">Active</span>{% endif %}{% if handyman.is_preferred %}<span class="hm-chip gold ms-1">Preferred</span>{% endif %}</div>
-          <div class="small text-muted mt-1"><i class="bi bi-telephone me-1"></i>{{ handyman.display_phone|default:"-" }}</div>
+          <div class="small text-muted mt-1"><i class="bi bi-telephone me-1"></i>{{ handyman.display_phone|format_phone|default:"-" }}</div>
           <div class="small text-muted"><i class="bi bi-geo-alt me-1"></i>{{ handyman.address|default:"-" }}</div>
         </div>
       </div>
@@ -70,7 +70,7 @@
       </div>
     </div>
     <div class="hm-actions-mobile">
-      <a class="btn btn-success btn-sm" href="https://wa.me/{{ handyman.display_phone }}"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+      <a class="btn btn-success btn-sm" href="https://wa.me/{{ handyman.display_phone|normalize_phone|cut:'+' }}"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
       <a class="btn btn-primary btn-sm" href="{% url 'maintenance:request_list' %}"><i class="bi bi-tools me-1"></i>Assign to Job</a>
     </div>
     <div class="hm-tabs">

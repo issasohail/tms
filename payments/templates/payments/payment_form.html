@@ -95,10 +95,11 @@
               <hr class="my-2">
 
               <!-- Payment detail header line: type + balances -->
+              {{ payment_detail_form.payment_type }}
+              {{ payment_detail_form.security_type }}
               <div class="row g-1 align-items-end">
                 <div class="col-12 col-md-5">
-                  <div class="small fw-semibold mb-1">Payment Type</div>
-                  {{ payment_detail_form.payment_type }}
+                  {{ form.payment_method|as_crispy_field }}
                 </div>
 
                 <div class="col-6 col-md-3">
@@ -112,35 +113,28 @@
                 </div>
               </div>
 
-              <!-- Security Type + Lease Amount + Security Amount (one line on desktop) -->
+              <!-- Signed allocations derive payment/refund/split automatically. -->
               <div class="row g-1 align-items-end mt-1">
-                <div class="col-12 col-md-4">
-                  <div class="small fw-semibold mb-1">Security Type</div>
-                  {{ payment_detail_form.security_type }}
-                </div>
-
-                <div class="col-6 col-md-4">
-                  <div class="small fw-semibold mb-1">Lease Amount</div>
+                <div class="col-6">
+                  <div class="small fw-semibold mb-1">Lease Amount <span class="text-muted">(+ payment / - refund)</span></div>
                   {{ payment_detail_form.lease_amount }}
                 </div>
 
-                <div class="col-6 col-md-4">
-                  <div class="small fw-semibold mb-1">Security Amount</div>
+                <div class="col-6">
+                  <div class="small fw-semibold mb-1">Security Amount <span class="text-muted">(+ payment / - refund)</span></div>
                   {{ payment_detail_form.security_amount }}
                 </div>
               </div>
+              <div id="allocation-derived-label" class="small text-muted mt-1">Transaction type is derived automatically.</div>
 
               <hr class="my-2">
 
               <!-- Payment method + Ref + Notes (one line on desktop) -->
               <div class="row g-1 align-items-end">
-                <div class="col-12 col-md-4">
-                  {{ form.payment_method|as_crispy_field }}
-                </div>
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-6">
                   {{ form.reference_number|as_crispy_field }}
                 </div>
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-6">
                   {{ form.notes|as_crispy_field }}
                 </div>
               </div>
@@ -835,7 +829,7 @@ Thank you!`;
   /* =========================
      Payment detail sync (editable)
      ========================= */
-  function initPaymentDetailSync(){
+  function initPaymentDetailSyncLegacy(){
     function n(v){ return parseFloat(String(v||"").replace(/,/g,"")) || 0; }
     function f2(v){ return (Math.round(v*100)/100).toFixed(2); }
 
@@ -864,7 +858,9 @@ Thank you!`;
         return;
       }
       if (mode === 'LEASE_REFUND'){
-        $lease.prop('readonly', true).val(f2(total));
+        const refundTotal = total > 0 ? -total : total;
+        if (total > 0) $total.val(f2(refundTotal));
+        $lease.prop('readonly', true).val(f2(refundTotal));
         $sec.prop('readonly', true).val(f2(0));
         return;
       }
@@ -958,6 +954,68 @@ Thank you!`;
 
     // initial
     applyMode();
+  }
+
+  function initPaymentDetailSync(){
+    function n(v){ return parseFloat(String(v || '').replace(/,/g, '')) || 0; }
+    function f2(v){ return (Math.round(v * 100) / 100).toFixed(2); }
+
+    const $form = $('#paymentForm');
+    const $mode = $('#id_payment_type');
+    const $securityType = $('#id_security_type');
+    const $total = $('#id_amount');
+    const $lease = $('#id_lease_amount');
+    const $sec = $('#id_security_amount');
+    const $label = $('#allocation-derived-label');
+    if (!$form.length || !$mode.length || !$total.length || !$lease.length || !$sec.length) return;
+
+    $total.prop('readonly', true);
+    $lease.prop('readonly', false);
+    $sec.prop('readonly', false);
+
+    function syncFromAllocations(){
+      const leaseAmt = n($lease.val());
+      const secAmt = n($sec.val());
+      let mode = 'LEASE';
+      let label = 'Lease payment';
+      let invalid = '';
+
+      if (leaseAmt < 0 && secAmt !== 0){
+        invalid = 'Record a lease refund separately; Security Amount must be zero.';
+      } else if (secAmt < 0 && leaseAmt !== 0){
+        invalid = 'Record a security refund separately; Lease Amount must be zero.';
+      } else if (leaseAmt < 0){
+        mode = 'LEASE_REFUND';
+        label = 'Lease refund';
+      } else if (secAmt < 0){
+        mode = 'REFUND';
+        label = 'Security refund';
+      } else if (leaseAmt > 0 && secAmt > 0){
+        mode = 'SPLIT';
+        label = 'Split payment (lease and security)';
+      } else if (secAmt > 0){
+        mode = 'SECURITY';
+        label = 'Security payment';
+      }
+
+      $mode.val(mode);
+      $securityType.val(mode === 'REFUND' ? 'REFUND' : 'PAYMENT');
+      $total.val(f2(leaseAmt + secAmt));
+      $lease[0].setCustomValidity(invalid);
+      $sec[0].setCustomValidity(invalid);
+      $label
+        .toggleClass('text-danger', !!invalid)
+        .toggleClass('text-muted', !invalid)
+        .text(invalid || ('Detected automatically: ' + label + '.'));
+    }
+
+    $lease.on('input change', syncFromAllocations);
+    $sec.on('input change', syncFromAllocations);
+    $form.on('submit', function(){
+      syncFromAllocations();
+      if (!$lease[0].checkValidity()) $lease[0].reportValidity();
+    });
+    syncFromAllocations();
   }
 
 })(jQuery);

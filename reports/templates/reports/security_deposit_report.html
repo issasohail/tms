@@ -98,7 +98,7 @@
                 <td>{{ r.tenant_name }}</td>
                 <td>
                   {% if r.phone %}
-                    <a href="tel:{{ r.phone }}">{{ r.phone }}</a>
+                    <a href="tel:{{ r.phone|normalize_phone }}">{{ r.phone|format_phone }}</a>
                   {% else %}
                     &mdash;
                   {% endif %}

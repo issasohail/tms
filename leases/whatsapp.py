@@ -5,6 +5,7 @@ from urllib.parse import quote
 from django.urls import reverse
 
 from leases.models import AgreementPlaceholder, WhatsAppTemplate
+from core.utils.identity import format_phone
 
 
 def _lease_bank_account(lease):
@@ -111,7 +112,7 @@ def unit_whatsapp_context(unit, request=None):
         "AGREEMENT_CHARGES": "",
         "AVAILABILITY_DATE": "",
         "CONDITIONS_RULES": getattr(unit, "comments", "") or "",
-        "CONTACT_NUMBER": getattr(property_obj, "caretaker_phone", "") or getattr(property_obj, "owner_phone", "") or "",
+        "CONTACT_NUMBER": format_phone(getattr(property_obj, "caretaker_phone", "") or getattr(property_obj, "owner_phone", "")),
         "METER_NUMBERS": _meter_numbers(unit),
         "BANK_ACCOUNT": _lease_bank_account(type("LeaseLike", (), {"unit": unit})()),
         "UNIT_PHOTO_LINK": "",

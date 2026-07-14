@@ -5,19 +5,22 @@ from crispy_forms.layout import Div, Layout
 from django import forms
 
 from core.utils.text import add_auto_titlecase_class
-from tenants.models import TenantInterestType
-
-from .models import Property, Unit
+from .models import BuildingType, Property, Unit
 
 
-def default_interest_type_for_property(property_obj):
+def default_building_type_for_property(property_obj):
     property_name = (property_obj.property_name if property_obj else "").lower()
-    code = (
-        "single_room_attached_bath_kitchen"
+    preferred_codes = (
+        ("single_room_attached_bath_kitchen", "single_room")
         if "f56" in property_name and "basement" in property_name
-        else "two_room_flat"
+        else ("two_room_flat",)
     )
-    return TenantInterestType.objects.filter(code=code, is_active=True).first()
+    building_type = BuildingType.objects.filter(
+        code__in=preferred_codes, is_active=True
+    ).order_by("sort_order", "name").first()
+    return building_type or BuildingType.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    ).first()
 
 
 class PropertyForm(forms.ModelForm):
@@ -53,6 +56,7 @@ class UnitForm(forms.ModelForm):
     class Meta:
         model = Unit
         fields = "__all__"
+        exclude = ("interest_type",)
         widgets = {
             # your model uses "comments", not "notes"
             "comments": forms.Textarea(attrs={"rows": 3}),
@@ -82,7 +86,10 @@ class UnitForm(forms.ModelForm):
 
         # quick visual proof you're on the right file
         self.fields["unit_number"].label = "Unit #"
-        self.fields["interest_type"].label = "Building Type"
+        self.fields["building_type"].label = "Building Type"
+        self.fields["building_type"].queryset = BuildingType.objects.filter(
+            is_active=True
+        ).order_by("sort_order", "name")
         self.fields["status"].label = "Unit State"
         self.fields[
             "status"
@@ -95,15 +102,14 @@ class UnitForm(forms.ModelForm):
             not self.is_bound
             and self.instance
             and self.instance.pk
-            and not self.instance.interest_type_id
+            and not self.instance.building_type_id
             and self.instance.property_id
         ):
-            default_interest_type = default_interest_type_for_property(
+            default_building_type = default_building_type_for_property(
                 self.instance.property
             )
-            if default_interest_type:
-                self.fields["interest_type"].initial = default_interest_type.pk
-
+            if default_building_type:
+                self.fields["building_type"].initial = default_building_type.pk
         self.helper = FormHelper()
         self.helper.form_tag = False  # <form> tag lives in the template
 
@@ -117,7 +123,10 @@ class UnitForm(forms.ModelForm):
                 Div("unit_number", css_class="col-12 col-md-6"),
                 css_class="row g-3",
             ),
-            Div(Div("interest_type", css_class="col-12 col-md-6"), css_class="row g-3"),
+            Div(
+                Div("building_type", css_class="col-12 col-md-6"),
+                css_class="row g-3",
+            ),
             # Then 4 per row (lg) / 2 per row (sm)
             Div(
                 Div("electric_meter_num", css_class=col2_4),
@@ -131,6 +140,11 @@ class UnitForm(forms.ModelForm):
                 Div("monthly_rent", css_class=col2_4),
                 Div("security_requires", css_class=col2_4),
                 Div("ceiling_fan", css_class=col2_4),
+                css_class="row g-3",
+            ),
+            Div(
+                Div("inspection_incomplete_charge", css_class=col2_4),
+                Div("key_card_not_returned_charge", css_class=col2_4),
                 css_class="row g-3",
             ),
             Div(
@@ -173,8 +187,21 @@ class UnitForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        if not cleaned_data.get("interest_type") and cleaned_data.get("property"):
-            cleaned_data["interest_type"] = default_interest_type_for_property(
+        if not cleaned_data.get("building_type") and cleaned_data.get("property"):
+            cleaned_data["building_type"] = default_building_type_for_property(
                 cleaned_data["property"]
             )
         return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        building_type = self.cleaned_data.get("building_type")
+        instance.interest_type = (
+            getattr(building_type, "lead_interest_type", None)
+            if building_type
+            else None
+        )
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance

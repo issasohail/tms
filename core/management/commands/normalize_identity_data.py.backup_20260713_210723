@@ -1,0 +1,54 @@
+from django.apps import apps
+from django.core.management.base import BaseCommand
+
+from core.model_fields import NormalizedCNICField, NormalizedPhoneField
+from core.utils.identity import normalize_cnic, normalize_phone
+
+
+class Command(BaseCommand):
+    help = "Normalize stored CNIC and phone strings and report malformed legacy values."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--apply", action="store_true", help="Persist safe normalization changes.")
+
+    def handle(self, *args, **options):
+        apply_changes = options["apply"]
+        changed = malformed_cnic = unusual_phone = 0
+        for model in apps.get_models():
+            identity_fields = [
+                field for field in model._meta.concrete_fields
+                if isinstance(field, (NormalizedCNICField, NormalizedPhoneField))
+            ]
+            if not identity_fields:
+                continue
+            for obj in model._default_manager.all().iterator():
+                updates = []
+                for field in identity_fields:
+                    current = getattr(obj, field.attname)
+                    if isinstance(field, NormalizedCNICField):
+                        normalized = normalize_cnic(current)
+                        if normalized and len(normalized) != 13:
+                            malformed_cnic += 1
+                            self.stdout.write(self.style.WARNING(
+                                f"MALFORMED CNIC {model._meta.label} pk={obj.pk} field={field.name} value={current!r} normalized={normalized!r}"
+                            ))
+                            continue
+                    else:
+                        normalized = normalize_phone(current)
+                        digit_count = len(normalized.lstrip("+"))
+                        if normalized and (digit_count < 7 or digit_count > 15):
+                            unusual_phone += 1
+                            self.stdout.write(self.style.WARNING(
+                                f"UNUSUAL PHONE {model._meta.label} pk={obj.pk} field={field.name} value={current!r} normalized={normalized!r}"
+                            ))
+                    if current not in (None, "") and normalized != current:
+                        setattr(obj, field.attname, normalized)
+                        updates.append(field.name)
+                if updates:
+                    changed += len(updates)
+                    if apply_changes:
+                        obj.save(update_fields=updates)
+        mode = "applied" if apply_changes else "dry-run"
+        self.stdout.write(self.style.SUCCESS(
+            f"Identity normalization {mode}: {changed} field change(s), {malformed_cnic} malformed CNIC value(s), {unusual_phone} unusual phone value(s)."
+        ))

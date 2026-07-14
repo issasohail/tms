@@ -165,7 +165,8 @@
 {# Option B: Delete selected — PREVIEW first (POST -> preview page). DO NOT nest forms. #}
 <form method="post" action="{% url 'invoices:invoices_bulk_delete_preview' %}">
   {% csrf_token %}
-  <div class="table-responsive table-mobile-sm invoice-list-dense">
+  {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+  <div class="table-responsive table-mobile-sm invoice-list-dense desktop-sticky-list">
     {% render_table table 'django_tables2/bootstrap5.html'%}
   </div>
 

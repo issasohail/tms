@@ -1,0 +1,24 @@
+{% if tenant.role_badges %}
+<div class="tenant-role-list" aria-label="Tenant roles">
+    {% for role in tenant.role_badges %}
+        {% if role.count == 1 %}
+            <a href="{{ role.targets.0.url }}" class="tenant-role-name-badge role-{{ role.key }}" title="Open {{ role.label }} lease">
+                {{ role.label }}
+            </a>
+        {% else %}
+            <button type="button"
+                    class="tenant-role-name-badge role-{{ role.key }}"
+                    data-role-choice-button
+                    data-role-label="{{ role.label }}"
+                    data-tenant-name="{{ tenant.first_name }} {{ tenant.last_name }}">
+                {{ role.label }} {{ role.count }}
+            </button>
+            <span class="d-none" data-role-targets>
+                {% for target in role.targets %}
+                    <a href="{{ target.url }}" data-role-target-link data-role-period="{{ target.period }}">{{ target.label }}</a>
+                {% endfor %}
+            </span>
+        {% endif %}
+    {% endfor %}
+</div>
+{% endif %}

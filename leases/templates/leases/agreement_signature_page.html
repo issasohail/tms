@@ -98,8 +98,8 @@ body {
     <tr><th>Full Name</th><th>CNIC</th><th>Phone Number</th><th>Relationship to Tenant</th></tr>
     <tr>
       <td>{% if p.name %}{{ p.name }}{% else %}________________{% endif %}</td>
-      <td>{% if p.cnic %}{{ p.cnic }}{% else %}________________{% endif %}</td>
-      <td>{% if p.phone %}{{ p.phone }}{% else %}________________{% endif %}</td>
+      <td>{% if p.cnic %}{{ p.cnic|format_cnic }}{% else %}________________{% endif %}</td>
+      <td>{% if p.phone %}{{ p.phone|format_phone }}{% else %}________________{% endif %}</td>
       <td>{% if p.relationship %}{{ p.relationship }}{% else %}________________{% endif %}</td>
     </tr>
   </table>
@@ -119,8 +119,8 @@ body {
     <tr><th>Full Name</th><th>CNIC</th><th>Phone Number</th><th>Relationship to Tenant</th></tr>
     <tr>
       <td>{% if p.name %}{{ p.name }}{% else %}________________{% endif %}</td>
-      <td>{% if p.cnic %}{{ p.cnic }}{% else %}________________{% endif %}</td>
-      <td>{% if p.phone %}{{ p.phone }}{% else %}________________{% endif %}</td>
+      <td>{% if p.cnic %}{{ p.cnic|format_cnic }}{% else %}________________{% endif %}</td>
+      <td>{% if p.phone %}{{ p.phone|format_phone }}{% else %}________________{% endif %}</td>
       <td>{% if p.relationship %}{{ p.relationship }}{% else %}________________{% endif %}</td>
     </tr>
   </table>

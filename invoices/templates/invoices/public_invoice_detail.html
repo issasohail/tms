@@ -150,7 +150,7 @@
         <div>
           <p class="mb-0 text-muted inv-field-label">To</p>
           <p class="mb-0 fw-semibold">{{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }}</p>
-          <p class="mb-0 text-muted">{{ invoice.lease.tenant.phone }}</p>
+          <p class="mb-0 text-muted">{{ invoice.lease.tenant.phone|format_phone }}</p>
           <p class="mb-0 text-muted">{{ invoice.lease.unit.unit_number }}, {{ invoice.lease.unit.property.property_name }}</p>
         </div>
         <div class="row-inner">

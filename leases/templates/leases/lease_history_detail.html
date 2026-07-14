@@ -396,7 +396,7 @@
               </tr>
               <tr>
                 <th>Witness 1 CNIC</th>
-                <td class="lh-left">{{ history.witness1_tenant.cnic|default:"—" }}</td>
+                <td class="lh-left">{{ history.witness1_tenant.cnic|format_cnic|default:"—" }}</td>
               </tr>
               <tr>
                 <th>Witness 2 Name</th>
@@ -404,7 +404,7 @@
               </tr>
               <tr>
                 <th>Witness 2 CNIC</th>
-                <td class="lh-left">{{ history.witness2_tenant.cnic|default:"—" }}</td>
+                <td class="lh-left">{{ history.witness2_tenant.cnic|format_cnic|default:"—" }}</td>
               </tr>
               <tr>
                 <th>Police Verification</th>

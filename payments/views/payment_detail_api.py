@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
 from invoices.services import security_deposit_totals
+from core.utils.identity import format_phone
 from payments.models import PaymentDetail
 from payments.services.payment_detail import rebuild_payment_detail
 
@@ -140,6 +141,7 @@ def api_payment_detail_receipt_whatsapp(request, pk: int):
 
     return JsonResponse({
         "phone": getattr(tenant, "phone", "") or "",
+        "phone_display": format_phone(getattr(tenant, "phone", "")),
         "message": "\n".join(line for line in lines if line),
         "payment_detail_id": detail.id,
     })

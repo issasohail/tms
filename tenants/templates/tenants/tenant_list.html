@@ -135,6 +135,21 @@
         </div>
     </div>
 
+    <div class="modal fade" id="tenantRoleChoiceModal" tabindex="-1" aria-labelledby="tenantRoleChoiceModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title h6" id="tenantRoleChoiceModalLabel">Choose lease</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <div class="small text-muted mb-2" id="tenantRoleChoiceHelp"></div>
+                    <div class="tenant-role-choice-list" id="tenantRoleChoiceList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <div class="tenant-summary-grid mb-3">
         <a class="tenant-stat-card stat-total" href="{% url 'tenants:tenant_list' %}?show_inactive=on">
@@ -318,6 +333,7 @@
     </button>
 </div>
 
+<div id="tenant-list-results">
     <div class="table-responsive tenant-table-wrap d-none d-lg-block">
         <table class="table table-bordered table-hover table-sm tenant-table">
             <thead>
@@ -352,14 +368,17 @@
                         </div>
                         <div class="tenant-info-text">
                             <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="tenant-name-link d-block" title="{{ tenant.first_name }} {{ tenant.last_name }}"><strong>{{ tenant.first_name }} {{ tenant.last_name }}</strong></a>
-                            <span class="text-muted xsmall d-block">{{ tenant.get_gender_display }} &nbsp;•&nbsp; {{ tenant.number_of_family_member }} Family Members</span>
-                            <div class="xsmall"><i class="fas fa-phone-alt me-1"></i>{{ tenant.phone }}</div>
+                            <div class="text-muted xsmall tenant-meta-line">
+                                {{ tenant.get_gender_display }} &nbsp;•&nbsp; {{ tenant.number_of_family_member }} Members
+                                {% include "tenants/_tenant_role_badges.html" with tenant=tenant %}
+                            </div>
+                            <div class="xsmall"><i class="fas fa-phone-alt me-1"></i>{{ tenant.phone|format_phone }}</div>
                             {% if tenant.email %}<div class="xsmall text-muted text-truncate">{{ tenant.email }}</div>{% endif %}
                             <div class="mt-1 interest-badges">{% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{% if item.name == 'Single Room with Attached Bath and Kitchen' %}Single Room{% else %}{{ item.name }}{% endif %}</span>{% endfor %}</div>
                         </div>
                     </div>
                 </td>
-                <td class="col-emergency xsmall"><div>{{ tenant.emergency_contact_name|default:"-" }}</div><div>{{ tenant.emergency_contact_phone|default:"None" }}</div></td>
+                <td class="col-emergency xsmall"><div>{{ tenant.emergency_contact_name|default:"-" }}</div><div>{{ tenant.emergency_contact_phone|format_phone|default:"None" }}</div></td>
                 <td class="p-1 col-cnic">
                     <div class="cnic-pair">
 
@@ -414,7 +433,6 @@
                     <div class="tenant-action-grid">
                         <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="action-pill action-view" title="View" data-bs-toggle="tooltip"><i class="fas fa-eye"></i> <span>View</span></a>
                         <a href="{% url 'tenants:tenant_update' tenant.id %}" class="action-pill action-edit" title="Edit" data-bs-toggle="tooltip"><i class="fas fa-edit"></i> <span>Edit</span></a>
-                        <div class="dropdown"><button class="action-pill action-view dropdown-toggle" type="button" data-bs-toggle="dropdown"><i class="fas fa-user-tag"></i> <span>Roles{% if tenant.role_total %} {{ tenant.role_total }}{% endif %}</span></button><ul class="dropdown-menu dropdown-menu-end small">{% if tenant.role_counts.family_member %}<li><a class="dropdown-item" href="{% url 'tenants:tenant_role_history' tenant.id %}?role=family_member">Family Member <span class="badge bg-secondary float-end">{{ tenant.role_counts.family_member }}</span></a></li>{% endif %}{% if tenant.role_counts.proposer %}<li><a class="dropdown-item" href="{% url 'tenants:tenant_role_history' tenant.id %}?role=proposer">Proposer <span class="badge bg-secondary float-end">{{ tenant.role_counts.proposer }}</span></a></li>{% endif %}{% if tenant.role_counts.seconder %}<li><a class="dropdown-item" href="{% url 'tenants:tenant_role_history' tenant.id %}?role=seconder">Seconder <span class="badge bg-secondary float-end">{{ tenant.role_counts.seconder }}</span></a></li>{% endif %}{% if tenant.role_counts.witness %}<li><a class="dropdown-item" href="{% url 'tenants:tenant_role_history' tenant.id %}?role=witness">Witness <span class="badge bg-secondary float-end">{{ tenant.role_counts.witness }}</span></a></li>{% endif %}{% if not tenant.role_total %}<li><span class="dropdown-item-text text-muted">No additional roles</span></li>{% endif %}</ul></div>
                         <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="action-pill action-delete" title="Delete" data-bs-toggle="tooltip"><i class="fas fa-trash"></i> <span>Delete</span></a>
                         {% if lease %}
                         <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="action-pill action-ledger" title="Ledger" data-bs-toggle="tooltip"><i class="fas fa-file-invoice-dollar"></i> <span>Ledger</span></a>
@@ -474,13 +492,14 @@
                 </div>
 
                 <div class="tcv2-subline">
-                    {{ tenant.get_gender_display }} <span>•</span> {{ tenant.number_of_family_member }} Family Member{% if tenant.number_of_family_member != 1 %}s{% endif %}
+                    {{ tenant.get_gender_display }} <span>•</span> {{ tenant.number_of_family_member }} Members
+                    {% include "tenants/_tenant_role_badges.html" with tenant=tenant %}
                 </div>
 
                 <div class="tcv2-phone-row">
                     <div class="tcv2-phone">
                         <i class="fas fa-phone-alt"></i>
-                        {{ tenant.phone|default:"-" }}
+                        {{ tenant.phone|format_phone|default:"-" }}
                     </div>
                     {% if not lease %}
                     <span class="tcv2-no-lease-inline">No active lease</span>
@@ -625,6 +644,7 @@
         </div>
     {% endfor %}
 </div>
+    <div id="tenant-list-pagination">
     {% if is_paginated %}
     <div class="d-flex justify-content-between align-items-center">
         <nav aria-label="Page navigation">
@@ -669,6 +689,8 @@
         </div>
     </div>
     {% endif %}
+    </div>
+</div>
 </div>
 {% endblock %}
 
@@ -3511,6 +3533,132 @@ img.is-missing{
         padding:.07rem .2rem !important;
     }
 }
+
+.tenant-role-list{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:.16rem;
+    margin-top:.2rem;
+}
+
+.tenant-role-name-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:18px;
+    padding:.14rem .38rem;
+    border:1px solid #c4b5fd;
+    border-radius:999px;
+    background:#f5f3ff;
+    color:#6d28d9;
+    font-family:inherit;
+    font-size:.58rem;
+    font-weight:800;
+    line-height:1;
+    text-decoration:none;
+    white-space:nowrap;
+    cursor:pointer;
+}
+
+.tenant-role-name-badge:hover{
+    filter:brightness(.96);
+    color:inherit;
+    text-decoration:none;
+}
+
+.tenant-role-name-badge.role-family_member{
+    border-color:#a7f3d0;
+    background:#ecfdf5;
+    color:#047857;
+}
+
+.tenant-role-name-badge.role-proposer{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+    color:#1d4ed8;
+}
+
+.tenant-role-name-badge.role-seconder{
+    border-color:#fde68a;
+    background:#fffbeb;
+    color:#a16207;
+}
+
+.tenant-role-name-badge.role-witness{
+    border-color:#e9d5ff;
+    background:#faf5ff;
+    color:#7e22ce;
+}
+
+.tenant-role-choice-list{
+    display:grid;
+    gap:.45rem;
+}
+
+.tenant-role-choice-item{
+    display:block;
+    padding:.55rem .65rem;
+    border:1px solid #dbe3ef;
+    border-radius:8px;
+    background:#f8fafc;
+    color:#1e293b;
+    font-size:.76rem;
+    font-weight:800;
+    line-height:1.25;
+    text-decoration:none;
+}
+
+.tenant-role-choice-item small{
+    display:block;
+    margin-top:.16rem;
+    color:#64748b;
+    font-size:.65rem;
+    font-weight:600;
+}
+
+.tenant-role-choice-item:hover{
+    border-color:#93c5fd;
+    background:#eff6ff;
+    color:#1d4ed8;
+}
+
+@media (max-width:991.98px){
+    .tcv2-subline .tenant-role-list{
+        display:inline-flex;
+        flex-direction:row;
+        flex-wrap:wrap;
+        align-items:center;
+        gap:.2rem;
+        margin:.18rem 0 0 .25rem;
+        vertical-align:middle;
+    }
+
+    .tcv2-subline .tenant-role-name-badge{
+        margin:0;
+    }
+}
+
+.tenant-filter-card.is-loading,
+#tenant-list-results.is-loading{
+    opacity:.62;
+    pointer-events:none;
+}
+
+@media (min-width:992px){
+    .tenant-table-wrap{
+        max-height:calc(100vh - 140px);
+        overflow:auto;
+    }
+
+    .tenant-table thead th{
+        position:sticky;
+        top:0;
+        z-index:5;
+        background:#fbfcfe;
+        box-shadow:0 1px 0 #e6eaf0;
+    }
+}
 </style>
 
 {% endblock %}
@@ -3658,6 +3806,107 @@ document.addEventListener('DOMContentLoaded', function () {
   const quickRegistrationForm = document.getElementById("quickRegistrationForm");
   const quickRegistrationSubmit = document.getElementById("quickRegistrationSubmit");
   const quickRegistrationModal = document.getElementById("quickRegistrationModal");
+  let tenantListRequest = null;
+
+  function setTenantListLoading(isLoading) {
+    $form.toggleClass("is-loading", isLoading).attr("aria-busy", isLoading ? "true" : "false");
+    $("#tenant-list-results").toggleClass("is-loading", isLoading).attr("aria-busy", isLoading ? "true" : "false");
+  }
+
+  function syncFilterControls(doc) {
+    const nextForm = doc.querySelector("#filter-form");
+    if (!nextForm) return;
+
+    ["tenant-filter", "property-select", "unit-select", "tenant-status-select"].forEach(function (id) {
+      const current = document.getElementById(id);
+      const next = nextForm.querySelector("#" + id);
+      if (current && next) {
+        current.innerHTML = next.innerHTML;
+        current.value = next.value;
+      }
+    });
+
+    const nextPhone = nextForm.querySelector('input[name="phone"]');
+    const currentPhone = $form[0].querySelector('input[name="phone"]');
+    if (nextPhone && currentPhone) currentPhone.value = nextPhone.value;
+
+    $form[0].querySelectorAll('input[name="interested_in"]').forEach(function (input) {
+      const next = nextForm.querySelector('input[name="interested_in"][value="' + CSS.escape(input.value) + '"]');
+      input.checked = Boolean(next && next.checked);
+    });
+
+    const currentChips = $form[0].querySelector(".mobile-active-filter-chips");
+    const nextChips = nextForm.querySelector(".mobile-active-filter-chips");
+    if (currentChips && nextChips) currentChips.replaceWith(nextChips);
+
+    $tenantSel.trigger("change.select2");
+  }
+
+  function refreshTenantList(url, historyMode) {
+    const nextUrl = url instanceof URL ? url : new URL(url, window.location.href);
+    if (tenantListRequest) tenantListRequest.abort();
+    tenantListRequest = new AbortController();
+    const request = tenantListRequest;
+    setTenantListLoading(true);
+
+    return fetch(nextUrl.toString(), {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      signal: request.signal
+    })
+    .then(function (response) {
+      if (!response.ok) throw new Error("The tenant list could not be updated.");
+      return response.text();
+    })
+    .then(function (html) {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const nextResults = doc.querySelector("#tenant-list-results");
+      const currentResults = document.querySelector("#tenant-list-results");
+      const nextSummary = doc.querySelector(".tenant-summary-grid");
+      const currentSummary = document.querySelector(".tenant-summary-grid");
+      if (!nextResults || !currentResults) throw new Error("The tenant list response was incomplete.");
+
+      currentResults.innerHTML = nextResults.innerHTML;
+      if (nextSummary && currentSummary) currentSummary.replaceWith(nextSummary);
+      syncFilterControls(doc);
+
+      const nextExports = doc.querySelectorAll('a[href*="export="]');
+      document.querySelectorAll('a[href*="export="]').forEach(function (link, index) {
+        if (nextExports[index]) link.href = nextExports[index].href;
+      });
+
+      if (historyMode === "push") window.history.pushState({}, "", nextUrl.toString());
+      if (historyMode === "replace") window.history.replaceState({}, "", nextUrl.toString());
+
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        if (window.bootstrap && !bootstrap.Tooltip.getInstance(el)) new bootstrap.Tooltip(el);
+      });
+    })
+    .catch(function (error) {
+      if (error.name !== "AbortError") {
+        console.error("Tenant list AJAX update failed:", error);
+        window.location.assign(nextUrl.toString());
+      }
+    })
+    .finally(function () {
+      if (tenantListRequest === request) {
+        tenantListRequest = null;
+        setTenantListLoading(false);
+      }
+    });
+  }
+
+  function submitFiltersAjax() {
+    const nextUrl = new URL($form.attr("action") || window.location.pathname, window.location.origin);
+    const params = new URLSearchParams(new FormData($form[0]));
+    params.delete("page");
+    nextUrl.search = params.toString();
+    return refreshTenantList(nextUrl, "push");
+  }
+
+  $form.on("submit", function (event) {
+    event.preventDefault();
+    submitFiltersAjax();
+  });
 
   function clearQuickRegistrationErrors() {
     if (!quickRegistrationForm) return;
@@ -3686,41 +3935,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.set("tenant", tenantId);
     nextUrl.searchParams.delete("page");
-
-    return fetch(nextUrl.toString(), {
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    })
-    .then(function (response) {
-      if (!response.ok) throw new Error("Registration saved, but the tenant list could not refresh.");
-      return response.text();
-    })
-    .then(function (html) {
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const newTableWrap = doc.querySelector(".table-responsive");
-      const currentTableWrap = document.querySelector(".table-responsive");
-      const newCardWrap = doc.querySelector(".tenant-cards");
-      const currentCardWrap = document.querySelector(".tenant-cards");
-      const newTenantFilter = doc.querySelector("#tenant-filter");
-      const currentTenantFilter = document.querySelector("#tenant-filter");
-
-      if (newTableWrap && currentTableWrap) {
-        currentTableWrap.innerHTML = newTableWrap.innerHTML;
-      }
-      if (newCardWrap && currentCardWrap) {
-        currentCardWrap.innerHTML = newCardWrap.innerHTML;
-      }
-      if (newTenantFilter && currentTenantFilter) {
-        currentTenantFilter.innerHTML = newTenantFilter.innerHTML;
-        if (window.jQuery && $(currentTenantFilter).data("select2")) {
-          $(currentTenantFilter).trigger("change.select2");
-        }
-      }
-      window.history.replaceState({}, "", nextUrl.toString());
-
-      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-        if (window.bootstrap) new bootstrap.Tooltip(el);
-      });
-    });
+    return refreshTenantList(nextUrl, "replace");
   }
 
   if (quickRegistrationForm) {
@@ -3843,13 +4058,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Property change: clear tenant (server will recalc units), submit
   $propSel.on('change', function () {
-    $tenantSel.val('').trigger('change');
+    $tenantSel.val('').trigger('change.select2');
     $form.submit();
   });
 
   // Unit change: clear tenant, submit
   $unitSel.on('change', function () {
-    $tenantSel.val('').trigger('change');
+    $tenantSel.val('').trigger('change.select2');
     $form.submit();
   });
 
@@ -3873,8 +4088,52 @@ document.addEventListener('DOMContentLoaded', function () {
   $('input[name="phone"]').on('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      $form[0].submit();
+      $form.trigger('submit');
     }
+  });
+
+  document.addEventListener('click', function (event) {
+    const link = event.target.closest('.tenant-summary-grid a, #tenant-list-results .sortable-th, #tenant-list-results .page-link, #filter-form .reset-btn');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (!link.getAttribute('href') || link.getAttribute('href') === '#') return;
+
+    const nextUrl = new URL(link.href, window.location.href);
+    if (nextUrl.pathname !== window.location.pathname) return;
+    event.preventDefault();
+    refreshTenantList(nextUrl, 'push');
+  });
+
+  window.addEventListener('popstate', function () {
+    refreshTenantList(new URL(window.location.href), null);
+  });
+
+  document.addEventListener('click', function (event) {
+    const button = event.target.closest('[data-role-choice-button]');
+    if (!button) return;
+
+    const source = button.nextElementSibling;
+    const modalElement = document.getElementById('tenantRoleChoiceModal');
+    const modalTitle = document.getElementById('tenantRoleChoiceModalLabel');
+    const modalHelp = document.getElementById('tenantRoleChoiceHelp');
+    const modalList = document.getElementById('tenantRoleChoiceList');
+    if (!source || !modalElement || !modalList || !window.bootstrap) return;
+
+    modalTitle.textContent = 'Choose ' + button.dataset.roleLabel + ' lease';
+    modalHelp.textContent = button.dataset.tenantName + ' has more than one ' + button.dataset.roleLabel.toLowerCase() + ' assignment.';
+    modalList.replaceChildren();
+
+    source.querySelectorAll('[data-role-target-link]').forEach(function (target) {
+      const choice = document.createElement('a');
+      const period = document.createElement('small');
+      choice.className = 'tenant-role-choice-item';
+      choice.href = target.href;
+      choice.textContent = target.textContent.trim();
+      period.textContent = target.dataset.rolePeriod;
+      choice.appendChild(period);
+      modalList.appendChild(choice);
+    });
+
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
   });
 
 

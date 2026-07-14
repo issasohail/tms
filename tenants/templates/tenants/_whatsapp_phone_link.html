@@ -3,10 +3,10 @@
   {% with wa_phone=phone|whatsapp_phone %}
     {% if wa_phone %}
       <a href="https://wa.me/{{ wa_phone }}?text=Hello{% if name %} {{ name|urlencode }}{% endif %}" target="_blank" rel="noopener" class="phone-wa-link">
-        {{ label|default:phone }} <i class="fab fa-whatsapp text-success"></i>
+        {{ label|default:phone|format_phone }} <i class="fab fa-whatsapp text-success"></i>
       </a>
     {% else %}
-      {{ label|default:phone }}
+      {{ label|default:phone|format_phone }}
     {% endif %}
   {% endwith %}
 {% else %}

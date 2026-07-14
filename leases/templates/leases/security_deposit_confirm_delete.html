@@ -32,7 +32,7 @@
             I understand this will remove this security deposit ledger entry and recalculate the lease deposit balance.
           </label>
         </div>
-        <a href="{% url 'leases:lease_security_list' lease.id %}" class="btn btn-secondary btn-sm">
+        <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="btn btn-secondary btn-sm">
           Cancel
         </a>
         <button type="submit" class="btn btn-danger btn-sm">

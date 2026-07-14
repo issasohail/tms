@@ -507,6 +507,7 @@ def security_deposit_totals(lease):
             "required": ZERO,
             "paid_in": ZERO,
             "refunded": ZERO,
+            "pending_refund": ZERO,
             "refund_deductions": ZERO,
             "damages": ZERO,
             "adjust": ZERO,
@@ -514,17 +515,20 @@ def security_deposit_totals(lease):
             "currently_held": ZERO,
         }
 
-    if hasattr(lease, "security_summary"):
-        return lease.security_summary
-
     required = lease.security_deposit or ZERO
 
     qs = SecurityDepositTransaction.objects.filter(lease=lease)
 
     paid_in = qs.filter(type="PAYMENT").aggregate(total=Sum("amount"))["total"] or ZERO
-    refunded = qs.filter(type="REFUND").aggregate(total=Sum("amount"))["total"] or ZERO
+    paid_refunds = qs.filter(type="REFUND", refund_status="PAID")
+    refunded = paid_refunds.aggregate(total=Sum("amount"))["total"] or ZERO
     refund_deductions = (
-        qs.filter(type="REFUND").aggregate(total=Sum("deduction_amount"))["total"]
+        paid_refunds.aggregate(total=Sum("deduction_amount"))["total"]
+        or ZERO
+    )
+    pending_refund = (
+        qs.filter(type="REFUND", refund_status__in=["PENDING", "APPROVED"])
+        .aggregate(total=Sum("amount"))["total"]
         or ZERO
     )
     damages = qs.filter(type="DAMAGE").aggregate(total=Sum("amount"))["total"] or ZERO
@@ -537,6 +541,7 @@ def security_deposit_totals(lease):
         "required": required,
         "paid_in": paid_in,
         "refunded": refunded,
+        "pending_refund": pending_refund,
         "refund_deductions": refund_deductions,
         "damages": damages,
         "adjust": adjust,

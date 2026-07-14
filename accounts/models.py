@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 from django.db import models
 from django.utils import timezone
 from core.utils.text import normalize_title_fields
+from core.model_fields import NormalizedPhoneField
 
 
 class AccountManager(BaseUserManager):
@@ -23,7 +24,7 @@ class Account(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=150, unique=True)
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
-    whatsapp_number = models.CharField(max_length=20, blank=True)
+    whatsapp_number = NormalizedPhoneField(max_length=32, blank=True)
     email = models.EmailField(unique=True)
     other = models.TextField(blank=True)
 

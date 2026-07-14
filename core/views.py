@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Case, DecimalField, F, OuterRef, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, Greatest
 
@@ -22,7 +22,7 @@ from payments.models import Payment
 from invoices.models import Invoice
 from invoices.models import SecurityDepositTransaction
 from expenses.models import Expense
-from properties.models import Property, Unit
+from properties.models import BuildingType, Property, Unit
 from leases.models import Lease, LeaseRenewal
 from smart_meter.models import LiveReading
 from django.contrib.auth.decorators import login_required
@@ -979,13 +979,16 @@ class SettingsView(FormView):
         ctx["payment_methods"] = PaymentMethod.objects.order_by(
             "sort_order", "name"
         )
+        ctx["move_out_charge_building_types"] = BuildingType.objects.filter(
+            is_active=True
+        ).order_by(
+            "sort_order", "name"
+        )
+        ctx["building_types"] = BuildingType.objects.order_by("sort_order", "name")
         doc_cat_sort = self.request.GET.get("doc_cat_sort")
         ctx["doc_cat_sort"] = doc_cat_sort
         doc_cat_ordering = ("name", "sort_order") if doc_cat_sort == "name" else ("sort_order", "name")
         ctx["lease_document_categories"] = LeaseDocumentCategory.objects.order_by(*doc_cat_ordering)
-        ctx["tenant_interest_types"] = TenantInterestType.objects.order_by(
-            "sort_order", "name"
-        )
         ctx["lease_relationship_types"] = LeaseRelationshipType.objects.order_by("name")
         try:
             from whatsapp.services.ai_config import get_whatsapp_ai_config
@@ -1007,6 +1010,146 @@ class SettingsView(FormView):
             "ocr_provider": getattr(ai_config, "ocr_provider", ""),
         }
         return ctx
+
+
+@login_required
+@require_POST
+def unit_move_out_charge_update(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    unit = get_object_or_404(Unit, pk=pk)
+    try:
+        inspection_amount = Decimal(
+            (request.POST.get("inspection_incomplete_charge") or "0").replace(",", "")
+        )
+        key_amount = Decimal(
+            (request.POST.get("key_card_not_returned_charge") or "0").replace(",", "")
+        )
+    except (ArithmeticError, ValueError):
+        return JsonResponse({"ok": False, "error": "Enter valid charge amounts."}, status=400)
+    if inspection_amount < 0 or key_amount < 0:
+        return JsonResponse({"ok": False, "error": "Charge amounts cannot be negative."}, status=400)
+    unit.inspection_incomplete_charge = inspection_amount
+    unit.key_card_not_returned_charge = key_amount
+    unit.save(update_fields=["inspection_incomplete_charge", "key_card_not_returned_charge"])
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def building_type_move_out_charge_update(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    building_type = get_object_or_404(BuildingType, pk=pk)
+    try:
+        inspection_amount = Decimal(
+            (request.POST.get("inspection_incomplete_charge") or "0").replace(",", "")
+        )
+        key_amount = Decimal(
+            (request.POST.get("key_card_not_returned_charge") or "0").replace(",", "")
+        )
+    except (ArithmeticError, ValueError):
+        return JsonResponse({"ok": False, "error": "Enter valid charge amounts."}, status=400)
+    if inspection_amount < 0 or key_amount < 0:
+        return JsonResponse({"ok": False, "error": "Charge amounts cannot be negative."}, status=400)
+    building_type.inspection_incomplete_charge = inspection_amount
+    building_type.key_card_not_returned_charge = key_amount
+    building_type.save(
+        update_fields=[
+            "inspection_incomplete_charge",
+            "key_card_not_returned_charge",
+        ]
+    )
+    lead_interest = TenantInterestType.objects.filter(building_type=building_type).first()
+    if lead_interest:
+        lead_interest.inspection_incomplete_charge = inspection_amount
+        lead_interest.key_card_not_returned_charge = key_amount
+        lead_interest.save(
+            update_fields=[
+                "inspection_incomplete_charge",
+                "key_card_not_returned_charge",
+            ]
+        )
+    return JsonResponse({"ok": True, "name": building_type.name})
+
+
+@login_required
+def building_type_get(request, pk):
+    building_type = get_object_or_404(BuildingType, pk=pk)
+    return JsonResponse(
+        {
+            "id": building_type.id,
+            "name": building_type.name,
+            "code": building_type.code,
+            "sort_order": building_type.sort_order,
+            "is_active": building_type.is_active,
+        }
+    )
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def building_type_toggle(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    building_type = get_object_or_404(BuildingType, pk=pk)
+    building_type.is_active = not building_type.is_active
+    building_type.save(update_fields=["is_active"])
+    TenantInterestType.objects.filter(building_type=building_type).update(
+        is_active=building_type.is_active
+    )
+    return JsonResponse({"ok": True, "is_active": building_type.is_active})
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def building_type_save(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    building_type_id = request.POST.get("id")
+    name = (request.POST.get("name") or "").strip()
+    code = (request.POST.get("code") or "").strip() or slugify(name)
+    try:
+        sort_order = int(request.POST.get("sort_order", "50"))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "Enter a valid sort order."}, status=400)
+    if not name or not code:
+        return JsonResponse({"ok": False, "error": "Name and code are required."}, status=400)
+    duplicate = BuildingType.objects.filter(models.Q(name__iexact=name) | models.Q(code=code))
+    if building_type_id:
+        duplicate = duplicate.exclude(pk=building_type_id)
+    if duplicate.exists():
+        return JsonResponse({"ok": False, "error": "Building type name or code already exists."}, status=400)
+    building_type = (
+        get_object_or_404(BuildingType, pk=building_type_id)
+        if building_type_id
+        else BuildingType()
+    )
+    lead_interest = (
+        TenantInterestType.objects.filter(building_type=building_type).first()
+        if building_type.pk
+        else None
+    )
+    if lead_interest is None:
+        lead_interest = TenantInterestType.objects.filter(code=code).first()
+    building_type.name = name
+    building_type.code = code
+    building_type.sort_order = max(sort_order, 0)
+    building_type.is_active = request.POST.get("is_active", "1") == "1"
+    building_type.save()
+    lead_interest = lead_interest or TenantInterestType()
+    lead_interest.building_type = building_type
+    lead_interest.name = building_type.name
+    lead_interest.code = building_type.code
+    lead_interest.sort_order = building_type.sort_order
+    lead_interest.is_active = building_type.is_active
+    lead_interest.inspection_incomplete_charge = building_type.inspection_incomplete_charge
+    lead_interest.key_card_not_returned_charge = building_type.key_card_not_returned_charge
+    lead_interest.save()
+    return JsonResponse({"ok": True, "id": building_type.pk})
 
 
 @login_required

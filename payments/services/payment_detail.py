@@ -24,7 +24,8 @@ def rebuild_payment_detail(*, payment, lease_amount, security_amount, security_t
     if sec_amt < 0:
         raise ValueError("Security payment detail amount cannot be negative.")
 
-    total = lease_amt + sec_amt
+    signed_security = -sec_amt if sec_type == "REFUND" else sec_amt
+    total = lease_amt + signed_security
     if payment.amount != total:
         payment.amount = total
         payment.save(update_fields=["amount"])
@@ -43,17 +44,51 @@ def rebuild_payment_detail(*, payment, lease_amount, security_amount, security_t
     SecurityDepositTransaction.objects.filter(payment=payment).exclude(payment_detail=detail).delete()
 
     if sec_amt > 0:
-        SecurityDepositTransaction.objects.update_or_create(
-            payment_detail=detail,
-            defaults={
-                "lease": payment.lease,
-                "payment": payment,
-                "date": payment.payment_date,
-                "type": sec_type,
-                "amount": sec_amt,
-                "notes": payment.notes or "",
-            },
-        )
+        pending_refund = None
+        if sec_type == "REFUND":
+            pending_refund = (
+                SecurityDepositTransaction.objects.select_for_update()
+                .filter(
+                    lease=payment.lease,
+                    type="REFUND",
+                    refund_status="PENDING",
+                    payment__isnull=True,
+                    payment_detail__isnull=True,
+                    amount=sec_amt,
+                )
+                .order_by("id")
+                .first()
+            )
+        if pending_refund:
+            pending_refund.payment_detail = detail
+            pending_refund.payment = payment
+            pending_refund.date = payment.payment_date
+            pending_refund.refund_status = "PAID"
+            pending_refund.notes = "\n".join(
+                filter(None, [pending_refund.notes, payment.notes or "Refund payment posted."])
+            )
+            pending_refund.save(
+                update_fields=[
+                    "payment_detail",
+                    "payment",
+                    "date",
+                    "refund_status",
+                    "notes",
+                ]
+            )
+        else:
+            SecurityDepositTransaction.objects.update_or_create(
+                payment_detail=detail,
+                defaults={
+                    "lease": payment.lease,
+                    "payment": payment,
+                    "date": payment.payment_date,
+                    "type": sec_type,
+                    "amount": sec_amt,
+                    "refund_status": "PAID",
+                    "notes": payment.notes or "",
+                },
+            )
     else:
         SecurityDepositTransaction.objects.filter(payment_detail=detail).delete()
 

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from core.utils.identity import format_phone
 from django.contrib.auth.admin import UserAdmin
 from .models import Account
 
@@ -7,10 +8,14 @@ from .models import Account
 class AccountAdmin(UserAdmin):
     model = Account
     list_display = ("username", "email", "first_name", "last_name",
-                    "whatsapp_number", "is_staff", "is_active")
+                    "whatsapp_number_display", "is_staff", "is_active")
     search_fields = ("username", "email", "first_name",
                      "last_name", "whatsapp_number")
     ordering = ("username",)
+
+    @admin.display(description="WhatsApp", ordering="whatsapp_number")
+    def whatsapp_number_display(self, obj):
+        return format_phone(obj.whatsapp_number)
     fieldsets = (
         (None, {"fields": ("username", "email", "password")}),
         ("Personal info", {"fields": ("first_name",

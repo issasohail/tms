@@ -77,7 +77,7 @@
         <i class="fas fa-envelope"></i> Email
       </a>
       {% if security_currently_held > 0 %}
-      <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_currently_held }}"
+      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_currently_held }}&amp;security_amount={{ security_currently_held }}&amp;security_type=REFUND"
          class="btn btn-danger btn-slim">
         <i class="fas fa-undo"></i> Refund Security
       </a>
@@ -182,7 +182,7 @@
 {% if lease %}
 <div class="deposit-section">
   <div class="deposit-summary-panel">
-    <h4 class="section-title">Security Deposit Summary</h4>
+    <h4 class="section-title">Security Deposit</h4>
     <table class="table table-sm table-bordered deposit-summary-table mb-0">
       <tr>
         <th>Required</th>
@@ -195,10 +195,6 @@
       <tr>
         <th>Refunded</th>
         <td>{{ security_refunded|intcomma }}</td>
-      </tr>
-      <tr>
-        <th>Used for Damages</th>
-        <td>{{ security_damages|intcomma }}</td>
       </tr>
       <tr class="table-warning">
         <th>Balance to Collect</th>
@@ -216,9 +212,9 @@
       <h5 class="section-title mb-0">Security Deposit Ledger</h5>
       <div class="d-flex gap-1">
         {% if security_currently_held > 0 %}
-        <a href="{% url 'leases:lease_security_add' lease.id %}?type=REFUND&amount={{ security_currently_held }}"
+        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_currently_held }}&amp;security_amount={{ security_currently_held }}&amp;security_type=REFUND"
            class="btn btn-danger btn-slim">
-          Refund
+          Security Refund
         </a>
         {% endif %}
         <a href="{% url 'leases:lease_security_add' lease.id %}" class="btn btn-secondary btn-slim">
@@ -236,6 +232,7 @@
             <th>Description</th>
             <th class="text-end">Amount</th>
             <th class="text-end">Deposit Balance</th>
+            <th class="text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -246,6 +243,34 @@
             <td>{{ t.description }}</td>
             <td class="text-end">{{ t.amount|intcomma }}</td>
             <td class="text-end">{{ t.balance|intcomma }}</td>
+            <td class="text-center">
+              <div class="d-flex justify-content-center gap-1">
+                {% if t.obj.payment and t.obj.payment.detail %}
+                <a class="btn btn-success btn-slim"
+                   href="{% url 'payments:api_payment_detail_receipt_whatsapp' t.obj.payment.detail.id %}"
+                   target="_blank">Receipt</a>
+                {% elif t.obj.payment %}
+                <a class="btn btn-success btn-slim"
+                   href="{% url 'payments:api_payment_receipt_whatsapp' t.obj.payment.id %}"
+                   target="_blank">Receipt</a>
+                {% else %}
+                <a class="btn btn-success btn-slim"
+                   href="{% url 'invoices:api_security_receipt_whatsapp' t.obj.id %}"
+                   target="_blank">Receipt</a>
+                {% endif %}
+
+                {% if t.obj.payment %}
+                <a class="btn btn-secondary btn-slim"
+                   href="{% url 'payments:payment_update' t.obj.payment.id %}">Edit</a>
+                {% else %}
+                <a class="btn btn-secondary btn-slim"
+                   href="{% url 'leases:lease_security_edit' lease.id t.obj.id %}">Edit</a>
+                {% endif %}
+
+                <a class="btn btn-danger btn-slim"
+                   href="{% url 'leases:lease_security_delete' lease.id t.obj.id %}">Delete</a>
+              </div>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -589,7 +614,7 @@
 
   .deposit-ledger-table td:nth-child(3) {
     min-width: 260px;
-    white-space: normal;
+    white-space: nowrap;
   }
 
   .cursor-pointer {
@@ -612,6 +637,11 @@
   .compact-table th:nth-child(3),
   .compact-table td:nth-child(3) {
     min-width: 72px;
+    white-space: nowrap;
+  }
+
+  .compact-table th:nth-child(4),
+  .compact-table td:nth-child(4) {
     white-space: nowrap;
   }
 

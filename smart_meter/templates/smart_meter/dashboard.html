@@ -185,7 +185,8 @@
 <!-- Table -->
 <div class="card">
   <div class="card-body p-0">
-    <div class="table-responsive">
+    {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+    <div class="table-responsive desktop-sticky-list">
       <table id="energyTable" class="table table-striped table-hover table-sm align-middle text-center mb-0 {% if report_type == 'monthly' %}is-monthly{% endif %}">
         <thead class="table-light sticky-top">
           <tr>

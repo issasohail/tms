@@ -68,8 +68,8 @@
                     {% endif %}
                     <div><strong>Name:</strong> {{ property.owner_name|default:"-" }}</div>
                     <div><strong>Father Name:</strong> {{ property.owner_father_name|default:"-" }}</div>
-                    <div><strong>CNIC:</strong> {{ property.owner_cnic|default:"-" }}</div>
-                    <div><strong>Phone:</strong> {{ property.owner_phone|default:"-" }}</div>
+                    <div><strong>CNIC:</strong> {{ property.owner_cnic|format_cnic|default:"-" }}</div>
+                    <div><strong>Phone:</strong> {{ property.owner_phone|format_phone|default:"-" }}</div>
                     <div><strong>Address:</strong> {{ property.owner_address|default:"-" }}</div>
                 </div>
             </div>

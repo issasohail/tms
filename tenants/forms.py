@@ -16,52 +16,7 @@ from django.db.models import F, Value
 from django.db.models.functions import Replace
 from .models import Tenant
 from core.utils.text import add_auto_titlecase_class
-
-CNIC_DIGITS = re.compile(r'\D+')
-
-# tenants/forms.py
-
-INTL_MIN_DIGITS = 7
-INTL_MAX_DIGITS = 15
-LOCAL_PATTERNS = (
-    r'03\d{9}',      # e.g. 03XXXXXXXXX
-    r'\+92\d{10}',   # e.g. +92XXXXXXXXXX
-
-)
-
-
-def _normalize_phone(value: str) -> str:
-    value = (value or '').strip()
-    if not value:
-        return ''
-    if value.startswith('+'):
-        return '+' + re.sub(r'\D', '', value[1:])
-    return re.sub(r'[\s\-\(\)]', '', value)
-
-
-def _is_valid_international(number: str) -> bool:
-    """
-    Accept anything that STARTS WITH '+' as international,
-    as long as it contains a reasonable count of digits.
-    Spaces, dashes, brackets allowed.
-    """
-    if not number.startswith('+'):
-        return False
-    digits = re.sub(r'\D', '', number)
-    return INTL_MIN_DIGITS <= len(digits) <= INTL_MAX_DIGITS
-
-
-def _is_valid_local(number: str) -> bool:
-    return any(re.fullmatch(p, number) for p in LOCAL_PATTERNS)
-
-
-def normalize_cnic(value: str) -> str:
-    return CNIC_DIGITS.sub('', value or '')
-
-
-# 03XXXXXXXXX or +92XXXXXXXXXX
-PK_PHONE_RE = re.compile(r'^(0\d{10}|\+92\d{10})$')
-
+from core.utils.identity import normalize_cnic, normalize_phone, validate_cnic
 
 class TenantForm(forms.ModelForm):
     photo = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
@@ -94,29 +49,17 @@ class TenantForm(forms.ModelForm):
             'working_address': forms.Textarea(attrs={'rows': 2}),
             'police_verification_remarks': forms.Textarea(attrs={'rows': 2}),
             'interested_in': forms.CheckboxSelectMultiple(),
-            "phone":  forms.TextInput(attrs={"type": "tel", "maxlength": "20", "placeholder": "+447911123456 or 03123456789"}),
-            "phone2": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
-            "phone3": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
-            "employer_phone": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
-            "reference_phone_1": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
-            "reference_phone_2": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
-            "emergency_contact_phone": forms.TextInput(attrs={"type": "tel", "maxlength": "20"}),
+            "phone":  forms.TextInput(attrs={"type": "tel", "maxlength": "32", "placeholder": "+447911123456 or 03123456789"}),
+            "phone2": forms.TextInput(attrs={"type": "tel", "maxlength": "32"}),
+            "phone3": forms.TextInput(attrs={"type": "tel", "maxlength": "32"}),
+            "employer_phone": forms.TextInput(attrs={"type": "tel", "maxlength": "32"}),
+            "reference_phone_1": forms.TextInput(attrs={"type": "tel", "maxlength": "32"}),
+            "reference_phone_2": forms.TextInput(attrs={"type": "tel", "maxlength": "32"}),
+            "emergency_contact_phone": forms.TextInput(attrs={"type": "tel", "maxlength": "32"}),
         }
 
-    # Optional: server-side validation that still preserves leading zero
     def _clean_pk_phone(self, value, field_label):
-        value = _normalize_phone(value)
-        if not value:
-            return value  # allow blank for optional fields
-
-        # Accept any international number that starts with '+'
-        # and also accept your local formats (03XXXXXXXXX, +92XXXXXXXXXX)
-        if _is_valid_international(value) or _is_valid_local(value):
-            return value
-
-        raise forms.ValidationError(
-            f"{field_label}: enter 03XXXXXXXXX, +92XXXXXXXXXX, or a valid international number."
-        )
+        return normalize_phone(value)
 
     def clean_phone(self):
         return self._clean_pk_phone(self.cleaned_data.get("phone"), "Phone")
@@ -142,22 +85,16 @@ class TenantForm(forms.ModelForm):
     def clean_cnic(self):
         cnic = (self.cleaned_data.get('cnic') or '').strip()
         digits = normalize_cnic(cnic)
-
-        if digits and len(digits) != 13:
-            raise ValidationError(
-                "CNIC must contain exactly 13 digits (format xxxxx-xxxxxxx-x).")
+        validate_cnic(digits)
 
         if digits:
             # DB-side normalization: remove hyphens/spaces so formats compare equal
-            qs = (Tenant.objects
-                  .annotate(cnic_digits_db=Replace(Replace(F('cnic'), Value('-'), Value('')), Value(' '), Value('')))
-                  .exclude(pk=self.instance.pk)
-                  .filter(cnic_digits_db=digits))
+            qs = Tenant.objects.exclude(pk=self.instance.pk).filter(cnic_digits=digits)
             if qs.exists():
                 raise ValidationError(
                     "A tenant with this CNIC already exists.")
 
-        return cnic
+        return digits
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -261,6 +198,15 @@ class TenantPublicRegistrationForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+        for field_name in (
+            "phone", "phone2", "phone3", "employer_phone", "reference_phone_1",
+            "reference_phone_2", "emergency_contact_phone",
+        ):
+            self.fields[field_name].widget.input_type = "tel"
+            self.fields[field_name].widget.attrs.update({"inputmode": "tel", "autocomplete": "tel"})
+        self.fields["cnic"].widget.attrs.update(
+            {"inputmode": "numeric", "autocomplete": "off", "placeholder": "XXXXX-XXXXXXX-X"}
+        )
         self.fields["number_of_family_member"].label = "# of Family"
         self.fields["phone"].label = "Phone 1"
         self.fields["phone2"].label = "Phone 2"
@@ -268,6 +214,21 @@ class TenantPublicRegistrationForm(forms.Form):
         self.fields["employer_phone"].label = "Employer Phone #"
         self.fields["employer_address"].label = "Employer Address"
         add_auto_titlecase_class(self.fields)
+
+    def clean(self):
+        cleaned = super().clean()
+        for field_name in (
+            "phone", "phone2", "phone3", "employer_phone", "reference_phone_1",
+            "reference_phone_2", "emergency_contact_phone",
+        ):
+            cleaned[field_name] = normalize_phone(cleaned.get(field_name))
+        cnic = normalize_cnic(cleaned.get("cnic"))
+        try:
+            validate_cnic(cnic)
+        except ValidationError as exc:
+            self.add_error("cnic", exc)
+        cleaned["cnic"] = cnic
+        return cleaned
 
 
 class TenantPreRegistrationLinkForm(forms.Form):
@@ -284,6 +245,9 @@ class TenantPreRegistrationLinkForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         add_auto_titlecase_class(self.fields)
+
+    def clean_phone(self):
+        return normalize_phone(self.cleaned_data.get("phone"))
 
 
 class TenantRegistrationSubmissionReviewForm(forms.ModelForm):

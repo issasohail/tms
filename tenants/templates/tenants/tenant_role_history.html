@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container-fluid py-2">
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><h4 class="mb-0">Role History — {{ tenant.get_full_name }}</h4><small class="text-muted">CNIC: {{ tenant.cnic }}</small></div><a href="{% url 'tenants:tenant_detail' tenant.pk %}" class="btn btn-sm btn-outline-secondary">Tenant Detail</a></div>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><h4 class="mb-0">Role History — {{ tenant.get_full_name }}</h4><small class="text-muted">CNIC: {{ tenant.cnic|format_cnic }}</small></div><a href="{% url 'tenants:tenant_detail' tenant.pk %}" class="btn btn-sm btn-outline-secondary">Tenant Detail</a></div>
 <div class="btn-group btn-group-sm mb-2"><a class="btn btn-outline-primary {% if not role_filter %}active{% endif %}" href="?">All</a>{% for value,label in role_choices %}{% endfor %}<a class="btn btn-outline-primary {% if role_filter == 'family_member' %}active{% endif %}" href="?role=family_member">Family</a><a class="btn btn-outline-primary {% if role_filter == 'proposer' %}active{% endif %}" href="?role=proposer">Proposer</a><a class="btn btn-outline-primary {% if role_filter == 'seconder' %}active{% endif %}" href="?role=seconder">Seconder</a><a class="btn btn-outline-primary {% if role_filter == 'witness' %}active{% endif %}" href="?role=witness">Witness</a></div>
 <div class="card"><div class="card-body p-0">{% include 'tenants/partials/_tenant_role_history_table.html' with rows=role_history_rows %}</div></div>
 </div>{% endblock %}

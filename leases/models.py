@@ -23,6 +23,8 @@ from django.utils.text import slugify
 from PIL import Image
 
 from core.utils.text import normalize_title_fields, smart_title
+from core.model_fields import NormalizedCNICField, NormalizedPhoneField
+from core.utils.identity import format_cnic
 from properties.models import Unit
 from tenants.models import Tenant
 
@@ -75,6 +77,12 @@ class Lease(models.Model):
         default=True,
         help_text="Include this lease in monthly recurring/rent billing checks. "
         "Uncheck for leases that intentionally have no recurring charge (e.g. staff/comp units).",
+    )
+    proration_interval_days = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Leave blank to use the system move-out proration interval.",
     )
     internet_charges = models.DecimalField(
         max_digits=10,
@@ -290,6 +298,7 @@ class Lease(models.Model):
                 clause_number=dc.clause_number,
                 template_text=dc.body,
             )
+
         default_clauses = [
             # Clause 1
             "That the rate of rent of the said Premises is hereby agreed at Rs. [MONTHLY_RENT]/- ( [MONTHLY_RENT_IN_WORDS]) Rupees Only per month.",
@@ -344,6 +353,19 @@ class Lease(models.Model):
             # Clause 26
             "That the Tenant shall not engage in any illegal or immoral activities on the premises.",
         ]
+
+    @property
+    def effective_proration_interval_days(self):
+        if self.proration_interval_days:
+            return self.proration_interval_days
+        from core.models import GlobalSettings
+
+        return GlobalSettings.get_solo().end_lease_proration_interval_days or 1
+
+    @property
+    def effective_proration_interval_label(self):
+        days = self.effective_proration_interval_days
+        return {1: "Daily", 7: "Weekly"}.get(days, f"{days} days")
 
     def clean(self):
         super().clean()
@@ -493,7 +515,12 @@ class Lease(models.Model):
     def financial_summary(self):
         zero = Decimal("0.00")
         invoices_total = sum(
-            (invoice.amount or zero for invoice in self.invoices_qs), zero
+            (
+                invoice.amount or zero
+                for invoice in self.invoices_qs
+                if invoice.status != "cancelled"
+            ),
+            zero,
         )
 
         payments_total = zero
@@ -539,9 +566,14 @@ class Lease(models.Model):
         zero = Decimal("0.00")
         grouped = defaultdict(lambda: zero)
         refund_deductions = zero
+        pending_refund = zero
 
         for tx in self.security_transactions_qs:
             tx_type = tx.type or ""
+            if tx_type == "REFUND" and tx.refund_status != "PAID":
+                if tx.refund_status != "CANCELLED":
+                    pending_refund += tx.amount or zero
+                continue
             grouped[tx_type] += tx.amount or zero
             if tx_type == "REFUND":
                 refund_deductions += tx.deduction_amount or zero
@@ -556,6 +588,7 @@ class Lease(models.Model):
             "required": required,
             "paid_in": paid_in,
             "refunded": refunded,
+            "pending_refund": pending_refund,
             "refund_deductions": refund_deductions,
             "damages": damages,
             "adjust": adjust,
@@ -1029,10 +1062,10 @@ class LeaseTemplate(models.Model):
 
 PLACEHOLDER_REGISTRY = {
     "TENANT_NAME": lambda lease: lease.tenant.get_full_name(),
-    "TENANT_CNIC": lambda lease: lease.tenant.cnic,
+    "TENANT_CNIC": lambda lease: format_cnic(lease.tenant.cnic),
     "TENANT_ADDRESS": lambda lease: lease.tenant.address,
     "OWNER_NAME": lambda lease: lease.unit.property.owner_name,
-    "OWNER_CNIC": lambda lease: lease.unit.property.owner_cnic,
+    "OWNER_CNIC": lambda lease: format_cnic(lease.unit.property.owner_cnic),
     "OWNER_ADDRESS": lambda lease: lease.unit.property.owner_address,
     "PROPERTY_NAME": lambda lease: lease.unit.property.property_name,
     "UNIT_NUMBER": lambda lease: lease.unit.unit_number,
@@ -1344,9 +1377,9 @@ class PendingLeaseFamilyMemberSubmission(models.Model):
         blank=True,
         related_name="pending_family_submissions",
     )
-    cnic = models.CharField(max_length=15, blank=True)
+    cnic = NormalizedCNICField(max_length=15, blank=True)
     cnic_digits = models.CharField(max_length=13, blank=True, db_index=True)
-    phone = models.CharField(max_length=20, blank=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True)
     gender = models.CharField(
         max_length=1, choices=Tenant.GENDER_CHOICES, default="M", blank=True
     )
@@ -1865,7 +1898,7 @@ class PendingPoliceVerificationSubmission(models.Model):
     source = models.CharField(
         max_length=30, choices=SOURCE_CHOICES, default=SOURCE_PUBLIC_LINK
     )
-    phone = models.CharField(max_length=32, blank=True)
+    phone = NormalizedPhoneField(max_length=32, blank=True)
     notes = models.TextField(blank=True)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
@@ -2054,7 +2087,7 @@ class LeaseVehicle(models.Model):
     year = models.PositiveIntegerField(null=True, blank=True)
 
     owner_name = models.CharField(max_length=120, blank=True)
-    owner_cnic = models.CharField(max_length=30, blank=True)
+    owner_cnic = NormalizedCNICField(max_length=30, blank=True)
     parking_slot = models.CharField(max_length=50, blank=True)
 
     registration_book_photo = models.ImageField(
@@ -2146,7 +2179,7 @@ class PendingLeaseVehicleSubmission(models.Model):
     year = models.PositiveIntegerField(null=True, blank=True)
 
     owner_name = models.CharField(max_length=120, blank=True)
-    owner_cnic = models.CharField(max_length=30, blank=True)
+    owner_cnic = NormalizedCNICField(max_length=30, blank=True)
     parking_slot = models.CharField(max_length=50, blank=True)
 
     registration_book_photo = models.ImageField(

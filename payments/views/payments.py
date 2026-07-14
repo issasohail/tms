@@ -30,6 +30,7 @@ from django.db.models import Q
 from decimal import Decimal
 from django.db.models import DecimalField, Value, Sum
 from django.db.models.functions import Coalesce
+from core.utils.identity import format_phone
 
 from payments.forms import PaymentForm, optimize_lease_dropdown_queryset
 from payments.tables import PaymentTable
@@ -486,6 +487,14 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
                 "amount": lease.get_balance,
                 "payment_date": timezone.now().date(),
             })
+        raw_amount = (self.request.GET.get("amount") or "").replace(",", "").strip()
+        if raw_amount:
+            try:
+                requested_amount = Decimal(raw_amount).quantize(Decimal("0.01"))
+                payment_type = (self.request.GET.get("payment_type") or "LEASE").upper()
+                initial["amount"] = -abs(requested_amount) if payment_type == "REFUND" else requested_amount
+            except Exception:
+                pass
         return initial
 
     def get_form_kwargs(self):
@@ -540,6 +549,9 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
         # 1) Build/save Payment
         payment = form.save(commit=False)
+        mode = (payment_detail_form.cleaned_data.get("payment_type") or "LEASE").upper()
+        if mode == "REFUND":
+            payment.amount = abs(payment.amount or Decimal("0.00"))
         resolved_lease = self.get_lease() or payment.lease
         if not resolved_lease:
             form.add_error("lease", "Please select a lease.")
@@ -550,7 +562,6 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         self.object = payment
 
         # 2) Read mode + amounts (prefer cleaned_data)
-        mode = (payment_detail_form.cleaned_data.get("payment_type") or "LEASE").upper()
         sec_type = (payment_detail_form.cleaned_data.get("security_type") or "PAYMENT").upper()
 
         lease_amt = payment_detail_form.cleaned_data.get("lease_amount") or Decimal("0.00")
@@ -640,11 +651,30 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         if payment_type not in {"LEASE", "LEASE_REFUND", "SECURITY", "REFUND", "SPLIT"}:
             payment_type = "LEASE"
 
+        raw_amount = (self.request.GET.get("amount") or "0").replace(",", "").strip()
+        try:
+            requested_amount = abs(Decimal(raw_amount or "0")).quantize(Decimal("0.01"))
+        except Exception:
+            requested_amount = Decimal("0.00")
+        lease_amount = self.request.GET.get("lease_amount") or "0.00"
+        security_amount = self.request.GET.get("security_amount") or "0.00"
+        security_type = (self.request.GET.get("security_type") or "PAYMENT").upper()
+        if payment_type == "REFUND":
+            lease_amount = "0.00"
+            security_amount = str(-requested_amount)
+            security_type = "REFUND"
+        elif payment_type == "SECURITY" and requested_amount:
+            security_amount = str(requested_amount)
+        elif not self.request.GET.get("lease_amount") and not self.request.GET.get("security_amount"):
+            selected_lease = self.get_lease()
+            if selected_lease:
+                lease_amount = str(selected_lease.get_balance or Decimal("0.00"))
+
         context["payment_detail_form"] = PaymentDetailForm(initial={
             "payment_type": payment_type,
-            "lease_amount": "0.00",
-            "security_amount": "0.00",
-            "security_type": "PAYMENT",
+            "lease_amount": lease_amount,
+            "security_amount": security_amount,
+            "security_type": security_type,
         })
         include_inactive = self.request.GET.get("include_inactive") == "on"
         if include_inactive:
@@ -686,10 +716,13 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         if not payment_detail_form.is_valid():
             return self.form_invalid(form)
 
-        payment = form.save()
+        payment = form.save(commit=False)
+        mode = (payment_detail_form.cleaned_data.get("payment_type") or "LEASE").upper()
+        if mode == "REFUND":
+            payment.amount = abs(payment.amount or Decimal("0.00"))
+        payment.save()
         self.object = payment
 
-        mode = (payment_detail_form.cleaned_data.get("payment_type") or "LEASE").upper()
         sec_type = (payment_detail_form.cleaned_data.get("security_type") or "PAYMENT").upper()
 
         lease_amt = payment_detail_form.cleaned_data.get("lease_amount") or Decimal("0.00")
@@ -1266,7 +1299,7 @@ def api_payment_receipt_whatsapp(request, pk: int):
     phone = getattr(getattr(getattr(pay, "lease", None),
                     "tenant", None), "phone", "") or ""
     message = build_payment_receipt_message(request, pay)
-    return JsonResponse({"phone": phone, "message": message, "payment_id": pay.pk})
+    return JsonResponse({"phone": phone, "phone_display": format_phone(phone), "message": message, "payment_id": pay.pk})
 
 class PaymentDetailRecordViewV1(LoginRequiredMixin, DetailView):
     model = PaymentDetail

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django import forms
 from django.utils.html import format_html
+from core.utils.identity import format_cnic, format_phone
 from django.urls import reverse, path
 from django.shortcuts import render, get_object_or_404
 from .models import Tenant, TenantInterestType
@@ -108,8 +109,8 @@ class TenantAdmin(ImageCroppingMixin, admin.ModelAdmin):
         return format_html(
             "{}<br>{}<br>CNIC: {}",
             obj.email,
-            obj.phone,
-            obj.cnic or "Not provided"
+            format_phone(obj.phone),
+            format_cnic(obj.cnic) or "Not provided"
         )
 
     @admin.display(description='Current Property')

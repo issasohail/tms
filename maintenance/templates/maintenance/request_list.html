@@ -650,7 +650,9 @@
     </div>
   </form>
 
-  <div class="maint-list-head">
+  {# Desktop grid list: keep the bold header visible while its rows scroll. #}
+  <div class="desktop-sticky-grid-list">
+  <div class="maint-list-head desktop-sticky-grid-header">
     <div>Sr</div>
     <div>Property - Unit</div>
     <div>Tenant</div>
@@ -775,6 +777,7 @@
     {% empty %}
       <div class="text-muted p-3 bg-white border rounded" id="maint-empty">No maintenance requests found.</div>
     {% endfor %}
+  </div>
   </div>
 </div>
 

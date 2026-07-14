@@ -1,5 +1,7 @@
 import json
 import logging
+import hashlib
+import hmac
 from decimal import Decimal
 
 from django.conf import settings
@@ -8,6 +10,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django import forms
 from django.core.paginator import Paginator
+from django.core.cache import cache
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -68,12 +71,18 @@ class WhatsAppUtilityTemplateForm(forms.ModelForm):
 @require_http_methods(["GET", "POST"])
 def webhook(request):
     if request.method == "GET":
+        if not _verification_attempt_allowed(request):
+            return HttpResponse("Too Many Requests", status=429)
         mode = request.GET.get("hub.mode")
         token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
         if mode == "subscribe" and token == settings.WHATSAPP_VERIFY_TOKEN:
             return HttpResponse(challenge or "")
         return HttpResponse("Forbidden", status=403)
+
+    if not _valid_webhook_signature(request):
+        logger.warning("Rejected WhatsApp webhook with invalid Meta signature.")
+        return HttpResponse("Invalid signature", status=403)
 
     logger.info("WhatsApp webhook POST received")
     body_text = request.body.decode("utf-8", errors="replace")
@@ -132,6 +141,8 @@ def _webhook_event_type(payload):
                 return "status"
             if value.get("messages"):
                 return "message"
+            if value.get("calls"):
+                return "call"
             if change.get("field"):
                 return change.get("field")
     return payload.get("object", "") or "webhook"
@@ -144,14 +155,30 @@ def _log_webhook_payload(payload):
             metadata = value.get("metadata", {}) or {}
             phone_number = metadata.get("display_phone_number", "")
 
+            # Provider call events are routed through an intentionally unsupported
+            # abstraction today, so enabling future Meta calling cannot fake a call.
+            for call_event in value.get("calls", []) or []:
+                from whatsapp.services.handover.calling import WhatsAppCallingService
+                WhatsAppCallingService().process_incoming_call_event(call_event)
+
             for message in value.get("messages", []) or []:
                 inbound_phone = WhatsAppService.normalize_phone_number(message.get("from", "") or phone_number)
+                message_id = message.get("id", "")
+                if message_id and (
+                    WhatsAppMessageLog.objects.filter(
+                        direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+                        wa_message_id=message_id,
+                    ).exists()
+                    or not cache.add(f"whatsapp:inbound-message:{message_id}", 1, timeout=86400)
+                ):
+                    logger.info("Ignored duplicate WhatsApp inbound message %s", message_id)
+                    continue
                 inbound_at = _message_received_at(message)
                 conversation = _touch_inbound_conversation(inbound_phone, message, inbound_at)
                 message_log = WhatsAppMessageLog.objects.create(
                     direction=WhatsAppMessageLog.DIRECTION_INBOUND,
                     phone_number=inbound_phone,
-                    wa_message_id=message.get("id", ""),
+                    wa_message_id=message_id,
                     message_type=message.get("type", WhatsAppMessageLog.MESSAGE_TYPE_WEBHOOK),
                     status=WhatsAppMessageLog.STATUS_RECEIVED,
                     payload=message,
@@ -159,7 +186,10 @@ def _log_webhook_payload(payload):
                     tenant=conversation.tenant if conversation else None,
                     lease=conversation.selected_lease if conversation else None,
                 )
-                _queue_ai_message(message_log.pk)
+                if _inbound_rate_allowed(inbound_phone):
+                    _queue_ai_message(message_log.pk)
+                else:
+                    logger.warning("Rate-limited inbound WhatsApp sender %s", inbound_phone)
 
             for status in value.get("statuses", []) or []:
                 conversation = status.get("conversation", {}) or {}
@@ -205,6 +235,40 @@ def _message_received_at(message):
         except (TypeError, ValueError, OSError):
             pass
     return timezone.now()
+
+
+def _valid_webhook_signature(request):
+    app_secret = getattr(settings, "WHATSAPP_APP_SECRET", "")
+    if not app_secret:
+        # Local DEBUG compatibility only; production fails closed.
+        logger.warning("WHATSAPP_APP_SECRET is not configured; production webhooks are rejected.")
+        return bool(settings.DEBUG)
+    supplied = request.META.get("HTTP_X_HUB_SIGNATURE_256", "")
+    if not supplied.startswith("sha256="):
+        return False
+    expected = hmac.new(app_secret.encode("utf-8"), request.body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(supplied[7:], expected)
+
+
+def _verification_attempt_allowed(request):
+    key = f"whatsapp:webhook-verify:{_remote_addr(request) or 'unknown'}"
+    try:
+        attempts = cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=60)
+        attempts = 1
+    return attempts <= int(getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_RATE_LIMIT", 20))
+
+
+def _inbound_rate_allowed(phone_number):
+    minute = timezone.now().strftime("%Y%m%d%H%M")
+    key = f"whatsapp:inbound-rate:{phone_number}:{minute}"
+    try:
+        count = cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=120)
+        count = 1
+    return count <= int(getattr(settings, "WHATSAPP_INBOUND_MESSAGES_PER_MINUTE", 30))
 
 
 def _touch_inbound_conversation(phone_number, message, received_at):

@@ -121,7 +121,7 @@
   </span>
 </div>
 
-<div id="leaseSummary" class="card mb-3 d-none-mobile">
+<div id="leaseSummary" class="card mb-1 d-none-mobile">
   <div class="card-body py-2 px-3">
     <div class="summary-line">
       <div class="summary-item">
@@ -183,28 +183,23 @@
 <div class="deposit-section">
   <div class="deposit-summary-panel">
     <h4 class="section-title">Security Deposit</h4>
-    <table class="table table-sm table-bordered deposit-summary-table mb-0">
-      <tr>
-        <th>Required</th>
-        <td>{{ security_required|intcomma }}</td>
-      </tr>
-      <tr>
-        <th>Paid In</th>
-        <td>{{ security_paid_in|intcomma }}</td>
-      </tr>
-      <tr>
-        <th>Refunded</th>
-        <td>{{ security_refunded|intcomma }}</td>
-      </tr>
-      <tr class="table-warning">
-        <th>Balance to Collect</th>
-        <td>{{ security_balance_to_collect|intcomma }}</td>
-      </tr>
-      <tr class="table-success">
-        <th>Currently Held</th>
-        <td>{{ security_currently_held|intcomma }}</td>
-      </tr>
-    </table>
+    <div class="deposit-summary-row">
+      <div class="deposit-summary-item">
+        <span>Required</span><strong>{{ security_required|intcomma }}</strong>
+      </div>
+      <div class="deposit-summary-item">
+        <span>Paid In</span><strong>{{ security_paid_in|intcomma }}</strong>
+      </div>
+      <div class="deposit-summary-item">
+        <span>Refunded</span><strong>{{ security_refunded|intcomma }}</strong>
+      </div>
+      <div class="deposit-summary-item table-warning">
+        <span>Balance to Collect</span><strong>{{ security_balance_to_collect|intcomma }}</strong>
+      </div>
+      <div class="deposit-summary-item table-success">
+        <span>Currently Held</span><strong>{{ security_currently_held|intcomma }}</strong>
+      </div>
+    </div>
   </div>
 
   <div class="deposit-ledger-panel">
@@ -240,7 +235,7 @@
           <tr>
             <td>{{ t.date|date:"M d, Y" }}</td>
             <td>{{ t.type }}</td>
-            <td>{{ t.description }}</td>
+            <td title="{{ t.description }}">{{ t.description }}</td>
             <td class="text-end">{{ t.amount|intcomma }}</td>
             <td class="text-end">{{ t.balance|intcomma }}</td>
             <td class="text-center">
@@ -327,7 +322,7 @@
               <td>{{ forloop.counter }}</td>
               <td>{{ t.date|date:"M d, Y" }}</td>
               <td>{{ t.type }}</td>
-              <td class="desc-col">{{ t.description }}</td>
+              <td class="desc-col" title="{{ t.description }}">{{ t.description }}</td>
               <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                 <a href="{{ t.url }}"
                   class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
@@ -368,7 +363,7 @@
                   <td>{{ forloop.counter }}</td>
                   <td>{{ t.date|date:"M d, Y" }}</td>
                   <td>{{ t.type }}</td>
-                  <td>{{ t.description }}</td>
+                  <td title="{{ t.description }}">{{ t.description }}</td>
                   <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                     <a href="{{ t.url }}"
                       class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
@@ -406,7 +401,7 @@
                   <td>{{ forloop.counter|add:"20" }}</td>
                   <td>{{ t.date|date:"M d, Y" }}</td>
                   <td>{{ t.type }}</td>
-                  <td>{{ t.description }}</td>
+                  <td title="{{ t.description }}">{{ t.description }}</td>
                   <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                     <a href="{{ t.url }}"
                       class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
@@ -584,27 +579,53 @@
 
   .deposit-section {
     display: grid;
-    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .5rem;
     align-items: start;
-    margin: .75rem 0 1rem;
+    margin: .5rem 0 .75rem;
   }
 
-  .deposit-summary-table,
   .deposit-ledger-table {
     font-size: var(--table-fs);
   }
 
-  .deposit-summary-table th,
-  .deposit-summary-table td,
   .deposit-ledger-table th,
   .deposit-ledger-table td {
     padding: .3rem .45rem !important;
     vertical-align: middle;
   }
 
-  .deposit-summary-table th {
+  .deposit-summary-panel {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+  }
+
+  .deposit-summary-panel .section-title {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: .95rem;
+  }
+
+  .deposit-summary-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    flex: 1 1 auto;
+    border: 1px solid #dee2e6;
+  }
+
+  .deposit-summary-item {
+    display: flex;
+    justify-content: space-between;
+    gap: .35rem;
+    padding: .25rem .45rem;
+    border-right: 1px solid #dee2e6;
+    font-size: var(--table-fs);
     white-space: nowrap;
+  }
+
+  .deposit-summary-item:last-child {
+    border-right: 0;
   }
 
   .deposit-ledger-table th,
@@ -642,7 +663,10 @@
 
   .compact-table th:nth-child(4),
   .compact-table td:nth-child(4) {
+    max-width: 0;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .compact-table td a {
@@ -731,6 +755,27 @@
       gap: .75rem;
     }
 
+    .deposit-summary-panel {
+      display: block;
+    }
+
+    .deposit-summary-panel .section-title {
+      margin-bottom: .3rem;
+    }
+
+    .deposit-summary-row {
+      grid-template-columns: 1fr;
+    }
+
+    .deposit-summary-item {
+      border-right: 0;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .deposit-summary-item:last-child {
+      border-bottom: 0;
+    }
+
     .deposit-ledger-table td:nth-child(3) {
       min-width: 180px;
     }
@@ -747,9 +792,9 @@
       --fs-prop-value: .95rem;
       --fs-unit-value: .95rem;
       --fs-lease-value: .95rem;
-      --w-prop: 260px;
-      --w-unit: 260px;
-      --w-lease: 320px;
+      --w-prop: 150px;
+      --w-unit: 90px;
+      --w-lease: 390px;
     }
 
     .toolbar-grid {
@@ -761,6 +806,28 @@
     #leaseSummary.d-none-mobile {
       display: block;
     }
+
+    .compact-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .compact-table th:nth-child(1),
+    .compact-table td:nth-child(1) { width: 7%; }
+
+    .compact-table th:nth-child(2),
+    .compact-table td:nth-child(2) { width: 18%; min-width: 0; }
+
+    .compact-table th:nth-child(3),
+    .compact-table td:nth-child(3) { width: 14%; min-width: 0; }
+
+    .compact-table th:nth-child(4),
+    .compact-table td:nth-child(4) { width: 31%; }
+
+    .compact-table th:nth-child(5),
+    .compact-table td:nth-child(5),
+    .compact-table th:nth-child(6),
+    .compact-table td:nth-child(6) { width: 15%; }
 
     /* summary always visible on desktop */
     .d-360-break {

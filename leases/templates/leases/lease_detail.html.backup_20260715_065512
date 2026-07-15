@@ -267,12 +267,6 @@
 .ld-file-actions .ld-file-action-btn i { color:#fff !important; font-size:12px; line-height:1; }
 .ld-file-missing { font-size:10px; }
 .ld-file-category-select { font-size:11px; padding:2px 5px; min-height:26px; }
-.ld-file-category-display {
-  border:0; background:transparent; padding:0; color:#111827;
-  font-size:11px; font-weight:600; line-height:1.25; text-align:left; cursor:pointer;
-}
-.ld-file-category-display:hover { text-decoration:underline; }
-.ld-file-upload-actions { display:flex; align-items:center; flex-wrap:nowrap; gap:5px; }
 .ld-family-mobile-only { display:none; }
 .ld-vehicle-photo-btn {
   display:inline-block;
@@ -450,7 +444,7 @@
   }
   .ld-mobile-top-link {
     display:inline-flex; align-items:center; justify-content:center;
-    float:none; flex:0 0 auto; margin:0 0 0 auto; padding:3px 8px;
+    float:right; margin:-2px 0 7px 8px; padding:4px 9px;
     border:1px solid #d1d5db; border-radius:16px;
     background:#fff; color:#475569; font-size:10px; font-weight:700;
     text-decoration:none;
@@ -477,7 +471,7 @@
     padding:3px 0 !important; border:0 !important; font-size:12px; text-align:right;
   }
   .ld-mobile-cards td::before {
-    content:attr(data-label); font-weight:600; color:#111827;
+    content:attr(data-label); font-weight:700; color:#111827;
     text-align:left; flex:0 0 42%;
   }
   .ld-mobile-cards td.ld-empty { display:block; text-align:center; }
@@ -491,7 +485,7 @@
   .ld-mobile-cards-3col td { display:block; text-align:left; padding:0 !important; font-size:11.5px; }
   .ld-mobile-cards-3col td::before {
     content:attr(data-label); display:block; text-align:left;
-    font-weight:600; color:#111827; font-size:9.5px;
+    font-weight:700; color:#111827; font-size:9.5px;
     text-transform:uppercase; letter-spacing:.02em; margin-bottom:1px;
   }
   .ld-mobile-cards-3col td.ld-td-actions {
@@ -505,13 +499,13 @@
   .ld-compact-mobile-table td { display:block; text-align:left; padding:0 !important; min-width:0; overflow-wrap:anywhere; }
   .ld-compact-mobile-table td::before {
     content:attr(data-label); display:block; text-align:left; margin-bottom:1px;
-    font-size:9px; font-weight:600; color:#111827; text-transform:uppercase;
+    font-size:9px; font-weight:700; color:#111827; text-transform:uppercase;
   }
   .ld-compact-mobile-table td.ld-td-actions { grid-column:1 / -1; padding-top:4px !important; }
   .ld-compact-mobile-table td.ld-td-actions::before { content:none; }
   .ld-compact-mobile-table .ld-vehicle-thumb { width:46px; height:34px; }
 
-  .ld-family-table tr { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ld-family-table tr { grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr); }
   .ld-family-table .ld-family-sn,
   .ld-family-table .ld-family-name,
   .ld-family-table .ld-family-dob,
@@ -521,26 +515,9 @@
   .ld-family-table .ld-family-relation { order:2; }
   .ld-family-table .ld-family-cnic { order:3; }
   .ld-family-table .ld-family-mobile-dob-age { order:4; }
-  .ld-family-table .ld-family-phone,
-  .ld-family-table td.ld-td-actions { display:none !important; }
-  .ld-family-table .ld-family-mobile-last-row {
-    display:flex !important; grid-column:1 / -1; order:5;
-    align-items:flex-end; justify-content:space-between; gap:8px;
-    padding-top:2px !important;
-  }
-  .ld-family-mobile-last-row::before { content:none !important; }
-  .ld-family-mobile-phone { min-width:0; }
-  .ld-family-mobile-phone-label {
-    display:block; margin-bottom:1px; color:#111827; font-size:9px;
-    font-weight:600; text-transform:uppercase;
-  }
-  .ld-family-mobile-actions { display:flex; flex:0 0 auto; flex-wrap:nowrap; gap:4px; }
-
-  .ld-family-heading { flex-wrap:nowrap !important; gap:3px !important; }
-  .ld-family-heading > span { flex:0 0 auto; font-size:11px; }
-  .ld-heading-actions { flex-wrap:nowrap !important; gap:3px !important; margin-left:auto; }
-  .ld-heading-actions .btn { padding:3px 5px; font-size:9px; white-space:nowrap; }
-  .ld-heading-actions .ld-mobile-top-link { margin-left:0; }
+  .ld-family-table .ld-family-phone { order:5; }
+  .ld-family-table td.ld-td-actions { grid-column:auto; order:6; padding-top:0 !important; align-self:end; }
+  .ld-family-table td.ld-td-actions > div { flex-wrap:nowrap !important; }
 
   .ld-cnic-front-label { font-size:8px; letter-spacing:0; white-space:nowrap; }
 
@@ -563,7 +540,6 @@
   .ld-file-sub { font-size:9.5px; line-height:1.25; }
   .ld-file-actions { grid-column:1 / -1; justify-content:flex-end; }
   .ld-file-action-btn { width:27px; height:27px; }
-  .ld-file-upload-actions { grid-column:1 / -1; }
   #ld-tab-docs .ld-inner-body { padding:8px; }
 }
 
@@ -1056,9 +1032,9 @@
       <!-- ======== FAMILY ======== -->
       <div class="ld-tab-pane" id="ld-tab-family">
         <div class="ld-inner-card">
-          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2 ld-family-heading">
+          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>Family Members</span>
-            <div class="d-flex flex-wrap gap-1 ld-heading-actions">
+            <div class="d-flex flex-wrap gap-1">
               <button type="button" class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#leaseFamilyPublicLinkBox">
                 <i class="fas fa-link"></i> Public Link
               </button>
@@ -1154,20 +1130,6 @@
                     </td>
                     <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">
                       {{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }} &middot; {{ member.family_member.age|default:"&mdash;" }}
-                    </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-last-row no-print">
-                      <div class="ld-family-mobile-phone">
-                        <span class="ld-family-mobile-phone-label">Phone</span>
-                        {{ member.family_member.phone|format_phone|default:"&mdash;" }}
-                      </div>
-                      <div class="ld-family-mobile-actions">
-                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
-                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-primary">Edit</a>
-                        <form method="post" action="{% url 'leases:lease_family_remove' lease.pk member.pk %}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-                        </form>
-                      </div>
                     </td>
                   </tr>
                 {% empty %}
@@ -1439,16 +1401,19 @@
                 <label class="form-label small fw-semibold mb-1">Description</label>
                 <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
               </div>
-              <div class="ld-file-upload-actions">
+              <div>
                 <button type="submit" class="btn btn-sm btn-primary">Upload</button>
-                <button type="submit" form="leaseFilesShareAllForm" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
-                  <i class="fab fa-whatsapp me-1"></i> Share All Files
-                </button>
               </div>
             </form>
-            <form id="leaseFilesShareAllForm" method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}" class="d-none">
-              {% csrf_token %}
-            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3 no-print">
+              <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
+                  <i class="fab fa-whatsapp me-1"></i> Share All Files
+                </button>
+              </form>
+            </div>
 
             <div class="ld-file-list">
               {% for doc in lease_documents %}
@@ -1459,13 +1424,10 @@
                       <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
                       {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
                     </div>
-                    {% if doc.display_name and doc.display_name != doc.original_filename %}
-                      <div class="ld-file-sub">{{ doc.original_filename }}</div>
-                    {% endif %}
+                    <div class="ld-file-sub">{{ doc.original_filename }}</div>
                   </div>
-                  <div class="ld-file-category-editor">
-                    <button type="button" class="ld-file-category-display no-print" title="Click to change category">{{ doc.category_label }}</button>
-                    <select class="form-select form-select-sm ld-file-category-select no-print d-none" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
+                  <div>
+                    <select class="form-select form-select-sm ld-file-category-select no-print" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
                       {% for category in lease_document_categories %}
                         <option value="{{ category.code }}" {% if doc.category == category.code %}selected{% endif %}>{{ category.name }}</option>
                       {% endfor %}
@@ -2316,15 +2278,12 @@
 
   document.querySelectorAll('.ld-tab-pane').forEach(function (pane) {
     if (pane.querySelector('.ld-mobile-top-link')) return;
-    const heading = pane.querySelector('.ld-inner-head, .ld-renewal-head');
-    if (!heading) return;
     const topLink = document.createElement('a');
     topLink.className = 'ld-mobile-top-link no-print';
     topLink.href = '#lease-detail-top';
     topLink.textContent = 'Top';
     topLink.setAttribute('aria-label', 'Back to top');
-    const headingActions = heading.querySelector('.ld-heading-actions');
-    (headingActions || heading).appendChild(topLink);
+    pane.insertBefore(topLink, pane.firstChild);
   });
   const params = new URLSearchParams(window.location.search);
   if (window.location.hash && window.location.hash.indexOf('#ld-tab-') === 0) {
@@ -2382,18 +2341,7 @@
         </div>
       </td>
       <td class="ld-family-mobile-only ld-family-mobile-id" data-label="S.N - Name">#${serial} &middot; <a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
-      <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">${esc(data.dob || '—')} &middot; ${esc(data.age || '—')}</td>
-      <td class="ld-family-mobile-only ld-family-mobile-last-row no-print">
-        <div class="ld-family-mobile-phone"><span class="ld-family-mobile-phone-label">Phone</span>${esc(data.phone || '—')}</div>
-        <div class="ld-family-mobile-actions">
-          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-dark">View</a>
-          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-primary">Edit</a>
-          <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
-            <input type="hidden" name="csrfmiddlewaretoken" value="${esc(csrf)}">
-            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-          </form>
-        </div>
-      </td>`;
+      <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">${esc(data.dob || '—')} &middot; ${esc(data.age || '—')}</td>`;
     tbody.appendChild(row);
   }
 
@@ -2822,20 +2770,6 @@ document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', fun
 });
 
 document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
-  const editor = select.closest('.ld-file-category-editor');
-  const display = editor?.querySelector('.ld-file-category-display');
-  const showDisplay = function () {
-    select.classList.add('d-none');
-    display?.classList.remove('d-none');
-  };
-  display?.addEventListener('click', function () {
-    this.classList.add('d-none');
-    select.classList.remove('d-none');
-    select.focus();
-  });
-  select.addEventListener('blur', function () {
-    if (!this.disabled) showDisplay();
-  });
   select.addEventListener('change', function () {
     const data = new FormData();
     const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -2848,10 +2782,6 @@ document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
     }).then(function (response) {
       if (!response.ok) throw new Error('Category update failed.');
       return response.json();
-    }).then(function (payload) {
-      if (!payload.ok) throw new Error(payload.error || 'Category update failed.');
-      if (display) display.textContent = payload.category_label || select.options[select.selectedIndex]?.text || '';
-      showDisplay();
     }).catch(function (error) {
       alert(error.message);
       window.location.reload();

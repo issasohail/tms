@@ -52,7 +52,7 @@ from django.views.generic import (
 from django_tables2 import SingleTableView
 from django_tables2.export.views import ExportMixin
 from openpyxl.drawing.image import Image
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from weasyprint import HTML
 
 from core.models import GlobalSettings
@@ -2605,10 +2605,36 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
             elif export_format == "xlsx":
                 try:
+                    tenants = list(queryset)
+                    self._attach_lease_totals(tenants)
+
                     output = BytesIO()
                     wb = openpyxl.Workbook()
                     ws = wb.active
                     ws.title = "Tenants"
+
+                    # ===== REPORT TITLE =====
+                    last_column = 19
+                    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_column)
+                    title_cell = ws.cell(row=1, column=1, value="TENANT LIST REPORT")
+                    title_cell.font = Font(bold=True, color="FFFFFF", size=16)
+                    title_cell.fill = PatternFill("solid", fgColor="1F4E78")
+                    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    ws.row_dimensions[1].height = 28
+
+                    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_column)
+                    info_cell = ws.cell(
+                        row=2,
+                        column=1,
+                        value=(
+                            f"Generated: {timezone.localtime().strftime('%d-%b-%Y %I:%M %p')}"
+                            f"    |    Total records: {len(tenants)}"
+                        ),
+                    )
+                    info_cell.font = Font(italic=True, color="44546A", size=10)
+                    info_cell.fill = PatternFill("solid", fgColor="D9EAF7")
+                    info_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    ws.row_dimensions[2].height = 20
 
                     # ===== HEADER FORMATTING =====
                     headers = [
@@ -2633,17 +2659,23 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         "Notes\n(Detailed)",
                     ]
 
+                    header_row = 4
+                    thin_gray = Side(style="thin", color="A6A6A6")
+                    cell_border = Border(
+                        left=thin_gray,
+                        right=thin_gray,
+                        top=thin_gray,
+                        bottom=thin_gray,
+                    )
+
                     for col_num, header in enumerate(headers, 1):
-                        cell = ws.cell(row=1, column=col_num, value=header)
+                        cell = ws.cell(row=header_row, column=col_num, value=header)
                         cell.alignment = Alignment(
                             horizontal="center", vertical="center", wrap_text=True
                         )
-                        cell.font = Font(bold=True, size=11)
-                        cell.fill = PatternFill(
-                            start_color="D3D3D3",  # Light gray
-                            end_color="D3D3D3",
-                            fill_type="solid",
-                        )
+                        cell.font = Font(bold=True, color="FFFFFF", size=10)
+                        cell.fill = PatternFill("solid", fgColor="4472C4")
+                        cell.border = cell_border
 
                     # ===== COLUMN WIDTHS =====
                     col_widths = {
@@ -2671,7 +2703,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         ws.column_dimensions[col].width = width
 
                     # ===== ROW HEIGHTS =====
-                    ws.row_dimensions[1].height = 30  # Header row
+                    ws.row_dimensions[header_row].height = 32
                     data_row_height = 72  # Data rows (for images)
 
                     # ===== CELL STYLES =====
@@ -2683,24 +2715,24 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                     )
 
                     # ===== DATA POPULATION =====
-                    for idx, tenant in enumerate(queryset, start=2):
+                    for idx, tenant in enumerate(tenants, start=header_row + 1):
                         lease = tenant.current_lease
                         ws.row_dimensions[idx].height = data_row_height
 
                         # Basic data
                         data = [
-                            idx - 1,  # SN
+                            idx - header_row,  # SN
                             tenant.first_name,
                             tenant.last_name,
                             format_phone(tenant.phone),
                             tenant.email,
                             lease.unit.property.property_name if lease else "",
                             lease.unit.unit_number if lease else "",
-                            lease.end_date.strftime("%d-%b-%Y")
+                            lease.end_date
                             if lease
-                            else "",  # More readable date
-                            f"Rs. {lease.total_payment:,.2f}" if lease else "",
-                            f"Rs. {lease.get_balance:,.2f}" if lease else "",
+                            else None,
+                            lease.get_total_payment if lease else None,
+                            lease.get_balance if lease else None,
                             tenant.number_of_family_member,
                             tenant.get_gender_display(),
                             tenant.emergency_contact_name,
@@ -2716,10 +2748,15 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         for col_num, value in enumerate(data, 1):
                             cell = ws.cell(row=idx, column=col_num, value=value)
                             cell.alignment = (
-                                wrap_style if col_num in [12, 13] else center_style
+                                wrap_style if col_num in [18, 19] else center_style
                             )
-                            if col_num in [17, 18]:  # Currency columns
-                                cell.number_format = "#,##0.00"
+                            cell.border = cell_border
+                            if idx % 2 == 0:
+                                cell.fill = PatternFill("solid", fgColor="F2F6FC")
+                            if col_num in [9, 10]:
+                                cell.number_format = '"Rs." #,##0.00;[Red]-"Rs." #,##0.00'
+                            elif col_num == 8 and value:
+                                cell.number_format = "dd-mmm-yyyy"
 
                         # ===== IMAGE HANDLING =====
                         image_data = [
@@ -2731,18 +2768,33 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         ]
 
                         for col, image, width, height in image_data:
-                            if image and image.path:
+                            if image:
                                 try:
-                                    img = Image(image.path)
+                                    image_path = image.path
+                                    if not image_path:
+                                        continue
+                                    img = Image(image_path)
                                     img.width = width
                                     img.height = height
                                     ws.add_image(img, f"{col}{idx}")
-                                except Exception:
+                                except (OSError, ValueError, TypeError):
                                     ws[f"{col}{idx}"] = "Image"
                                     ws[f"{col}{idx}"].alignment = center_style
 
                     # ===== FINAL TOUCHES =====
-                    ws.freeze_panes = "A2"  # Freeze header row
+                    last_row = max(header_row, header_row + len(tenants))
+                    ws.auto_filter.ref = f"A{header_row}:S{last_row}"
+                    ws.freeze_panes = f"A{header_row + 1}"
+                    ws.sheet_view.showGridLines = False
+                    ws.page_setup.orientation = "landscape"
+                    ws.page_setup.paperSize = ws.PAPERSIZE_A3
+                    ws.page_setup.fitToWidth = 1
+                    ws.page_setup.fitToHeight = 0
+                    ws.sheet_properties.pageSetUpPr.fitToPage = True
+                    ws.print_title_rows = f"1:{header_row}"
+                    ws.print_area = f"A1:S{last_row}"
+                    ws.oddFooter.center.text = "Page &P of &N"
+                    ws.oddFooter.right.text = "Tenant Management System"
                     wb.save(output)
                     output.seek(0)
 
@@ -2751,7 +2803,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
                     response["Content-Disposition"] = (
-                        f'attachment; filename="Tenants_Export_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+                        f'attachment; filename="Tenants_Export_{timezone.localdate().strftime("%Y%m%d")}.xlsx"'
                     )
                     return response
 

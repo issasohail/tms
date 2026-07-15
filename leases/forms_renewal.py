@@ -3,11 +3,19 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
+from django.db.models.functions import Lower
+
+from core.utils.identity import format_cnic, format_phone
 
 from .models_renewal import LeaseRenewal
 
 
 MONEY_QUANT = Decimal("0.01")
+
+
+def _witness_choice_label(person):
+    name = person.get_full_name().strip()[:20]
+    return f"{name} - {format_cnic(person.cnic) or '-'} - {format_phone(person.phone) or '-'}"
 
 
 def _end_of_month(value):
@@ -148,8 +156,21 @@ class LeaseHistoryEditForm(forms.ModelForm):
             "internet_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "agreement_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "security_deposit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "witness1_tenant": forms.Select(attrs={"class": "form-select form-select-sm select2 witness-select"}),
+            "witness2_tenant": forms.Select(attrs={"class": "form-select form-select-sm select2 witness-select"}),
             "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from tenants.models import Tenant
+
+        witnesses = Tenant.objects.order_by(
+            Lower("first_name"), Lower("last_name"), "pk"
+        )
+        for field_name in ("witness1_tenant", "witness2_tenant"):
+            self.fields[field_name].queryset = witnesses
+            self.fields[field_name].label_from_instance = _witness_choice_label
 
     def clean(self):
         cleaned = super().clean()

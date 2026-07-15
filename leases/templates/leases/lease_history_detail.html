@@ -123,7 +123,7 @@
 .lh-kv-table th {
   font-size: .7rem; font-weight: 700; color: #8a96b4;
   text-transform: uppercase; letter-spacing: .04em;
-  padding: 5px 8px; text-align: left; width: 48%; white-space: nowrap;
+  padding: 5px 8px; text-align: left; width: 38%; white-space: nowrap;
   background: #fafbff;
 }
 .lh-kv-table td {
@@ -143,26 +143,6 @@
 .lh-police-pending   { background: #fef9c3; color: #854d0e; }
 .lh-police-follow_up { background: #fef9c3; color: #854d0e; }
 .lh-police-none      { background: #f1f5f9; color: #64748b; }
-
-/* Files section */
-.lh-files-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
-.lh-file-cell { background: #f6f8fc; border: 1px solid #e2e6f0; border-radius: 7px; padding: 8px 10px; }
-.lh-file-label { font-size: .65rem; font-weight: 700; color: #8a96b4; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
-.lh-file-val   { font-size: .78rem; color: #1a1f35; }
-.lh-file-val a { color: #2856c8; }
-.lh-file-none  { color: #94a3b8; }
-
-/* Media files list */
-.lh-media-list { list-style: none; padding: 0; margin: 0; }
-.lh-media-list li {
-  display: flex; align-items: center; gap: 8px;
-  padding: 5px 0; border-bottom: 1px solid #f0f2f6; font-size: .78rem;
-}
-.lh-media-list li:last-child { border-bottom: none; }
-.lh-media-list li i { font-size: 14px; color: #7eb3f5; flex-shrink: 0; }
-.lh-media-list li a { color: #2856c8; text-decoration: none; }
-.lh-media-list li a:hover { text-decoration: underline; }
-.lh-media-desc { font-size: .7rem; color: #8a96b4; margin-left: 4px; }
 
 /* Notes block */
 .lh-notes-block {
@@ -195,15 +175,211 @@
   .lh-rail-sep { display: none; }
   .lh-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #e2e6f0; }
   .lh-two-col { grid-template-columns: 1fr; }
-  .lh-files-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 480px) {
   .lh-rail { display: none; }
   .lh-content { padding: 8px; }
   .lh-two-col { grid-template-columns: 1fr; }
-  .lh-files-grid { grid-template-columns: 1fr; }
   #lh-shell { padding-bottom: 52px; }
   .lh-bottom-nav { display: flex !important; }
+}
+
+/* Match the compact Lease History Edit layout. */
+#lh-shell {
+  display: block;
+  width: min(100%, 1320px);
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 14px 12px 24px;
+  overflow: visible;
+  background: transparent;
+  font-size: .86rem;
+  box-sizing: border-box;
+}
+.lh-rail,
+.lh-sidebar,
+.lh-bottom-nav { display: none !important; }
+.lh-main {
+  display: block;
+  overflow: visible;
+  min-width: 0;
+}
+.lh-topbar {
+  background: #fff;
+  border: 1px solid #e2e6f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+}
+.lh-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.lh-title-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: #1a1f35;
+  color: #7eb3f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+.lh-title {
+  margin: 0;
+  color: #172033;
+  font-size: 1.08rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+.lh-subtitle {
+  margin-top: 2px;
+  color: #7a869f;
+  font-size: .76rem;
+}
+.lh-content {
+  padding: 0;
+  overflow: visible;
+}
+.lh-summary {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.lh-stat {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.lh-stat-label {
+  color: #8a96b4;
+  font-size: .64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.lh-stat-value {
+  margin-top: 3px;
+  color: #1a1f35;
+  font-size: .84rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lh-alert {
+  margin: 10px 0 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+.lh-card {
+  margin: 10px 0 0;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+}
+.lh-card-head { padding: 8px 12px; }
+.lh-card-title { font-weight: 800; }
+.lh-card-body { padding: 12px; }
+.lh-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+.lh-overview-third { grid-column: span 2; }
+.lh-overview-full { grid-column: span 2; }
+.lh-overview-half { grid-column: span 2; }
+.lh-overview-label {
+  font-size: .65rem;
+  font-weight: 800;
+  color: #8a96b4;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.lh-overview-value {
+  margin-top: 2px;
+  font-size: .85rem;
+  color: #1a1f35;
+  font-weight: 600;
+}
+.lh-inline-display {
+  display: block;
+  min-height: 24px;
+  color: #2856c8;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 3px 5px;
+  margin: -3px -5px;
+}
+.lh-inline-display:hover,
+.lh-inline-display:focus {
+  background: #eef4ff;
+  color: #1747b5;
+  outline: none;
+}
+.lh-inline-editor { display: none; }
+.lh-inline-cell.is-editing .lh-inline-display { display: none; }
+.lh-inline-cell.is-editing .lh-inline-editor { display: block; }
+.lh-inline-editor .form-control,
+.lh-inline-editor .form-select {
+  width: 100%;
+  min-height: 29px;
+  padding: .2rem .4rem;
+  font-size: .78rem;
+}
+.lh-inline-editor .form-check-input {
+  width: 1rem;
+  height: 1rem;
+  margin: .2rem 0;
+}
+.lh-inline-status {
+  margin-left: auto;
+  font-size: .68rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+@media (max-width: 991px) {
+  #lh-shell { padding: 12px 10px 22px; }
+  .lh-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lh-two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 576px) {
+  #lh-shell { padding: 10px 8px 18px; }
+  .lh-topbar { align-items: flex-start; }
+  .lh-tb-right { width: 100%; }
+  .lh-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lh-stat-wide-mobile { grid-column: 1 / -1; }
+  .lh-overview-tenant { grid-column: 1 / -1; }
+  .lh-overview-location { grid-column: span 3; }
+  .lh-tb-right .btn i { display: none; }
+  .lh-tb-right .btn { flex: 1; }
+  .lh-kv-table tr.lh-witness-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+  .lh-kv-table tr.lh-witness-row th,
+  .lh-kv-table tr.lh-witness-row td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+  }
+  .lh-kv-table tr.lh-witness-row th {
+    padding-bottom: 2px;
+  }
+  .lh-kv-table tr.lh-witness-row td {
+    padding-top: 4px;
+    padding-bottom: 7px;
+  }
 }
 </style>
 
@@ -242,17 +418,14 @@
       </div>
     </div>
 
+    <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ history.pk }}" class="lh-nav-item">
+      <i class="ti ti-file-invoice"></i>Agreement
+    </a>
     <a href="{% url 'leases:lease_history_edit' lease.pk history.pk %}" class="lh-nav-item">
       <i class="ti ti-edit"></i>Edit History
     </a>
     <a href="{% url 'leases:lease_renewals' lease.pk %}" class="lh-nav-item on">
       <i class="ti ti-history"></i>All History
-    </a>
-    <a href="{% url 'leases:renewal_agreement' lease.pk history.pk %}" class="lh-nav-item">
-      <i class="ti ti-file-invoice"></i>Generate PDF
-    </a>
-    <a href="{% url 'leases:renewal_upload_signed' lease.pk history.pk %}" class="lh-nav-item">
-      <i class="ti ti-upload"></i>Upload Signed
     </a>
     <a href="{% url 'leases:photos_page' lease.pk %}" class="lh-nav-item">
       <i class="ti ti-photo"></i>Condition Photos
@@ -267,22 +440,31 @@
   <div class="lh-main">
 
     <div class="lh-topbar">
-      <div class="lh-breadcrumb">
-        <i class="ti ti-home-2"></i>
-        <strong>TMS</strong> / Leases /
-        <strong>History #{{ history.renewal_number }}</strong>
+      <div class="lh-title-wrap">
+        <div class="lh-title-icon"><i class="ti ti-history"></i></div>
+        <div>
+          <h2 class="lh-title">Lease History #{{ history.renewal_number }}</h2>
+          <div class="lh-subtitle">
+            Lease #{{ lease.id }}{% if lease.tenant %} &bull; {{ lease.tenant.get_full_name }}{% endif %}
+          </div>
+        </div>
       </div>
       <div class="lh-tb-right">
+        {% if history.is_original %}
+          <span class="lh-badge lh-badge-orig">Original Lease</span>
+        {% else %}
+          <span class="lh-badge lh-badge-renew">Renewal</span>
+        {% endif %}
+        {% if is_active_history %}
+          <span class="lh-badge lh-badge-active"><i class="ti ti-circle-check"></i> Active History</span>
+        {% endif %}
+        <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ history.pk }}" class="btn btn-sm btn-success lh-agreement-action">
+          <i class="ti ti-file-invoice"></i> Agreement
+        </a>
         <a href="{% url 'leases:lease_history_edit' lease.pk history.pk %}" class="btn btn-sm btn-primary">
           <i class="ti ti-edit"></i> Edit
         </a>
-        <a href="{% url 'leases:renewal_agreement' lease.pk history.pk %}" class="btn btn-sm btn-outline-primary">
-          <i class="ti ti-file-invoice"></i> Generate PDF
-        </a>
-        <a href="{% url 'leases:renewal_upload_signed' lease.pk history.pk %}" class="btn btn-sm btn-outline-secondary">
-          <i class="ti ti-upload"></i> Upload Signed
-        </a>
-        <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-sm btn-outline-dark">
+        <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-sm btn-dark">
           <i class="ti ti-photo"></i> Photos
         </a>
         <a href="{% url 'leases:lease_renewals' lease.pk %}" class="btn btn-sm btn-secondary">
@@ -291,14 +473,26 @@
       </div>
     </div>
 
-    <div class="lh-content">
+    <div class="lh-summary">
+      <div class="lh-stat lh-stat-wide-mobile">
+        <div class="lh-stat-label">Property / Unit</div>
+        <div class="lh-stat-value">{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}</div>
+      </div>
+      <div class="lh-stat lh-stat-wide-mobile">
+        <div class="lh-stat-label">History Period</div>
+        <div class="lh-stat-value">{{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }}</div>
+      </div>
+      <div class="lh-stat">
+        <div class="lh-stat-label">Total Monthly Charges</div>
+        <div class="lh-stat-value" id="historyDetailTotalChip">{{ history.total_monthly_amount|default:0|money:0 }}</div>
+      </div>
+      <div class="lh-stat">
+        <div class="lh-stat-label">Agreement Date</div>
+        <div class="lh-stat-value">{{ history.agreement_date|date:"M d, Y"|default:"-" }}</div>
+      </div>
+    </div>
 
-      {% if is_active_history %}
-        <div class="lh-alert">
-          <i class="ti ti-alert-triangle" style="font-size:16px;"></i>
-          This is the <strong>active / current history</strong>. Its financial values control the master lease and recurring charges.
-        </div>
-      {% endif %}
+    <div class="lh-content">
 
       {# Lease / Tenant / Unit summary #}
       <div class="lh-card">
@@ -307,28 +501,28 @@
           <span class="lh-card-title">Lease, Tenant &amp; Unit</span>
         </div>
         <div class="lh-card-body">
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px 16px;">
-            <div>
+          <div class="lh-overview-grid">
+            <div class="lh-overview-third">
               <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Lease</div>
               <div style="font-size:.85rem;color:#1a1f35;font-weight:600;">#{{ lease.id }}</div>
             </div>
-            <div>
+            <div class="lh-overview-third">
               <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Status</div>
               <div>{% if history.is_original %}<span class="lh-badge lh-badge-orig">Original Lease</span>{% else %}<span class="lh-badge lh-badge-renew">Renewal</span>{% endif %}</div>
             </div>
-            <div>
+            <div class="lh-overview-third">
               <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">History #</div>
               <div style="font-size:.85rem;color:#2856c8;font-weight:700;">#{{ history.renewal_number }}</div>
             </div>
-            <div>
+            <div class="lh-overview-third lh-overview-tenant">
               <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Tenant</div>
               <div style="font-size:.85rem;color:#1a1f35;font-weight:500;">{{ lease.tenant.get_full_name }}</div>
             </div>
-            <div>
+            <div class="lh-overview-third lh-overview-location">
               <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Building</div>
               <div style="font-size:.85rem;color:#1a1f35;">{{ lease.unit.property.property_name }}</div>
             </div>
-            <div>
+            <div class="lh-overview-third lh-overview-location">
               <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Unit</div>
               <div style="font-size:.85rem;color:#1a1f35;">{{ lease.unit.unit_number }}</div>
             </div>
@@ -337,10 +531,14 @@
       </div>
 
       {# Period & Charges #}
+      <form id="historyInlineForm" method="post" action="{% url 'leases:lease_history_edit' lease.pk history.pk %}" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="confirm_active_financial" value="1">
       <div class="lh-card">
         <div class="lh-card-head">
           <i class="ti ti-calendar"></i>
           <span class="lh-card-title">Period &amp; Charges</span>
+          <span class="lh-inline-status" id="historyInlineStatus"></span>
         </div>
         <div class="lh-card-body">
           <div class="lh-two-col">
@@ -348,35 +546,39 @@
             <table class="lh-kv-table">
               <tr>
                 <th>Start Date</th>
-                <td>{{ history.start_date|date:"M d, Y" }}</td>
+                <td class="lh-inline-cell" data-inline-field="start_date" data-display-type="date"><span class="lh-inline-display" tabindex="0">{{ history.start_date|date:"M d, Y" }}</span><div class="lh-inline-editor">{{ inline_form.start_date }}</div></td>
               </tr>
               <tr>
                 <th>End Date</th>
-                <td>{{ history.end_date|date:"M d, Y" }}</td>
+                <td class="lh-inline-cell" data-inline-field="end_date" data-display-type="date"><span class="lh-inline-display" tabindex="0">{{ history.end_date|date:"M d, Y" }}</span><div class="lh-inline-editor">{{ inline_form.end_date }}</div></td>
               </tr>
               <tr>
                 <th>Agreement Date</th>
-                <td>{{ history.agreement_date|date:"M d, Y"|default:"—" }}</td>
+                <td class="lh-inline-cell" data-inline-field="agreement_date" data-display-type="date"><span class="lh-inline-display" tabindex="0">{{ history.agreement_date|date:"M d, Y"|default:"—" }}</span><div class="lh-inline-editor">{{ inline_form.agreement_date }}</div></td>
               </tr>
               <tr>
                 <th>Monthly Rent</th>
-                <td>{{ history.monthly_rent|default:0|money:0 }}</td>
+                <td class="lh-inline-cell" data-inline-field="monthly_rent" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.monthly_rent|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.monthly_rent }}</div></td>
               </tr>
               <tr>
                 <th>Society Maintenance</th>
-                <td>{{ history.society_maintenance|default:0|money:0 }}</td>
+                <td class="lh-inline-cell" data-inline-field="society_maintenance" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.society_maintenance|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.society_maintenance }}</div></td>
               </tr>
               <tr>
                 <th>Water Charges</th>
-                <td>{{ history.water_charges|default:0|money:0 }}</td>
+                <td class="lh-inline-cell" data-inline-field="water_charges" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.water_charges|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.water_charges }}</div></td>
+              </tr>
+              <tr>
+                <th>Bill Water Charges</th>
+                <td class="lh-inline-cell" data-inline-field="bill_water_charges" data-display-type="checkbox"><span class="lh-inline-display" tabindex="0">{% if history.bill_water_charges %}Yes{% else %}No{% endif %}</span><div class="lh-inline-editor">{{ inline_form.bill_water_charges }}</div></td>
               </tr>
               <tr>
                 <th>Internet Charges</th>
-                <td>{{ history.internet_charges|default:0|money:0 }}</td>
+                <td class="lh-inline-cell" data-inline-field="internet_charges" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.internet_charges|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.internet_charges }}</div></td>
               </tr>
               <tr class="lh-total">
                 <th>Total Monthly Charges</th>
-                <td>{{ history.total_monthly_amount|default:0|money:0 }}</td>
+                <td id="historyDetailTotalMonthly">{{ history.total_monthly_amount|default:0|money:0 }}</td>
               </tr>
             </table>
 
@@ -384,52 +586,19 @@
             <table class="lh-kv-table">
               <tr>
                 <th>Agreement Charges</th>
-                <td>{{ history.agreement_charges|default:0|money:0 }}</td>
+                <td class="lh-inline-cell" data-inline-field="agreement_charges" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.agreement_charges|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.agreement_charges }}</div></td>
               </tr>
               <tr>
                 <th>Security Deposit</th>
-                <td>{{ history.security_deposit|default:0|money:0 }}</td>
+                <td class="lh-inline-cell" data-inline-field="security_deposit" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.security_deposit|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.security_deposit }}</div></td>
               </tr>
-              <tr>
+              <tr class="lh-witness-row">
                 <th>Witness 1 Name</th>
-                <td class="lh-left">{% if history.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' history.witness1_tenant.pk %}">{{ history.witness1_tenant.get_full_name }}</a>{% else %}—{% endif %}</td>
+                <td class="lh-left lh-inline-cell" data-inline-field="witness1_tenant" data-display-type="select"><span class="lh-inline-display" tabindex="0">{% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% else %}—{% endif %}</span><div class="lh-inline-editor">{{ inline_form.witness1_tenant }}</div></td>
               </tr>
-              <tr>
-                <th>Witness 1 CNIC</th>
-                <td class="lh-left">{{ history.witness1_tenant.cnic|format_cnic|default:"—" }}</td>
-              </tr>
-              <tr>
+              <tr class="lh-witness-row">
                 <th>Witness 2 Name</th>
-                <td class="lh-left">{% if history.witness2_tenant %}<a href="{% url 'tenants:tenant_detail' history.witness2_tenant.pk %}">{{ history.witness2_tenant.get_full_name }}</a>{% else %}—{% endif %}</td>
-              </tr>
-              <tr>
-                <th>Witness 2 CNIC</th>
-                <td class="lh-left">{{ history.witness2_tenant.cnic|format_cnic|default:"—" }}</td>
-              </tr>
-              <tr>
-                <th>Police Verification</th>
-                <td class="lh-left">
-                  <span class="lh-police-badge lh-police-{{ history.police_verification_status|default:'none' }}">
-                    <i class="ti ti-shield-check" style="font-size:11px;"></i>
-                    {{ history.get_police_verification_status_display }}
-                  </span>
-                </td>
-              </tr>
-              <tr>
-                <th>Police Verified Date</th>
-                <td>{{ history.police_verification_date|date:"M d, Y"|default:"—" }}</td>
-              </tr>
-              <tr>
-                <th>Police Follow-up</th>
-                <td>{{ history.police_verification_follow_up_date|date:"M d, Y"|default:"—" }}</td>
-              </tr>
-              <tr>
-                <th>Police Document</th>
-                <td class="lh-left">
-                  {% if history.police_verification_document %}
-                    <a href="{{ history.police_verification_document.url }}" target="_blank">View</a>
-                  {% else %}—{% endif %}
-                </td>
+                <td class="lh-left lh-inline-cell" data-inline-field="witness2_tenant" data-display-type="select"><span class="lh-inline-display" tabindex="0">{% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% else %}—{% endif %}</span><div class="lh-inline-editor">{{ inline_form.witness2_tenant }}</div></td>
               </tr>
               <tr>
                 <th>Created</th>
@@ -437,17 +606,18 @@
               </tr>
               <tr>
                 <th>Updated</th>
-                <td>{{ history.updated_at|date:"M d, Y H:i" }}{% if history.updated_by %} by {{ history.updated_by }}{% endif %}</td>
+                <td id="historyUpdatedAt">{{ history.updated_at|date:"M d, Y H:i" }}{% if history.updated_by %} by {{ history.updated_by }}{% endif %}</td>
               </tr>
             </table>
           </div>
 
-          {% if history.notes %}
-            <div style="margin-top:10px;">
-              <div class="lh-notes-label">Notes</div>
-              <div class="lh-notes-block">{{ history.notes|linebreaksbr }}</div>
+          <div style="margin-top:10px;">
+            <div class="lh-notes-label">Notes</div>
+            <div class="lh-inline-cell" data-inline-field="notes" data-display-type="text">
+              <div class="lh-notes-block lh-inline-display" tabindex="0">{{ history.notes|default:"—"|linebreaksbr }}</div>
+              <div class="lh-inline-editor">{{ inline_form.notes }}</div>
             </div>
-          {% endif %}
+          </div>
           {% if history.police_verification_remarks %}
             <div style="margin-top:8px;">
               <div class="lh-notes-label">Police Remarks</div>
@@ -456,61 +626,7 @@
           {% endif %}
         </div>
       </div>
-
-      {# Files & PDFs #}
-      <div class="lh-card">
-        <div class="lh-card-head">
-          <i class="ti ti-files"></i>
-          <span class="lh-card-title">Files &amp; PDFs</span>
-          <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-sm btn-primary" style="margin-left:auto;font-size:.72rem;padding:2px 10px;">
-            <i class="ti ti-photo"></i> Manage Photos
-          </a>
-        </div>
-        <div class="lh-card-body">
-          <div class="lh-files-grid">
-            <div class="lh-file-cell">
-              <div class="lh-file-label">Generated Agreement PDF</div>
-              <div class="lh-file-val">
-                {% if history.generated_agreement_pdf %}
-                  <a href="{{ history.generated_agreement_pdf.url }}" target="_blank"><i class="ti ti-file-type-pdf" style="color:#dc2626;"></i> View PDF</a>
-                {% else %}<span class="lh-file-none">None</span>{% endif %}
-              </div>
-            </div>
-            <div class="lh-file-cell">
-              <div class="lh-file-label">Tenant Signed PDF</div>
-              <div class="lh-file-val">
-                {% if history.signed_copy %}
-                  <a href="{{ history.signed_copy.url }}" target="_blank"><i class="ti ti-file-check" style="color:#16a34a;"></i> View Signed</a>
-                {% else %}<span class="lh-file-none">None</span>{% endif %}
-              </div>
-            </div>
-            <div class="lh-file-cell">
-              <div class="lh-file-label">Condition PDF</div>
-              <div class="lh-file-val lh-file-none">Phase 3 file link pending</div>
-            </div>
-          </div>
-
-          {# Media files list #}
-          <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
-            Condition Photos / Uploaded Files
-          </div>
-          {% if media_files %}
-            <ul class="lh-media-list">
-              {% for media in media_files %}
-                <li>
-                  <i class="ti ti-file"></i>
-                  <a href="{{ media.file.url }}" target="_blank">{{ media.title|default:media.file.name }}</a>
-                  {% if media.description %}<span class="lh-media-desc">— {{ media.description }}</span>{% endif %}
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <div style="font-size:.78rem;color:#94a3b8;padding:6px 0;">
-              No uploaded files found for this lease yet.
-            </div>
-          {% endif %}
-        </div>
-      </div>
+      </form>
 
     </div>{# /lh-content #}
 
@@ -518,10 +634,192 @@
       <div class="lh-bottom-tab"><i class="ti ti-file-text"></i>Lease</div>
       <div class="lh-bottom-tab on"><i class="ti ti-history"></i>History</div>
       <div class="lh-bottom-tab"><i class="ti ti-photo"></i>Photos</div>
-      <div class="lh-bottom-tab"><i class="ti ti-file-invoice"></i>PDF</div>
       <div class="lh-bottom-tab"><i class="ti ti-shield-check"></i>Police</div>
     </div>
 
   </div>{# /lh-main #}
 </div>{# /lh-shell #}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.getElementById('historyInlineForm');
+  if (!form) return;
+
+  const status = document.getElementById('historyInlineStatus');
+  const cells = Array.from(form.querySelectorAll('.lh-inline-cell'));
+  const totalChip = document.getElementById('historyDetailTotalChip');
+  const totalRow = document.getElementById('historyDetailTotalMonthly');
+  let activeCell = null;
+  let saving = false;
+
+  function setStatus(message, isError) {
+    status.textContent = message || '';
+    status.classList.toggle('text-danger', Boolean(isError));
+    status.classList.toggle('text-success', Boolean(message && !isError));
+  }
+
+  function money(value) {
+    const amount = Number.parseFloat(value);
+    return 'Rs. ' + new Intl.NumberFormat('en-US', {maximumFractionDigits: 0}).format(Number.isFinite(amount) ? amount : 0);
+  }
+
+  function formattedDate(value) {
+    if (!value) return '—';
+    const parts = value.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) return value;
+    return new Intl.DateTimeFormat('en-US', {month: 'short', day: '2-digit', year: 'numeric'}).format(
+      new Date(parts[0], parts[1] - 1, parts[2])
+    );
+  }
+
+  function editorFor(cell) {
+    return cell.querySelector('.lh-inline-editor input, .lh-inline-editor select, .lh-inline-editor textarea');
+  }
+
+  function displayValue(cell) {
+    const editor = editorFor(cell);
+    const type = cell.dataset.displayType;
+    if (!editor) return '—';
+    if (type === 'currency') return money(editor.value);
+    if (type === 'date') return formattedDate(editor.value);
+    if (type === 'checkbox') return editor.checked ? 'Yes' : 'No';
+    if (type === 'select') return editor.selectedOptions[0]?.value ? editor.selectedOptions[0].text : '—';
+    return editor.value.trim() || '—';
+  }
+
+  function updateTotal() {
+    const total = ['monthly_rent', 'society_maintenance', 'water_charges', 'internet_charges'].reduce(function (sum, name) {
+      const value = Number.parseFloat(form.elements[name]?.value);
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+    const label = money(total);
+    if (totalChip) totalChip.textContent = label;
+    if (totalRow) totalRow.textContent = label;
+  }
+
+  function closeCell(cell, updateDisplay) {
+    if (!cell) return;
+    if (updateDisplay) cell.querySelector('.lh-inline-display').textContent = displayValue(cell);
+    cell.classList.remove('is-editing');
+    if (activeCell === cell) activeCell = null;
+  }
+
+  function beginEdit(cell) {
+    if (saving || cell.classList.contains('is-editing')) return;
+    if (activeCell && activeCell !== cell) {
+      saveCell(activeCell).then(function (saved) { if (saved) beginEdit(cell); });
+      return;
+    }
+    activeCell = cell;
+    cell.classList.add('is-editing');
+    const editor = editorFor(cell);
+    if (!editor) return;
+    if (editor.tagName === 'SELECT' && window.jQuery && jQuery.fn.select2) {
+      const $editor = jQuery(editor);
+      if (!$editor.hasClass('select2-hidden-accessible')) {
+        $editor.select2({theme: 'bootstrap-5', width: '100%', allowClear: true});
+      }
+      $editor.select2('open');
+    } else {
+      editor.focus();
+      if (editor.select && editor.type !== 'date') editor.select();
+    }
+  }
+
+  async function saveCell(cell) {
+    if (!cell || saving) return false;
+    saving = true;
+    setStatus('Saving…', false);
+    const data = new FormData(form);
+
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': data.get('csrfmiddlewaretoken') || '',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: data
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        const fieldErrors = result.errors?.[cell.dataset.inlineField] || [];
+        throw new Error(fieldErrors[0]?.message || result.message || 'Could not save lease history.');
+      }
+      closeCell(cell, true);
+      updateTotal();
+      const updated = document.getElementById('historyUpdatedAt');
+      if (updated && result.updated_at) updated.textContent = result.updated_at + ' by {{ request.user|escapejs }}';
+      setStatus('Saved', false);
+      window.setTimeout(function () { if (status.textContent === 'Saved') status.textContent = ''; }, 1400);
+      return true;
+    } catch (error) {
+      setStatus(error.message, true);
+      editorFor(cell)?.focus();
+      return false;
+    } finally {
+      saving = false;
+    }
+  }
+
+  cells.forEach(function (cell) {
+    const display = cell.querySelector('.lh-inline-display');
+    const editor = editorFor(cell);
+    display.addEventListener('click', function () { beginEdit(cell); });
+    display.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        beginEdit(cell);
+      }
+    });
+    if (!editor) return;
+    if (['monthly_rent', 'society_maintenance', 'water_charges', 'internet_charges'].includes(cell.dataset.inlineField)) {
+      editor.addEventListener('input', updateTotal);
+    }
+    if (editor.type === 'checkbox' || editor.tagName === 'SELECT') {
+      editor.addEventListener('change', function () { saveCell(cell); });
+      editor.addEventListener('blur', function () {
+        window.setTimeout(function () {
+          if (cell.classList.contains('is-editing') && !saving) saveCell(cell);
+        }, 120);
+      });
+      if (editor.tagName === 'SELECT' && window.jQuery) {
+        jQuery(editor).off('select2:close.historyInline').on('select2:close.historyInline', function () {
+          window.setTimeout(function () {
+            if (cell.classList.contains('is-editing') && !saving) saveCell(cell);
+          }, 120);
+        });
+      }
+    } else {
+      editor.addEventListener('blur', function () {
+        window.setTimeout(function () {
+          if (cell.classList.contains('is-editing') && !cell.querySelector('.lh-inline-editor').contains(document.activeElement)) {
+            saveCell(cell);
+          }
+        }, 120);
+      });
+      editor.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeCell(cell, false);
+        } else if (event.key === 'Enter' && editor.tagName !== 'TEXTAREA') {
+          event.preventDefault();
+          saveCell(cell);
+        } else if (event.key === 'Enter' && editor.tagName === 'TEXTAREA' && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          saveCell(cell);
+        }
+      });
+    }
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (activeCell) saveCell(activeCell);
+  });
+  updateTotal();
+});
+</script>
 {% endblock %}

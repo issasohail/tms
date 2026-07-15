@@ -8,19 +8,15 @@
    ============================================================ */
 
 .ld-page { padding: 16px 0 48px; font-size: 14px; }
-.ld-page, .ld-page button, .ld-page input, .ld-page select, .ld-page textarea { font-family: inherit; }
 
 /* ---- header: 4 fixed/flex sections ---- */
 .ld-header-row {
-  display: grid;
-  grid-template-columns: auto 96px minmax(260px, 360px) minmax(300px, 1fr);
-  grid-template-areas: "media vehicle info actions";
-  align-items: stretch; gap: 12px;
+  display: flex; align-items: stretch; gap: 16px;
   padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #e5e7eb;
 }
 
 /* Section 1 — photo + cnic front/back (fixed) */
-.ld-hdr-media { grid-area:media; display: flex; gap: 6px; }
+.ld-hdr-media { flex: 0 0 auto; display: flex; gap: 6px; }
 .ld-doc-tile {
   width:96px; background:#eff6ff; border:2px solid #2563eb; border-radius:7px;
   padding:5px; text-align:center;
@@ -40,7 +36,7 @@
 
 /* Section 2 — tenant / lease identity (fixed, bigger type) */
 .ld-hdr-info {
-  grid-area:info; min-width: 260px; max-width: 360px;
+  flex: 0 0 auto; min-width: 260px; max-width: 360px;
   display: flex; flex-direction: column; justify-content: center;
   border-left: 1px solid #e5e7eb; padding-left: 16px;
 }
@@ -48,15 +44,12 @@
 .ld-hdr-name a { color: inherit; text-decoration: none; }
 .ld-hdr-line2 { font-size: 15px; font-weight: 600; color: #374151; line-height: 1.35; }
 .ld-hdr-line3 { font-size: 12px; color: #6b7280; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ld-hdr-balance { font-size: 13px; font-weight: 700; color: #dc2626; margin-top: 3px; }
 
 /* Section 3 — actions (fills remaining space, right aligned) */
 .ld-hdr-actions {
-  grid-area:actions; display: flex; align-content: center; align-items: center; justify-content: flex-start;
-  flex-wrap: wrap; gap: 3px; min-width: 0;
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: flex-end;
+  flex-wrap: wrap; gap: 6px; min-width: 0;
 }
-.ld-hdr-actions .btn { font-size:10px; line-height:1.2; padding:4px 7px; white-space:nowrap; }
-.ld-hdr-actions .btn-group { display:inline-flex; }
 .ld-wa-btn { display:flex; align-items:center; gap:8px; }
 .ld-wa-btn .ld-wa-api { display:flex; align-items:center; gap:4px; border-left:1px solid rgba(255,255,255,.4); padding-left:8px; font-weight:400; font-size:11px; }
 .ld-wa-btn .ld-wa-api input { margin:0; }
@@ -66,13 +59,20 @@
 .ld-police-group .btn { border-right:1px solid rgba(255,255,255,.35); border-radius:0; }
 .ld-police-group .btn:first-child { border-top-left-radius:var(--bs-btn-border-radius,.25rem); border-bottom-left-radius:var(--bs-btn-border-radius,.25rem); }
 .ld-police-group .btn:last-child { border-right:0; border-top-right-radius:var(--bs-btn-border-radius,.25rem); border-bottom-right-radius:var(--bs-btn-border-radius,.25rem); }
-.ld-police-open { padding-left:6px !important; padding-right:6px !important; }
-.ld-police-copy, .ld-police-wa { min-width:25px; padding-left:5px !important; padding-right:5px !important; }
+.ld-police-copy, .ld-police-wa { padding-left:10px; padding-right:10px; }
+
+/* Tablet / narrow-desktop collapse: secondary buttons hide, dropdown copies show */
+@media (max-width: 1399px) {
+  .ld-hide-tablet { display: none !important; }
+}
+@media (min-width: 1400px) {
+  .ld-show-tablet-only { display: none !important; }
+}
 
 /* Section 4 — vehicle thumbnail (fixed) */
 .ld-hdr-vehicle {
-  grid-area:vehicle; text-align: center;
-  border-left: 0; padding-left: 0;
+  flex: 0 0 auto; text-align: center;
+  border-left: 1px solid #e5e7eb; padding-left: 16px;
 }
 .ld-hdr-vehicle .ld-doc-tile { width: 96px; }
 
@@ -122,7 +122,7 @@
 .ld-ov-col:last-child { border-right: none; }
 
 .ld-ov-head {
-  font-size: 10px; font-weight: 700; color: #111827;
+  font-size: 10px; font-weight: 700; color: #94a3b8;
   text-transform: uppercase; letter-spacing: .6px;
   padding-bottom: 8px; margin-bottom: 8px;
   border-bottom: 1px solid #e5e7eb;
@@ -134,7 +134,7 @@
 }
 .ld-f:last-child { margin-bottom: 0; }
 .ld-f-label {
-  font-size: 10px; color: #111827; font-weight: 600;
+  font-size: 10px; color: #9ca3af; font-weight: 500;
   text-transform: uppercase; letter-spacing: .3px;
   margin-bottom: 2px;
 }
@@ -143,7 +143,6 @@
 }
 .ld-f-value a { color: #2563eb; text-decoration: none; }
 .ld-f-value a:hover { text-decoration: underline; }
-.ld-agreement-parties .ld-f-value a { color:#111827; }
 .ld-f-value.val-danger  { color: #dc2626; font-weight: 700; }
 .ld-f-value.val-success { color: #15803d; }
 
@@ -154,7 +153,7 @@
 }
 .dep-row.dep-warn { background:#fef9c3; }
 .dep-row.dep-ok   { background:#f0fdf4; }
-.dep-k { color:#111827; font-weight:600; }
+.dep-k { color:#6b7280; }
 .dep-v { font-weight:600; }
 
 /* ---- Tab nav ---- */
@@ -211,7 +210,7 @@
   padding:4px 0; border-bottom:.5px solid #f1f5f9; font-size:13px; gap:8px;
 }
 .ld-row:last-child { border-bottom:none; }
-.ld-rk { color:#111827; font-weight:600; flex-shrink:0; min-width:130px; }
+.ld-rk { color:#6b7280; font-weight:500; flex-shrink:0; min-width:130px; }
 .ld-rv { color:#111827; font-weight:500; text-align:right; }
 
 /* ---- layout helpers ---- */
@@ -239,11 +238,10 @@
 }
 .ld-tbl th {
   background:#f8fafc; padding:7px 10px; font-size:11px; font-weight:700;
-  color:#111827; border-bottom:1px solid #e5e7eb; text-align:left; white-space:nowrap;
+  color:#6b7280; border-bottom:1px solid #e5e7eb; text-align:left; white-space:nowrap;
 }
 .ld-tbl td { padding:7px 10px; border-bottom:.5px solid #f3f4f6; color:#111827; }
 .ld-tbl tr:last-child td { border-bottom:none; }
-.ld-renewal-actions .btn { padding:4px 7px; font-size:11px; line-height:1.2; }
 
 .ld-empty { padding:14px 0; font-size:13px; color:#9ca3af; }
 .ld-sec-title {
@@ -264,16 +262,10 @@
 .ld-file-actions { display:flex; flex-wrap:nowrap; gap:3px; justify-content:flex-end; white-space:nowrap; }
 .ld-file-actions form { display:inline-flex; margin:0; }
 .ld-file-action-btn { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; padding:0; }
-.ld-file-actions .ld-file-action-btn i { color:#fff !important; font-size:12px; line-height:1; }
+.ld-file-icon-download { color:#0d6efd; }
+.ld-file-icon-whatsapp { color:#198754; }
 .ld-file-missing { font-size:10px; }
 .ld-file-category-select { font-size:11px; padding:2px 5px; min-height:26px; }
-.ld-file-category-display {
-  border:0; background:transparent; padding:0; color:#111827;
-  font-size:11px; font-weight:600; line-height:1.25; text-align:left; cursor:pointer;
-}
-.ld-file-category-display:hover { text-decoration:underline; }
-.ld-file-upload-actions { display:flex; align-items:center; flex-wrap:nowrap; gap:5px; }
-.ld-family-mobile-only { display:none; }
 .ld-vehicle-photo-btn {
   display:inline-block;
   border:0;
@@ -323,10 +315,12 @@
 /* Tablet keeps text-only buttons (space is tight but not touch-critical). Mobile restores
    icons below, since icon + short label scans faster than text alone at small widths. */
 @media (min-width: 700px) and (max-width: 999.98px) {
-  .ld-header-row {
-    grid-template-columns:auto minmax(260px,1fr) 96px;
-    grid-template-areas:"media info vehicle" "actions actions actions";
-  }
+  .ld-hdr-actions .btn > i,
+  .ld-hdr-actions .btn > .fas,
+  .ld-hdr-actions .btn > .far,
+  .ld-hdr-actions .btn > .fab,
+  .ld-hdr-actions a > i,
+  .ld-hdr-actions button > i { display:none !important; }
 }
 @media (max-width: 999.98px) {
   .ld-mobile-section-nav i,
@@ -336,69 +330,72 @@
 @media (max-width: 699.98px) {
   html { scroll-behavior:smooth; }
 
+  /* Show every action button on mobile — tablet still collapses Late Fee /
+     Agreement / Inspection into More, but mobile has room to show them all,
+     so drop the duplicate copies from the dropdown here. */
+  .ld-hide-tablet { display:inline-flex !important; }
+  .ld-show-tablet-only { display:none !important; }
+
   /* Tighter inner-card spacing so key/value rows don't read as empty space. */
-  .ld-inner-head { padding:7px 10px; color:#000; font-weight:800; }
-  .ld-sec-title { color:#000; font-weight:800; }
+  .ld-inner-head { padding:7px 10px; }
   .ld-inner-body { padding:8px 10px; }
   .ld-row { padding:3px 0; font-size:12.5px; }
   .ld-rk { min-width:0; flex:0 0 44%; }
-  .ld-page { padding:8px 0 36px; font-size:14px; overflow-x:hidden; }
+  .ld-page { padding:8px 0 36px; font-size:12px; overflow-x:hidden; }
   #lease-detail-top { scroll-margin-top:72px; }
 
   /* Header becomes a compact vertical layout. */
   .ld-header-row {
-    display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
-    grid-template-areas:"media media media vehicle" "info info info info" "actions actions actions actions";
-    gap:7px;
+    display:flex; flex-direction:column; gap:10px;
     padding-bottom:10px; margin-bottom:10px;
   }
   .ld-hdr-media {
-    width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px;
+    width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px;
   }
   .ld-doc-tile, .ld-hdr-vehicle .ld-doc-tile { width:100%; min-width:0; }
   .ld-doc-img, .ld-doc-empty { height:68px; }
   .ld-hdr-info {
-    min-width:0; max-width:none; width:100%;
+    order:2; min-width:0; max-width:none; width:100%;
     border-left:0; padding-left:0;
   }
   .ld-hdr-name { font-size:18px; }
   .ld-hdr-line2 { font-size:13px; }
   .ld-hdr-actions {
-    width:100%; justify-content:flex-start; gap:3px;
+    order:3; width:100%; justify-content:flex-start; gap:6px;
   }
   .ld-hdr-actions .btn,
   .ld-hdr-actions .btn-group,
-  .ld-hdr-actions .ld-wa-btn { font-size:10px; }
+  .ld-hdr-actions .ld-wa-btn { font-size:11px; }
   .ld-hdr-actions .btn {
-    min-height:0; padding:4px 7px;
+    min-height:36px; padding-top:8px; padding-bottom:8px;
     display:inline-flex; align-items:center; gap:5px;
   }
   .ld-hdr-actions .btn > i { display:inline-block !important; font-size:12px; }
-  .ld-wa-btn { min-height:0; }
+  .ld-wa-btn { min-height:36px; }
   .ld-wa-btn .ld-wa-api { font-size:10px; }
-  .ld-police-group .btn { min-height:0; }
-  .ld-police-copy, .ld-police-wa { min-width:25px; justify-content:center; }
+  .ld-police-group .btn { min-height:36px; }
+  .ld-police-copy, .ld-police-wa { min-width:36px; justify-content:center; }
   .ld-hdr-vehicle {
-    width:100%; border-left:0; padding-left:0; text-align:left;
+    order:1; width:100%; border-left:0; padding-left:0; text-align:left;
   }
-  .ld-hdr-vehicle .ld-doc-tile { max-width:none; }
+  .ld-hdr-vehicle .ld-doc-tile { max-width:96px; }
 
   /* Section chips: one horizontally scrollable row instead of a multi-row grid,
      so navigation no longer pushes real content below the fold. */
   .ld-mobile-section-nav {
-    display:flex; flex-wrap:wrap; gap:4px;
-    margin:0 0 8px; padding:5px;
+    display:flex; flex-wrap:nowrap; gap:6px;
+    margin:0 0 10px; padding:8px 8px 10px;
     background:#fff; border:1px solid #e5e7eb; border-radius:8px;
-    overflow:visible;
+    overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin;
   }
   .ld-mobile-section-badge {
-    flex:1 1 calc(25% - 4px);
+    flex:0 0 auto;
     display:flex; align-items:center; justify-content:center;
-    min-width:0; min-height:24px; padding:3px 5px;
+    min-height:32px; padding:6px 12px;
     border:1px solid #bfdbfe; border-radius:16px;
     background:#eff6ff; color:#1d4ed8;
-    font-size:9px; font-weight:700; line-height:1.05;
-    text-align:center; text-decoration:none; white-space:normal;
+    font-size:11px; font-weight:700; line-height:1.15;
+    text-align:center; text-decoration:none; white-space:nowrap;
   }
 
   /* Overview columns stack as individual cards. */
@@ -406,33 +403,11 @@
   .ld-overview-card-header {
     border:1px solid #e5e7eb; border-radius:8px 8px 0 0;
   }
-  .ld-ov-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .ld-ov-grid { display:block; }
   .ld-ov-col {
-    grid-column:1 / -1;
     background:#fff; border:1px solid #e5e7eb !important; border-radius:8px;
-    padding:11px 12px; margin-top:0;
+    padding:11px 12px; margin-top:8px;
   }
-  .ld-ov-head { color:#000; font-size:11px; font-weight:800; letter-spacing:.45px; }
-  .ld-ov-col.ld-mobile-two-col,
-  .ld-ov-col.ld-mobile-property-grid {
-    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 10px;
-  }
-  .ld-ov-col.ld-mobile-property-grid { grid-template-columns:repeat(6,minmax(0,1fr)); }
-  .ld-mobile-two-col .ld-ov-head,
-  .ld-mobile-property-grid .ld-ov-head { grid-column:1 / -1; margin-bottom:0; }
-  .ld-mobile-property-grid .ld-mobile-third { grid-column:span 2; }
-  .ld-mobile-property-grid .ld-mobile-half { grid-column:span 3; }
-  .ld-mobile-property-grid .ld-mobile-full { grid-column:1 / -1; }
-  .ld-mobile-two-col .ld-f,
-  .ld-mobile-property-grid .ld-f { margin-bottom:0; min-width:0; }
-  .ld-agreement-parties .ld-f-value {
-    font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
-  .ld-mobile-half-card { grid-column:span 1; display:block !important; }
-  .ld-mobile-half-card .ld-ov-head { margin-bottom:7px; }
-  .ld-mobile-half-card .ld-f { margin-bottom:7px; }
-  .ld-mobile-half-card .dep-row { padding:3px 4px; gap:4px; }
-  .ld-mobile-half-card .dep-v { text-align:right; }
   .ld-ov-head { margin-bottom:7px; }
 
   /* Desktop tab strip is replaced by the badge navigation above. */
@@ -450,7 +425,7 @@
   }
   .ld-mobile-top-link {
     display:inline-flex; align-items:center; justify-content:center;
-    float:none; flex:0 0 auto; margin:0 0 0 auto; padding:3px 8px;
+    float:right; margin:-2px 0 7px 8px; padding:4px 9px;
     border:1px solid #d1d5db; border-radius:16px;
     background:#fff; color:#475569; font-size:10px; font-weight:700;
     text-decoration:none;
@@ -477,7 +452,7 @@
     padding:3px 0 !important; border:0 !important; font-size:12px; text-align:right;
   }
   .ld-mobile-cards td::before {
-    content:attr(data-label); font-weight:600; color:#111827;
+    content:attr(data-label); font-weight:700; color:#6b7280;
     text-align:left; flex:0 0 42%;
   }
   .ld-mobile-cards td.ld-empty { display:block; text-align:center; }
@@ -491,7 +466,7 @@
   .ld-mobile-cards-3col td { display:block; text-align:left; padding:0 !important; font-size:11.5px; }
   .ld-mobile-cards-3col td::before {
     content:attr(data-label); display:block; text-align:left;
-    font-weight:600; color:#111827; font-size:9.5px;
+    font-weight:700; color:#6b7280; font-size:9.5px;
     text-transform:uppercase; letter-spacing:.02em; margin-bottom:1px;
   }
   .ld-mobile-cards-3col td.ld-td-actions {
@@ -500,71 +475,6 @@
   }
   .ld-mobile-cards-3col td.ld-td-actions::before { content:none; }
   .ld-mobile-cards-3col td.ld-empty { grid-column:1 / -1; }
-
-  .ld-compact-mobile-table tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 10px; }
-  .ld-compact-mobile-table td { display:block; text-align:left; padding:0 !important; min-width:0; overflow-wrap:anywhere; }
-  .ld-compact-mobile-table td::before {
-    content:attr(data-label); display:block; text-align:left; margin-bottom:1px;
-    font-size:9px; font-weight:600; color:#111827; text-transform:uppercase;
-  }
-  .ld-compact-mobile-table td.ld-td-actions { grid-column:1 / -1; padding-top:4px !important; }
-  .ld-compact-mobile-table td.ld-td-actions::before { content:none; }
-  .ld-compact-mobile-table .ld-vehicle-thumb { width:46px; height:34px; }
-
-  .ld-family-table tr { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .ld-family-table .ld-family-sn,
-  .ld-family-table .ld-family-name,
-  .ld-family-table .ld-family-dob,
-  .ld-family-table .ld-family-age { display:none !important; }
-  .ld-family-table .ld-family-mobile-only { display:block !important; }
-  .ld-family-table .ld-family-mobile-id { order:1; }
-  .ld-family-table .ld-family-relation { order:2; }
-  .ld-family-table .ld-family-cnic { order:3; }
-  .ld-family-table .ld-family-mobile-dob-age { order:4; }
-  .ld-family-table .ld-family-phone,
-  .ld-family-table td.ld-td-actions { display:none !important; }
-  .ld-family-table .ld-family-mobile-last-row {
-    display:flex !important; grid-column:1 / -1; order:5;
-    align-items:flex-end; justify-content:space-between; gap:8px;
-    padding-top:2px !important;
-  }
-  .ld-family-mobile-last-row::before { content:none !important; }
-  .ld-family-mobile-phone { min-width:0; }
-  .ld-family-mobile-phone-label {
-    display:block; margin-bottom:1px; color:#111827; font-size:9px;
-    font-weight:600; text-transform:uppercase;
-  }
-  .ld-family-mobile-actions { display:flex; flex:0 0 auto; flex-wrap:nowrap; gap:4px; }
-
-  .ld-family-heading { flex-wrap:nowrap !important; gap:3px !important; }
-  .ld-family-heading > span { flex:0 0 auto; font-size:11px; }
-  .ld-heading-actions { flex-wrap:nowrap !important; gap:3px !important; margin-left:auto; }
-  .ld-heading-actions .btn { padding:3px 5px; font-size:9px; white-space:nowrap; }
-  .ld-heading-actions .ld-mobile-top-link { margin-left:0; }
-
-  .ld-cnic-front-label { font-size:8px; letter-spacing:0; white-space:nowrap; }
-
-  .ld-renewal-head { flex-wrap:nowrap !important; margin-bottom:8px !important; }
-  .ld-renewal-head .btn { flex:0 0 auto; padding:4px 7px; font-size:10px; white-space:nowrap; }
-  .ld-renewal-actions { gap:3px !important; }
-  .ld-renewal-actions .btn { padding:4px 7px; font-size:11px; line-height:1.2; }
-
-  .ld-file-form { grid-template-columns:1fr 1fr; gap:5px 7px; margin-bottom:8px !important; }
-  .ld-file-form > div:first-of-type { grid-column:1 / -1; }
-  .ld-file-form label { font-size:10px; }
-  .ld-file-row {
-    position:relative; grid-template-columns:1fr 1fr; gap:5px 8px;
-    padding:7px;
-  }
-  .ld-file-serial { position:absolute; top:7px; right:7px; font-size:10px; }
-  .ld-file-row > div:nth-child(2) { grid-column:1 / -1; padding-right:24px; }
-  .ld-file-row > div:nth-child(3) { grid-column:1 / -1; }
-  .ld-file-name { font-size:11.5px; line-height:1.25; }
-  .ld-file-sub { font-size:9.5px; line-height:1.25; }
-  .ld-file-actions { grid-column:1 / -1; justify-content:flex-end; }
-  .ld-file-action-btn { width:27px; height:27px; }
-  .ld-file-upload-actions { grid-column:1 / -1; }
-  #ld-tab-docs .ld-inner-body { padding:8px; }
 }
 
 /* Very narrow phones remain usable below the requested 360px baseline. */
@@ -629,11 +539,11 @@
         {% if lease.tenant.cnic_front %}
           <a href="{{ lease.tenant.cnic_front.url }}" target="_blank">
             <img src="{{ lease.tenant.cnic_front.url }}" alt="CNIC Front" class="ld-doc-img">
-            <span class="ld-doc-label ld-cnic-front-label">CNIC Front</span>
+            <span class="ld-doc-label">CNIC Front</span>
           </a>
         {% else %}
           <div class="ld-doc-empty">No file</div>
-          <span class="ld-doc-label ld-cnic-front-label">CNIC Front</span>
+          <span class="ld-doc-label">CNIC Front</span>
         {% endif %}
       </div>
       <div class="ld-doc-tile">
@@ -664,7 +574,6 @@
           {{ lease.get_status_display }}
         </span>
       </div>
-      <div class="ld-hdr-balance">Balance Due: {{ balance_due|default:0|money:0 }}</div>
     </div>
 
     <!-- Section 3: actions (fills remaining space, right aligned) -->
@@ -682,16 +591,12 @@
           <i class="fas fa-door-open"></i> End Lease
         </button>
       {% elif lease.status == "ended" %}
-        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#rollbackEndLeaseModal">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rollbackEndLeaseModal">
           <i class="fas fa-undo"></i> Roll Back Lease End
         </button>
       {% endif %}
-      <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-info"><i class="fas fa-sync-alt"></i> Renew</a>
-      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-eye"></i> Agreement</a>
-      <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-file-pdf"></i> PDF Lease</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
-      <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-clock"></i> Late Fee</a>
-      <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-dark"><i class="fas fa-clipboard-check"></i> Inspection</a>
+      <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-warning ld-hide-tablet"><i class="fas fa-clock"></i> Late Fee</a>
 
       <div class="btn btn-sm btn-success ld-wa-btn" style="cursor:default;">
         <a href="{% url 'leases:lease_welcome_whatsapp' lease.pk %}" id="waMainBtn" style="color:inherit;text-decoration:none;"><i class="fab fa-whatsapp"></i> WhatsApp</a>
@@ -707,25 +612,43 @@
         <button type="button" class="btn btn-sm btn-primary ld-police-wa" title="Share via WhatsApp"><i class="fab fa-whatsapp"></i></button>
       </div>
 
-      {% if lease.signed_agreement %}
-        <a href="{{ lease.signed_agreement.url }}" target="_blank" class="btn btn-sm btn-success"><i class="fas fa-file-signature"></i> Signed Agreement</a>
-      {% endif %}
-      <a href="{% url 'leases:police_verification_summary_pdf' lease.pk %}" class="btn btn-sm btn-danger"><i class="fas fa-file-pdf"></i> Police PDF</a>
-      {% if lease.generated_agreement_pdf %}
-        <a href="#" onclick="sendEmail(); return false;" class="btn btn-sm btn-primary"><i class="fas fa-envelope"></i> Email</a>
-        <a href="{% url 'leases:download_preview' lease.id %}" class="btn btn-sm btn-secondary"><i class="fas fa-download"></i> Download PDF</a>
-      {% endif %}
-      {% if lease.status == "active" %}
-        <div class="btn-group" role="group" aria-label="Maintenance link actions">
-          <button type="button" id="copyMaintenanceLinkBtn" class="btn btn-sm btn-secondary" data-maintenance-link="{{ public_maintenance_url }}">
-            <i class="fas fa-link"></i> Maintenance Link
-          </button>
-          <a href="https://wa.me/?text={{ public_maintenance_whatsapp_text|urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-success" title="Share maintenance link via WhatsApp">
-            <i class="fab fa-whatsapp"></i>
-          </a>
-        </div>
-      {% endif %}
-      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete</a>
+      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm btn-primary ld-hide-tablet"><i class="fas fa-eye"></i> Agreement</a>
+      <a href="{% url 'leases:lease_inspection_list' lease.pk %}" class="btn btn-sm btn-dark ld-hide-tablet"><i class="fas fa-clipboard-check"></i> Inspection</a>
+
+      <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+          More
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li class="ld-show-tablet-only"><a class="dropdown-item" href="{% url 'leases:lease_late_fee_settings' lease.pk %}"><i class="fas fa-clock"></i> Late Fee</a></li>
+          <li class="ld-show-tablet-only"><a class="dropdown-item" href="{% url 'leases:edit_clauses' lease.pk %}"><i class="fas fa-eye"></i> View Agreement</a></li>
+          <li class="ld-show-tablet-only"><a class="dropdown-item" href="{% url 'leases:lease_inspection_list' lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a></li>
+          <li class="ld-show-tablet-only"><hr class="dropdown-divider"></li>
+
+          <li><a class="dropdown-item" href="{% url 'leases:lease_renew' lease.pk %}"><i class="fas fa-sync-alt"></i> Renew</a></li>
+          {% if lease.signed_agreement %}
+            <li><a class="dropdown-item" href="{{ lease.signed_agreement.url }}" target="_blank"><i class="fas fa-file-signature"></i> Signed Agreement</a></li>
+          {% endif %}
+          <li><a class="dropdown-item" href="{% url 'leases:police_verification_summary_pdf' lease.pk %}"><i class="fas fa-file-pdf"></i> Police PDF</a></li>
+          <li><a class="dropdown-item" href="{% url 'leases:lease_print' lease.pk %}"><i class="fas fa-print"></i> Print</a></li>
+          {% if lease.generated_agreement_pdf %}
+            <li><a class="dropdown-item" href="#" onclick="sendEmail(); return false;"><i class="fas fa-envelope"></i> Email</a></li>
+            <li><a class="dropdown-item" href="{% url 'leases:download_preview' lease.id %}"><i class="fas fa-download"></i> Download PDF</a></li>
+          {% endif %}
+          {% if lease.status == "active" %}
+            <li class="dropdown-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span id="copyMaintenanceLinkBtn" data-maintenance-link="{{ public_maintenance_url }}" style="cursor:pointer;flex:1;">
+                <i class="fas fa-link"></i> Maintenance Link
+              </span>
+              <a href="https://wa.me/?text={{ public_maintenance_whatsapp_text|urlencode }}" target="_blank" rel="noopener" style="color:#15803d;">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+            </li>
+          {% endif %}
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="{% url 'leases:lease_delete' lease.pk %}"><i class="fas fa-trash-alt"></i> Delete</a></li>
+        </ul>
+      </div>
     </div>
 
     <!-- Section 4: vehicle thumbnail (fixed) -->
@@ -775,37 +698,33 @@
     <div class="ld-ov-grid">
 
       <!-- COL 1: Property -->
-      <div class="ld-ov-col ld-mobile-property-grid">
+      <div class="ld-ov-col">
         <div class="ld-ov-head">Property</div>
-        <div class="ld-f ld-mobile-third">
+        <div class="ld-f">
           <div class="ld-f-label">Property</div>
           <div class="ld-f-value">{{ lease.unit.property.property_name }}</div>
         </div>
-        <div class="ld-f ld-mobile-third">
+        <div class="ld-f">
           <div class="ld-f-label">Unit</div>
           <div class="ld-f-value">{{ lease.unit.unit_number }}</div>
         </div>
-        <div class="ld-f ld-mobile-third">
+        <div class="ld-f">
           <div class="ld-f-label">Agreement Date</div>
           <div class="ld-f-value">{{ lease.agreement_date|default:"&mdash;" }}</div>
         </div>
-        <div class="ld-f ld-mobile-half">
+        <div class="ld-f">
           <div class="ld-f-label">Min Occupancy</div>
           <div class="ld-f-value">{{ lease.min_lease_occupancy_months|default:"&mdash;" }} months</div>
         </div>
-        <div class="ld-f ld-mobile-half">
+        <div class="ld-f">
           <div class="ld-f-label">Meter Reading</div>
           <div class="ld-f-value">{{ lease.electricity_meter_reading|default:"&mdash;" }}</div>
-        </div>
-        <div class="ld-f ld-mobile-full">
-          <div class="ld-f-label">Rent Due Day / Late Fee</div>
-          <div class="ld-f-value">{{ lease.due_date|default:"&mdash;" }} &middot; {{ lease.late_fee|default:0|money:0 }}</div>
         </div>
       </div>
 
       <!-- COL 2: Agreement Parties -->
-      <div class="ld-ov-col ld-mobile-two-col ld-agreement-parties">
-        <div class="ld-ov-head d-flex justify-content-between align-items-center">Agreement Parties <a class="btn btn-sm btn-primary" href="{% url 'leases:edit_clauses' lease.pk %}{% if active_history %}?history={{ active_history.pk }}{% endif %}"><i class="fas fa-edit"></i> Edit</a></div>
+      <div class="ld-ov-col">
+        <div class="ld-ov-head d-flex justify-content-between align-items-center">Agreement Parties <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:edit_clauses' lease.pk %}{% if active_history %}?history={{ active_history.pk }}{% endif %}"><i class="fas fa-edit"></i> Edit</a></div>
         <div class="ld-f"><div class="ld-f-label">Proposer</div><div class="ld-f-value">{% if lease.proposer %}<a href="{% url 'tenants:tenant_detail' lease.proposer.pk %}">{{ lease.proposer.get_full_name }}</a>{% if lease.proposer_relationship %}<small class="d-block text-muted">{{ lease.proposer_relationship }}</small>{% endif %}{% else %}&mdash;{% endif %}</div></div>
         <div class="ld-f"><div class="ld-f-label">Seconder</div><div class="ld-f-value">{% if lease.seconder %}<a href="{% url 'tenants:tenant_detail' lease.seconder.pk %}">{{ lease.seconder.get_full_name }}</a>{% if lease.seconder_relationship %}<small class="d-block text-muted">{{ lease.seconder_relationship }}</small>{% endif %}{% else %}&mdash;{% endif %}</div></div>
         <div class="ld-f"><div class="ld-f-label">Witness 1</div><div class="ld-f-value">{% if active_history.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' active_history.witness1_tenant.pk %}">{{ active_history.witness1_tenant.get_full_name }}</a>{% elif lease.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness1_tenant.pk %}">{{ lease.witness1_tenant.get_full_name }}</a>{% else %}&mdash;{% endif %}</div></div>
@@ -813,7 +732,7 @@
       </div>
 
       <!-- COL 3: Rent & Charges -->
-      <div class="ld-ov-col ld-mobile-two-col">
+      <div class="ld-ov-col">
         <div class="ld-ov-head">Rent &amp; Charges</div>
         <div class="ld-f">
           <div class="ld-f-label">Monthly Rent</div>
@@ -822,6 +741,10 @@
         <div class="ld-f">
           <div class="ld-f-label">Maintenance + Water</div>
           <div class="ld-f-value">{{ lease.society_maintenance|default:0|money:0 }} + {{ lease.water_charges|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Rent Due Day / Late Fee</div>
+          <div class="ld-f-value">{{ lease.due_date|default:"&mdash;" }} &middot; {{ lease.late_fee|default:0|money:0 }}</div>
         </div>
         <div class="ld-f">
           <div class="ld-f-label">Rent Increase %</div>
@@ -838,10 +761,14 @@
           <div class="ld-f-label">Total Payment</div>
           <div class="ld-f-value">{{ lease_total_payment|default:0|money:0 }}</div>
         </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Balance Due</div>
+          <div class="ld-f-value val-danger">{{ balance_due|default:0|money:0 }}</div>
+        </div>
       </div>
 
       <!-- COL 4: Installments -->
-      <div class="ld-ov-col ld-mobile-two-col ld-mobile-half-card">
+      <div class="ld-ov-col">
         <div class="ld-ov-head">Installments</div>
         <div class="ld-f">
           <div class="ld-f-label">Installment 1</div>
@@ -872,7 +799,7 @@
       </div>
 
       <!-- COL 5: Security Deposit Summary -->
-      <div class="ld-ov-col ld-mobile-two-col ld-mobile-half-card">
+      <div class="ld-ov-col">
         <div class="ld-ov-head">Security Deposit</div>
         <div class="ld-f">
           <div class="ld-f-label">Bill Water</div>
@@ -901,7 +828,7 @@
       </div>
 
       <!-- COL 6: Inventory & Condition -->
-      <div class="ld-ov-col ld-mobile-two-col">
+      <div class="ld-ov-col">
         <div class="ld-ov-head">Inventory &amp; Condition</div>
         <div class="ld-f"><div class="ld-f-label">Ceiling Fans / Exhaust</div><div class="ld-f-value">{{ lease.inventory_ceiling_fans|default:"&mdash;" }} / {{ lease.inventory_exhaust_fans|default:"&mdash;" }}</div></div>
         <div class="ld-f"><div class="ld-f-label">Ceiling Lights</div><div class="ld-f-value">{{ lease.inventory_ceiling_lights|default:"&mdash;" }}</div></div>
@@ -933,10 +860,10 @@
 
       <!-- ======== RENEWALS ======== -->
       <div class="ld-tab-pane active" id="ld-tab-renewals">
-        <div class="d-flex justify-content-between align-items-center mb-3 no-print ld-renewal-head">
+        <div class="d-flex justify-content-between align-items-center mb-3 no-print">
           <span class="ld-sec-title mb-0">Lease Renewal History</span>
           <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-primary">
-            Renew Lease
+            <i class="fas fa-sync-alt me-1"></i> Renew Lease
           </a>
         </div>
         <div class="ld-tw ld-mobile-cards ld-mobile-cards-3col">
@@ -949,6 +876,7 @@
                 <th>Rent</th>
                 <th>Total Monthly</th>
                 <th>Signed</th>
+                <th>Files</th>
                 <th class="no-print">Actions</th>
               </tr>
             </thead>
@@ -974,17 +902,33 @@
                       <span class="ld-badge ld-badge-amber">Pending</span>
                     {% endif %}
                   </td>
+                  <td data-label="Files">
+                    {% if renewal.generated_agreement_pdf %}
+                      <a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>
+                    {% endif %}
+                    {% if renewal.generated_agreement_docx %}
+                      <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank" class="ms-1">DOCX</a>
+                    {% endif %}
+                    {% if renewal.signed_copy %}
+                      <a href="{{ renewal.signed_copy.url }}" target="_blank" class="ms-1">Signed</a>
+                    {% endif %}
+                    {% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}
+                      &mdash;
+                    {% endif %}
+                  </td>
                   <td class="no-print ld-td-actions" data-label="Actions">
-                    <div class="ld-renewal-actions" style="display:flex;flex-wrap:wrap;gap:4px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
                       <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-dark">View</a>
                       <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-primary">Edit</a>
-                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-secondary">Agreement</a>
+                      <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-secondary">Clauses</a>
+                      <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-dark">Generate PDF</a>
+                      <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-success">Upload Signed</a>
                       <a href="{% url 'leases:photos_page' lease.pk %}" class="btn btn-dark">Photos</a>
                     </div>
                   </td>
                 </tr>
               {% empty %}
-                <tr><td colspan="7" class="ld-empty">No renewal history recorded.</td></tr>
+                <tr><td colspan="8" class="ld-empty">No renewal history recorded.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -1056,9 +1000,9 @@
       <!-- ======== FAMILY ======== -->
       <div class="ld-tab-pane" id="ld-tab-family">
         <div class="ld-inner-card">
-          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2 ld-family-heading">
+          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>Family Members</span>
-            <div class="d-flex flex-wrap gap-1 ld-heading-actions">
+            <div class="d-flex flex-wrap gap-1">
               <button type="button" class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#leaseFamilyPublicLinkBox">
                 <i class="fas fa-link"></i> Public Link
               </button>
@@ -1115,7 +1059,7 @@
               <div class="form-text" id="leaseFamilySearchHelp">Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.</div>
             </div>
           </div>
-          <div class="ld-tw ld-mobile-cards ld-compact-mobile-table ld-family-table">
+          <div class="ld-tw ld-mobile-cards">
             <table class="ld-tbl">
               <thead>
                 <tr>
@@ -1132,13 +1076,13 @@
               <tbody id="leaseFamilyRows">
                 {% for member in family_members %}
                   <tr>
-                    <td class="ld-family-sn" data-label="S.N">{{ forloop.counter }}</td>
-                    <td class="ld-family-name" data-label="Name"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
-                    <td class="ld-family-relation" data-label="Relationship">{{ member.relation }}</td>
-                    <td class="ld-family-cnic" data-label="CNIC">{{ member.family_member.cnic|format_cnic|default:"&mdash;" }}</td>
-                    <td class="ld-family-dob" data-label="DOB">{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
-                    <td class="ld-family-phone" data-label="Phone">{{ member.family_member.phone|format_phone|default:"&mdash;" }}</td>
-                    <td class="ld-family-age" data-label="Age">{{ member.family_member.age|default:"&mdash;" }}</td>
+                    <td data-label="S.N">{{ forloop.counter }}</td>
+                    <td data-label="Name"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
+                    <td data-label="Relationship">{{ member.relation }}</td>
+                    <td data-label="CNIC">{{ member.family_member.cnic|format_cnic|default:"&mdash;" }}</td>
+                    <td data-label="DOB">{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
+                    <td data-label="Phone">{{ member.family_member.phone|format_phone|default:"&mdash;" }}</td>
+                    <td data-label="Age">{{ member.family_member.age|default:"&mdash;" }}</td>
                     <td class="no-print ld-td-actions" data-label="Actions">
                       <div class="d-flex flex-wrap gap-1">
                         <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
@@ -1149,29 +1093,9 @@
                         </form>
                       </div>
                     </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-id" data-label="S.N - Name">
-                      #{{ forloop.counter }} &middot; <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a>
-                    </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">
-                      {{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }} &middot; {{ member.family_member.age|default:"&mdash;" }}
-                    </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-last-row no-print">
-                      <div class="ld-family-mobile-phone">
-                        <span class="ld-family-mobile-phone-label">Phone</span>
-                        {{ member.family_member.phone|format_phone|default:"&mdash;" }}
-                      </div>
-                      <div class="ld-family-mobile-actions">
-                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
-                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-primary">Edit</a>
-                        <form method="post" action="{% url 'leases:lease_family_remove' lease.pk member.pk %}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-                        </form>
-                      </div>
-                    </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="8" class="ld-empty">No family members linked to this lease.</td></tr>
+                  <tr><td colspan="7" class="ld-empty">No family members linked to this lease.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -1228,7 +1152,7 @@
               </form>
             </div>
           </div>
-          <div class="ld-tw ld-mobile-cards ld-compact-mobile-table">
+          <div class="ld-tw ld-mobile-cards">
             <table class="ld-tbl" style="min-width:900px;">
               <thead>
                 <tr>
@@ -1439,16 +1363,19 @@
                 <label class="form-label small fw-semibold mb-1">Description</label>
                 <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
               </div>
-              <div class="ld-file-upload-actions">
+              <div>
                 <button type="submit" class="btn btn-sm btn-primary">Upload</button>
-                <button type="submit" form="leaseFilesShareAllForm" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
-                  <i class="fab fa-whatsapp me-1"></i> Share All Files
-                </button>
               </div>
             </form>
-            <form id="leaseFilesShareAllForm" method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}" class="d-none">
-              {% csrf_token %}
-            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3 no-print">
+              <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
+                  <i class="fab fa-whatsapp"> Share All files</i>
+                </button>
+              </form>
+            </div>
 
             <div class="ld-file-list">
               {% for doc in lease_documents %}
@@ -1459,13 +1386,10 @@
                       <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
                       {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
                     </div>
-                    {% if doc.display_name and doc.display_name != doc.original_filename %}
-                      <div class="ld-file-sub">{{ doc.original_filename }}</div>
-                    {% endif %}
+                    <div class="ld-file-sub">{{ doc.original_filename }}</div>
                   </div>
-                  <div class="ld-file-category-editor">
-                    <button type="button" class="ld-file-category-display no-print" title="Click to change category">{{ doc.category_label }}</button>
-                    <select class="form-select form-select-sm ld-file-category-select no-print d-none" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
+                  <div>
+                    <select class="form-select form-select-sm ld-file-category-select no-print" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
                       {% for category in lease_document_categories %}
                         <option value="{{ category.code }}" {% if doc.category == category.code %}selected{% endif %}>{{ category.name }}</option>
                       {% endfor %}
@@ -1714,7 +1638,7 @@
 
           <div id="endLeaseError" class="alert alert-danger py-2 mt-3 mb-0 d-none"></div>
           <details class="mt-2 small" id="endLeaseDebugDetails">
-            <summary class="btn btn-sm btn-secondary py-0"><span id="endLeaseDebugToggleLabel">Show Debug</span></summary>
+            <summary class="btn btn-sm btn-outline-secondary py-0"><span id="endLeaseDebugToggleLabel">Show Debug</span></summary>
             <pre id="endLeaseDebug" class="bg-light border rounded p-2 mt-1 mb-0" style="white-space:pre-wrap;max-height:130px;overflow:auto;">JavaScript has not loaded. Clicking Review will use the server fallback.</pre>
           </details>
           <div id="endLeasePreview" class="mt-3 d-none">
@@ -1755,8 +1679,8 @@
         <label class="form-label small fw-semibold mb-1">Have you completed the inspection?</label>
         <input type="hidden" id="endLeaseInspectionChoice" value="">
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-success opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="yes">Yes</button>
-          <button type="button" class="btn btn-sm btn-danger opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="no">No</button>
+          <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="yes">Yes</button>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="no">No</button>
         </div>
         <div id="endLeaseInspectionChargeNotice" class="small text-danger mt-1 d-none">
           <label class="form-label small mb-1">Inspection charge{% if lease.unit.building_type %} — {{ lease.unit.building_type.name }} default{% endif %}</label>
@@ -1767,8 +1691,8 @@
         <label class="form-label small fw-semibold mb-1">Has the tenant returned the keys/key card?</label>
         <input type="hidden" id="endLeaseKeysChoice" value="">
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-success opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="yes">Yes</button>
-          <button type="button" class="btn btn-sm btn-danger opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="no">No</button>
+          <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="yes">Yes</button>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="no">No</button>
         </div>
         <div id="endLeaseKeysChargeNotice" class="small text-danger mt-1 d-none">
           <label class="form-label small mb-1">Key charge{% if lease.unit.building_type %} — {{ lease.unit.building_type.name }} default{% endif %}</label>
@@ -1852,7 +1776,9 @@
     input.value = value;
     document.querySelectorAll('.checklist-choice[data-choice-group="' + group + '"]').forEach(function(button) {
       var selected = button.dataset.choiceValue === value;
-      button.classList.toggle('opacity-50', !selected);
+      var isYes = button.dataset.choiceValue === 'yes';
+      button.classList.toggle(isYes ? 'btn-success' : 'btn-danger', selected);
+      button.classList.toggle(isYes ? 'btn-outline-success' : 'btn-outline-danger', !selected);
       button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
     refreshChecklistNotices();
@@ -1929,8 +1855,8 @@
       '" data-description="' + safe(row.description) + '" data-amount="' + safe(row.amount) + '">' +
       '<td>' + index + '</td><td>' + safe(row.category) + '</td><td>' + safe(row.description) + '</td>' +
       '<td class="text-end">' + pkr(row.amount) + '</td><td>' +
-      '<div class="d-flex flex-nowrap gap-1"><button type="button" class="btn btn-sm btn-primary settlement-edit">Edit</button>' +
-      '<button type="button" class="btn btn-sm btn-danger settlement-delete">Delete</button></div></td></tr>';
+      '<div class="d-flex flex-nowrap gap-1"><button type="button" class="btn btn-sm btn-outline-primary settlement-edit">Edit</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-danger settlement-delete">Delete</button></div></td></tr>';
   }
   function editSettlementRow(row, isNew) {
     var category = isNew ? 'Other Charges' : (row.dataset.category || 'Other Charges');
@@ -2082,7 +2008,7 @@
             return '<div class="settlement-invoice-row d-flex align-items-center gap-2 border rounded bg-white mt-1 px-2 py-1">' +
               '<span class="flex-grow-1"><strong>#' + safe(invoice.number) + '</strong> · ' + safe(invoice.issue_date) +
               ' · ' + safe(invoice.status) + ' · <strong>' + pkr(invoice.amount) + '</strong></span>' +
-              '<a class="btn btn-sm btn-primary" target="_blank" href="' + safe(invoice.detail_url) + '">Detail</a></div>';
+              '<a class="btn btn-sm btn-outline-primary" target="_blank" href="' + safe(invoice.detail_url) + '">Detail</a></div>';
           }).join('');
           futureBox.classList.remove('d-none');
         } else {
@@ -2316,15 +2242,12 @@
 
   document.querySelectorAll('.ld-tab-pane').forEach(function (pane) {
     if (pane.querySelector('.ld-mobile-top-link')) return;
-    const heading = pane.querySelector('.ld-inner-head, .ld-renewal-head');
-    if (!heading) return;
     const topLink = document.createElement('a');
     topLink.className = 'ld-mobile-top-link no-print';
     topLink.href = '#lease-detail-top';
     topLink.textContent = 'Top';
     topLink.setAttribute('aria-label', 'Back to top');
-    const headingActions = heading.querySelector('.ld-heading-actions');
-    (headingActions || heading).appendChild(topLink);
+    pane.insertBefore(topLink, pane.firstChild);
   });
   const params = new URLSearchParams(window.location.search);
   if (window.location.hash && window.location.hash.indexOf('#ld-tab-') === 0) {
@@ -2361,31 +2284,16 @@
     const tbody = document.getElementById('leaseFamilyRows');
     if (!tbody) return;
     tbody.querySelectorAll('.ld-empty').forEach(row => row.closest('tr')?.remove());
-    const serial = tbody.querySelectorAll('tr').length + 1;
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td class="ld-family-sn" data-label="S.N">${serial}</td>
-      <td class="ld-family-name" data-label="Name"><a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
-      <td class="ld-family-relation" data-label="Relationship">${esc(data.relation || '—')}</td>
-      <td class="ld-family-cnic" data-label="CNIC">${esc(data.cnic || '—')}</td>
-      <td class="ld-family-dob" data-label="DOB">${esc(data.dob || '—')}</td>
-      <td class="ld-family-phone" data-label="Phone">${esc(data.phone || '—')}</td>
-      <td class="ld-family-age" data-label="Age">${esc(data.age || '—')}</td>
-      <td class="no-print ld-td-actions" data-label="Actions">
+      <td><a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
+      <td>${esc(data.relation || '-')}</td>
+      <td>&mdash;</td>
+      <td>&mdash;</td>
+      <td>${esc(data.phone || '—')}</td>
+      <td>${esc(data.age || '—')}</td>
+      <td class="no-print">
         <div class="d-flex flex-wrap gap-1">
-          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-dark">View</a>
-          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-primary">Edit</a>
-          <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
-            <input type="hidden" name="csrfmiddlewaretoken" value="${esc(csrf)}">
-            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-          </form>
-        </div>
-      </td>
-      <td class="ld-family-mobile-only ld-family-mobile-id" data-label="S.N - Name">#${serial} &middot; <a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
-      <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">${esc(data.dob || '—')} &middot; ${esc(data.age || '—')}</td>
-      <td class="ld-family-mobile-only ld-family-mobile-last-row no-print">
-        <div class="ld-family-mobile-phone"><span class="ld-family-mobile-phone-label">Phone</span>${esc(data.phone || '—')}</div>
-        <div class="ld-family-mobile-actions">
           <a href="${esc(data.detail_url)}" class="btn btn-sm btn-dark">View</a>
           <a href="${esc(data.edit_url)}" class="btn btn-sm btn-primary">Edit</a>
           <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
@@ -2822,20 +2730,6 @@ document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', fun
 });
 
 document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
-  const editor = select.closest('.ld-file-category-editor');
-  const display = editor?.querySelector('.ld-file-category-display');
-  const showDisplay = function () {
-    select.classList.add('d-none');
-    display?.classList.remove('d-none');
-  };
-  display?.addEventListener('click', function () {
-    this.classList.add('d-none');
-    select.classList.remove('d-none');
-    select.focus();
-  });
-  select.addEventListener('blur', function () {
-    if (!this.disabled) showDisplay();
-  });
   select.addEventListener('change', function () {
     const data = new FormData();
     const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -2848,10 +2742,6 @@ document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
     }).then(function (response) {
       if (!response.ok) throw new Error('Category update failed.');
       return response.json();
-    }).then(function (payload) {
-      if (!payload.ok) throw new Error(payload.error || 'Category update failed.');
-      if (display) display.textContent = payload.category_label || select.options[select.selectedIndex]?.text || '';
-      showDisplay();
     }).catch(function (error) {
       alert(error.message);
       window.location.reload();

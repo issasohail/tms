@@ -31,8 +31,8 @@ def _billing_period_label(start: date, end: date) -> str:
     return f"{start:%Y-%m-%d} to {end:%Y-%m-%d}"
 
 
-def _trim_desc(s: str, maxlen: int = 190) -> str:
-    """InvoiceItem.description is CharField(200) in your models; keep headroom."""
+def _trim_desc(s: str, maxlen: int = 490) -> str:
+    """Keep generated descriptions within InvoiceItem.description (max_length=500)."""
     return s if len(s) <= maxlen else s[: maxlen - 1] + "…"
 
 

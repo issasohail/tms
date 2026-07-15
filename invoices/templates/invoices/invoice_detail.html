@@ -155,20 +155,18 @@
               {# View state #}
               <span class="cell-view cat-desc-view">
                 <span class="category-view fw-semibold">{{ item.category.name|default:item.category|default:"—" }}</span>
-                {% if item.description %}
-                <span class="desc-view d-block text-muted small mt-1">{{ item.description }}</span>
-                {% endif %}
+                <span class="desc-view text-muted small">{{ item.description|default:"" }}</span>
               </span>
               {# Edit state #}
               <span class="cell-edit d-none">
-                <select class="form-select form-select-sm mb-1 category-edit" data-current="{{ item.category.name|default:item.category|default:'' }}">
+                <select class="form-select form-select-sm category-edit" data-current="{{ item.category.name|default:item.category|default:'' }}">
                   {% for c in categories %}
                     <option value="{{ c.name }}" {% if item.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
                   {% endfor %}
                 </select>
-                <input class="form-control form-control-sm description-edit"
-                       value="{{ item.description|default:'' }}"
-                       placeholder="Description">
+                <textarea class="form-control form-control-sm description-edit"
+                          rows="1"
+                          placeholder="Description">{{ item.description|default:"" }}</textarea>
               </span>
             </td>
 
@@ -347,14 +345,44 @@
 
   /* Desktop column widths */
   .invoice-items-table .col-sn   { width: 5%; }
-  .invoice-items-table .col-cat  { width: 20%; }   /* absorbed into colspan */
-  .invoice-items-table .col-desc { width: 43%; }
-  .invoice-items-table .col-amt  { width: 16%; }
+  .invoice-items-table .col-cat  { width: 18%; }   /* absorbed into colspan */
+  .invoice-items-table .col-desc { width: 51%; }
+  .invoice-items-table .col-amt  { width: 10%; }
   .invoice-items-table .col-acts { width: 16%; }
 
   /* ── Category+Description merged cell ───────────────── */
-  .category-view { display: block; }
-  .desc-view     { font-size: .78rem; line-height: 1.15; overflow-wrap: anywhere; margin-top: .1rem !important; }
+  /* Category occupies its column on line one; wrapped description continues below both columns. */
+  .cell-cat-desc { --category-share: 26.47%; }
+  .cat-desc-view { display: block; }
+  .cat-desc-view::after { content: ""; display: block; clear: both; }
+  .category-view {
+    float: left;
+    width: var(--category-share);
+    padding-right: .45rem;
+  }
+  .desc-view {
+    display: block;
+    font-size: .78rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  /* Inline edit follows the same Category / Description column proportions. */
+  .cell-edit:not(.d-none) {
+    display: grid;
+    grid-template-columns: var(--category-share) minmax(0, 1fr);
+    align-items: start;
+    gap: .3rem;
+  }
+  .category-edit,
+  .cell-edit .select2-container { grid-column: 1; min-width: 0; }
+  .description-edit {
+    grid-column: 2;
+    min-width: 0;
+    resize: vertical;
+    overflow-y: hidden;
+    line-height: 1.2;
+  }
 
   /* ── Icon action buttons (desktop default) ───────────── */
   .item-actions { white-space: nowrap; text-align: right; vertical-align: top; }
@@ -398,6 +426,40 @@
     .action-sep { height: 16px; }
   }
 
+  /* Tablet and mobile: description receives the full content width; amount sits below it. */
+  @media (max-width: 767.98px) {
+    .table-responsive { overflow-x: visible; }
+    .invoice-items-table,
+    .invoice-items-table tbody { display: block; width: 100%; }
+    .invoice-items-table thead { display: none; }
+    .invoice-items-table tr.item-row {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) 38px;
+      grid-template-areas:
+        "sn details actions"
+        "sn amount actions";
+      border-bottom: 1px solid rgba(0,0,0,.12);
+    }
+    .invoice-items-table tr.item-row > td { border: 0; }
+    .invoice-items-table tr.item-row > td:first-child { grid-area: sn; padding-top: .45rem; }
+    .invoice-items-table tr.item-row > td.cell-cat-desc {
+      grid-area: details;
+      padding: .45rem .35rem .5rem;
+    }
+    .invoice-items-table tr.item-row > td.text-end {
+      grid-area: amount;
+      padding: .55rem .35rem;
+      border-top: 1px solid rgba(0,0,0,.10);
+    }
+    .invoice-items-table tr.item-row > td.item-actions {
+      grid-area: actions;
+      padding: .45rem .15rem;
+      text-align: center;
+    }
+    .cell-cat-desc { --category-share: 30%; }
+    .desc-view { font-size: .74rem; line-height: 1.2; }
+  }
+
   /* ── ≤ 480px: mobile table ───────────────────────────── */
   @media (max-width: 480px) {
     .invoice-sheet, .invoice-actions-shell {
@@ -411,12 +473,7 @@
     .inv-action-bar { width: 100%; }
     .invoice-items-table { font-size: .72rem; }
 
-    /* Mobile column widths:  #7 | cat+desc 52 | amt 22 | acts 19 = 100 */
-    .invoice-items-table .col-sn   { width: 7%; }
-    .invoice-items-table .col-cat  { width: 28%; }  /* part of the 52% colspan */
-    .invoice-items-table .col-desc { width: 24%; }  /* part of the 52% colspan */
-    .invoice-items-table .col-amt  { width: 22%; }
-    .invoice-items-table .col-acts { width: 19%; }
+    .cell-cat-desc { --category-share: 30%; }
 
     /* Smaller icon buttons on mobile */
     .btn-icon {
@@ -535,6 +592,24 @@
   /* ── row helpers ── */
   const table = document.getElementById('itemsTable');
 
+  function resizeDescription(textarea) {
+    if (!textarea) return;
+    const styles = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(styles.lineHeight) || 16;
+    const verticalChrome =
+      (parseFloat(styles.paddingTop) || 0) +
+      (parseFloat(styles.paddingBottom) || 0) +
+      (parseFloat(styles.borderTopWidth) || 0) +
+      (parseFloat(styles.borderBottomWidth) || 0);
+    const minHeight = lineHeight + verticalChrome;
+    const maxHeight = (lineHeight * 4) + verticalChrome;
+
+    textarea.style.height = 'auto';
+    const targetHeight = Math.min(maxHeight, Math.max(minHeight, textarea.scrollHeight));
+    textarea.style.height = `${targetHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }
+
   function enterEdit(tr) {
     tr.querySelector('.cat-desc-view').classList.add('d-none');
     tr.querySelector('.cell-edit').classList.remove('d-none');
@@ -558,6 +633,7 @@
     } else {
       categorySelect.focus();
     }
+    resizeDescription(tr.querySelector('.description-edit'));
   }
 
   function exitEdit(tr, reset) {
@@ -661,6 +737,10 @@
       else if (btn.classList.contains('btn-save-item'))   await saveRow(tr);
       else if (btn.classList.contains('btn-delete-item')) await deleteRow(tr);
     } catch (err) { alert(err.message || 'Error'); }
+  });
+
+  table.addEventListener('input', e => {
+    if (e.target.classList.contains('description-edit')) resizeDescription(e.target);
   });
 })();
 

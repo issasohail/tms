@@ -401,8 +401,8 @@
   gap: 5px;
 }
 .lf-sec-item { display:inline-flex; align-items:center; gap:4px; padding:3px 7px; border:1px solid #cbdaf5; border-radius:999px; background:#fff; white-space:nowrap; }
-.lf-sec-val  { order:2; font-size: .72rem; font-weight: 700; color: #1e40af; }
-.lf-sec-lbl  { order:1; font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
+.lf-sec-val  { font-size: .72rem; font-weight: 700; color: #1e40af; }
+.lf-sec-lbl  { font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
 
 /* ---- Inventory cells ---- */
 .lf-inv-grid {

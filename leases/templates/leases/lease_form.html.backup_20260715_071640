@@ -381,10 +381,6 @@
   border-radius: 7px;
   padding: 7px 10px;
   margin: 0 12px 8px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px 8px;
 }
 .lf-sec-label {
   font-size: .62rem;
@@ -392,17 +388,16 @@
   color: #6b7fa8;
   text-transform: uppercase;
   letter-spacing: .06em;
-  margin: 0 2px 0 0;
+  margin-bottom: 4px;
 }
 .lf-sec-grid {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
 }
-.lf-sec-item { display:inline-flex; align-items:center; gap:4px; padding:3px 7px; border:1px solid #cbdaf5; border-radius:999px; background:#fff; white-space:nowrap; }
-.lf-sec-val  { order:2; font-size: .72rem; font-weight: 700; color: #1e40af; }
-.lf-sec-lbl  { order:1; font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
+.lf-sec-item { text-align: center; }
+.lf-sec-val  { font-size: .78rem; font-weight: 700; color: #1e40af; }
+.lf-sec-lbl  { font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
 
 /* ---- Inventory cells ---- */
 .lf-inv-grid {
@@ -574,20 +569,19 @@
   .lf-rail-sep  { display: none; }
   .lf-sidebar   { width: 100%; border-right: none; border-bottom: 1px solid #e2e6f0; flex-direction: column; }
   .lf-sb-header { display: none; }
-  .lf-nav-scroll { display:flex; flex-wrap:wrap; gap:4px; padding:5px 8px; overflow:visible; }
+  .lf-nav-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
   .lf-sidebar.collapsed { display: none; }
-  .lf-nav-section { display:contents; }
+  .lf-nav-section { display: flex; flex-wrap: nowrap; padding: 4px 8px; gap: 2px; }
   .lf-nav-section + .lf-nav-section { border-top: none; }
   .lf-nav-grp-label { display: none; }
-  .lf-nav-item { padding:4px 8px; gap:5px; border:1px solid #dbe3f3; border-radius:999px; background:#f8fafc; white-space:nowrap; flex:0 0 auto; font-size:.7rem; line-height:1.2; }
-  .lf-nav-item.active { color:#fff; background:#2856c8; border-color:#2856c8; border-radius:999px; }
-  .lf-nav-item.active .lf-nav-badge { background:#fff; color:#2856c8; }
-  .lf-nav-badge { margin-left:0; }
+  .lf-nav-item { padding: 4px 10px; border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; white-space: nowrap; flex: 0 0 auto; }
+  .lf-nav-item.active { border-bottom-color: #2856c8; border-radius: 0; }
   .lf-main { overflow: visible; }
   .lf-two-col { grid-template-columns: 1fr; }
   .lf-two-col > div { display: contents; }
   .lf-identity-doc-card { order: -1; }
   .lf-content { overflow: visible; }
+  .lf-sec-grid { grid-template-columns: repeat(3, 1fr); }
   .lf-fg-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lf-fg-6 { grid-template-columns: repeat(3, 1fr); }
   .lf-fg-4 { grid-template-columns: repeat(2, 1fr); }
@@ -614,6 +608,7 @@
   .lf-f[style*="grid-column"] {
     grid-column: auto !important;
   }
+  .lf-sec-grid,
   .lf-inv-grid,
   .lf-doc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .lf-card-head {
@@ -656,15 +651,21 @@
     gap: 3px 8px;
     margin-bottom: 2px;
   }
-  .lf-nav-scroll { display:flex; flex-wrap:wrap; gap:4px; padding:5px 8px; overflow:visible; }
-  .lf-nav-section { display:contents; }
+  .lf-nav-scroll {
+    overflow: visible;
+  }
+  .lf-nav-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 5px 8px;
+  }
   .lf-nav-item {
-    width:auto;
-    flex:0 0 auto;
-    white-space:nowrap;
-    padding:4px 7px;
-    gap:4px;
-    font-size:.66rem;
+    width: calc(50% - 2px);
+    flex: 0 0 calc(50% - 2px);
+    white-space: normal;
+    padding: 6px 8px;
+    gap: 6px;
   }
   .lf-nav-badge {
     margin-left: 0;
@@ -678,6 +679,7 @@
   .lf-fg-3,
   .lf-fg-4,
   .lf-fg-6,
+  .lf-sec-grid,
   .lf-inv-grid {
     grid-template-columns: 1fr;
   }
@@ -890,7 +892,7 @@
         </a>
         {% if object and object.pk %}
         <a href="{% url 'leases:edit_clauses' object.pk %}" class="lf-nav-item">
-          <i class="ti ti-edit"></i>Agreement
+          <i class="ti ti-edit"></i>Edit Clauses
         </a>
         {% endif %}
       </div>
@@ -1165,6 +1167,20 @@
                 </div>
               </div>
 
+              <div class="lf-card">
+                <div class="lf-card-head" style="background:#1d3461;">
+                  <i class="ti ti-shield-check" style="color:#7eb3f5;"></i>
+                  <span class="lf-card-title" style="color:#c8d4f0;">Police Verification</span>
+                </div>
+                <div class="lf-fg lf-fg-2">
+                  <div class="lf-f"><label class="form-label">Status</label>{{ form.police_verification_status|add_class:"form-select form-select-sm" }}</div>
+                  <div class="lf-f"><label class="form-label">Verification Date</label>{{ form.police_verification_date|add_class:"form-control form-control-sm datepicker"|attr:"type:date" }}</div>
+                  <div class="lf-f"><label class="form-label">Follow-up Date</label>{{ form.police_verification_follow_up_date|add_class:"form-control form-control-sm datepicker"|attr:"type:date" }}</div>
+                  <div class="lf-f"><label class="form-label">Verified By</label>{{ form.police_verified_by|add_class:"form-select form-select-sm" }}</div>
+                  <div class="lf-f" style="grid-column:1/-1"><label class="form-label">Document</label>{{ form.police_verification_document|add_class:"form-control form-control-sm" }}</div>
+                  <div class="lf-f" style="grid-column:1/-1"><label class="form-label">Remarks</label>{{ form.police_verification_remarks|add_class:"form-control form-control-sm" }}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>{# /pane-tenant #}

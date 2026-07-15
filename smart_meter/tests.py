@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -7,7 +8,28 @@ from django.test import TestCase
 from leases.models import Lease, LeaseUnitOccupancy
 from properties.models import Property, Unit
 from smart_meter.models import Meter, MeterInstallation
+from smart_meter.services.invoicing import ElectricBillContext
 from tenants.models import Tenant
+
+
+class ElectricBillDescriptionTests(TestCase):
+    def test_long_description_keeps_final_total_within_invoice_item_limit(self):
+        ctx = ElectricBillContext(
+            lease=None,
+            meter=SimpleNamespace(meter_number="250619510016-LONG-METER-REFERENCE"),
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 1, 31),
+            beg_kwh=Decimal("123456789.123"),
+            end_kwh=Decimal("987654321.987"),
+            units=Decimal("864197532.864"),
+            unit_rate=Decimal("12345.67"),
+            service_charges=Decimal("987654.32"),
+        )
+
+        description = ctx.description_text
+
+        self.assertIn(f"total={ctx.line_total}.", description)
+        self.assertLessEqual(len(description), 490)
 
 
 class HistoricalMeterOccupancyTests(TestCase):

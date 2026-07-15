@@ -41,8 +41,6 @@ def lease_file_upload(request, lease_id):
     files = request.FILES.getlist("files") or request.FILES.getlist("file")
     if not files:
         messages.error(request, "Please choose at least one file.")
-        if request.POST.get("redirect_to") == "edit":
-            return redirect("leases:lease_update", pk=lease.pk)
         return redirect("leases:lease_detail", pk=lease.pk)
 
     uploaded = 0
@@ -66,8 +64,6 @@ def lease_file_upload(request, lease_id):
 
     if uploaded:
         messages.success(request, f"Uploaded {uploaded} lease file(s).")
-    if request.POST.get("redirect_to") == "edit":
-        return redirect("leases:lease_update", pk=lease.pk)
     return redirect("leases:lease_detail", pk=lease.pk)
 
 

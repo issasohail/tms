@@ -3285,17 +3285,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                 )
             ),
         )
-        if lease_instance and lease_instance.pk:
-            sec_totals = security_deposit_totals(lease_instance)
-            ctx.update(
-                {
-                    "security_required": sec_totals["required"],
-                    "security_paid_in": sec_totals["paid_in"],
-                    "security_refunded": sec_totals["refunded"],
-                    "security_damages": sec_totals["damages"],
-                    "security_currently_held": sec_totals["currently_held"],
-                }
-            )
         return ctx
 
     # ---------- Quick-add family members (same as in LeaseCreateView) ----------

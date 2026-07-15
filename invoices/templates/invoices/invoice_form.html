@@ -102,11 +102,11 @@
           <table class="table table-sm align-middle mb-2" id="invoice-items">
             <thead>
               <tr class="table-light">
-                <th style="width:6%">#</th>
-                <th style="width:18%">Category</th>
-                <th style="width:58%">Description</th>
-                <th class="text-end" style="width:16%">Amount (Rs.)</th>
-                <th style="width:8%"></th>
+                <th class="item-sn-col">#</th>
+                <th class="item-category-col">Category</th>
+                <th class="item-description-col">Description</th>
+                <th class="text-end item-amount-col">Amount (Rs.)</th>
+                <th class="item-action-col"></th>
               </tr>
             </thead>
             <tbody id="items-body">
@@ -114,14 +114,14 @@
               <tr class="item-form" data-index="{{ forloop.counter0 }}">
                 {# 🔽 Add this line so id (and any hidden fields) are posted #}
                 {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
-                <td class="text-muted sn">{{ forloop.counter }}</td>
-                <td class="d-flex gap-1">
+                <td class="text-muted sn item-sn-cell">{{ forloop.counter }}</td>
+                <td class="d-flex gap-1 item-category-cell">
                   {{ f.category }}
                   <button class="btn btn-sm btn-secondary add-cat-btn" type="button" title="Add Category">+</button>
                 </td>
-                <td>{{ f.description }}</td>
-                <td class="text-end">{{ f.amount }}</td>
-                <td>
+                <td class="item-description-cell">{{ f.description }}</td>
+                <td class="text-end item-amount-cell">{{ f.amount }}</td>
+                <td class="item-action-cell">
                   {% if f.instance.pk %}
                     {{ f.DELETE }}
                   {% else %}
@@ -155,13 +155,13 @@
         <template id="item-empty-row">
           <tr class="item-form" data-index="__prefix__">
             {% for hidden in items.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-            <td class="text-muted sn"></td>
-            <td class="d-flex gap-1">
+            <td class="text-muted sn item-sn-cell"></td>
+            <td class="d-flex gap-1 item-category-cell">
               {{ items.empty_form.category }}
               <button class="btn btn-sm btn-secondary add-cat-btn" type="button" title="Add Category">+</button>
             </td>
-            <td>{{ items.empty_form.description }}</td>
-            <td class="text-end">{{ items.empty_form.amount }}</td>
+            <td class="item-description-cell">{{ items.empty_form.description }}</td>
+            <td class="text-end item-amount-cell">{{ items.empty_form.amount }}</td>
             <td><button type="button" class="btn btn-sm btn-danger remove-row">×</button></td>
           </tr>
         </template>
@@ -186,15 +186,57 @@
   /* tighter, compact UI */
   .invoice-tight .form-control,
   .invoice-tight .form-select { font-size: .9rem; padding: .25rem .5rem; }
+  #invoice-items {
+    width: 100%;
+    table-layout: fixed;
+  }
   #invoice-items th, #invoice-items td { font-size: .9rem; padding: .25rem .5rem; }
+  #invoice-items .item-sn-col { width: 4%; }
+  #invoice-items .item-category-col { width: 34%; }
+  #invoice-items .item-description-col { width: 46%; }
+  #invoice-items .item-amount-col { width: 12%; }
+  #invoice-items .item-action-col { width: 4%; }
+  #invoice-items .item-category-cell { min-width: 0; }
+  #invoice-items .item-category-cell select { min-width: 0; flex: 1 1 auto; }
+  #invoice-items .item-description-cell,
+  #invoice-items .item-amount-cell { min-width: 0; }
+  #invoice-items .item-amount-cell input { width: 100%; min-width: 0; }
   #invoice-items textarea[name$="-description"] {
     width: 100%;
-    min-height: 76px;
+    min-height: 38px;
     resize: vertical;
     white-space: normal;
   }
-  @media (max-width: 576px) {
+  @media (max-width: 991.98px) {
     .card .card-body { padding: .5rem !important; }
+    #invoice-items { display: block; }
+    #invoice-items thead,
+    #invoice-items tbody { display: block; width: 100%; }
+    #invoice-items thead { display: none; }
+    #invoice-items tbody tr.item-form {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) 98px 28px;
+      grid-template-areas:
+        "sn category amount action"
+        "sn description description action";
+      border-bottom: 1px solid #dee2e6;
+      padding: .35rem 0;
+    }
+    #invoice-items tbody tr.item-form > td { border: 0; padding: .2rem; min-width: 0; }
+    #invoice-items .item-sn-cell { grid-area: sn; align-self: start; padding-top: .45rem !important; }
+    #invoice-items .item-category-cell { grid-area: category; }
+    #invoice-items .item-description-cell { grid-area: description; }
+    #invoice-items .item-amount-cell { grid-area: amount; padding-top: .45rem !important; }
+    #invoice-items .item-action-cell,
+    #invoice-items tbody tr.item-form > td:last-child { grid-area: action; text-align: center; padding-top: .45rem !important; }
+    #invoice-items .item-description-cell textarea { width: 100%; }
+  }
+  @media (max-width: 480px) {
+    #invoice-items th, #invoice-items td { font-size: .78rem; }
+    #invoice-items tbody tr.item-form {
+      grid-template-columns: 22px minmax(0, 1fr) 82px 24px;
+    }
+    #invoice-items .item-category-cell .btn { padding: .18rem .35rem; }
   }
   #id_lease { display: none !important; }
   
@@ -446,8 +488,18 @@
 
   function autoSizeDescription(el) {
     if (!el || !el.matches('textarea[name$="-description"]')) return;
+    const styles = window.getComputedStyle(el);
+    const lineHeight = parseFloat(styles.lineHeight) || 18;
+    const verticalChrome =
+      (parseFloat(styles.paddingTop) || 0) +
+      (parseFloat(styles.paddingBottom) || 0) +
+      (parseFloat(styles.borderTopWidth) || 0) +
+      (parseFloat(styles.borderBottomWidth) || 0);
+    const minHeight = lineHeight + verticalChrome;
+    const maxHeight = (lineHeight * 4) + verticalChrome;
     el.style.height = 'auto';
-    el.style.height = Math.max(76, el.scrollHeight) + 'px';
+    el.style.height = Math.min(maxHeight, Math.max(minHeight, el.scrollHeight)) + 'px';
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
 
   tbody.addEventListener('input', (e)=>{

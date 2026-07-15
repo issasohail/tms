@@ -381,10 +381,6 @@
   border-radius: 7px;
   padding: 7px 10px;
   margin: 0 12px 8px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px 8px;
 }
 .lf-sec-label {
   font-size: .62rem;
@@ -392,17 +388,16 @@
   color: #6b7fa8;
   text-transform: uppercase;
   letter-spacing: .06em;
-  margin: 0 2px 0 0;
+  margin-bottom: 4px;
 }
 .lf-sec-grid {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
 }
-.lf-sec-item { display:inline-flex; align-items:center; gap:4px; padding:3px 7px; border:1px solid #cbdaf5; border-radius:999px; background:#fff; white-space:nowrap; }
-.lf-sec-val  { order:2; font-size: .72rem; font-weight: 700; color: #1e40af; }
-.lf-sec-lbl  { order:1; font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
+.lf-sec-item { text-align: center; }
+.lf-sec-val  { font-size: .78rem; font-weight: 700; color: #1e40af; }
+.lf-sec-lbl  { font-size: .6rem; color: #8a96b4; text-transform: uppercase; letter-spacing: .04em; }
 
 /* ---- Inventory cells ---- */
 .lf-inv-grid {
@@ -466,15 +461,6 @@
   text-transform: uppercase;
 }
 .lf-doc-item input[type="file"] { margin-top: 3px; font-size: .65rem; }
-.lf-doc-upload-input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
-.lf-doc-upload-btn { width:100%; margin-top:5px; padding:3px 6px; font-size:.67rem; }
-.lf-party-grid { display:grid; grid-template-columns:1fr; gap:6px; margin:6px 0 8px; }
-.lf-party-pair, .lf-witness-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:6px; }
-.lf-file-list { display:grid; gap:6px; padding:8px 12px 12px; }
-.lf-file-row { display:grid; grid-template-columns:minmax(0, 2fr) minmax(110px, .8fr) auto; gap:8px; align-items:center; padding:7px 8px; border:1px solid #e2e6f0; border-radius:7px; background:#f8fafc; }
-.lf-file-name { min-width:0; font-size:.76rem; font-weight:600; overflow-wrap:anywhere; }
-.lf-file-meta { font-size:.65rem; color:#8a96b4; }
-.lf-file-actions { display:flex; gap:4px; }
 
 /* ---- Tab content panes ---- */
 .lf-tab-content { padding: 8px 0 0; }
@@ -574,20 +560,17 @@
   .lf-rail-sep  { display: none; }
   .lf-sidebar   { width: 100%; border-right: none; border-bottom: 1px solid #e2e6f0; flex-direction: column; }
   .lf-sb-header { display: none; }
-  .lf-nav-scroll { display:flex; flex-wrap:wrap; gap:4px; padding:5px 8px; overflow:visible; }
+  .lf-nav-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
   .lf-sidebar.collapsed { display: none; }
-  .lf-nav-section { display:contents; }
+  .lf-nav-section { display: flex; flex-wrap: nowrap; padding: 4px 8px; gap: 2px; }
   .lf-nav-section + .lf-nav-section { border-top: none; }
   .lf-nav-grp-label { display: none; }
-  .lf-nav-item { padding:4px 8px; gap:5px; border:1px solid #dbe3f3; border-radius:999px; background:#f8fafc; white-space:nowrap; flex:0 0 auto; font-size:.7rem; line-height:1.2; }
-  .lf-nav-item.active { color:#fff; background:#2856c8; border-color:#2856c8; border-radius:999px; }
-  .lf-nav-item.active .lf-nav-badge { background:#fff; color:#2856c8; }
-  .lf-nav-badge { margin-left:0; }
+  .lf-nav-item { padding: 4px 10px; border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; white-space: nowrap; flex: 0 0 auto; }
+  .lf-nav-item.active { border-bottom-color: #2856c8; border-radius: 0; }
   .lf-main { overflow: visible; }
   .lf-two-col { grid-template-columns: 1fr; }
-  .lf-two-col > div { display: contents; }
-  .lf-identity-doc-card { order: -1; }
   .lf-content { overflow: visible; }
+  .lf-sec-grid { grid-template-columns: repeat(3, 1fr); }
   .lf-fg-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lf-fg-6 { grid-template-columns: repeat(3, 1fr); }
   .lf-fg-4 { grid-template-columns: repeat(2, 1fr); }
@@ -614,8 +597,11 @@
   .lf-f[style*="grid-column"] {
     grid-column: auto !important;
   }
+  .lf-sec-grid,
   .lf-inv-grid,
-  .lf-doc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lf-doc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .lf-card-head {
     flex-wrap: wrap;
   }
@@ -656,15 +642,21 @@
     gap: 3px 8px;
     margin-bottom: 2px;
   }
-  .lf-nav-scroll { display:flex; flex-wrap:wrap; gap:4px; padding:5px 8px; overflow:visible; }
-  .lf-nav-section { display:contents; }
+  .lf-nav-scroll {
+    overflow: visible;
+  }
+  .lf-nav-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 5px 8px;
+  }
   .lf-nav-item {
-    width:auto;
-    flex:0 0 auto;
-    white-space:nowrap;
-    padding:4px 7px;
-    gap:4px;
-    font-size:.66rem;
+    width: calc(50% - 2px);
+    flex: 0 0 calc(50% - 2px);
+    white-space: normal;
+    padding: 6px 8px;
+    gap: 6px;
   }
   .lf-nav-badge {
     margin-left: 0;
@@ -678,7 +670,9 @@
   .lf-fg-3,
   .lf-fg-4,
   .lf-fg-6,
-  .lf-inv-grid {
+  .lf-sec-grid,
+  .lf-inv-grid,
+  .lf-doc-grid {
     grid-template-columns: 1fr;
   }
   .lf-property-grid {
@@ -706,23 +700,19 @@
     padding: .22rem .35rem;
     height: 1.85rem;
   }
-  .lf-doc-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; }
-  .lf-doc-box { padding:5px; margin:6px !important; }
-  .lf-doc-item { min-width:0; padding:4px; text-align:center; }
+  .lf-doc-item {
+    text-align: left;
+  }
   .lf-doc-img,
   .lf-doc-empty {
-    width: 100%;
-    height: 62px;
-    margin-bottom: 2px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 4px;
   }
-  .lf-photo-doc.lf-doc-has-file .lf-doc-img { width:100%; height:62px; }
-  .lf-doc-label { font-size:.54rem; white-space:nowrap; letter-spacing:0; }
-  .lf-doc-upload-btn { font-size:.58rem; padding:3px 2px; }
-  .lf-party-grid { margin-top:4px; }
-  .lf-party-pair, .lf-witness-grid { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:4px; }
-  .lf-party-grid .form-label { font-size:.54rem; letter-spacing:0; }
-  .lf-file-row { grid-template-columns:minmax(0, 1fr) auto; }
-  .lf-file-row .lf-file-meta { grid-column:1 / -1; }
+  .lf-photo-doc.lf-doc-has-file .lf-doc-img {
+    width: 100%;
+    height: 190px;
+  }
   .lf-tb-right .btn {
     flex: 1 1 auto;
   }
@@ -870,7 +860,7 @@
         </span>
         {% endif %}
         <a href="#pane-files" class="lf-nav-item" data-lf-tab="pane-files">
-          <i class="ti ti-file-invoice"></i>Documents
+          <i class="ti ti-file-invoice"></i>Agreement
         </a>
       </div>
       <div class="lf-nav-section">
@@ -890,7 +880,7 @@
         </a>
         {% if object and object.pk %}
         <a href="{% url 'leases:edit_clauses' object.pk %}" class="lf-nav-item">
-          <i class="ti ti-edit"></i>Agreement
+          <i class="ti ti-edit"></i>Edit Clauses
         </a>
         {% endif %}
       </div>
@@ -1100,9 +1090,19 @@
               </div>
             </div>
 
-            {# Right: tenant identity, documents and verification #}
+            {# Right: tenant docs #}
             <div>
-              <div class="lf-card lf-identity-doc-card">
+              <div class="row g-2 mt-1"><div class="col-12"><label class="form-label">Pending Registration</label>{{ form.pending_registration_submission }}<div class="form-text">{{ form.pending_registration_submission.help_text }}</div></div></div>
+              <div class="row g-2 mt-1">
+                <div class="col-lg-2 col-md-4"><label class="form-label">Proposer</label>{{ form.proposer }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Proposer Relation</label>{{ form.proposer_relationship }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Seconder</label>{{ form.seconder }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Seconder Relation</label>{{ form.seconder_relationship }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Witness 1</label>{{ form.witness1_tenant }}</div>
+                <div class="col-lg-2 col-md-4"><label class="form-label">Witness 2</label>{{ form.witness2_tenant }}</div>
+              </div>
+
+              <div class="lf-card">
                 <div class="lf-card-head" style="background:#1d3461;">
                   <i class="ti ti-id-badge-2" style="color:#7eb3f5;"></i>
                   <span class="lf-card-title" style="color:#c8d4f0;">Tenant Documents</span>
@@ -1112,59 +1112,70 @@
                     <div class="lf-doc-item lf-photo-doc{% if form.instance.tenant_id and form.instance.tenant.photo %} lf-doc-has-file{% endif %}">
                       {% if form.instance.tenant_id and form.instance.tenant.photo %}
                         <a href="{{ form.instance.tenant.photo.url }}" target="_blank">
-                          <img src="{{ form.instance.tenant.photo.url }}" alt="Photo" class="lf-doc-img" id="tenant_photo_preview">
+                          <img src="{{ form.instance.tenant.photo.url }}" alt="Photo" class="lf-doc-img">
                         </a>
                       {% else %}
                         <div class="lf-doc-empty">No photo</div>
                       {% endif %}
                       <span class="lf-doc-label">Photo</span>
-                      <input type="file" name="tenant_photo" id="tenant_photo_upload" class="lf-doc-upload-input" accept="image/*" data-preview-target="tenant_photo_preview">
-                      <label for="tenant_photo_upload" class="btn btn-sm btn-primary lf-doc-upload-btn"><i class="ti ti-upload"></i> Upload</label>
+                      <input type="file" name="tenant_photo" class="form-control form-control-sm" accept="image/*">
                     </div>
                     <div class="lf-doc-item{% if form.instance.tenant_id and form.instance.tenant.cnic_front %} lf-doc-has-file{% endif %}">
                       {% if form.instance.tenant_id and form.instance.tenant.cnic_front %}
                         <a href="{{ form.instance.tenant.cnic_front.url }}" target="_blank">
-                          <img src="{{ form.instance.tenant.cnic_front.url }}" alt="CNIC Front" class="lf-doc-img" id="tenant_cnic_front_preview">
+                          <img src="{{ form.instance.tenant.cnic_front.url }}" alt="CNIC Front" class="lf-doc-img">
                         </a>
                       {% else %}
                         <div class="lf-doc-empty">No file</div>
                       {% endif %}
                       <span class="lf-doc-label">CNIC Front</span>
-                      <input type="file" name="tenant_cnic_front" id="tenant_cnic_front_upload" class="lf-doc-upload-input" accept="image/*" data-preview-target="tenant_cnic_front_preview">
-                      <label for="tenant_cnic_front_upload" class="btn btn-sm btn-primary lf-doc-upload-btn"><i class="ti ti-upload"></i> Upload</label>
+                      <input type="file" name="tenant_cnic_front" class="form-control form-control-sm" accept="image/*">
                     </div>
                     <div class="lf-doc-item{% if form.instance.tenant_id and form.instance.tenant.cnic_back %} lf-doc-has-file{% endif %}">
                       {% if form.instance.tenant_id and form.instance.tenant.cnic_back %}
                         <a href="{{ form.instance.tenant.cnic_back.url }}" target="_blank">
-                          <img src="{{ form.instance.tenant.cnic_back.url }}" alt="CNIC Back" class="lf-doc-img" id="tenant_cnic_back_preview">
+                          <img src="{{ form.instance.tenant.cnic_back.url }}" alt="CNIC Back" class="lf-doc-img">
                         </a>
                       {% else %}
                         <div class="lf-doc-empty">No file</div>
                       {% endif %}
                       <span class="lf-doc-label">CNIC Back</span>
-                      <input type="file" name="tenant_cnic_back" id="tenant_cnic_back_upload" class="lf-doc-upload-input" accept="image/*" data-preview-target="tenant_cnic_back_preview">
-                      <label for="tenant_cnic_back_upload" class="btn btn-sm btn-primary lf-doc-upload-btn"><i class="ti ti-upload"></i> Upload</label>
+                      <input type="file" name="tenant_cnic_back" class="form-control form-control-sm" accept="image/*">
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="row g-2 mt-1"><div class="col-12"><label class="form-label">Pending Registration</label>{{ form.pending_registration_submission }}<div class="form-text">{{ form.pending_registration_submission.help_text }}</div></div></div>
-              <div class="lf-party-grid">
-                <div class="lf-party-pair">
-                  <div><label class="form-label">Proposer</label>{{ form.proposer }}</div>
-                  <div><label class="form-label">Relation</label>{{ form.proposer_relationship }}</div>
+              {# Agreement upload (condensed into right column) #}
+              <div class="lf-card">
+                <div class="lf-card-head lf-card-dark">
+                  <i class="ti ti-file-invoice"></i>
+                  <span class="lf-card-title">Agreement File</span>
                 </div>
-                <div class="lf-party-pair">
-                  <div><label class="form-label">Seconder</label>{{ form.seconder }}</div>
-                  <div><label class="form-label">Relation</label>{{ form.seconder_relationship }}</div>
-                </div>
-                <div class="lf-witness-grid">
-                  <div><label class="form-label">Witness 1</label>{{ form.witness1_tenant }}</div>
-                  <div><label class="form-label">Witness 2</label>{{ form.witness2_tenant }}</div>
+                <div class="lf-fg" style="padding:8px 12px;">
+                  <div class="lf-f">
+                    <label class="form-label">Upload Lease Agreement</label>
+                    <input type="file" name="signed_agreement" id="id_signed_agreement" class="form-control form-control-sm">
+                  </div>
+                  <div class="lf-f mt-1">
+                    {% if form.instance.signed_agreement %}
+                      <span class="badge bg-success"><i class="fas fa-check-circle"></i> Uploaded</span>
+                      <a href="{{ form.instance.signed_agreement.url }}" target="_blank" class="small ms-1">View</a>
+                    {% else %}
+                      <span class="badge bg-secondary">Not Uploaded</span>
+                    {% endif %}
+                  </div>
+                  <div class="lf-f mt-2">
+                    <label class="form-label">Signed Condition Photos (PDF)</label>
+                    <input type="file" name="condition_photos_signed" class="form-control form-control-sm">
+                    {% if form.instance.condition_photos_signed %}
+                      <a class="btn btn-success btn-sm mt-1" target="_blank" href="{{ form.instance.condition_photos_signed.url }}">View Photos PDF</a>
+                    {% else %}
+                      <span class="badge bg-secondary mt-1">Not uploaded</span>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>{# /pane-tenant #}
@@ -1445,44 +1456,6 @@
           </div>
         </div>{# /pane-renewals #}
 
-        {# ======= PANE: Documents ======= #}
-        <div id="pane-files" class="lf-pane d-none">
-          <div class="lf-card">
-            <div class="lf-card-head lf-card-dark">
-              <i class="ti ti-files"></i><span class="lf-card-title">Documents</span>
-            </div>
-            <div class="lf-fg lf-fg-2">
-              <div class="lf-f">
-                <label class="form-label">Signed Lease Agreement (PDF)</label>
-                <input type="file" name="signed_agreement" id="id_signed_agreement" class="form-control form-control-sm" accept="application/pdf,.pdf">
-                {% if form.instance.signed_agreement %}<a href="{{ form.instance.signed_agreement.url }}" target="_blank" class="btn btn-sm btn-success mt-1"><i class="ti ti-eye"></i> View current agreement</a>{% endif %}
-              </div>
-              <div class="lf-f">
-                <label class="form-label">Signed Condition Photos (PDF)</label>
-                <input type="file" name="condition_photos_signed" id="id_condition_photos_signed" class="form-control form-control-sm" accept="application/pdf,.pdf">
-                {% if form.instance.condition_photos_signed %}<a href="{{ form.instance.condition_photos_signed.url }}" target="_blank" class="btn btn-sm btn-success mt-1"><i class="ti ti-eye"></i> View current photos PDF</a>{% endif %}
-              </div>
-            </div>
-            {% if form.instance.pk %}
-            <div class="lf-fg lf-fg-3" style="border-top:1px solid #eef0f6;">
-              <div class="lf-f"><label class="form-label">Add Files</label><input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.heic,.heif"></div>
-              <div class="lf-f"><label class="form-label">Category</label><select name="category" class="form-select form-select-sm">{% for category in lease_document_categories %}<option value="{{ category.code }}">{{ category.name }}</option>{% endfor %}</select></div>
-              <div class="lf-f"><label class="form-label">Description</label><input type="text" name="description" class="form-control form-control-sm" maxlength="300"></div>
-              <div class="lf-f"><input type="hidden" name="redirect_to" value="edit"><button type="submit" class="btn btn-sm btn-primary" formaction="{% url 'leases:lease_file_upload' form.instance.pk %}" formmethod="post" formenctype="multipart/form-data" formnovalidate><i class="ti ti-upload"></i> Upload Files</button></div>
-            </div>
-            <div class="lf-file-list">
-              {% for doc in lease_documents %}
-              <div class="lf-file-row">
-                <div class="lf-file-name"><i class="ti ti-file"></i> {{ doc.display_name|default:doc.original_filename }}<div class="lf-file-meta">{{ doc.description|default:"No description" }}</div></div>
-                <div><span class="badge bg-secondary">{{ doc.category_label }}</span><div class="lf-file-meta">{{ doc.uploaded_at|date:"M d, Y" }}</div></div>
-                <div class="lf-file-actions">{% if doc.file_exists %}<a class="btn btn-sm btn-secondary" target="_blank" href="{% url 'leases:lease_file_view' doc.pk %}" title="View"><i class="ti ti-eye"></i></a><a class="btn btn-sm btn-success" href="{% url 'leases:lease_file_download' doc.pk %}" title="Download"><i class="ti ti-download"></i></a>{% endif %}</div>
-              </div>
-              {% empty %}<div class="text-muted small py-2">No additional lease files uploaded.</div>{% endfor %}
-            </div>
-            {% else %}<div class="text-muted small p-3">Save the lease first, then upload categorized documents here.</div>{% endif %}
-          </div>
-        </div>{# /pane-files #}
-
         {# ======= PANE: Financial ======= #}
         <div id="pane-financial" class="lf-pane d-none">
           <div class="lf-card">
@@ -1629,29 +1602,6 @@
 </div>{# /lf-shell #}
 
 {% include "includes/billing_preview_modal.html" %}
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('.lf-doc-upload-input[data-preview-target]').forEach(function(input) {
-    input.addEventListener('change', function() {
-      const file = input.files && input.files[0];
-      if (!file || !file.type.startsWith('image/')) return;
-      const item = input.closest('.lf-doc-item');
-      let preview = document.getElementById(input.dataset.previewTarget);
-      if (!preview) {
-        const empty = item.querySelector('.lf-doc-empty');
-        preview = document.createElement('img');
-        preview.id = input.dataset.previewTarget;
-        preview.className = 'lf-doc-img';
-        preview.alt = 'Selected file preview';
-        empty?.replaceWith(preview);
-      }
-      preview.src = URL.createObjectURL(file);
-      item.classList.add('lf-doc-has-file');
-    });
-  });
-});
-</script>
 
 {% if auto_open_billing_modal %}
 <script>

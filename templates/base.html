@@ -507,9 +507,54 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script>
+    (function () {
+      function identityDigits(value) {
+        return String(value || '').replace(/\D/g, '');
+      }
+
+      function identityAwareMatcher(params, data) {
+        const $ = window.jQuery;
+        const term = $.trim(params.term || '');
+        if (!term) return data;
+
+        if (data.children && data.children.length) {
+          const matchedGroup = $.extend(true, {}, data);
+          matchedGroup.children = data.children.filter(function (child) {
+            return identityAwareMatcher(params, child) !== null;
+          });
+          if (matchedGroup.children.length) return matchedGroup;
+        }
+
+        if (typeof data.text === 'undefined') return null;
+        const optionSearch = data.element ? ($(data.element).data('search') || '') : '';
+        const candidate = String(data.text || '') + ' ' + String(optionSearch || '');
+        if (candidate.toLowerCase().includes(term.toLowerCase())) return data;
+
+        // Treat a digits/separators-only query as a CNIC/phone search. Both the
+        // query and option text become digits-only, so partial searches work
+        // with or without dashes, spaces, parentheses, dots, or a leading plus.
+        if (/^[\d\s()+.\/-]+$/.test(term)) {
+          const termDigits = identityDigits(term);
+          if (termDigits && identityDigits(candidate).includes(termDigits)) return data;
+        }
+        return null;
+      }
+
+      window.tmsNormalizeIdentitySearch = identityDigits;
+      window.tmsSelect2IdentityMatcher = identityAwareMatcher;
+      window.tmsInstallSelect2IdentityMatcher = function () {
+        const $ = window.jQuery;
+        if ($?.fn?.select2) $.fn.select2.defaults.set('matcher', identityAwareMatcher);
+      };
+      window.tmsInstallSelect2IdentityMatcher();
+    })();
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 
   {% block extra_js %}{% endblock %}
+
+  <script>window.tmsInstallSelect2IdentityMatcher?.();</script>
 
   <script>
     document.addEventListener('DOMContentLoaded', function () {

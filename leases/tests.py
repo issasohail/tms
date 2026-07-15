@@ -47,7 +47,10 @@ class AgreementPartyAjaxTests(TestCase):
         from django.contrib.auth import get_user_model
         from django.contrib.auth.models import Permission
         self.user = get_user_model().objects.create_user(username="party-editor", password="x")
-        self.user.user_permissions.add(Permission.objects.get(content_type__app_label="tenants", codename="add_tenant"))
+        self.user.user_permissions.add(
+            Permission.objects.get(content_type__app_label="tenants", codename="add_tenant"),
+            Permission.objects.get(content_type__app_label="leases", codename="add_lease"),
+        )
         self.client.force_login(self.user)
 
     def test_quick_add_party_creates_tenant(self):
@@ -60,6 +63,8 @@ class AgreementPartyAjaxTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload["ok"])
+        self.assertEqual(payload["name"], "Business Partner")
+        self.assertEqual(payload["cnic_display"], "42101-1234567-1")
         self.assertTrue(Tenant.objects.filter(pk=payload["id"], cnic_digits="4210112345671").exists())
 
     def test_quick_add_party_reuses_existing_cnic(self):
@@ -72,3 +77,38 @@ class AgreementPartyAjaxTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["id"], existing.pk)
         self.assertFalse(response.json()["created"])
+
+
+class LeaseHistoryWitnessSelectTests(TestCase):
+    def test_both_witness_fields_use_quick_add_select2_class(self):
+        from leases.forms_renewal import LeaseHistoryEditForm
+
+        form = LeaseHistoryEditForm()
+
+        for field_name in ("witness1_tenant", "witness2_tenant"):
+            classes = form.fields[field_name].widget.attrs.get("class", "").split()
+            self.assertIn("select2", classes)
+            self.assertIn("witness-select", classes)
+
+    def test_witnesses_are_ordered_and_show_limited_name_cnic_phone(self):
+        from leases.forms_renewal import LeaseHistoryEditForm
+        from tenants.models import Tenant
+
+        Tenant.objects.create(
+            first_name="Zulu", last_name="Witness",
+            cnic="42101-2222222-2", phone="03002222222",
+        )
+        alpha = Tenant.objects.create(
+            first_name="Alexanderthegreat", last_name="Witness",
+            cnic="42101-1111111-1", phone="03001111111",
+        )
+
+        form = LeaseHistoryEditForm()
+        field = form.fields["witness1_tenant"]
+        ordered_names = [person.get_full_name() for person in field.queryset]
+        label = field.label_from_instance(alpha)
+
+        self.assertEqual(ordered_names, ["Alexanderthegreat Witness", "Zulu Witness"])
+        self.assertTrue(label.startswith("Alexanderthegreat Wi - "))
+        self.assertIn("42101-1111111-1", label)
+        self.assertIn("0-300-111-1111", label)

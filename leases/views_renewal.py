@@ -4,7 +4,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Max
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
@@ -206,7 +206,7 @@ class LeaseHistoryDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["lease"] = self.object.lease
         context["is_active_history"] = is_active_history(self.object)
-        context["media_files"] = self.object.lease.media.filter(is_active=True).order_by("sort_order", "-created_at")
+        context["inline_form"] = LeaseHistoryEditForm(instance=self.object)
         return context
 
 
@@ -236,6 +236,7 @@ class LeaseHistoryUpdateView(LoginRequiredMixin, UpdateView):
         return context
 
     def form_valid(self, form):
+        is_ajax = self.request.headers.get("x-requested-with") == "XMLHttpRequest"
         old_history = LeaseRenewal.objects.get(pk=self.object.pk)
         active = is_active_history(old_history)
         confirm_active = self.request.POST.get("confirm_active_financial") == "1"
@@ -263,11 +264,30 @@ class LeaseHistoryUpdateView(LoginRequiredMixin, UpdateView):
                 include_backfill=False,
                 update_existing=False,
             )
-            messages.success(self.request, "Active lease history updated and master lease recurring charges synced.")
+            if not is_ajax:
+                messages.success(self.request, "Active lease history updated and master lease recurring charges synced.")
         else:
-            messages.success(self.request, "Old lease history updated without changing the master lease.")
+            if not is_ajax:
+                messages.success(self.request, "Old lease history updated without changing the master lease.")
+
+        if is_ajax:
+            history.refresh_from_db()
+            return JsonResponse({
+                "ok": True,
+                "message": "Lease history saved.",
+                "total_monthly_amount": str(history.total_monthly_amount),
+                "updated_at": history.updated_at.strftime("%b %d, %Y %H:%M"),
+            })
 
         return response
+
+    def form_invalid(self, form):
+        if self.request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse(
+                {"ok": False, "message": "Please correct the highlighted value.", "errors": form.errors.get_json_data()},
+                status=400,
+            )
+        return super().form_invalid(form)
 
 
 @login_required

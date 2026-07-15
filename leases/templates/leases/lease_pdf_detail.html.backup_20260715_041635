@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Lease Details - {{ lease.tenant.first_name }} {{ lease.tenant.last_name }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+        .section-title {
+            background-color: #2c3e50;
+            color: white;
+            padding: 8px 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .col {
+            flex: 1;
+            min-width: 200px;
+            padding: 0 10px;
+        }
+        .label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        .bg-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .bg-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .bg-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .notes {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.8em;
+            color: #6c757d;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Lease Details</h1>
+        <p>Generated on {% now "F j, Y" %}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Basic Information</div>
+        <div class="row">
+            <div class="col">
+                <p><span class="label">Property:</span> {{ lease.unit.property.property_name }}</p>
+                <p><span class="label">Unit:</span> {{ lease.unit.unit_number }}</p>
+                <p><span class="label">Tenant:</span> {{ lease.tenant.first_name }} {{ lease.tenant.last_name }}</p>
+            </div>
+            <div class="col">
+                <p><span class="label">Status:</span> 
+                    <span class="badge 
+                        {% if lease.status == 'active' %}bg-success
+                        {% elif lease.status == 'ended' %}bg-secondary
+                        {% else %}bg-danger{% endif %}">
+                        {{ lease.get_status_display }}
+                    </span>
+                </p>
+                <p><span class="label">Start Date:</span> {{ lease.start_date|date:"M d, Y" }}</p>
+                <p><span class="label">End Date:</span> {{ lease.end_date|date:"M d, Y" }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Financial Information</div>
+        <div class="row">
+            <div class="col">
+                <p><span class="label">Monthly Rent:</span> ${{ lease.monthly_rent }}</p>
+                <p><span class="label">Maintenance:</span> ${{ lease.society_maintenance|default:"0.00" }}</p>
+            </div>
+            <div class="col">
+                <p><span class="label">Total Payment:</span> ${{ lease.total_payment }}</p>
+                <p><span class="label">Security Deposit:</span> ${{ lease.security_deposit }}</p>
+            </div>
+            <div class="col">
+                <p><span class="label">Deposit Paid:</span> 
+                    {% if lease.security_deposit_paid %}
+                    <span class="badge bg-success">Yes</span>
+                    {% else %}
+                    <span class="badge bg-danger">No</span>
+                    {% endif %}
+                </p>
+                <p><span class="label">Deposit Returned:</span> 
+                    {% if lease.security_deposit_returned %}
+                    <span class="badge bg-success">Yes</span>
+                    {% else %}
+                    <span class="badge bg-danger">No</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        
+        {% if lease.security_deposit_return_notes %}
+        <div class="notes">
+            <p><span class="label">Return Notes:</span></p>
+            {{ lease.security_deposit_return_notes|linebreaks }}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <div class="section-title">Documents & Terms</div>
+        {% if lease.terms %}
+        <div class="notes">
+            <p><span class="label">Lease Terms:</span></p>
+            {{ lease.terms|linebreaks }}
+        </div>
+        {% endif %}
+        
+        {% if lease.notes %}
+        <div class="notes">
+            <p><span class="label">Additional Notes:</span></p>
+            {{ lease.notes|linebreaks }}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>This document was automatically generated on {% now "F j, Y" %} by Tenant Management System</p>
+    </div>
+</body>
+</html>

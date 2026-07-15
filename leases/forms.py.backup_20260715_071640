@@ -133,7 +133,10 @@ class LeaseForm(forms.ModelForm):
             "police_verified_by",
         ]
         for field_name in optional_police_fields:
-            self.fields.pop(field_name, None)
+            if field_name in self.fields:
+                self.fields[field_name].required = False
+        if "police_verification_status" in self.fields:
+            self.fields["police_verification_status"].initial = "not_started"
 
         # If user selected a property (POST or initial), filter units
         pid = self.data.get('property') or self.initial.get('property')
@@ -169,6 +172,8 @@ class LeaseForm(forms.ModelForm):
             self.add_error("seconder", "Primary tenant cannot be seconder on the same lease.")
         if proposer and proposer == seconder:
             self.add_error("seconder", "The same person cannot be proposer and seconder on the same lease.")
+        if not cleaned_data.get("police_verification_status"):
+            cleaned_data["police_verification_status"] = "not_started"
         return cleaned_data
 
     def clean_signed_agreement(self):

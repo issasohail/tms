@@ -196,7 +196,7 @@
 
 .lhf-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px 12px;
 }
 .lhf-field-wide { grid-column: 1 / -1; }
@@ -227,22 +227,85 @@
 .lhf-field textarea {
   min-height: 86px;
 }
+.lhf-field input[type="checkbox"] {
+  display: block;
+  width: 1rem;
+  min-width: 1rem;
+  height: 1rem;
+  margin: .3rem 0 .2rem;
+  padding: 0;
+  float: none;
+  cursor: pointer;
+}
+.lhf-field input[type="checkbox"]:checked,
+.lhf-field input[type="checkbox"]:checked:focus {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+.lhf-field input[type="checkbox"]:focus {
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, .18);
+}
+.lhf-mobile-label { display: none; }
+.lhf-checkbox-line {
+  display: flex;
+  align-items: flex-start;
+  gap: .4rem;
+  min-width: 0;
+}
+.lhf-checkbox-line input[type="checkbox"] {
+  flex: 0 0 1rem;
+  margin-top: .15rem;
+}
+.lhf-checkbox-help {
+  margin: 0;
+  color: #64748b;
+  font-size: .68rem;
+  line-height: 1.25;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
 .lhf-errors {
   margin-top: 4px;
   color: #dc2626;
   font-size: .74rem;
 }
+.lhf-field .select2-container { width: 100% !important; }
+.lhf-field .select2-container--bootstrap-5 .select2-selection {
+  min-height: 31px;
+  font-size: .84rem;
+  border-color: #dbe3ef;
+  background-color: #f8fafc;
+}
+.lhf-quick-witness-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.lhf-quick-witness-grid .lhf-quick-name { grid-column: 1 / -1; }
 
 @media (max-width: 991px) {
-  .lhf-summary,
-  .lhf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lhf-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lhf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767.98px) {
+  .lhf-field[data-field="witness1_tenant"],
+  .lhf-field[data-field="witness2_tenant"] {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 576px) {
   .lhf-shell { padding: 10px 8px 18px; }
   .lhf-header { align-items: flex-start; }
   .lhf-actions { width: 100%; justify-content: flex-start; }
-  .lhf-summary,
-  .lhf-grid { grid-template-columns: 1fr; }
+  .lhf-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lhf-stat-wide-mobile { grid-column: 1 / -1; }
+  .lhf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lhf-witness-field { grid-column: 1 / -1; }
+  .lhf-desktop-label { display: none; }
+  .lhf-mobile-label { display: inline; }
+  .lhf-quick-witness-grid { grid-template-columns: 1fr; }
+  .lhf-quick-witness-grid .lhf-quick-name { grid-column: auto; }
   .lhf-card-footer { align-items: stretch; }
   .lhf-card-footer .d-flex { width: 100%; }
   .lhf-card-footer .btn { flex: 1; }
@@ -273,43 +336,25 @@
   </div>
 
   <div class="lhf-summary">
-    <div class="lhf-stat">
+    <div class="lhf-stat lhf-stat-wide-mobile">
       <div class="lhf-stat-label">Property / Unit</div>
       <div class="lhf-stat-value">
         {% if lease.unit %}{{ lease.unit.property.property_name }} - {{ lease.unit.unit_number }}{% else %}-{% endif %}
       </div>
     </div>
-    <div class="lhf-stat">
+    <div class="lhf-stat lhf-stat-wide-mobile">
       <div class="lhf-stat-label">History Period</div>
       <div class="lhf-stat-value">{{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }}</div>
     </div>
     <div class="lhf-stat">
-      <div class="lhf-stat-label">Monthly Rent</div>
-      <div class="lhf-stat-value">Rs {{ history.monthly_rent|default:0|floatformat:0|intcomma }}</div>
+      <div class="lhf-stat-label">Total Monthly Charges</div>
+      <div class="lhf-stat-value" id="historyTotalMonthlyCharges">Rs {{ history.total_monthly_amount|default:0|floatformat:0|intcomma }}</div>
     </div>
     <div class="lhf-stat">
       <div class="lhf-stat-label">Agreement Date</div>
       <div class="lhf-stat-value">{{ history.agreement_date|date:"M d, Y"|default:"-" }}</div>
     </div>
   </div>
-
-  {% if is_active_history %}
-    <div class="lhf-alert lhf-alert-warning">
-      <i class="ti ti-alert-triangle"></i>
-      <div>
-        <div class="lhf-alert-title">Active lease history</div>
-        <div class="lhf-alert-text">Saving financial or date changes will also update the master lease and recurring charges after confirmation.</div>
-      </div>
-    </div>
-  {% else %}
-    <div class="lhf-alert lhf-alert-info">
-      <i class="ti ti-info-circle"></i>
-      <div>
-        <div class="lhf-alert-title">Archived lease history</div>
-        <div class="lhf-alert-text">Saving changes here will not update the master lease or recurring charges.</div>
-      </div>
-    </div>
-  {% endif %}
 
   {% if requires_active_confirmation %}
     <div class="lhf-alert lhf-alert-danger">
@@ -377,10 +422,19 @@
 
         <div class="lhf-grid">
           {% for field in form %}
-            <div class="lhf-field {% if field.name == 'notes' %}lhf-field-wide{% endif %}">
-              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-              {{ field }}
-              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            <div class="lhf-field{% if field.name == 'notes' %} lhf-field-wide{% endif %}{% if field.name == 'witness1_tenant' or field.name == 'witness2_tenant' %} lhf-witness-field{% endif %}" data-field="{{ field.name }}">
+              <label class="form-label" for="{{ field.id_for_label }}">
+                {% if field.name == 'society_maintenance' %}<span class="lhf-desktop-label">Society Maintenance</span><span class="lhf-mobile-label">Society Maint.</span>{% else %}{{ field.label }}{% endif %}
+              </label>
+              {% if field.name == 'bill_water_charges' %}
+                <div class="lhf-checkbox-line">
+                  {{ field }}
+                  <label class="lhf-checkbox-help" for="{{ field.id_for_label }}">Include in monthly billing.</label>
+                </div>
+              {% else %}
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% endif %}
               {% for error in field.errors %}
                 <div class="lhf-errors">{{ error }}</div>
               {% endfor %}
@@ -404,5 +458,205 @@
       </div>
     </div>
   </form>
+
+  <div class="modal fade" id="quickWitnessModal" tabindex="-1" aria-labelledby="quickWitnessModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" id="quickWitnessForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="quickWitnessModalLabel">Quick Add Witness</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="quickWitnessError" class="alert alert-danger py-2 d-none" role="alert"></div>
+          <div class="lhf-quick-witness-grid">
+            <div class="lhf-quick-name">
+              <label class="form-label small" for="quickWitnessName">Name *</label>
+              <input type="text" class="form-control" id="quickWitnessName" name="full_name" autocomplete="name" required>
+              <div class="form-text">Enter first name and father/husband name.</div>
+            </div>
+            <div>
+              <label class="form-label small" for="quickWitnessCnic">CNIC *</label>
+              <input type="text" class="form-control" id="quickWitnessCnic" name="cnic" maxlength="15" inputmode="numeric" placeholder="00000-0000000-0" required>
+            </div>
+            <div>
+              <label class="form-label small" for="quickWitnessPhone">Phone Number *</label>
+              <input type="tel" class="form-control" id="quickWitnessPhone" name="phone" maxlength="20" autocomplete="tel" required>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="quickWitnessSave">
+            <i class="ti ti-user-plus"></i> Add Witness
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const totalMonthlyCharges = document.getElementById('historyTotalMonthlyCharges');
+  const monthlyChargeInputs = [
+    'id_monthly_rent',
+    'id_society_maintenance',
+    'id_water_charges',
+    'id_internet_charges'
+  ].map(function (id) { return document.getElementById(id); }).filter(Boolean);
+
+  function updateTotalMonthlyCharges() {
+    const total = monthlyChargeInputs.reduce(function (sum, input) {
+      const value = Number.parseFloat(input.value);
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+    if (totalMonthlyCharges) {
+      totalMonthlyCharges.textContent = 'Rs ' + new Intl.NumberFormat('en-US', {
+        maximumFractionDigits: 0
+      }).format(total);
+    }
+  }
+
+  monthlyChargeInputs.forEach(function (input) {
+    input.addEventListener('input', updateTotalMonthlyCharges);
+    input.addEventListener('change', updateTotalMonthlyCharges);
+  });
+  updateTotalMonthlyCharges();
+
+  if (!window.jQuery || !jQuery.fn.select2) return;
+
+  const $witnesses = jQuery('.witness-select');
+  const modalElement = document.getElementById('quickWitnessModal');
+  const quickForm = document.getElementById('quickWitnessForm');
+  const errorBox = document.getElementById('quickWitnessError');
+  const saveButton = document.getElementById('quickWitnessSave');
+  const createUrl = "{% url 'leases:create_agreement_party_ajax' %}";
+  const csrfToken = document.querySelector('form[method="post"] input[name="csrfmiddlewaretoken"]')?.value || '';
+  let activeWitnessSelect = null;
+
+  function createWitnessTag(params) {
+    const name = jQuery.trim(params.term || '');
+    if (!name) return null;
+    const normalizedName = name.toLowerCase();
+    const duplicate = Array.from(this.$element[0].options).some(function (option) {
+      const optionText = option.text.trim().toLowerCase();
+      return optionText === normalizedName || optionText.startsWith(normalizedName + ' - ');
+    });
+    if (duplicate) return null;
+    return {
+      id: '__new_witness__:' + name,
+      text: 'Quick add "' + name + '"',
+      newWitness: true,
+      witnessName: name
+    };
+  }
+
+  $witnesses.each(function () {
+    const $select = jQuery(this);
+    $select.data('saved-witness-value', this.value || '');
+    $select.select2({
+      theme: 'bootstrap-5',
+      width: '100%',
+      allowClear: true,
+      placeholder: 'Search or type a new witness',
+      tags: true,
+      createTag: createWitnessTag
+    });
+  });
+
+  $witnesses.on('select2:select', function (event) {
+    const item = event.params.data || {};
+    const itemId = String(item.id || '');
+    if (!item.newWitness && !itemId.startsWith('__new_witness__:')) {
+      jQuery(this).data('saved-witness-value', itemId);
+      return;
+    }
+
+    activeWitnessSelect = this;
+    const previousValue = jQuery(this).data('saved-witness-value') || '';
+    const witnessName = item.witnessName || itemId.replace('__new_witness__:', '');
+    jQuery(this).find('option').filter(function () { return this.value === itemId; }).remove();
+    jQuery(this).val(previousValue).trigger('change.select2');
+
+    quickForm.reset();
+    errorBox.classList.add('d-none');
+    document.getElementById('quickWitnessName').value = witnessName;
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    modalElement.addEventListener('shown.bs.modal', function focusCnic() {
+      document.getElementById('quickWitnessCnic').focus();
+    }, {once: true});
+  });
+
+  $witnesses.on('select2:clear', function () {
+    jQuery(this).data('saved-witness-value', '');
+  });
+
+  $witnesses.on('select2:open', function () {
+    window.setTimeout(function () {
+      document.querySelector('.select2-container--open .select2-search__field')?.focus();
+    }, 0);
+  });
+
+  quickForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    errorBox.classList.add('d-none');
+
+    const fullName = document.getElementById('quickWitnessName').value.trim().replace(/\s+/g, ' ');
+    const nameParts = fullName.split(' ').filter(Boolean);
+    if (nameParts.length < 2) {
+      errorBox.textContent = 'Please enter both first name and father/husband name.';
+      errorBox.classList.remove('d-none');
+      return;
+    }
+
+    const data = new FormData(quickForm);
+    data.delete('full_name');
+    data.append('first_name', nameParts.shift());
+    data.append('last_name', nameParts.join(' '));
+    data.append('csrfmiddlewaretoken', csrfToken);
+    saveButton.disabled = true;
+
+    try {
+      const response = await fetch(createUrl, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest'},
+        body: data
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || 'Could not add witness.');
+
+      const witnessLabel = [
+        String(result.name || '').trim().slice(0, 20),
+        result.cnic_display || '-',
+        result.phone_display || '-'
+      ].join(' - ');
+
+      $witnesses.each(function () {
+        const $select = jQuery(this);
+        if (!$select.find('option[value="' + result.id + '"]').length) {
+          $select.append(new Option(witnessLabel, result.id, false, false));
+        }
+        $select.trigger('change.select2');
+      });
+
+      if (activeWitnessSelect) {
+        jQuery(activeWitnessSelect)
+          .val(String(result.id))
+          .data('saved-witness-value', String(result.id))
+          .trigger('change');
+      }
+      bootstrap.Modal.getInstance(modalElement)?.hide();
+      quickForm.reset();
+      activeWitnessSelect = null;
+    } catch (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.remove('d-none');
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+});
+</script>
 {% endblock %}

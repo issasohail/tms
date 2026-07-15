@@ -13,8 +13,8 @@
 /* ---- header: 4 fixed/flex sections ---- */
 .ld-header-row {
   display: grid;
-  grid-template-columns: auto 96px minmax(260px, 360px) minmax(300px, 1fr);
-  grid-template-areas: "media vehicle info actions";
+  grid-template-columns: auto minmax(260px, 360px) 96px minmax(300px, 1fr);
+  grid-template-areas: "media info vehicle actions";
   align-items: stretch; gap: 12px;
   padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #e5e7eb;
 }
@@ -72,7 +72,7 @@
 /* Section 4 — vehicle thumbnail (fixed) */
 .ld-hdr-vehicle {
   grid-area:vehicle; text-align: center;
-  border-left: 0; padding-left: 0;
+  border-left: 1px solid #e5e7eb; padding-left: 16px;
 }
 .ld-hdr-vehicle .ld-doc-tile { width: 96px; }
 
@@ -122,7 +122,7 @@
 .ld-ov-col:last-child { border-right: none; }
 
 .ld-ov-head {
-  font-size: 10px; font-weight: 700; color: #111827;
+  font-size: 10px; font-weight: 700; color: #94a3b8;
   text-transform: uppercase; letter-spacing: .6px;
   padding-bottom: 8px; margin-bottom: 8px;
   border-bottom: 1px solid #e5e7eb;
@@ -134,7 +134,7 @@
 }
 .ld-f:last-child { margin-bottom: 0; }
 .ld-f-label {
-  font-size: 10px; color: #111827; font-weight: 600;
+  font-size: 10px; color: #9ca3af; font-weight: 500;
   text-transform: uppercase; letter-spacing: .3px;
   margin-bottom: 2px;
 }
@@ -143,7 +143,6 @@
 }
 .ld-f-value a { color: #2563eb; text-decoration: none; }
 .ld-f-value a:hover { text-decoration: underline; }
-.ld-agreement-parties .ld-f-value a { color:#111827; }
 .ld-f-value.val-danger  { color: #dc2626; font-weight: 700; }
 .ld-f-value.val-success { color: #15803d; }
 
@@ -154,7 +153,7 @@
 }
 .dep-row.dep-warn { background:#fef9c3; }
 .dep-row.dep-ok   { background:#f0fdf4; }
-.dep-k { color:#111827; font-weight:600; }
+.dep-k { color:#6b7280; }
 .dep-v { font-weight:600; }
 
 /* ---- Tab nav ---- */
@@ -211,7 +210,7 @@
   padding:4px 0; border-bottom:.5px solid #f1f5f9; font-size:13px; gap:8px;
 }
 .ld-row:last-child { border-bottom:none; }
-.ld-rk { color:#111827; font-weight:600; flex-shrink:0; min-width:130px; }
+.ld-rk { color:#6b7280; font-weight:500; flex-shrink:0; min-width:130px; }
 .ld-rv { color:#111827; font-weight:500; text-align:right; }
 
 /* ---- layout helpers ---- */
@@ -239,7 +238,7 @@
 }
 .ld-tbl th {
   background:#f8fafc; padding:7px 10px; font-size:11px; font-weight:700;
-  color:#111827; border-bottom:1px solid #e5e7eb; text-align:left; white-space:nowrap;
+  color:#6b7280; border-bottom:1px solid #e5e7eb; text-align:left; white-space:nowrap;
 }
 .ld-tbl td { padding:7px 10px; border-bottom:.5px solid #f3f4f6; color:#111827; }
 .ld-tbl tr:last-child td { border-bottom:none; }
@@ -267,13 +266,6 @@
 .ld-file-actions .ld-file-action-btn i { color:#fff !important; font-size:12px; line-height:1; }
 .ld-file-missing { font-size:10px; }
 .ld-file-category-select { font-size:11px; padding:2px 5px; min-height:26px; }
-.ld-file-category-display {
-  border:0; background:transparent; padding:0; color:#111827;
-  font-size:11px; font-weight:600; line-height:1.25; text-align:left; cursor:pointer;
-}
-.ld-file-category-display:hover { text-decoration:underline; }
-.ld-file-upload-actions { display:flex; align-items:center; flex-wrap:nowrap; gap:5px; }
-.ld-family-mobile-only { display:none; }
 .ld-vehicle-photo-btn {
   display:inline-block;
   border:0;
@@ -337,8 +329,7 @@
   html { scroll-behavior:smooth; }
 
   /* Tighter inner-card spacing so key/value rows don't read as empty space. */
-  .ld-inner-head { padding:7px 10px; color:#000; font-weight:800; }
-  .ld-sec-title { color:#000; font-weight:800; }
+  .ld-inner-head { padding:7px 10px; }
   .ld-inner-body { padding:8px 10px; }
   .ld-row { padding:3px 0; font-size:12.5px; }
   .ld-rk { min-width:0; flex:0 0 44%; }
@@ -370,13 +361,13 @@
   .ld-hdr-actions .btn-group,
   .ld-hdr-actions .ld-wa-btn { font-size:10px; }
   .ld-hdr-actions .btn {
-    min-height:0; padding:4px 7px;
+    min-height:28px; padding:5px 7px;
     display:inline-flex; align-items:center; gap:5px;
   }
   .ld-hdr-actions .btn > i { display:inline-block !important; font-size:12px; }
-  .ld-wa-btn { min-height:0; }
+  .ld-wa-btn { min-height:28px; }
   .ld-wa-btn .ld-wa-api { font-size:10px; }
-  .ld-police-group .btn { min-height:0; }
+  .ld-police-group .btn { min-height:28px; }
   .ld-police-copy, .ld-police-wa { min-width:25px; justify-content:center; }
   .ld-hdr-vehicle {
     width:100%; border-left:0; padding-left:0; text-align:left;
@@ -406,13 +397,11 @@
   .ld-overview-card-header {
     border:1px solid #e5e7eb; border-radius:8px 8px 0 0;
   }
-  .ld-ov-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .ld-ov-grid { display:block; }
   .ld-ov-col {
-    grid-column:1 / -1;
     background:#fff; border:1px solid #e5e7eb !important; border-radius:8px;
-    padding:11px 12px; margin-top:0;
+    padding:11px 12px; margin-top:8px;
   }
-  .ld-ov-head { color:#000; font-size:11px; font-weight:800; letter-spacing:.45px; }
   .ld-ov-col.ld-mobile-two-col,
   .ld-ov-col.ld-mobile-property-grid {
     display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 10px;
@@ -425,14 +414,6 @@
   .ld-mobile-property-grid .ld-mobile-full { grid-column:1 / -1; }
   .ld-mobile-two-col .ld-f,
   .ld-mobile-property-grid .ld-f { margin-bottom:0; min-width:0; }
-  .ld-agreement-parties .ld-f-value {
-    font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
-  .ld-mobile-half-card { grid-column:span 1; display:block !important; }
-  .ld-mobile-half-card .ld-ov-head { margin-bottom:7px; }
-  .ld-mobile-half-card .ld-f { margin-bottom:7px; }
-  .ld-mobile-half-card .dep-row { padding:3px 4px; gap:4px; }
-  .ld-mobile-half-card .dep-v { text-align:right; }
   .ld-ov-head { margin-bottom:7px; }
 
   /* Desktop tab strip is replaced by the badge navigation above. */
@@ -450,7 +431,7 @@
   }
   .ld-mobile-top-link {
     display:inline-flex; align-items:center; justify-content:center;
-    float:none; flex:0 0 auto; margin:0 0 0 auto; padding:3px 8px;
+    float:right; margin:-2px 0 7px 8px; padding:4px 9px;
     border:1px solid #d1d5db; border-radius:16px;
     background:#fff; color:#475569; font-size:10px; font-weight:700;
     text-decoration:none;
@@ -477,7 +458,7 @@
     padding:3px 0 !important; border:0 !important; font-size:12px; text-align:right;
   }
   .ld-mobile-cards td::before {
-    content:attr(data-label); font-weight:600; color:#111827;
+    content:attr(data-label); font-weight:700; color:#6b7280;
     text-align:left; flex:0 0 42%;
   }
   .ld-mobile-cards td.ld-empty { display:block; text-align:center; }
@@ -491,7 +472,7 @@
   .ld-mobile-cards-3col td { display:block; text-align:left; padding:0 !important; font-size:11.5px; }
   .ld-mobile-cards-3col td::before {
     content:attr(data-label); display:block; text-align:left;
-    font-weight:600; color:#111827; font-size:9.5px;
+    font-weight:700; color:#6b7280; font-size:9.5px;
     text-transform:uppercase; letter-spacing:.02em; margin-bottom:1px;
   }
   .ld-mobile-cards-3col td.ld-td-actions {
@@ -505,49 +486,16 @@
   .ld-compact-mobile-table td { display:block; text-align:left; padding:0 !important; min-width:0; overflow-wrap:anywhere; }
   .ld-compact-mobile-table td::before {
     content:attr(data-label); display:block; text-align:left; margin-bottom:1px;
-    font-size:9px; font-weight:600; color:#111827; text-transform:uppercase;
+    font-size:9px; font-weight:700; color:#94a3b8; text-transform:uppercase;
   }
   .ld-compact-mobile-table td.ld-td-actions { grid-column:1 / -1; padding-top:4px !important; }
   .ld-compact-mobile-table td.ld-td-actions::before { content:none; }
   .ld-compact-mobile-table .ld-vehicle-thumb { width:46px; height:34px; }
 
-  .ld-family-table tr { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .ld-family-table .ld-family-sn,
-  .ld-family-table .ld-family-name,
-  .ld-family-table .ld-family-dob,
-  .ld-family-table .ld-family-age { display:none !important; }
-  .ld-family-table .ld-family-mobile-only { display:block !important; }
-  .ld-family-table .ld-family-mobile-id { order:1; }
-  .ld-family-table .ld-family-relation { order:2; }
-  .ld-family-table .ld-family-cnic { order:3; }
-  .ld-family-table .ld-family-mobile-dob-age { order:4; }
-  .ld-family-table .ld-family-phone,
-  .ld-family-table td.ld-td-actions { display:none !important; }
-  .ld-family-table .ld-family-mobile-last-row {
-    display:flex !important; grid-column:1 / -1; order:5;
-    align-items:flex-end; justify-content:space-between; gap:8px;
-    padding-top:2px !important;
-  }
-  .ld-family-mobile-last-row::before { content:none !important; }
-  .ld-family-mobile-phone { min-width:0; }
-  .ld-family-mobile-phone-label {
-    display:block; margin-bottom:1px; color:#111827; font-size:9px;
-    font-weight:600; text-transform:uppercase;
-  }
-  .ld-family-mobile-actions { display:flex; flex:0 0 auto; flex-wrap:nowrap; gap:4px; }
-
-  .ld-family-heading { flex-wrap:nowrap !important; gap:3px !important; }
-  .ld-family-heading > span { flex:0 0 auto; font-size:11px; }
-  .ld-heading-actions { flex-wrap:nowrap !important; gap:3px !important; margin-left:auto; }
-  .ld-heading-actions .btn { padding:3px 5px; font-size:9px; white-space:nowrap; }
-  .ld-heading-actions .ld-mobile-top-link { margin-left:0; }
-
-  .ld-cnic-front-label { font-size:8px; letter-spacing:0; white-space:nowrap; }
-
   .ld-renewal-head { flex-wrap:nowrap !important; margin-bottom:8px !important; }
   .ld-renewal-head .btn { flex:0 0 auto; padding:4px 7px; font-size:10px; white-space:nowrap; }
   .ld-renewal-actions { gap:3px !important; }
-  .ld-renewal-actions .btn { padding:4px 7px; font-size:11px; line-height:1.2; }
+  .ld-renewal-actions .btn { padding:4px 6px; font-size:10px; line-height:1.15; }
 
   .ld-file-form { grid-template-columns:1fr 1fr; gap:5px 7px; margin-bottom:8px !important; }
   .ld-file-form > div:first-of-type { grid-column:1 / -1; }
@@ -563,7 +511,6 @@
   .ld-file-sub { font-size:9.5px; line-height:1.25; }
   .ld-file-actions { grid-column:1 / -1; justify-content:flex-end; }
   .ld-file-action-btn { width:27px; height:27px; }
-  .ld-file-upload-actions { grid-column:1 / -1; }
   #ld-tab-docs .ld-inner-body { padding:8px; }
 }
 
@@ -629,11 +576,11 @@
         {% if lease.tenant.cnic_front %}
           <a href="{{ lease.tenant.cnic_front.url }}" target="_blank">
             <img src="{{ lease.tenant.cnic_front.url }}" alt="CNIC Front" class="ld-doc-img">
-            <span class="ld-doc-label ld-cnic-front-label">CNIC Front</span>
+            <span class="ld-doc-label">CNIC Front</span>
           </a>
         {% else %}
           <div class="ld-doc-empty">No file</div>
-          <span class="ld-doc-label ld-cnic-front-label">CNIC Front</span>
+          <span class="ld-doc-label">CNIC Front</span>
         {% endif %}
       </div>
       <div class="ld-doc-tile">
@@ -682,7 +629,7 @@
           <i class="fas fa-door-open"></i> End Lease
         </button>
       {% elif lease.status == "ended" %}
-        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#rollbackEndLeaseModal">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rollbackEndLeaseModal">
           <i class="fas fa-undo"></i> Roll Back Lease End
         </button>
       {% endif %}
@@ -725,7 +672,7 @@
           </a>
         </div>
       {% endif %}
-      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-danger"><i class="fas fa-trash-alt"></i> Delete</a>
+      <a href="{% url 'leases:lease_delete' lease.pk %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash-alt"></i> Delete</a>
     </div>
 
     <!-- Section 4: vehicle thumbnail (fixed) -->
@@ -804,8 +751,8 @@
       </div>
 
       <!-- COL 2: Agreement Parties -->
-      <div class="ld-ov-col ld-mobile-two-col ld-agreement-parties">
-        <div class="ld-ov-head d-flex justify-content-between align-items-center">Agreement Parties <a class="btn btn-sm btn-primary" href="{% url 'leases:edit_clauses' lease.pk %}{% if active_history %}?history={{ active_history.pk }}{% endif %}"><i class="fas fa-edit"></i> Edit</a></div>
+      <div class="ld-ov-col ld-mobile-two-col">
+        <div class="ld-ov-head d-flex justify-content-between align-items-center">Agreement Parties <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:edit_clauses' lease.pk %}{% if active_history %}?history={{ active_history.pk }}{% endif %}"><i class="fas fa-edit"></i> Edit</a></div>
         <div class="ld-f"><div class="ld-f-label">Proposer</div><div class="ld-f-value">{% if lease.proposer %}<a href="{% url 'tenants:tenant_detail' lease.proposer.pk %}">{{ lease.proposer.get_full_name }}</a>{% if lease.proposer_relationship %}<small class="d-block text-muted">{{ lease.proposer_relationship }}</small>{% endif %}{% else %}&mdash;{% endif %}</div></div>
         <div class="ld-f"><div class="ld-f-label">Seconder</div><div class="ld-f-value">{% if lease.seconder %}<a href="{% url 'tenants:tenant_detail' lease.seconder.pk %}">{{ lease.seconder.get_full_name }}</a>{% if lease.seconder_relationship %}<small class="d-block text-muted">{{ lease.seconder_relationship }}</small>{% endif %}{% else %}&mdash;{% endif %}</div></div>
         <div class="ld-f"><div class="ld-f-label">Witness 1</div><div class="ld-f-value">{% if active_history.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' active_history.witness1_tenant.pk %}">{{ active_history.witness1_tenant.get_full_name }}</a>{% elif lease.witness1_tenant %}<a href="{% url 'tenants:tenant_detail' lease.witness1_tenant.pk %}">{{ lease.witness1_tenant.get_full_name }}</a>{% else %}&mdash;{% endif %}</div></div>
@@ -841,7 +788,7 @@
       </div>
 
       <!-- COL 4: Installments -->
-      <div class="ld-ov-col ld-mobile-two-col ld-mobile-half-card">
+      <div class="ld-ov-col ld-mobile-two-col">
         <div class="ld-ov-head">Installments</div>
         <div class="ld-f">
           <div class="ld-f-label">Installment 1</div>
@@ -872,7 +819,7 @@
       </div>
 
       <!-- COL 5: Security Deposit Summary -->
-      <div class="ld-ov-col ld-mobile-two-col ld-mobile-half-card">
+      <div class="ld-ov-col ld-mobile-two-col">
         <div class="ld-ov-head">Security Deposit</div>
         <div class="ld-f">
           <div class="ld-f-label">Bill Water</div>
@@ -1056,9 +1003,9 @@
       <!-- ======== FAMILY ======== -->
       <div class="ld-tab-pane" id="ld-tab-family">
         <div class="ld-inner-card">
-          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2 ld-family-heading">
+          <div class="ld-inner-head d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>Family Members</span>
-            <div class="d-flex flex-wrap gap-1 ld-heading-actions">
+            <div class="d-flex flex-wrap gap-1">
               <button type="button" class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#leaseFamilyPublicLinkBox">
                 <i class="fas fa-link"></i> Public Link
               </button>
@@ -1115,7 +1062,7 @@
               <div class="form-text" id="leaseFamilySearchHelp">Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.</div>
             </div>
           </div>
-          <div class="ld-tw ld-mobile-cards ld-compact-mobile-table ld-family-table">
+          <div class="ld-tw ld-mobile-cards ld-compact-mobile-table">
             <table class="ld-tbl">
               <thead>
                 <tr>
@@ -1132,13 +1079,13 @@
               <tbody id="leaseFamilyRows">
                 {% for member in family_members %}
                   <tr>
-                    <td class="ld-family-sn" data-label="S.N">{{ forloop.counter }}</td>
-                    <td class="ld-family-name" data-label="Name"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
-                    <td class="ld-family-relation" data-label="Relationship">{{ member.relation }}</td>
-                    <td class="ld-family-cnic" data-label="CNIC">{{ member.family_member.cnic|format_cnic|default:"&mdash;" }}</td>
-                    <td class="ld-family-dob" data-label="DOB">{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
-                    <td class="ld-family-phone" data-label="Phone">{{ member.family_member.phone|format_phone|default:"&mdash;" }}</td>
-                    <td class="ld-family-age" data-label="Age">{{ member.family_member.age|default:"&mdash;" }}</td>
+                    <td data-label="S.N">{{ forloop.counter }}</td>
+                    <td data-label="Name"><a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a></td>
+                    <td data-label="Relationship">{{ member.relation }}</td>
+                    <td data-label="CNIC">{{ member.family_member.cnic|format_cnic|default:"&mdash;" }}</td>
+                    <td data-label="DOB">{{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }}</td>
+                    <td data-label="Phone">{{ member.family_member.phone|format_phone|default:"&mdash;" }}</td>
+                    <td data-label="Age">{{ member.family_member.age|default:"&mdash;" }}</td>
                     <td class="no-print ld-td-actions" data-label="Actions">
                       <div class="d-flex flex-wrap gap-1">
                         <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
@@ -1149,29 +1096,9 @@
                         </form>
                       </div>
                     </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-id" data-label="S.N - Name">
-                      #{{ forloop.counter }} &middot; <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}">{{ member.family_member.get_full_name }}</a>
-                    </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">
-                      {{ member.family_member.date_of_birth|date:"M d, Y"|default:"&mdash;" }} &middot; {{ member.family_member.age|default:"&mdash;" }}
-                    </td>
-                    <td class="ld-family-mobile-only ld-family-mobile-last-row no-print">
-                      <div class="ld-family-mobile-phone">
-                        <span class="ld-family-mobile-phone-label">Phone</span>
-                        {{ member.family_member.phone|format_phone|default:"&mdash;" }}
-                      </div>
-                      <div class="ld-family-mobile-actions">
-                        <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-dark">View</a>
-                        <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-primary">Edit</a>
-                        <form method="post" action="{% url 'leases:lease_family_remove' lease.pk member.pk %}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-                        </form>
-                      </div>
-                    </td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="8" class="ld-empty">No family members linked to this lease.</td></tr>
+                  <tr><td colspan="7" class="ld-empty">No family members linked to this lease.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -1439,16 +1366,19 @@
                 <label class="form-label small fw-semibold mb-1">Description</label>
                 <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
               </div>
-              <div class="ld-file-upload-actions">
+              <div>
                 <button type="submit" class="btn btn-sm btn-primary">Upload</button>
-                <button type="submit" form="leaseFilesShareAllForm" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
-                  <i class="fab fa-whatsapp me-1"></i> Share All Files
-                </button>
               </div>
             </form>
-            <form id="leaseFilesShareAllForm" method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}" class="d-none">
-              {% csrf_token %}
-            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3 no-print">
+              <form method="post" action="{% url 'leases:lease_files_share_all' lease.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
+                  <i class="fab fa-whatsapp me-1"></i> Share All Files
+                </button>
+              </form>
+            </div>
 
             <div class="ld-file-list">
               {% for doc in lease_documents %}
@@ -1459,13 +1389,10 @@
                       <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
                       {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
                     </div>
-                    {% if doc.display_name and doc.display_name != doc.original_filename %}
-                      <div class="ld-file-sub">{{ doc.original_filename }}</div>
-                    {% endif %}
+                    <div class="ld-file-sub">{{ doc.original_filename }}</div>
                   </div>
-                  <div class="ld-file-category-editor">
-                    <button type="button" class="ld-file-category-display no-print" title="Click to change category">{{ doc.category_label }}</button>
-                    <select class="form-select form-select-sm ld-file-category-select no-print d-none" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
+                  <div>
+                    <select class="form-select form-select-sm ld-file-category-select no-print" data-doc-category-url="{% url 'leases:lease_file_category_update' doc.pk %}">
                       {% for category in lease_document_categories %}
                         <option value="{{ category.code }}" {% if doc.category == category.code %}selected{% endif %}>{{ category.name }}</option>
                       {% endfor %}
@@ -1714,7 +1641,7 @@
 
           <div id="endLeaseError" class="alert alert-danger py-2 mt-3 mb-0 d-none"></div>
           <details class="mt-2 small" id="endLeaseDebugDetails">
-            <summary class="btn btn-sm btn-secondary py-0"><span id="endLeaseDebugToggleLabel">Show Debug</span></summary>
+            <summary class="btn btn-sm btn-outline-secondary py-0"><span id="endLeaseDebugToggleLabel">Show Debug</span></summary>
             <pre id="endLeaseDebug" class="bg-light border rounded p-2 mt-1 mb-0" style="white-space:pre-wrap;max-height:130px;overflow:auto;">JavaScript has not loaded. Clicking Review will use the server fallback.</pre>
           </details>
           <div id="endLeasePreview" class="mt-3 d-none">
@@ -1755,8 +1682,8 @@
         <label class="form-label small fw-semibold mb-1">Have you completed the inspection?</label>
         <input type="hidden" id="endLeaseInspectionChoice" value="">
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-success opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="yes">Yes</button>
-          <button type="button" class="btn btn-sm btn-danger opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="no">No</button>
+          <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="yes">Yes</button>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-4 checklist-choice" data-choice-group="inspection" data-choice-value="no">No</button>
         </div>
         <div id="endLeaseInspectionChargeNotice" class="small text-danger mt-1 d-none">
           <label class="form-label small mb-1">Inspection charge{% if lease.unit.building_type %} — {{ lease.unit.building_type.name }} default{% endif %}</label>
@@ -1767,8 +1694,8 @@
         <label class="form-label small fw-semibold mb-1">Has the tenant returned the keys/key card?</label>
         <input type="hidden" id="endLeaseKeysChoice" value="">
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-success opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="yes">Yes</button>
-          <button type="button" class="btn btn-sm btn-danger opacity-50 rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="no">No</button>
+          <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="yes">Yes</button>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-4 checklist-choice" data-choice-group="keys" data-choice-value="no">No</button>
         </div>
         <div id="endLeaseKeysChargeNotice" class="small text-danger mt-1 d-none">
           <label class="form-label small mb-1">Key charge{% if lease.unit.building_type %} — {{ lease.unit.building_type.name }} default{% endif %}</label>
@@ -1852,7 +1779,9 @@
     input.value = value;
     document.querySelectorAll('.checklist-choice[data-choice-group="' + group + '"]').forEach(function(button) {
       var selected = button.dataset.choiceValue === value;
-      button.classList.toggle('opacity-50', !selected);
+      var isYes = button.dataset.choiceValue === 'yes';
+      button.classList.toggle(isYes ? 'btn-success' : 'btn-danger', selected);
+      button.classList.toggle(isYes ? 'btn-outline-success' : 'btn-outline-danger', !selected);
       button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
     refreshChecklistNotices();
@@ -1929,8 +1858,8 @@
       '" data-description="' + safe(row.description) + '" data-amount="' + safe(row.amount) + '">' +
       '<td>' + index + '</td><td>' + safe(row.category) + '</td><td>' + safe(row.description) + '</td>' +
       '<td class="text-end">' + pkr(row.amount) + '</td><td>' +
-      '<div class="d-flex flex-nowrap gap-1"><button type="button" class="btn btn-sm btn-primary settlement-edit">Edit</button>' +
-      '<button type="button" class="btn btn-sm btn-danger settlement-delete">Delete</button></div></td></tr>';
+      '<div class="d-flex flex-nowrap gap-1"><button type="button" class="btn btn-sm btn-outline-primary settlement-edit">Edit</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-danger settlement-delete">Delete</button></div></td></tr>';
   }
   function editSettlementRow(row, isNew) {
     var category = isNew ? 'Other Charges' : (row.dataset.category || 'Other Charges');
@@ -2082,7 +2011,7 @@
             return '<div class="settlement-invoice-row d-flex align-items-center gap-2 border rounded bg-white mt-1 px-2 py-1">' +
               '<span class="flex-grow-1"><strong>#' + safe(invoice.number) + '</strong> · ' + safe(invoice.issue_date) +
               ' · ' + safe(invoice.status) + ' · <strong>' + pkr(invoice.amount) + '</strong></span>' +
-              '<a class="btn btn-sm btn-primary" target="_blank" href="' + safe(invoice.detail_url) + '">Detail</a></div>';
+              '<a class="btn btn-sm btn-outline-primary" target="_blank" href="' + safe(invoice.detail_url) + '">Detail</a></div>';
           }).join('');
           futureBox.classList.remove('d-none');
         } else {
@@ -2316,15 +2245,12 @@
 
   document.querySelectorAll('.ld-tab-pane').forEach(function (pane) {
     if (pane.querySelector('.ld-mobile-top-link')) return;
-    const heading = pane.querySelector('.ld-inner-head, .ld-renewal-head');
-    if (!heading) return;
     const topLink = document.createElement('a');
     topLink.className = 'ld-mobile-top-link no-print';
     topLink.href = '#lease-detail-top';
     topLink.textContent = 'Top';
     topLink.setAttribute('aria-label', 'Back to top');
-    const headingActions = heading.querySelector('.ld-heading-actions');
-    (headingActions || heading).appendChild(topLink);
+    pane.insertBefore(topLink, pane.firstChild);
   });
   const params = new URLSearchParams(window.location.search);
   if (window.location.hash && window.location.hash.indexOf('#ld-tab-') === 0) {
@@ -2361,31 +2287,16 @@
     const tbody = document.getElementById('leaseFamilyRows');
     if (!tbody) return;
     tbody.querySelectorAll('.ld-empty').forEach(row => row.closest('tr')?.remove());
-    const serial = tbody.querySelectorAll('tr').length + 1;
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td class="ld-family-sn" data-label="S.N">${serial}</td>
-      <td class="ld-family-name" data-label="Name"><a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
-      <td class="ld-family-relation" data-label="Relationship">${esc(data.relation || '—')}</td>
-      <td class="ld-family-cnic" data-label="CNIC">${esc(data.cnic || '—')}</td>
-      <td class="ld-family-dob" data-label="DOB">${esc(data.dob || '—')}</td>
-      <td class="ld-family-phone" data-label="Phone">${esc(data.phone || '—')}</td>
-      <td class="ld-family-age" data-label="Age">${esc(data.age || '—')}</td>
-      <td class="no-print ld-td-actions" data-label="Actions">
+      <td><a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
+      <td>${esc(data.relation || '-')}</td>
+      <td>&mdash;</td>
+      <td>&mdash;</td>
+      <td>${esc(data.phone || '—')}</td>
+      <td>${esc(data.age || '—')}</td>
+      <td class="no-print">
         <div class="d-flex flex-wrap gap-1">
-          <a href="${esc(data.detail_url)}" class="btn btn-sm btn-dark">View</a>
-          <a href="${esc(data.edit_url)}" class="btn btn-sm btn-primary">Edit</a>
-          <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
-            <input type="hidden" name="csrfmiddlewaretoken" value="${esc(csrf)}">
-            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-          </form>
-        </div>
-      </td>
-      <td class="ld-family-mobile-only ld-family-mobile-id" data-label="S.N - Name">#${serial} &middot; <a href="${esc(data.detail_url)}">${esc(data.tenant)}</a></td>
-      <td class="ld-family-mobile-only ld-family-mobile-dob-age" data-label="DOB - Age">${esc(data.dob || '—')} &middot; ${esc(data.age || '—')}</td>
-      <td class="ld-family-mobile-only ld-family-mobile-last-row no-print">
-        <div class="ld-family-mobile-phone"><span class="ld-family-mobile-phone-label">Phone</span>${esc(data.phone || '—')}</div>
-        <div class="ld-family-mobile-actions">
           <a href="${esc(data.detail_url)}" class="btn btn-sm btn-dark">View</a>
           <a href="${esc(data.edit_url)}" class="btn btn-sm btn-primary">Edit</a>
           <form method="post" action="${esc(data.remove_url)}" onsubmit="return confirm('Remove this family relationship? Tenant record will remain.');">
@@ -2822,20 +2733,6 @@ document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', fun
 });
 
 document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
-  const editor = select.closest('.ld-file-category-editor');
-  const display = editor?.querySelector('.ld-file-category-display');
-  const showDisplay = function () {
-    select.classList.add('d-none');
-    display?.classList.remove('d-none');
-  };
-  display?.addEventListener('click', function () {
-    this.classList.add('d-none');
-    select.classList.remove('d-none');
-    select.focus();
-  });
-  select.addEventListener('blur', function () {
-    if (!this.disabled) showDisplay();
-  });
   select.addEventListener('change', function () {
     const data = new FormData();
     const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -2848,10 +2745,6 @@ document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
     }).then(function (response) {
       if (!response.ok) throw new Error('Category update failed.');
       return response.json();
-    }).then(function (payload) {
-      if (!payload.ok) throw new Error(payload.error || 'Category update failed.');
-      if (display) display.textContent = payload.category_label || select.options[select.selectedIndex]?.text || '';
-      showDisplay();
     }).catch(function (error) {
       alert(error.message);
       window.location.reload();

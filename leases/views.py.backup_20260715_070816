@@ -3267,35 +3267,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                 "sort_order", "name"
             ),
         )
-        ctx.setdefault(
-            "lease_documents",
-            list(
-                lease_instance.documents.filter(is_active=True).select_related(
-                    "uploaded_by", "lease_history"
-                )
-            )
-            if lease_instance and lease_instance.pk
-            else [],
-        )
-        ctx.setdefault(
-            "lease_document_categories",
-            list(
-                apps.get_model("leases", "LeaseDocumentCategory").objects.filter(
-                    is_active=True
-                )
-            ),
-        )
-        if lease_instance and lease_instance.pk:
-            sec_totals = security_deposit_totals(lease_instance)
-            ctx.update(
-                {
-                    "security_required": sec_totals["required"],
-                    "security_paid_in": sec_totals["paid_in"],
-                    "security_refunded": sec_totals["refunded"],
-                    "security_damages": sec_totals["damages"],
-                    "security_currently_held": sec_totals["currently_held"],
-                }
-            )
         return ctx
 
     # ---------- Quick-add family members (same as in LeaseCreateView) ----------

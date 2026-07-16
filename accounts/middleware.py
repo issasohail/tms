@@ -83,6 +83,11 @@ EXEMPT_URL_NAMES = {
     "unit_media_public_file",
     "media_public_share",
     "media_public_file",
+    "public_request_create",
+    "public_request_confirmation",
+    "public_request_confirmation_download",
+    "public_media_share",
+    "public_media_file",
     "webhook",
     "whatsapp_webhook",
 }

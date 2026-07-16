@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<style>
+  .meter-form-wrap {
+    max-width: 1280px;
+  }
+
+  .meter-form-title {
+    font-size: clamp(1.25rem, 1.8vw, 1.7rem);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .meter-edit-card {
+    border: 1px solid rgba(15, 23, 42, .08);
+    border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, .07);
+    overflow: hidden;
+  }
+
+  .meter-edit-section {
+    padding: .75rem 1rem;
+  }
+
+  .meter-edit-section + .meter-edit-section {
+    border-top: 1px solid rgba(15, 23, 42, .08);
+  }
+
+  .meter-edit-heading {
+    margin: 0 0 .5rem;
+    color: #475569;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .meter-form-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: .55rem .65rem;
+  }
+
+  .meter-field {
+    min-width: 0;
+  }
+
+  .meter-field label {
+    margin-bottom: .18rem;
+    color: #334155;
+    font-size: .72rem;
+    font-weight: 700;
+  }
+
+  .meter-field .form-control,
+  .meter-field .form-select,
+  .meter-field input,
+  .meter-field select,
+  .meter-field textarea {
+    width: 100%;
+    min-height: 30px;
+    border-radius: 6px;
+    font-size: .82rem;
+    padding-top: .25rem;
+    padding-bottom: .25rem;
+  }
+
+  .meter-field textarea {
+    min-height: 58px;
+    resize: vertical;
+  }
+
+  .meter-field .helptext,
+  .meter-field .form-text {
+    display: block;
+    margin-top: .12rem;
+    color: #64748b;
+    font-size: .68rem;
+    line-height: 1.25;
+  }
+
+  .meter-span-1 { grid-column: span 1; }
+  .meter-span-2 { grid-column: span 2; }
+  .meter-span-3 { grid-column: span 3; }
+  .meter-span-4 { grid-column: span 4; }
+  .meter-span-6 { grid-column: span 6; }
+
+  .meter-check-row {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    min-height: 30px;
+    padding-top: 1.1rem;
+  }
+
+  .meter-check-row input {
+    width: 1rem;
+    height: 1rem;
+    min-height: auto;
+  }
+
+  .meter-actions-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .55rem 1rem;
+    border-top: 1px solid rgba(15, 23, 42, .08);
+    background: rgba(255, 255, 255, .96);
+    backdrop-filter: blur(8px);
+  }
+
+  @media (max-width: 768px) {
+    .meter-edit-section {
+      padding: .85rem;
+    }
+
+    .meter-form-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .meter-span-1,
+    .meter-span-2,
+    .meter-span-3,
+    .meter-span-4 {
+      grid-column: span 1;
+    }
+
+    .meter-span-6 {
+      grid-column: span 2;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .meter-form-wrap {
+      padding-left: .65rem;
+      padding-right: .65rem;
+    }
+
+    .meter-form-grid {
+      grid-template-columns: 1fr;
+      gap: .6rem;
+    }
+
+    .meter-span-1,
+    .meter-span-2,
+    .meter-span-3,
+    .meter-span-4,
+    .meter-span-6 {
+      grid-column: span 1;
+    }
+
+    .meter-field label {
+      font-size: .74rem;
+    }
+
+    .meter-field .form-control,
+    .meter-field .form-select,
+    .meter-field input,
+    .meter-field select,
+    .meter-field textarea {
+      min-height: 32px;
+      font-size: .84rem;
+    }
+
+    .meter-actions-bar {
+      align-items: stretch;
+      padding: .65rem;
+    }
+
+    .meter-actions-bar .btn {
+      flex: 1 1 0;
+      min-width: 0;
+      font-size: .82rem;
+      white-space: nowrap;
+    }
+  }
+</style>
+
+<div class="container meter-form-wrap mt-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h2 class="meter-form-title mb-0">{% if edit %}Edit{% else %}Add{% endif %} Meter</h2>
+      {% if form.instance.pk %}
+        <div class="text-muted small">Meter #{{ form.instance.meter_number }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="meter-edit-card bg-white">
+      <div class="meter-edit-section">
+        <h3 class="meter-edit-heading">Meter Information</h3>
+        <div class="meter-form-grid">
+          <div class="meter-field meter-span-1">{{ form.unit.label_tag }}{{ form.unit }}{{ form.unit.help_text }}</div>
+          <div class="meter-field meter-span-1">{{ form.meter_number.label_tag }}{{ form.meter_number }}{{ form.meter_number.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.meter_type.label_tag }}{{ form.meter_type }}{{ form.meter_type.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.billing_mode.label_tag }}{{ form.billing_mode }}{{ form.billing_mode.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.power_status.label_tag }}{{ form.power_status }}{{ form.power_status.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.unit_rate.label_tag }}{{ form.unit_rate }}{{ form.unit_rate.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.service_charges.label_tag }}{{ form.service_charges }}{{ form.service_charges.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.installed_at.label_tag }}{{ form.installed_at }}{{ form.installed_at.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.min_balance_alert.label_tag }}{{ form.min_balance_alert }}{{ form.min_balance_alert.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.min_balance_cutoff.label_tag }}{{ form.min_balance_cutoff }}{{ form.min_balance_cutoff.errors }}</div>
+          <div class="meter-field meter-span-1">
+            <div class="meter-check-row">
+              {{ form.is_active }}
+              {{ form.is_active.label_tag }}
+            </div>
+            {{ form.is_active.errors }}
+          </div>
+        </div>
+      </div>
+
+      <div class="meter-edit-section">
+        <h3 class="meter-edit-heading">Notes</h3>
+        <div class="meter-form-grid">
+          <div class="meter-field meter-span-6">{{ form.notes }}{{ form.notes.errors }}</div>
+        </div>
+      </div>
+
+      <div class="meter-actions-bar">
+        <a href="{% if form.instance.pk %}{% url 'smart_meter:meter_detail' form.instance.pk %}{% else %}{% url 'smart_meter:meter_list' %}{% endif %}" class="btn btn-outline-secondary">
+          Cancel
+        </a>
+        <button class="btn btn-primary" type="submit">
+          Save Meter
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

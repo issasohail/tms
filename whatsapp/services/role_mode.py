@@ -27,7 +27,7 @@ ROLE_GROUP_NAMES = [
     "Administrator",
 ]
 
-MODE_COMMANDS = {"menu", "switch", "switch mode", "staff", "staff mode", "staff inbox", "tenant", "tenant mode", "my account", "my tenant account"}
+MODE_COMMANDS = {"menu", "switch", "switch mode", "staff", "staff mode", "staff inbox", "tenant", "tenant mode", "my account", "my tenant account", "handyman", "handyman mode"}
 MODE_TTL_MINUTES = getattr(settings, "WHATSAPP_MODE_SESSION_MINUTES", 60)
 
 
@@ -52,28 +52,45 @@ def ensure_whatsapp_role_groups():
         Group.objects.get_or_create(name=name)
 
 
-def identify_sender(phone_number):
-    return resolve_sender(phone_number)
+def identify_sender(phone_number, conversation=None):
+    return resolve_sender(phone_number, conversation=conversation)
 
 
 def resolve_mode(conversation, text, identity):
     command = (text or "").strip().lower()
-    if getattr(identity, "ambiguous", False):
-        return "ambiguous_identity"
     choosing_mode = conversation.pending_state == "mode_selection" or not conversation.selected_mode_is_valid
     if command in {"staff", "staff mode", "staff inbox"} and identity.has_staff:
         return _set_mode(conversation, WhatsAppConversation.MODE_STAFF, identity)
-    if command in {"tenant", "tenant mode", "my account", "my tenant account"} and identity.has_active_tenant:
-        return _set_mode(conversation, WhatsAppConversation.MODE_TENANT, identity)
-    if command == "1" and choosing_mode and identity.has_staff and identity.has_active_tenant:
-        return _set_mode(conversation, WhatsAppConversation.MODE_TENANT, identity)
-    if command == "2" and choosing_mode and identity.has_staff and identity.has_active_tenant:
+    if command in {"handyman", "handyman mode"} and identity.has_handyman:
+        return _set_mode(conversation, WhatsAppConversation.MODE_HANDYMAN, identity)
+    if command in {"guest", "guest services"} or (command == "4" and choosing_mode):
+        return _set_mode(conversation, WhatsAppConversation.MODE_GUEST, identity)
+    wants_tenant = command in {"tenant", "tenant mode", "my account", "my tenant account"} or (
+        command == "1" and choosing_mode and bool(identity.tenant_matches)
+    )
+    if wants_tenant and identity.tenant_matches:
+        if len(identity.tenant_matches) > 1:
+            conversation.selected_mode = ""
+            conversation.mode_expires_at = None
+            conversation.pending_state = "tenant_identity_selection"
+            conversation.context["tenant_identity_options"] = [item.pk for item in identity.tenant_matches]
+            conversation.save(update_fields=["selected_mode", "mode_expires_at", "pending_state", "context", "updated_at"])
+            return "choose_tenant_identity"
+        if identity.has_active_tenant:
+            return _set_mode(conversation, WhatsAppConversation.MODE_TENANT, identity)
+        return "tenant_no_active_lease"
+    if command == "2" and choosing_mode and identity.has_staff:
         return _set_mode(conversation, WhatsAppConversation.MODE_STAFF, identity)
+    if command == "3" and choosing_mode and identity.has_handyman:
+        return _set_mode(conversation, WhatsAppConversation.MODE_HANDYMAN, identity)
     if command in MODE_COMMANDS:
         conversation.selected_mode = ""
         conversation.mode_expires_at = None
         conversation.pending_state = ""
-        conversation.save(update_fields=["selected_mode", "mode_expires_at", "pending_state", "updated_at"])
+        conversation.context.pop("selected_tenant_identity_id", None)
+        conversation.context.pop("tenant_identity_options", None)
+        conversation.context.pop("pending_tenant_identity_id", None)
+        conversation.save(update_fields=["selected_mode", "mode_expires_at", "pending_state", "context", "updated_at"])
 
     _sync_identity(conversation, identity)
 
@@ -82,30 +99,53 @@ def resolve_mode(conversation, text, identity):
             return conversation.selected_mode
         if conversation.selected_mode == WhatsAppConversation.MODE_TENANT and identity.has_active_tenant:
             return conversation.selected_mode
+        if conversation.selected_mode == WhatsAppConversation.MODE_HANDYMAN and identity.has_handyman:
+            return conversation.selected_mode
         if conversation.selected_mode == WhatsAppConversation.MODE_GUEST:
             return conversation.selected_mode
 
-    if identity.has_staff and identity.has_active_tenant:
+    role_count = sum([
+        bool(identity.tenant_matches),
+        identity.has_staff,
+        identity.has_handyman,
+    ])
+    if role_count > 1:
         inferred_mode, confidence = infer_mode(text, identity)
         if inferred_mode:
+            if inferred_mode == WhatsAppConversation.MODE_TENANT and len(identity.tenant_matches) > 1:
+                conversation.pending_state = "tenant_identity_selection"
+                conversation.context["tenant_identity_options"] = [item.pk for item in identity.tenant_matches]
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                return "choose_tenant_identity"
             conversation.context["mode_inference_confidence"] = confidence
             return _set_mode(conversation, inferred_mode, identity)
         conversation.pending_state = "mode_selection"
         conversation.save(update_fields=["pending_state", "updated_at"])
         return "choose_mode"
+    if len(identity.tenant_matches) > 1:
+        conversation.pending_state = "tenant_identity_selection"
+        conversation.context["tenant_identity_options"] = [item.pk for item in identity.tenant_matches]
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return "choose_tenant_identity"
+    if getattr(identity, "ambiguous", False):
+        return "ambiguous_identity"
     if identity.has_staff:
         return _set_mode(conversation, WhatsAppConversation.MODE_STAFF, identity)
     if identity.has_active_tenant:
         return _set_mode(conversation, WhatsAppConversation.MODE_TENANT, identity)
+    if identity.has_handyman:
+        return _set_mode(conversation, WhatsAppConversation.MODE_HANDYMAN, identity)
     return _set_mode(conversation, WhatsAppConversation.MODE_GUEST, identity)
 
 
 def mode_selection_text():
     return (
-        "You are registered as both a tenant and a staff member.\n\n"
+        "This number is registered for more than one role. What would you like to use?\n\n"
         "1. My Tenant Account\n"
-        "2. Staff Inbox\n\n"
-        "Reply with a number or type Tenant / Staff."
+        "2. Staff Inbox\n"
+        "3. Handyman Account\n"
+        "4. Guest Services\n\n"
+        "Reply with a number or role name. Unregistered roles remain unavailable. You can type SWITCH MODE later."
     )
 
 

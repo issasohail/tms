@@ -106,7 +106,7 @@ def pending_approvals(request):
     ).select_related("tenant", "lease", "property", "unit")[:50]
     pending_media = PendingWhatsAppMedia.objects.filter(
         status=PendingWhatsAppMedia.STATUS_PENDING,
-    ).select_related("tenant", "lease", "property", "unit")[:50]
+    ).select_related("tenant", "lease", "property", "unit", "submitted_by_staff")[:50]
     pending_maintenance = PendingWhatsAppMaintenance.objects.filter(
         status=PendingWhatsAppMaintenance.STATUS_PENDING,
     ).select_related("tenant", "lease", "property", "unit")[:50]
@@ -292,6 +292,7 @@ def pending_family_file(request, pk, field_name):
 
 def _attach_pending_media_from_core(pending, user):
     from leases.models import LeaseDocument
+    from leases.models_lease_photos import LeaseMedia
     from properties.models import PropertyMedia, UnitMedia
     from whatsapp.models import PendingWhatsAppMedia
 
@@ -300,6 +301,17 @@ def _attach_pending_media_from_core(pending, user):
     pending.file.open("rb")
     content = ContentFile(pending.file.read(), name=pending.original_filename or pending.file.name)
     pending.file.close()
+    if pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_PHOTO and pending.lease_id:
+        LeaseMedia.objects.create(
+            lease=pending.lease,
+            file=content,
+            media_type="image" if pending.media_type == "image" else "video" if pending.media_type == "video" else "file",
+            title=pending.original_filename or "WhatsApp lease photo",
+            description=pending.ai_notes[:300],
+            original_filename=pending.original_filename,
+            uploaded_by=user,
+        )
+        return
     if pending.purpose == PendingWhatsAppMedia.PURPOSE_PROPERTY and pending.property_id:
         PropertyMedia.objects.create(
             property=pending.property,
@@ -365,7 +377,7 @@ def _approve_pending_payment(pending, user):
 
 def _approve_pending_maintenance(pending, user):
     from maintenance.models import MaintenanceRequest, MaintenanceRequestMedia
-    from whatsapp.models import PendingWhatsAppMaintenance
+    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia
 
     if pending.status != PendingWhatsAppMaintenance.STATUS_PENDING:
         raise ValueError("This maintenance submission has already been reviewed.")
@@ -394,6 +406,10 @@ def _approve_pending_maintenance(pending, user):
             original_filename=media.original_filename,
         )
         media.file.close()
+        media.status = PendingWhatsAppMedia.STATUS_APPROVED
+        media.approved_by = user
+        media.approved_at = timezone.now()
+        media.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
     pending.created_request = ticket
     pending.status = PendingWhatsAppMaintenance.STATUS_APPROVED
     pending.approved_by = user

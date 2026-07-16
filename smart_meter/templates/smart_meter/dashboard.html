@@ -76,6 +76,12 @@
           <label class="form-label mb-1">End</label>
           <input type="date" id="input-end" name="end" value="{{ end_date|date:'Y-m-d' }}" class="form-control form-control-sm">
         </div>
+        <div class="col">
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" name="include_check" value="1" id="includeCheck" {% if include_check %}checked{% endif %}>
+            <label class="form-check-label small" for="includeCheck">Show Check / Audit meters</label>
+          </div>
+        </div>
 
         <!-- Buttons -->
         <div class="col-12 col-lg d-flex flex-wrap gap-2 ms-lg-auto mt-2 mt-lg-0">
@@ -243,13 +249,20 @@
             <td data-meter="{{ r.meter_number }}">
               <div class="d-flex justify-content-center align-items-center gap-1">
                 <span>{{ r.meter_number }}</span>
-                {% if report_type == 'monthly' %}
+                {% if report_type == 'monthly' and r.meter_role == 'billing' %}
                   <a
                     class="btn btn-xs btn-warning"
                     title="Add this meter’s month to invoice"
                     href="{% url 'smart_meter:electric_bill_preview_by_meter' meter_id=r.meter_id %}?month={{ start_date|date:'Y-m' }}">
                     ➕
                   </a>
+                {% endif %}
+              </div>
+              <div class="small">
+                {% if r.meter_role == 'check' %}
+                  <span class="badge bg-info text-dark">Check / Audit</span>
+                {% else %}
+                  <span class="badge bg-success">Billing</span>
                 {% endif %}
               </div>
               <div class="d-sm-none small text-muted ellipsis-1line" title="{{ r.period_label }}">{{ r.period_label }}</div>

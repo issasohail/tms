@@ -214,10 +214,10 @@ class PendingWhatsAppPaymentAdmin(admin.ModelAdmin):
 
 @admin.register(PendingWhatsAppMedia)
 class PendingWhatsAppMediaAdmin(admin.ModelAdmin):
-    list_display = ("id", "phone", "purpose", "property", "unit", "lease", "status", "ai_confidence", "created_at")
+    list_display = ("id", "phone", "purpose", "target_kind", "property", "unit", "lease", "submitted_by_staff", "status", "ai_confidence", "created_at")
     list_filter = ("purpose", "status", "created_at", "property")
     search_fields = ("phone", "original_filename", "ai_notes")
-    raw_id_fields = ("conversation", "original_whatsapp_message", "tenant", "lease", "property", "unit", "approved_by")
+    raw_id_fields = ("conversation", "original_whatsapp_message", "tenant", "lease", "property", "unit", "submitted_by_staff", "approved_by")
     readonly_fields = ("created_at", "updated_at", "approved_at")
     actions = ("approve_media", "reject_media")
 
@@ -290,6 +290,10 @@ class PendingWhatsAppMaintenanceAdmin(admin.ModelAdmin):
                     original_filename=media.original_filename,
                 )
                 media.file.close()
+                media.status = PendingWhatsAppMedia.STATUS_APPROVED
+                media.approved_by = request.user
+                media.approved_at = timezone.now()
+                media.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
             pending.created_request = ticket
             pending.status = PendingWhatsAppMaintenance.STATUS_APPROVED
             pending.approved_by = request.user
@@ -356,9 +360,22 @@ class TrustedDeviceRegistryAdmin(admin.ModelAdmin):
 
 
 def _attach_pending_media(pending, user):
+    from leases.models_lease_photos import LeaseMedia
+
     pending.file.open("rb")
     content = ContentFile(pending.file.read(), name=pending.original_filename or pending.file.name)
     pending.file.close()
+    if pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_PHOTO and pending.lease_id:
+        LeaseMedia.objects.create(
+            lease=pending.lease,
+            file=content,
+            media_type="image" if pending.media_type == "image" else "video" if pending.media_type == "video" else "file",
+            title=pending.original_filename or "WhatsApp lease photo",
+            description=pending.ai_notes[:300],
+            original_filename=pending.original_filename,
+            uploaded_by=user,
+        )
+        return
     if pending.purpose == PendingWhatsAppMedia.PURPOSE_PROPERTY and pending.property_id:
         PropertyMedia.objects.create(
             property=pending.property,

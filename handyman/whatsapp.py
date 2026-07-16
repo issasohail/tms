@@ -10,7 +10,7 @@ def handle_handyman_whatsapp_message(message_log, conversation, text, message_ty
     config = _handyman_settings()
     profile_commands = _profile_commands(config)
     if config.handyman_enable_whatsapp_profile_updates and lowered in profile_commands:
-        if not _handyman_for_phone(message_log.phone_number):
+        if not (identity.handyman or _handyman_for_phone(message_log.phone_number)):
             return None
         conversation.pending_state = "handyman_profile_upload"
         conversation.context["handyman_profile_field"] = profile_commands[lowered]
@@ -18,7 +18,7 @@ def handle_handyman_whatsapp_message(message_log, conversation, text, message_ty
         return "Please send the image now.", "handyman_profile_upload_prompt", {}
     job_commands = _job_commands(config)
     if config.handyman_enable_whatsapp_job_uploads and lowered in job_commands:
-        assignment = active_assignment_for_handyman_phone(message_log.phone_number)
+        assignment = _active_assignment(identity.handyman) or active_assignment_for_handyman_phone(message_log.phone_number)
         if not assignment:
             return None
         conversation.pending_state = "handyman_job_upload"
@@ -36,7 +36,7 @@ def handle_handyman_media_message(message_log, conversation, text, message_type,
         field_name = conversation.context.get("handyman_profile_field")
         if field_name not in {"photo", "id_card_front", "id_card_back"}:
             return None
-        handyman = _handyman_for_phone(message_log.phone_number)
+        handyman = identity.handyman or _handyman_for_phone(message_log.phone_number)
         if not handyman:
             return None
         media = create_pending_media(message_log, conversation)
@@ -55,7 +55,7 @@ def handle_handyman_media_message(message_log, conversation, text, message_type,
             return None
         assignment_id = conversation.context.get("handyman_assignment_id")
         attachment_type = conversation.context.get("handyman_attachment_type")
-        assignment = active_assignment_for_handyman_phone(message_log.phone_number)
+        assignment = _active_assignment(identity.handyman) or active_assignment_for_handyman_phone(message_log.phone_number)
         if not assignment or assignment.pk != assignment_id:
             return None
         media = create_pending_media(message_log, conversation, getattr(assignment.maintenance_request, "lease", None))
@@ -86,6 +86,17 @@ def _handyman_for_phone(phone_number):
         if _phone_matches(digits, handyman.whatsapp_number or handyman.phone):
             return handyman
     return None
+
+
+def _active_assignment(handyman):
+    if not handyman:
+        return None
+    return (
+        handyman.assignments.select_related("maintenance_request", "handyman")
+        .filter(is_current=True, status__in=["assigned", "accepted", "in_progress"])
+        .order_by("-assigned_at", "-id")
+        .first()
+    )
 
 
 def _digits(value):

@@ -37,6 +37,14 @@
   </div>
 
   <div class="col">
+    <select name="role" class="form-select form-select-sm w-auto" id="mf_role" style="min-width:140px">
+      <option value="">All Roles</option>
+      <option value="billing" {% if current_role == "billing" %}selected{% endif %}>Billing</option>
+      <option value="check" {% if current_role == "check" %}selected{% endif %}>Check / Audit</option>
+    </select>
+  </div>
+
+  <div class="col">
     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
     {% if request.GET %}
       <a href="?" class="btn btn-sm btn-outline-secondary">Clear</a>
@@ -50,10 +58,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const $prop = document.getElementById('mf_property');
   const $unit = document.getElementById('mf_unit');
   const $meter = document.getElementById('mf_meter');
+  const $role = document.getElementById('mf_role');
 
   // Auto-submit like leases
   $prop?.addEventListener('change', () => { $unit.value = ''; $meter.value = ''; $form.submit(); });
   $unit?.addEventListener('change', () => { $meter.value = ''; $form.submit(); });
   $meter?.addEventListener('change', () => $form.submit());
+  $role?.addEventListener('change', () => { $meter.value = ''; $form.submit(); });
 });
 </script>

@@ -105,6 +105,7 @@ from smart_meter.utils import send_cutoff_command, send_restore_command
 from properties.models import Property
 from smart_meter.models import MeterBalance
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from smart_meter.models import Meter, MeterEvent
 from smart_meter.utils import send_cutoff_command, send_restore_command
@@ -116,6 +117,7 @@ import socket
 from django.shortcuts import render, redirect
 from .models import Meter
 from .forms import MeterForm
+from .forms import MeterCheckGroupForm, MeterCheckGroupMembershipForm
 from .forms import (
     CloseMeterInstallationForm,
     InstallMeterToUnitForm,
@@ -130,6 +132,7 @@ from .forms import MeterSettingsForm
 from django.shortcuts import render, get_object_or_404, redirect
 from .models import Meter
 from .models import MeterInstallation
+from .models import MeterCheckGroup, MeterCheckGroupMembership, MeterRoleHistory
 from leases.models import LeaseUnitOccupancy
 from .tasks import poll_all_meters
 from django.http import JsonResponse
@@ -589,6 +592,7 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
     q = (request.GET.get("q") or "").strip()
+    role = (request.GET.get("role") or "").strip().lower()
 
     qs = Meter.objects.select_related("unit", "unit__property")
 
@@ -598,6 +602,8 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
         qs = qs.filter(unit_id=unit_id)
     if meter_id:
         qs = qs.filter(id=meter_id)
+    if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        qs = qs.filter(meter_role=role)
     if q:
         qs = qs.filter(
             Q(meter_number__icontains=q) |
@@ -661,6 +667,7 @@ SMART_METER_CHIPS = OrderedDict([
     ("cutoff", {"label": "Cut Off", "class": "danger"}),
     ("needs_attention", {"label": "Needs Attention", "class": "warning"}),
     ("billing_issues", {"label": "Billing Issues", "class": "info"}),
+    ("check", {"label": "Check Meters", "class": "info"}),
 ])
 
 
@@ -710,6 +717,8 @@ def _meter_chip_q(chip):
         return offline_q | vacant_q | low_q | negative_q | cutoff_q
     if chip == "billing_issues":
         return offline_q | vacant_q | no_latest_q | negative_q
+    if chip == "check":
+        return Q(meter_role=Meter.METER_ROLE_CHECK)
     return Q()
 
 
@@ -888,6 +897,7 @@ def meter_list(request):
         "current_property": prop_id,
         "current_unit": unit_id,
         "current_meter": meter_param,
+        "current_role": (request.GET.get("role") or "").strip().lower(),
         "q": q,
 
         # Backward-compat alias if the partial uses a different key
@@ -903,6 +913,14 @@ def add_meter(request):
         if form.is_valid():
             meter = form.save()
             from smart_meter.models import MeterAssignmentHistory
+            MeterRoleHistory.objects.create(
+                meter=meter,
+                role=meter.meter_role,
+                start_date=timezone.localdate(),
+                is_active=True,
+                changed_by=request.user if request.user.is_authenticated else None,
+                reason="Meter created.",
+            )
             MeterAssignmentHistory.objects.create(
                 meter=meter,
                 unit=meter.unit,
@@ -927,10 +945,24 @@ def meter_edit(request, pk):
     meter = get_object_or_404(Meter, pk=pk)
     old_unit = meter.unit
     old_lease = meter.current_lease
+    old_role = meter.meter_role
     if request.method == "POST":
         form = MeterForm(request.POST, instance=meter)
         if form.is_valid():
+            new_role = form.cleaned_data["meter_role"]
+            form.instance.meter_role = old_role
             meter = form.save()
+            if new_role != old_role:
+                meter.change_role(
+                    new_role,
+                    effective_date=timezone.localdate(),
+                    user=request.user if request.user.is_authenticated else None,
+                    reason=request.POST.get("notes", ""),
+                )
+                messages.success(
+                    request,
+                    f"Meter role changed to {meter.get_meter_role_display()} and history recorded.",
+                )
             if old_unit_id := getattr(old_unit, "id", None):
                 unit_changed = old_unit_id != meter.unit_id
             else:
@@ -955,6 +987,149 @@ def meter_edit(request, pk):
     else:
         form = MeterForm(instance=meter)
     return render(request, "smart_meter/meter_form.html", {"form": form, "edit": True})
+
+
+@require_POST
+@login_required
+def meter_role_update(request, pk):
+    meter = get_object_or_404(Meter, pk=pk)
+    new_role = (request.POST.get("meter_role") or "").strip().lower()
+    if new_role not in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        return JsonResponse({"success": False, "error": "Select a valid meter role."}, status=400)
+
+    try:
+        meter.change_role(
+            new_role,
+            effective_date=timezone.localdate(),
+            user=request.user,
+            reason="Inline role update.",
+        )
+    except ValidationError as exc:
+        if hasattr(exc, "message_dict"):
+            error = " ".join(message for messages_list in exc.message_dict.values() for message in messages_list)
+        else:
+            error = " ".join(exc.messages)
+        return JsonResponse({"success": False, "error": error}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "meter_id": meter.pk,
+        "role": meter.meter_role,
+        "label": meter.get_meter_role_display(),
+    })
+
+
+@login_required
+def meter_check_group_list(request):
+    groups = (
+        MeterCheckGroup.objects
+        .select_related("property", "check_meter", "check_meter__unit")
+        .prefetch_related("memberships")
+        .order_by("property__property_name", "name")
+    )
+    return render(request, "smart_meter/check_group_list.html", {"groups": groups})
+
+
+@login_required
+def meter_check_group_form(request, pk=None):
+    group = get_object_or_404(MeterCheckGroup, pk=pk) if pk else None
+    if request.method == "POST":
+        form = MeterCheckGroupForm(request.POST, instance=group)
+        if form.is_valid():
+            group = form.save()
+            messages.success(request, "Check group saved.")
+            return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
+    else:
+        form = MeterCheckGroupForm(instance=group)
+    return render(request, "smart_meter/check_group_form.html", {
+        "form": form,
+        "group": group,
+    })
+
+
+@login_required
+def meter_check_group_detail(request, pk):
+    group = get_object_or_404(
+        MeterCheckGroup.objects.select_related(
+            "property", "check_meter", "check_meter__unit", "check_meter__unit__property"
+        ),
+        pk=pk,
+    )
+    today = timezone.localdate()
+    start_date = today.replace(day=1)
+    end_date = today
+    try:
+        if request.GET.get("start"):
+            start_date = date.fromisoformat(request.GET["start"])
+        if request.GET.get("end"):
+            end_date = date.fromisoformat(request.GET["end"])
+    except ValueError:
+        messages.warning(request, "Invalid date range; the current month is shown.")
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    if request.method == "POST":
+        membership_form = MeterCheckGroupMembershipForm(request.POST, group=group)
+        if membership_form.is_valid():
+            membership_form.save()
+            messages.success(request, "Billing meter added to the check group.")
+            return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
+    else:
+        membership_form = MeterCheckGroupMembershipForm(
+            group=group,
+            initial={"start_date": today},
+        )
+
+    from smart_meter.views_dashboard import _per_meter_series
+
+    check_labels, check_datasets, check_rows, check_totals = _per_meter_series(
+        Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
+    )
+    billing_meters = group.active_billing_meters()
+    billing_labels, billing_datasets, billing_rows, billing_totals = _per_meter_series(
+        billing_meters, start_date, end_date, "daily"
+    )
+    check_kwh = Decimal(str(check_totals["total_kwh"]))
+    billing_kwh = Decimal(str(billing_totals["total_kwh"]))
+    variance_kwh = check_kwh - billing_kwh
+    variance_rs = variance_kwh * Decimal(str(group.check_meter.unit_rate or 0))
+    leakage_percent = (variance_kwh / check_kwh * Decimal("100")) if check_kwh else Decimal("0")
+
+    memberships = group.memberships.select_related(
+        "billing_meter", "billing_meter__unit", "billing_meter__unit__property"
+    ).order_by("-is_active", "-start_date", "billing_meter__meter_number")
+    return render(request, "smart_meter/check_group_detail.html", {
+        "group": group,
+        "start_date": start_date,
+        "end_date": end_date,
+        "check_kwh": check_kwh,
+        "billing_kwh": billing_kwh,
+        "variance_kwh": variance_kwh,
+        "variance_rs": variance_rs,
+        "leakage_percent": leakage_percent,
+        "check_rows": check_rows,
+        "billing_rows": billing_rows,
+        "memberships": memberships,
+        "membership_form": membership_form,
+    })
+
+
+@require_POST
+@login_required
+def meter_check_group_membership_end(request, pk, membership_id):
+    group = get_object_or_404(MeterCheckGroup, pk=pk)
+    membership = get_object_or_404(
+        MeterCheckGroupMembership,
+        pk=membership_id,
+        group=group,
+        is_active=True,
+    )
+    membership.close(
+        end_date=timezone.localdate(),
+        notes=request.POST.get("notes", "Membership ended."),
+    )
+    messages.success(request, "Billing-meter membership ended.")
+    return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
 
 
 def meter_delete(request, pk):
@@ -1463,7 +1638,7 @@ def live_custom(request):
             "id", "meter", "ts", "source_ip", "source_port", "balance",
             "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
             "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
-            "meter__is_active",
+            "meter__is_active", "meter__meter_role",
             "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
             "meter__unit__property__id", "meter__unit__property__property_name",
         )
@@ -1549,6 +1724,7 @@ def live_custom(request):
         "current_property": prop_id,
         "current_unit": unit_id,
         "current_meter": meter_id,
+        "current_role": (request.GET.get("role") or "").strip().lower(),
         "energy_start_date": energy_start_date,
         "energy_end_date": energy_end_date,
         "vpn_connected": vpn_connected(),
@@ -1888,6 +2064,7 @@ def _filtered_meter_sets(request, include_meter_property=True):
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
+    role = (request.GET.get("role") or "").strip().lower()
 
     all_properties = Property.objects.only("id", "property_name").order_by("property_name")
 
@@ -1913,6 +2090,8 @@ def _filtered_meter_sets(request, include_meter_property=True):
         meters_qs = meters_qs.filter(unit_id=unit_id)
     elif prop_id:
         meters_qs = meters_qs.filter(unit__property_id=prop_id)
+    if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        meters_qs = meters_qs.filter(meter_role=role)
     filtered_meters = meters_qs.order_by("meter_number")
 
     # Final meter set (what charts/tables use)
@@ -2245,6 +2424,7 @@ def _filtered_meter_sets(request, include_meter_property=True):
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
+    role = (request.GET.get("role") or "").strip().lower()
 
     all_properties = Property.objects.only("id", "property_name").order_by("property_name")
 
@@ -2270,6 +2450,8 @@ def _filtered_meter_sets(request, include_meter_property=True):
         meters_qs = meters_qs.filter(unit_id=unit_id)
     elif prop_id:
         meters_qs = meters_qs.filter(unit__property_id=prop_id)
+    if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        meters_qs = meters_qs.filter(meter_role=role)
     filtered_meters = meters_qs.order_by("meter_number")
 
     # Final meter set for charts/tables:
@@ -2401,6 +2583,7 @@ def reading_list(request):
     prop_id = request.GET.get("property") or ""
     unit_id = request.GET.get("unit") or ""
     meter_id = request.GET.get("meter") or ""
+    role = (request.GET.get("role") or "").strip().lower()
 
     range_key = (request.GET.get("range") or "").strip()
     if range_key not in QUICK_RANGES:
@@ -2457,6 +2640,8 @@ def reading_list(request):
         readings = readings.filter(meter__unit_id=unit_id)
     elif prop_id:
         readings = readings.filter(meter__unit__property_id=prop_id)
+    if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        readings = readings.filter(meter__meter_role=role)
 
     # ---------- Date filters (use datetime bounds; robust across time zones) ----------
     if start_dt:
@@ -2513,16 +2698,23 @@ def reading_list(request):
     qs = request.GET.copy()
     qs.pop("page", None)
 
+    filtered_meters_ctx = (
+        Meter.objects.filter(unit_id=unit_id) if unit_id else
+        Meter.objects.filter(unit__property_id=prop_id) if prop_id else
+        Meter.objects.all()
+    )
+    if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        filtered_meters_ctx = filtered_meters_ctx.filter(meter_role=role)
+
     ctx = dict(
         all_properties=Property.objects.order_by("property_name"),
         filtered_units=(Unit.objects.filter(property_id=prop_id)
                         if prop_id else Unit.objects.all()).order_by("unit_number"),
-        filtered_meters=(Meter.objects.filter(unit_id=unit_id) if unit_id else
-                         Meter.objects.filter(unit__property_id=prop_id) if prop_id else
-                         Meter.objects.all()).order_by("meter_number"),
+        filtered_meters=filtered_meters_ctx.order_by("meter_number"),
         current_property=prop_id,
         current_unit=unit_id,
         current_meter=meter_id,
+        current_role=role,
         rows=rows,
         page_obj=ReadingPage(rows, page_number, page_size, has_next),
         range=range_key,          # keeps the dropdown state
@@ -2541,6 +2733,7 @@ def _filtered_readings_qs(request):
     unit_id = request.GET.get("unit") or ""
     meter_id = request.GET.get("meter") or ""
     q = request.GET.get("q") or ""
+    role = (request.GET.get("role") or "").strip().lower()
 
     qs = (MeterReading.objects
           .select_related("meter", "meter__unit", "meter__unit__property"))
@@ -2551,6 +2744,8 @@ def _filtered_readings_qs(request):
         qs = qs.filter(meter__unit_id=unit_id)
     elif prop_id:
         qs = qs.filter(meter__unit__property_id=prop_id)
+    if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
+        qs = qs.filter(meter__meter_role=role)
 
     _, _, _, start_dt, end_dt_excl = _reading_date_window_from_request(request)
     if start_dt:
@@ -3550,7 +3745,7 @@ def live_custom_data(request):
             "id", "meter", "ts", "source_ip", "source_port", "balance",
             "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
             "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
-            "meter__is_active",
+            "meter__is_active", "meter__meter_role",
             "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
             "meter__unit__property__id", "meter__unit__property__property_name",
         )
@@ -3605,6 +3800,8 @@ def live_custom_data(request):
             "tenant_name": tenant_info.get(u.id, {}).get("name", "Vacant"),
             "tenant_id": tenant_info.get(u.id, {}).get("tenant_id"),
             "meter_number": m.meter_number or "",
+            "meter_role": m.meter_role,
+            "meter_role_display": m.get_meter_role_display(),
 
             "updated_ts": _ts_iso(r.ts),
             # optional: pre-formatted display strings

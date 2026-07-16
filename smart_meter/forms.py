@@ -8,6 +8,7 @@ from django.shortcuts import render
 from decimal import Decimal
 from .models import MeterBalance
 from django import forms
+from django.db.models import Q
 
 from django import forms
 from smart_meter.models import MeterSettings
@@ -27,7 +28,7 @@ from leases.models import LeaseUnitOccupancy
 
 from .models import (
     MeterSettings, Meter, LiveReading, MeterReading, Tariff, Bill, MeterBalance,
-    MeterInstallation,
+    MeterInstallation, MeterCheckGroup, MeterCheckGroupMembership,
 )
 
 
@@ -56,10 +57,70 @@ class MeterForm(forms.ModelForm):
             'meter_number': forms.TextInput(attrs={'class': 'form-control'}),
             'unit': forms.Select(attrs={'class': 'form-select'}),
             'billing_mode': forms.Select(attrs={'class': 'form-select'}),
+            'meter_role': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'balance': forms.NumberInput(attrs={'class': 'form-control'}),
             'credit_balance': forms.NumberInput(attrs={'class': 'form-control'}),
         }
+
+
+class MeterCheckGroupForm(forms.ModelForm):
+    class Meta:
+        model = MeterCheckGroup
+        fields = ["name", "property", "check_meter", "notes", "is_active"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "property": forms.Select(attrs={"class": "form-select"}),
+            "check_meter": forms.Select(attrs={"class": "form-select"}),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        check_meters = Meter.objects.filter(
+            meter_role=Meter.METER_ROLE_CHECK,
+        ).select_related("unit", "unit__property").order_by("meter_number")
+        if self.instance.pk:
+            check_meters = check_meters.filter(
+                Q(check_group__isnull=True) | Q(check_group=self.instance)
+            )
+        else:
+            check_meters = check_meters.filter(check_group__isnull=True)
+        self.fields["check_meter"].queryset = check_meters
+
+
+class MeterCheckGroupMembershipForm(forms.ModelForm):
+    class Meta:
+        model = MeterCheckGroupMembership
+        fields = ["billing_meter", "start_date", "notes"]
+        widgets = {
+            "billing_meter": forms.Select(attrs={
+                "class": "form-select ld-billing-meter-select",
+                "data-placeholder": "Search billing meter",
+            }),
+            "start_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "notes": forms.TextInput(attrs={"class": "form-control"}),
+        }
+
+    def __init__(self, *args, group=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.group = group
+        if group is not None:
+            self.instance.group = group
+        self.fields["billing_meter"].queryset = Meter.objects.filter(
+            meter_role=Meter.METER_ROLE_BILLING,
+        ).select_related("unit", "unit__property").order_by(
+            "unit__property__property_name", "unit__unit_number", "meter_number"
+        )
+
+    def save(self, commit=True):
+        membership = super().save(commit=False)
+        if self.group is not None:
+            membership.group = self.group
+        if commit:
+            membership.save()
+        return membership
 
 
 class MeterReadingForm(forms.ModelForm):

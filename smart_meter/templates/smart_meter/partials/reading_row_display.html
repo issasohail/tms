@@ -39,6 +39,18 @@
     </div>
   </td>
 
+  <td class="ld-col-role">
+    <select class="form-select form-select-sm ld-role-select"
+            data-meter-role
+            data-meter-id="{{ r.meter.id }}"
+            data-update-url="{% url 'smart_meter:meter_role_update' r.meter.id %}"
+            data-previous="{{ r.meter.meter_role }}"
+            aria-label="Role for meter {{ r.meter.meter_number }}">
+      <option value="billing" {% if r.meter.meter_role == 'billing' %}selected{% endif %}>Billing</option>
+      <option value="check" {% if r.meter.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
+    </select>
+  </td>
+
   <td class="col-ip toggle-col-ip d-none">{{ r.source_ip|default_if_none:"" }}</td>
   <td class="col-port toggle-col-port d-none">{{ r.source_port|default_if_none:"" }}</td>
 

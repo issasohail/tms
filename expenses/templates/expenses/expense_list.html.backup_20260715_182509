@@ -1,0 +1,737 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load crispy_forms_tags %}
+
+{% block title %}Expenses{% endblock %}
+
+{% block content %}
+<div class="expense-page-header">
+  <div>
+    <h2 class="mb-1">Expenses</h2>
+    <p class="expense-page-subtitle mb-0">Review, filter, and manage property expenses.</p>
+  </div>
+  <div class="expense-header-actions">
+    <a href="{% url 'expenses:expense_create' %}" class="btn btn-primary">
+      <i class="bi bi-plus-lg"></i> <span class="btn-text">Add Expense</span>
+    </a>
+    {% include "includes/export_buttons.html" %}
+  </div>
+</div>
+
+<form id="expense-filter-form" method="get" class="card card-body mb-3 filters-card">
+  <div class="filters-grid">
+    <div class="filter-field filter-property">
+      <label for="id_property">Property</label>
+      <select name="property" id="id_property" class="form-select form-select-sm">
+        <option value="">All properties</option>
+        {% for p in property_options %}
+          <option value="{{ p.id }}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-field filter-unit">
+      <label for="id_unit">Unit</label>
+      <select name="unit" id="id_unit" class="form-select form-select-sm" disabled></select>
+    </div>
+
+    <div class="filter-field filter-category">
+      <label for="id_category">Category</label>
+      <select name="category" id="id_category" class="form-select form-select-sm">
+        <option value="">All categories</option>
+        {% for c in category_options %}
+          <option value="{{ c.id }}" {% if request.GET.category == c.id|stringformat:'s' %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-field filter-period">
+      <label for="id_period">Period</label>
+      <select name="period" id="id_period" class="form-select form-select-sm">
+        <option value="">All dates</option>
+        <option value="today"      {% if request.GET.period == 'today' %}selected{% endif %}>Today</option>
+        <option value="yesterday"  {% if request.GET.period == 'yesterday' %}selected{% endif %}>Yesterday</option>
+        <option value="this_week"  {% if request.GET.period == 'this_week' %}selected{% endif %}>This Week</option>
+        <option value="last_week"  {% if request.GET.period == 'last_week' %}selected{% endif %}>Last Week</option>
+        <option value="this_month" {% if request.GET.period == 'this_month' %}selected{% endif %}>This Month</option>
+        <option value="last_month" {% if request.GET.period == 'last_month' %}selected{% endif %}>Last Month</option>
+        <option value="this_year"  {% if request.GET.period == 'this_year' %}selected{% endif %}>This Year</option>
+      </select>
+    </div>
+
+    <div class="filter-field filter-start">
+      <label for="id_start_date">From</label>
+      <input type="date" class="form-control form-control-sm" name="start_date" id="id_start_date"
+             value="{{ request.GET.start_date }}">
+    </div>
+
+    <div class="filter-field filter-end">
+      <label for="id_end_date">To</label>
+      <input type="date" class="form-control form-control-sm" name="end_date" id="id_end_date"
+             value="{{ request.GET.end_date }}">
+    </div>
+
+    <div class="filter-actions">
+      <button class="btn btn-secondary btn-sm apply-btn" type="submit" title="Apply filters">
+        <i class="fas fa-filter"></i><span class="btn-text ms-1">Apply</span>
+      </button>
+      <a class="btn btn-outline-secondary btn-sm clear-btn" href="?" title="Clear filters">
+        <i class="fas fa-undo"></i><span class="btn-text ms-1">Clear</span>
+      </a>
+    </div>
+  </div>
+</form>
+
+{# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+<div class="table-responsive desktop-sticky-list expense-table-wrap">
+  {# IMPORTANT: This expects the updated ExpenseTable (server-side renders mobile lines) #}
+  {% render_table table %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ========= Auto-submit: Period, dates, Property, Unit, Category ========= */
+(function(){
+  const form = document.getElementById('expense-filter-form');
+  if (!form) return;
+  const submit = () => (form.requestSubmit ? form.requestSubmit() : form.submit());
+  ['id_period','id_start_date','id_end_date','id_property','id_unit','id_category']
+    .forEach(id => document.getElementById(id)?.addEventListener('change', submit));
+})();
+
+/* ========= Period → Dates (and auto-submit) ========= */
+(function(){
+  const periodSel = document.getElementById('id_period');
+  const start = document.getElementById('id_start_date');
+  const end = document.getElementById('id_end_date');
+  const form = document.getElementById('expense-filter-form');
+
+  function fmtLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${dd}`;}
+  function sow(d){const c=new Date(d);const day=(c.getDay()+6)%7;c.setDate(c.getDate()-day);return c;}
+  function eow(d){const s=sow(d);const e=new Date(s);e.setDate(s.getDate()+6);return e;}
+  function som(d){return new Date(d.getFullYear(), d.getMonth(), 1);}
+  function eom(d){return new Date(d.getFullYear(), d.getMonth()+1, 0);}
+  function soy(d){return new Date(d.getFullYear(),0,1);}
+  function eoy(d){return new Date(d.getFullYear(),11,31);}
+
+  periodSel?.addEventListener('change', () => {
+    const now = new Date(); let s='', e='';
+    switch(periodSel.value){
+      case 'today': s=e=fmtLocal(now); break;
+      case 'yesterday': {const y=new Date(); y.setDate(now.getDate()-1); s=e=fmtLocal(y); break;}
+      case 'this_week': s=fmtLocal(sow(now)); e=fmtLocal(eow(now)); break;
+      case 'last_week': {const n=new Date(); n.setDate(n.getDate()-7); s=fmtLocal(sow(n)); e=fmtLocal(eow(n)); break;}
+      case 'this_month': s=fmtLocal(som(now)); e=fmtLocal(eom(now)); break;
+      case 'last_month': {const d=new Date(now.getFullYear(), now.getMonth()-1, 1); s=fmtLocal(som(d)); e=fmtLocal(eom(d)); break;}
+      case 'this_year': s=fmtLocal(soy(now)); e=fmtLocal(eoy(now)); break;
+      default: s=''; e='';
+    }
+    start.value = s; end.value = e;
+    (form.requestSubmit ? form.requestSubmit() : form.submit());
+  });
+})();
+
+/* ========= Property → Unit cascade (populate + auto-submit) ========= */
+(function(){
+  const propertySel = document.getElementById('id_property');
+  const unitSel = document.getElementById('id_unit');
+  const form = document.getElementById('expense-filter-form');
+  const unitsByProp = {{ units_by_property_json|default:"{}"|safe }};
+
+  function populateUnits(){
+    const pid = propertySel.value;
+    unitSel.innerHTML = '';
+    if(!pid){
+      const placeholder = document.createElement('option');
+      placeholder.value = ''; placeholder.textContent = 'All units';
+      unitSel.appendChild(placeholder);
+      unitSel.disabled = true;
+      return;
+    }
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'All units';
+    unitSel.appendChild(allOpt);
+    (unitsByProp[pid] || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.textContent = u.label;
+      if ("{{ request.GET.unit|default_if_none:'' }}" === String(u.id)) opt.selected = true;
+      unitSel.appendChild(opt);
+    });
+    unitSel.disabled = false;
+  }
+
+  if (propertySel) {
+    propertySel.addEventListener('change', () => { populateUnits(); (form.requestSubmit ? form.requestSubmit() : form.submit()); });
+    unitSel.addEventListener('change', () => (form.requestSubmit ? form.requestSubmit() : form.submit()));
+    populateUnits();
+  }
+})();
+</script>
+
+<style>
+/* ================================
+   VARIABLES (desktop + phone)
+   ================================ */
+:root{
+  /* Desktop (≥ md) column widths + font size */
+  --w-sn-lg:34px;
+  --w-prop-lg:120px;
+  --w-desc-lg:180px;
+  --w-date-lg:120px;
+  --w-amt-lg:120px;
+  --w-receipt-lg:30px;
+  --w-actions-lg:160px;
+  --w-distributed-lg:30px;
+  --fs-table-lg:14px;
+
+  /* Phone (< md) column widths tuned to ~360px screens */
+  --w-sn-sm:15px;
+  --w-prop-sm:76px;
+  --w-desc-sm:86px;
+  --w-when-sm:76px;
+  --w-actions-sm:36px;
+  --fs-table-sm:9px;
+
+  /* Filters layout vars */
+  --filter-gap:.35rem;
+  --filter-row-h:1rem;
+  --filter-input-font:.68rem;
+  --filter-input-pad-y:.05rem;
+  --filter-input-pad-x:.45rem;
+
+  --head-bottom:.5rem; /* spacing under page heading */
+}
+
+/* ================================
+   PAGE HEADER & FILTERS
+   ================================ */
+.d-flex.justify-content-between.align-items-center.mb-4{
+  margin-bottom:var(--head-bottom)!important;
+}
+.filters-card{ margin-top:0!important; padding:.4rem .6rem; }
+.filters-card{ padding:.5rem .75rem; }
+
+/* Desktop: keep the whole filter bar in one row */
+@media (min-width:768px){
+  .filters-grid{
+    display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; overflow-x:auto;
+  }
+  .filters-grid .form-select,
+  .filters-grid .form-control{ height:2rem; font-size:.85rem; padding:.375rem .5rem; }
+}
+
+/* Phone: 3 rows (1) Property/Unit/Category (2) Period/From/To (3) Apply/Clear */
+@media (max-width:767.98px){
+  .filters-grid{
+    display:grid; gap:var(--filter-gap);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "property  unit      category"
+      "period    start     end"
+      "apply     clear     .";
+    grid-auto-rows: var(--filter-row-h);
+  }
+
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .btn{
+    height: var(--filter-row-h);
+    font-size: var(--filter-input-font);
+    padding: var(--filter-input-pad-y) var(--filter-input-pad-x);
+    line-height: 1.2;
+  }
+
+  /* 4) Date input polish (keeps icon but shrinks its box a bit) */
+  input[type="date"].form-control{
+    padding-right: .35rem;              /* trims right side so it fits the row */
+  }
+  input[type="date"].form-control::-webkit-calendar-picker-indicator{
+    transform: scale(.85);              /* smaller calendar icon on WebKit */
+    margin: 0;
+  }
+
+  /* 5) Apply/Clear buttons: center content & shrink icons slightly */
+  .apply-btn, .clear-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+  }
+  .filters-grid .btn i,
+  .filters-grid .btn svg{
+    font-size: .85em;                   /* slightly smaller glyphs inside buttons */
+    line-height: 1;
+  }
+
+  /* 6) Optional: tighten the card’s inner padding on phones */
+  .filters-card{ padding: .35rem .5rem; }
+
+
+  #id_property   { grid-area: property; }
+  #id_unit       { grid-area: unit; }
+  #id_category   { grid-area: category; }
+  #id_period     { grid-area: period; }
+  #id_start_date { grid-area: start; }
+  #id_end_date   { grid-area: end; }
+  .apply-btn     { grid-area: apply; width:100%; }
+  .clear-btn     { grid-area: clear; width:100%; }
+
+ /* Normalize selects, text inputs, and buttons */
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .btn{
+    height: var(--filter-row-h) !important;
+    font-size: var(--filter-input-font) !important;
+    padding: var(--filter-input-pad-y) var(--filter-input-pad-x) !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Date inputs often ignore the generic rule — enforce it here */
+  .filters-grid input[type="date"].form-control{
+    height: var(--filter-row-h) !important;
+    line-height: 1.2 !important;
+    padding-top: var(--filter-input-pad-y) !important;
+    padding-bottom: var(--filter-input-pad-y) !important;
+    padding-left: var(--filter-input-pad-x) !important;
+    padding-right: .35rem !important;   /* room for picker icon */
+    box-sizing: border-box;
+  }
+
+
+
+/* Shrink/align the calendar icon (Chrome/Edge/Safari) */
+  .filters-grid input[type="date"].form-control::-webkit-calendar-picker-indicator{
+    transform: scale(.85);
+    margin: 0;
+  }
+  /* Trim inner padding on iOS/Safari */
+  .filters-grid input[type="date"].form-control::-webkit-datetime-edit,
+  .filters-grid input[type="date"].form-control::-webkit-datetime-edit-fields-wrapper,
+  .filters-grid input[type="date"].form-control::-webkit-date-and-time-value{
+    padding: 0;
+  }
+
+  /* Apply/Clear: center content and shrink their icons a bit */
+  .apply-btn, .clear-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+  }
+  .filters-grid .btn i,
+  .filters-grid .btn svg{
+    font-size: .85em;   /* smaller glyph inside the small button */
+    line-height: 1;
+  }
+
+/* ================================
+   TABLE BASELINE
+   ================================ */
+.table-responsive table th,
+.table-responsive table td{
+  vertical-align: middle;
+}
+}
+/* Desktop/tablet typography */
+@media (min-width:768px){
+  .table-responsive table th,
+  .table-responsive table td{ font-size: var(--fs-table-lg); }
+}
+/* Phone typography + fit helpers */
+@media (max-width:767.98px){
+  .table-responsive table{ table-layout: fixed; width:100%; border-collapse: collapse; }
+  .table-responsive table th,
+  .table-responsive table td{
+    font-size: var(--fs-table-sm);
+    padding-left: 1px !important;  /* tighter padding so we fit 360px */
+    padding-right: 1px !important;
+    box-sizing: border-box;
+  }
+}
+
+/* ================================
+   DESKTOP COLUMN WIDTHS & ELLIPSIS
+   ================================ */
+@media (min-width:768px){
+  .table-responsive th.col-desc,
+  .table-responsive td.col-desc{
+    width:var(--w-desc-lg); max-width:var(--w-desc-lg); overflow:hidden;
+  }
+  .table-responsive th.col-actions,
+  .table-responsive td.col-actions{ width:var(--w-actions-lg); }
+  .table-responsive th.col-receipt,
+  .table-responsive td.col-receipt{ width:var(--w-receipt-lg); }
+  .table-responsive th.col-distributed,
+  .table-responsive td.col-distributed{ width:var(--w-distributed-lg); }
+
+  /* Clamp the desktop description (the ≥md span) */
+  td.col-desc > span.d-md-inline{
+    display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* Actions cell vertical padding on desktop */
+  td.col-actions{ padding-top: 6px; padding-bottom: 6px; }
+}
+
+/* ================================
+   PHONE COLUMN WIDTHS & CLAMPING
+   ================================ */
+@media (max-width:767.98px){
+  /* Widths: tuned to avoid horizontal scroll on ~360px */
+  .table-responsive th.col-sn, .table-responsive td.col-sn{
+    width:var(--w-sn-sm); min-width:var(--w-sn-sm);
+  }
+  .table-responsive th.col-property, .table-responsive td.col-property{
+    width:var(--w-prop-sm);
+  }
+  .table-responsive th.col-desc, .table-responsive td.col-desc{
+    width:var(--w-desc-sm)!important; max-width:var(--w-desc-sm)!important; overflow:hidden;
+  }
+  .table-responsive th.col-when, .table-responsive td.col-when{
+    width:var(--w-when-sm);
+  }
+  .table-responsive th.col-actions, .table-responsive td.col-actions{
+    width:var(--w-actions-sm);
+  }
+
+  /* Allow these cells to wrap internal content (override any text-nowrap) */
+  td.col-property, th.col-property,
+  td.col-actions, th.col-actions{
+    white-space: normal !important;
+  }
+
+  /* Hide the dedicated Receipt column entirely on phones */
+  .table-responsive th.col-receipt,
+  .table-responsive td.col-receipt{ display:none !important; }
+
+  /* Clamp Property link + both mobile description lines to one line with ellipsis */
+  td.col-property a{
+    display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;
+  }
+  td.col-desc .desc-mobile-cat .rt-cat,
+  td.col-desc .desc-mobile-desc{
+    display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%;
+  }
+
+  /* Actions cell vertical padding on phone */
+  td.col-actions{ padding-top: 0; padding-bottom: 0; }
+}
+
+/* ================================
+   ACTION BUTTONS
+   ================================ */
+
+/* Desktop: single row, icon + text, comfy padding/gap */
+@media (min-width:768px){
+  .actions-wrap{
+    display:flex; align-items:center; gap:.35rem;
+  }
+  .action-btn{ padding:4px 8px; }                         /* button padding (desktop) */
+}
+
+/* Phone: 2×2 icon grid, tiny icons, ultra-tight padding & gaps */
+@media (max-width:767.98px){
+  .actions-wrap{
+    display:grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));     /* two icons per row */
+    column-gap:.06rem; row-gap:.06rem;                    /* hairline gaps */
+    justify-items:center; align-items:center;
+    margin:0; width:100%;
+  }
+
+  /* Hide labels on phone (supports both .btn-text and .btn-label) */
+  .actions-wrap .action-btn .btn-text,
+  .actions-wrap .action-btn .btn-label{ display:none !important; }
+
+  /* Strip button chrome + shrink padding */
+  .actions-wrap .action-btn{
+    padding:0 1px !important; margin:0 !important;
+    border:0 !important; 
+    width:100%; min-width:0; line-height:1;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+
+  /* Tiny, consistent icon size (FA + Bootstrap Icons) */
+  .actions-wrap .action-btn i,
+  .actions-wrap .action-btn svg{
+    font-size:10px !important; width:10px; height:10px; line-height:1;
+  }
+
+  /* Order: row1 = Receipt + View; row2 = Edit + Delete */
+  .actions-wrap .btn-receipt{ order:0; }
+  .actions-wrap .btn-view   { order:1; }
+  .actions-wrap .btn-edit   { order:2; }
+  .actions-wrap .btn-delete { order:3; }
+
+  /* If you want to hard-limit to 4 buttons on phones, uncomment:
+     .actions-wrap .action-btn:nth-child(n+5){ display:none !important; } */
+}
+
+/* Phones: make ALL filter controls the same compact size */
+@media (max-width: 767.98px){
+  .filters-grid{
+    grid-auto-rows: var(--filter-row-h);   /* each row is exactly 1rem */
+    gap: var(--filter-gap);
+  }
+
+  /* Selects, inputs, and buttons use the same small height */
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filters-grid .btn{
+    height: var(--filter-row-h) !important;
+    font-size: var(--filter-input-font) !important;
+    padding: var(--filter-input-pad-y) var(--filter-input-pad-x) !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Date inputs sometimes ignore generic rules—force them */
+  .filters-grid .form-control[type="date"]{
+    height: var(--filter-row-h) !important;
+    font-size: var(--filter-input-font) !important;
+    padding-top: var(--filter-input-pad-y) !important;
+    padding-bottom: var(--filter-input-pad-y) !important;
+    padding-left: var(--filter-input-pad-x) !important;
+    padding-right: .35rem !important;   /* room for picker icon */
+    box-sizing: border-box;
+  }
+  .filters-grid .form-control[type="date"]::-webkit-calendar-picker-indicator{
+    transform: scale(.85);               /* shrink calendar icon */
+    margin: 0;
+  }
+  /* Trim inner iOS/WebKit padding so it can be short */
+  .filters-grid .form-control[type="date"]::-webkit-datetime-edit,
+  .filters-grid .form-control[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  .filters-grid .form-control[type="date"]::-webkit-date-and-time-value{
+    padding: 0;
+  }
+}
+
+/* ===== Responsive presentation refresh ===== */
+.expense-page-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  margin-bottom:.75rem;
+}
+.expense-page-header h2{ font-size:1.65rem; font-weight:700; }
+.expense-page-subtitle{ color:#6c757d; font-size:.875rem; }
+.expense-header-actions{ display:flex; align-items:center; gap:.5rem; }
+.expense-header-actions .btn{ white-space:nowrap; }
+
+.filters-card{
+  border:1px solid rgba(0,0,0,.09);
+  border-radius:.65rem;
+  box-shadow:0 .125rem .35rem rgba(0,0,0,.045);
+  padding:.65rem .75rem;
+}
+.filters-grid{
+  display:grid;
+  grid-template-columns:minmax(140px,1.35fr) minmax(90px,.75fr) minmax(130px,1.1fr)
+                        minmax(110px,.9fr) minmax(125px,1fr) minmax(125px,1fr) auto;
+  gap:.5rem;
+  align-items:end;
+  overflow:visible;
+}
+.filter-field{ min-width:0; }
+.filter-field label{
+  display:block;
+  margin:0 0 .2rem;
+  color:#5f6872;
+  font-size:.72rem;
+  font-weight:600;
+  line-height:1.1;
+}
+.filters-grid .form-select,
+.filters-grid .form-control{
+  width:100%;
+  height:2rem!important;
+  min-height:2rem;
+  padding:.25rem 1.75rem .25rem .5rem!important;
+  font-size:.8rem!important;
+  line-height:1.25!important;
+}
+.filters-grid .form-control{ padding-right:.4rem!important; }
+.filter-actions{ display:flex; gap:.35rem; }
+.filter-actions .btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:2rem!important;
+  padding:.25rem .6rem!important;
+  font-size:.78rem!important;
+  white-space:nowrap;
+}
+
+.expense-table-wrap{
+  overflow-x:auto;
+  overflow-y:hidden;
+  border:1px solid rgba(0,0,0,.1);
+  border-radius:.65rem;
+  background:#fff;
+  box-shadow:0 .125rem .4rem rgba(0,0,0,.05);
+}
+.expense-table-wrap table{ margin-bottom:0; }
+.expense-table-wrap table thead th{
+  padding:.6rem .5rem;
+  border-bottom-width:1px;
+  background:#f3f5f7;
+  color:#4f5963;
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.025em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.expense-table-wrap table tbody td{
+  padding:.55rem .5rem;
+  border-color:rgba(0,0,0,.065);
+  font-size:.82rem;
+  vertical-align:middle;
+}
+.expense-table-wrap table tbody tr:last-child td{ border-bottom:0; }
+.expense-table-wrap table tbody tr:hover td{ background-color:#f7fbff; }
+.expense-table-wrap td.col-property a{ color:#0d6efd; font-weight:600; text-decoration:none; }
+.expense-table-wrap td.col-property a:hover{ text-decoration:underline; }
+.expense-table-wrap .pagination{ margin:.75rem; }
+
+/* Tablet: combine secondary details to avoid a crowded, scrolling table. */
+@media (min-width:768px) and (max-width:1199.98px){
+  .filters-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .filter-actions{ grid-column:span 2; justify-content:flex-end; }
+
+  .expense-table-wrap th.col-unit,
+  .expense-table-wrap td.col-unit,
+  .expense-table-wrap th.col-category,
+  .expense-table-wrap td.col-category,
+  .expense-table-wrap th.col-receipt,
+  .expense-table-wrap td.col-receipt{ display:none!important; }
+  .expense-table-wrap .prop-mobile-unit{ display:block!important; margin-top:.15rem; color:#6c757d; font-size:.7rem; }
+  .expense-table-wrap td.col-desc > span.d-md-inline{ display:none!important; }
+  .expense-table-wrap td.col-desc > .d-md-none{ display:block!important; }
+  .expense-table-wrap .desc-mobile-cat{ color:#495057; font-weight:600; }
+  .expense-table-wrap .desc-mobile-desc{ margin-top:.1rem; color:#6c757d; font-size:.72rem; }
+  .expense-table-wrap th.col-property,
+  .expense-table-wrap td.col-property{ width:22%; }
+  .expense-table-wrap th.col-desc,
+  .expense-table-wrap td.col-desc{ width:auto; max-width:none!important; }
+  .expense-table-wrap th.col-actions,
+  .expense-table-wrap td.col-actions{ width:112px; }
+  .expense-table-wrap .actions-wrap{ min-width:0; gap:.25rem; }
+  .expense-table-wrap .actions-wrap .btn-text{ display:none!important; }
+  .expense-table-wrap .actions-wrap .action-btn{
+    width:30px;
+    height:30px;
+    padding:0!important;
+    justify-content:center;
+  }
+}
+
+/* Phone: readable filter controls and card-like expense rows. */
+@media (max-width:767.98px){
+  .expense-page-header{ align-items:flex-start; margin-bottom:.6rem; }
+  .expense-page-header h2{ font-size:1.35rem; }
+  .expense-page-subtitle{ display:none; }
+  .expense-header-actions{ gap:.35rem; }
+  .expense-header-actions .btn{ padding:.35rem .55rem; font-size:.75rem; }
+  .expense-header-actions .btn-text{ display:none; }
+
+  .filters-card{ padding:.55rem; border-radius:.55rem; }
+  .filters-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-areas:
+      "property unit"
+      "category period"
+      "start end"
+      "actions actions";
+    gap:.45rem;
+  }
+  .filter-property{ grid-area:property; }
+  .filter-unit{ grid-area:unit; }
+  .filter-category{ grid-area:category; }
+  .filter-period{ grid-area:period; }
+  .filter-start{ grid-area:start; }
+  .filter-end{ grid-area:end; }
+  .filter-actions{ grid-area:actions; }
+  .filters-grid .form-select,
+  .filters-grid .form-control,
+  .filter-actions .btn{ height:2.15rem!important; font-size:.76rem!important; }
+  .filter-actions .btn{ flex:1; }
+
+  .expense-table-wrap{ overflow:visible; border:0; border-radius:0; background:transparent; box-shadow:none; }
+  .expense-table-wrap table,
+  .expense-table-wrap table tbody{ display:block; width:100%; }
+  .expense-table-wrap table thead{ display:none; }
+  .expense-table-wrap table tbody{ display:grid; gap:.55rem; }
+  .expense-table-wrap table tbody tr{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "property when"
+      "description description"
+      "actions actions";
+    gap:.35rem .75rem;
+    padding:.65rem .7rem;
+    border:1px solid rgba(0,0,0,.1);
+    border-radius:.6rem;
+    background:#fff;
+    box-shadow:0 .1rem .3rem rgba(0,0,0,.045);
+  }
+  .expense-table-wrap table tbody td{
+    display:block;
+    width:auto!important;
+    max-width:none!important;
+    padding:0!important;
+    border:0;
+    background:transparent!important;
+    box-shadow:none!important;
+    font-size:.76rem;
+  }
+  .expense-table-wrap td.col-sn{ display:none!important; }
+  .expense-table-wrap td.col-property{ grid-area:property; min-width:0; }
+  .expense-table-wrap td.col-desc{ grid-area:description; min-width:0; padding-top:.35rem!important; border-top:1px solid rgba(0,0,0,.07); }
+  .expense-table-wrap td.col-when{ grid-area:when; text-align:right; white-space:nowrap; }
+  .expense-table-wrap td.col-actions{ grid-area:actions; padding-top:.35rem!important; border-top:1px solid rgba(0,0,0,.07); }
+  .expense-table-wrap td[colspan]{ grid-column:1/-1; text-align:center; padding:.75rem!important; }
+
+  .expense-table-wrap td.col-property a{ font-size:.82rem; }
+  .expense-table-wrap .prop-mobile-unit{ margin-top:.1rem; color:#6c757d; font-size:.7rem; }
+  .expense-table-wrap .desc-mobile-cat .rt-cat{ color:#495057; font-weight:600; }
+  .expense-table-wrap .desc-mobile-desc{ margin-top:.15rem; color:#6c757d; font-size:.72rem; }
+  .expense-table-wrap .when-date{ color:#6c757d; font-size:.7rem; }
+  .expense-table-wrap .when-amt{ margin-top:.1rem; color:#212529; font-size:.8rem; font-weight:700; }
+
+  .expense-table-wrap .actions-wrap{
+    display:flex!important;
+    justify-content:flex-end;
+    gap:.35rem;
+    width:100%;
+    min-width:0;
+  }
+  .expense-table-wrap .actions-wrap .action-btn{
+    display:inline-flex;
+    flex:0 0 30px;
+    align-items:center;
+    justify-content:center;
+    width:30px;
+    height:28px;
+    padding:0!important;
+    border:1px solid transparent!important;
+    border-radius:.3rem;
+  }
+  .expense-table-wrap .actions-wrap .action-btn i,
+  .expense-table-wrap .actions-wrap .action-btn svg{ width:auto; height:auto; font-size:.72rem!important; }
+  .expense-table-wrap .actions-wrap .btn-text,
+  .expense-table-wrap .actions-wrap .btn-label{ display:none!important; }
+}
+</style>
+
+
+
+
+{% endblock %}
+
+{% block extra_css %}
+
+{% endblock %}

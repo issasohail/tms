@@ -18,6 +18,9 @@
     </div>
 
     <div class="d-flex flex-wrap gap-2 no-export">
+      <a href="{% url 'smart_meter:meter_check_group_list' %}" class="btn btn-sm btn-outline-info">
+        <i class="fas fa-scale-balanced me-1"></i> Check Groups
+      </a>
       <button id="exportJpgBtn" type="button" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-file-image me-1"></i> JPG
       </button>
@@ -120,6 +123,7 @@
                   {% endif %}
                 </a>
               </th>
+              <th class="ld-col-role"><span class="th2">Role</span></th>
               <th class="col-prop">
                 <a href="{{ header_links.property }}">
                   Property
@@ -191,6 +195,17 @@
               </td>
 
               <td class="col-meter"><span class="badge bg-primary">{{ m.meter_number }}</span></td>
+              <td class="ld-col-role">
+                <select class="form-select form-select-sm ld-role-select"
+                        data-meter-role
+                        data-meter-id="{{ m.id }}"
+                        data-update-url="{% url 'smart_meter:meter_role_update' m.id %}"
+                        data-previous="{{ m.meter_role }}"
+                        aria-label="Role for meter {{ m.meter_number }}">
+                  <option value="billing" {% if m.meter_role == 'billing' %}selected{% endif %}>Billing</option>
+                  <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
+                </select>
+              </td>
               <td class="col-prop" title="{{ m.unit.property.property_name }}">{{ m.unit.property.property_name }}</td>
               <td class="col-unit" title="{{ m.unit.unit_number }}">{{ m.unit.unit_number }}</td>
               <td class="col-tenant" title="{{ m.tenant_name }}">{{ m.tenant_name|default:"Vacant" }}</td>
@@ -257,7 +272,7 @@
               </td>
             </tr>
           {% empty %}
-            <tr><td colspan="20" class="py-4 text-center text-muted">No meters found.</td></tr>
+            <tr><td colspan="21" class="py-4 text-center text-muted">No meters found.</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -455,6 +470,24 @@ body.meter-exporting #meterListExportArea {
     font-size: .78rem;
   }
 }
+
+.ld-col-role { width: 118px; }
+.ld-role-select {
+  min-width: 108px;
+  padding-top: .15rem;
+  padding-bottom: .15rem;
+  font-size: .72rem;
+}
+.ld-role-badge-billing {
+  color: #0f5132;
+  background: #d1e7dd;
+  border: 1px solid #a3cfbb;
+}
+.ld-role-badge-check {
+  color: #055160;
+  background: #cff4fc;
+  border: 1px solid #9eeaf9;
+}
 </style>
 
 <script>
@@ -467,6 +500,39 @@ body.meter-exporting #meterListExportArea {
     const url = new URL(window.location.href);
     url.searchParams.set('_r', Date.now());
     window.location.assign(url.toString());
+  });
+
+  async function updateMeterRole(select) {
+    const previous = select.dataset.previous || 'billing';
+    select.disabled = true;
+    try {
+      const response = await fetch(select.dataset.updateUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': getCookie('csrftoken') || '',
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: new URLSearchParams({meter_role: select.value})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Role update failed.');
+      document.querySelectorAll(`[data-meter-role][data-meter-id="${data.meter_id}"]`).forEach(roleSelect => {
+        roleSelect.value = data.role;
+        roleSelect.dataset.previous = data.role;
+      });
+    } catch (error) {
+      select.value = previous;
+      alert(error.message || 'Role update failed.');
+    } finally {
+      select.disabled = false;
+    }
+  }
+
+  document.addEventListener('change', event => {
+    const select = event.target.closest('[data-meter-role]');
+    if (select) updateMeterRole(select);
   });
 
   const checkAll = document.getElementById('checkAll');

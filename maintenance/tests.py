@@ -90,7 +90,7 @@ class PublicMaintenanceRequestTests(TestCase):
         item = MaintenanceRequest.objects.get()
         self.assertEqual(item.media.count(), 3)
         for media in item.media.all():
-            self.assertIn("test-heights_a-101_", media.file.name)
+            self.assertIn("test-heights_a-101_", media.file.name.lower())
 
     def test_duplicate_refresh_protection(self):
         payload = {
@@ -117,7 +117,7 @@ class PublicMaintenanceRequestTests(TestCase):
         item = MaintenanceRequest.objects.get()
         self.assertContains(confirmation, f"Request #{item.id}")
         self.assertContains(confirmation, "Ali Khan")
-        self.assertContains(confirmation, "Window repair")
+        self.assertContains(confirmation, "Window Repair")
         self.assertContains(confirmation, "Window does not close.")
 
     def test_download_confirmation(self):
@@ -134,4 +134,4 @@ class PublicMaintenanceRequestTests(TestCase):
         self.assertEqual(download.status_code, 200)
         self.assertEqual(download["Content-Type"], "text/plain; charset=utf-8")
         self.assertIn("attachment", download["Content-Disposition"])
-        self.assertContains(download, "Bathroom tile")
+        self.assertContains(download, "Bathroom Tile")

@@ -96,6 +96,8 @@
                       {% if item.amount %}Rs. {{ item.amount }}{% endif %}
                       {% if item.issue_type %}{{ item.issue_type }}{% endif %}
                       {% if item.purpose %}{{ item.get_purpose_display }}{% endif %}
+                      {% if item.target_kind %}<span class="badge bg-info text-dark ms-1">{{ item.get_target_kind_display }}</span>{% endif %}
+                      {% if item.submitted_by_staff %}<span class="text-muted small d-block">Submitted by {{ item.submitted_by_staff.get_username }}</span>{% endif %}
                       {% if item.proposed_terms %}<span class="text-muted">{{ item.proposed_terms|truncatechars:90 }}</span>{% endif %}
                       {% if item.monthly_rent %}Rent: Rs. {{ item.monthly_rent }}{% endif %}
                       {% if item.description %}<span class="text-muted">{{ item.description|truncatechars:90 }}</span>{% endif %}

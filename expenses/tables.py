@@ -117,11 +117,13 @@ class ExpenseTable(tables.Table):
         if urls:
             return format_html(
                 '<a href="#" class="view-receipt" data-urls="{}" '
-                'aria-label="Receipts available" title="Receipts available">'
-                '<span class="text-success">✓</span></a>',
+                'aria-label="View receipt" title="View receipt">'
+                '<i class="fas fa-receipt text-success" aria-hidden="true"></i></a>',
                 "|".join(urls),
             )
-        return format_html('<span class="text-muted" aria-label="No receipts" title="No receipts">✗</span>')
+        return format_html(
+            '<span class="text-muted" aria-label="No receipt" title="No receipt">&mdash;</span>'
+        )
 
     actions = tables.TemplateColumn(
         verbose_name='Actions',
@@ -194,15 +196,12 @@ class ExpenseTable(tables.Table):
         return urls
 
     def render_actions(self, record):
-        receipt_urls = self._receipt_urls(record)  # <-- call with self.
-
         return render_to_string(
             'components/action_buttons.html',
             {
                 'view_url':   reverse('expenses:expense_detail', args=[record.pk]),
                 'edit_url':   reverse('expenses:expense_update', args=[record.pk]),
                 'delete_url': reverse('expenses:expense_delete', args=[record.pk]),
-                'receipt_urls': receipt_urls,  # pass list of urls
             },
             request=getattr(self, "request", None),
         )

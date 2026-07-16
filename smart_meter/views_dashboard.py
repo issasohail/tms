@@ -318,7 +318,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
 
     if not key_union:
         return [], [], [], {
-            "total_kwh": Decimal("2"),
+            "total_kwh": Decimal("0"),
             "usage_charges": Decimal("0"),
             "service_charges": Decimal("0"),
             "grand_total": Decimal("0"),
@@ -355,7 +355,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
 
     datasets = []
     combined_rows = []
-    total_kwh = Decimal("2")
+    total_kwh = Decimal("0")
     usage_charges = Decimal("0")
     service_total = Decimal("0")
 
@@ -391,9 +391,11 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             combined_rows.append({
                 "meter_id": m.id,
                 "meter_number": m.meter_number,
+                "meter_role": m.meter_role,
+                "meter_role_display": m.get_meter_role_display(),
                 "unit_number": unit_number,
                 "unit_id": m.unit_id,
-                "property_name": getattr(m.unit.property, "property_name", ""),
+                "property_name": getattr(getattr(m.unit, "property", None), "property_name", ""),
                 "tenant_name": tenant_name,
                 "period_label": _label_from_key(k),
                 "period_key": k,
@@ -470,8 +472,16 @@ def _export_rows(request):
     if meter_id:
         selected_meters = selected_meters.filter(id=meter_id)
 
-    labels, datasets, rows, totals = _per_meter_series(
-        selected_meters, start_date, end_date, report_type)
+    billing_meters = selected_meters.filter(meter_role=Meter.METER_ROLE_BILLING)
+    include_check = (request.GET.get("include_check") or "").lower() in ("1", "true", "yes", "on")
+    if include_check:
+        labels, datasets, rows, _display_totals = _per_meter_series(
+            selected_meters, start_date, end_date, report_type)
+        _billing_labels, _billing_datasets, _billing_rows, totals = _per_meter_series(
+            billing_meters, start_date, end_date, report_type)
+    else:
+        labels, datasets, rows, totals = _per_meter_series(
+            billing_meters, start_date, end_date, report_type)
     return report_type, rows, totals, start_date, end_date, prop_id, meter_id
 
 
@@ -517,6 +527,7 @@ def energy_dashboard(request):
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
+    include_check = (request.GET.get("include_check") or "").lower() in ("1", "true", "yes", "on")
 
     all_properties = Property.objects.all().order_by("property_name")
 
@@ -573,9 +584,20 @@ def energy_dashboard(request):
             "balance": getattr(bal_obj, "balance", None),
         }
 
-    labels, datasets, table_rows, totals = _per_meter_series(
-        selected_meters, start_date, end_date, report_type
-    )
+    billing_meters = selected_meters.filter(meter_role=Meter.METER_ROLE_BILLING)
+    if include_check:
+        labels, datasets, table_rows, _display_totals = _per_meter_series(
+            selected_meters, start_date, end_date, report_type
+        )
+        _billing_labels, _billing_datasets, _billing_rows, totals = _per_meter_series(
+            billing_meters, start_date, end_date, report_type
+        )
+        display_meters = selected_meters
+    else:
+        labels, datasets, table_rows, totals = _per_meter_series(
+            billing_meters, start_date, end_date, report_type
+        )
+        display_meters = billing_meters
 
     online_count = offline_count = 0
     online_set = set()
@@ -583,8 +605,8 @@ def energy_dashboard(request):
         cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
         # get latest live-reading timestamps for all selected meters
         live_map = {lr.meter_id: lr.ts for lr in LiveReading.objects.filter(
-            meter__in=selected_meters)}
-        for mid in selected_meters.values_list("id", flat=True):
+            meter__in=display_meters)}
+        for mid in display_meters.values_list("id", flat=True):
             ts = live_map.get(mid)
             if ts and ts >= cutoff:
                 online_count += 1
@@ -641,6 +663,7 @@ def energy_dashboard(request):
         "current_property": prop_id,
         "current_unit": unit_id,
         "current_meter": meter_id,
+        "include_check": include_check,
         "report_type": report_type,
         "start_date": start_date,
         "end_date": end_date,

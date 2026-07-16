@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{{ group.name }} Reconciliation{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container-fluid">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">{{ group.name }}</h2>
+      <small class="text-muted">{{ group.property.property_name }} · Check meter {{ group.check_meter.meter_number }}</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_list' %}">All Groups</a>
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}">Edit Group</a>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <form method="get" class="row row-cols-lg-auto g-2 align-items-end">
+        <div class="col"><label class="form-label mb-1">Start</label><input class="form-control form-control-sm" type="date" name="start" value="{{ start_date|date:'Y-m-d' }}"></div>
+        <div class="col"><label class="form-label mb-1">End</label><input class="form-control form-control-sm" type="date" name="end" value="{{ end_date|date:'Y-m-d' }}"></div>
+        <div class="col"><button class="btn btn-sm btn-primary" type="submit">Apply</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Check kWh</small><div class="fs-4 fw-bold">{{ check_kwh|floatformat:3 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Billing-sum kWh</small><div class="fs-4 fw-bold">{{ billing_kwh|floatformat:3 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance kWh</small><div class="fs-4 fw-bold {% if variance_kwh > 0 %}text-warning{% endif %}">{{ variance_kwh|floatformat:3 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance Rs.</small><div class="fs-4 fw-bold">{{ variance_rs|floatformat:2 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Leakage</small><div class="fs-4 fw-bold">{{ leakage_percent|floatformat:2 }}%</div></div></div></div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <div class="card-header py-2 fw-semibold">Billing-meter memberships</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Meter</th><th>Property / Unit</th><th>Start</th><th>End</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {% for membership in memberships %}
+                <tr>
+                  <td>{{ membership.billing_meter.meter_number }}</td>
+                  <td>{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.unit.unit_number }}</td>
+                  <td>{{ membership.start_date|date:'Y-m-d' }}</td>
+                  <td>{{ membership.end_date|date:'Y-m-d'|default:'—' }}</td>
+                  <td>{% if membership.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Ended</span>{% endif %}</td>
+                  <td class="text-end">
+                    {% if membership.is_active %}
+                      <form method="post" action="{% url 'smart_meter:meter_check_group_membership_end' group.pk membership.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">End</button></form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% empty %}<tr><td colspan="6" class="text-center text-muted py-3">No billing meters attached.</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-header py-2 fw-semibold">Add billing meter</div>
+        <div class="card-body">
+          <form method="post" novalidate>
+            {% csrf_token %}
+            {% if membership_form.non_field_errors %}<div class="alert alert-danger py-2">{{ membership_form.non_field_errors }}</div>{% endif %}
+            <div class="mb-2">{{ membership_form.billing_meter.label_tag }}{{ membership_form.billing_meter }}{{ membership_form.billing_meter.errors }}</div>
+            <div class="mb-2">{{ membership_form.start_date.label_tag }}{{ membership_form.start_date }}{{ membership_form.start_date.errors }}</div>
+            <div class="mb-2">{{ membership_form.notes.label_tag }}{{ membership_form.notes }}{{ membership_form.notes.errors }}</div>
+            <button class="btn btn-sm btn-primary" type="submit">Add Membership</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card"><div class="card-header py-2 fw-semibold">Check-meter daily readings</div><div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>Period</th><th>Begin</th><th>End</th><th>Usage</th></tr></thead><tbody>{% for row in check_rows %}<tr><td>{{ row.period_label }}</td><td>{{ row.start_kwh|floatformat:3 }}</td><td>{{ row.end_kwh|floatformat:3 }}</td><td>{{ row.usage|floatformat:3 }}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-muted">No readings.</td></tr>{% endfor %}</tbody></table></div></div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card"><div class="card-header py-2 fw-semibold">Billing-meter daily readings</div><div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>Meter</th><th>Period</th><th>Usage</th></tr></thead><tbody>{% for row in billing_rows %}<tr><td>{{ row.meter_number }}</td><td>{{ row.period_label }}</td><td>{{ row.usage|floatformat:3 }}</td></tr>{% empty %}<tr><td colspan="3" class="text-center text-muted">No readings.</td></tr>{% endfor %}</tbody></table></div></div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.jQuery?.fn?.select2) {
+    window.jQuery('.ld-billing-meter-select').select2({theme: 'bootstrap-5', width: '100%', allowClear: true, placeholder: 'Search billing meter'});
+  }
+});
+</script>
+{% endblock %}

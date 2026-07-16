@@ -1,0 +1,713 @@
+{# templates/smart_meter/meter_list.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Smart Meters{% endblock %}
+{% block main_container_class %}container-fluid meter-list-page{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+
+<div id="meterListExportArea">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h2 class="mb-0"><i class="fas fa-bolt text-warning me-2"></i> Smart Meters</h2>
+      <small class="text-muted">
+        Total: {{ total_count }}{% if page_obj %} - showing {{ page_obj|length }}{% endif %}
+      </small>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 no-export">
+      <button id="exportJpgBtn" type="button" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-file-image me-1"></i> JPG
+      </button>
+      <button id="exportPdfBtn" type="button" class="btn btn-sm btn-outline-danger">
+        <i class="fas fa-file-pdf me-1"></i> PDF
+      </button>
+      <button id="refreshBtn" type="button" class="btn btn-sm btn-primary">
+        <i class="fas fa-rotate-right me-1"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  {% if chip_cards %}
+  <div class="meter-chip-grid mb-3">
+    {% for chip in chip_cards %}
+      <a href="{{ chip.url }}"
+         class="meter-chip meter-chip-{{ chip.class }} {% if chip.active %}is-active{% endif %}">
+        <span class="meter-chip-label">{{ chip.label }}</span>
+        <span class="meter-chip-count">{{ chip.count }}</span>
+      </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="card mb-3 no-export">
+    <div class="card-body py-2 px-3">
+      {% include "includes/meter_filters.html" %}
+
+      <form id="bulkForm" method="post" action="{% url 'smart_meter:bulk_power_action' %}" class="mb-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" id="bulkAction">
+        <input type="hidden" name="scope" id="bulkScope" value="selected">
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="" id="checkAll">
+            <label class="form-check-label" for="checkAll">Select all on page</label>
+          </div>
+
+          <button type="button" class="btn btn-sm btn-danger" id="btnCutoffSel">
+            <i class="fas fa-power-off me-1"></i> Cut Off (selected)
+          </button>
+          <button type="button" class="btn btn-sm btn-success" id="btnRestoreSel">
+            <i class="fas fa-plug me-1"></i> Restore (selected)
+          </button>
+
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="" id="autoPickNegative">
+            <label class="form-check-label" for="autoPickNegative">Auto-select negative balances</label>
+          </div>
+
+          <button type="button" class="btn btn-sm btn-danger" id="btnCutoffNegative">
+            <i class="fas fa-exclamation-triangle me-1"></i> Cut Off (all negative)
+          </button>
+        </div>
+      </form>
+
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+        <div class="small text-muted">
+          Legend:
+          <span class="badge bg-secondary ms-1">Offline</span>
+          <span class="badge bg-warning text-dark ms-1">Low Balance</span>
+          <span class="badge bg-danger ms-1">Cutoff</span>
+          <span class="ms-2">Online window: {{ online_minutes }} min</span>
+        </div>
+
+        {% with qs=request.GET.urlencode %}
+          <div class="ms-auto btn-group">
+            <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_csv' %}?{{ qs }}">
+              <i class="fas fa-file-csv me-1"></i> CSV
+            </a>
+            <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_xlsx' %}?{{ qs }}">
+              <i class="fas fa-file-excel me-1"></i> Excel
+            </a>
+          </div>
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header py-2">
+      <h6 class="m-0 text-primary">Meters</h6>
+    </div>
+
+    <div class="card-body p-0">
+      {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+      <div class="table-responsive desktop-sticky-list">
+        <table class="table table-sm table-hover align-middle text-center mb-0 compact-table">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th class="col-serial"><span class="th2">Serial<span class="sub">#</span></span></th>
+              <th class="col-select no-export"><span class="th2">Select<span class="sub">#</span></span></th>
+              <th class="col-status"><span class="th2">Status</span></th>
+              <th class="col-meter">
+                <a href="{{ header_links.meter }}">
+                  Meter #
+                  {% if current_sort == 'meter' %}
+                    <span class="text-muted">{% if current_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th class="col-prop">
+                <a href="{{ header_links.property }}">
+                  Property
+                  {% if current_sort == 'property' %}
+                    <span class="text-muted">{% if current_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th class="col-unit">
+                <a href="{{ header_links.unit }}">
+                  Unit
+                  {% if current_sort == 'unit' %}
+                    <span class="text-muted">{% if current_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th class="col-tenant"><span class="th2">Tenant</span></th>
+              <th class="col-power">
+                <a class="text-decoration-none" href="{{ header_links.power }}">
+                  Power
+                  {% if current_sort == 'power' %}
+                    <span class="text-muted">{% if current_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th class="col-narrow"><span class="th2">Unit<span class="sub">Rate</span></span></th>
+              <th class="col-narrow"><span class="th2">Min<span class="sub">Alert</span></span></th>
+              <th class="col-narrow"><span class="th2">Min<span class="sub">Cutoff</span></span></th>
+              <th class="col-narrow"><span class="th2">Mode</span></th>
+              <th class="col-narrow"><span class="th2">Is<span class="sub">Active</span></span></th>
+              <th class="col-date-sm"><span class="th2">Installed<span class="sub">Date</span></span></th>
+              <th class="col-balance"><span class="th2">Balance</span></th>
+              <th class="col-ts">
+                <a href="{{ header_links.last }}">
+                  Last reading
+                  {% if current_sort == 'last' %}
+                    <span class="text-muted">{% if current_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>
+                  {% endif %}
+                </a>
+              </th>
+              <th class="col-metric" title="Voltage A (Volts)"><span class="th2">Voltage<span class="sub">(V)</span></span></th>
+              <th class="col-metric" title="Current A (Amps)"><span class="th2">Current<span class="sub">A</span></span></th>
+              <th class="col-metric" title="Total Energy (kWh)"><span class="th2">Total<span class="sub">Unit</span></span></th>
+              <th class="col-actions no-export">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+          {% for m in meters %}
+            <tr data-meter-row="{{ m.id }}"
+                class="{% if m.power_status|lower == 'off' %}table-danger{% elif not m.is_online %}table-secondary{% elif m.is_low %}table-warning{% endif %}">
+              <td class="col-serial">{{ start_index|default:1|add:forloop.counter0 }}</td>
+
+              <td class="col-select no-export">
+                <input type="checkbox"
+                       class="rowcheck"
+                       name="meters"
+                       value="{{ m.id }}"
+                       form="bulkForm"
+                       data-balance="{{ m.balance|default_if_none:0|default:0 }}">
+              </td>
+
+              <td class="col-status">
+                {% if m.is_online %}
+                  <span class="badge bg-success">Online</span>
+                {% else %}
+                  <span class="badge bg-secondary">Offline</span>
+                {% endif %}
+              </td>
+
+              <td class="col-meter"><span class="badge bg-primary">{{ m.meter_number }}</span></td>
+              <td class="col-prop" title="{{ m.unit.property.property_name }}">{{ m.unit.property.property_name }}</td>
+              <td class="col-unit" title="{{ m.unit.unit_number }}">{{ m.unit.unit_number }}</td>
+              <td class="col-tenant" title="{{ m.tenant_name }}">{{ m.tenant_name|default:"Vacant" }}</td>
+
+              <td class="col-power">
+                <div class="power-control">
+                  <span class="badge power-badge {% if m.power_status|lower == 'off' %}bg-danger{% else %}bg-success{% endif %}">
+                    {% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}
+                  </span>
+                  <button type="button"
+                          class="btn btn-sm power-toggle {% if m.power_status|lower == 'off' %}btn-outline-success{% else %}btn-outline-danger{% endif %} no-export"
+                          title="{% if m.power_status|lower == 'off' %}Turn power on{% else %}Turn power off{% endif %}"
+                          aria-label="{% if m.power_status|lower == 'off' %}Turn power on{% else %}Turn power off{% endif %}"
+                          data-status="{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}"
+                          data-meter-id="{{ m.id }}"
+                          data-meter-number="{{ m.meter_number }}"
+                          data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
+                          data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}">
+                    <i class="fas fa-power-off"></i>
+                  </button>
+                </div>
+              </td>
+
+              <td class="col-narrow">{{ m.unit_rate|floatformat:2 }}</td>
+              <td class="col-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
+              <td class="col-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
+              <td class="col-narrow">
+                {% if m.billing_mode == "prepaid" %}
+                  <span class="badge bg-info text-dark">Prepaid</span>
+                {% else %}
+                  <span class="badge bg-light text-dark border">Postpaid</span>
+                {% endif %}
+              </td>
+              <td class="col-narrow">
+                {% if m.is_active %}
+                  <span class="badge bg-success">Yes</span>
+                {% else %}
+                  <span class="badge bg-secondary">No</span>
+                {% endif %}
+              </td>
+
+              <td class="col-date-sm">{% if m.installed_at %}{{ m.installed_at|date:"Y-m-d" }}{% else %}-{% endif %}</td>
+              <td class="col-balance fw-semibold">{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</td>
+              <td class="col-date-lg">{% if m.last_ts %}{{ m.last_ts|date:"Y-m-d H:i:s" }}{% else %}-{% endif %}</td>
+              <td class="col-metric">{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }}{% else %}-{% endif %}</td>
+              <td class="col-metric">{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }}{% else %}-{% endif %}</td>
+              <td class="col-metric">{% if m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}</td>
+
+              <td class="text-nowrap col-actions no-export">
+                <div class="btn-group btn-group-sm">
+                  <a class="btn btn-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View">
+                    <i class="fas fa-eye"></i>
+                  </a>
+                  <a class="btn btn-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit">
+                    <i class="fas fa-pen"></i>
+                  </a>
+                  <a class="btn btn-danger" href="{% url 'smart_meter:meter_delete' m.id %}" title="Delete">
+                    <i class="fas fa-trash"></i>
+                  </a>
+                  <a class="btn btn-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings">
+                    <i class="fas fa-list"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="20" class="py-4 text-center text-muted">No meters found.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if page_obj %}
+    <div class="card-footer py-2 no-export">
+      <nav aria-label="Meter pagination">
+        <ul class="pagination pagination-sm mb-0 justify-content-end">
+          {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode|safe }}">&laquo;</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link">Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode|safe }}">&raquo;</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="modal fade" id="powerStatusModal" tabindex="-1" aria-labelledby="powerStatusModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="powerStatusModalTitle">Power command</h6>
+        <button type="button" class="btn-close power-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-3">
+          <div id="powerStatusSpinner" class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
+          <div>
+            <div id="powerStatusMessage" class="fw-semibold">Sending command...</div>
+            <div id="powerStatusDetail" class="small text-muted mt-1"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary power-modal-close" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.meter-list-page {
+  max-width: 1800px;
+}
+
+.compact-table {
+  table-layout: fixed;
+  font-size: .88rem;
+  min-width: 1420px;
+}
+.compact-table th,
+.compact-table td {
+  padding: .32rem .42rem;
+  white-space: nowrap;
+}
+.compact-table thead th {
+  white-space: normal !important;
+  line-height: 1.1;
+  font-size: 12px;
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+}
+.th2 { display: inline-block; text-align: center; }
+.th2 .sub { display: block; font-weight: 600; font-size: 11px; opacity: .85; }
+
+.col-serial { width: 42px; }
+.col-select { width: 48px; }
+.col-status { width: 68px; }
+.col-meter { width: 122px; }
+.col-prop { width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.col-unit { width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.col-tenant { width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.col-power { width: 112px; }
+.col-narrow { width: 64px; }
+.col-balance { width: 74px; }
+.col-ts { width: 124px; }
+.col-date-sm { width: 86px; font-size: 12px; }
+.col-date-lg { width: 122px; font-size: 12px; }
+.col-metric { width: 72px; }
+.col-actions { width: 140px; }
+
+.power-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .28rem;
+}
+.power-toggle {
+  width: 1.8rem;
+  height: 1.65rem;
+  padding: 0;
+  line-height: 1;
+}
+.power-toggle.is-working {
+  pointer-events: none;
+}
+.power-toggle .spinner-border {
+  width: .85rem;
+  height: .85rem;
+  border-width: .12em;
+}
+
+.meter-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: .5rem;
+}
+.meter-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .5rem .65rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .5rem;
+  background: var(--bs-body-bg);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,.04);
+}
+.meter-chip:hover { transform: translateY(-1px); text-decoration: none; }
+.meter-chip.is-active { border-width: 2px; box-shadow: 0 0 0 .12rem rgba(13,110,253,.12); }
+.meter-chip-label { font-size: .78rem; font-weight: 700; line-height: 1.1; }
+.meter-chip-count { font-size: 1rem; font-weight: 800; line-height: 1; }
+.meter-chip-primary { border-color: rgba(13,110,253,.45); }
+.meter-chip-success { border-color: rgba(25,135,84,.45); }
+.meter-chip-secondary { border-color: rgba(108,117,125,.45); }
+.meter-chip-dark { border-color: rgba(33,37,41,.45); }
+.meter-chip-warning { border-color: rgba(255,193,7,.70); }
+.meter-chip-danger { border-color: rgba(220,53,69,.60); }
+.meter-chip-info { border-color: rgba(13,202,240,.60); }
+
+body.meter-exporting .no-export {
+  display: none !important;
+}
+body.meter-exporting #meterListExportArea {
+  background: #fff;
+  padding: 12px;
+}
+
+@media (max-width: 992px) {
+  .compact-table {
+    min-width: 1320px;
+    font-size: .82rem;
+  }
+  .meter-list-page {
+    padding-left: .5rem;
+    padding-right: .5rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .meter-chip-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .35rem;
+  }
+  .meter-chip {
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: .12rem;
+    padding: .34rem .2rem;
+    border-radius: .45rem;
+    text-align: center;
+  }
+  .meter-chip:nth-child(n+6) {
+    grid-column: span 2;
+  }
+  .meter-chip:last-child:nth-child(odd) {
+    grid-column: span 1;
+  }
+  .meter-chip-label {
+    font-size: clamp(.5rem, 2.5vw, .62rem);
+    line-height: 1.05;
+  }
+  .meter-chip-count {
+    font-size: .78rem;
+  }
+  .compact-table {
+    min-width: 1240px;
+    font-size: .78rem;
+  }
+}
+</style>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : null;
+  }
+
+  document.getElementById('refreshBtn')?.addEventListener('click', function() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_r', Date.now());
+    window.location.assign(url.toString());
+  });
+
+  const checkAll = document.getElementById('checkAll');
+  const autoPick = document.getElementById('autoPickNegative');
+  const bulkForm = document.getElementById('bulkForm');
+  const rows = () => Array.from(document.querySelectorAll('input.rowcheck'));
+  let powerStatusModal = null;
+  let powerStatusTimer = null;
+
+  function setBulkAction(action, scope) {
+    document.getElementById('bulkAction').value = action;
+    document.getElementById('bulkScope').value = scope;
+  }
+
+  function getPowerStatusModal() {
+    const el = document.getElementById('powerStatusModal');
+    if (!el || !window.bootstrap?.Modal) return null;
+    if (!powerStatusModal) {
+      powerStatusModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+    }
+    return powerStatusModal;
+  }
+
+  function showPowerStatus(state, message, detail = '') {
+    const modal = getPowerStatusModal();
+    const title = document.getElementById('powerStatusModalTitle');
+    const msg = document.getElementById('powerStatusMessage');
+    const detailEl = document.getElementById('powerStatusDetail');
+    const spinner = document.getElementById('powerStatusSpinner');
+    const closeButtons = document.querySelectorAll('.power-modal-close');
+
+    if (powerStatusTimer) {
+      clearTimeout(powerStatusTimer);
+      powerStatusTimer = null;
+    }
+
+    if (title) title.textContent = state === 'error' ? 'Command failed' : state === 'success' ? 'Command complete' : 'Power command';
+    if (msg) {
+      msg.textContent = message;
+      msg.classList.toggle('text-success', state === 'success');
+      msg.classList.toggle('text-danger', state === 'error');
+      msg.classList.toggle('text-primary', state === 'working');
+    }
+    if (detailEl) detailEl.textContent = detail;
+    if (spinner) {
+      spinner.classList.toggle('d-none', state !== 'working');
+      spinner.classList.toggle('text-primary', state === 'working');
+    }
+    closeButtons.forEach(btn => {
+      btn.classList.toggle('d-none', state === 'working');
+    });
+
+    if (modal) {
+      modal.show();
+      if (state === 'success') {
+        powerStatusTimer = setTimeout(() => modal.hide(), 1400);
+      }
+    } else if (state !== 'working') {
+      alert(`${message}${detail ? '\n' + detail : ''}`);
+    }
+  }
+
+  function setButtonWorking(button, isWorking) {
+    button.disabled = isWorking;
+    button.classList.toggle('is-working', isWorking);
+    if (isWorking) {
+      button.dataset.originalHtml = button.innerHTML;
+      button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+    } else if (button.dataset.originalHtml) {
+      button.innerHTML = button.dataset.originalHtml;
+      delete button.dataset.originalHtml;
+    }
+  }
+
+  function ensureAnySelected() {
+    if (document.getElementById('bulkScope').value === 'negative') return true;
+    if (rows().some(cb => cb.checked)) return true;
+    alert('Select at least one meter.');
+    return false;
+  }
+
+  checkAll?.addEventListener('change', event => {
+    rows().forEach(cb => cb.checked = event.target.checked);
+  });
+
+  autoPick?.addEventListener('change', event => {
+    const negOnly = event.target.checked;
+    rows().forEach(cb => {
+      const bal = parseFloat(cb.dataset.balance || '0');
+      cb.checked = negOnly ? bal < 0 : cb.checked;
+    });
+  });
+
+  document.getElementById('btnCutoffSel')?.addEventListener('click', () => {
+    setBulkAction('cutoff', 'selected');
+    if (ensureAnySelected()) bulkForm.submit();
+  });
+
+  document.getElementById('btnRestoreSel')?.addEventListener('click', () => {
+    setBulkAction('restore', 'selected');
+    if (ensureAnySelected()) bulkForm.submit();
+  });
+
+  document.getElementById('btnCutoffNegative')?.addEventListener('click', () => {
+    setBulkAction('cutoff', 'negative');
+    bulkForm.submit();
+  });
+
+  function setPowerState(row, isOn) {
+    const badge = row.querySelector('.power-badge');
+    const button = row.querySelector('.power-toggle');
+    if (badge) {
+      badge.textContent = isOn ? 'ON' : 'OFF';
+      badge.classList.toggle('bg-success', isOn);
+      badge.classList.toggle('bg-danger', !isOn);
+    }
+    if (button) {
+      button.dataset.status = isOn ? 'ON' : 'OFF';
+      button.classList.toggle('btn-outline-danger', isOn);
+      button.classList.toggle('btn-outline-success', !isOn);
+      button.title = isOn ? 'Turn power off' : 'Turn power on';
+      button.setAttribute('aria-label', button.title);
+    }
+    row.classList.toggle('table-danger', !isOn);
+  }
+
+  async function togglePower(button) {
+    const row = button.closest('[data-meter-row]');
+    const isOff = (button.dataset.status || 'OFF').toUpperCase() === 'OFF';
+    const nextIsOn = isOff;
+    const url = isOff ? button.dataset.restoreUrl : button.dataset.cutoffUrl;
+    const meterNumber = button.dataset.meterNumber || button.dataset.meterId || '';
+    const actionText = isOff ? 'restore power' : 'cut off power';
+
+    showPowerStatus('working', `Sending ${actionText} command...`, meterNumber ? `Meter ${meterNumber}` : '');
+    setButtonWorking(button, true);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken') || ''
+        },
+        body: JSON.stringify({ meter_id: button.dataset.meterId })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || 'Request failed');
+      }
+      if (row) setPowerState(row, nextIsOn);
+      showPowerStatus(
+        'success',
+        nextIsOn ? 'Power restored successfully.' : 'Power cut off successfully.',
+        meterNumber ? `Meter ${meterNumber}` : ''
+      );
+    } catch (error) {
+      showPowerStatus(
+        'error',
+        'Power command failed.',
+        error.message || 'Request failed'
+      );
+    } finally {
+      setButtonWorking(button, false);
+    }
+  }
+
+  document.addEventListener('click', event => {
+    const button = event.target.closest('.power-toggle');
+    if (button) togglePower(button);
+  });
+
+  function loadScriptOnce(src, test) {
+    if (test()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${src}"]`);
+      if (existing) {
+        existing.addEventListener('load', resolve, { once: true });
+        existing.addEventListener('error', reject, { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  async function renderMeterListCanvas() {
+    await loadScriptOnce('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js', () => Boolean(window.html2canvas));
+    const target = document.getElementById('meterListExportArea');
+    document.body.classList.add('meter-exporting');
+    try {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      return await window.html2canvas(target, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: Math.max(target.scrollWidth, 1600)
+      });
+    } finally {
+      document.body.classList.remove('meter-exporting');
+    }
+  }
+
+  document.getElementById('exportJpgBtn')?.addEventListener('click', async () => {
+    try {
+      const canvas = await renderMeterListCanvas();
+      const link = document.createElement('a');
+      link.download = `smart_meters_${new Date().toISOString().slice(0, 10)}.jpg`;
+      link.href = canvas.toDataURL('image/jpeg', 0.95);
+      link.click();
+    } catch (error) {
+      alert(error && error.message ? error.message : 'Could not export JPG.');
+    }
+  });
+
+  document.getElementById('exportPdfBtn')?.addEventListener('click', async () => {
+    try {
+      await loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', () => Boolean(window.jspdf));
+      const canvas = await renderMeterListCanvas();
+      const pdf = new window.jspdf.jsPDF({
+        orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
+        unit: 'pt',
+        format: 'a4'
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+      const imgWidth = canvas.width * ratio;
+      const imgHeight = canvas.height * ratio;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = 16;
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, imgWidth, imgHeight);
+      pdf.save(`smart_meters_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      alert(error && error.message ? error.message : 'Could not export PDF.');
+    }
+  });
+</script>
+
+{% endblock %}

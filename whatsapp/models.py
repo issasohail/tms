@@ -235,11 +235,13 @@ class WhatsAppConversation(models.Model):
     MODE_GUEST = "guest"
     MODE_TENANT = "tenant"
     MODE_STAFF = "staff"
+    MODE_HANDYMAN = "handyman"
     MODE_HANDOVER = "handover"
     MODE_CHOICES = [
         (MODE_GUEST, "Guest"),
         (MODE_TENANT, "Tenant"),
         (MODE_STAFF, "Staff"),
+        (MODE_HANDYMAN, "Handyman"),
         (MODE_HANDOVER, "Handover"),
     ]
 
@@ -452,6 +454,16 @@ class PendingWhatsAppMedia(models.Model):
         (STATUS_APPROVED, "Approved"),
         (STATUS_REJECTED, "Rejected"),
     ]
+    TARGET_PROPERTY_PHOTO = "property_photo"
+    TARGET_UNIT_PHOTO = "unit_photo"
+    TARGET_LEASE_PHOTO = "lease_photo"
+    TARGET_LEASE_DOCUMENT = "lease_document"
+    TARGET_CHOICES = [
+        (TARGET_PROPERTY_PHOTO, "Building / Property Photo"),
+        (TARGET_UNIT_PHOTO, "Unit Photo"),
+        (TARGET_LEASE_PHOTO, "Lease Gallery Photo"),
+        (TARGET_LEASE_DOCUMENT, "Lease Document"),
+    ]
 
     conversation = models.ForeignKey(WhatsAppConversation, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_media")
     original_whatsapp_message = models.ForeignKey(WhatsAppMessageLog, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_media")
@@ -461,6 +473,8 @@ class PendingWhatsAppMedia(models.Model):
     media_type = models.CharField(max_length=30, blank=True)
     whatsapp_media_id = models.CharField(max_length=160, blank=True)
     purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_OTHER)
+    target_kind = models.CharField(max_length=24, choices=TARGET_CHOICES, blank=True)
+    batch_key = models.UUIDField(null=True, blank=True, db_index=True, editable=False)
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.SET_NULL, null=True, blank=True)
     lease = models.ForeignKey("leases.Lease", on_delete=models.SET_NULL, null=True, blank=True)
     property = models.ForeignKey("properties.Property", on_delete=models.SET_NULL, null=True, blank=True)
@@ -468,6 +482,13 @@ class PendingWhatsAppMedia(models.Model):
     ai_confidence = models.PositiveSmallIntegerField(default=0)
     ai_notes = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    submitted_by_staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_whatsapp_media",
+    )
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

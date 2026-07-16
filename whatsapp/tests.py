@@ -6,6 +6,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -13,13 +14,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from whatsapp.services.payment_matching import extract_payment_text_fields
-from whatsapp.services.whatsapp_ai import detect_intent
+from whatsapp.services.whatsapp_ai import WhatsAppAIAssistant, detect_intent
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
 from leases.models import Lease
 from properties.models import Property, Unit
 from tenants.models import Tenant
 from whatsapp.models import (
+    PendingWhatsAppMaintenance,
     PendingWhatsAppMedia,
     WhatsAppConversation,
     WhatsAppHandover,
@@ -189,6 +191,196 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.pending_state = "mode_selection"
         self.conversation.save()
         self.assertEqual(resolve_mode(self.conversation, "staff", sender), WhatsAppConversation.MODE_STAFF)
+
+    def test_staff_mode_is_available_when_same_phone_matches_multiple_tenants(self):
+        Tenant.objects.create(
+            first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-4444444-4"
+        )
+        self.staff1.whatsapp_number = self.phone
+        self.staff1.save(update_fields=["whatsapp_number"])
+        self.conversation.selected_mode = ""
+        self.conversation.mode_expires_at = None
+        self.conversation.pending_state = ""
+        self.conversation.save()
+        sender = resolve_sender(self.phone, conversation=self.conversation)
+        self.assertTrue(sender.ambiguous)
+        self.assertEqual(resolve_mode(self.conversation, "hi", sender), "choose_mode")
+        sender = resolve_sender(self.phone, conversation=self.conversation)
+        self.assertEqual(resolve_mode(self.conversation, "staff", sender), WhatsAppConversation.MODE_STAFF)
+
+    def test_multiple_tenant_matches_start_verified_tenant_selection(self):
+        Tenant.objects.create(
+            first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-5555555-5"
+        )
+        self.staff1.whatsapp_number = self.phone
+        self.staff1.save(update_fields=["whatsapp_number"])
+        self.conversation.selected_mode = ""
+        self.conversation.mode_expires_at = None
+        self.conversation.pending_state = "mode_selection"
+        self.conversation.save()
+        sender = resolve_sender(self.phone, conversation=self.conversation)
+        self.assertEqual(resolve_mode(self.conversation, "tenant", sender), "choose_tenant_identity")
+        self.conversation.refresh_from_db()
+        self.assertEqual(self.conversation.pending_state, "tenant_identity_selection")
+        self.assertEqual(len(self.conversation.context["tenant_identity_options"]), 2)
+
+    def test_role_simulator_runs_staff_conversation_without_changing_phone(self):
+        self.staff1.user_permissions.add(
+            Permission.objects.get(codename="change_whatsappmessagelog")
+        )
+        self.client.force_login(self.staff1)
+        response = self.client.post(
+            reverse("whatsapp:simulator"),
+            {
+                "role": "staff",
+                "staff": self.staff1.pk,
+                "message": "hi",
+                "delivery_phone": self.phone,
+                "new_session": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Staff Inbox / Menu")
+        self.staff1.refresh_from_db()
+        self.assertEqual(self.staff1.whatsapp_number, "+923009990001")
+
+    def test_additional_maintenance_photo_uses_same_pending_request(self):
+        pending = PendingWhatsAppMaintenance.objects.create(
+            conversation=self.conversation,
+            original_whatsapp_message=self.message,
+            phone=self.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Plumbing",
+            urgency="normal",
+            description="Pipe leak",
+        )
+        self.conversation.pending_state = "pending_maintenance"
+        self.conversation.context["pending_maintenance_id"] = pending.pk
+        self.conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        extra_log = WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=self.phone,
+            wa_message_id="wamid.maintenance.photo2",
+            message_type="image",
+            status="received",
+            payload={"type": "image", "image": {"caption": "another angle", "filename": "angle.jpg"}},
+        )
+        staged_media = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            phone=self.phone,
+            file=ContentFile(b"jpg", name="angle.jpg"),
+            original_filename="angle.jpg",
+            media_type="image",
+        )
+        extra_log.api_response = {"simulator_pending_media_id": staged_media.pk}
+        extra_log.save(update_fields=["api_response"])
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        response, intent, _metadata = assistant._handle_media_message(
+            extra_log,
+            self.conversation,
+            "another angle",
+            "image",
+            resolve_sender(self.phone, conversation=self.conversation),
+        )
+        pending.refresh_from_db()
+        self.assertEqual(intent, "maintenance_media_attached")
+        self.assertIn("same maintenance request", response)
+        self.assertEqual(list(pending.media.values_list("pk", flat=True)), [staged_media.pk])
+
+    def test_done_closes_open_maintenance_batch(self):
+        pending = PendingWhatsAppMaintenance.objects.create(
+            conversation=self.conversation,
+            phone=self.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            description="Leak",
+        )
+        self.conversation.pending_state = "pending_maintenance"
+        self.conversation.context["pending_maintenance_id"] = pending.pk
+        self.conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        result = WhatsAppAIAssistant(service=MagicMock())._consume_global_pending_state(
+            self.message,
+            self.conversation,
+            "DONE",
+            resolve_sender(self.phone, conversation=self.conversation),
+        )
+        self.assertEqual(result[1], "maintenance_submitted")
+        self.conversation.refresh_from_db()
+        self.assertEqual(self.conversation.pending_state, "")
+
+    def test_staff_building_photo_is_batched_for_selected_accessible_property(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        staff_conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            pending_state="staff_property_media_menu",
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        message = WhatsAppMessageLog.objects.create(
+            direction="inbound", phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.photo.menu", message_type="text", status="received",
+            payload={"type": "text", "text": {"body": "1"}},
+        )
+        assistant._consume_staff_menu_state(message, staff_conversation, "1", self.staff1)
+        staff_conversation.refresh_from_db()
+        self.assertEqual(staff_conversation.pending_state, "staff_upload_target_query")
+        assistant._consume_staff_menu_state(message, staff_conversation, "Test Residency", self.staff1)
+        staff_conversation.refresh_from_db()
+        self.assertEqual(staff_conversation.pending_state, "staff_waiting_upload")
+
+        media_log = WhatsAppMessageLog.objects.create(
+            direction="inbound", phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.photo.file", message_type="image", status="received",
+            payload={"type": "image", "image": {"caption": "front", "filename": "front.jpg"}},
+        )
+        staged = PendingWhatsAppMedia.objects.create(
+            conversation=staff_conversation, phone=self.staff1.whatsapp_number,
+            file=ContentFile(b"jpg", name="front.jpg"), original_filename="front.jpg", media_type="image",
+        )
+        media_log.api_response = {"simulator_pending_media_id": staged.pk}
+        media_log.save(update_fields=["api_response"])
+        response, intent, _metadata = assistant._handle_media_message(
+            media_log,
+            staff_conversation,
+            "front",
+            "image",
+            resolve_sender(self.staff1.whatsapp_number, conversation=staff_conversation),
+        )
+        staged.refresh_from_db()
+        self.assertEqual(intent, "staff_upload_batched")
+        self.assertIn("approval batch", response)
+        self.assertEqual(staged.target_kind, PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO)
+        self.assertEqual(staged.property, self.property)
+        self.assertEqual(staged.submitted_by_staff, self.staff1)
+
+    def test_lease_photo_approval_routes_to_lease_gallery(self):
+        from core.views import _attach_pending_media_from_core
+
+        pending = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            phone=self.phone,
+            file=ContentFile(b"jpg", name="lease-photo.jpg"),
+            original_filename="lease-photo.jpg",
+            media_type="image",
+            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
+            target_kind=PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+            lease=self.lease,
+            tenant=self.tenant,
+            property=self.property,
+            unit=self.unit,
+        )
+        with patch("leases.models_lease_photos.LeaseMedia.objects.create") as create_gallery_photo:
+            _attach_pending_media_from_core(pending, self.staff1)
+        create_gallery_photo.assert_called_once()
+        self.assertEqual(create_gallery_photo.call_args.kwargs["lease"], self.lease)
+        self.assertEqual(create_gallery_photo.call_args.kwargs["media_type"], "image")
 
     def test_dual_role_tenant_intent_is_inferred(self):
         self.staff1.whatsapp_number = self.phone

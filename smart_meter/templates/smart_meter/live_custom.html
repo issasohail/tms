@@ -1548,6 +1548,12 @@
 
             </select>
 
+            <select name="role" class="form-select form-select-sm w-auto">
+              <option value="">All roles</option>
+              <option value="billing" {% if current_role == "billing" %}selected{% endif %}>Billing</option>
+              <option value="check" {% if current_role == "check" %}selected{% endif %}>Check / Audit</option>
+            </select>
+
             <select name="active" class="form-select form-select-sm w-auto">
               <option value="active" {% if active_filter == "active" %}selected{% endif %}>Active</option>
               <option value="all" {% if active_filter == "all" %}selected{% endif %}>All</option>
@@ -1654,6 +1660,13 @@
 
             <td class="sticky-left col-meter text-center" title="{{ m.meter_number }}">
               <a href="{% url 'smart_meter:meter_detail' m.id %}" class="live-detail-link">{{ m.meter_number }}</a>
+              <div>
+                {% if m.is_check_meter %}
+                  <span class="badge bg-info text-dark">Check</span>
+                {% else %}
+                  <span class="badge bg-success">Billing</span>
+                {% endif %}
+              </div>
               <!-- Small-screen: place 3 controls under Meter # -->
               <div class="mobile-actions">
                 <span

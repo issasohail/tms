@@ -124,6 +124,54 @@ class EndLeaseCalculationTests(SimpleTestCase):
 
 
 class EndLeasePostingTests(TestCase):
+    def test_rollback_action_reactivates_lease_and_reopens_end_lease(self):
+        today = date.today()
+        user = get_user_model().objects.create_superuser(
+            username="lease-rollback-view", email="rollback-view@example.com", password="test-password"
+        )
+        property_obj = Property.objects.create(
+            property_name="Rollback View Property",
+            owner_name="Owner",
+            owner_cnic="6110112345678",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="RV-1")
+        tenant = Tenant.objects.create(
+            first_name="Rollback", last_name="Tenant", cnic="6110112345679"
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=today - timedelta(days=60),
+            end_date=today,
+            monthly_rent=Decimal("10000.00"),
+            status="ended",
+        )
+        self.client.force_login(user)
+        ended_detail = self.client.get(reverse("leases:lease_detail", args=[lease.pk]))
+        self.assertEqual(ended_detail.status_code, 200)
+        self.assertContains(ended_detail, "Correct / Re-do Lease End")
+        self.assertContains(
+            ended_detail,
+            f'value="{(today + timedelta(days=1)).isoformat()}"',
+            html=False,
+        )
+        response = self.client.post(
+            reverse("leases:lease_end_rollback_action", args=[lease.pk]),
+            {"restored_end_date": (today + timedelta(days=180)).isoformat(), "notes": "Correct end date"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("open_end_lease=1", response["Location"])
+        lease.refresh_from_db()
+        self.assertEqual(lease.status, "active")
+
+        detail = self.client.get(response["Location"])
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "End Lease")
+        self.assertNotContains(detail, "Correct / Re-do Lease End")
+
     def test_future_electricity_is_projected_then_transferred_only_once(self):
         today = date.today()
         month_first = today.replace(day=1)

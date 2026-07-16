@@ -20,7 +20,7 @@
 }
 
 /* Section 1 — photo + cnic front/back (fixed) */
-.ld-hdr-media { grid-area:media; display: flex; gap: 6px; }
+.ld-hdr-media { grid-area:media; display:flex; align-items:flex-start; gap:6px; }
 .ld-doc-tile {
   width:96px; background:#eff6ff; border:2px solid #2563eb; border-radius:7px;
   padding:5px; text-align:center;
@@ -683,7 +683,7 @@
         </button>
       {% elif lease.status == "ended" %}
         <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#rollbackEndLeaseModal">
-          <i class="fas fa-undo"></i> Roll Back Lease End
+          <i class="fas fa-undo"></i> Correct / Re-do Lease End
         </button>
       {% endif %}
       <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-info"><i class="fas fa-sync-alt"></i> Renew</a>
@@ -1614,7 +1614,8 @@
           <div class="alert alert-warning py-2 small">
             This reactivates the lease, cancels the final-settlement invoice and pending refund,
             restores invoices cancelled by End Lease, and reverses any security applied to the lease balance.
-            Messages already sent cannot be recalled.
+            Messages already sent cannot be recalled. After a successful rollback, the End Lease window
+            opens automatically so you can enter the corrected end date and settlement.
           </div>
           <label class="form-label small fw-semibold">Restore Contract End Date</label>
           <input type="date" name="restored_end_date" class="form-control form-control-sm"
@@ -1625,7 +1626,7 @@
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-sm btn-danger">Confirm Rollback</button>
+          <button type="submit" class="btn btn-sm btn-danger">Rollback &amp; Re-open End Lease</button>
         </div>
       </form>
     </div>

@@ -48,6 +48,15 @@
           </select>
         </div>
 
+        <div class="grp grp-a">
+          <label class="form-label mb-1 small">Role</label>
+          <select name="role" class="form-select form-select-sm auto-submit">
+            <option value="">All</option>
+            <option value="billing" {% if current_role == 'billing' %}selected{% endif %}>Billing</option>
+            <option value="check" {% if current_role == 'check' %}selected{% endif %}>Check / Audit</option>
+          </select>
+        </div>
+
         {# Row B (sm): Range / Start / End #}
         <div class="grp grp-b f-range">
           <label class="form-label mb-1 small">Range</label>
@@ -115,6 +124,7 @@
           <th class="col-unit">Unit</th>
           <th class="col-tenant">Tenant</th>
           <th class="col-meter">Meter #</th>
+          <th class="ld-col-role">Role</th>
           {# Use unified toggle class on headers so they hide too #}
           <th class="col-ip toggle-col-ip d-none">Source IP</th>
           <th class="col-port toggle-col-port d-none">Port</th>
@@ -134,7 +144,7 @@
               {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter %}
             {% endif %}
           {% empty %}
-            <tr><td colspan="13" class="text-center py-3">No readings found.</td></tr>
+            <tr><td colspan="14" class="text-center py-3">No readings found.</td></tr>
           {% endfor %}
         </tbody>
     </table>
@@ -213,11 +223,12 @@
 
     /* ===== Column widths (large) ===== */
     --lg-col-idx: 4%;
-    --lg-col-ts:  20%;
+    --lg-col-ts:  13%;
     --lg-col-prop:14%;
     --lg-col-unit:8%;
     --lg-col-tenant:12%;
     --lg-col-meter:10%;
+    --lg-col-role: 10%;
     --lg-col-ip:  10%;
     --lg-col-port:6%;
     --lg-col-volt:8%;
@@ -228,10 +239,11 @@
 
     /* ===== Column widths (small visible ones only) ===== */
     --sm-col-idx:    7%;
-    --sm-col-ts:    20%;
-    --sm-col-prop:  24%;
-    --sm-col-meter: 31%;
-    --sm-col-energy:18%;
+    --sm-col-ts:    17%;
+    --sm-col-prop:  20%;
+    --sm-col-meter: 25%;
+    --sm-col-role:  18%;
+    --sm-col-energy:13%;
 
     /* Small heading */
     --sm-heading-fz: 1rem;
@@ -250,6 +262,7 @@
     .col-unit  { width: var(--lg-col-unit); }
     .col-tenant{ width: var(--lg-col-tenant); }
     .col-meter { width: var(--lg-col-meter); }
+    .ld-col-role { width: var(--lg-col-role); }
     .col-ip    { width: var(--lg-col-ip); }
     .col-port  { width: var(--lg-col-port); }
     .col-volt  { width: var(--lg-col-volt); }
@@ -266,6 +279,7 @@
     .col-ts    { width: var(--sm-col-ts); }
     .col-prop  { width: var(--sm-col-prop); }
     .col-meter { width: var(--sm-col-meter); }
+    .ld-col-role { width: var(--sm-col-role); }
     .col-energy{ width: var(--sm-col-energy); }
   }
 
@@ -377,6 +391,23 @@
   /* Extra safety so the card never spills horizontally */
   .card > .card-body{ overflow-x: hidden; }
 
+  .ld-role-select {
+    width: 100%;
+    min-width: 88px;
+    padding: .1rem 1.45rem .1rem .25rem;
+    font-size: .68rem;
+    line-height: 1.2;
+  }
+  @media (max-width: 576px) {
+    .ld-role-select {
+      min-width: 0;
+      padding-right: .8rem;
+      font-size: .5rem;
+      background-position: right .15rem center;
+      background-size: 8px 6px;
+    }
+  }
+
 </style>
 
 {% endblock %}
@@ -479,6 +510,44 @@
   }
   bindToggle('toggleIp',   'toggle-col-ip',   false);
   bindToggle('togglePort', 'toggle-col-port', false);
+
+  function csrfToken() {
+    const match = document.cookie.match(new RegExp('(^| )csrftoken=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : '';
+  }
+
+  async function updateMeterRole(select) {
+    const previous = select.dataset.previous || 'billing';
+    select.disabled = true;
+    try {
+      const response = await fetch(select.dataset.updateUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken(),
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: new URLSearchParams({meter_role: select.value})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Role update failed.');
+      document.querySelectorAll(`[data-meter-role][data-meter-id="${data.meter_id}"]`).forEach(roleSelect => {
+        roleSelect.value = data.role;
+        roleSelect.dataset.previous = data.role;
+      });
+    } catch (error) {
+      select.value = previous;
+      alert(error.message || 'Role update failed.');
+    } finally {
+      select.disabled = false;
+    }
+  }
+
+  document.addEventListener('change', event => {
+    const select = event.target.closest('[data-meter-role]');
+    if (select) updateMeterRole(select);
+  });
 
   // inline edit + dblclick
   window.toggleInlineEdit = function(id, show) {

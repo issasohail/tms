@@ -7,6 +7,7 @@ app_name = "whatsapp"
 urlpatterns = [
     path("webhook/", views.webhook, name="webhook"),
     path("webhook/logs/", views.webhook_log_list, name="webhook_log_list"),
+    path("simulator/", views.whatsapp_simulator, name="simulator"),
     path("webhook/messages/<int:message_log_id>/replay-ai/", views.replay_ai_message, name="replay_ai_message"),
     path("utility-templates/", views.utility_template_list, name="utility_template_list"),
     path("utility-templates/<int:pk>/", views.utility_template_edit, name="utility_template_edit"),

@@ -53,6 +53,10 @@ class SenderContext:
     def has_active_tenant(self):
         return self.has_tenant
 
+    @property
+    def has_handyman(self):
+        return len(self.handyman_matches) == 1
+
 
 def resolve_sender(phone_number, conversation=None, log_ambiguity=True):
     normalized = normalize_phone_number(phone_number)
@@ -61,6 +65,24 @@ def resolve_sender(phone_number, conversation=None, log_ambiguity=True):
     staff = _matching_staff(normalized, suffix)
     handymen = _matching_handymen(normalized, suffix)
     owners = _matching_owners(normalized, suffix)
+    simulator_identity = (conversation.context or {}).get("simulator_identity") if conversation else None
+    if simulator_identity:
+        role = simulator_identity.get("role")
+        object_id = simulator_identity.get("object_id")
+        tenants = list(Tenant.objects.filter(pk=object_id, is_active=True)) if role == "tenant" else []
+        staff = list(get_user_model().objects.filter(pk=object_id, is_active=True, is_staff=True)) if role == "staff" else []
+        handymen = list(HandymanProfile.objects.filter(pk=object_id, is_active=True)) if role == "handyman" else []
+        owners = []
+    selected_tenant_id = None
+    if conversation:
+        selected_tenant_id = (conversation.context or {}).get("selected_tenant_identity_id")
+    if selected_tenant_id:
+        selected = [item for item in tenants if item.pk == selected_tenant_id]
+        if selected:
+            tenants = selected
+        else:
+            conversation.context.pop("selected_tenant_identity_id", None)
+
     tenant_ids = [item.pk for item in tenants]
     active_leases = list(
         Lease.objects.select_related("tenant", "unit__property")

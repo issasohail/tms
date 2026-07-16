@@ -4,7 +4,7 @@ from django.db.models.signals import post_save
 
 from decimal import Decimal
 from django.dispatch import receiver
-from django.db import models
+from django.db import models, transaction
 from properties.models import Unit  # Adjust if your app name is different
 from smart_meter.meter_client import send_meter_request
 from datetime import timedelta
@@ -42,6 +42,12 @@ class Meter(models.Model):
         (METER_TYPE_SUB, "Sub Meter"),
         (METER_TYPE_OTHER, "Other"),
     ]
+    METER_ROLE_BILLING = "billing"
+    METER_ROLE_CHECK = "check"
+    METER_ROLE_CHOICES = [
+        (METER_ROLE_BILLING, "Billing"),
+        (METER_ROLE_CHECK, "Check / Audit"),
+    ]
 
     unit = models.ForeignKey(
         "properties.Unit",
@@ -62,6 +68,11 @@ class Meter(models.Model):
         max_length=20,
         choices=BILLING_MODE_CHOICES,
         default="postpaid",
+    )
+    meter_role = models.CharField(
+        max_length=10,
+        choices=METER_ROLE_CHOICES,
+        default=METER_ROLE_BILLING,
     )
     power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
@@ -92,6 +103,51 @@ class Meter(models.Model):
     @property
     def is_prepaid(self):
         return self.billing_mode == "prepaid"
+
+    @property
+    def is_check_meter(self):
+        return self.meter_role == self.METER_ROLE_CHECK
+
+    def change_role(self, new_role, *, effective_date, user=None, reason=""):
+        valid_roles = {value for value, _label in self.METER_ROLE_CHOICES}
+        if new_role not in valid_roles:
+            raise ValidationError({"meter_role": "Select a valid meter role."})
+        if new_role != self.meter_role:
+            if (
+                new_role == self.METER_ROLE_BILLING and
+                MeterCheckGroup.objects.filter(check_meter=self).exists()
+            ):
+                raise ValidationError({
+                    "meter_role": "Remove this meter from its Check Group before changing it to Billing."
+                })
+            if (
+                new_role == self.METER_ROLE_CHECK and
+                self.check_group_memberships.filter(is_active=True, end_date__isnull=True).exists()
+            ):
+                raise ValidationError({
+                    "meter_role": "End this meter's active Check Group membership before changing it to Check / Audit."
+                })
+
+        with transaction.atomic():
+            current = (
+                self.role_history.select_for_update()
+                .filter(is_active=True, end_date__isnull=True)
+                .first()
+            )
+            if current and current.role == new_role:
+                return current
+            if current:
+                current.close(end_date=effective_date, reason=reason)
+            history = MeterRoleHistory.objects.create(
+                meter=self,
+                role=new_role,
+                start_date=effective_date,
+                is_active=True,
+                changed_by=user,
+                reason=reason,
+            )
+        self.meter_role = new_role
+        return history
 
     @property
     def current_lease(self):
@@ -240,6 +296,176 @@ class MeterInstallation(models.Model):
     def __str__(self):
         end = self.end_date or "current"
         return f"{self.meter.meter_number} @ {self.unit} ({self.start_date} to {end})"
+
+
+class MeterRoleHistory(models.Model):
+    meter = models.ForeignKey(
+        Meter,
+        on_delete=models.CASCADE,
+        related_name="role_history",
+    )
+    role = models.CharField(max_length=10, choices=Meter.METER_ROLE_CHOICES)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    active_role_key = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        editable=False,
+        unique=True,
+        help_text="Internal DB guard: meter id while this role record is active, NULL when closed.",
+    )
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    reason = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-start_date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(end_date__isnull=True) | Q(end_date__gte=models.F("start_date")),
+                name="meter_role_history_end_after_start",
+            ),
+        ]
+
+    def clean(self):
+        if self.end_date and self.end_date < self.start_date:
+            raise ValidationError({"end_date": "End date cannot be before start date."})
+        if self.is_active and self.end_date:
+            raise ValidationError({"is_active": "Closed role records cannot remain active."})
+        if self.is_active:
+            clash = MeterRoleHistory.objects.filter(
+                meter=self.meter,
+                is_active=True,
+                end_date__isnull=True,
+            )
+            if self.pk:
+                clash = clash.exclude(pk=self.pk)
+            if clash.exists():
+                raise ValidationError("This meter already has an active role record.")
+
+    def save(self, *args, **kwargs):
+        self.active_role_key = self.meter_id if self.is_active and self.end_date is None else None
+        self.full_clean()
+        super().save(*args, **kwargs)
+        if self.is_active and self.end_date is None:
+            Meter.objects.filter(pk=self.meter_id).update(meter_role=self.role)
+
+    def close(self, *, end_date, reason=""):
+        self.end_date = end_date
+        self.is_active = False
+        if reason:
+            self.reason = (self.reason + "\n" + reason).strip()
+        self.save()
+
+    def __str__(self):
+        end = self.end_date or "current"
+        return f"{self.meter.meter_number}: {self.get_role_display()} ({self.start_date} to {end})"
+
+
+class MeterCheckGroup(models.Model):
+    name = models.CharField(max_length=100)
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.CASCADE,
+        related_name="meter_check_groups",
+    )
+    check_meter = models.OneToOneField(
+        Meter,
+        on_delete=models.CASCADE,
+        related_name="check_group",
+        limit_choices_to={"meter_role": "check"},
+    )
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.check_meter_id and self.check_meter.meter_role != Meter.METER_ROLE_CHECK:
+            raise ValidationError({"check_meter": "Selected meter is not marked as a Check/Audit meter."})
+
+    def active_billing_meters(self, as_of=None):
+        as_of = as_of or timezone.localdate()
+        return Meter.objects.filter(
+            meter_role=Meter.METER_ROLE_BILLING,
+            check_group_memberships__group=self,
+            check_group_memberships__start_date__lte=as_of,
+        ).filter(
+            Q(check_group_memberships__end_date__isnull=True) |
+            Q(check_group_memberships__end_date__gte=as_of)
+        ).distinct()
+
+    def __str__(self):
+        return self.name
+
+
+class MeterCheckGroupMembership(models.Model):
+    group = models.ForeignKey(
+        MeterCheckGroup,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    billing_meter = models.ForeignKey(
+        Meter,
+        on_delete=models.CASCADE,
+        related_name="check_group_memberships",
+        limit_choices_to={"meter_role": "billing"},
+    )
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-start_date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(end_date__isnull=True) | Q(end_date__gte=models.F("start_date")),
+                name="meter_check_group_membership_end_after_start",
+            ),
+        ]
+
+    def clean(self):
+        if self.end_date and self.end_date < self.start_date:
+            raise ValidationError({"end_date": "End date cannot be before start date."})
+        if self.is_active and self.end_date:
+            raise ValidationError({"is_active": "Closed memberships cannot remain active."})
+        if self.billing_meter_id and self.billing_meter.meter_role != Meter.METER_ROLE_BILLING:
+            raise ValidationError({"billing_meter": "Selected meter is not marked as a Billing meter."})
+        if self.billing_meter_id:
+            clash = MeterCheckGroupMembership.objects.filter(
+                billing_meter=self.billing_meter,
+            ).exclude(group=self.group)
+            if self.pk:
+                clash = clash.exclude(pk=self.pk)
+            if self.end_date:
+                clash = clash.filter(start_date__lte=self.end_date)
+            clash = clash.filter(Q(end_date__isnull=True) | Q(end_date__gte=self.start_date))
+            if clash.exists():
+                raise ValidationError(
+                    "This billing meter already has an overlapping membership in another check group."
+                )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def close(self, *, end_date, notes=""):
+        self.end_date = end_date
+        self.is_active = False
+        if notes:
+            self.notes = (self.notes + "\n" + notes).strip()
+        self.save()
+
+    def __str__(self):
+        end = self.end_date or "current"
+        return f"{self.billing_meter.meter_number} in {self.group.name} ({self.start_date} to {end})"
 
 
 class MeterAssignmentHistory(models.Model):

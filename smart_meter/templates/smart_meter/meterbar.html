@@ -42,6 +42,11 @@
         </a>
       </li>
       <li>
+        <a class="nav-link" href="{% url 'smart_meter:meter_check_group_list' %}" aria-label="Check Groups">
+          <span class="d-sm-none">Groups</span><span class="d-none d-sm-inline">Check<BR>Groups</span>
+        </a>
+      </li>
+      <li>
         <a class="nav-link" href="{% url 'smart_meter:billing_summary' %}?month={{ start_date|date:'Y-m' }}" aria-label="Dashboard">
           <span class="d-sm-none">Billing</span><span class="d-none d-sm-inline">Monthly<BR>Billing</span>
         </a>

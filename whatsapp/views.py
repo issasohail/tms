@@ -2,11 +2,13 @@ import json
 import logging
 import hashlib
 import hmac
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django import forms
 from django.core.paginator import Paginator
@@ -23,6 +25,7 @@ from leases.models import Lease
 from maintenance.models import MaintenanceRequest
 from payments.models import Payment
 from tenants.models import Tenant
+from handyman.models import HandymanProfile
 
 from .models import (
     PendingWhatsAppMedia,
@@ -65,6 +68,155 @@ class WhatsAppUtilityTemplateForm(forms.ModelForm):
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "notes": forms.Textarea(attrs={"rows": 3, "class": "form-control form-control-sm"}),
         }
+
+
+class WhatsAppSimulatorForm(forms.Form):
+    ROLE_CHOICES = [("tenant", "Tenant"), ("staff", "Staff"), ("handyman", "Handyman")]
+
+    role = forms.ChoiceField(choices=ROLE_CHOICES, widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
+    tenant = forms.ModelChoiceField(
+        queryset=Tenant.objects.filter(is_active=True).order_by("first_name", "last_name", "id"),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-select-sm select2"}),
+    )
+    lease = forms.ModelChoiceField(
+        queryset=Lease.objects.select_related("tenant", "unit__property").filter(status="active").order_by("unit__property__property_name", "unit__unit_number"),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-select-sm select2"}),
+    )
+    staff = forms.ModelChoiceField(
+        queryset=get_user_model().objects.filter(is_active=True, is_staff=True).order_by("username"),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-select-sm select2"}),
+    )
+    handyman = forms.ModelChoiceField(
+        queryset=HandymanProfile.objects.filter(is_active=True).order_by("full_name", "id"),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-select-sm select2"}),
+    )
+    message = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3, "placeholder": "Type the simulated inbound WhatsApp message"}),
+    )
+    media = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm", "accept": "image/*,video/*,.pdf,.doc,.docx"}))
+    delivery_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "03122550183"}))
+    send_to_phone = forms.BooleanField(required=False, label="Send the simulated response to the delivery phone")
+    new_session = forms.BooleanField(required=False, label="Reset this simulated conversation before sending")
+
+    def clean(self):
+        cleaned = super().clean()
+        role = cleaned.get("role")
+        actor = cleaned.get(role)
+        if not actor:
+            self.add_error(role, f"Select a {role} account.")
+        if not cleaned.get("message") and not cleaned.get("media"):
+            self.add_error("message", "Enter a message or attach media.")
+        lease = cleaned.get("lease")
+        tenant = cleaned.get("tenant")
+        if role == "tenant" and lease and tenant and lease.tenant_id != tenant.pk:
+            self.add_error("lease", "The selected lease does not belong to the selected tenant.")
+        if cleaned.get("send_to_phone") and not cleaned.get("delivery_phone"):
+            self.add_error("delivery_phone", "Enter the phone that should receive the simulated response.")
+        return cleaned
+
+
+class _SimulatorWhatsAppService(WhatsAppService):
+    def __init__(self, delivery_phone="", deliver=False, label="Simulation"):
+        super().__init__()
+        self.delivery_phone = delivery_phone
+        self.deliver = deliver
+        self.label = label
+        self.responses = []
+
+    def send_text(self, phone_number, message, **kwargs):
+        self.responses.append(str(message))
+        if self.deliver and self.delivery_phone:
+            return super().send_text(self.delivery_phone, f"[{self.label}]\n{message}", **kwargs)
+        return {"ok": True, "simulated": True}
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
+@require_http_methods(["GET", "POST"])
+def whatsapp_simulator(request):
+    initial_phone = getattr(request.user, "whatsapp_number", "") or "03122550183"
+    form = WhatsAppSimulatorForm(request.POST or None, request.FILES or None, initial={"delivery_phone": initial_phone})
+    responses = []
+    conversation = None
+    if request.method == "POST" and form.is_valid():
+        from .services.whatsapp_ai import WhatsAppAIAssistant
+
+        role = form.cleaned_data["role"]
+        actor = form.cleaned_data[role]
+        role_code = {"tenant": "1", "staff": "2", "handyman": "3"}[role]
+        synthetic_phone = f"999{role_code}{actor.pk:08d}"
+        conversation, _ = WhatsAppConversation.objects.get_or_create(phone_number=synthetic_phone)
+        if form.cleaned_data["new_session"]:
+            conversation.selected_mode = ""
+            conversation.mode_expires_at = None
+            conversation.pending_state = ""
+            conversation.context = {}
+            conversation.selected_lease = None
+            conversation.selected_property = None
+            conversation.selected_unit = None
+        conversation.context = {
+            **(conversation.context or {}),
+            "simulator_identity": {"role": role, "object_id": actor.pk, "started_by_user_id": request.user.pk},
+        }
+        lease = form.cleaned_data.get("lease") if role == "tenant" else None
+        if role == "tenant" and not lease:
+            lease = Lease.objects.select_related("unit__property").filter(tenant=actor, status="active").order_by("-start_date", "-id").first()
+        if lease:
+            conversation.tenant = actor
+            conversation.selected_lease = lease
+            conversation.selected_property = lease.unit.property
+            conversation.selected_unit = lease.unit
+        conversation.save()
+
+        upload = form.cleaned_data.get("media")
+        message_type = "text"
+        payload = {"type": "text", "text": {"body": form.cleaned_data.get("message") or ""}}
+        pending_media = None
+        if upload:
+            message_type = "image" if (upload.content_type or "").startswith("image/") else "video" if (upload.content_type or "").startswith("video/") else "document"
+            payload = {
+                "type": message_type,
+                message_type: {"caption": form.cleaned_data.get("message") or "", "filename": upload.name, "mime_type": upload.content_type or ""},
+            }
+            pending_media = PendingWhatsAppMedia.objects.create(
+                conversation=conversation,
+                phone=synthetic_phone,
+                file=upload,
+                original_filename=upload.name,
+                media_type=message_type,
+                lease=lease,
+                tenant=getattr(lease, "tenant", None),
+                property=getattr(getattr(lease, "unit", None), "property", None),
+                unit=getattr(lease, "unit", None),
+                ai_notes="Uploaded through the authenticated WhatsApp simulator.",
+            )
+        message_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=synthetic_phone,
+            wa_message_id=f"sim-{uuid.uuid4().hex}",
+            message_type=message_type,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload=payload,
+            api_response={"simulator": True, "simulator_pending_media_id": getattr(pending_media, "pk", None), "started_by_user_id": request.user.pk},
+            tenant=getattr(lease, "tenant", None),
+            lease=lease,
+            created_by=request.user,
+        )
+        actor_label = actor.get_full_name() if role == "tenant" else actor.get_username() if role == "staff" else str(actor)
+        service = _SimulatorWhatsAppService(
+            form.cleaned_data.get("delivery_phone") or "",
+            form.cleaned_data.get("send_to_phone", False),
+            f"{role.title()} Simulation - {actor_label}",
+        )
+        WhatsAppAIAssistant(service=service).handle_inbound_message(message_log)
+        responses = service.responses
+        messages.success(request, "Simulated WhatsApp message processed.")
+    return render(request, "whatsapp/simulator.html", {"form": form, "responses": responses, "simulator_conversation": conversation})
 
 
 @csrf_exempt

@@ -208,6 +208,13 @@
           <div class="meter-field meter-span-1">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.meter_type.label_tag }}{{ form.meter_type }}{{ form.meter_type.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.billing_mode.label_tag }}{{ form.billing_mode }}{{ form.billing_mode.errors }}</div>
+          <div class="meter-field meter-span-1">
+            {{ form.meter_role.label_tag }}{{ form.meter_role }}{{ form.meter_role.errors }}
+            <div id="ld-check-meter-help" class="form-text d-none">
+              Check meters are excluded from billing totals. After saving, attach this meter to a
+              <a href="{% url 'smart_meter:meter_check_group_list' %}">Check Group</a> to enable leakage/reconciliation reporting.
+            </div>
+          </div>
           <div class="meter-field meter-span-1">{{ form.power_status.label_tag }}{{ form.power_status }}{{ form.power_status.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.unit_rate.label_tag }}{{ form.unit_rate }}{{ form.unit_rate.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.service_charges.label_tag }}{{ form.service_charges }}{{ form.service_charges.errors }}</div>
@@ -242,4 +249,13 @@
     </div>
   </form>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const role = document.getElementById('id_meter_role');
+  const help = document.getElementById('ld-check-meter-help');
+  const syncHelp = () => help?.classList.toggle('d-none', role?.value !== 'check');
+  role?.addEventListener('change', syncHelp);
+  syncHelp();
+});
+</script>
 {% endblock %}

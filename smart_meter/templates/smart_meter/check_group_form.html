@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{% if group %}Edit{% else %}Add{% endif %} Check Group{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container" style="max-width: 760px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">{% if group %}Edit{% else %}New{% endif %} Check Group</h2>
+    <a class="btn btn-sm btn-outline-secondary" href="{% if group %}{% url 'smart_meter:meter_check_group_detail' group.pk %}{% else %}{% url 'smart_meter:meter_check_group_list' %}{% endif %}">Cancel</a>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="row g-3">
+          <div class="col-md-6">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
+          <div class="col-md-6">{{ form.property.label_tag }}{{ form.property }}{{ form.property.errors }}</div>
+          <div class="col-12">{{ form.check_meter.label_tag }}{{ form.check_meter }}{{ form.check_meter.errors }}<div class="form-text">Only meters with the Check / Audit role are available.</div></div>
+          <div class="col-12">{{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}</div>
+          <div class="col-12"><div class="form-check">{{ form.is_active }}{{ form.is_active.label_tag }}{{ form.is_active.errors }}</div></div>
+        </div>
+        <div class="text-end mt-3"><button class="btn btn-primary" type="submit">Save Check Group</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

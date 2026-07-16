@@ -44,6 +44,18 @@ def detect_media_purpose(text, message_type):
 
 
 def create_pending_media(message_log, conversation, lease=None):
+    simulator_media_id = (message_log.api_response or {}).get("simulator_pending_media_id")
+    if simulator_media_id:
+        existing = PendingWhatsAppMedia.objects.filter(
+            pk=simulator_media_id,
+            conversation=conversation,
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+        ).first()
+        if existing:
+            if not existing.original_whatsapp_message_id:
+                existing.original_whatsapp_message = message_log
+                existing.save(update_fields=["original_whatsapp_message", "updated_at"])
+            return existing
     payload = message_log.payload or {}
     message_type = payload.get("type") or message_log.message_type
     media_payload = payload.get(message_type) or {}

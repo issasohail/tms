@@ -3860,6 +3860,12 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 lease,
                 user=self.request.user if self.request.user.is_authenticated else None,
             )
+            # The prefetched list above is stale after creating the original
+            # history. Reload it so an ended lease has a usable rollback date
+            # on the same page request.
+            renewals = list(
+                lease.renewals.all().order_by("renewal_number", "id")
+            )
         today = timezone.localdate()
         active_renewals = [
             renewal
@@ -3883,13 +3889,13 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 else None
             )
         )
+        rollback_end_dates = [
+            renewal.end_date for renewal in renewals if renewal.end_date > lease.end_date
+        ]
         ctx["rollback_default_end_date"] = (
-            ctx["active_history"].end_date
-            if (
-                ctx["active_history"]
-                and ctx["active_history"].end_date > lease.end_date
-            )
-            else None
+            max(rollback_end_dates)
+            if rollback_end_dates
+            else lease.end_date + timedelta(days=1)
         )
         non_original_renewals = [
             renewal for renewal in renewals if not renewal.is_original
@@ -4268,7 +4274,7 @@ def lease_end_rollback_action(request, pk):
         f"{len(result['restored_invoices'])} invoice(s) restored and "
         f"Rs. {result['reversed_security']:,.2f} security application reversed.",
     )
-    return redirect("leases:lease_detail", pk=lease.pk)
+    return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}?open_end_lease=1")
 
 
 def lease_print(request, pk):

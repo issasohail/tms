@@ -727,27 +727,12 @@ class WhatsAppAIAssistant:
         return None
 
     def _tenant_identity_options_text(self, tenants):
-        tenants = list(tenants)
         lines = ["More than one tenant account uses this number. Choose your account:"]
         for index, tenant in enumerate(tenants, start=1):
-            tenant_leases = (
-                Lease.objects.select_related("unit__property")
-                .filter(
-                    Q(tenant_id=tenant.pk)
-                    | Q(family_members__family_member_id=tenant.pk)
-                    | Q(legacy_family_members__tenant_id=tenant.pk),
-                    status="active",
-                )
-                .distinct()
-                .order_by("unit__property__property_name", "unit__unit_number", "id")
-            )
-            locations = [
-                f"{lease.unit.property.property_name} / Unit {lease.unit.unit_number}"
-                for lease in tenant_leases
-            ]
-            account_label = ", ".join(locations) or "No active property"
-            lines.append(f"{index}. {account_label}")
-        lines.append("Reply with a number to open that property account.")
+            name = tenant.get_full_name() or str(tenant)
+            masked = f"{name[:1]}{'*' * max(2, len(name) - 2)}{name[-1:]}"
+            lines.append(f"{index}. {masked}")
+        lines.append("Reply with a number. You will then verify the last 4 digits of the tenant ID/CNIC.")
         return "\n\n".join([lines[0], "\n".join(lines[1:])])
 
     def _consume_tenant_identity_selection(self, conversation, text, identity):
@@ -763,39 +748,14 @@ class WhatsAppAIAssistant:
         option_ids = conversation.context.get("tenant_identity_options") or []
         if index < 0 or index >= len(option_ids):
             return self._tenant_identity_options_text(identity.tenant_matches), "tenant_identity_selection", {}
-        from tenants.models import Tenant
-
-        tenant = Tenant.objects.filter(pk=option_ids[index], is_active=True).first()
-        if not tenant:
-            return "That tenant account is no longer active. Type BACK and choose another account.", "tenant_identity_inactive", {}
-        return self._activate_selected_tenant(conversation, tenant)
-
-    def _activate_selected_tenant(self, conversation, tenant):
-        conversation.context["selected_tenant_identity_id"] = tenant.pk
-        self._clear_context_keys(conversation, "pending_tenant_identity_id", "tenant_identity_options")
-        conversation.pending_state = ""
-        conversation.tenant = tenant
-        conversation.save(update_fields=["tenant", "pending_state", "context", "updated_at"])
-        selected_identity = identify_sender(conversation.phone_number, conversation=conversation)
-        if not selected_identity.has_active_tenant:
-            return (
-                "This property account has no current active approved lease. Type SWITCH MODE to choose another available role.",
-                "tenant_no_active_lease",
-                {"tenant": tenant},
-            )
-        resolve_mode(conversation, "tenant", selected_identity)
-        if len(selected_identity.active_leases) == 1:
-            lease = selected_identity.active_leases[0]
-            conversation.selected_lease = lease
-            conversation.selected_property = lease.unit.property
-            conversation.selected_unit = lease.unit
-            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "updated_at"])
-            return self._tenant_welcome_menu(lease), "tenant_welcome", {"tenant": tenant, "lease": lease}
-
-        conversation.context["lease_options"] = [lease.pk for lease in selected_identity.active_leases]
-        conversation.pending_state = "lease_selection"
-        conversation.save(update_fields=["context", "pending_state", "updated_at"])
-        return lease_option_lines(selected_identity.active_leases), "lease_lookup", {"tenant": tenant}
+        conversation.context["pending_tenant_identity_id"] = option_ids[index]
+        conversation.pending_state = "tenant_identity_verify"
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            "For privacy, reply with the last 4 digits of this tenant's ID/CNIC. Type BACK to choose another account.",
+            "tenant_identity_verify",
+            {},
+        )
 
     def _consume_tenant_identity_verification(self, conversation, text):
         from tenants.models import Tenant
@@ -812,7 +772,27 @@ class WhatsAppAIAssistant:
         cnic_digits = "".join(ch for ch in str(getattr(tenant, "cnic", "") or "") if ch.isdigit())
         if not tenant or len(supplied) != 4 or not cnic_digits.endswith(supplied):
             return "Those digits did not match. Please try again or type BACK.", "tenant_identity_verify_failed", {}
-        return self._activate_selected_tenant(conversation, tenant)
+        conversation.context["selected_tenant_identity_id"] = tenant.pk
+        self._clear_context_keys(conversation, "pending_tenant_identity_id", "tenant_identity_options")
+        conversation.pending_state = ""
+        conversation.tenant = tenant
+        conversation.save(update_fields=["tenant", "pending_state", "context", "updated_at"])
+        selected_identity = identify_sender(conversation.phone_number, conversation=conversation)
+        if not selected_identity.has_active_tenant:
+            return (
+                "Identity verified, but this tenant account has no current active approved lease. Type SWITCH MODE to use Staff Mode.",
+                "tenant_no_active_lease",
+                {"tenant": tenant},
+            )
+        resolve_mode(conversation, "tenant", selected_identity)
+        lease = selected_identity.active_leases[0] if len(selected_identity.active_leases) == 1 else None
+        if lease:
+            conversation.selected_lease = lease
+            conversation.selected_property = lease.unit.property
+            conversation.selected_unit = lease.unit
+            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "updated_at"])
+            return self._tenant_welcome_menu(lease), "tenant_welcome", {"tenant": tenant, "lease": lease}
+        return self._resolve_or_request_lease(conversation.phone_number, conversation), "lease_lookup", {"tenant": tenant}
 
     def _start_suggestion_capture(self, conversation, source="WhatsApp"):
         conversation.pending_state = "suggestion_capture"

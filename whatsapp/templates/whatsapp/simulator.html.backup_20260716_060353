@@ -14,10 +14,6 @@
     Simulator actions use real local data and may create pending approval records. Phone delivery is optional and is clearly labelled as a simulation.
   </div>
 
-  <div class="alert alert-info py-2 small">
-    <strong>Using one phone for every role:</strong> keep the same <em>Deliver response to</em> number, then select Tenant, Staff, or Handyman and its account before each message. Each role/account keeps a separate simulated conversation and no registered phone number is changed. Use <strong>Reset this simulated conversation</strong> when you want a fresh session for the selected role.
-  </div>
-
   <div class="row g-3">
     <div class="col-12 col-lg-7">
       <form method="post" enctype="multipart/form-data" class="card shadow-sm">

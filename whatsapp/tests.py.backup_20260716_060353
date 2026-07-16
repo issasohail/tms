@@ -224,44 +224,6 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(self.conversation.pending_state, "tenant_identity_selection")
         self.assertEqual(len(self.conversation.context["tenant_identity_options"]), 2)
 
-    def test_tenant_account_selection_shows_property_and_opens_without_cnic_step(self):
-        second_tenant = Tenant.objects.create(
-            first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-5555555-5"
-        )
-        second_property = Property.objects.create(
-            property_name="City Heights", owner_name="Owner", owner_cnic="37405-3333333-3",
-            type="Residential", property_type="apartment", total_units=1,
-        )
-        second_unit = Unit.objects.create(property=second_property, unit_number="B-02", status="occupied")
-        Lease.objects.create(
-            tenant=second_tenant, unit=second_unit,
-            start_date=timezone.localdate() - timedelta(days=30),
-            end_date=timezone.localdate() + timedelta(days=335),
-            monthly_rent=Decimal("30000"), status="active",
-        )
-        self.conversation.selected_mode = ""
-        self.conversation.mode_expires_at = None
-        self.conversation.pending_state = "tenant_identity_selection"
-        self.conversation.context = {"tenant_identity_options": [self.tenant.pk, second_tenant.pk]}
-        self.conversation.save()
-
-        assistant = WhatsAppAIAssistant(service=MagicMock())
-        identity = resolve_sender(self.phone, conversation=self.conversation)
-        options_text = assistant._tenant_identity_options_text(identity.tenant_matches)
-        self.assertIn("Test Residency / Unit A-04", options_text)
-        self.assertIn("City Heights / Unit B-02", options_text)
-        self.assertNotIn("CNIC", options_text)
-
-        response, intent, metadata = assistant._consume_tenant_identity_selection(
-            self.conversation, "1", identity
-        )
-        self.conversation.refresh_from_db()
-        self.assertEqual(intent, "tenant_welcome")
-        self.assertIn("Test Residency / A-04", response)
-        self.assertEqual(metadata["tenant"], self.tenant)
-        self.assertEqual(self.conversation.pending_state, "")
-        self.assertEqual(self.conversation.selected_lease, self.lease)
-
     def test_role_simulator_runs_staff_conversation_without_changing_phone(self):
         self.staff1.user_permissions.add(
             Permission.objects.get(codename="change_whatsappmessagelog")

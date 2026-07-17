@@ -16,21 +16,16 @@
   </div>
 
   <div class="card mb-3">
-    <div class="card-header fw-semibold">Invoices Included in Settlement Review</div>
+    <div class="card-header fw-semibold">Invoices after {{ result.end_date }}</div>
     <div class="card-body">
       {% if result.review_invoices %}
         <div class="table-responsive">
           <table class="table table-sm">
-            <thead><tr><th>Invoice</th><th>Date</th><th>Bucket</th><th>Status</th><th class="text-end">Amount</th><th></th></tr></thead>
+            <thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th class="text-end">Amount</th><th></th></tr></thead>
             <tbody>
               {% for invoice in result.review_invoices %}
               <tr>
                 <td>#{{ invoice.invoice_number }}</td><td>{{ invoice.issue_date }}</td>
-                <td>
-                  {% if invoice.issue_date < result.billing_month_start %}Prior outstanding
-                  {% elif invoice.issue_date > result.end_date %}Future
-                  {% else %}Current period{% endif %}
-                </td>
                 <td>{{ invoice.get_status_display }}</td><td class="text-end">Rs. {{ invoice.amount|floatformat:2|intcomma }}</td>
                 <td><a class="btn btn-sm btn-outline-primary" href="{% url 'invoices:invoice_detail' invoice.pk %}">Detail</a></td>
               </tr>
@@ -39,7 +34,7 @@
           </table>
         </div>
       {% else %}
-        <div class="text-muted">No invoices are included in this settlement review.</div>
+        <div class="text-muted">No invoices exist after the selected lease end date.</div>
       {% endif %}
     </div>
   </div>

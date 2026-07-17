@@ -4196,13 +4196,6 @@ def lease_end_action(request, pk):
                                 }
                             ),
                             "is_current_period": invoice.pk == result["final_period_invoice"].pk,
-                            "settlement_bucket": (
-                                "Prior outstanding"
-                                if invoice.issue_date < result["billing_month_start"]
-                                else "Future"
-                                if invoice.issue_date > result["end_date"]
-                                else "Current period"
-                            ),
                             "update_url": reverse("invoices:invoice_update", args=[invoice.pk]),
                             "pdf_url": reverse("invoices:invoice_pdf", args=[invoice.pk]),
                             "items": [

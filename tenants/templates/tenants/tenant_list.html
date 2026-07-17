@@ -3791,11 +3791,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const $leadOnly  = $();
 
   const mobileFilterToggle = document.getElementById("mobileFilterToggle");
-  const mobileActionToolbar = document.querySelector(".mobile-action-toolbar");
-  const mobilePhoneFilter = document.querySelector("#filter-form .fg.phone");
-  if (mobileActionToolbar && mobilePhoneFilter && window.matchMedia("(max-width: 575.98px)").matches) {
-    mobilePhoneFilter.insertAdjacentElement("afterend", mobileActionToolbar);
-  }
   if (mobileFilterToggle && $form.length) {
     mobileFilterToggle.addEventListener("click", function () {
       const isOpen = $form[0].classList.toggle("mobile-filters-open");

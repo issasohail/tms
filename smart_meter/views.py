@@ -658,16 +658,16 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
 
 
 SMART_METER_CHIPS = OrderedDict([
-    ("total", {"label": "Total", "class": "primary"}),
-    ("active", {"label": "Active", "class": "success"}),
-    ("offline", {"label": "Offline", "class": "secondary"}),
-    ("vacant", {"label": "Vacant", "class": "dark"}),
-    ("negative", {"label": "Negative", "class": "danger"}),
-    ("low", {"label": "Low Balance", "class": "warning"}),
-    ("cutoff", {"label": "Cut Off", "class": "danger"}),
-    ("needs_attention", {"label": "Needs Attention", "class": "warning"}),
-    ("billing_issues", {"label": "Billing Issues", "class": "info"}),
-    ("check", {"label": "Check Meters", "class": "info"}),
+    ("total", {"label": "Total", "class": "primary", "help": "All meters in the current property, unit, meter and role filters."}),
+    ("active", {"label": "Active", "class": "success", "help": "Meters marked active."}),
+    ("offline", {"label": "Offline", "class": "secondary", "help": "No live reading inside the online time window."}),
+    ("vacant", {"label": "Vacant", "class": "dark", "help": "Meters without a currently active lease on their unit."}),
+    ("negative", {"label": "Negative", "class": "danger", "help": "Meters whose unit balance is below zero."}),
+    ("low", {"label": "Low Balance", "class": "warning", "help": "Meters below their configured minimum balance alert."}),
+    ("cutoff", {"label": "Cut Off", "class": "danger", "help": "Meters whose saved power status is off."}),
+    ("needs_attention", {"label": "Needs Attention", "class": "warning", "help": "Inactive, offline, low/negative balance, or cut-off meters."}),
+    ("billing_issues", {"label": "Billing Issues", "class": "info", "help": "Billing-role meters missing a unit/rate, or occupied meters with no reading."}),
+    ("check", {"label": "Check Meters", "class": "info", "help": "Meters assigned the Check / Audit role."}),
 ])
 
 
@@ -696,10 +696,15 @@ def _with_meter_operational_flags(qs):
 def _meter_chip_q(chip):
     vacant_q = Q(unit__isnull=True) | Q(has_active_lease=False)
     offline_q = Q(is_online=False)
-    no_latest_q = Q(last_ts__isnull=True)
     negative_q = Q(balance__isnull=False, balance__lt=0)
     low_q = Q(is_low=True)
     cutoff_q = Q(power_status__iexact="off")
+    inactive_q = Q(is_active=False)
+    billing_issue_q = Q(meter_role=Meter.METER_ROLE_BILLING) & (
+        Q(unit__isnull=True)
+        | Q(unit_rate__lte=0)
+        | Q(has_active_lease=True, last_ts__isnull=True)
+    )
 
     if chip == "active":
         return Q(is_active=True)
@@ -714,9 +719,9 @@ def _meter_chip_q(chip):
     if chip == "cutoff":
         return cutoff_q
     if chip == "needs_attention":
-        return offline_q | vacant_q | low_q | negative_q | cutoff_q
+        return inactive_q | offline_q | low_q | negative_q | cutoff_q
     if chip == "billing_issues":
-        return offline_q | vacant_q | no_latest_q | negative_q
+        return billing_issue_q
     if chip == "check":
         return Q(meter_role=Meter.METER_ROLE_CHECK)
     return Q()
@@ -754,6 +759,7 @@ def _meter_chip_cards(request, base_qs, url_name):
             "count": counts.get(key, 0),
             "url": f"{base_url}?{query}" if query else base_url,
             "class": meta["class"],
+            "help": meta.get("help", ""),
             "active": current_chip == key,
         })
     return cards
@@ -1010,6 +1016,22 @@ def meter_role_update(request, pk):
         else:
             error = " ".join(exc.messages)
         return JsonResponse({"success": False, "error": error}, status=400)
+    except Exception:
+        logger.exception(
+            "Meter role update failed for meter_id=%s role=%s user=%s",
+            meter.pk,
+            new_role,
+            getattr(request.user, "username", ""),
+        )
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "The role could not be saved. Please refresh and try again.",
+            },
+            status=500,
+        )
+
+    meter.refresh_from_db(fields=["meter_role"])
 
     return JsonResponse({
         "success": True,
@@ -3324,11 +3346,11 @@ def bulk_power_action(request):
 
     # Determine target meters strictly by meter_number (no IP dependency)
     if scope == "negative":
-        neg_ids = list(
-            LiveReading.objects.filter(
-                balance__lt=0).values_list("meter_id", flat=True)
+        meters_qs = Meter.objects.filter(unit__meterbalance__balance__lt=0)
+    elif scope == "low":
+        meters_qs = Meter.objects.filter(
+            unit__meterbalance__balance__lt=F("min_balance_alert")
         )
-        meters_qs = Meter.objects.filter(id__in=neg_ids)
     else:
         meters_qs = Meter.objects.filter(id__in=ids)
 

@@ -1,7 +1,7 @@
 # leases/utils/billing.py
 from __future__ import annotations
 from calendar import monthrange
-from django.db.models import Exists, OuterRef,Sum
+from django.db.models import Exists, OuterRef, Q, Sum
 from datetime import date
 from decimal import Decimal
 from typing import Optional, Tuple,  Dict, Any
@@ -457,13 +457,12 @@ def preview_billing_on_change(lease, old_lease) -> Dict[str, Any]:
     start_date_changed = (old_lease.start_date != lease.start_date)
     end_date_changed  = (old_lease.end_date != lease.end_date)
 
-    rent_or_term_changed = (
+    billing_values_changed = (
         rent_changed
         or maint_changed
         or water_changed
         or internet_changed
         or start_date_changed
-        or end_date_changed
     )
 
 
@@ -496,7 +495,7 @@ def preview_billing_on_change(lease, old_lease) -> Dict[str, Any]:
     })
 
     # ---- Recurring preview (start from NEXT month, not lease.start_date) ----
-    if rent_or_term_changed:
+    if billing_values_changed:
         today = date.today()
         recurring_start = _first_of_next_month(today)
         # don't start before lease start
@@ -545,7 +544,7 @@ def preview_billing_on_change(lease, old_lease) -> Dict[str, Any]:
     # ONLY when rent/maint/end_date changed
     today = date.today()
     effective_end = min(today, lease.end_date) if lease.end_date else today
-    if rent_or_term_changed and lease.start_date and lease.start_date <= effective_end:
+    if billing_values_changed and lease.start_date and lease.start_date <= effective_end:
         months = list(_month_starts_between(lease.start_date, effective_end))
         first_of_this_month = _first_of_month(today)
         plan["requires_backfill_confirmation"] = any(
@@ -644,13 +643,12 @@ def update_billing_on_change(
     start_date_changed = (old_lease.start_date != lease.start_date)
     end_date_changed   = (old_lease.end_date != lease.end_date)
 
-    rent_or_term_changed = (
+    billing_values_changed = (
         rent_changed
         or maint_changed
         or water_changed
         or internet_changed
         or start_date_changed
-        or end_date_changed
     )
 
 
@@ -658,7 +656,7 @@ def update_billing_on_change(
     today = date.today()
     effective_end = min(today, lease.end_date) if lease.end_date else today
 
-    if rent_or_term_changed and lease.start_date and lease.start_date <= effective_end:
+    if billing_values_changed and lease.start_date and lease.start_date <= effective_end:
         months = list(_month_starts_between(lease.start_date, effective_end))
         if include_backfill:
             # from lease.start_date → today/end
@@ -685,7 +683,7 @@ def update_billing_on_change(
                 )
 
     # ---- 2) RECURRING APPLY (start = first day of next month) ----
-    if rent_or_term_changed:
+    if billing_values_changed:
         # new rent/maintenance should apply from NEXT month
         recurring_start = _first_of_next_month(today)
         # but don't start before lease.start_date
@@ -798,9 +796,6 @@ def update_billing_on_change(
                     sec_item.description = "Security Deposit (updated)"
                     sec_item.save(update_fields=["amount", "description"])
     """
-    # heal current-month header-without-items (optional)
-    _ensure_current_cycle_invoice_items_if_missing(lease)
-
     if context is None:
         context = {
             "old_rent": old_rent,
@@ -949,14 +944,31 @@ def _find_existing_invoice_for_month(lease, month_first: date):
     Invoice = _get_model("invoices", "Invoice")
     if Invoice is None:
         return None
-    label = f"{month_first:%b %Y}"
-    try:
-        # tweak the filter if you store the month differently
-        return Invoice.objects.filter(
-            lease=lease, description__icontains=label
-        ).latest("id")
-    except Invoice.DoesNotExist:
-        return None
+    short_label = f"{month_first:%b %Y}"
+    full_label = f"{month_first:%B %Y}"
+    monthly_categories = [
+        RENT,
+        MAINTENANCE,
+        WATER,
+        "Water Charges",
+        INTERNET,
+    ]
+    return (
+        Invoice.objects.filter(
+            lease=lease,
+            issue_date__year=month_first.year,
+            issue_date__month=month_first.month,
+        )
+        .filter(
+            Q(description__icontains="monthly")
+            | Q(description__icontains=f"Invoice for {full_label}")
+            | Q(description__icontains=short_label)
+            | Q(items__category__name__in=monthly_categories)
+        )
+        .distinct()
+        .order_by("issue_date", "id")
+        .first()
+    )
 
 
 def _create_or_update_month_invoice(

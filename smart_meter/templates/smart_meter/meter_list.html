@@ -17,27 +17,39 @@
       </small>
     </div>
 
-    <div class="d-flex flex-wrap gap-2 no-export">
-      <a href="{% url 'smart_meter:meter_check_group_list' %}" class="btn btn-sm btn-outline-info">
-        <i class="fas fa-scale-balanced me-1"></i> Check Groups
-      </a>
-      <button id="exportJpgBtn" type="button" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-file-image me-1"></i> JPG
-      </button>
-      <button id="exportPdfBtn" type="button" class="btn btn-sm btn-outline-danger">
-        <i class="fas fa-file-pdf me-1"></i> PDF
-      </button>
-      <button id="refreshBtn" type="button" class="btn btn-sm btn-primary">
-        <i class="fas fa-rotate-right me-1"></i> Refresh
-      </button>
+    {% with qs=request.GET.urlencode %}
+    <div class="no-export">
+      <div class="d-none d-lg-flex flex-wrap gap-2">
+        <a href="{% url 'smart_meter:meter_check_group_list' %}" class="btn btn-sm btn-outline-info"><i class="fas fa-scale-balanced me-1"></i> Check Groups</a>
+        <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_xlsx' %}?{{ qs }}"><i class="fas fa-file-excel me-1"></i> Excel</a>
+        <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_csv' %}?{{ qs }}"><i class="fas fa-file-csv me-1"></i> CSV</a>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg><i class="fas fa-file-image me-1"></i> JPG</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-export-pdf><i class="fas fa-file-pdf me-1"></i> PDF</button>
+        <button type="button" class="btn btn-sm btn-primary" data-refresh-meters><i class="fas fa-rotate-right me-1"></i> Refresh</button>
+      </div>
+      <div class="d-flex d-lg-none gap-2 meter-mobile-top-actions">
+        <a href="{% url 'smart_meter:meter_check_group_list' %}" class="btn btn-sm btn-outline-info"><i class="fas fa-scale-balanced"></i> Groups</a>
+        <div class="dropdown flex-fill">
+          <button class="btn btn-sm btn-outline-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown"><i class="fas fa-download me-1"></i> Export</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><button type="button" class="dropdown-item" data-export-pdf><i class="fas fa-file-pdf text-danger me-2"></i>PDF</button></li>
+            <li><button type="button" class="dropdown-item" data-export-jpg><i class="fas fa-file-image text-secondary me-2"></i>JPG</button></li>
+            <li><a class="dropdown-item" href="{% url 'smart_meter:meters_export_xlsx' %}?{{ qs }}"><i class="fas fa-file-excel text-success me-2"></i>Excel</a></li>
+            <li><a class="dropdown-item" href="{% url 'smart_meter:meters_export_csv' %}?{{ qs }}"><i class="fas fa-file-csv text-success me-2"></i>CSV</a></li>
+          </ul>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary" data-refresh-meters aria-label="Refresh"><i class="fas fa-rotate-right"></i></button>
+      </div>
     </div>
+    {% endwith %}
   </div>
 
   {% if chip_cards %}
   <div class="meter-chip-grid mb-3">
     {% for chip in chip_cards %}
       <a href="{{ chip.url }}"
-         class="meter-chip meter-chip-{{ chip.class }} {% if chip.active %}is-active{% endif %}">
+         class="meter-chip meter-chip-{{ chip.class }} {% if chip.active %}is-active{% endif %}"
+         title="{{ chip.help }}" aria-label="{{ chip.label }}: {{ chip.count }}. {{ chip.help }}">
         <span class="meter-chip-label">{{ chip.label }}</span>
         <span class="meter-chip-count">{{ chip.count }}</span>
       </a>
@@ -54,27 +66,22 @@
         <input type="hidden" name="action" id="bulkAction">
         <input type="hidden" name="scope" id="bulkScope" value="selected">
 
-        <div class="d-flex flex-wrap align-items-center gap-2">
-          <div class="form-check">
+        <div class="meter-cutoff-group">
+          <div class="meter-bulk-options">
+          <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" value="" id="checkAll">
-            <label class="form-check-label" for="checkAll">Select all on page</label>
+            <label class="form-check-label" for="checkAll">Check all</label>
           </div>
-
-          <button type="button" class="btn btn-sm btn-danger" id="btnCutoffSel">
-            <i class="fas fa-power-off me-1"></i> Cut Off (selected)
-          </button>
-          <button type="button" class="btn btn-sm btn-success" id="btnRestoreSel">
-            <i class="fas fa-plug me-1"></i> Restore (selected)
-          </button>
-
-          <div class="form-check">
+          <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" value="" id="autoPickNegative">
-            <label class="form-check-label" for="autoPickNegative">Auto-select negative balances</label>
+            <label class="form-check-label" for="autoPickNegative">Check all negative balance</label>
           </div>
-
-          <button type="button" class="btn btn-sm btn-danger" id="btnCutoffNegative">
-            <i class="fas fa-exclamation-triangle me-1"></i> Cut Off (all negative)
-          </button>
+          </div>
+          <div class="btn-group meter-bulk-buttons" role="group" aria-label="Meter cutoff actions">
+            <button type="button" class="btn btn-sm btn-danger" id="btnCutoffSel"><i class="fas fa-power-off me-1"></i> Cut</button>
+            <button type="button" class="btn btn-sm btn-success" id="btnRestoreSel"><i class="fas fa-plug me-1"></i> Restore</button>
+            <button type="button" class="btn btn-sm btn-warning" id="btnCutoffLow"><i class="fas fa-exclamation-triangle me-1"></i> Cut off all low balance</button>
+          </div>
         </div>
       </form>
 
@@ -87,16 +94,6 @@
           <span class="ms-2">Online window: {{ online_minutes }} min</span>
         </div>
 
-        {% with qs=request.GET.urlencode %}
-          <div class="ms-auto btn-group">
-            <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_csv' %}?{{ qs }}">
-              <i class="fas fa-file-csv me-1"></i> CSV
-            </a>
-            <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_xlsx' %}?{{ qs }}">
-              <i class="fas fa-file-excel me-1"></i> Excel
-            </a>
-          </div>
-        {% endwith %}
       </div>
     </div>
   </div>
@@ -108,7 +105,7 @@
 
     <div class="card-body p-0">
       {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
-      <div class="table-responsive desktop-sticky-list">
+      <div class="table-responsive desktop-sticky-list d-none d-lg-block">
         <table class="table table-sm table-hover align-middle text-center mb-0 compact-table">
           <thead class="table-light sticky-top">
             <tr>
@@ -196,7 +193,9 @@
 
               <td class="col-meter"><span class="badge bg-primary">{{ m.meter_number }}</span></td>
               <td class="ld-col-role">
-                <select class="form-select form-select-sm ld-role-select"
+                <div class="ld-role-editor" data-role-editor>
+                <button type="button" class="ld-role-display" data-role-display>{{ m.get_meter_role_display }}</button>
+                <select class="form-select form-select-sm ld-role-select d-none"
                         data-meter-role
                         data-meter-id="{{ m.id }}"
                         data-update-url="{% url 'smart_meter:meter_role_update' m.id %}"
@@ -205,6 +204,7 @@
                   <option value="billing" {% if m.meter_role == 'billing' %}selected{% endif %}>Billing</option>
                   <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
                 </select>
+                </div>
               </td>
               <td class="col-prop" title="{{ m.unit.property.property_name }}">{{ m.unit.property.property_name }}</td>
               <td class="col-unit" title="{{ m.unit.unit_number }}">{{ m.unit.unit_number }}</td>
@@ -276,6 +276,50 @@
           {% endfor %}
           </tbody>
         </table>
+      </div>
+      <div class="meter-mobile-list d-lg-none">
+        {% for m in meters %}
+        <article data-meter-row="{{ m.id }}" class="meter-mobile-card {% if m.power_status|lower == 'off' %}is-cutoff{% elif not m.is_online %}is-offline{% elif m.is_low %}is-low{% endif %}">
+          <div class="meter-mobile-head">
+            <div class="d-flex align-items-center gap-2 min-w-0">
+              <input type="checkbox" class="form-check-input rowcheck mt-0 no-export" name="meters" value="{{ m.id }}" form="bulkForm" data-balance="{{ m.balance|default_if_none:0|default:0 }}" aria-label="Select meter {{ m.meter_number }}">
+              <a href="{% url 'smart_meter:meter_detail' m.id %}" class="meter-mobile-number">{{ m.meter_number }}</a>
+              {% if m.is_online %}<span class="badge bg-success">Online</span>{% else %}<span class="badge bg-secondary">Offline</span>{% endif %}
+            </div>
+            <div class="ld-role-editor" data-role-editor>
+              <button type="button" class="ld-role-display" data-role-display>{{ m.get_meter_role_display }}</button>
+              <select class="form-select form-select-sm ld-role-select d-none" data-meter-role data-meter-id="{{ m.id }}" data-update-url="{% url 'smart_meter:meter_role_update' m.id %}" data-previous="{{ m.meter_role }}">
+                <option value="billing" {% if m.meter_role == 'billing' %}selected{% endif %}>Billing</option>
+                <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
+              </select>
+            </div>
+          </div>
+          <div class="meter-mobile-location">
+            <span><i class="fas fa-building me-1"></i>{{ m.unit.property.property_name }}</span>
+            <span><i class="fas fa-door-open me-1"></i>{{ m.unit.unit_number }}</span>
+            <span><i class="fas fa-user me-1"></i>{{ m.tenant_name|default:"Vacant" }}</span>
+          </div>
+          <div class="meter-mobile-metrics">
+            <div><span>Balance</span><strong>{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</strong></div>
+            <div><span>Last reading</span><strong>{% if m.last_ts %}{{ m.last_ts|date:"M d, H:i" }}{% else %}-{% endif %}</strong></div>
+            <div><span>Voltage</span><strong>{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }} V{% else %}-{% endif %}</strong></div>
+            <div><span>Current</span><strong>{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }} A{% else %}-{% endif %}</strong></div>
+            <div><span>Total unit</span><strong>{% if m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}</strong></div>
+            <div><span>Mode / Rate</span><strong>{{ m.get_billing_mode_display }} / {{ m.unit_rate|floatformat:2 }}</strong></div>
+          </div>
+          <div class="meter-mobile-footer no-export">
+            <div class="power-control">
+              <span class="badge power-badge {% if m.power_status|lower == 'off' %}bg-danger{% else %}bg-success{% endif %}">{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}</span>
+              <button type="button" class="btn btn-sm power-toggle {% if m.power_status|lower == 'off' %}btn-outline-success{% else %}btn-outline-danger{% endif %}" data-status="{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}" aria-label="Toggle power"><i class="fas fa-power-off"></i></button>
+            </div>
+            <div class="btn-group btn-group-sm">
+              <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
+              <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
+              <a class="btn btn-outline-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings"><i class="fas fa-list"></i></a>
+            </div>
+          </div>
+        </article>
+        {% empty %}<div class="p-4 text-center text-muted">No meters found.</div>{% endfor %}
       </div>
     </div>
 
@@ -418,6 +462,24 @@
 .meter-chip-danger { border-color: rgba(220,53,69,.60); }
 .meter-chip-info { border-color: rgba(13,202,240,.60); }
 
+.meter-cutoff-group, .meter-bulk-options { display: flex; align-items: center; gap: 1rem; }
+.meter-cutoff-group { justify-content: space-between; }
+.meter-bulk-buttons .btn { white-space: nowrap; }
+.min-w-0 { min-width: 0; }
+.meter-mobile-list { background: var(--bs-secondary-bg); padding: .5rem; }
+.meter-mobile-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-left: 4px solid var(--bs-success); border-radius: .55rem; margin-bottom: .5rem; padding: .6rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.meter-mobile-card.is-offline { border-left-color: var(--bs-secondary); }
+.meter-mobile-card.is-low { border-left-color: var(--bs-warning); }
+.meter-mobile-card.is-cutoff { border-left-color: var(--bs-danger); }
+.meter-mobile-head, .meter-mobile-footer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.meter-mobile-number { max-width: 135px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; font-size: .86rem; text-decoration: none; }
+.meter-mobile-location { display: grid; grid-template-columns: 1.25fr .9fr 1fr; gap: .4rem; margin: .5rem 0; padding: .4rem 0; border-top: 1px solid var(--bs-border-color); border-bottom: 1px solid var(--bs-border-color); font-size: .72rem; }
+.meter-mobile-location span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meter-mobile-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; }
+.meter-mobile-metrics span { display: block; color: var(--bs-secondary-color); font-size: .62rem; line-height: 1.1; }
+.meter-mobile-metrics strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72rem; }
+.meter-mobile-footer { margin-top: .55rem; }
+
 body.meter-exporting .no-export {
   display: none !important;
 }
@@ -426,7 +488,7 @@ body.meter-exporting #meterListExportArea {
   padding: 12px;
 }
 
-@media (max-width: 992px) {
+@media (max-width: 991.98px) {
   .compact-table {
     min-width: 1320px;
     font-size: .82rem;
@@ -435,9 +497,6 @@ body.meter-exporting #meterListExportArea {
     padding-left: .5rem;
     padding-right: .5rem;
   }
-}
-
-@media (max-width: 576px) {
   .meter-chip-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -452,23 +511,28 @@ body.meter-exporting #meterListExportArea {
     border-radius: .45rem;
     text-align: center;
   }
-  .meter-chip:nth-child(n+6) {
-    grid-column: span 2;
-  }
-  .meter-chip:last-child:nth-child(odd) {
-    grid-column: span 1;
-  }
   .meter-chip-label {
-    font-size: clamp(.5rem, 2.5vw, .62rem);
+    font-size: clamp(.5rem, 1.8vw, .68rem);
     line-height: 1.05;
   }
   .meter-chip-count {
     font-size: .78rem;
   }
-  .compact-table {
-    min-width: 1240px;
-    font-size: .78rem;
-  }
+  .meter-cutoff-group { align-items: stretch; flex-direction: column; gap: .55rem; }
+  .meter-bulk-options { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; font-size: .76rem; }
+  .meter-bulk-buttons { display: flex; width: 100%; }
+  .meter-bulk-buttons .btn { flex: 1 1 0; padding-left: .25rem; padding-right: .25rem; font-size: .68rem; }
+  .meter-mobile-top-actions { width: 100%; }
+}
+@media (max-width: 575.98px) {
+  .meter-mobile-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meter-mobile-location { grid-template-columns: 1fr 1fr; }
+  .meter-mobile-location span:last-child { grid-column: 1 / -1; }
+  .meter-chip-label { font-size: clamp(.48rem, 2.45vw, .62rem); }
+  .meter-bulk-buttons .btn i { display: none; }
+  .meter-bulk-options { font-size: .68rem; }
+  .meter-mobile-number { max-width: 105px; font-size: .78rem; }
+  .meter-mobile-card { padding: .5rem; }
 }
 
 .ld-col-role { width: 118px; }
@@ -478,6 +542,9 @@ body.meter-exporting #meterListExportArea {
   padding-bottom: .15rem;
   font-size: .72rem;
 }
+.ld-role-display { border: 0; background: transparent; padding: .15rem .25rem; color: var(--bs-body-color); font-size: .76rem; font-weight: 600; cursor: pointer; }
+.ld-role-display:hover { color: var(--bs-primary); text-decoration: underline; }
+.ld-role-display.is-updated { color: #0d6efd; background: #e7f1ff; }
 .ld-role-badge-billing {
   color: #0f5132;
   background: #d1e7dd;
@@ -496,11 +563,16 @@ body.meter-exporting #meterListExportArea {
     return match ? decodeURIComponent(match[2]) : null;
   }
 
-  document.getElementById('refreshBtn')?.addEventListener('click', function() {
-    const url = new URL(window.location.href);
-    url.searchParams.set('_r', Date.now());
-    window.location.assign(url.toString());
-  });
+  document.querySelectorAll('[data-refresh-meters]').forEach(button => button.addEventListener('click', function() {
+      const url = new URL(window.location.href);
+      url.searchParams.set('_r', Date.now());
+      window.location.assign(url.toString());
+  }));
+
+  function closeRoleEditor(editor) {
+    editor?.querySelector('[data-role-display]')?.classList.remove('d-none');
+    editor?.querySelector('[data-meter-role]')?.classList.add('d-none');
+  }
 
   async function updateMeterRole(select) {
     const previous = select.dataset.previous || 'billing';
@@ -517,13 +589,27 @@ body.meter-exporting #meterListExportArea {
         body: new URLSearchParams({meter_role: select.value})
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) throw new Error(data.error || 'Role update failed.');
+      if (!response.ok || !data.success) {
+        const fallback = response.status === 403
+          ? 'You do not have permission to update meter roles.'
+          : 'Role update failed.';
+        throw new Error(data.error || fallback);
+      }
       document.querySelectorAll(`[data-meter-role][data-meter-id="${data.meter_id}"]`).forEach(roleSelect => {
         roleSelect.value = data.role;
         roleSelect.dataset.previous = data.role;
+        const editor = roleSelect.closest('[data-role-editor]');
+        const display = editor?.querySelector('[data-role-display]');
+        if (display) {
+          display.textContent = data.label;
+          display.classList.add('is-updated');
+          setTimeout(() => display.classList.remove('is-updated'), 1800);
+        }
+        closeRoleEditor(editor);
       });
     } catch (error) {
       select.value = previous;
+      closeRoleEditor(select.closest('[data-role-editor]'));
       alert(error.message || 'Role update failed.');
     } finally {
       select.disabled = false;
@@ -532,7 +618,19 @@ body.meter-exporting #meterListExportArea {
 
   document.addEventListener('change', event => {
     const select = event.target.closest('[data-meter-role]');
-    if (select) updateMeterRole(select);
+    if (!select) return;
+    if (select.value === select.dataset.previous) closeRoleEditor(select.closest('[data-role-editor]'));
+    else updateMeterRole(select);
+  });
+
+  document.addEventListener('click', event => {
+    const display = event.target.closest('[data-role-display]');
+    if (!display) return;
+    const editor = display.closest('[data-role-editor]');
+    display.classList.add('d-none');
+    const select = editor?.querySelector('[data-meter-role]');
+    select?.classList.remove('d-none');
+    select?.focus();
   });
 
   const checkAll = document.getElementById('checkAll');
@@ -608,7 +706,7 @@ body.meter-exporting #meterListExportArea {
   }
 
   function ensureAnySelected() {
-    if (document.getElementById('bulkScope').value === 'negative') return true;
+    if (['negative', 'low'].includes(document.getElementById('bulkScope').value)) return true;
     if (rows().some(cb => cb.checked)) return true;
     alert('Select at least one meter.');
     return false;
@@ -636,8 +734,8 @@ body.meter-exporting #meterListExportArea {
     if (ensureAnySelected()) bulkForm.submit();
   });
 
-  document.getElementById('btnCutoffNegative')?.addEventListener('click', () => {
-    setBulkAction('cutoff', 'negative');
+  document.getElementById('btnCutoffLow')?.addEventListener('click', () => {
+    setBulkAction('cutoff', 'low');
     bulkForm.submit();
   });
 
@@ -684,7 +782,7 @@ body.meter-exporting #meterListExportArea {
       if (!response.ok || data.success === false) {
         throw new Error(data.error || 'Request failed');
       }
-      if (row) setPowerState(row, nextIsOn);
+      document.querySelectorAll(`[data-meter-row="${button.dataset.meterId}"]`).forEach(meterRow => setPowerState(meterRow, nextIsOn));
       showPowerStatus(
         'success',
         nextIsOn ? 'Power restored successfully.' : 'Power cut off successfully.',
@@ -740,7 +838,7 @@ body.meter-exporting #meterListExportArea {
     }
   }
 
-  document.getElementById('exportJpgBtn')?.addEventListener('click', async () => {
+  async function exportMeterJpg() {
     try {
       const canvas = await renderMeterListCanvas();
       const link = document.createElement('a');
@@ -750,9 +848,10 @@ body.meter-exporting #meterListExportArea {
     } catch (error) {
       alert(error && error.message ? error.message : 'Could not export JPG.');
     }
-  });
+  }
+  document.querySelectorAll('[data-export-jpg]').forEach(button => button.addEventListener('click', exportMeterJpg));
 
-  document.getElementById('exportPdfBtn')?.addEventListener('click', async () => {
+  async function exportMeterPdf() {
     try {
       await loadScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', () => Boolean(window.jspdf));
       const canvas = await renderMeterListCanvas();
@@ -773,7 +872,8 @@ body.meter-exporting #meterListExportArea {
     } catch (error) {
       alert(error && error.message ? error.message : 'Could not export PDF.');
     }
-  });
+  }
+  document.querySelectorAll('[data-export-pdf]').forEach(button => button.addEventListener('click', exportMeterPdf));
 </script>
 
 {% endblock %}

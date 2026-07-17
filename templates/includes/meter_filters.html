@@ -1,69 +1,87 @@
 {# templates/includes/meter_filters.html #}
-<form method="get" id="meter-filter-form" class="row row-cols-lg-auto g-2 align-items-center mb-3">
-  <!-- Property -->
-  <div class="col">
-    <select name="property" class="form-select form-select-sm w-auto" id="mf_property" style="min-width:160px">
+<form method="get" id="meter-filter-form" class="meter-filter-grid mb-3">
+  <div class="meter-filter-field meter-filter-property">
+    <select name="property" class="form-select form-select-sm" id="mf_property" aria-label="Property filter">
       <option value="">All Properties</option>
       {% for p in all_properties %}
-        <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>
-          {{ p.property_name }}
-        </option>
+        <option value="{{ p.id }}" {% if current_property == p.id|stringformat:"s" %}selected{% endif %}>{{ p.property_name }}</option>
       {% endfor %}
     </select>
   </div>
 
-  <!-- Unit (filtered by property) -->
-  <div class="col">
-    <select name="unit" class="form-select form-select-sm w-auto" id="mf_unit" style="min-width:160px">
+  <div class="meter-filter-field meter-filter-unit">
+    <select name="unit" class="form-select form-select-sm" id="mf_unit" aria-label="Unit filter">
       <option value="">All Units</option>
       {% for u in filtered_units %}
-        <option value="{{ u.id }}" {% if current_unit == u.id|stringformat:"s" %}selected{% endif %}>
-          {{ u.unit_number }}
-        </option>
+        <option value="{{ u.id }}" {% if current_unit == u.id|stringformat:"s" %}selected{% endif %}>{{ u.unit_number }}</option>
       {% endfor %}
     </select>
   </div>
 
-  <!-- Meter (filtered by unit/property) -->
-  <div class="col">
-    <select name="meter" class="form-select form-select-sm w-auto" id="mf_meter" style="min-width:180px">
+  <div class="meter-filter-field meter-filter-meter">
+    <select name="meter" class="form-select form-select-sm" id="mf_meter" aria-label="Meter filter">
       <option value="">All Meters</option>
       {% for m in filtered_meters %}
         <option value="{{ m.id }}" {% if current_meter == m.id|stringformat:"s" %}selected{% endif %}>
-          {{ m.meter_number }} - {{ m.unit.unit_number }} 
+          {{ m.meter_number }}{% if m.unit %} - {{ m.unit.unit_number }}{% endif %}
         </option>
       {% endfor %}
     </select>
   </div>
 
-  <div class="col">
-    <select name="role" class="form-select form-select-sm w-auto" id="mf_role" style="min-width:140px">
+  <div class="meter-filter-field meter-filter-role">
+    <select name="role" class="form-select form-select-sm" id="mf_role" aria-label="Role filter">
       <option value="">All Roles</option>
       <option value="billing" {% if current_role == "billing" %}selected{% endif %}>Billing</option>
       <option value="check" {% if current_role == "check" %}selected{% endif %}>Check / Audit</option>
     </select>
   </div>
 
-  <div class="col">
-    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+  <div class="meter-filter-actions">
+    <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-filter"></i><span> Filter</span></button>
     {% if request.GET %}
-      <a href="?" class="btn btn-sm btn-outline-secondary">Clear</a>
+      <a href="{% url 'smart_meter:meter_list' %}" class="btn btn-sm btn-outline-secondary" title="Clear filters"><i class="fas fa-undo"></i></a>
     {% endif %}
   </div>
 </form>
 
+<style>
+  .meter-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(130px, .8fr) minmax(180px, 1fr) minmax(135px, .75fr) auto;
+    gap: .5rem;
+    align-items: center;
+  }
+  .meter-filter-field { min-width: 0; }
+  .meter-filter-field .form-select { width: 100%; }
+  .meter-filter-actions { display: flex; gap: .35rem; white-space: nowrap; }
+
+  @media (max-width: 767.98px) {
+    .meter-filter-grid {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: .45rem;
+    }
+    .meter-filter-property,
+    .meter-filter-unit { grid-column: span 6; }
+    .meter-filter-meter { grid-column: span 5; }
+    .meter-filter-role { grid-column: span 4; }
+    .meter-filter-actions { grid-column: span 3; }
+    .meter-filter-actions .btn { min-height: 31px; }
+    .meter-filter-actions .btn-primary span { display: none; }
+  }
+</style>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  const $form = document.getElementById('meter-filter-form');
-  const $prop = document.getElementById('mf_property');
-  const $unit = document.getElementById('mf_unit');
-  const $meter = document.getElementById('mf_meter');
-  const $role = document.getElementById('mf_role');
+  const form = document.getElementById('meter-filter-form');
+  const property = document.getElementById('mf_property');
+  const unit = document.getElementById('mf_unit');
+  const meter = document.getElementById('mf_meter');
+  const role = document.getElementById('mf_role');
 
-  // Auto-submit like leases
-  $prop?.addEventListener('change', () => { $unit.value = ''; $meter.value = ''; $form.submit(); });
-  $unit?.addEventListener('change', () => { $meter.value = ''; $form.submit(); });
-  $meter?.addEventListener('change', () => $form.submit());
-  $role?.addEventListener('change', () => { $meter.value = ''; $form.submit(); });
+  property?.addEventListener('change', () => { unit.value = ''; meter.value = ''; form.submit(); });
+  unit?.addEventListener('change', () => { meter.value = ''; form.submit(); });
+  meter?.addEventListener('change', () => form.submit());
+  role?.addEventListener('change', () => form.submit());
 });
 </script>

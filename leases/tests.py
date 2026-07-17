@@ -112,3 +112,162 @@ class LeaseHistoryWitnessSelectTests(TestCase):
         self.assertTrue(label.startswith("Alexanderthegreat Wi - "))
         self.assertIn("42101-1111111-1", label)
         self.assertIn("0-300-111-1111", label)
+
+
+class PublicPoliceVerificationVehicleTests(TestCase):
+    def setUp(self):
+        from datetime import date, timedelta
+
+        from leases.models import Lease, LeaseVehicleType
+        from leases.services.police_verification import create_police_verification_link
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        property_obj = Property.objects.create(
+            property_name="Public Form Property",
+            owner_name="Test Owner",
+            owner_cnic="61101-1111111-1",
+            type="Residential",
+            property_type="Building",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="A-1")
+        tenant = Tenant.objects.create(
+            first_name="Public",
+            last_name="Tenant",
+            cnic="61101-2222222-2",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            monthly_rent=10000,
+        )
+        self.vehicle_type = LeaseVehicleType.objects.create(
+            name="Test Car",
+            code="test-car",
+            is_active=True,
+        )
+        self.link, self.url = create_police_verification_link(None, self.lease)
+
+    def test_form_shows_one_vehicle_first_and_no_registration_book(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="no_vehicle"')
+        self.assertContains(response, 'id="addVehicle"')
+        self.assertContains(response, " data-vehicle-entry>", count=3)
+        self.assertContains(response, "vehicle-entry is-hidden", count=2)
+        self.assertNotContains(response, "registration_book_photo")
+
+    def test_no_vehicle_submission_updates_lease_and_ignores_vehicle_fields(self):
+        from leases.models import PendingLeaseVehicleSubmission
+
+        response = self.client.post(
+            self.url,
+            {
+                "family-TOTAL_FORMS": "0",
+                "vehicle-TOTAL_FORMS": "3",
+                "no_vehicle": "1",
+                "vehicle-0-vehicle_type": str(self.vehicle_type.pk),
+                "vehicle-0-registration_number": "ABC-123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.lease.refresh_from_db()
+        self.assertIs(self.lease.has_vehicle, False)
+        self.assertFalse(PendingLeaseVehicleSubmission.objects.exists())
+
+
+class LeaseBillingChangeRegressionTests(TestCase):
+    def setUp(self):
+        from datetime import date, timedelta
+
+        from leases.models import Lease
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        property_obj = Property.objects.create(
+            property_name="Billing Regression Property",
+            owner_name="Test Owner",
+            owner_cnic="61101-3333333-3",
+            type="Residential",
+            property_type="Building",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="B-1")
+        tenant = Tenant.objects.create(
+            first_name="Billing",
+            last_name="Tenant",
+            cnic="61101-4444444-4",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=date.today() - timedelta(days=10),
+            end_date=date.today() + timedelta(days=355),
+            monthly_rent=10000,
+            society_maintenance=1000,
+        )
+
+    def test_end_date_only_is_not_a_billing_change_or_backfill(self):
+        from datetime import timedelta
+
+        from invoices.models import Invoice
+        from leases.utils.billing import (
+            preview_billing_on_change,
+            update_billing_on_change,
+        )
+        from leases.views import detect_lease_changes
+
+        old_lease = type(self.lease).objects.get(pk=self.lease.pk)
+        self.lease.end_date += timedelta(days=30)
+
+        changes = detect_lease_changes(old_lease, self.lease)
+        plan = preview_billing_on_change(self.lease, old_lease)
+        update_billing_on_change(
+            self.lease,
+            old_lease,
+            confirm_security_update=True,
+        )
+
+        self.assertTrue(changes["end_date_changed"])
+        self.assertFalse(changes["billing_changed"])
+        self.assertEqual(plan["backfill_months"], [])
+        self.assertEqual(plan["recurring"], [])
+        self.assertFalse(Invoice.objects.filter(lease=self.lease).exists())
+
+    def test_existing_month_invoice_is_found_by_issue_month(self):
+        from datetime import date, timedelta
+
+        from invoices.models import Invoice
+        from leases.utils.billing import update_billing_on_change
+
+        month_start = date.today().replace(day=1)
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=month_start,
+            due_date=month_start + timedelta(days=5),
+            description=f"Invoice for {month_start:%B %Y}",
+        )
+        old_lease = type(self.lease).objects.get(pk=self.lease.pk)
+        self.lease.monthly_rent = 12000
+
+        update_billing_on_change(
+            self.lease,
+            old_lease,
+            confirm_security_update=True,
+            include_backfill=False,
+            update_existing=False,
+        )
+
+        self.assertEqual(
+            Invoice.objects.filter(
+                lease=self.lease,
+                issue_date__year=month_start.year,
+                issue_date__month=month_start.month,
+            ).count(),
+            1,
+        )

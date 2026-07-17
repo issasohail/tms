@@ -32,6 +32,16 @@ from .models import (
 )
 
 
+def _ordered_units():
+    return Unit.objects.select_related("property").order_by(
+        "property__property_name", "unit_number", "pk"
+    )
+
+
+def _unit_choice_label(unit):
+    return f"{unit.property.property_name} / Unit {unit.unit_number}"
+
+
 class AssignMeterForm(forms.ModelForm):
     class Meta:
         model = Unit
@@ -62,6 +72,12 @@ class MeterForm(forms.ModelForm):
             'balance': forms.NumberInput(attrs={'class': 'form-control'}),
             'credit_balance': forms.NumberInput(attrs={'class': 'form-control'}),
         }
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["unit"].queryset = _ordered_units()
+        self.fields["unit"].label_from_instance = _unit_choice_label
 
 
 class MeterCheckGroupForm(forms.ModelForm):
@@ -140,9 +156,8 @@ class MeterReadingForm(forms.ModelForm):
 
 class UnknownToMeterForm(forms.ModelForm):
     unit = forms.ModelChoiceField(
-        queryset=Unit.objects.all(),
+        queryset=_ordered_units(),
         required=True,
-
     )
 
     class Meta:
@@ -151,6 +166,11 @@ class UnknownToMeterForm(forms.ModelForm):
         widgets = {
             "meter_number": forms.TextInput(attrs={"readonly": "readonly"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["unit"].queryset = _ordered_units()
+        self.fields["unit"].label_from_instance = _unit_choice_label
 
 # --- Switch ON/OFF Lab (meter-number based) ---
 

@@ -173,13 +173,15 @@
   // Convenience flags from plan (set in preview_billing_on_change)
   var rentChanged   = !!plan.rent_changed;
   var maintChanged  = !!plan.maintenance_changed;
-  var termChanged   = !!plan.end_date_changed;
+  var waterChanged  = !!plan.water_changed;
+  var netChanged    = !!plan.internet_changed;
+  var startChanged  = !!plan.start_date_changed;
   var securityPlan  = plan.security_item || null;
-  var rentOrTermChanged = rentChanged || maintChanged || termChanged;
+  var billingValuesChanged = rentChanged || maintChanged || waterChanged || netChanged || startChanged;
 
   function buildBackfillUI(){
     // If there is no rent/term change, don't show backfill at all.
-    if (!rentOrTermChanged) {
+    if (!billingValuesChanged) {
       backfillBox.style.display = 'none';
       return;
     }
@@ -266,7 +268,7 @@
     }
 
     // If no rent/term changes, hide recurring box and show security-only note (if applicable)
-    if (!rentOrTermChanged) {
+    if (!billingValuesChanged) {
       if (recurringBox) recurringBox.style.display = 'none';
 
       if (securityPlan && securityOnlyBox) {

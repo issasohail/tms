@@ -152,6 +152,28 @@
       font-weight: 900;
       cursor: pointer;
     }
+    .vehicle-choice {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--soft);
+    }
+    .vehicle-choice input { width: auto; margin: 0; }
+    .vehicle-choice label { margin: 0; cursor: pointer; }
+    .vehicle-entry {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .vehicle-entry.is-hidden { display: none; }
+    .vehicle-entry-title { margin-bottom: 8px; font-size: 13px; font-weight: 900; }
+    .vehicle-add-row { margin-top: 12px; }
+    .vehicle-add-row button:disabled { opacity: .55; cursor: not-allowed; }
+    .vehicle-fields.is-disabled { opacity: .55; }
     .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
     @media (max-width: 780px) {
       .page { padding: 12px; }
@@ -326,7 +348,11 @@
 
         <section class="card span-2">
           <h2>Vehicle Information</h2>
-          <div class="body">
+          <div class="body vehicle-fields" id="vehicleFields">
+            <div class="vehicle-choice">
+              <input type="checkbox" id="noVehicle" name="no_vehicle" value="1" {% if no_vehicle_checked %}checked{% endif %}>
+              <label for="noVehicle">I don't have a vehicle</label>
+            </div>
             {% if pending_vehicle_submissions %}
               <div class="table-wrap" style="margin-bottom:12px;">
                 <table>
@@ -345,27 +371,34 @@
               </div>
             {% endif %}
             <input type="hidden" name="vehicle-TOTAL_FORMS" value="3">
-            <div class="form-grid">
+            <div id="vehicleEntries">
               {% for i in "012" %}
+              <div class="vehicle-entry{% if not forloop.first %} is-hidden{% endif %}" data-vehicle-entry>
+                <div class="vehicle-entry-title">Vehicle {{ forloop.counter }}</div>
+                <div class="form-grid">
                 <div class="form-group"><label>Vehicle {{ forloop.counter }} type</label>
-                  <select name="vehicle-{{ forloop.counter0 }}-vehicle_type">
+                  <select name="vehicle-{{ forloop.counter0 }}-vehicle_type" data-vehicle-input>
                     <option value="">Select type</option>
                     {% for vehicle_type in vehicle_types %}
                       <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
                     {% endfor %}
                   </select>
                 </div>
-                <div class="form-group"><label>Registration #</label><input name="vehicle-{{ forloop.counter0 }}-registration_number"></div>
-                <div class="form-group"><label>Make</label><input name="vehicle-{{ forloop.counter0 }}-make"></div>
-                <div class="form-group"><label>Model</label><input name="vehicle-{{ forloop.counter0 }}-model"></div>
-                <div class="form-group"><label>Color</label><input name="vehicle-{{ forloop.counter0 }}-color"></div>
-                <div class="form-group"><label>Year</label><input name="vehicle-{{ forloop.counter0 }}-year" type="number" min="1900"></div>
-                <div class="form-group"><label>Owner Name</label><input name="vehicle-{{ forloop.counter0 }}-owner_name"></div>
-                <div class="form-group"><label>Owner CNIC</label><input name="vehicle-{{ forloop.counter0 }}-owner_cnic"></div>
-                <div class="form-group"><label>Parking Slot</label><input name="vehicle-{{ forloop.counter0 }}-parking_slot"></div>
-                <div class="form-group"><label>Vehicle Photo</label><input name="vehicle-{{ forloop.counter0 }}-vehicle_photo" type="file" accept="image/*"></div>
-                <div class="form-group"><label>Registration Book</label><input name="vehicle-{{ forloop.counter0 }}-registration_book_photo" type="file" accept="image/*,.pdf"></div>
+                <div class="form-group"><label>Registration #</label><input name="vehicle-{{ forloop.counter0 }}-registration_number" data-vehicle-input></div>
+                <div class="form-group"><label>Make</label><input name="vehicle-{{ forloop.counter0 }}-make" data-vehicle-input></div>
+                <div class="form-group"><label>Model</label><input name="vehicle-{{ forloop.counter0 }}-model" data-vehicle-input></div>
+                <div class="form-group"><label>Color</label><input name="vehicle-{{ forloop.counter0 }}-color" data-vehicle-input></div>
+                <div class="form-group"><label>Year</label><input name="vehicle-{{ forloop.counter0 }}-year" type="number" min="1900" data-vehicle-input></div>
+                <div class="form-group"><label>Owner Name</label><input name="vehicle-{{ forloop.counter0 }}-owner_name" data-vehicle-input></div>
+                <div class="form-group"><label>Owner CNIC</label><input name="vehicle-{{ forloop.counter0 }}-owner_cnic" data-vehicle-input></div>
+                <div class="form-group"><label>Parking Slot</label><input name="vehicle-{{ forloop.counter0 }}-parking_slot" data-vehicle-input></div>
+                <div class="form-group"><label>Vehicle Photo</label><input name="vehicle-{{ forloop.counter0 }}-vehicle_photo" type="file" accept="image/*" data-vehicle-input></div>
+                </div>
+              </div>
               {% endfor %}
+            </div>
+            <div class="vehicle-add-row">
+              <button type="button" id="addVehicle">Add more vehicle</button>
             </div>
           </div>
         </section>
@@ -388,6 +421,38 @@
       </div>
     </form>
   </main>
+  <script>
+    (function () {
+      const noVehicle = document.getElementById("noVehicle");
+      const vehicleFields = document.getElementById("vehicleFields");
+      const addVehicle = document.getElementById("addVehicle");
+      const entries = Array.from(document.querySelectorAll("[data-vehicle-entry]"));
+
+      function syncVehicleState() {
+        const hasNoVehicle = noVehicle.checked;
+        vehicleFields.classList.toggle("is-disabled", hasNoVehicle);
+        addVehicle.disabled = hasNoVehicle || !entries.some(function (entry) {
+          return entry.classList.contains("is-hidden");
+        });
+        entries.forEach(function (entry) {
+          const shouldDisable = hasNoVehicle || entry.classList.contains("is-hidden");
+          entry.querySelectorAll("[data-vehicle-input]").forEach(function (input) {
+            input.disabled = shouldDisable;
+          });
+        });
+      }
+
+      addVehicle.addEventListener("click", function () {
+        const nextEntry = entries.find(function (entry) {
+          return entry.classList.contains("is-hidden");
+        });
+        if (nextEntry) nextEntry.classList.remove("is-hidden");
+        syncVehicleState();
+      });
+      noVehicle.addEventListener("change", syncVehicleState);
+      syncVehicleState();
+    }());
+  </script>
   {% if submitted_ok %}
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>

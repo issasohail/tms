@@ -19,12 +19,7 @@
         class="btn btn-primary btn-sm">
         Payment In
       </a>
-      {% if security_totals.pending_refund > 0 %}
-      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_totals.pending_refund|floatformat:2 }}&amp;security_amount={{ security_totals.pending_refund|floatformat:2 }}&amp;security_type=REFUND"
-        class="btn btn-danger btn-sm">
-        Pay Tenant Refund
-      </a>
-      {% elif security_totals.currently_held > 0 %}
+      {% if security_totals.currently_held > 0 %}
       <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_totals.currently_held }}&amp;security_amount={{ security_totals.currently_held }}&amp;security_type=REFUND"
         class="btn btn-danger btn-sm">
         Refund Security
@@ -85,12 +80,7 @@
           class="btn btn-primary btn-sm">
           Payment In
         </a>
-        {% if security_totals.pending_refund > 0 %}
-        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_totals.pending_refund|floatformat:2 }}&amp;security_amount={{ security_totals.pending_refund|floatformat:2 }}&amp;security_type=REFUND"
-          class="btn btn-danger btn-sm">
-          Pay Tenant Refund
-        </a>
-        {% elif security_totals.currently_held > 0 %}
+        {% if security_totals.currently_held > 0 %}
         <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_totals.currently_held }}&amp;security_amount={{ security_totals.currently_held }}&amp;security_type=REFUND"
           class="btn btn-danger btn-sm">
           Security Refund

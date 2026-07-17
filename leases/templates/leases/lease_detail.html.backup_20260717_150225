@@ -2042,7 +2042,7 @@
         if (!responseData.ok || !payload.ok) {
           throw new Error(payload.error || 'Could not calculate the settlement.');
         }
-        debug('Preview received. Settlement invoices: ' + payload.future_invoices.length + '.');
+        debug('Preview received. Future invoices: ' + payload.future_invoices.length + '.');
         var daysEl = document.getElementById('endLeaseDays');
         if (daysEl) daysEl.textContent = payload.billable_days + '/' + payload.days_in_month + ' billed · ' + payload.proration_interval_label;
         else debug('Missing preview element: endLeaseDays');
@@ -2081,14 +2081,13 @@
         if (payload.future_invoices.length) {
           futureBox.innerHTML = payload.future_invoices.map(function (invoice) {
             return '<div class="settlement-invoice-row d-flex align-items-center gap-2 border rounded bg-white mt-1 px-2 py-1">' +
-              '<span class="badge bg-secondary">' + safe(invoice.settlement_bucket) + '</span>' +
               '<span class="flex-grow-1"><strong>#' + safe(invoice.number) + '</strong> · ' + safe(invoice.issue_date) +
               ' · ' + safe(invoice.status) + ' · <strong>' + pkr(invoice.amount) + '</strong></span>' +
               '<a class="btn btn-sm btn-primary" target="_blank" href="' + safe(invoice.detail_url) + '">Detail</a></div>';
           }).join('');
           futureBox.classList.remove('d-none');
         } else {
-          futureBox.innerHTML = '<strong>No invoices are included in this settlement review.</strong>';
+          futureBox.innerHTML = '<strong>No invoices exist after the selected lease end date.</strong>';
           futureBox.classList.remove('d-none');
         }
 

@@ -569,14 +569,7 @@ def build_end_lease_preview(
     security_refund = money(security_held - security_applied)
     lease_credit = money(max(-balance_after_security, ZERO))
     refund_due = money(security_refund + lease_credit)
-    billing_month_start = end_date.replace(day=1)
-    outstanding_prior_invoices = list(
-        Invoice.objects.filter(lease=lease, issue_date__lt=billing_month_start)
-        .exclude(status__in=["paid", "cancelled"])
-        .exclude(description__startswith="Move-out settlement charges - lease ended")
-        .order_by("issue_date", "id")
-    )
-    review_invoices = list(future_invoices) + outstanding_prior_invoices
+    review_invoices = list(future_invoices)
     if occupied_days < days_in_month and all(
         row.pk != final_period_invoice.pk for row in review_invoices
     ):
@@ -590,7 +583,6 @@ def build_end_lease_preview(
         "invoice": invoice,
         "final_period_invoice": final_period_invoice,
         "end_date": end_date,
-        "billing_month_start": billing_month_start,
         "occupied_days": occupied_days,
         "billable_days": billable_days,
         "days_in_month": days_in_month,
@@ -766,19 +758,16 @@ def end_lease(lease, *, user=None, notes="", **preview_kwargs) -> dict:
             notes=note_text,
         )
 
-    if preview["security_refund"] > ZERO or preview["lease_credit"] > ZERO:
+    if preview["security_refund"] > ZERO:
         SecurityDepositTransaction.objects.create(
             lease=lease,
             date=end_date,
             type="REFUND",
-            amount=preview["refund_due"],
+            amount=preview["security_refund"],
             refund_status="PENDING",
-            notes=(
-                "Pending tenant refund (security + lease credit); "
-                "awaiting tenant account details."
-            ),
+            notes="Pending security refund; awaiting tenant account details.",
             refund_notes=(
-                f"Includes security refund of Rs. {preview['security_refund']:,.2f} and "
+                f"Total tenant refund due is Rs. {preview['refund_due']:,.2f}, including "
                 f"lease credit of Rs. {preview['lease_credit']:,.2f}. {notes.strip()}"
             ).strip(),
         )
@@ -846,7 +835,6 @@ def rollback_end_lease(lease, *, restored_end_date: date, user=None, notes="") -
         is_workflow_row = (
             "final lease settlement" in (movement.notes or "").lower()
             or "pending security refund" in (movement.notes or "").lower()
-            or "pending tenant refund" in (movement.notes or "").lower()
             or "applied to final lease balance" in (movement.deduction_reason or "").lower()
         )
         if not is_workflow_row or movement.refund_status == "CANCELLED":

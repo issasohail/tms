@@ -3,13 +3,78 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase
+from django.urls import reverse
 
 from leases.models import Lease, LeaseUnitOccupancy
 from properties.models import Property, Unit
-from smart_meter.models import Meter, MeterInstallation
+from smart_meter.models import Meter, MeterInstallation, MeterRoleHistory
 from smart_meter.services.invoicing import ElectricBillContext
 from tenants.models import Tenant
+
+
+class MeterFormUnitOrderingTests(TestCase):
+    def setUp(self):
+        alpha = Property.objects.create(
+            property_name="Alpha Property",
+            owner_name="Owner Alpha",
+            owner_cnic="1234511111111",
+            type="apartment",
+            property_type="apartment",
+            total_units=2,
+        )
+        beta = Property.objects.create(
+            property_name="Beta Property",
+            owner_name="Owner Beta",
+            owner_cnic="1234522222222",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.alpha_1 = Unit.objects.create(property=alpha, unit_number="1")
+        self.alpha_2 = Unit.objects.create(property=alpha, unit_number="2")
+        self.beta_1 = Unit.objects.create(property=beta, unit_number="1")
+
+    def test_add_and_convert_forms_order_units_by_property_then_unit(self):
+        from smart_meter.forms import MeterForm, UnknownToMeterForm
+
+        expected_ids = [self.alpha_1.pk, self.alpha_2.pk, self.beta_1.pk]
+        for form_class in (MeterForm, UnknownToMeterForm):
+            field = form_class().fields["unit"]
+            self.assertEqual(list(field.queryset.values_list("pk", flat=True)), expected_ids)
+            self.assertEqual(
+                field.label_from_instance(self.alpha_1),
+                "Alpha Property / Unit 1",
+            )
+
+
+class MeterRoleUpdateTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="meter-admin", password="test-pass")
+        self.user.user_permissions.add(Permission.objects.get(codename="change_meter"))
+        self.meter = Meter.objects.create(meter_number="ROLE-UPDATE-1")
+        MeterRoleHistory.objects.create(
+            meter=self.meter,
+            role=Meter.METER_ROLE_BILLING,
+            start_date=date(2026, 1, 1),
+        )
+        self.client.force_login(self.user)
+
+    def test_inline_role_update_returns_saved_role_and_label(self):
+        response = self.client.post(
+            reverse("smart_meter:meter_role_update", args=[self.meter.pk]),
+            {"meter_role": Meter.METER_ROLE_CHECK},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["role"], Meter.METER_ROLE_CHECK)
+        self.assertEqual(response.json()["label"], "Check / Audit")
+        self.meter.refresh_from_db()
+        self.assertEqual(self.meter.meter_role, Meter.METER_ROLE_CHECK)
+        self.assertEqual(self.meter.role_history.filter(is_active=True, end_date__isnull=True).count(), 1)
 
 
 class ElectricBillDescriptionTests(TestCase):

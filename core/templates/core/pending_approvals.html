@@ -15,6 +15,7 @@
   .pending-tenant { width: 230px; }
   .pending-property { width: 230px; }
   .pending-status { width: 132px; }
+  .pending-handyman { width: 190px; }
   .pending-review { width: 190px; }
   .pending-nowrap {
     white-space: nowrap;
@@ -36,6 +37,22 @@
     border: 1px solid #d8dee6;
     background: #f3f4f6;
   }
+  .pending-maintenance-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .2rem;
+  }
+  .pending-maintenance-actions .btn {
+    font-size: .65rem;
+  }
+  .pending-approval-feedback {
+    position: fixed;
+    top: 72px;
+    right: 18px;
+    z-index: 1080;
+    max-width: 420px;
+  }
   @media (max-width: 768px) {
     .pending-approval-table { min-width: 980px; }
   }
@@ -53,7 +70,7 @@
       <div class="col-12">
         <div class="card shadow-sm">
           <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div class="fw-semibold">{{ section.title }} <span class="badge bg-warning text-dark">{{ section.count }}</span></div>
+            <div class="fw-semibold">{{ section.title }} <span class="badge bg-warning text-dark pending-section-count">{{ section.count }}</span></div>
           </div>
           <div class="table-responsive">
             <table class="table table-sm table-bordered align-middle mb-0 pending-approval-table">
@@ -66,17 +83,23 @@
                   <th class="pending-tenant">Tenant</th>
                   <th class="pending-property">Property / Unit</th>
                   <th>Details</th>
-                  <th class="pending-status">Status</th>
+                  {% if section.kind == "maintenance" %}<th class="pending-handyman">Handyman</th>{% endif %}
+                  <th class="pending-status" {% if section.kind == "maintenance" %}style="width:235px;"{% endif %}>Status</th>
                   <th class="pending-review">Review</th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in section.items %}
                   {% with item=row.object %}
-                  <tr>
+                  <tr data-pending-row>
                     <td>{{ forloop.counter }}</td>
-                    <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">{{ item.created_at|date:"M d, Y H:i" }}</td>
-                    <td class="pending-nowrap" title="{{ item.phone|format_phone|default:'-' }}">{{ item.phone|format_phone|default:"-" }}</td>
+                    {% if section.kind == "registration" %}
+                      <td class="pending-nowrap" title="{{ item.submitted_at|date:'M d, Y H:i' }}">{{ item.submitted_at|date:"M d, Y H:i" }}</td>
+                      <td class="pending-nowrap" title="{{ item.tenant.phone|format_phone|default:'-' }}">{{ item.tenant.phone|format_phone|default:"-" }}</td>
+                    {% else %}
+                      <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">{{ item.created_at|date:"M d, Y H:i" }}</td>
+                      <td class="pending-nowrap" title="{{ item.phone|format_phone|default:'-' }}">{{ item.phone|format_phone|default:"-" }}</td>
+                    {% endif %}
                     {% if section.kind == "family" %}
                       <td>
                         {% if item.photo %}
@@ -97,6 +120,7 @@
                       {% if item.issue_type %}{{ item.issue_type }}{% endif %}
                       {% if item.purpose %}{{ item.get_purpose_display }}{% endif %}
                       {% if item.target_kind %}<span class="badge bg-info text-dark ms-1">{{ item.get_target_kind_display }}</span>{% endif %}
+                      {% if item.pending_group_count > 1 %}<span class="badge bg-primary ms-1">{{ item.pending_group_count }} linked files</span>{% endif %}
                       {% if item.submitted_by_staff %}<span class="text-muted small d-block">Submitted by {{ item.submitted_by_staff.get_username }}</span>{% endif %}
                       {% if item.proposed_terms %}<span class="text-muted">{{ item.proposed_terms|truncatechars:90 }}</span>{% endif %}
                       {% if item.monthly_rent %}Rent: Rs. {{ item.monthly_rent }}{% endif %}
@@ -110,25 +134,47 @@
                         <span class="badge bg-info text-dark me-1">{{ item.get_source_display }}</span>
                         {{ item.original_filename|default:item.file.name|truncatechars:60 }}
                       {% endif %}
+                      {% if section.kind == "registration" %}
+                        Tenant profile update
+                        {% with people_count=item.pending_people.count %}
+                          {% if people_count %}<span class="badge bg-info text-dark ms-1">{{ people_count }} family/person update{{ people_count|pluralize }}</span>{% endif %}
+                        {% endwith %}
+                      {% endif %}
                     </td>
+                    {% if section.kind == "maintenance" %}
+                      <td>
+                        <select name="handyman" form="maintenance-approval-{{ item.pk }}" class="form-select form-select-sm" aria-label="Assign handyman">
+                          <option value="">Select handyman</option>
+                          {% for handyman in active_handymen %}
+                            <option value="{{ handyman.pk }}">{{ handyman.full_name }}{% if handyman.is_preferred %} ★{% endif %}</option>
+                          {% endfor %}
+                        </select>
+                      </td>
+                    {% endif %}
                     <td>
-                      <span class="pending-status-line">
+                      <span class="{% if section.kind == 'maintenance' %}pending-maintenance-actions{% else %}pending-status-line{% endif %}">
                         <span class="badge bg-secondary">{{ item.get_status_display }}</span>
-                        {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
-                          <form method="post" action="{{ row.urls.approve }}" class="d-inline">
+                        {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
+                          <form method="post" action="{{ row.urls.approve }}" class="d-inline pending-approval-action" data-action="approve" {% if section.kind == "maintenance" %}id="maintenance-approval-{{ item.pk }}"{% endif %}>
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-xs btn-success py-0 px-1" onclick="return confirm('Approve this item?');">Approve</button>
+                            {% if section.kind == "maintenance" %}
+                              <button type="submit" name="notify_mode" value="" class="btn btn-xs btn-success py-0 px-1">Approve</button>
+                              <button type="submit" name="notify_mode" value="api" class="btn btn-xs btn-success py-0 px-1">API</button>
+                              <button type="submit" name="notify_mode" value="manual" class="btn btn-xs btn-outline-success py-0 px-1">Manual</button>
+                            {% else %}
+                              <button type="submit" class="btn btn-xs btn-success py-0 px-1">Approve</button>
+                            {% endif %}
                           </form>
                         {% endif %}
                       </span>
                     </td>
                     <td>
                       <span class="pending-review-line">
-                      <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">Detail</a>
-                      {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
-                        <form method="post" action="{{ row.urls.reject }}" class="d-inline">
+                      <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">{% if section.kind == "registration" %}Review{% else %}Detail{% endif %}</a>
+                      {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
+                        <form method="post" action="{{ row.urls.reject }}" class="d-inline pending-approval-action" data-action="reject">
                           {% csrf_token %}
-                          <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this item?');">Reject</button>
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
                         </form>
                       {% endif %}
                       </span>
@@ -136,7 +182,7 @@
                   </tr>
                   {% endwith %}
                 {% empty %}
-                  <tr><td colspan="{% if section.kind == 'family' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No pending items.</td></tr>
+                  <tr><td colspan="{% if section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No pending items.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -146,4 +192,61 @@
     {% endfor %}
   </div>
 </div>
+<div id="pendingApprovalFeedback" class="pending-approval-feedback" aria-live="polite"></div>
+<script>
+(function () {
+  const feedback = document.getElementById("pendingApprovalFeedback");
+
+  function showFeedback(message, ok) {
+    feedback.innerHTML = "";
+    const alert = document.createElement("div");
+    alert.className = "alert " + (ok ? "alert-success" : "alert-danger") + " shadow-sm py-2 px-3";
+    alert.textContent = message;
+    feedback.appendChild(alert);
+    window.setTimeout(function () { alert.remove(); }, 5000);
+  }
+
+  document.addEventListener("submit", async function (event) {
+    const form = event.target.closest("form.pending-approval-action");
+    if (!form) return;
+    event.preventDefault();
+
+    const submitter = event.submitter;
+    const formData = new FormData(form);
+    if (submitter && submitter.name) formData.set(submitter.name, submitter.value);
+    const buttons = form.querySelectorAll("button");
+    buttons.forEach(function (button) { button.disabled = true; });
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        credentials: "same-origin"
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || "The update could not be completed.");
+
+      const row = form.closest("tr[data-pending-row]");
+      const card = form.closest(".card");
+      if (row) row.remove();
+      if (card) {
+        const badge = card.querySelector(".pending-section-count");
+        if (badge) badge.textContent = Math.max(0, Number(badge.textContent || 0) - 1);
+        const tbody = card.querySelector("tbody");
+        if (tbody && !tbody.querySelector("tr[data-pending-row]")) {
+          const empty = document.createElement("tr");
+          empty.innerHTML = '<td colspan="9" class="text-muted text-center py-3">No pending items.</td>';
+          tbody.appendChild(empty);
+        }
+      }
+      showFeedback(data.message || "Updated.", true);
+      if (data.redirect_url) window.open(data.redirect_url, "_blank", "noopener");
+    } catch (error) {
+      buttons.forEach(function (button) { button.disabled = false; });
+      showFeedback(error.message || "The update could not be completed.", false);
+    }
+  });
+})();
+</script>
 {% endblock %}

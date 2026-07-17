@@ -2,7 +2,7 @@
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib import messages
 from django.core.files.base import ContentFile
-from django.http import FileResponse, Http404, HttpResponseForbidden
+from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
 from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import quote
 
 from django.db import models, transaction
 from django.db.models import Case, DecimalField, F, OuterRef, Subquery, Sum, Value, When
@@ -38,10 +39,17 @@ PENDING_KIND_LABELS = {
     "maintenance": "WhatsApp Maintenance",
     "family": "Lease Family Member",
     "police": "Police Verification",
+    "registration": "Tenant Registration",
 }
 
 
 def _pending_item_urls(kind, item):
+    if kind == "registration":
+        return {
+            "detail": reverse("tenants:registration_submission_detail", args=[item.pk]),
+            "approve": "",
+            "reject": "",
+        }
     urls = {
         "detail": reverse("core:pending_approval_detail", args=[kind, item.pk]),
         "approve": reverse("core:pending_approval_approve", args=[kind, item.pk]),
@@ -54,6 +62,37 @@ def _pending_item_urls(kind, item):
             "cnic_back": reverse("core:pending_family_file", args=[item.pk, "cnic_back"]),
         })
     return urls
+
+
+def _is_ajax(request):
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def _pending_ajax_response(request, message, *, redirect_url="", status=200):
+    if not _is_ajax(request):
+        return None
+    return JsonResponse(
+        {"ok": status < 400, "message": message, "redirect_url": redirect_url},
+        status=status,
+    )
+
+
+def _group_pending_media(items):
+    """Show one approval row for files deliberately uploaded in the same batch."""
+    grouped = []
+    seen_batches = set()
+    for item in items:
+        if item.batch_key:
+            if item.batch_key in seen_batches:
+                continue
+            seen_batches.add(item.batch_key)
+            item.pending_group_count = sum(
+                1 for candidate in items if candidate.batch_key == item.batch_key
+            )
+        else:
+            item.pending_group_count = 1
+        grouped.append(item)
+    return grouped
 
 
 def _property_unit_label(item):
@@ -94,19 +133,97 @@ def _pending_media_context(media):
     }
 
 
+def _whatsapp_api_display_number():
+    """Return the Meta WhatsApp display number seen in recent webhook metadata."""
+    from whatsapp.models import WhatsAppWebhookLog
+    from whatsapp.services.whatsapp import WhatsAppService
+
+    configured_number = GlobalSettings.get_solo().whatsapp_number
+    if configured_number:
+        return WhatsAppService.normalize_phone_number(configured_number)
+    for log in WhatsAppWebhookLog.objects.order_by("-created_at")[:50]:
+        for entry in (log.payload or {}).get("entry", []):
+            for change in entry.get("changes", []):
+                display_number = (
+                    change.get("value", {}).get("metadata", {}).get(
+                        "display_phone_number", ""
+                    )
+                )
+                if display_number:
+                    return WhatsAppService.normalize_phone_number(display_number)
+    return ""
+
+
+def _handyman_maintenance_message(request, pending, ticket, handyman):
+    tenant = pending.tenant or getattr(pending.lease, "tenant", None)
+    tenant_name = tenant.get_full_name() if tenant else "-"
+    location = _property_unit_label(pending)
+    detail_url = request.build_absolute_uri(
+        reverse("maintenance:request_detail", args=[ticket.pk])
+    )
+    media_urls = []
+    for media in pending.media.all():
+        if getattr(media, "file", None):
+            media_urls.append(request.build_absolute_uri(media.file.url))
+    api_number = _whatsapp_api_display_number()
+    api_number_label = f"+{api_number}" if api_number else "this WhatsApp API number"
+    settings_obj = GlobalSettings.get_solo()
+    photo_command = settings_obj.handyman_job_photo_command or "PHOTO"
+    invoice_command = settings_obj.handyman_invoice_command or "INVOICE"
+
+    lines = [
+        f"Hello {handyman.full_name},",
+        "A maintenance job has been assigned to you.",
+        "",
+        f"Job: #{ticket.pk} - {ticket.title}",
+        f"Location: {location}",
+        f"Tenant: {tenant_name}",
+        f"Priority: {ticket.get_priority_display()}",
+        f"Details: {pending.description or ticket.description or '-'}",
+        f"TMS detail: {detail_url}",
+    ]
+    if media_urls:
+        lines.extend(["", "Submitted photos/files:"])
+        lines.extend(f"- {url}" for url in media_urls)
+    lines.extend(
+        [
+            "",
+            "IMPORTANT - To get paid after completion:",
+            f"1. Send {photo_command}, then send the completed-work photos.",
+            f"2. Send {invoice_command}, then send the receipt/invoice.",
+            f"Send both to WhatsApp API number {api_number_label}.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 @login_required
 def pending_approvals(request):
+    from handyman.models import HandymanProfile
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
     from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission, PendingPoliceVerificationSubmission
+    from tenants.models import TenantRegistrationSubmission
 
     pending_payments = PendingWhatsAppPayment.objects.filter(
         status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
         approved=False,
         rejected=False,
     ).select_related("tenant", "lease", "property", "unit")[:50]
-    pending_media = PendingWhatsAppMedia.objects.filter(
+    pending_media = list(PendingWhatsAppMedia.objects.filter(
         status=PendingWhatsAppMedia.STATUS_PENDING,
-    ).select_related("tenant", "lease", "property", "unit", "submitted_by_staff")[:50]
+    ).exclude(
+        purpose__in=[
+            PendingWhatsAppMedia.PURPOSE_PAYMENT,
+            PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        ]
+    ).exclude(
+        maintenance_submissions__status=PendingWhatsAppMaintenance.STATUS_PENDING,
+    ).exclude(
+        police_verification_submissions__status="pending",
+    ).select_related(
+        "tenant", "lease", "property", "unit", "submitted_by_staff"
+    ).distinct()[:200])
+    pending_media = _group_pending_media(pending_media)[:50]
     pending_maintenance = PendingWhatsAppMaintenance.objects.filter(
         status=PendingWhatsAppMaintenance.STATUS_PENDING,
     ).select_related("tenant", "lease", "property", "unit")[:50]
@@ -120,6 +237,9 @@ def pending_approvals(request):
     pending_police = PendingPoliceVerificationSubmission.objects.filter(
         status=PendingPoliceVerificationSubmission.STATUS_PENDING,
     ).select_related("lease__tenant", "lease__unit__property", "tenant")[:50]
+    pending_registrations = TenantRegistrationSubmission.objects.filter(
+        status="pending",
+    ).select_related("tenant").prefetch_related("pending_people")[:50]
     sections = [
         {
             "title": "Pending Leases",
@@ -147,7 +267,7 @@ def pending_approvals(request):
             "title": "WhatsApp Documents / Media",
             "kind": "media",
             "items": pending_media,
-            "count": PendingWhatsAppMedia.objects.filter(status=PendingWhatsAppMedia.STATUS_PENDING).count(),
+            "count": len(pending_media),
         },
         {
             "title": "WhatsApp Maintenance",
@@ -167,6 +287,12 @@ def pending_approvals(request):
             "items": pending_police,
             "count": PendingPoliceVerificationSubmission.objects.filter(status=PendingPoliceVerificationSubmission.STATUS_PENDING).count(),
         },
+        {
+            "title": "Tenant Registration Submissions",
+            "kind": "registration",
+            "items": pending_registrations,
+            "count": TenantRegistrationSubmission.objects.filter(status="pending").count(),
+        },
     ]
     for section in sections:
         section["items"] = [
@@ -177,7 +303,16 @@ def pending_approvals(request):
             }
             for item in section["items"]
         ]
-    return render(request, "core/pending_approvals.html", {"sections": sections})
+    return render(
+        request,
+        "core/pending_approvals.html",
+        {
+            "sections": sections,
+            "active_handymen": HandymanProfile.objects.filter(
+                is_active=True
+            ).order_by("-is_preferred", "full_name"),
+        },
+    )
 
 
 def _pending_item_for_kind(kind, pk):
@@ -236,11 +371,23 @@ def _pending_item_for_kind(kind, pk):
 
 @login_required
 def pending_approval_detail(request, kind, pk):
+    from handyman.models import HandymanProfile
+
     item = _pending_item_for_kind(kind, pk)
     media_items = []
     media_preview = None
     if kind == "media":
-        media_preview = _pending_media_context(item)
+        if item.batch_key:
+            batch_media = item.__class__.objects.filter(
+                status=item.STATUS_PENDING,
+                batch_key=item.batch_key,
+            ).order_by("created_at", "pk")
+            media_items = [
+                {"object": media, **_pending_media_context(media)}
+                for media in batch_media
+            ]
+        else:
+            media_preview = _pending_media_context(item)
     elif kind == "payment":
         if getattr(item, "screenshot", None):
             media_preview = {
@@ -270,6 +417,16 @@ def pending_approval_detail(request, kind, pk):
             "media_items": media_items,
             "property_unit_label": _property_unit_label(item),
             "urls": _pending_item_urls(kind, item),
+            "active_handymen": (
+                HandymanProfile.objects.filter(is_active=True).order_by(
+                    "-is_preferred", "full_name"
+                )
+                if kind == "maintenance"
+                else HandymanProfile.objects.none()
+            ),
+            "whatsapp_api_number": (
+                _whatsapp_api_display_number() if kind == "maintenance" else ""
+            ),
         },
     )
 
@@ -443,7 +600,7 @@ def _apply_pending_media_destination(pending, submitted_destination):
 
 
 def _approve_pending_payment(pending, user):
-    from whatsapp.models import PendingWhatsAppPayment
+    from whatsapp.models import PendingWhatsAppMedia, PendingWhatsAppPayment
 
     if pending.approved or pending.rejected:
         raise ValueError("This payment has already been reviewed.")
@@ -465,9 +622,28 @@ def _approve_pending_payment(pending, user):
     pending.save(update_fields=[
         "created_payment", "approved", "rejected", "status", "approved_by", "approved_at", "updated_at"
     ])
+    linked_media = PendingWhatsAppMedia.objects.filter(
+        status=PendingWhatsAppMedia.STATUS_PENDING,
+        purpose=PendingWhatsAppMedia.PURPOSE_PAYMENT,
+    )
+    if pending.original_whatsapp_message_id:
+        linked_media = linked_media.filter(
+            original_whatsapp_message_id=pending.original_whatsapp_message_id
+        )
+    elif pending.screenshot and pending.screenshot.name:
+        linked_media = linked_media.filter(file=pending.screenshot.name)
+    else:
+        linked_media = linked_media.none()
+    linked_media.update(
+        status=PendingWhatsAppMedia.STATUS_APPROVED,
+        approved_by=user,
+        approved_at=timezone.now(),
+        updated_at=timezone.now(),
+    )
 
 
-def _approve_pending_maintenance(pending, user):
+def _approve_pending_maintenance(pending, user, handyman=None):
+    from handyman.services import assign_handyman
     from maintenance.models import MaintenanceRequest, MaintenanceRequestMedia
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia
 
@@ -507,6 +683,10 @@ def _approve_pending_maintenance(pending, user):
     pending.approved_by = user
     pending.approved_at = timezone.now()
     pending.save(update_fields=["created_request", "status", "approved_by", "approved_at", "updated_at"])
+    assignment = None
+    if handyman:
+        assignment = assign_handyman(ticket, handyman, assigned_by=user)
+    return ticket, assignment
 
 
 @login_required
@@ -522,6 +702,9 @@ def pending_approval_approve(request, kind, pk):
                 raise ValueError("This lease is not pending approval.")
             item.status = "active"
             item.save(update_fields=["status", "updated_at"])
+            ajax_response = _pending_ajax_response(request, "Lease approved and activated.")
+            if ajax_response:
+                return ajax_response
             messages.success(request, "Lease approved and activated.")
             return redirect("leases:lease_detail", pk=item.pk)
         if kind == "agreement":
@@ -533,11 +716,17 @@ def pending_approval_approve(request, kind, pk):
             item.lease.terms = item.proposed_terms
             item.lease.save(update_fields=["terms", "updated_at"])
             item.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_notes"])
+            ajax_response = _pending_ajax_response(request, "Agreement edit approved and applied.")
+            if ajax_response:
+                return ajax_response
             messages.success(request, "Agreement edit approved and applied.")
             return redirect("leases:lease_detail", pk=item.lease_id)
         if kind == "family":
             from leases.views import approve_pending_family_submission
             approve_pending_family_submission(item, request.user)
+            ajax_response = _pending_ajax_response(request, "Family member update approved.")
+            if ajax_response:
+                return ajax_response
             if getattr(item, "action", "") == "remove":
                 messages.success(request, "Family member removal approved.")
             else:
@@ -546,6 +735,9 @@ def pending_approval_approve(request, kind, pk):
         if kind == "police":
             from leases.services.police_verification import approve_police_submission
             approve_police_submission(item, request.user)
+            ajax_response = _pending_ajax_response(request, "Police verification approved and attached to the lease.")
+            if ajax_response:
+                return ajax_response
             messages.success(request, "Police verification approved and attached to the lease.")
             return redirect("leases:lease_detail", pk=item.lease_id)
         if kind == "payment":
@@ -558,27 +750,111 @@ def pending_approval_approve(request, kind, pk):
                 ).get(pk=item.pk)
                 if item.status != PendingWhatsAppMedia.STATUS_PENDING:
                     raise ValueError("This media has already been reviewed.")
-                _apply_pending_media_destination(
-                    item, request.POST.get("media_destination", "")
-                )
-                _attach_pending_media_from_core(item, request.user)
-                item.status = PendingWhatsAppMedia.STATUS_APPROVED
-                item.approved_by = request.user
-                item.approved_at = timezone.now()
-                item.save(update_fields=[
-                    "purpose", "target_kind", "status", "approved_by", "approved_at", "updated_at"
-                ])
-            messages.success(request, "WhatsApp media approved.")
+                batch_items = PendingWhatsAppMedia.objects.select_for_update().filter(
+                    status=PendingWhatsAppMedia.STATUS_PENDING,
+                    batch_key=item.batch_key,
+                ) if item.batch_key else [item]
+                approved_count = 0
+                for batch_item in batch_items:
+                    _apply_pending_media_destination(
+                        batch_item, request.POST.get("media_destination", "")
+                    )
+                    _attach_pending_media_from_core(batch_item, request.user)
+                    batch_item.status = PendingWhatsAppMedia.STATUS_APPROVED
+                    batch_item.approved_by = request.user
+                    batch_item.approved_at = timezone.now()
+                    batch_item.save(update_fields=[
+                        "purpose", "target_kind", "status", "approved_by", "approved_at", "updated_at"
+                    ])
+                    approved_count += 1
+            messages.success(request, f"{approved_count} WhatsApp media file(s) approved.")
         elif kind == "maintenance":
-            _approve_pending_maintenance(item, request.user)
+            from handyman.models import HandymanProfile
+            from whatsapp.services.whatsapp import WhatsAppService
+
+            notify_mode = (request.POST.get("notify_mode") or "").strip()
+            handyman_id = (request.POST.get("handyman") or "").strip()
+            if notify_mode in {"api", "manual"} and not handyman_id:
+                raise ValueError("Select a handyman before sending the assignment.")
+            handyman = None
+            if handyman_id:
+                handyman = HandymanProfile.objects.filter(
+                    pk=handyman_id, is_active=True
+                ).first()
+                if not handyman:
+                    raise ValueError("Select a valid active handyman.")
+
+            ticket, assignment = _approve_pending_maintenance(
+                item, request.user, handyman=handyman
+            )
             messages.success(request, "Maintenance request approved and created.")
-            if item.created_request_id:
-                return redirect("maintenance:request_detail", pk=item.created_request_id)
+            if assignment:
+                messages.success(
+                    request, f"Assigned to {assignment.handyman.full_name}."
+                )
+            if assignment and notify_mode in {"api", "manual"}:
+                handyman_phone = assignment.handyman.display_phone
+                if not handyman_phone:
+                    messages.warning(
+                        request,
+                        "The handyman was assigned, but no WhatsApp/phone number is saved.",
+                    )
+                else:
+                    assignment_message = _handyman_maintenance_message(
+                        request, item, ticket, assignment.handyman
+                    )
+                    if notify_mode == "manual":
+                        normalized_phone = WhatsAppService.normalize_phone_number(
+                            handyman_phone
+                        )
+                        manual_url = f"https://wa.me/{normalized_phone}?text={quote(assignment_message)}"
+                        ajax_response = _pending_ajax_response(
+                            request,
+                            "Maintenance approved and assigned. Opening WhatsApp.",
+                            redirect_url=manual_url,
+                        )
+                        if ajax_response:
+                            return ajax_response
+                        return redirect(manual_url)
+                    try:
+                        result = WhatsAppService(created_by=request.user).send_text(
+                            handyman_phone,
+                            assignment_message,
+                            maintenance_request=ticket,
+                        )
+                    except Exception as exc:
+                        result = {"ok": False, "error": str(exc)}
+                    if result.get("ok"):
+                        assignment.handyman_notified_at = timezone.now()
+                        assignment.save(
+                            update_fields=["handyman_notified_at", "updated_at"]
+                        )
+                        messages.success(
+                            request, "Assignment sent to the handyman via WhatsApp API."
+                        )
+                    else:
+                        messages.warning(
+                            request,
+                            "The handyman was assigned, but WhatsApp API sending failed: "
+                            + (result.get("error") or "Unknown API error."),
+                        )
+            ajax_response = _pending_ajax_response(
+                request, "Maintenance request approved and created."
+            )
+            if ajax_response:
+                return ajax_response
+            return redirect("maintenance:request_detail", pk=ticket.pk)
         else:
             raise Http404("Unknown pending approval type.")
     except ValueError as exc:
+        ajax_response = _pending_ajax_response(request, str(exc), status=400)
+        if ajax_response:
+            return ajax_response
         messages.error(request, str(exc))
         return redirect("core:pending_approval_detail", kind=kind, pk=pk)
+    ajax_response = _pending_ajax_response(request, "Pending item approved.")
+    if ajax_response:
+        return ajax_response
     return redirect("core:pending_approvals")
 
 
@@ -600,9 +876,25 @@ def pending_approval_reject(request, kind, pk):
         item.approved = False
         item.status = PendingWhatsAppPayment.STATUS_REJECTED
         item.save(update_fields=["rejected", "approved", "status", "updated_at"])
+        linked_media = PendingWhatsAppMedia.objects.filter(
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+            purpose=PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        )
+        if item.original_whatsapp_message_id:
+            linked_media = linked_media.filter(
+                original_whatsapp_message_id=item.original_whatsapp_message_id
+            )
+        elif item.screenshot and item.screenshot.name:
+            linked_media = linked_media.filter(file=item.screenshot.name)
+        else:
+            linked_media = linked_media.none()
+        linked_media.update(status=PendingWhatsAppMedia.STATUS_REJECTED, updated_at=timezone.now())
     elif kind == "media":
-        item.status = PendingWhatsAppMedia.STATUS_REJECTED
-        item.save(update_fields=["status", "updated_at"])
+        media_items = PendingWhatsAppMedia.objects.filter(
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+            batch_key=item.batch_key,
+        ) if item.batch_key else PendingWhatsAppMedia.objects.filter(pk=item.pk)
+        media_items.update(status=PendingWhatsAppMedia.STATUS_REJECTED, updated_at=timezone.now())
     elif kind == "maintenance":
         item.status = PendingWhatsAppMaintenance.STATUS_REJECTED
         item.save(update_fields=["status", "updated_at"])
@@ -624,6 +916,9 @@ def pending_approval_reject(request, kind, pk):
     else:
         raise Http404("Unknown pending approval type.")
     messages.success(request, "Pending item rejected.")
+    ajax_response = _pending_ajax_response(request, "Pending item rejected.")
+    if ajax_response:
+        return ajax_response
     return redirect("core:pending_approvals")
 
 

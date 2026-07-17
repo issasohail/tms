@@ -31,8 +31,12 @@ class Command(BaseCommand):
             raise SystemExit("Retention days must be 1 or higher.")
 
         cutoff = timezone.now() - timedelta(days=days)
+        retained_payment_files = PendingWhatsAppPayment.objects.filter(
+            created_payment__isnull=False,
+        ).exclude(screenshot="").values_list("screenshot", flat=True)
         queryset = (
             PendingWhatsAppMedia.objects.exclude(file="")
+            .exclude(file__in=retained_payment_files)
             .filter(created_at__lt=cutoff)
             .order_by("created_at")
         )

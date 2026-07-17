@@ -19,6 +19,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from django.core.signing import BadSignature, SignatureExpired
+from django.db import transaction
 from django.db.models import (
     Case,
     DecimalField,
@@ -463,6 +464,243 @@ def _family_counts(links):
     }
 
 
+def _existing_family_updates_from_post(request, submission, tenant):
+    """Capture edits to existing family members as reviewable pending people."""
+    link_ids = {
+        value
+        for value in request.POST.getlist("family_update_ids")
+        if str(value).isdigit()
+    }
+    if not link_ids:
+        return 0
+
+    links = {
+        str(link.pk): link
+        for link in LeaseFamilyMember.objects.select_related(
+            "family_member", "relationship_type"
+        ).filter(pk__in=link_ids, primary_tenant=tenant)
+    }
+    created = 0
+    for link_id in link_ids:
+        link = links.get(str(link_id))
+        if not link:
+            continue
+        family_tenant = link.family_member
+        base = f"family_update-{link.pk}-"
+        submitted_phone = normalize_phone(request.POST.get(base + "phone"))
+        submitted_dob = parse_date(request.POST.get(base + "dob") or "")
+        submitted_gender = (request.POST.get(base + "gender") or "").strip()
+        submitted_notes = (request.POST.get(base + "notes") or "").strip()
+        submitted_photo = request.FILES.get(base + "photo")
+
+        proposed_updates = {}
+        if submitted_phone != normalize_phone(family_tenant.phone):
+            proposed_updates["phone"] = {
+                "existing": family_tenant.phone or "",
+                "submitted": submitted_phone or "",
+            }
+        if submitted_dob != family_tenant.date_of_birth:
+            proposed_updates["date_of_birth"] = {
+                "existing": (
+                    family_tenant.date_of_birth.isoformat()
+                    if family_tenant.date_of_birth
+                    else ""
+                ),
+                "submitted": submitted_dob.isoformat() if submitted_dob else "",
+            }
+        if submitted_gender != (family_tenant.gender or ""):
+            proposed_updates["gender"] = {
+                "existing": family_tenant.get_gender_display()
+                if family_tenant.gender
+                else "",
+                "submitted": dict(Tenant.GENDER_CHOICES).get(
+                    submitted_gender, submitted_gender
+                ),
+                "submitted_value": submitted_gender,
+            }
+        if submitted_notes and submitted_notes != (family_tenant.notes or ""):
+            proposed_updates["notes"] = {
+                "existing": family_tenant.notes or "",
+                "submitted": submitted_notes,
+            }
+        if submitted_photo:
+            proposed_updates["photo"] = {
+                "existing": bool(family_tenant.photo),
+                "submitted": True,
+            }
+        if not proposed_updates:
+            continue
+
+        person = PendingRegistrationPerson.objects.create(
+            submission=submission,
+            role=PendingRegistrationPerson.ROLE_FAMILY,
+            relationship=link.relationship or "",
+            relationship_type_id=link.relationship_type_id,
+            first_name=family_tenant.first_name,
+            last_name=family_tenant.last_name,
+            cnic=family_tenant.cnic,
+            phone=submitted_phone,
+            date_of_birth=submitted_dob,
+            address=family_tenant.address or "",
+            photo=submitted_photo,
+            matched_tenant=family_tenant,
+            proposed_updates=proposed_updates,
+            processing_result={
+                "kind": "existing_family_update",
+                "family_link_id": link.pk,
+            },
+        )
+        person.save(update_fields=["proposed_updates", "processing_result", "updated_at"])
+        created += 1
+    return created
+
+
+def _apply_pending_family_person_updates(submission, tenant):
+    """Apply approved family updates and copy pending family documents."""
+    from tenants.services.registration_workflow import _copy_file, match_tenant_by_cnic
+
+    lease = (
+        tenant.current_lease
+        or Lease.objects.filter(tenant=tenant).order_by("-start_date", "-id").first()
+    )
+    applied = 0
+    people = submission.pending_people.filter(
+        role=PendingRegistrationPerson.ROLE_FAMILY
+    ).select_related("matched_tenant")
+    for person in people:
+        target = person.matched_tenant or match_tenant_by_cnic(person.cnic)
+        family_link_id = (person.processing_result or {}).get("family_link_id")
+        if not target and family_link_id:
+            link = LeaseFamilyMember.objects.select_related("family_member").filter(
+                pk=family_link_id, primary_tenant=tenant
+            ).first()
+            target = link.family_member if link else None
+        if not target and lease:
+            link = lease.family_members.select_related("family_member").filter(
+                family_member__first_name__iexact=person.first_name,
+                family_member__last_name__iexact=person.last_name,
+            ).first()
+            target = link.family_member if link else None
+        if not target:
+            continue
+
+        for field_name, change in (person.proposed_updates or {}).items():
+            if field_name not in {"phone", "date_of_birth", "gender", "notes"}:
+                continue
+            value = change.get("submitted_value", change.get("submitted"))
+            if field_name == "date_of_birth":
+                value = parse_date(value or "")
+            setattr(target, field_name, value)
+
+        copied_file = False
+        for field_name in ("photo", "cnic_front", "cnic_back"):
+            copied_file = _copy_file(person, target, field_name) or copied_file
+        target.save()
+        person.processed_tenant = target
+        person.status = PendingRegistrationPerson.STATUS_PROCESSED
+        person.processing_result = {
+            **(person.processing_result or {}),
+            "action": "updated",
+            "tenant_id": target.pk,
+            "files_copied": copied_file,
+        }
+        person.save(
+            update_fields=[
+                "processed_tenant",
+                "status",
+                "processing_result",
+                "updated_at",
+            ]
+        )
+        applied += 1
+    return applied
+
+
+def _registration_submission_comparison(submission):
+    """Return a user-facing current-versus-submitted comparison."""
+    tenant = submission.tenant
+    rows = []
+    phone_fields = {
+        "phone",
+        "phone2",
+        "phone3",
+        "employer_phone",
+        "reference_phone_1",
+        "reference_phone_2",
+        "emergency_contact_phone",
+    }
+
+    for field_name, submitted in submission.submitted_data.items():
+        if field_name == "family_members":
+            continue
+        if field_name == "interested_in":
+            existing_ids = list(tenant.interested_in.values_list("pk", flat=True))
+            submitted_ids = [int(value) for value in (submitted or [])]
+            existing_display = ", ".join(
+                tenant.interested_in.values_list("name", flat=True)
+            ) or "-"
+            submitted_display = ", ".join(
+                tenant.interested_in.model.objects.filter(
+                    pk__in=submitted_ids
+                ).values_list("name", flat=True)
+            ) or "-"
+            changed = sorted(existing_ids) != sorted(submitted_ids)
+            label = "Interested In"
+        else:
+            try:
+                model_field = Tenant._meta.get_field(field_name)
+            except Exception:
+                continue
+            existing = getattr(tenant, field_name, None)
+            existing_compare = "" if existing is None else str(existing)
+            submitted_compare = "" if submitted is None else str(submitted)
+            changed = existing_compare != submitted_compare
+            label = str(model_field.verbose_name).title()
+            existing_display = existing_compare or "-"
+            submitted_display = submitted_compare or "-"
+            if field_name in phone_fields:
+                existing_display = format_phone(existing) or "-"
+                submitted_display = format_phone(submitted) or "-"
+            elif field_name == "cnic":
+                existing_display = format_cnic(existing) or "-"
+                submitted_display = format_cnic(submitted) or "-"
+            elif model_field.choices:
+                choices = dict(model_field.flatchoices)
+                existing_display = choices.get(existing, existing_display)
+                submitted_display = choices.get(submitted, submitted_display)
+        rows.append(
+            {
+                "field": field_name,
+                "label": label,
+                "existing": existing_display,
+                "submitted": submitted_display,
+                "changed": changed,
+            }
+        )
+
+    for field_name, label in (
+        ("photo", "Photo"),
+        ("cnic_front", "CNIC Front"),
+        ("cnic_back", "CNIC Back"),
+    ):
+        submitted_file = getattr(submission, field_name)
+        if not submitted_file:
+            continue
+        existing_file = getattr(tenant, field_name)
+        rows.append(
+            {
+                "field": field_name,
+                "label": label,
+                "existing": "Current file" if existing_file else "No current file",
+                "submitted": "New upload",
+                "existing_url": existing_file.url if existing_file else "",
+                "submitted_url": submitted_file.url,
+                "changed": True,
+            }
+        )
+    return rows
+
+
 def _apply_family_members_from_submission(tenant, family_members):
     LeaseFamilyMember = apps.get_model("leases", "LeaseFamilyMember")
     lease = (
@@ -539,6 +777,7 @@ def _apply_family_members_from_submission(tenant, family_members):
     return saved
 
 
+@transaction.atomic
 def tenant_public_registration_update(request, token):
     try:
         tenant = _tenant_from_registration_token(token)
@@ -601,6 +840,29 @@ def tenant_public_registration_update(request, token):
     if request.method == "POST":
         form = TenantPublicRegistrationForm(request.POST, request.FILES)
         if form.is_valid():
+            Tenant.objects.select_for_update().get(pk=tenant.pk)
+            existing_pending = (
+                TenantRegistrationSubmission.objects.filter(
+                    tenant=tenant,
+                    status="pending",
+                )
+                .order_by("-submitted_at")
+                .first()
+            )
+            if existing_pending:
+                return render(
+                    request,
+                    "tenants/public_registration_submitted.html",
+                    {
+                        "tenant": tenant,
+                        "submission": existing_pending,
+                        "duplicate_submission": True,
+                        "submitted_name": tenant.get_full_name(),
+                        "submitted_phone": tenant.phone or "",
+                        "submitted_photo": existing_pending.photo,
+                    },
+                )
+
             submitted_data = form.cleaned_data.copy()
             submitted_data["interested_in"] = [
                 item.pk for item in submitted_data.get("interested_in", [])
@@ -671,6 +933,7 @@ def tenant_public_registration_update(request, token):
 
                     person.proposed_updates = proposed_changes(person)
                     person.save(update_fields=["proposed_updates", "updated_at"])
+            _existing_family_updates_from_post(request, submission, tenant)
             vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
                 request,
                 tenant=tenant,
@@ -778,6 +1041,12 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         context["pending_people"] = self.object.pending_people.select_related(
             "matched_tenant", "processed_tenant"
         )
+        context["submission_comparison"] = _registration_submission_comparison(
+            self.object
+        )
+        context["submission_change_count"] = sum(
+            1 for row in context["submission_comparison"] if row["changed"]
+        )
         return context
 
 
@@ -851,9 +1120,15 @@ def tenant_registration_submission_review(request, pk):
                 tenant,
                 obj.submitted_data.get("family_members", []),
             )
+            family_updates_applied = _apply_pending_family_person_updates(obj, tenant)
             if family_count:
                 messages.success(
                     request, f"{family_count} family member relationship(s) saved."
+                )
+            if family_updates_applied:
+                messages.success(
+                    request,
+                    f"{family_updates_applied} family member update(s) applied.",
                 )
             messages.success(
                 request, "Tenant registration update approved and applied."

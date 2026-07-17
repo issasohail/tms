@@ -3385,16 +3385,23 @@ def _payment_confirmation_text(pending):
     prop = getattr(pending.property, "property_name", "") or "Not detected"
     unit = getattr(pending.unit, "unit_number", "") or "Not detected"
     channel = (pending.bank_information or {}).get("channel") or "Not detected"
+    account_name = (
+        (pending.bank_information or {}).get("receiver_name")
+        or (pending.ocr_json or {}).get("sender_name")
+        or "Not detected"
+    )
     return (
-        "We received your payment screenshot.\n\n"
-        "We believe this payment belongs to:\n"
-        f"Property: {prop}\n"
-        f"Unit: {unit}\n"
-        f"Detected Amount: {pending.amount or 'Not detected'}\n"
-        f"Detected Date: {pending.date or 'Not detected'}\n"
+        "I read this image as a payment receipt.\n\n"
+        f"Account Name: {account_name}\n"
+        f"Amount: Rs. {pending.amount or 'Not detected'}\n"
+        f"Date: {pending.date or 'Not detected'}\n"
         f"Payment Channel: {channel}\n"
         f"Reference Number: {pending.reference or 'Not detected'}\n\n"
-        "Reply YES to confirm.\n"
+        "You are sending this payment receipt to apply toward:\n"
+        f"Property: {prop}\n"
+        f"Unit: {unit}\n"
+        f"Amount: Rs. {pending.amount or 'Not detected'}\n\n"
+        "Is this correct? Reply YES to confirm.\n"
         "Reply OTHER if this belongs to another property/unit."
     )
 

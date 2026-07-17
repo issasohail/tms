@@ -55,6 +55,26 @@
     </div>
 </div>
 
+{% with whatsapp_sources=payment.whatsapp_pending_sources.all %}
+{% if whatsapp_sources %}
+<div class="container no-print mb-3">
+    <div class="card border-success-subtle">
+        <div class="card-header py-2 fw-semibold">Tenant Payment Proof</div>
+        <div class="card-body py-2 d-flex flex-wrap gap-2">
+            {% for source in whatsapp_sources %}
+                {% if source.screenshot %}
+                <a href="{{ source.screenshot.url }}" target="_blank" rel="noopener" class="text-decoration-none">
+                    <img src="{{ source.screenshot.url }}" alt="Payment receipt proof" style="width:96px;height:96px;object-fit:cover;border:1px solid #d8dee6;border-radius:.35rem;">
+                    <span class="d-block small mt-1">Receipt #{{ source.pk }}</span>
+                </a>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endwith %}
+
 <!-- Printable Payment Content -->
 <div class="container printable-content">
     <div class="row">

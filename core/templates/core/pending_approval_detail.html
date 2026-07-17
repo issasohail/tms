@@ -10,7 +10,7 @@
     <div class="d-flex gap-2">
       <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-outline-secondary">Back</a>
       {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
-        <form method="post" action="{{ urls.approve }}" class="d-flex align-items-center gap-2">
+        <form method="post" action="{{ urls.approve }}" class="d-flex align-items-center flex-wrap gap-2 pending-detail-action">
           {% csrf_token %}
           {% if kind == "media" %}
             <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" required aria-label="Media destination">
@@ -27,11 +27,23 @@
               {% endif %}
             </select>
           {% endif %}
-          <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Approve this item?');">Approve</button>
+          {% if kind == "maintenance" %}
+            <select name="handyman" class="form-select form-select-sm" style="width:auto;min-width:210px;max-width:280px;" aria-label="Assign handyman">
+              <option value="">Select handyman</option>
+              {% for handyman in active_handymen %}
+                <option value="{{ handyman.pk }}">{{ handyman.full_name }}{% if handyman.is_preferred %} ★{% endif %}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" name="notify_mode" value="" class="btn btn-sm btn-success">Approve</button>
+            <button type="submit" name="notify_mode" value="api" class="btn btn-sm btn-success"><i class="bi bi-whatsapp me-1"></i>API</button>
+            <button type="submit" name="notify_mode" value="manual" class="btn btn-sm btn-outline-success"><i class="bi bi-whatsapp me-1"></i>Manual</button>
+          {% else %}
+            <button type="submit" class="btn btn-sm btn-success">Approve</button>
+          {% endif %}
         </form>
-        <form method="post" action="{{ urls.reject }}">
+        <form method="post" action="{{ urls.reject }}" class="pending-detail-action">
           {% csrf_token %}
-          <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this item?');">Reject</button>
+          <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
         </form>
       {% endif %}
     </div>
@@ -120,6 +132,9 @@
             <pre class="small bg-light border rounded p-2 text-wrap" style="white-space:pre-wrap;">{{ item.description|default:"No description." }}</pre>
             <p class="mb-2"><strong>AI Notes</strong></p>
             <pre class="small bg-light border rounded p-2 text-wrap" style="white-space:pre-wrap;">{{ item.ai_notes|default:"No notes." }}</pre>
+            <div class="alert alert-info py-2 small mb-0">
+              Select a handyman above, then choose <strong>API</strong> to send directly or <strong>Manual</strong> to open WhatsApp using the handyman's saved number. The message includes job details, submitted photo links, and instructions to send <strong>PHOTO</strong> and <strong>INVOICE</strong> to {% if whatsapp_api_number %}+{{ whatsapp_api_number }}{% else %}the WhatsApp API number{% endif %} after completion to receive payment.
+            </div>
           {% elif kind == "agreement" %}
             <p class="mb-2"><strong>Proposed Terms</strong></p>
             <pre class="small bg-light border rounded p-2 text-wrap" style="white-space:pre-wrap;">{{ item.proposed_terms }}</pre>
@@ -174,7 +189,7 @@
     {% if media_items %}
       <div class="col-12">
         <div class="card shadow-sm">
-          <div class="card-header py-2"><strong>Maintenance Media</strong></div>
+          <div class="card-header py-2"><strong>{% if kind == "media" %}Linked Document / Media Batch{% else %}Maintenance Media{% endif %}</strong></div>
           <div class="card-body">
             <div class="row g-3">
               {% for media in media_items %}
@@ -241,4 +256,36 @@
     {% endif %}
   </div>
 </div>
+<script>
+(function () {
+  document.addEventListener("submit", async function (event) {
+    const form = event.target.closest("form.pending-detail-action");
+    if (!form) return;
+    event.preventDefault();
+    const submitter = event.submitter;
+    const data = new FormData(form);
+    if (submitter && submitter.name) data.set(submitter.name, submitter.value);
+    document.querySelectorAll("form.pending-detail-action button").forEach(function (button) { button.disabled = true; });
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: data,
+        headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        credentials: "same-origin"
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || "The update could not be completed.");
+      const alert = document.createElement("div");
+      alert.className = "alert alert-success mt-3";
+      alert.textContent = result.message || "Updated.";
+      form.closest(".card").prepend(alert);
+      document.querySelectorAll("form.pending-detail-action").forEach(function (actionForm) { actionForm.remove(); });
+      if (result.redirect_url) window.open(result.redirect_url, "_blank", "noopener");
+    } catch (error) {
+      document.querySelectorAll("form.pending-detail-action button").forEach(function (button) { button.disabled = false; });
+      window.alert(error.message || "The update could not be completed.");
+    }
+  });
+})();
+</script>
 {% endblock %}

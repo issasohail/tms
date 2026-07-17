@@ -1618,6 +1618,16 @@
   });
   document.querySelectorAll(".td-address-grid textarea").forEach(function(el) { el.setAttribute("rows", "5"); });
 
+  const registrationForm = document.getElementById("tenantRegistrationForm");
+  if (registrationForm) {
+    registrationForm.addEventListener("submit", function () {
+      document.querySelectorAll('#tenantRegistrationForm button[type="submit"], #tenantRegistrationForm input[type="submit"], [form="tenantRegistrationForm"][type="submit"]').forEach(function (button) {
+        button.disabled = true;
+        button.setAttribute("aria-disabled", "true");
+      });
+    });
+  }
+
   function smartTitle(value) {
     const keep = new Set(["USA", "UAE", "UK", "USD", "CAD", "EUR", "PKR"]);
     return (value || "").trim().replace(/\s+/g, " ").replace(/[A-Za-z]+/g, function(word) {

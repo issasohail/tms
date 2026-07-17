@@ -10,8 +10,23 @@
     <div class="d-flex gap-2">
       <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-outline-secondary">Back</a>
       {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
-        <form method="post" action="{{ urls.approve }}">
+        <form method="post" action="{{ urls.approve }}" class="d-flex align-items-center gap-2">
           {% csrf_token %}
+          {% if kind == "media" %}
+            <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" required aria-label="Media destination">
+              <option value="">Choose destination</option>
+              {% if item.lease %}
+                <option value="lease_photo:{{ item.lease_id }}" {% if item.target_kind == "lease_photo" %}selected{% endif %}>Lease Gallery — {{ item.lease }}</option>
+                <option value="lease_document:{{ item.lease_id }}" {% if item.target_kind == "lease_document" %}selected{% elif item.purpose == "lease" and item.target_kind != "lease_photo" %}selected{% endif %}>Lease Document — {{ item.lease }}</option>
+              {% endif %}
+              {% if item.property %}
+                <option value="property_photo:{{ item.property_id }}" {% if item.target_kind == "property_photo" or item.purpose == "property" %}selected{% endif %}>Property Photo — {{ item.property }}</option>
+              {% endif %}
+              {% if item.unit %}
+                <option value="unit_photo:{{ item.unit_id }}" {% if item.target_kind == "unit_photo" or item.purpose == "unit" %}selected{% endif %}>Unit Photo — {{ item.unit }}</option>
+              {% endif %}
+            </select>
+          {% endif %}
           <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Approve this item?');">Approve</button>
         </form>
         <form method="post" action="{{ urls.reject }}">

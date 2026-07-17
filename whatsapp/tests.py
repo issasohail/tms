@@ -3,6 +3,7 @@ from decimal import Decimal
 import hashlib
 import hmac
 import json
+import tempfile
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
@@ -18,6 +19,7 @@ from whatsapp.services.whatsapp_ai import WhatsAppAIAssistant, detect_intent
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
 from leases.models import Lease
+from leases.models_lease_photos import LeaseMedia
 from properties.models import Property, Unit
 from tenants.models import Tenant
 from whatsapp.models import (
@@ -48,6 +50,192 @@ from whatsapp.services.identity.mode_resolver import infer_mode
 from whatsapp.services.identity.sender_resolver import resolve_sender
 from whatsapp.services.role_mode import resolve_mode
 from whatsapp.views import _log_webhook_payload
+
+
+class PendingWhatsAppMediaApprovalTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._media_directory = tempfile.TemporaryDirectory()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_directory.name)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        cls._media_directory.cleanup()
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("media-approver", password="test")
+        self.user.user_permissions.add(
+            *Permission.objects.filter(
+                codename__in=["change_globalsettings", "view_globalsettings"]
+            )
+        )
+        self.client.force_login(self.user)
+        self.tenant = Tenant.objects.create(
+            first_name="Media",
+            last_name="Tenant",
+            phone="+923001234567",
+            cnic="37405-1234567-1",
+        )
+        self.property = Property.objects.create(
+            property_name="Media Property",
+            owner_name="Owner",
+            owner_cnic="37405-7654321-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(
+            property=self.property,
+            unit_number="M-01",
+            status="occupied",
+        )
+        self.lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=timezone.localdate() - timedelta(days=30),
+            end_date=timezone.localdate() + timedelta(days=335),
+            monthly_rent=Decimal("25000"),
+            status="active",
+        )
+
+    def _pending(self, filename="approval-source.pdf", **overrides):
+        values = {
+            "phone": self.tenant.phone,
+            "file": ContentFile(b"%PDF-1.4 test media", name=filename),
+            "original_filename": filename,
+            "media_type": "application/pdf",
+            "purpose": PendingWhatsAppMedia.PURPOSE_OTHER,
+            "tenant": self.tenant,
+            "lease": self.lease,
+            "property": self.property,
+            "unit": self.unit,
+        }
+        values.update(overrides)
+        return PendingWhatsAppMedia.objects.create(**values)
+
+    def _approve(self, pending, destination=None):
+        data = {"media_destination": destination} if destination is not None else {}
+        return self.client.post(
+            reverse("core:pending_approval_approve", args=["media", pending.pk]),
+            data,
+            follow=True,
+        )
+
+    def test_missing_source_file_returns_friendly_response(self):
+        pending = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/missing-source.pdf",
+            original_filename="missing-source.pdf",
+            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
+            target_kind=PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
+            lease=self.lease,
+        )
+
+        response = self._approve(
+            pending,
+            f"lease_document:{self.lease.pk}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "The source media file is missing from storage. Restore or re-upload it before approval.",
+        )
+
+    def test_missing_source_file_leaves_status_pending(self):
+        pending = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/missing-status-source.pdf",
+            original_filename="missing-status-source.pdf",
+            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
+            target_kind=PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
+            lease=self.lease,
+        )
+
+        self._approve(pending, f"lease_document:{self.lease.pk}")
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
+        self.assertIsNone(pending.approved_at)
+        self.assertIsNone(pending.approved_by)
+
+    def test_other_media_without_target_cannot_be_approved(self):
+        pending = self._pending(lease=None, property=None, unit=None)
+
+        response = self._approve(pending)
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
+        self.assertContains(response, "Choose Lease Gallery, Lease Document, Property Photo, or Unit Photo before approval.")
+
+    def test_successful_lease_gallery_approval_creates_lease_media(self):
+        pending = self._pending(
+            filename="lease-gallery.mp4",
+            media_type="video",
+        )
+
+        self._approve(pending, f"lease_photo:{self.lease.pk}")
+
+        pending.refresh_from_db()
+        media = LeaseMedia.objects.get(lease=self.lease)
+        self.assertTrue(media.file.storage.exists(media.file.name))
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
+
+    def test_successful_property_approval_creates_property_media(self):
+        from properties.models import PropertyMedia
+
+        pending = self._pending()
+
+        self._approve(pending, f"property_photo:{self.property.pk}")
+
+        pending.refresh_from_db()
+        media = PropertyMedia.objects.get(property=self.property)
+        self.assertTrue(media.file.storage.exists(media.file.name))
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
+
+    def test_successful_unit_approval_creates_unit_media(self):
+        from properties.models import UnitMedia
+
+        pending = self._pending(filename="unit-source.pdf")
+
+        self._approve(pending, f"unit_photo:{self.unit.pk}")
+
+        pending.refresh_from_db()
+        media = UnitMedia.objects.get(unit=self.unit)
+        self.assertTrue(media.file.storage.exists(media.file.name))
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
+
+    def test_successful_lease_document_approval_creates_lease_document(self):
+        from leases.models import LeaseDocument
+
+        pending = self._pending(filename="lease-document.pdf")
+
+        self._approve(pending, f"lease_document:{self.lease.pk}")
+
+        pending.refresh_from_db()
+        document = LeaseDocument.objects.get(lease=self.lease)
+        self.assertTrue(document.file.storage.exists(document.file.name))
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
+
+    def test_destination_storage_failure_rolls_back_approval_status(self):
+        from properties.models import PropertyMedia
+
+        pending = self._pending(filename="storage-failure.pdf")
+
+        with patch(
+            "properties.models.PropertyMedia.objects.create",
+            side_effect=OSError("storage unavailable"),
+        ):
+            response = self._approve(pending, f"property_photo:{self.property.pk}")
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
+        self.assertFalse(PropertyMedia.objects.filter(property=self.property).exists())
+        self.assertContains(response, "The media could not be saved to the selected destination.")
 
 
 class WhatsAppAssistantIntentTests(SimpleTestCase):

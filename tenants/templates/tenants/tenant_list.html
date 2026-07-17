@@ -11,7 +11,13 @@
     <div class="tenant-page-head mb-3">
         <div class="tenant-title-wrap">
             <h1 class="h4 mb-0">Tenants</h1>
-            <div class="text-muted small">Manage all tenants and their information</div>
+            <div class="tenant-subtitle-row">
+                <span class="text-muted small">Manage all tenants and their information</span>
+                <label class="form-check form-check-inline small mb-0 tenant-wa-toggle" title="Use WhatsApp Cloud API instead of opening WhatsApp links">
+                    <input class="form-check-input" type="checkbox" id="tenant-use-whatsapp-api" data-whatsapp-api-toggle="tenant-list">
+                    <span class="form-check-label">Use WhatsApp API</span>
+                </label>
+            </div>
         </div>
 
         <!-- Mobile-only: Add Tenant + Registration Link group, next to the heading -->
@@ -43,7 +49,9 @@
                    rel="noopener"
                    class="reg-link-main"
                    title="Open new tenant registration (no login)">
-                    <i class="fas fa-link"></i> <span>Registration</span>
+                    <i class="fas fa-link"></i>
+                    <span class="tablet-action-full">Registration</span>
+                    <span class="tablet-action-short">Reg.</span>
                 </a>
                 <button type="button" class="reg-link-icon js-copy-reg-link" title="Copy registration link">
                     <i class="fas fa-copy"></i>
@@ -54,7 +62,9 @@
             </div>
 
             <a href="{% url 'tenants:tenant_create' %}" class="btn btn-primary btn-sm tenant-main-action">
-                <i class="fas fa-plus"></i> <span>Add Tenant</span>
+                <i class="fas fa-plus"></i>
+                <span class="tablet-action-full">Add Tenant</span>
+                <span class="tablet-action-short">Add</span>
             </a>
 
             <div class="btn-group tenant-main-action">
@@ -69,18 +79,15 @@
             </div>
 
             <button class="btn btn-success btn-sm tenant-main-action" type="button" id="btnNewRegistrationLink" data-bs-toggle="modal" data-bs-target="#quickRegistrationModal">
-                <i class="fas fa-user-plus"></i> <span>Quick Reg.</span>
+                <i class="fas fa-user-plus"></i>
+                <span class="tablet-action-full">Quick Reg.</span>
+                <span class="tablet-action-short">Quick</span>
             </button>
 
             <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-dark btn-sm tenant-pending-action">
-                <i class="fas fa-clipboard-list"></i> Pending Registrations
+                <i class="fas fa-clipboard-list"></i> Pending
                 {% if pending_registration_count %}<span class="badge bg-danger ms-1">{{ pending_registration_count }}</span>{% endif %}
             </a>
-
-            <label class="form-check form-check-inline small mb-0 tenant-wa-toggle" title="Use WhatsApp Cloud API instead of opening WhatsApp links">
-                <input class="form-check-input" type="checkbox" id="tenant-use-whatsapp-api" data-whatsapp-api-toggle="tenant-list">
-                <span class="form-check-label">Use WhatsApp API</span>
-            </label>
         </div>
     </div>
 
@@ -154,31 +161,31 @@
     <div class="tenant-summary-grid mb-3">
         <a class="tenant-stat-card stat-total" href="{% url 'tenants:tenant_list' %}?show_inactive=on">
             <span class="stat-icon"><i class="fas fa-users"></i></span>
-            <span class="stat-text"><span class="stat-label">Total Tenants</span><strong>{{ total_tenant_count|default:page_obj.paginator.count }}</strong><small>All tenants</small></span>
+            <span class="stat-text"><span class="stat-label">Total</span><strong>{{ total_tenant_count|default:page_obj.paginator.count }}</strong><small>All tenants</small></span>
         </a>
         <a class="tenant-stat-card stat-active {% if request.GET.tenant_status == 'active' or not request.GET %}is-selected{% endif %}" href="?tenant_status=active">
             <span class="stat-icon"><i class="fas fa-user-check"></i></span>
-            <span class="stat-text"><span class="stat-label">Active Tenants</span><strong>{{ active_tenant_count|default:'0' }}</strong><small>Currently active</small></span>
+            <span class="stat-text"><span class="stat-label">Active</span><strong>{{ active_tenant_count|default:'0' }}</strong><small>Currently active</small></span>
         </a>
         <a class="tenant-stat-card stat-notice {% if request.GET.on_notice %}is-selected{% endif %}" href="?on_notice=1">
             <span class="stat-icon"><i class="fas fa-bell"></i></span>
-            <span class="stat-text"><span class="stat-label">On Notice</span><strong>{{ on_notice_count|default:'0' }}</strong><small>Expiring soon</small></span>
+            <span class="stat-text"><span class="stat-label">Notice</span><strong>{{ on_notice_count|default:'0' }}</strong><small>Expiring soon</small></span>
         </a>
         <a class="tenant-stat-card stat-family {% if request.GET.family_member %}is-selected{% endif %}" href="?family_member=1">
             <span class="stat-icon"><i class="fas fa-people-roof"></i></span>
-            <span class="stat-text"><span class="stat-label">Family Members</span><strong>{{ family_member_tenant_count|default:'0' }}</strong><small>With family count</small></span>
+            <span class="stat-text"><span class="stat-label">Family</span><strong>{{ family_member_tenant_count|default:'0' }}</strong><small>With family count</small></span>
         </a>
         <a class="tenant-stat-card stat-potential {% if request.GET.potential_tenant %}is-selected{% endif %}" href="?potential_tenant=1">
             <span class="stat-icon"><i class="fas fa-user-clock"></i></span>
-            <span class="stat-text"><span class="stat-label"><span class="stat-label-full">Potential Tenants</span><span class="stat-label-short">Prospect</span></span><strong>{{ potential_tenant_count|default:'0' }}</strong><small>Interested leads</small></span>
+            <span class="stat-text"><span class="stat-label">Prospect</span><strong>{{ potential_tenant_count|default:'0' }}</strong><small>Interested leads</small></span>
         </a>
         <a class="tenant-stat-card stat-inactive {% if request.GET.tenant_status == 'inactive' or request.GET.show_inactive %}is-selected{% endif %}" href="?tenant_status=inactive&show_inactive=on">
             <span class="stat-icon"><i class="fas fa-user-times"></i></span>
-            <span class="stat-text"><span class="stat-label">Inactive Tenants</span><strong>{{ inactive_tenant_count|default:'0' }}</strong><small>Not active</small></span>
+            <span class="stat-text"><span class="stat-label">Inactive</span><strong>{{ inactive_tenant_count|default:'0' }}</strong><small>Not active</small></span>
         </a>
         <a class="tenant-stat-card stat-pending" href="{% url 'tenants:registration_submission_list' %}">
             <span class="stat-icon"><i class="fas fa-clipboard-list"></i></span>
-            <span class="stat-text"><span class="stat-label">Pending Registrations</span><strong>{{ pending_registration_count|default:'0' }}</strong><small>Awaiting approval</small></span>
+            <span class="stat-text"><span class="stat-label">Pending</span><strong>{{ pending_registration_count|default:'0' }}</strong><small>Awaiting approval</small></span>
         </a>
     </div>
 
@@ -372,7 +379,9 @@
                                 {{ tenant.get_gender_display }} &nbsp;•&nbsp; {{ tenant.number_of_family_member }} Members
                                 {% include "tenants/_tenant_role_badges.html" with tenant=tenant %}
                             </div>
-                            <div class="xsmall"><i class="fas fa-phone-alt me-1"></i>{{ tenant.phone|format_phone }}</div>
+                            <div class="xsmall tenant-phone-link-wrap">
+                                <i class="fas fa-phone-alt me-1"></i>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone label=tenant.phone name=tenant.get_full_name only %}
+                            </div>
                             {% if tenant.email %}<div class="xsmall text-muted text-truncate">{{ tenant.email }}</div>{% endif %}
                             <div class="mt-1 interest-badges">{% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{% if item.name == 'Single Room with Attached Bath and Kitchen' %}Single Room{% else %}{{ item.name }}{% endif %}</span>{% endfor %}</div>
                         </div>
@@ -485,10 +494,6 @@
                     <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="tcv2-name">
                         {{ tenant.first_name }} {{ tenant.last_name }}
                     </a>
-
-                    <span class="tcv2-status {% if tenant.is_active %}is-active{% else %}is-inactive{% endif %}">
-                        {% if tenant.is_active %}Active{% else %}Inactive{% endif %}
-                    </span>
                 </div>
 
                 <div class="tcv2-subline">
@@ -499,46 +504,33 @@
                 <div class="tcv2-phone-row">
                     <div class="tcv2-phone">
                         <i class="fas fa-phone-alt"></i>
-                        {{ tenant.phone|format_phone|default:"-" }}
+                        {% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone label=tenant.phone name=tenant.get_full_name only %}
                     </div>
                     {% if not lease %}
                     <span class="tcv2-no-lease-inline">No active lease</span>
                     {% endif %}
                 </div>
             </div>
-        </div>
 
-        
-        <div class="tcv2-doc-row">
             {% if tenant.cnic_front %}
-                <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" class="tcv2-doc-chip is-ok">
-                    CNIC Front <i class="fas fa-check"></i>
+                <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" class="tcv2-cnic-thumb" title="CNIC Front">
+                    <img src="{{ tenant.cnic_front.url }}" alt="CNIC Front" onerror="this.onerror=null;this.closest('a').outerHTML='<span class=&quot;tcv2-cnic-thumb tcv2-cnic-empty&quot;>Front</span>';">
                 </a>
             {% else %}
-                <span class="tcv2-doc-chip is-missing-doc">
-                    CNIC Front <i class="fas fa-times-circle"></i>
-                </span>
+                <span class="tcv2-cnic-thumb tcv2-cnic-empty">Front</span>
             {% endif %}
 
             {% if tenant.cnic_back %}
-                <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" class="tcv2-doc-chip is-ok">
-                    CNIC Back <i class="fas fa-check"></i>
+                <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" class="tcv2-cnic-thumb" title="CNIC Back">
+                    <img src="{{ tenant.cnic_back.url }}" alt="CNIC Back" onerror="this.onerror=null;this.closest('a').outerHTML='<span class=&quot;tcv2-cnic-thumb tcv2-cnic-empty&quot;>Back</span>';">
                 </a>
             {% else %}
-                <span class="tcv2-doc-chip is-missing-doc">
-                    CNIC Back <i class="fas fa-times-circle"></i>
-                </span>
+                <span class="tcv2-cnic-thumb tcv2-cnic-empty">Back</span>
             {% endif %}
 
-            {% if tenant.photo %}
-                <a href="{{ tenant.photo.url }}" data-toggle="lightbox" class="tcv2-doc-chip is-ok">
-                    Photo <i class="fas fa-check"></i>
-                </a>
-            {% else %}
-                <span class="tcv2-doc-chip is-missing-doc">
-                    Photo <i class="fas fa-times-circle"></i>
-                </span>
-            {% endif %}
+            <span class="tcv2-status {% if tenant.is_active %}is-active{% else %}is-inactive{% endif %}">
+                {% if tenant.is_active %}Active{% else %}Inactive{% endif %}
+            </span>
         </div>
 
         
@@ -3657,6 +3649,300 @@ img.is-missing{
         z-index:5;
         background:#fbfcfe;
         box-shadow:0 1px 0 #e6eaf0;
+    }
+}
+
+/* Requested tenant header and responsive card alignment. */
+.tablet-action-short{
+    display:none;
+}
+
+.tenant-subtitle-row{
+    display:flex;
+    align-items:center;
+    gap:.75rem;
+    margin-top:.12rem;
+}
+
+.tenant-top-actions{
+    flex-wrap:nowrap;
+}
+
+.tenant-phone-link-wrap .phone-wa-link,
+.tcv2-phone .phone-wa-link{
+    color:inherit;
+    font-weight:700;
+    text-decoration:none;
+    white-space:nowrap;
+}
+
+.tenant-phone-link-wrap .phone-wa-link:hover,
+.tcv2-phone .phone-wa-link:hover{
+    color:#128c4a;
+    text-decoration:underline;
+}
+
+.tenant-phone-link-wrap .phone-wa-link .fa-whatsapp,
+.tcv2-phone .phone-wa-link .fa-whatsapp{
+    margin-left:.18rem;
+    margin-right:0;
+    font-size:.78rem;
+}
+
+@media (min-width:576px) and (max-width:991.98px){
+    .tablet-action-full{
+        display:none !important;
+    }
+
+    .tablet-action-short{
+        display:inline !important;
+    }
+
+    .tenant-top-actions{
+        display:flex !important;
+        flex-wrap:nowrap !important;
+        align-items:stretch !important;
+        justify-content:stretch !important;
+        gap:.28rem !important;
+        width:100% !important;
+    }
+
+    .tenant-top-actions > .tenant-main-action,
+    .tenant-top-actions > .tenant-pending-action{
+        flex:1 1 0 !important;
+        width:auto !important;
+        min-width:0 !important;
+        padding-left:.32rem !important;
+        padding-right:.32rem !important;
+        font-size:.67rem !important;
+        white-space:nowrap !important;
+    }
+
+    .tenant-top-actions > .reg-link-group{
+        flex:1.45 1 0 !important;
+    }
+
+    .tenant-top-actions .reg-link-main{
+        flex:1 1 auto !important;
+        min-width:0 !important;
+        padding:0 .3rem !important;
+        font-size:.67rem !important;
+    }
+
+    .tenant-top-actions .reg-link-icon{
+        width:25px !important;
+        flex:0 0 25px !important;
+    }
+
+    .tenant-summary-grid{
+        display:grid !important;
+        grid-template-columns:repeat(7,minmax(0,1fr)) !important;
+        gap:.3rem !important;
+    }
+
+    .tenant-stat-card{
+        min-width:0 !important;
+        min-height:58px !important;
+        padding:.42rem .18rem !important;
+        gap:0 !important;
+        justify-content:center !important;
+        border-radius:9px !important;
+    }
+
+    .tenant-stat-card .stat-icon,
+    .tenant-stat-card .stat-text small{
+        display:none !important;
+    }
+
+    .tenant-stat-card .stat-text{
+        align-items:center !important;
+        text-align:center !important;
+    }
+
+    .tenant-stat-card .stat-label{
+        font-size:.58rem !important;
+        line-height:1 !important;
+        white-space:nowrap !important;
+    }
+
+    .tenant-stat-card .stat-text strong{
+        margin:.2rem 0 0 !important;
+        font-size:1rem !important;
+        line-height:1 !important;
+    }
+
+    .filters-grid{
+        grid-template-columns:1fr 1fr !important;
+        grid-template-areas:
+            "name property"
+            "status phone"
+            "interest interest" !important;
+        gap:.55rem !important;
+    }
+
+    .fg.interest-actions{
+        grid-area:interest !important;
+        width:100% !important;
+    }
+
+    .interest-actions{
+        display:grid !important;
+        grid-template-columns:repeat(3,max-content) minmax(72px,1fr) minmax(72px,1fr) !important;
+        align-items:center !important;
+        gap:.42rem !important;
+    }
+
+    .interest-actions .filter-btn,
+    .interest-actions .reset-btn{
+        display:inline-flex !important;
+        align-items:center !important;
+        justify-content:center !important;
+        width:100% !important;
+        min-width:72px !important;
+        height:34px !important;
+        padding:.25rem .45rem !important;
+        white-space:nowrap !important;
+        overflow:visible !important;
+    }
+}
+
+@media (max-width:991.98px){
+    .tcv2-head{
+        display:grid !important;
+        grid-template-columns:24px 42px minmax(64px,1fr) 54px 54px auto !important;
+        gap:.38rem !important;
+        align-items:center !important;
+        padding:.68rem .62rem .48rem !important;
+    }
+
+    .tcv2-sn{
+        position:static !important;
+        width:24px !important;
+        height:24px !important;
+    }
+
+    .tcv2-photo,
+    .tcv2-avatar{
+        width:42px !important;
+        height:42px !important;
+    }
+
+    .tcv2-name-row{
+        display:block !important;
+    }
+
+    .tcv2-cnic-thumb{
+        width:54px;
+        height:42px;
+        min-width:54px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        overflow:hidden;
+        border:1px solid #d9e2ef;
+        border-radius:6px;
+        background:#f8fafc;
+        color:#64748b;
+        font-size:.55rem;
+        font-weight:800;
+        line-height:1;
+        text-decoration:none;
+    }
+
+    .tcv2-cnic-thumb img{
+        width:100%;
+        height:100%;
+        display:block;
+        object-fit:contain;
+    }
+
+    .tcv2-status{
+        justify-self:end;
+    }
+
+    .tcv2-actions{
+        grid-template-columns:repeat(6,minmax(0,1fr)) !important;
+        gap:.28rem !important;
+    }
+
+    .tcv2-actions.no-lease-actions{
+        grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    }
+}
+
+@media (max-width:575.98px){
+    .tenant-subtitle-row .tenant-wa-toggle{
+        display:none !important;
+    }
+
+    .tcv2-head{
+        grid-template-columns:22px 40px minmax(58px,1fr) 46px 46px auto !important;
+        gap:.25rem !important;
+        padding:.62rem .48rem .44rem !important;
+    }
+
+    .tcv2-sn{
+        width:22px !important;
+        height:22px !important;
+        font-size:.65rem !important;
+    }
+
+    .tcv2-photo,
+    .tcv2-avatar{
+        width:40px !important;
+        height:40px !important;
+    }
+
+    .tcv2-cnic-thumb{
+        width:46px;
+        min-width:46px;
+        height:40px;
+    }
+
+    .tcv2-status{
+        padding:.1rem .25rem !important;
+        font-size:.52rem !important;
+    }
+
+    .tcv2-subline{
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+
+    .tcv2-actions{
+        grid-template-columns:repeat(6,minmax(0,1fr)) !important;
+        gap:.18rem !important;
+        padding-left:.48rem !important;
+        padding-right:.48rem !important;
+    }
+
+    .tcv2-action{
+        gap:.14rem !important;
+        padding:.18rem .08rem !important;
+        font-size:.54rem !important;
+        overflow:hidden;
+    }
+
+    .tcv2-action i{
+        font-size:.62rem !important;
+    }
+
+    .tcv2-actions.no-lease-actions{
+        grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .filter-btn{
+        display:flex !important;
+        grid-column:1 / span 2 !important;
+        color:#fff !important;
+        background:#0d6efd !important;
+        border-color:#0d6efd !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .reset-btn{
+        display:flex !important;
+        grid-column:3 !important;
     }
 }
 </style>

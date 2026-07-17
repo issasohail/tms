@@ -426,7 +426,7 @@
 
   {% block extra_css %}{% endblock %}
 </head>
-<body class="env-{{ APP_ENVIRONMENT|default:'production'|lower }}{% if request.GET.embed == '1' %} tms-embedded-page{% endif %}">
+<body class="tms-responsive-shell env-{{ APP_ENVIRONMENT|default:'production'|lower }}{% if request.GET.embed == '1' %} tms-embedded-page{% endif %}">
 
   <!-- ============================================================
        NAVBAR — partials/navbar.html owns all nav content

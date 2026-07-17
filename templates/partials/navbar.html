@@ -14,6 +14,9 @@
 
       <!-- Center scrollable links — Maintenance intentionally excluded (moved to + menu) -->
       <ul class="nav-center" role="list">
+        {% if user.is_authenticated %}
+          <li class="nav-tablet-priority"><a class="mlink mlink--priority" href="{% url 'accounts:profile' %}">Profile</a></li>
+        {% endif %}
         {% if perms.payments.view_payment %}<li><a class="mlink" href="{% url 'payments:payment_list' %}">Payments</a></li>{% endif %}
         {% if perms.tenants.view_tenant  %}<li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
         {% if perms.leases.view_lease    %}<li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
@@ -23,6 +26,13 @@
 
       <!-- Right actions -->
       <div class="right-actions">
+
+        {% if user.is_authenticated %}
+          <div class="nav-tablet-alerts">
+            <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-warning suggestion-nav-link">Pending Approval</a>
+            <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">Suggestions</a>
+          </div>
+        {% endif %}
 
         <!-- + quick-add / overflow dropdown -->
         <div class="dropdown">
@@ -57,7 +67,7 @@
           </label>
 
           <!-- Suggestions -->
-          <a href="{% url 'core:suggestion_list' %}" class="icon-btn icon-btn--yellow" aria-label="Suggestions" title="Suggestions">
+          <a href="{% url 'core:suggestion_list' %}" class="icon-btn icon-btn--yellow mobile-suggestion-icon" aria-label="Suggestions" title="Suggestions">
             <i class="bi bi-lightbulb"></i>
           </a>
 
@@ -98,7 +108,7 @@
       </a>
 
       <!-- Primary links -->
-      <ul class="d-flex gap-1 mb-0 list-unstyled flex-wrap align-items-center" role="list">
+      <ul class="nav-desktop-center d-flex gap-1 mb-0 list-unstyled align-items-center" role="list">
         {% if perms.properties.view_property  %}<li><a class="dlink" href="{% url 'properties:property_list' %}">Properties</a></li>{% endif %}
         {% if perms.properties.view_unit      %}<li><a class="dlink" href="{% url 'properties:unit_list' %}">Units</a></li>{% endif %}
         {% if perms.payments.view_payment     %}<li><a class="dlink" href="{% url 'payments:payment_list' %}">Payments</a></li>{% endif %}
@@ -120,22 +130,24 @@
       </ul>
 
       <!-- Right side -->
-      <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      <div class="nav-desktop-actions d-flex align-items-center gap-2 flex-shrink-0">
         <label class="vp-toggle" title="Toggle viewport bar">
           <input class="form-check-input js-viewport-toggle" type="checkbox" aria-label="Viewport bar">
         </label>
         {% if user.is_authenticated %}
+          <div class="nav-desktop-alerts d-flex align-items-center gap-2 flex-shrink-0">
+            <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-warning suggestion-nav-link">
+              <span>Pending Approval</span>
+            </a>
+            <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">
+              <span>Suggestions</span>
+            </a>
+          </div>
           {% if user.is_impersonated %}
             <a href="{% url 'accounts:impersonate_stop' %}" class="btn btn-sm btn-warning">
               <i class="bi bi-person-x me-1"></i>{{ user.username }}
             </a>
           {% endif %}
-          <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">
-            <i class="bi bi-lightbulb"></i><span class="d-none d-lg-inline ms-1">Suggestions</span>
-          </a>
-          <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-outline-warning suggestion-nav-link">
-            <i class="bi bi-check2-square"></i><span class="d-none d-lg-inline ms-1">Pending Approval</span>
-          </a>
           <a href="{% url 'accounts:profile' %}" class="btn btn-sm btn-outline-light">Profile</a>
           <a href="{% url 'logout' %}" class="btn btn-sm btn-light">Logout</a>
         {% else %}
@@ -212,6 +224,7 @@
   /* Mobile center scrollable strip */
   .nav-center {
     display: flex;
+    min-width: 0;
     gap: 0;
     margin: 0;
     padding: 0;
@@ -227,6 +240,7 @@
   }
   .nav-center::-webkit-scrollbar { display: none; }
   .nav-center > li { margin: 0; }
+  .nav-tablet-priority { display: none; }
 
   /* Mobile nav link */
   .mlink {
@@ -250,6 +264,53 @@
     align-items: center;
     gap: .18rem;
     flex: 0 0 auto;
+  }
+
+  .nav-tablet-alerts {
+    display: none;
+  }
+
+  @media (min-width: 576px) and (max-width: 767.98px) {
+    .tms-responsive-shell .nav-center {
+      justify-content: center;
+      overflow: hidden;
+      padding-inline-end: 0;
+    }
+    .tms-responsive-shell .nav-center > li {
+      flex: 0 0 auto;
+    }
+    .tms-responsive-shell .nav-tablet-priority {
+      display: list-item;
+    }
+    .tms-responsive-shell .mlink {
+      padding: .2rem .28rem;
+      font-size: .56rem;
+    }
+    .tms-responsive-shell .mlink--priority {
+      color: #fff;
+      font-weight: 700;
+    }
+    .tms-responsive-shell .mobile-suggestion-icon {
+      display: none;
+    }
+    .tms-responsive-shell .nav-tablet-alerts {
+      display: inline-flex;
+      align-items: center;
+      gap: .18rem;
+      flex: 0 0 auto;
+    }
+    .tms-responsive-shell .nav-tablet-alerts .btn {
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      padding: .16rem .32rem;
+      border-color: #ffc107;
+      background: #ffc107;
+      color: #111;
+      font-size: .54rem;
+      font-weight: 700;
+      line-height: 1;
+    }
   }
 
   .icon-btn {
@@ -288,6 +349,15 @@
 
   /* Desktop nav links */
   @media (min-width: 768px) {
+    .nav-desktop-center {
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: center;
+      flex-wrap: nowrap;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .nav-desktop-center > li { flex: 0 0 auto; }
     .dlink {
       display: block;
       padding: .22rem .38rem;
@@ -305,6 +375,23 @@
       font-weight: 700;
     }
     .dlink--add:hover { color: #22c55e; background: rgba(74,222,128,.08); }
+  }
+
+  @media (min-width: 768px) and (max-width: 991.98px) {
+    .nav-desktop { gap: .45rem; }
+    .nav-desktop-center { gap: 0 !important; }
+    .nav-desktop-center .dlink {
+      padding: .2rem .28rem;
+      font-size: .68rem;
+    }
+    .nav-desktop-actions { gap: .25rem !important; }
+    .nav-desktop-alerts { gap: .25rem !important; }
+    .nav-desktop-alerts .btn,
+    .nav-desktop-actions .btn {
+      padding: .25rem .4rem;
+      font-size: .65rem;
+      white-space: nowrap;
+    }
   }
 
   /* Dropdown polish */

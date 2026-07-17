@@ -296,58 +296,150 @@ def _attach_pending_media_from_core(pending, user):
     from properties.models import PropertyMedia, UnitMedia
     from whatsapp.models import PendingWhatsAppMedia
 
-    if not pending.file:
-        raise ValueError("No file is attached.")
-    pending.file.open("rb")
-    content = ContentFile(pending.file.read(), name=pending.original_filename or pending.file.name)
-    pending.file.close()
-    if pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_PHOTO and pending.lease_id:
-        LeaseMedia.objects.create(
-            lease=pending.lease,
-            file=content,
-            media_type="image" if pending.media_type == "image" else "video" if pending.media_type == "video" else "file",
-            title=pending.original_filename or "WhatsApp lease photo",
-            description=pending.ai_notes[:300],
-            original_filename=pending.original_filename,
-            uploaded_by=user,
+    missing_file_message = (
+        "The source media file is missing from storage. Restore or re-upload it before approval."
+    )
+    if not pending.file or not pending.file.name:
+        raise ValueError(missing_file_message)
+    try:
+        source_exists = pending.file.storage.exists(pending.file.name)
+    except Exception as exc:
+        raise ValueError(missing_file_message) from exc
+    if not source_exists:
+        raise ValueError(missing_file_message)
+    try:
+        with pending.file.storage.open(pending.file.name, "rb") as source_file:
+            content = ContentFile(
+                source_file.read(),
+                name=pending.original_filename or pending.file.name,
+            )
+    except Exception as exc:
+        raise ValueError(missing_file_message) from exc
+
+    destination = None
+    try:
+        if pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_PHOTO:
+            if not pending.lease_id:
+                raise ValueError("Lease Gallery requires a lease target.")
+            processing_thumbnail = "lease-media-processing"
+            destination = LeaseMedia.objects.create(
+                lease=pending.lease,
+                file=content,
+                thumbnail=processing_thumbnail,
+                media_type="image" if pending.media_type == "image" else "video" if pending.media_type == "video" else "file",
+                title=pending.original_filename or "WhatsApp lease photo",
+                description=pending.ai_notes[:300],
+                original_filename=pending.original_filename,
+                uploaded_by=user,
+            )
+            if destination.thumbnail.name == processing_thumbnail:
+                destination.thumbnail = None
+                destination.save(update_fields=["thumbnail", "updated_at"])
+        elif (
+            pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT
+            or pending.purpose == PendingWhatsAppMedia.PURPOSE_LEASE
+        ):
+            if not pending.lease_id:
+                raise ValueError("Lease Document requires a lease target.")
+            destination = LeaseDocument.objects.create(
+                lease=pending.lease,
+                file=content,
+                original_filename=pending.original_filename,
+                display_name=pending.original_filename or "WhatsApp lease document",
+                category="other",
+                description=pending.ai_notes,
+                uploaded_by=user,
+            )
+        elif pending.purpose == PendingWhatsAppMedia.PURPOSE_PROPERTY:
+            if not pending.property_id:
+                raise ValueError("Property Photo requires a property target.")
+            destination = PropertyMedia.objects.create(
+                property=pending.property,
+                file=content,
+                description=pending.ai_notes[:300],
+                uploaded_by=user,
+                original_filename=pending.original_filename,
+            )
+        elif pending.purpose == PendingWhatsAppMedia.PURPOSE_UNIT:
+            if not pending.unit_id:
+                raise ValueError("Unit Photo requires a unit target.")
+            destination = UnitMedia.objects.create(
+                unit=pending.unit,
+                file=content,
+                description=pending.ai_notes[:300],
+                uploaded_by=user,
+                original_filename=pending.original_filename,
+            )
+        else:
+            raise ValueError(
+                "Choose Lease Gallery, Lease Document, Property Photo, or Unit Photo before approval."
+            )
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            "The media could not be saved to the selected destination. Please try again after checking storage."
+        ) from exc
+
+    try:
+        destination_exists = bool(
+            destination
+            and destination.file
+            and destination.file.name
+            and destination.file.storage.exists(destination.file.name)
         )
-        return
-    if pending.purpose == PendingWhatsAppMedia.PURPOSE_PROPERTY and pending.property_id:
-        PropertyMedia.objects.create(
-            property=pending.property,
-            file=content,
-            description=pending.ai_notes[:300],
-            uploaded_by=user,
-            original_filename=pending.original_filename,
+    except Exception as exc:
+        raise ValueError(
+            "The media could not be saved to the selected destination. Please try again after checking storage."
+        ) from exc
+    if not destination_exists:
+        raise ValueError(
+            "The media could not be saved to the selected destination. Please try again after checking storage."
         )
+    return destination
+
+
+def _apply_pending_media_destination(pending, submitted_destination):
+    from whatsapp.models import PendingWhatsAppMedia
+
+    if not submitted_destination:
         return
-    if pending.purpose == PendingWhatsAppMedia.PURPOSE_UNIT and pending.unit_id:
-        UnitMedia.objects.create(
-            unit=pending.unit,
-            file=content,
-            description=pending.ai_notes[:300],
-            uploaded_by=user,
-            original_filename=pending.original_filename,
-        )
-        return
-    if pending.purpose == PendingWhatsAppMedia.PURPOSE_LEASE and pending.lease_id:
-        LeaseDocument.objects.create(
-            lease=pending.lease,
-            file=content,
-            original_filename=pending.original_filename,
-            display_name=pending.original_filename or "WhatsApp lease document",
-            category="other",
-            description=pending.ai_notes,
-            uploaded_by=user,
-        )
-        return
-    if pending.purpose in {
-        PendingWhatsAppMedia.PURPOSE_OTHER,
-        PendingWhatsAppMedia.PURPOSE_PAYMENT,
-        PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
-    }:
-        return
-    raise ValueError("This media needs a Property, Unit, or Lease Document target before approval.")
+    try:
+        target_kind, submitted_id = submitted_destination.split(":", 1)
+        submitted_id = int(submitted_id)
+    except (TypeError, ValueError):
+        raise ValueError("The selected media destination is invalid.")
+
+    destination_config = {
+        PendingWhatsAppMedia.TARGET_LEASE_PHOTO: (
+            "lease_id",
+            PendingWhatsAppMedia.PURPOSE_LEASE,
+            "The selected lease target is invalid for this pending media.",
+        ),
+        PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT: (
+            "lease_id",
+            PendingWhatsAppMedia.PURPOSE_LEASE,
+            "The selected lease target is invalid for this pending media.",
+        ),
+        PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO: (
+            "property_id",
+            PendingWhatsAppMedia.PURPOSE_PROPERTY,
+            "The selected property target is invalid for this pending media.",
+        ),
+        PendingWhatsAppMedia.TARGET_UNIT_PHOTO: (
+            "unit_id",
+            PendingWhatsAppMedia.PURPOSE_UNIT,
+            "The selected unit target is invalid for this pending media.",
+        ),
+    }
+    config = destination_config.get(target_kind)
+    if not config:
+        raise ValueError("The selected media destination is invalid.")
+    relation_field, purpose, error_message = config
+    if getattr(pending, relation_field) != submitted_id:
+        raise ValueError(error_message)
+    pending.target_kind = target_kind
+    pending.purpose = purpose
 
 
 def _approve_pending_payment(pending, user):
@@ -460,13 +552,22 @@ def pending_approval_approve(request, kind, pk):
             _approve_pending_payment(item, request.user)
             messages.success(request, "WhatsApp payment approved and posted.")
         elif kind == "media":
-            if item.status != PendingWhatsAppMedia.STATUS_PENDING:
-                raise ValueError("This media has already been reviewed.")
-            _attach_pending_media_from_core(item, request.user)
-            item.status = PendingWhatsAppMedia.STATUS_APPROVED
-            item.approved_by = request.user
-            item.approved_at = timezone.now()
-            item.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
+            with transaction.atomic():
+                item = PendingWhatsAppMedia.objects.select_for_update().select_related(
+                    "lease", "property", "unit"
+                ).get(pk=item.pk)
+                if item.status != PendingWhatsAppMedia.STATUS_PENDING:
+                    raise ValueError("This media has already been reviewed.")
+                _apply_pending_media_destination(
+                    item, request.POST.get("media_destination", "")
+                )
+                _attach_pending_media_from_core(item, request.user)
+                item.status = PendingWhatsAppMedia.STATUS_APPROVED
+                item.approved_by = request.user
+                item.approved_at = timezone.now()
+                item.save(update_fields=[
+                    "purpose", "target_kind", "status", "approved_by", "approved_at", "updated_at"
+                ])
             messages.success(request, "WhatsApp media approved.")
         elif kind == "maintenance":
             _approve_pending_maintenance(item, request.user)

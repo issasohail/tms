@@ -13,34 +13,46 @@
   <div class="ll-header">
     <div class="ll-title-wrap">
       <h2 class="ll-title">Leases</h2>
-      <div class="ll-subtitle">Manage all lease agreements</div>
+      <div class="ll-title-meta">
+        <div class="ll-subtitle">Manage all lease agreements</div>
+        <label class="ll-check ll-api-check mb-0" title="Use WhatsApp Cloud API instead of opening wa.me links">
+          <input type="checkbox" id="use-whatsapp-api" data-whatsapp-api-toggle="lease-list">
+          <span>Use WhatsApp API</span>
+        </label>
+      </div>
     </div>
 
     <div class="ll-actions" aria-label="Lease actions">
       <a href="{% url 'leases:lease_create' %}" class="ll-btn ll-btn--primary ll-action-add">
         <i class="fas fa-plus"></i><span class="ll-btn-label">Add Lease</span>
       </a>
-      <a href="{% url 'leases:inspection_sheet_home' %}" class="ll-btn ll-btn--primary">
+      <a href="{% url 'leases:inspection_sheet_home' %}" class="ll-btn ll-btn--primary ll-action-inspection">
         <i class="fas fa-clipboard-check"></i><span class="ll-btn-label">Inspection</span>
       </a>
       <a href="{% url 'leases:default_clause_list' %}" class="ll-btn ll-btn--primary ll-action-default">
-        <i class="fas fa-book"></i><span class="ll-btn-label">Default Agreement</span>
+        <i class="fas fa-book"></i><span class="ll-btn-label">Agreement</span>
       </a>
       <button id="send-all-reminders" type="button" class="ll-btn ll-btn--success ll-action-reminder">
         <i class="fas fa-bell"></i><span class="ll-btn-label">Reminders</span>
       </button>
-      <label class="ll-check mb-0" title="Use WhatsApp Cloud API instead of opening wa.me links">
-        <input type="checkbox" id="use-whatsapp-api" data-whatsapp-api-toggle="lease-list">
-        <span>Use WhatsApp API</span>
-      </label>
       <a href="{% url 'leases:lease_ledger' %}" class="ll-btn ll-btn--primary ll-action-ledger">
         <i class="fas fa-book-open"></i><span class="ll-btn-label">Ledger</span>
       </a>
       <span class="ll-export-slot ll-action-export">
-        {% include "includes/export_buttons.html" %}
+        <span class="btn-group ll-export-group">
+          <button type="button" class="ll-btn ll-export-toggle dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-download"></i><span class="ll-btn-label">Export</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end ll-export-menu">
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=pdf"><i class="fas fa-file-pdf text-danger"></i><span>PDF</span></a></li>
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=jpg"><i class="fas fa-file-image text-primary"></i><span>JPG</span></a></li>
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=csv"><i class="fas fa-file-csv text-success"></i><span>CSV</span></a></li>
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=xlsx"><i class="fas fa-file-excel text-success"></i><span>Excel</span></a></li>
+          </ul>
+        </span>
       </span>
       <a href="{{ payment_create_url|default:'#' }}" class="ll-btn ll-btn--success ll-action-payment">
-        <i class="fas fa-search-dollar"></i><span class="ll-btn-label">Make Payment</span>
+        <i class="fas fa-search-dollar"></i><span class="ll-btn-label">Payment</span>
       </a>
       <span class="ll-layout-switch" aria-label="Tablet layout switch">
         <a href="?layout=1" class="ll-layout-link {% if current_layout != '2' %}is-active{% endif %}" data-layout-link="1">Layout 1</a>
@@ -100,15 +112,17 @@
       </select>
     </div>
 
-    <label class="ll-check ll-filter-nonzero">
-      <input type="checkbox" name="nonzero_balance" id="id_nonzero_balance" {% if nonzero_balance %}checked{% endif %}>
-      <span>Non-zero</span>
-    </label>
+    <div class="ll-filter-checks">
+      <label class="ll-check ll-filter-nonzero">
+        <input type="checkbox" name="nonzero_balance" id="id_nonzero_balance" {% if nonzero_balance %}checked{% endif %}>
+        <span>Non-zero</span>
+      </label>
 
-    <label class="ll-check ll-filter-bill-water">
-      <input type="checkbox" name="bill_water_charges" id="id_bill_water_charges" {% if bill_water_charges_filter %}checked{% endif %}>
-      <span>Bill Water</span>
-    </label>
+      <label class="ll-check ll-filter-bill-water">
+        <input type="checkbox" name="bill_water_charges" id="id_bill_water_charges" {% if bill_water_charges_filter %}checked{% endif %}>
+        <span>Bill Water</span>
+      </label>
+    </div>
 
     {% if request.GET %}
       <a href="?" class="ll-btn ll-btn--clear ll-filter-clear" title="Clear filters" aria-label="Clear filters">
@@ -139,7 +153,7 @@
         <strong>{{ expiring_soon_count|default:"0" }}</strong>
       </span>
     </a>
-    <a href="{{ balance_due_url }}" class="ll-summary-card ll-summary-link ll-summary-financial {% if current_summary == 'balance_due' %}is-active{% endif %}" title="Show leases with balance due">
+    <a href="{{ balance_due_url }}" class="ll-summary-card ll-summary-link ll-summary-financial {% if current_summary == 'balance_due' %}is-active{% endif %}" title="Lease balance due for current filters: {{ total_balance|money:2 }}">
       <span class="ll-summary-icon ll-summary-icon--orange"><i class="fas fa-balance-scale"></i></span>
       <span class="ll-summary-text">
         <span class="ll-summary-label">Total Balance</span>
@@ -261,6 +275,16 @@
   font-size: .78rem;
   color: var(--ll-muted);
 }
+.ll-title-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+.ll-api-check {
+  height: auto !important;
+  font-size: .72rem !important;
+}
 .ll-actions {
   display: flex;
   align-items: center;
@@ -291,6 +315,13 @@
 .ll-btn--primary { background: var(--ll-blue); color: #fff !important; }
 .ll-btn--success { background: var(--ll-green); color: #fff !important; }
 .ll-btn--clear { background: #fff; color: #475467 !important; border-color: var(--ll-border) !important; }
+.ll-action-add { background: #0d6efd !important; color: #fff !important; }
+.ll-action-inspection { background: #0f766e !important; color: #fff !important; }
+.ll-action-default { background: #6f42c1 !important; color: #fff !important; }
+.ll-action-reminder { background: #d97706 !important; color: #fff !important; }
+.ll-action-ledger { background: #344054 !important; color: #fff !important; }
+.ll-action-export .ll-export-toggle { background: #6c757d !important; color: #fff !important; }
+.ll-action-payment { background: #198754 !important; color: #fff !important; }
 .ll-export-slot .btn,
 .ll-export-slot button,
 .ll-export-slot a { background: #6c757d !important; color: #fff !important; }
@@ -322,7 +353,7 @@
 
 .ll-filters {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(120px, .9fr) minmax(130px, .9fr) minmax(190px, 1.25fr) auto auto;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, .9fr) minmax(130px, .9fr) minmax(190px, 1.25fr) minmax(145px, auto) auto;
   gap: 8px 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -367,6 +398,14 @@
   cursor: pointer;
 }
 .ll-check input { width: 15px; height: 15px; margin: 0; }
+.ll-filter-checks {
+  display: flex;
+  align-items: end;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.ll-filter-checks .ll-check span { line-height: 1; }
 .ll-filter-clear { height: 34px; align-self: end; }
 
 .ll-summary {
@@ -707,7 +746,7 @@
     font-size: .76rem !important;
   }
   .ll-filters {
-    grid-template-columns: 1fr 1fr 1fr minmax(180px, 1.45fr) auto auto;
+    grid-template-columns: 1fr 1fr 1fr minmax(180px, 1.45fr) minmax(140px, auto) auto;
     gap: 7px;
   }
   .ll-summary-card { min-height: 64px; padding: 10px 12px; gap: 9px; }
@@ -929,7 +968,7 @@
   .ll-card-value.is-security { color: #078044; }
   .ll-card-dates {
     display: grid;
-    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    grid-template-columns: auto minmax(0,1fr) auto;
     align-items: center;
     gap: 5px;
     padding: 5px 4px;
@@ -939,7 +978,7 @@
     font-size: .57rem;
     font-weight: 800;
   }
-  .ll-card-date { min-width: 0; white-space: nowrap; }
+  .ll-card-date { min-width: 0; white-space: nowrap; overflow: visible; }
   .ll-card-date:last-child { text-align: right; }
   .ll-card-countdown {
     color: #dc3545;
@@ -963,6 +1002,15 @@
     font-size: .57rem;
     font-weight: 800;
     overflow: hidden;
+  }
+  .ll-card-meta-label {
+    display: block;
+    margin-bottom: 2px;
+    color: #667085;
+    font-size: .48rem;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
   }
   .ll-card-meta-item > * { max-width: 100%; }
   .ll-card-meta-item form { justify-content: center; }
@@ -1044,8 +1092,22 @@
   .ll-filter-unit { grid-column: 2; }
   .ll-filter-status { grid-column: 3; }
   .ll-filter-tenant { grid-column: 1 / span 2; }
-  .ll-filter-nonzero { grid-column: 3; align-self: end; justify-content: center; }
-  .ll-filter-bill-water { grid-column: 3; align-self: end; justify-content: center; }
+  .ll-filter-checks {
+    grid-column: 3;
+    align-self: end;
+    justify-content: center;
+    gap: 5px;
+    height: 29px;
+  }
+  .ll-filter-checks .ll-check {
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 29px;
+  }
+  .ll-filter-checks .ll-check span {
+    white-space: normal;
+    line-height: .92;
+  }
   .ll-filter-clear { grid-column: 3; display: none !important; }
   .ll-label { font-size: .62rem; }
   .ll-select { height: 29px; padding: 4px 6px; font-size: .66rem; border-radius: 6px; }
@@ -1285,6 +1347,58 @@
   }
 }
 
+@media (min-width: 500px) and (max-width: 767.98px) {
+  .ll-actions {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .ll-actions .ll-btn,
+  .ll-actions .ll-export-slot .btn,
+  .ll-actions .ll-export-slot button,
+  .ll-actions .ll-export-slot a {
+    min-width: 0;
+    min-height: 28px;
+    padding: 5px 2px !important;
+    gap: 3px;
+    font-size: .56rem !important;
+  }
+  .ll-actions i { font-size: .58rem; }
+  .ll-action-add { order: 1; }
+  .ll-action-inspection { order: 2; }
+  .ll-action-default { order: 3; }
+  .ll-action-reminder { order: 4; }
+  .ll-action-ledger { order: 5; }
+  .ll-action-export { order: 6; min-width: 0; }
+  .ll-action-payment { order: 7; }
+
+  .ll-summary {
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  }
+  .ll-summary-card,
+  .ll-summary-financial { grid-column: auto; }
+  .ll-summary-card { padding: 6px; gap: 5px; }
+  .ll-summary-icon { width: 27px; height: 27px; font-size: .72rem; }
+  .ll-summary-financial .ll-summary-icon { display: none; }
+  .ll-summary-label { font-size: .52rem; }
+  .ll-summary-text strong { font-size: .68rem; }
+}
+
+@media (min-width: 500px) and (max-width: 999.98px) {
+  .ll-card-actions {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .ll-card-actions .btn {
+    height: 29px !important;
+    padding: 0 2px !important;
+    gap: 2px;
+    font-size: .56rem !important;
+  }
+  .ll-card-actions .btn i { font-size: .56rem; }
+  .ll-card-dates { gap: 3px; font-size: .54rem; }
+  .ll-card-countdown { font-size: .52rem; text-align: center; }
+}
+
 @media (max-width: 400px) {
   .ll-actions { gap: 5px; }
   .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a { font-size: .62rem !important; }
@@ -1294,6 +1408,41 @@
   .ll-table-wrap td.col-sec,
   .ll-table-wrap td.col-start,
   .ll-table-wrap td.col-end { font-size: .62rem; }
+}
+
+.ll-export-slot .ll-export-menu {
+  min-width: 145px;
+  padding: 5px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(16, 24, 40, .14);
+}
+.ll-export-slot .ll-export-menu .dropdown-item {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100% !important;
+  min-height: 30px;
+  padding: 6px 9px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #344054 !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
+  text-align: left;
+}
+.ll-export-slot .ll-export-menu .dropdown-item:hover,
+.ll-export-slot .ll-export-menu .dropdown-item:focus {
+  background: #f2f6ff !important;
+  color: #101828 !important;
+}
+.ll-export-slot .ll-export-menu .dropdown-item i {
+  width: 16px;
+  text-align: center;
 }
 
 .select2-dropdown .select2-results__option { font-size: .78rem; padding: 4px 8px; line-height: 1.2; }
@@ -1316,6 +1465,15 @@ document.addEventListener("DOMContentLoaded", function () {
       return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
     };
     const cleanDate = value => value.replace(/\s*(?:\d+\s+days?\s+(?:left|overdue)).*$/i, '').trim();
+    const compactDate = value => {
+      const match = value.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})$/);
+      if (!match) return value;
+      const month = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+        Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+      }[match[1]];
+      return month ? `${match[3]}-${month}-${match[2].padStart(2, '0')}` : value;
+    };
 
     rows.forEach((row, index) => {
       const card = document.createElement('article');
@@ -1334,7 +1492,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const security = text(row, '.col-sec') || '-';
       const start = cleanDate(text(row, '.col-start')) || '-';
       const endCell = row.querySelector('.col-end');
-      const end = cleanDate(text(row, '.col-end')) || '-';
+      const end = compactDate(cleanDate(text(row, '.col-end'))) || '-';
       const countdown = endCell?.querySelector('.ll-days-left')?.textContent.trim() || '';
 
       card.innerHTML = `
@@ -1371,6 +1529,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const item = document.createElement('div');
         item.className = 'll-card-meta-item';
         item.title = label;
+        const itemLabel = document.createElement('span');
+        itemLabel.className = 'll-card-meta-label';
+        itemLabel.textContent = label;
+        item.appendChild(itemLabel);
         Array.from(source.childNodes).forEach(node => item.appendChild(node.cloneNode(true)));
         meta.appendChild(item);
       });

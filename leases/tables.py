@@ -31,6 +31,34 @@ def _global_settings():
 
 
 class LeaseTable(ExportableTable):
+    export_exclude = ("id", "police_verification")
+    export_verbose_names = {
+        "sn": "S.N.",
+        "family_members": "Family",
+        "security_due": "Sec. Balance",
+    }
+    excel_include_property = True
+    compact_export_heading = True
+    pdf_export_attrs = {
+        **ExportableTable.Meta.pdf_export_attrs,
+        "orientation": "landscape",
+        "column_widths": {
+            "sn": 28,
+            "tenant": 120,
+            "unit": 65,
+            "family_members": 38,
+            "bill_water_charges": 36,
+            "vehicle_info": 42,
+            "monthly_payments": 60,
+            "due_date": 32,
+            "status": 38,
+            "start_date": 50,
+            "end_date": 50,
+            "balance": 60,
+            "security_due": 65,
+        },
+    }
+
     id = tables.Column(
         verbose_name="ID",
         linkify=lambda record: reverse("leases:lease_detail", args=[record.pk]),
@@ -197,6 +225,9 @@ class LeaseTable(ExportableTable):
     def render_due_date(self, value, record):
         full = value or ""
         short = full[:4] if full else "-"
+        request = getattr(self, "request", None)
+        if request and request.GET.get("_export"):
+            return short
         url = reverse("leases:lease_due_date_inline_update", args=[record.pk])
         return mark_safe(
             f'''
@@ -216,6 +247,17 @@ class LeaseTable(ExportableTable):
         vehicle_count = getattr(record, "vehicle_count", 0) or 0
         pending_count = getattr(record, "pending_vehicle_count", 0) or 0
         has_vehicle = getattr(record, "has_vehicle", None)
+        request = getattr(self, "request", None)
+        if request and request.GET.get("_export"):
+            if vehicle_count:
+                return "Yes" if vehicle_count == 1 else f"Yes {vehicle_count}"
+            if pending_count:
+                return "Pending" if pending_count == 1 else f"Pending {pending_count}"
+            if has_vehicle is False:
+                return "No"
+            if has_vehicle is True:
+                return "Need Info"
+            return "Not Set"
         url = reverse("leases:lease_vehicle_info_ajax", args=[record.pk])
 
         if vehicle_count:
@@ -254,6 +296,9 @@ class LeaseTable(ExportableTable):
     def render_family_members(self, record):
         count = getattr(record, "family_member_count", 0) or 0
         pending = getattr(record, "pending_family_count", 0) or 0
+        request = getattr(self, "request", None)
+        if request and request.GET.get("_export"):
+            return str(count)
         url = reverse("leases:lease_detail", args=[record.pk]) + "#leaseFamilySection"
 
         label = f"{count} Member" if count == 1 else f"{count} Members"
@@ -287,6 +332,9 @@ class LeaseTable(ExportableTable):
 
     def render_bill_water_charges(self, value, record):
         label = "Yes" if value else "No"
+        request = getattr(self, "request", None)
+        if request and request.GET.get("_export"):
+            return label
         badge_class = "bg-success" if value else "bg-secondary"
         url = reverse("leases:lease_bill_water_inline_update", args=[record.pk])
 
@@ -383,6 +431,9 @@ class LeaseTable(ExportableTable):
         t = record.tenant
         full = f"{t.first_name} {t.last_name}".strip() if t else ""
         short = (full[:15] + "...") if len(full) > 15 else full
+        request = getattr(self, "request", None)
+        if request and request.GET.get("_export"):
+            return short
         return mark_safe(
             f'<span class="tenant-text" title="{escape(full)}">{escape(short)}</span>'
         )
@@ -497,7 +548,7 @@ class LeaseTable(ExportableTable):
         sequence = fields
         exclude = ("property",)
         order_by = ("unit",)
-        export_formats = ["csv", "xlsx", "pdf"]  # Add supported export formats
+        export_formats = ["csv", "xlsx", "pdf", "jpg"]
 
 
 class LeaseListView(SingleTableView):

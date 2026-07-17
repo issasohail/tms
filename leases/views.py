@@ -906,6 +906,7 @@ class LeaseListView(SingleTableView):
 
         invoice_total = (
             Invoice.objects.filter(lease_id=OuterRef("pk"))
+            .exclude(status="cancelled")
             .values("lease_id")
             .annotate(total=Coalesce(Sum("amount"), zero))
             .values("total")[:1]
@@ -956,16 +957,11 @@ class LeaseListView(SingleTableView):
                 Subquery(security_total("PAYMENT"), output_field=money_field),
                 zero,
             ),
-            security_adjust_total=Coalesce(
-                Subquery(security_total("ADJUST"), output_field=money_field),
-                zero,
-            ),
         ).annotate(
             list_balance=F("invoice_total") - F("payment_total"),
             list_security_due=Greatest(
                 Coalesce(F("security_deposit"), zero)
-                - F("security_paid_total")
-                - F("security_adjust_total"),
+                - F("security_paid_total"),
                 zero,
                 output_field=money_field,
             ),
@@ -3872,6 +3868,30 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     )
                 ),
             }
+        )
+        from core.models import GlobalSettings
+        from leases.whatsapp import build_whatsapp_url
+        from tenants.views import TENANT_REGISTRATION_MAX_AGE, tenant_registration_token
+
+        ctx["registration_link"] = self.request.build_absolute_uri(
+            reverse(
+                "tenants:tenant_public_registration",
+                args=[tenant_registration_token(lease.tenant)],
+            )
+        )
+        ctx["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
+        registration_message = (
+            f"Hello {lease.tenant.get_full_name()},\n\n"
+            "Please complete or update your tenant registration using the secure link below:\n\n"
+            f"{ctx['registration_link']}\n\n"
+            f"This link will expire in {ctx['registration_link_days']} days.\n\n"
+            "Thank you."
+        )
+        settings_obj = GlobalSettings.get_solo()
+        ctx["registration_whatsapp_url"] = build_whatsapp_url(
+            lease.tenant.phone or lease.tenant.phone2 or lease.tenant.phone3 or "",
+            registration_message,
+            country_code=getattr(settings_obj, "country_code", "+92"),
         )
         public_maintenance_token = make_public_maintenance_token(lease)
         ctx["public_maintenance_url"] = self.request.build_absolute_uri(

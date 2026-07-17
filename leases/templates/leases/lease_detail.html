@@ -677,6 +677,9 @@
       {% endif %}
 
       <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</a>
+      <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tenantRegistrationLinkBox" aria-expanded="false" aria-controls="tenantRegistrationLinkBox">
+        <i class="fas fa-link"></i> Registration Link
+      </button>
       {% if lease.status == "active" %}
         <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#endLeaseModal">
           <i class="fas fa-door-open"></i> End Lease
@@ -754,6 +757,30 @@
       {% endwith %}
     </div>
 
+  </div>
+
+  <div class="collapse mb-3" id="tenantRegistrationLinkBox">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-2">
+        <div class="input-group input-group-sm flex-wrap">
+          <span class="input-group-text fw-semibold">Tenant Update Link</span>
+          <input id="leaseTenantRegistrationLink" type="text" class="form-control text-break" value="{{ registration_link }}" readonly onclick="this.select();">
+          <button id="copyTenantRegistrationLinkBtn" class="btn btn-outline-primary" type="button">
+            <i class="far fa-copy me-1"></i> Copy
+          </button>
+          <a class="btn btn-outline-success {% if not registration_whatsapp_url %}disabled{% endif %}" target="_blank" rel="noopener" href="{{ registration_whatsapp_url|default:'#' }}">
+            <i class="fab fa-whatsapp me-1"></i> WhatsApp
+          </a>
+          <a href="{{ registration_link }}" target="_blank" rel="noopener" class="btn btn-outline-dark">
+            <i class="fas fa-external-link-alt me-1"></i> Open
+          </a>
+          <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-secondary">
+            <i class="far fa-list-alt me-1"></i> Submissions
+          </a>
+        </div>
+        <div class="form-text">Public link expires after {{ registration_link_days }} days. Submitted changes require admin approval.</div>
+      </div>
+    </div>
   </div>
 
   <nav class="ld-mobile-section-nav no-print" aria-label="Lease detail sections">
@@ -2821,6 +2848,29 @@ document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', fun
   }).catch(() => {
     window.prompt('Copy maintenance link:', link);
   });
+});
+
+document.getElementById('copyTenantRegistrationLinkBtn')?.addEventListener('click', function () {
+  const input = document.getElementById('leaseTenantRegistrationLink');
+  const link = input?.value || '';
+  if (!link) return;
+  const button = this;
+  const original = button.innerHTML;
+  const showCopied = function () {
+    button.innerHTML = '<i class="fas fa-check"></i> Copied';
+    setTimeout(function () { button.innerHTML = original; }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(showCopied).catch(function () {
+      input.select();
+      document.execCommand('copy');
+      showCopied();
+    });
+  } else {
+    input.select();
+    document.execCommand('copy');
+    showCopied();
+  }
 });
 
 document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {

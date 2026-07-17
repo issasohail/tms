@@ -655,6 +655,7 @@
       <h1 class="ld-hdr-name">
         <a href="{% url 'tenants:tenant_detail' lease.tenant.pk %}">{{ lease.tenant.get_full_name }}</a>
       </h1>
+      <div class="small">Lease Term {{ lease.lease_months|default:11 }} Month</div>
       <div class="ld-hdr-line2">{{ lease.unit.property.property_name }} &middot; {{ lease.unit.unit_number }} &middot; {{ lease.start_date }} &ndash; {{ lease.end_date }}</div>
       <div class="ld-hdr-line3">
         <span>Lease #{{ lease.id }}</span>

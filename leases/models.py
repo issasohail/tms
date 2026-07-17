@@ -27,6 +27,7 @@ from core.model_fields import NormalizedCNICField, NormalizedPhoneField
 from core.utils.identity import format_cnic
 from properties.models import Unit
 from tenants.models import Tenant
+from leases.lease_term import calculate_lease_end_date
 
 
 def default_lease_terms():
@@ -57,6 +58,11 @@ class Lease(models.Model):
     agreement_date = models.DateField(null=True, blank=True)
     start_date = models.DateField()
     end_date = models.DateField()
+    lease_months = models.PositiveSmallIntegerField(
+        default=11,
+        validators=[MinValueValidator(1)],
+        verbose_name="Agreement Term (Months)",
+    )
     monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
     society_maintenance = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True, default=1200
@@ -685,9 +691,8 @@ class Lease(models.Model):
         return True
 
     def get_lease_duration(self):
-        """Calculate lease duration in months"""
-        delta = self.end_date - self.start_date
-        return round(delta.days / 30)
+        """Return the persisted agreement term in calendar months."""
+        return self.lease_months
 
     @property
     def new_rent_after_increase(self):
@@ -728,7 +733,9 @@ class Lease(models.Model):
     def save(self, *args, **kwargs):
         # Only set end_date if not provided and start_date exists
         if not self.end_date and self.start_date:
-            self.end_date = self.start_date + timedelta(days=365)
+            self.end_date = calculate_lease_end_date(
+                self.start_date, self.lease_months or 11
+            )
         super().save(*args, **kwargs)
 
     def get_renewal_url(self):

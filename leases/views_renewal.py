@@ -32,6 +32,7 @@ def _copy_clauses_to_renewal(lease, renewal):
 HISTORY_FINANCIAL_FIELDS = [
     "start_date",
     "end_date",
+    "lease_months",
     "monthly_rent",
     "society_maintenance",
     "water_charges",
@@ -46,6 +47,7 @@ def _lease_with_history_values(lease, history):
     for field in [
         "start_date",
         "end_date",
+        "lease_months",
         "agreement_date",
         "monthly_rent",
         "society_maintenance",
@@ -122,6 +124,7 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
 
             lease.start_date = renewal.start_date
             lease.end_date = renewal.end_date
+            lease.lease_months = renewal.lease_months
             lease.agreement_date = renewal.agreement_date
             lease.monthly_rent = renewal.monthly_rent
             lease.society_maintenance = renewal.society_maintenance
@@ -137,6 +140,7 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
                 "original_start_date",
                 "start_date",
                 "end_date",
+                "lease_months",
                 "agreement_date",
                 "monthly_rent",
                 "society_maintenance",

@@ -1,5 +1,4 @@
-from calendar import monthrange
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
@@ -8,6 +7,7 @@ from django.db.models.functions import Lower
 from core.utils.identity import format_cnic, format_phone
 
 from .models_renewal import LeaseRenewal
+from .lease_term import calculate_lease_end_date
 
 
 MONEY_QUANT = Decimal("0.01")
@@ -18,16 +18,13 @@ def _witness_choice_label(person):
     return f"{name} - {format_cnic(person.cnic) or '-'} - {format_phone(person.phone) or '-'}"
 
 
-def _end_of_month(value):
-    return date(value.year, value.month, monthrange(value.year, value.month)[1])
-
-
 class LeaseRenewalForm(forms.ModelForm):
     class Meta:
         model = LeaseRenewal
         fields = [
             "start_date",
             "end_date",
+            "lease_months",
             "agreement_date",
             "monthly_rent",
             "society_maintenance",
@@ -48,7 +45,8 @@ class LeaseRenewalForm(forms.ModelForm):
         ]
         widgets = {
             "start_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
-            "end_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "end_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm", "readonly": True}),
+            "lease_months": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": 1, "step": 1}),
             "agreement_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
             "monthly_rent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "society_maintenance": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
@@ -69,10 +67,14 @@ class LeaseRenewalForm(forms.ModelForm):
     def __init__(self, *args, lease=None, **kwargs):
         self.lease = lease
         super().__init__(*args, **kwargs)
+        self.fields["end_date"].required = False
 
         if lease and not self.is_bound:
+            from core.models import GlobalSettings
+
             start_date = lease.end_date + timedelta(days=1)
-            end_date = _end_of_month(start_date + timedelta(days=365) - timedelta(days=1))
+            lease_months = GlobalSettings.get_solo().default_lease_months or 11
+            end_date = calculate_lease_end_date(start_date, lease_months)
             increase = lease.rent_increase_percent or Decimal("10.00")
             current_rent = lease.monthly_rent or Decimal("0.00")
             proposed_rent = (
@@ -82,6 +84,7 @@ class LeaseRenewalForm(forms.ModelForm):
             self.initial.update({
                 "start_date": start_date,
                 "end_date": end_date,
+                "lease_months": lease_months,
                 "agreement_date": start_date,
                 "monthly_rent": proposed_rent,
                 "society_maintenance": lease.society_maintenance or Decimal("0.00"),
@@ -97,6 +100,11 @@ class LeaseRenewalForm(forms.ModelForm):
         cleaned = super().clean()
         lease = self.lease
         start_date = cleaned.get("start_date")
+        lease_months = cleaned.get("lease_months")
+        if start_date and lease_months:
+            cleaned["end_date"] = calculate_lease_end_date(
+                start_date, lease_months
+            )
         end_date = cleaned.get("end_date")
 
         if start_date and end_date and end_date <= start_date:
@@ -133,6 +141,7 @@ class LeaseHistoryEditForm(forms.ModelForm):
         fields = [
             "start_date",
             "end_date",
+            "lease_months",
             "agreement_date",
             "monthly_rent",
             "society_maintenance",
@@ -148,6 +157,7 @@ class LeaseHistoryEditForm(forms.ModelForm):
         widgets = {
             "start_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
             "end_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "lease_months": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": 1, "step": 1}),
             "agreement_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
             "monthly_rent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "society_maintenance": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
@@ -175,6 +185,16 @@ class LeaseHistoryEditForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         start_date = cleaned.get("start_date")
+        lease_months = cleaned.get("lease_months")
+        if start_date and lease_months and (
+            not self.instance.pk
+            or "start_date" in self.changed_data
+            or "lease_months" in self.changed_data
+            or not cleaned.get("end_date")
+        ):
+            cleaned["end_date"] = calculate_lease_end_date(
+                start_date, lease_months
+            )
         end_date = cleaned.get("end_date")
         if start_date and end_date and end_date <= start_date:
             self.add_error("end_date", "End date must be after start date.")

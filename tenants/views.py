@@ -687,18 +687,67 @@ def _registration_submission_comparison(submission):
         if not submitted_file:
             continue
         existing_file = getattr(tenant, field_name)
+        try:
+            submitted_exists = submitted_file.storage.exists(submitted_file.name)
+        except Exception:
+            submitted_exists = False
+        try:
+            existing_exists = bool(
+                existing_file
+                and existing_file.storage.exists(existing_file.name)
+            )
+        except Exception:
+            existing_exists = False
         rows.append(
             {
                 "field": field_name,
                 "label": label,
                 "existing": "Current file" if existing_file else "No current file",
-                "submitted": "New upload",
-                "existing_url": existing_file.url if existing_file else "",
-                "submitted_url": submitted_file.url,
+                "submitted": (
+                    "New upload" if submitted_exists else "New upload - file missing from storage"
+                ),
+                "existing_url": existing_file.url if existing_exists else "",
+                "submitted_url": submitted_file.url if submitted_exists else "",
                 "changed": True,
             }
         )
     return rows
+
+
+def _registration_identity_documents(submission):
+    """Describe submitted identity files without hiding missing-storage problems."""
+    documents = []
+    tenant = submission.tenant
+    for field_name, label in (
+        ("photo", "Photo"),
+        ("cnic_front", "CNIC Front"),
+        ("cnic_back", "CNIC Back"),
+    ):
+        submitted_file = getattr(submission, field_name)
+        current_file = getattr(tenant, field_name)
+        submitted_exists = False
+        if submitted_file and submitted_file.name:
+            try:
+                submitted_exists = submitted_file.storage.exists(submitted_file.name)
+            except Exception:
+                submitted_exists = False
+        current_exists = False
+        if current_file and current_file.name:
+            try:
+                current_exists = current_file.storage.exists(current_file.name)
+            except Exception:
+                current_exists = False
+        documents.append(
+            {
+                "field": field_name,
+                "label": label,
+                "submitted_url": submitted_file.url if submitted_exists else "",
+                "submitted_name": submitted_file.name if submitted_file else "",
+                "submitted_missing": bool(submitted_file and not submitted_exists),
+                "current_url": current_file.url if current_exists else "",
+            }
+        )
+    return documents
 
 
 def _apply_family_members_from_submission(tenant, family_members):
@@ -1046,6 +1095,9 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         )
         context["submission_change_count"] = sum(
             1 for row in context["submission_comparison"] if row["changed"]
+        )
+        context["identity_documents"] = _registration_identity_documents(
+            self.object
         )
         return context
 

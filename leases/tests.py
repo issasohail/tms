@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 from django.test import TestCase
+from django.test import SimpleTestCase
 
 
 class AuthorizedOccupantsPlaceholderTests(TestCase):
@@ -270,4 +271,42 @@ class LeaseBillingChangeRegressionTests(TestCase):
                 issue_date__month=month_start.month,
             ).count(),
             1,
+        )
+
+
+class LeaseTermCalculationTests(SimpleTestCase):
+    def test_first_day_start_uses_day_before_after_term(self):
+        from datetime import date
+        from leases.lease_term import calculate_lease_end_date
+
+        self.assertEqual(
+            calculate_lease_end_date(date(2026, 7, 1), 11),
+            date(2027, 5, 31),
+        )
+
+    def test_mid_month_start_ends_on_previous_day(self):
+        from datetime import date
+        from leases.lease_term import calculate_lease_end_date
+
+        self.assertEqual(
+            calculate_lease_end_date(date(2026, 7, 10), 11),
+            date(2027, 6, 9),
+        )
+
+    def test_month_end_is_clamped_before_subtracting_one_day(self):
+        from datetime import date
+        from leases.lease_term import calculate_lease_end_date
+
+        self.assertEqual(
+            calculate_lease_end_date(date(2027, 1, 31), 1),
+            date(2027, 2, 27),
+        )
+
+    def test_leap_year_is_supported(self):
+        from datetime import date
+        from leases.lease_term import calculate_lease_end_date
+
+        self.assertEqual(
+            calculate_lease_end_date(date(2023, 3, 1), 11),
+            date(2024, 1, 31),
         )

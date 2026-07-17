@@ -3213,6 +3213,9 @@ def _sync_current_renewal_end_date(lease, *, user=None):
     if renewal.end_date != lease.end_date:
         renewal.end_date = lease.end_date
         update_fields.append("end_date")
+    if renewal.lease_months != lease.lease_months:
+        renewal.lease_months = lease.lease_months
+        update_fields.append("lease_months")
     if not update_fields:
         return 0
     if user and getattr(user, "is_authenticated", False):

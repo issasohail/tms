@@ -78,6 +78,11 @@ class GlobalSettings(models.Model):
         default=0,
         help_text="Optional invoice cap. Use 0 for no cap.",
     )
+    default_lease_months = models.PositiveSmallIntegerField(
+        default=11,
+        validators=[MinValueValidator(1)],
+        help_text="Default agreement term used for new leases and renewals.",
+    )
     end_lease_proration_interval_days = models.PositiveSmallIntegerField(
         default=7,
         validators=[MinValueValidator(1)],

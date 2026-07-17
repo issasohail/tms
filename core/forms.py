@@ -29,6 +29,7 @@ class GlobalSettingsForm(forms.ModelForm):
                   "late_fee_reminder_interval_days", "late_fee_max_reminders",
                   "late_fee_auto_send_reminders", "late_fee_auto_apply",
                   "billing_cap_amount",
+                  "default_lease_months",
                   "end_lease_proration_interval_days",
                   "lease_file_share_valid_days",
                   "police_verification_document_category_code",
@@ -72,6 +73,7 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Billing Scale & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
+            "default_lease_months",
             "end_lease_proration_interval_days",
         ]),
         ("Police Verification", "fas fa-shield-alt", [

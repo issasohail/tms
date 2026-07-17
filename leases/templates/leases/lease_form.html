@@ -1011,6 +1011,11 @@
                 <div class="lf-card-head lf-card-dark">
                   <i class="ti ti-calendar"></i>
                   <span class="lf-card-title">Period &amp; Charges</span>
+                  <label class="d-flex align-items-center gap-1 ms-auto mb-0 small fw-semibold" for="{{ form.lease_months.id_for_label }}">
+                    <span>Agreement Term</span>
+                    {{ form.lease_months|add_class:"form-control form-control-sm text-center"|attr:"style:width:64px" }}
+                    <span>Month</span>
+                  </label>
                 </div>
                 <div class="lf-fg lf-fg-3 lf-period-grid">
                   <div class="lf-f">
@@ -1342,6 +1347,7 @@
                         <th style="width:50px">#</th>
                         <th style="width:120px">Start</th>
                         <th style="width:120px">End</th>
+                        <th style="width:85px">Term</th>
                         <th style="width:120px">Agreement</th>
                         <th style="width:110px">Rent</th>
                         <th style="width:110px">Maint.</th>
@@ -1370,6 +1376,10 @@
                           <td>
                             <div class="renewal-read-field">{{ renewal_form.instance.end_date|date:"M d, Y"|default:"-" }}</div>
                             <div class="renewal-edit-field">{{ renewal_form.end_date }}</div>
+                          </td>
+                          <td>
+                            <div class="renewal-read-field">{{ renewal_form.instance.lease_months|default:11 }} Month</div>
+                            <div class="renewal-edit-field">{{ renewal_form.lease_months }}</div>
                           </td>
                           <td>
                             <div class="renewal-read-field">{{ renewal_form.instance.agreement_date|date:"M d, Y"|default:"-" }}</div>
@@ -1740,24 +1750,29 @@ document.addEventListener('DOMContentLoaded', function () {
   updateTotal();
 
   /* dates */
-  function addMonthsYmd(ymd, months){
+  function agreementEndYmd(ymd, months){
     if(!ymd) return '';
     var p = ymd.split('-').map(Number);
     if(p.length!==3||p.some(isNaN)) return '';
-    var d = new Date(p[0],p[1]-1,p[2]); var day = d.getDate();
-    d.setMonth(d.getMonth()+months);
-    if(d.getDate()!==day) d.setDate(0);
-    return d.toISOString().slice(0,10);
+    months = parseInt(months,10);
+    if(!months || months < 1) return '';
+    var day = p[2];
+    var firstOfTarget = new Date(Date.UTC(p[0], p[1]-1+months, 1));
+    var lastTargetDay = new Date(Date.UTC(firstOfTarget.getUTCFullYear(), firstOfTarget.getUTCMonth()+1, 0)).getUTCDate();
+    var d = new Date(Date.UTC(firstOfTarget.getUTCFullYear(), firstOfTarget.getUTCMonth(), Math.min(day,lastTargetDay)));
+    d.setUTCDate(d.getUTCDate()-1);
+    var y=d.getUTCFullYear(),m=('0'+(d.getUTCMonth()+1)).slice(-2),dd=('0'+d.getUTCDate()).slice(-2);
+    return `${y}-${m}-${dd}`;
   }
-  function maybeDefaultEnd(){
+  function maybeDefaultEnd(force){
     var startIso = document.getElementById('id_start_date')?.value;
     var endEl    = document.getElementById('id_end_date');
+    var termEl   = document.getElementById('id_lease_months');
     var agrEl    = document.getElementById('id_agreement_date');
-    if(startIso&&endEl&&(!endEl.value||endEl.dataset.autofilled==='1')){
-      var plus12 = addMonthsYmd(startIso,12);
-      if(plus12){ var d=new Date(plus12); d.setDate(d.getDate()-1);
-        var y=d.getFullYear(),m=('0'+(d.getMonth()+1)).slice(-2),dd=('0'+d.getDate()).slice(-2);
-        endEl.value=`${y}-${m}-${dd}`; endEl.dataset.autofilled='1';
+    if(startIso&&termEl&&endEl&&(force||!endEl.value||endEl.dataset.autofilled==='1')){
+      var calculatedEnd = agreementEndYmd(startIso,termEl.value);
+      if(calculatedEnd){
+        endEl.value=calculatedEnd; endEl.dataset.autofilled='1';
         if(endEl._flatpickr) endEl._flatpickr.setDate(endEl.value,true); }
     }
     if(startIso&&agrEl&&(!agrEl.value||agrEl.dataset.autofilled==='1')){
@@ -1765,14 +1780,16 @@ document.addEventListener('DOMContentLoaded', function () {
       if(agrEl._flatpickr) agrEl._flatpickr.setDate(agrEl.value,true);
     }
   }
-  document.addEventListener('change',function(e){ if(e.target&&e.target.id==='id_start_date') maybeDefaultEnd(); });
+  document.addEventListener('change',function(e){
+    if(e.target&&(e.target.id==='id_start_date'||e.target.id==='id_lease_months')) maybeDefaultEnd(true);
+  });
   if(window.flatpickr){
     flatpickr(".datepicker",{dateFormat:"Y-m-d",altInput:true,altFormat:"m/d/Y",allowInput:true,
-      onChange:function(_,__,inst){ if(inst?.input?.id==="id_start_date") maybeDefaultEnd(); }});
+      onChange:function(_,__,inst){ if(inst?.input?.id==="id_start_date") maybeDefaultEnd(true); }});
   } else {
     document.querySelectorAll('.datepicker').forEach(el=>{ if(el&&el.type!=='date') el.type='date'; });
   }
-  maybeDefaultEnd();
+  maybeDefaultEnd(false);
 
   /* units loader (unchanged) */
   (async function(){

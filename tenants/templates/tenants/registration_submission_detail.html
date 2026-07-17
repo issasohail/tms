@@ -15,6 +15,49 @@
     <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-secondary btn-sm">Back</a>
   </div>
 
+  <div class="registration-hero card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+        <div class="registration-doc-strip">
+          {% for document in identity_documents %}
+            <div class="registration-doc-item {% if document.field == 'photo' %}registration-doc-photo{% endif %}">
+              {% if document.submitted_url %}
+                <a href="{{ document.submitted_url }}" target="_blank" rel="noopener">
+                  <img src="{{ document.submitted_url }}" alt="Submitted {{ document.label }}">
+                </a>
+                <span class="badge bg-success registration-doc-source">Submitted</span>
+              {% elif document.submitted_missing %}
+                <div class="registration-doc-empty text-danger">File missing from storage</div>
+                <span class="badge bg-danger registration-doc-source">Missing</span>
+              {% elif document.current_url %}
+                <a href="{{ document.current_url }}" target="_blank" rel="noopener">
+                  <img src="{{ document.current_url }}" alt="Current {{ document.label }}">
+                </a>
+                <span class="badge bg-secondary registration-doc-source">Current</span>
+              {% else %}
+                <div class="registration-doc-empty">No file submitted</div>
+              {% endif %}
+              <div class="registration-doc-label">{{ document.label }}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="flex-grow-1 min-w-0">
+          <h2 class="fs-4 mb-1">{{ submission.tenant.get_full_name }}</h2>
+          <div class="small text-muted mb-2">
+            {{ submission.tenant.cnic|format_cnic|default:"No CNIC" }} &middot;
+            {{ submission.tenant.phone|format_phone|default:"No phone" }}
+          </div>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-{% if submission.status == 'pending' %}warning text-dark{% elif submission.status == 'approved' %}success{% else %}secondary{% endif %}">{{ submission.get_status_display }}</span>
+            <span class="small text-muted">Submitted {{ submission.submitted_at|date:"M d, Y H:i" }}</span>
+            <span class="badge {% if submission_change_count %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}">{{ submission_change_count }} change{{ submission_change_count|pluralize }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-3">
     <div class="col-xl-8">
       <div class="card">
@@ -177,5 +220,21 @@
   .person-photo { width: 58px; height: 58px; object-fit: cover; border: 1px solid #d0d5dd; border-radius: 6px; }
   .person-document { width: 78px; height: 58px; object-fit: contain; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; }
   .change-line { margin-bottom: .2rem; white-space: normal; }
+  .registration-doc-strip { display:flex; gap:.6rem; align-items:stretch; }
+  .registration-doc-item { position:relative; width:132px; }
+  .registration-doc-item img,
+  .registration-doc-empty { width:132px; height:92px; object-fit:contain; border:1px solid #d0d5dd; border-radius:8px; background:#f8fafc; }
+  .registration-doc-photo img,
+  .registration-doc-photo .registration-doc-empty { object-fit:cover; }
+  .registration-doc-empty { display:flex; align-items:center; justify-content:center; padding:.5rem; text-align:center; color:#667085; font-size:.72rem; }
+  .registration-doc-label { text-align:center; margin-top:.25rem; font-size:.7rem; font-weight:700; text-transform:uppercase; color:#344054; }
+  .registration-doc-source { position:absolute; top:5px; right:5px; font-size:.6rem; }
+  @media (max-width: 767.98px) {
+    .registration-doc-strip { width:100%; }
+    .registration-doc-item,
+    .registration-doc-item img,
+    .registration-doc-empty { width:100%; min-width:0; }
+    .registration-doc-item { flex:1 1 0; }
+  }
 </style>
 {% endblock %}

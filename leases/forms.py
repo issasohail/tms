@@ -11,6 +11,7 @@ from django import forms
 from django.utils import timezone
 from datetime import timedelta
 from core.utils.text import add_auto_titlecase_class
+from leases.lease_term import calculate_lease_end_date
 
 
 from django import forms
@@ -59,6 +60,7 @@ class LeaseForm(forms.ModelForm):
             # Date Fields
             'start_date': forms.DateInput(attrs={'class': 'form-control form-control-sm datepicker', 'autocomplete': 'off'}),
             'end_date': forms.DateInput(attrs={'class': 'form-control form-control-sm datepicker', 'autocomplete': 'off'}),
+            'lease_months': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'min': 1, 'step': 1}),
             'agreement_date': forms.DateInput(attrs={'class': 'form-control form-control-sm datepicker', 'autocomplete': 'off'}),
             'security_deposit_return_date': forms.DateInput(attrs={'class': 'form-control form-control-sm datepicker', 'autocomplete': 'off'}),
 
@@ -110,6 +112,14 @@ class LeaseForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.fields['end_date'].required = False
+        if not self.instance.pk and not self.is_bound:
+            from core.models import GlobalSettings
+
+            self.fields['lease_months'].initial = (
+                GlobalSettings.get_solo().default_lease_months or 11
+            )
+
         # Start empty by default
         self.fields['unit'].queryset = Unit.objects.none()
         tenant_qs = Tenant.objects.order_by('first_name', 'last_name')
@@ -157,6 +167,17 @@ class LeaseForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         start_date = cleaned_data.get('start_date')
+        lease_months = cleaned_data.get('lease_months')
+        should_recalculate_term = (
+            not self.instance.pk
+            or 'start_date' in self.changed_data
+            or 'lease_months' in self.changed_data
+            or not cleaned_data.get('end_date')
+        )
+        if start_date and lease_months and should_recalculate_term:
+            cleaned_data['end_date'] = calculate_lease_end_date(
+                start_date, lease_months
+            )
         end_date = cleaned_data.get('end_date')
         if start_date and end_date and end_date < start_date:
             raise forms.ValidationError("End date cannot be before start date")
@@ -188,6 +209,7 @@ class PublicLeaseCreationForm(forms.ModelForm):
             "agreement_date",
             "start_date",
             "end_date",
+            "lease_months",
             "monthly_rent",
             "society_maintenance",
             "water_charges",
@@ -204,6 +226,7 @@ class PublicLeaseCreationForm(forms.ModelForm):
             "agreement_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
             "start_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
             "end_date": forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "lease_months": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": 1, "step": 1}),
             "monthly_rent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "society_maintenance": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "water_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
@@ -217,9 +240,24 @@ class PublicLeaseCreationForm(forms.ModelForm):
             "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["end_date"].required = False
+        if not self.instance.pk and not self.is_bound:
+            from core.models import GlobalSettings
+
+            self.fields["lease_months"].initial = (
+                GlobalSettings.get_solo().default_lease_months or 11
+            )
+
     def clean(self):
         cleaned_data = super().clean()
         start_date = cleaned_data.get("start_date")
+        lease_months = cleaned_data.get("lease_months")
+        if start_date and lease_months:
+            cleaned_data["end_date"] = calculate_lease_end_date(
+                start_date, lease_months
+            )
         end_date = cleaned_data.get("end_date")
         if start_date and end_date and end_date < start_date:
             raise forms.ValidationError("End date cannot be before start date")
@@ -364,6 +402,7 @@ class LeaseRenewalHistoryForm(forms.ModelForm):
             "renewal_number",
             "start_date",
             "end_date",
+            "lease_months",
             "agreement_date",
             "monthly_rent",
             "society_maintenance",
@@ -377,6 +416,7 @@ class LeaseRenewalHistoryForm(forms.ModelForm):
             "renewal_number": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1"}),
             "start_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
             "end_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
+            "lease_months": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1"}),
             "agreement_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control form-control-sm"}),
             "monthly_rent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "society_maintenance": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
@@ -402,6 +442,17 @@ class LeaseRenewalHistoryFormSet(BaseInlineFormSet):
 
             number = form.cleaned_data.get("renewal_number")
             start_date = form.cleaned_data.get("start_date")
+            lease_months = form.cleaned_data.get("lease_months")
+            if start_date and lease_months and (
+                not form.instance.pk
+                or "start_date" in form.changed_data
+                or "lease_months" in form.changed_data
+                or not form.cleaned_data.get("end_date")
+            ):
+                form.cleaned_data["end_date"] = calculate_lease_end_date(
+                    start_date, lease_months
+                )
+                form.instance.end_date = form.cleaned_data["end_date"]
             end_date = form.cleaned_data.get("end_date")
 
             if number in seen_numbers:

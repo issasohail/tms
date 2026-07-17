@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.core.validators import MinValueValidator
 from core.utils.text import normalize_title_fields
 
 
@@ -27,6 +28,11 @@ class LeaseRenewal(models.Model):
     renewal_number = models.PositiveIntegerField()
     start_date = models.DateField()
     end_date = models.DateField()
+    lease_months = models.PositiveSmallIntegerField(
+        default=11,
+        validators=[MinValueValidator(1)],
+        verbose_name="Agreement Term (Months)",
+    )
     agreement_date = models.DateField(null=True, blank=True)
     monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
     society_maintenance = models.DecimalField(

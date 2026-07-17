@@ -13,6 +13,7 @@ ZERO = Decimal("0.00")
 LEASE_TO_HISTORY_FIELDS = [
     "start_date",
     "end_date",
+    "lease_months",
     "agreement_date",
     "monthly_rent",
     "society_maintenance",

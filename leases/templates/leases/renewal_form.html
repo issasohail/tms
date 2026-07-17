@@ -28,7 +28,10 @@
   <form method="post" novalidate>
     {% csrf_token %}
     <div class="card">
-      <div class="card-header bg-dark text-white py-2 px-3">Renewal Details</div>
+      <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
+        <span>Renewal Details</span>
+        <span>Agreement Term <strong id="renewalTermLabel">{{ form.lease_months.value|default:11 }}</strong> Month</span>
+      </div>
       <div class="card-body">
         {% if form.non_field_errors %}
           <div class="alert alert-danger">{{ form.non_field_errors }}</div>
@@ -56,4 +59,36 @@
     </div>
   </form>
 </div>
+<script>
+(function () {
+  const startInput = document.getElementById("id_start_date");
+  const termInput = document.getElementById("id_lease_months");
+  const endInput = document.getElementById("id_end_date");
+  const termLabel = document.getElementById("renewalTermLabel");
+
+  function agreementEndYmd(ymd, months) {
+    if (!ymd) return "";
+    const parts = ymd.split("-").map(Number);
+    months = parseInt(months, 10);
+    if (parts.length !== 3 || parts.some(Number.isNaN) || !months || months < 1) return "";
+    const firstTarget = new Date(Date.UTC(parts[0], parts[1] - 1 + months, 1));
+    const lastDay = new Date(Date.UTC(firstTarget.getUTCFullYear(), firstTarget.getUTCMonth() + 1, 0)).getUTCDate();
+    const result = new Date(Date.UTC(firstTarget.getUTCFullYear(), firstTarget.getUTCMonth(), Math.min(parts[2], lastDay)));
+    result.setUTCDate(result.getUTCDate() - 1);
+    return [result.getUTCFullYear(), String(result.getUTCMonth() + 1).padStart(2, "0"), String(result.getUTCDate()).padStart(2, "0")].join("-");
+  }
+
+  function updateEndDate() {
+    if (termLabel && termInput) termLabel.textContent = termInput.value || "11";
+    if (!startInput || !termInput || !endInput) return;
+    const value = agreementEndYmd(startInput.value, termInput.value);
+    if (value) endInput.value = value;
+  }
+
+  startInput?.addEventListener("change", updateEndDate);
+  termInput?.addEventListener("input", updateEndDate);
+  termInput?.addEventListener("change", updateEndDate);
+  updateEndDate();
+})();
+</script>
 {% endblock %}

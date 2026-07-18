@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Police Verification</title>
+  <style>
+    :root {
+      --blue: #0d6efd;
+      --green: #0f9f62;
+      --red: #dc3545;
+      --text: #101828;
+      --muted: #667085;
+      --border: #d9e2ef;
+      --soft: #f6f8fb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background: #eef2f7;
+      font-size: 14px;
+    }
+    .page { max-width: 1120px; margin: 0 auto; padding: 18px; }
+    .hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    h1 { margin: 0 0 4px; font-size: 24px; line-height: 1.15; }
+    .sub { color: var(--muted); font-size: 13px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 12px;
+      background: #fff3cd;
+      color: #8a6100;
+      white-space: nowrap;
+    }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, .08);
+      overflow: hidden;
+    }
+    .card h2 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 15px;
+      background: #fff;
+    }
+    .body { padding: 12px 14px; }
+    .field-list { display: grid; gap: 8px; }
+    .row {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+    }
+    .label { color: #344054; font-size: 12px; font-weight: 800; }
+    .value { min-width: 0; overflow-wrap: anywhere; }
+    .missing { color: var(--red); font-weight: 800; }
+    .photo-preview {
+      width: 104px;
+      height: 104px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--soft);
+    }
+    .span-2 { grid-column: 1 / -1; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .form-group { min-width: 0; }
+    label { display: block; margin-bottom: 4px; color: #344054; font-weight: 800; font-size: 12px; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 9px;
+      font: inherit;
+      background: #fff;
+    }
+    textarea { min-height: 84px; resize: vertical; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--border); padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f8fafc; color: #475467; font-size: 12px; }
+    .notice { padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; font-weight: 700; }
+    .notice.ok { background: #dcfce7; color: #087443; }
+    .notice.err { background: #fee4e2; color: #b42318; }
+    .confirmation-card {
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      border: 2px solid var(--green);
+      background: #f0fdf4;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(15, 159, 98, .14);
+    }
+    .confirmation-photo {
+      width: 76px;
+      height: 76px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #fff;
+      border: 1px solid #b7efcf;
+    }
+    .confirmation-title { font-size: 17px; font-weight: 900; color: #087443; margin-bottom: 4px; }
+    .confirmation-line { color: #344054; font-weight: 800; margin-bottom: 2px; }
+    .confirmation-meta { color: var(--muted); font-size: 12px; }
+    .confirmation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .confirmation-actions button, .confirmation-actions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 11px;
+      background: var(--green);
+      color: #fff;
+      font-weight: 900;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .actions {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 0 0;
+      background: linear-gradient(rgba(238, 242, 247, 0), #eef2f7 30%);
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .vehicle-choice {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--soft);
+    }
+    .vehicle-choice input { width: auto; margin: 0; }
+    .vehicle-choice label { margin: 0; cursor: pointer; }
+    .vehicle-entry {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .vehicle-entry.is-hidden { display: none; }
+    .vehicle-entry-title { margin-bottom: 8px; font-size: 13px; font-weight: 900; }
+    .vehicle-add-row { margin-top: 12px; }
+    .vehicle-add-row button:disabled { opacity: .55; cursor: not-allowed; }
+    .vehicle-fields.is-disabled { opacity: .55; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
+    @media (max-width: 780px) {
+      .page { padding: 12px; }
+      .hero { display: block; }
+      .badge { margin-top: 8px; }
+      .grid, .form-grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 118px minmax(0, 1fr); }
+      h1 { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="hero">
+      <div>
+        <h1>Police Verification</h1>
+        <div class="sub">{{ lease.unit.property.property_name }} / {{ lease.unit.unit_number }} · {{ lease.tenant.get_full_name }}</div>
+      </div>
+      <div class="badge">{{ missing_count }} missing field{{ missing_count|pluralize }}</div>
+    </div>
+
+    {% for message in success_messages %}
+      <div class="notice ok">{{ message }}</div>
+    {% endfor %}
+    {% for error in errors %}
+      <div class="notice err">{{ error }}</div>
+    {% endfor %}
+
+    {% if submitted_ok %}
+      <section class="confirmation-card" id="submissionConfirmationCard">
+        {% if confirmation_photo_url %}
+          <img class="confirmation-photo" src="{{ confirmation_photo_url }}" alt="Tenant photo">
+        {% else %}
+          <div class="confirmation-photo"></div>
+        {% endif %}
+        <div>
+          <div class="confirmation-title">Submitted and Ready for Approval</div>
+          <div class="confirmation-line">Tenant Information Update: {% if tenant_update_submitted %}Submitted{% else %}No changes{% endif %}</div>
+          <div class="confirmation-line">Family Information Update: {{ family_update_count }} request{{ family_update_count|pluralize }}</div>
+          <div class="confirmation-line">{{ lease.tenant.get_full_name }} - {{ lease.unit.property.property_name }} / {{ lease.unit.unit_number }}</div>
+          <div class="confirmation-meta">Police file: {% if police_file_submitted %}Submitted{% else %}Not uploaded{% endif %}. Submitted date: {% now "M d, Y H:i" %}</div>
+          <div class="confirmation-actions">
+            <button type="button" id="downloadConfirmation">Download</button>
+            <a id="shareConfirmation" target="_blank" rel="noopener" href="https://wa.me/?text={{ 'Police verification information submitted and ready for approval.'|urlencode }}">Share WhatsApp</a>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="grid">
+        <section class="card">
+          <h2>Owner Information</h2>
+          <div class="body field-list">
+            {% for row in owner_fields %}
+              <div class="row">
+                <div class="label">{{ row.label }}</div>
+                <div class="value {% if row.missing %}missing{% endif %}">
+                  {% if row.label == "Photo" and row.value %}
+                    <img class="photo-preview" src="{{ row.value.url }}" alt="Owner photo">
+                  {% else %}
+                    {{ row.value|default:"Missing" }}
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Property Information</h2>
+          <div class="body field-list">
+            {% for row in property_fields %}
+              <div class="row">
+                <div class="label">{{ row.label }}</div>
+                <div class="value {% if row.missing %}missing{% endif %}">{{ row.value|default:"Missing" }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Lease / Unit</h2>
+          <div class="body field-list">
+            <div class="row"><div class="label">Property</div><div class="value">{{ lease.unit.property.property_name }}</div></div>
+            <div class="row"><div class="label">Unit</div><div class="value">{{ lease.unit.unit_number }}</div></div>
+            <div class="row"><div class="label">Start date</div><div class="value">{{ lease.start_date|date:"M d, Y" }}</div></div>
+            <div class="row"><div class="label">End date</div><div class="value">{{ lease.end_date|date:"M d, Y"|default:"Ongoing" }}</div></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Current Tenant Information</h2>
+          <div class="body field-list">
+            {% for row in tenant_fields %}
+              <div class="row">
+                <div class="label">{{ row.label }}</div>
+                <div class="value {% if row.missing %}missing{% endif %}">{{ row.value|default:"Missing" }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="card span-2">
+          <h2>Update Missing Tenant Information</h2>
+          <div class="body form-grid">
+            <div class="form-group"><label>Phone</label><input name="phone" value="{{ lease.tenant.phone|default:'' }}"></div>
+            <div class="form-group"><label>CNIC / ID</label><input name="cnic" value="{{ lease.tenant.cnic|default:'' }}"></div>
+            <div class="form-group"><label>Occupation</label><input name="occupation" value="{{ lease.tenant.occupation|default:'' }}"></div>
+            <div class="form-group"><label>NADRA Family #</label><input name="nadra_family_no" value="{{ lease.tenant.nadra_family_no|default:'' }}"></div>
+            <div class="form-group"><label>Family Member (Adult)</label><input name="family_member_adults" type="number" min="0" value="{{ lease.tenant.family_member_adults }}"></div>
+            <div class="form-group"><label>Family Member (Children)</label><input name="family_member_children" type="number" min="0" value="{{ lease.tenant.family_member_children }}"></div>
+            <div class="form-group"><label>Tenant Photo</label><input name="photo" type="file" accept="image/*"></div>
+            <div class="form-group"><label>ID Front</label><input name="cnic_front" type="file" accept="image/*"></div>
+            <div class="form-group"><label>ID Back</label><input name="cnic_back" type="file" accept="image/*"></div>
+            <div class="form-group span-2"><label>Permanent Address</label><textarea name="permanent_address">{{ lease.tenant.permanent_address|default:'' }}</textarea></div>
+            <div class="form-group span-2"><label>Temporary Address</label><textarea name="temporary_address">{{ lease.tenant.temporary_address|default:'' }}</textarea></div>
+          </div>
+        </section>
+
+        <section class="card span-2">
+          <h2>Family Members</h2>
+          <div class="body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Name</th><th>Relationship</th><th>Phone</th><th>CNIC</th><th>Status</th></tr></thead>
+                <tbody>
+                  {% for member in family_members %}
+                    <tr>
+                      <td>{{ member.family_member.get_full_name }}</td>
+                      <td>{{ member.relation }}</td>
+                      <td>{{ member.family_member.phone|format_phone|default:"-" }}</td>
+                      <td>{{ member.family_member.cnic|format_cnic|default:"-" }}</td>
+                      <td>Saved</td>
+                    </tr>
+                  {% endfor %}
+                  {% for pending in pending_family_requests %}
+                    <tr>
+                      <td>{{ pending.first_name }} {{ pending.last_name }}</td>
+                      <td>{{ pending.relation }}</td>
+                      <td>{{ pending.phone|format_phone|default:"-" }}</td>
+                      <td>{{ pending.cnic|format_cnic|default:"-" }}</td>
+                      <td>Pending approval</td>
+                    </tr>
+                  {% empty %}
+                    {% if not family_members %}<tr><td colspan="5">No family members saved yet.</td></tr>{% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <input type="hidden" name="family-TOTAL_FORMS" value="2">
+            <div class="form-grid" style="margin-top:12px;">
+              {% for i in "01" %}
+                <div class="form-group"><label>Family member {{ forloop.counter }} name</label><input name="family-{{ forloop.counter0 }}-full_name"></div>
+                <div class="form-group"><label>Relationship</label><input name="family-{{ forloop.counter0 }}-relation" list="relationships"></div>
+                <div class="form-group"><label>CNIC / ID</label><input name="family-{{ forloop.counter0 }}-cnic"></div>
+                <div class="form-group"><label>Phone</label><input name="family-{{ forloop.counter0 }}-phone"></div>
+                <div class="form-group"><label>Date of Birth</label><input name="family-{{ forloop.counter0 }}-date_of_birth" type="date"></div>
+                <div class="form-group"><label>Photo</label><input name="family-{{ forloop.counter0 }}-photo" type="file" accept="image/*"></div>
+                <div class="form-group"><label>ID Front</label><input name="family-{{ forloop.counter0 }}-cnic_front" type="file" accept="image/*"></div>
+                <div class="form-group"><label>ID Back</label><input name="family-{{ forloop.counter0 }}-cnic_back" type="file" accept="image/*"></div>
+              {% endfor %}
+            </div>
+            <datalist id="relationships">
+              {% for rel in relationship_types %}
+                <option value="{{ rel.code }}">{{ rel.name }}</option>
+              {% endfor %}
+            </datalist>
+          </div>
+        </section>
+
+        <section class="card span-2">
+          <h2>Vehicle Information</h2>
+          <div class="body vehicle-fields" id="vehicleFields">
+            <div class="vehicle-choice">
+              <input type="checkbox" id="noVehicle" name="no_vehicle" value="1" {% if no_vehicle_checked %}checked{% endif %}>
+              <label for="noVehicle">I don't have a vehicle</label>
+            </div>
+            {% if pending_vehicle_submissions %}
+              <div class="table-wrap" style="margin-bottom:12px;">
+                <table>
+                  <thead><tr><th>Reg #</th><th>Type</th><th>Owner</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {% for submission in pending_vehicle_submissions %}
+                      <tr>
+                        <td>{{ submission.registration_number }}</td>
+                        <td>{{ submission.vehicle_type.name }}</td>
+                        <td>{{ submission.owner_name|default:"-" }}</td>
+                        <td>{{ submission.get_status_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+            <input type="hidden" name="vehicle-TOTAL_FORMS" value="3">
+            <div id="vehicleEntries">
+              {% for i in "012" %}
+              <div class="vehicle-entry{% if not forloop.first %} is-hidden{% endif %}" data-vehicle-entry>
+                <div class="vehicle-entry-title">Vehicle {{ forloop.counter }}</div>
+                <div class="form-grid">
+                <div class="form-group"><label>Vehicle {{ forloop.counter }} type</label>
+                  <select name="vehicle-{{ forloop.counter0 }}-vehicle_type" data-vehicle-input>
+                    <option value="">Select type</option>
+                    {% for vehicle_type in vehicle_types %}
+                      <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-group"><label>Registration #</label><input name="vehicle-{{ forloop.counter0 }}-registration_number" data-vehicle-input></div>
+                <div class="form-group"><label>Make</label><input name="vehicle-{{ forloop.counter0 }}-make" data-vehicle-input></div>
+                <div class="form-group"><label>Model</label><input name="vehicle-{{ forloop.counter0 }}-model" data-vehicle-input></div>
+                <div class="form-group"><label>Color</label><input name="vehicle-{{ forloop.counter0 }}-color" data-vehicle-input></div>
+                <div class="form-group"><label>Year</label><input name="vehicle-{{ forloop.counter0 }}-year" type="number" min="1900" data-vehicle-input></div>
+                <div class="form-group"><label>Owner Name</label><input name="vehicle-{{ forloop.counter0 }}-owner_name" data-vehicle-input></div>
+                <div class="form-group"><label>Owner CNIC</label><input name="vehicle-{{ forloop.counter0 }}-owner_cnic" data-vehicle-input></div>
+                <div class="form-group"><label>Parking Slot</label><input name="vehicle-{{ forloop.counter0 }}-parking_slot" data-vehicle-input></div>
+                <div class="form-group"><label>Vehicle Photo</label><input name="vehicle-{{ forloop.counter0 }}-vehicle_photo" type="file" accept="image/*" data-vehicle-input></div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="vehicle-add-row">
+              <button type="button" id="addVehicle">Add more vehicle</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card span-2">
+          <h2>Upload Police Verification File</h2>
+          <div class="body">
+            <div class="form-grid">
+              <div class="form-group"><label>PDF / Image</label><input name="police_file" type="file" accept=".pdf,image/*"></div>
+              <div class="form-group"><label>Notes</label><input name="police_notes"></div>
+            </div>
+            {% if pending_police %}
+              <div class="hint">{{ pending_police|length }} police verification upload{{ pending_police|length|pluralize }} waiting for staff approval.</div>
+            {% endif %}
+          </div>
+        </section>
+      </div>
+      <div class="actions">
+        <button type="submit">Submit for Approval</button>
+      </div>
+    </form>
+  </main>
+  <script>
+    (function () {
+      const noVehicle = document.getElementById("noVehicle");
+      const vehicleFields = document.getElementById("vehicleFields");
+      const addVehicle = document.getElementById("addVehicle");
+      const entries = Array.from(document.querySelectorAll("[data-vehicle-entry]"));
+
+      function syncVehicleState() {
+        const hasNoVehicle = noVehicle.checked;
+        vehicleFields.classList.toggle("is-disabled", hasNoVehicle);
+        addVehicle.disabled = hasNoVehicle || !entries.some(function (entry) {
+          return entry.classList.contains("is-hidden");
+        });
+        entries.forEach(function (entry) {
+          const shouldDisable = hasNoVehicle || entry.classList.contains("is-hidden");
+          entry.querySelectorAll("[data-vehicle-input]").forEach(function (input) {
+            input.disabled = shouldDisable;
+          });
+        });
+      }
+
+      addVehicle.addEventListener("click", function () {
+        const nextEntry = entries.find(function (entry) {
+          return entry.classList.contains("is-hidden");
+        });
+        if (nextEntry) nextEntry.classList.remove("is-hidden");
+        syncVehicleState();
+      });
+      noVehicle.addEventListener("change", syncVehicleState);
+      syncVehicleState();
+    }());
+  </script>
+  {% if submitted_ok %}
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script>
+      document.getElementById("downloadConfirmation")?.addEventListener("click", function () {
+        const card = document.getElementById("submissionConfirmationCard");
+        if (!card || !window.html2canvas) return;
+        html2canvas(card, { backgroundColor: "#f0fdf4", scale: 2 }).then(function (canvas) {
+          const link = document.createElement("a");
+          link.download = "police-verification-submitted.png";
+          link.href = canvas.toDataURL("image/png");
+          link.click();
+        });
+      });
+    </script>
+  {% endif %}
+</body>
+</html>

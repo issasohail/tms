@@ -153,23 +153,40 @@ class PaymentListTable(tables.Table):
             url, full, short
         )
 
+    def _balance_html(self, amt):
+        if amt < 0:
+            cls, sign = "text-danger", ""
+        elif amt > 0:
+            cls, sign = "text-success", ""
+        else:
+            cls, sign = "text-muted", ""
+        return format_html(
+            '<span class="{} fw-semibold">{}</span>',
+            cls,
+            format_money(amt, self.get_global_settings()),
+        )
+
     def render_lease_balance(self, value, record):
-        return format_money(_to_decimal(record.lease_balance), self.get_global_settings())
+        return self._balance_html(_to_decimal(record.lease_balance))
 
     def render_security_balance(self, value, record):
-        return format_money(_to_decimal(record.security_balance), self.get_global_settings())
+        return self._balance_html(_to_decimal(record.security_balance))
 
     def render_balance(self, value, record):
         total = _to_decimal(record.lease_balance) + _to_decimal(record.security_balance)
-        return format_money(total, self.get_global_settings())
+        return self._balance_html(total)
 
     
     def render_description(self, value, record):
         full = str(getattr(record, "description", "") or "")
+        if not full:
+            return format_html('<span class="text-muted">—</span>')
         return format_html('<span title="{}">{}</span>', full, _truncate(full, 12))
 
     def render_method(self, value, record):
-        full = str(value or "")
+        full = str(value or "").strip()
+        if not full or full.upper() == "N/A":
+            return format_html('<span class="text-muted">—</span>')
         return format_html('<span title="{}">{}</span>', full, _truncate(full, 12))
 
     def render_actions(self, value, record):

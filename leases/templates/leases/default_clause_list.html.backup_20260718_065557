@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-2 px-md-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">Default Lease Clauses</h3>
+      <div class="text-muted small">
+        Active rows here are copied into new leases and used by "Load Default Clauses".
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'core:settings' %}" class="btn btn-outline-secondary btn-sm">Settings</a>
+      <a href="{% url 'leases:agreement_placeholder_list' %}" class="btn btn-outline-secondary btn-sm">Placeholders</a>
+      <a href="{% url 'leases:default_clause_create' %}" class="btn btn-primary btn-sm">Add Clause</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+      <strong>Clause Library</strong>
+      <span class="badge text-bg-success">{{ active_count }} active</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 default-clause-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:72px">#</th>
+              <th style="width:90px">Status</th>
+              <th style="width:160px">Category</th>
+              <th>Clause Text</th>
+              <th style="width:90px">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for clause in clauses %}
+              <tr>
+                <td class="fw-semibold">{{ clause.clause_number }}</td>
+                <td>
+                  {% if clause.is_active %}
+                    <span class="badge bg-success">Active</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                  {% endif %}
+                </td>
+                <td><span class="badge text-bg-light border">{{ clause.get_category_display }}</span></td>
+                <td class="small">{{ clause.body|truncatechars:220 }}</td>
+                <td>
+                  <a class="btn btn-outline-primary btn-sm" href="{% url 'leases:default_clause_edit' clause.pk %}">Edit</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-3">No default clauses yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.default-clause-table {
+  min-width: 760px;
+}
+@media (max-width: 420px) {
+  .default-clause-table { font-size: .8rem; }
+  .container-fluid h3 { font-size: 1.15rem; }
+}
+</style>
+{% endblock %}

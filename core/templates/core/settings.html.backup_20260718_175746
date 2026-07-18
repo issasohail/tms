@@ -1,0 +1,1468 @@
+{% extends "base.html" %}
+{% block title %}System Settings{% endblock %}
+{% block main_container_class %}container-fluid{% endblock %}
+
+{% block content %}
+
+<div class="settings-page">
+  <div class="settings-header d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0"><i class="fas fa-sliders-h me-2"></i>System Settings</h3>
+      <div class="text-muted small">Manage global system preferences, payment methods, and protected maintenance tools.</div>
+    </div>
+    <a class="btn btn-sm btn-outline-primary settings-backup-link" href="{% url 'core:backup_center' %}">
+      <i class="bi bi-shield-check me-1"></i> Backup &amp; Restore
+    </a>
+  </div>
+
+  <div class="settings-card-tabs mb-3" role="tablist" aria-label="Settings sections">
+    <div class="settings-card-tab-grid">
+      <a class="settings-tab-card active" href="#settings-group-branding" data-settings-target="settings-group-branding">
+        <span class="settings-tab-icon"><i class="fas fa-building"></i></span><span>Branding</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-billing-scale-locale" data-settings-target="settings-group-billing-scale-locale">
+        <span class="settings-tab-icon"><i class="fas fa-coins"></i></span><span>Billing Scale</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-late-fees" data-settings-target="settings-group-late-fees">
+        <span class="settings-tab-icon"><i class="fas fa-clock"></i></span><span>Late Fees</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-whatsapp-twilio" data-settings-target="settings-group-whatsapp-twilio">
+        <span class="settings-tab-icon"><i class="fab fa-whatsapp"></i></span><span>WhatsApp / Twilio</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-whatsapp-ai-assistant" data-settings-target="settings-group-whatsapp-ai-assistant">
+        <span class="settings-tab-icon"><i class="fas fa-robot"></i></span><span>WhatsApp AI</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-email-smtp" data-settings-target="settings-group-email-smtp">
+        <span class="settings-tab-icon"><i class="fas fa-envelope"></i></span><span>Email / SMTP</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-meter-listener" data-settings-target="settings-group-meter-listener">
+        <span class="settings-tab-icon"><i class="fas fa-broadcast-tower"></i></span><span>Meter Listener</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-group-handyman" data-settings-target="settings-group-handyman">
+        <span class="settings-tab-icon"><i class="fas fa-tools"></i></span><span>Handyman</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-handyman-categories" data-settings-target="settings-tool-handyman-categories">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-tools"></i></span><span>Handyman Categories</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-development-tools" data-settings-target="settings-development-tools">
+        <span class="settings-tab-icon"><i class="fas fa-code"></i></span><span>Development Tools</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-backup" data-settings-target="settings-tool-backup">
+        <span class="settings-tab-icon"><i class="bi bi-database-lock"></i></span><span>Backup</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-suggestions" data-settings-target="settings-tool-suggestions">
+        <span class="settings-tab-icon settings-tab-icon-warning"><i class="bi bi-lightbulb"></i></span><span>Suggestions</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-clauses" data-settings-target="settings-tool-clauses">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-file-earmark-text"></i></span><span>Lease Clauses</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-placeholders" data-settings-target="settings-tool-placeholders">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-braces"></i></span><span>Placeholders</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-lease-parties" data-settings-target="settings-tool-lease-parties">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-file-signature"></i></span><span>Lease Parties</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-whatsapp-templates" data-settings-target="settings-tool-whatsapp-templates">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fab fa-whatsapp"></i></span><span>WhatsApp Templates</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-inspections" data-settings-target="settings-tool-inspections">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-clipboard-check"></i></span><span>Inspections</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-building-types" data-settings-target="settings-building-types">
+        <span class="settings-tab-icon"><i class="fas fa-building"></i></span><span>Building Types</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-move-out-charges" data-settings-target="settings-move-out-charges">
+        <span class="settings-tab-icon settings-tab-icon-warning"><i class="fas fa-door-open"></i></span><span>Move-out Charges</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Webhook Logs</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-tool-whatsapp-ai-review" data-settings-target="settings-tool-whatsapp-ai-review">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-inboxes"></i></span><span>AI Review</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-payments" data-settings-target="settings-payments">
+        <span class="settings-tab-icon"><i class="fas fa-money-bill-wave"></i></span><span>Payment Methods</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-doc-categories" data-settings-target="settings-doc-categories">
+        <span class="settings-tab-icon"><i class="fas fa-folder-open"></i></span><span>Lease Document Categories</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-lease-vehicle-types" data-settings-target="settings-lease-vehicle-types">
+        <span class="settings-tab-icon"><i class="fas fa-car"></i></span><span>Lease Vehicle Types</span>
+      </a>
+      <a class="settings-tab-card" href="#settings-relationship-types" data-settings-target="settings-relationship-types">
+        <span class="settings-tab-icon"><i class="fas fa-people-arrows"></i></span><span>Tenant Relationship Types</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="settings-autosave-status small text-muted mb-2" id="settings-autosave-status" aria-live="polite"></div>
+
+  <div class="settings-panels">
+      <form method="post" enctype="multipart/form-data" class="settings-form">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="global_settings">
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        {% for group_title, group_icon, fields in settings_field_groups %}
+          <section class="card shadow-sm settings-section settings-tab-panel{% if not forloop.first %} d-none{% endif %}" id="settings-group-{{ group_title|slugify }}">
+            <div class="card-header py-2 d-flex align-items-center gap-2">
+              <i class="{{ group_icon }} text-primary"></i>
+              <strong>{{ group_title }}</strong>
+            </div>
+            <div class="card-body">
+              <div class="row g-2">
+                {% for field in fields %}
+                  <div class="{% if field.name == 'smtp_password' or field.name == 'twilio_auth_token' or field.name == 'enable_debug_toolbar' %}col-12{% elif field.field.widget.input_type == 'checkbox' %}col-12 col-sm-6{% else %}col-12 col-md-6{% endif %}">
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                      <div class="form-check settings-check">
+                        {{ field }}
+                        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                      </div>
+                    {% else %}
+                      <label class="form-label small fw-semibold mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                      {{ field }}
+                    {% endif %}
+                    {% if field.help_text %}
+                      <div class="form-text">{{ field.help_text }}</div>
+                    {% endif %}
+                    {% for error in field.errors %}
+                      <div class="text-danger small">{{ error }}</div>
+                    {% endfor %}
+                  </div>
+                {% endfor %}
+              </div>
+              {% if group_title == "WhatsApp / Twilio" %}
+                <div class="row g-2 mt-2">
+                  <div class="col-12 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small fw-semibold mb-1">WhatsApp Cloud API</div>
+                      {% if whatsapp_ai_status.whatsapp_api_ok %}
+                        <span class="badge bg-success">Ready</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark">Missing setting</span>
+                        <div class="text-muted small mt-1">{{ whatsapp_ai_status.whatsapp_missing|join:", " }}</div>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
+                      <div class="small fw-semibold mb-1">Webhook Logs</div>
+                      <span class="badge bg-info text-dark">Open WhatsApp Webhook Logs</span>
+                    </a>
+                  </div>
+                  <div class="col-12">
+                    <button
+                      class="btn btn-sm btn-outline-success"
+                      type="submit"
+                      formaction="{% url 'core:test_whatsapp_pending_request_alert' %}"
+                      formmethod="post">
+                      <i class="fab fa-whatsapp me-1"></i> Test Pending Alert
+                    </button>
+                  </div>
+                </div>
+              {% endif %}
+              {% if group_title == "WhatsApp AI Assistant" %}
+                <div class="row g-2 mt-2">
+                  <div class="col-12 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small fw-semibold mb-1">OpenAI API Key</div>
+                      {% if whatsapp_ai_status.openai_key_configured %}
+                        <span class="badge bg-success">Configured</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark">Missing</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small fw-semibold mb-1">WhatsApp Token</div>
+                      {% if whatsapp_ai_status.whatsapp_token_configured %}
+                        <span class="badge bg-success">Configured</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark">Missing</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small fw-semibold mb-1">WhatsApp Cloud API</div>
+                      {% if whatsapp_ai_status.whatsapp_api_ok %}
+                        <span class="badge bg-success">Ready</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark">Missing setting</span>
+                        <div class="text-muted small mt-1">{{ whatsapp_ai_status.whatsapp_missing|join:", " }}</div>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small fw-semibold mb-1">Worker Mode</div>
+                      <span class="badge bg-info text-dark">{{ whatsapp_ai_status.runtime }}</span>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                      <div class="small fw-semibold mb-1">Celery Broker</div>
+                      <span class="text-muted small">{{ whatsapp_ai_status.celery_broker|default:"Not configured" }}</span>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+              {% if group_title == "Handyman" %}
+                <div class="row g-2 mt-2">
+                  <div class="col-12 col-md-6">
+                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="#settings-tool-handyman-categories" data-settings-target="settings-tool-handyman-categories">
+                      <div class="small fw-semibold mb-1">Handyman Categories</div>
+                      <span class="badge bg-info text-dark">Open category list</span>
+                    </a>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="{% url 'handyman:handyman_list' %}">
+                      <div class="small fw-semibold mb-1">Handyman Profiles</div>
+                      <span class="badge bg-primary">Open handyman list</span>
+                    </a>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          </section>
+        {% endfor %}
+
+        {% if form.enable_debug_toolbar %}
+          <section class="card shadow-sm settings-section settings-tab-panel d-none" id="settings-development-tools">
+            <div class="card-header py-2 d-flex align-items-center gap-2">
+              <i class="fas fa-code text-primary"></i>
+              <strong>Development Tools</strong>
+            </div>
+            <div class="card-body">
+              <div class="form-check settings-check">
+                {{ form.enable_debug_toolbar }}
+                <label class="form-check-label" for="{{ form.enable_debug_toolbar.id_for_label }}">
+                  {{ form.enable_debug_toolbar.label }}
+                </label>
+              </div>
+              {% if form.enable_debug_toolbar.help_text %}
+                <div class="form-text">{{ form.enable_debug_toolbar.help_text }}</div>
+              {% endif %}
+              {% for error in form.enable_debug_toolbar.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+          </section>
+        {% endif %}
+
+        <div class="settings-savebar card shadow-sm">
+          <div class="card-body py-2 d-flex justify-content-between align-items-center gap-2">
+            <div class="small text-muted">Currency display now follows <strong>{{ GLOBAL_SETTINGS.currency_code }}</strong> from settings.</div>
+            <div class="d-flex gap-2">
+              <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:dashboard' %}">Cancel</a>
+              <button class="btn btn-primary btn-sm" type="submit">Save Settings</button>
+            </div>
+          </div>
+        </div>
+      </form>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-backup">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-database-lock me-2"></i>Backup &amp; Restore</h4>
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'core:backup_center' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'core:backup_center' %}?embed=1" title="Backup and Restore"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-suggestions">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Suggestions / Report Errors</h4>
+          <a class="btn btn-sm btn-outline-warning" href="{% url 'core:suggestion_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'core:suggestion_list' %}?embed=1" title="Suggestions"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-clauses">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Default Lease Clauses</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:default_clause_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'leases:default_clause_list' %}?embed=1" title="Default Lease Clauses"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-placeholders">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-braces me-2"></i>Agreement Placeholders</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:agreement_placeholder_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'leases:agreement_placeholder_list' %}?embed=1" title="Agreement Placeholders"></iframe>
+        <div class="mt-3"><a class="btn btn-outline-primary" href="{% url 'leases:agreement_signature_template_settings' %}"><i class="bi bi-pen"></i> Edit Agreement Signature Page</a></div>
+      </div>
+    </div>
+
+
+    <div class="settings-tab-panel d-none" id="settings-tool-lease-parties">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="fas fa-file-signature me-2"></i>Proposer and Seconder Declaration</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'leases:agreement_signature_template_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'leases:agreement_signature_template_settings' %}?embed=1" title="Lease Parties Declaration Settings"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-templates">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="fab fa-whatsapp me-2"></i>WhatsApp Utility Templates</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:utility_template_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'whatsapp:utility_template_list' %}?embed=1" title="WhatsApp Utility Templates"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-inspections">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h4 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Inspection Settings</h4>
+          <div class="d-flex flex-wrap gap-1">
+            <a class="btn btn-sm btn-outline-success" href="{% url 'leases:inspection_settings' 'all' %}" target="_blank" rel="noopener">Open Full Page</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'categories' %}?embed=1" data-frame="settings-inspections-frame">Categories</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'statuses' %}?embed=1" data-frame="settings-inspections-frame">Statuses</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'items' %}?embed=1" data-frame="settings-inspections-frame">Items</a>
+            <a class="btn btn-sm btn-outline-secondary js-settings-frame-link" href="{% url 'leases:inspection_settings' 'templates' %}?embed=1" data-frame="settings-inspections-frame">Templates</a>
+          </div>
+        </div>
+        <iframe id="settings-inspections-frame" class="settings-inline-frame" src="{% url 'leases:inspection_settings' 'all' %}?embed=1" title="Inspection Settings"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-webhook-logs">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-chat-dots me-2"></i>WhatsApp Webhook Logs</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame settings-inline-frame-tall" src="{% url 'whatsapp:webhook_log_list' %}?embed=1" title="WhatsApp Webhook Logs"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-ai-review">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi bi-inboxes me-2"></i>Pending Approvals</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'core:pending_approvals' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'core:pending_approvals' %}?embed=1" title="Pending Approvals"></iframe>
+      </div>
+    </div>
+
+    <div class="settings-tab-panel d-none" id="settings-tool-handyman-categories">
+      <div class="card shadow-sm settings-embedded-panel">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="fas fa-tools me-2"></i>Handyman Categories</h4>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'handyman:category_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
+        </div>
+        <iframe class="settings-inline-frame" src="{% url 'handyman:category_settings' %}?embed=1" title="Handyman Categories"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-payments">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Payment Methods</h4>
+      <button class="btn btn-sm btn-primary" id="btn-add-method" type="button">
+        + Add Payment Method
+      </button>
+    </div>
+
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:6%">SN</th>
+              <th style="width:36%">Name</th>
+              <th style="width:24%">Code</th>
+              <th style="width:15%">Active</th>
+              <th style="width:19%">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pm-table-body">
+            {% for pm in payment_methods %}
+            <tr data-id="{{ pm.id }}">
+              <td>{{ forloop.counter }}</td>
+              <td class="pm-name">{{ pm.name }}</td>
+              <td class="pm-code">{{ pm.code }}</td>
+              <td class="pm-active">
+                {% if pm.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <button
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary btn-edit"
+                      data-id="{{ pm.id }}"
+                      data-url="{% url 'core:payment_method_get' pm.id %}">
+                    Edit
+                  </button>
+                  {% if pm.is_active %}
+                  <button
+                      type="button"
+                      class="btn btn-sm btn-outline-danger btn-toggle"
+                      data-id="{{ pm.id }}"
+                      data-url="{% url 'core:payment_method_toggle' pm.id %}">
+                    Deactivate
+                  </button>
+                  {% else %}
+                  <button
+                      type="button"
+                      class="btn btn-sm btn-outline-success btn-toggle"
+                      data-id="{{ pm.id }}"
+                      data-url="{% url 'core:payment_method_toggle' pm.id %}">
+                    Activate
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center py-3 text-muted">No payment methods added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-building-types">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h4 class="mb-0"><i class="fas fa-building me-2"></i>Building Types</h4>
+        <div class="small text-muted">Used by units and move-out defaults, and automatically supplies the matching tenant-lead interest choices.</div>
+      </div>
+      <button class="btn btn-sm btn-primary" id="btn-add-building-type" type="button">+ Add Building Type</button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light"><tr><th>S.N</th><th>Name</th><th>Code</th><th>Sort</th><th>Active</th><th>Actions</th></tr></thead>
+          <tbody>
+            {% for item in building_types %}
+            <tr>
+              <td>{{ forloop.counter }}</td><td>{{ item.name }}</td><td><code>{{ item.code }}</code></td><td>{{ item.sort_order }}</td>
+              <td>{% if item.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+              <td class="text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-building-type-edit" data-url="{% url 'core:building_type_get' item.pk %}">Edit</button>
+                <button type="button" class="btn btn-sm {% if item.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %} btn-building-type-toggle" data-url="{% url 'core:building_type_toggle' item.pk %}">{% if item.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+              </td>
+            </tr>
+            {% empty %}<tr><td colspan="6" class="text-center text-muted py-3">No building types configured.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-move-out-charges">
+    <div class="card-header py-2">
+      <h4 class="mb-0"><i class="fas fa-door-open me-2"></i>Move-out Charges by Building Type</h4>
+      <div class="small text-muted">These defaults apply to every unit assigned to the building type and can be overridden during settlement.</div>
+    </div>
+    <div class="card-body">
+      {% if move_out_charge_building_types %}
+      <div class="row g-2 align-items-end move-out-charge-row">
+        <div class="col-12 col-md-4">
+          <label class="form-label small fw-semibold">Building Type</label>
+          <select class="form-select form-select-sm" id="move-out-building-type">
+            {% for building_type in move_out_charge_building_types %}
+            <option value="{{ building_type.pk }}" data-url="{% url 'core:building_type_move_out_charge_update' building_type.pk %}" data-inspection="{{ building_type.inspection_incomplete_charge }}" data-key="{{ building_type.key_card_not_returned_charge }}">{{ building_type.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Inspection not completed</label><input type="number" min="0" step="0.01" class="form-control form-control-sm inspection-charge"></div>
+        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Keys not returned</label><input type="number" min="0" step="0.01" class="form-control form-control-sm key-charge"></div>
+        <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-primary save-move-out-charge">Save Defaults</button> <span class="small move-out-save-status"></span></div>
+      </div>
+      {% else %}<div class="text-center text-muted py-3">Add and activate a Building Type first.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-doc-categories">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="fas fa-folder-open me-2"></i>Lease Document Categories</h4>
+      <div class="d-flex flex-wrap gap-1">
+        <a class="btn btn-sm {% if doc_cat_sort == 'name' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?doc_cat_sort=name#settings-doc-categories">Sort By Name</a>
+        <button class="btn btn-sm btn-primary" id="btn-add-doc-category" type="button">
+          + Add Category
+        </button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:6%">SN</th>
+              <th style="width:28%">Name</th>
+              <th style="width:22%">Code</th>
+              <th style="width:13%">Sort</th>
+              <th style="width:13%">Active</th>
+              <th style="width:18%">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in lease_document_categories %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="name" data-value="{{ cat.name }}">{{ cat.name }}</span></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="code" data-value="{{ cat.code }}">{{ cat.code }}</span></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="sort_order" data-type="number" data-value="{{ cat.sort_order }}">{{ cat.sort_order }}</span></td>
+              <td>
+                <select class="form-select form-select-sm js-doc-cat-inline" data-url="{% url 'core:lease_document_category_inline_update' cat.id %}" data-field="is_active">
+                  <option value="1" {% if cat.is_active %}selected{% endif %}>Active</option>
+                  <option value="0" {% if not cat.is_active %}selected{% endif %}>Inactive</option>
+                </select>
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-cat-edit" data-url="{% url 'core:lease_document_category_get' cat.id %}">Edit</button>
+                  {% if cat.is_active %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-cat-toggle" data-url="{% url 'core:lease_document_category_toggle' cat.id %}">Remove</button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-cat-toggle" data-url="{% url 'core:lease_document_category_toggle' cat.id %}">Restore</button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-center py-3 text-muted">No lease document categories added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-tab-panel d-none" id="settings-lease-vehicle-types">
+    <div class="card shadow-sm settings-embedded-panel">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0"><i class="fas fa-car me-2"></i>Lease Vehicle Types</h4>
+        <a class="btn btn-sm btn-outline-success" href="{% url 'leases:lease_vehicle_type_settings' %}" target="_blank" rel="noopener">Open Full Page</a>
+      </div>
+      <iframe class="settings-inline-frame" src="{% url 'leases:lease_vehicle_type_settings' %}?embed=1" title="Lease Vehicle Types"></iframe>
+    </div>
+  </div>
+
+  <div class="card shadow-sm settings-tab-panel d-none" id="settings-relationship-types">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="fas fa-people-arrows me-2"></i>Tenant Relationship Types</h4>
+      <button class="btn btn-sm btn-primary" id="btn-add-relationship-type" type="button">
+        + Add Relationship
+      </button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 settings-method-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:8%">S.N</th>
+              <th style="width:30%">Name</th>
+              <th style="width:27%">Code</th>
+              <th style="width:15%">Active</th>
+              <th style="width:20%">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in lease_relationship_types %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_relationship_type_inline_update' item.id %}" data-field="name" data-value="{{ item.name }}">{{ item.name }}</span></td>
+              <td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:lease_relationship_type_inline_update' item.id %}" data-field="code" data-value="{{ item.code }}">{{ item.code }}</span></td>
+              <td>
+                <select class="form-select form-select-sm js-relationship-inline" data-url="{% url 'core:lease_relationship_type_inline_update' item.id %}" data-field="is_active">
+                  <option value="1" {% if item.is_active %}selected{% endif %}>Active</option>
+                  <option value="0" {% if not item.is_active %}selected{% endif %}>Inactive</option>
+                </select>
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-relationship-edit" data-url="{% url 'core:lease_relationship_type_get' item.id %}">Edit</button>
+                  {% if item.is_active %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-relationship-toggle" data-url="{% url 'core:lease_relationship_type_toggle' item.id %}">Remove</button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-relationship-toggle" data-url="{% url 'core:lease_relationship_type_toggle' item.id %}">Restore</button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center py-3 text-muted">No tenant relationship types added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.settings-page {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.settings-header h3 {
+  font-size: 1.35rem;
+}
+.settings-page .card {
+  border-radius: .45rem;
+}
+.settings-form {
+  display: grid;
+  gap: 1rem;
+}
+.settings-section .card-header {
+  background: #f8fafc;
+}
+.settings-check {
+  min-height: 2.35rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem .5rem 2.15rem;
+  border: 1px solid rgba(33, 37, 41, .1);
+  border-radius: .35rem;
+  background: #fff;
+}
+.settings-savebar {
+  position: sticky;
+  bottom: .75rem;
+  z-index: 2;
+}
+.settings-section {
+  scroll-margin-top: 5rem;
+}
+.settings-card-tab-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+}
+.settings-tab-card {
+  flex: 0 1 132px;
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .45rem .5rem;
+  color: #212529;
+  text-decoration: none;
+  border: 1px solid rgba(33, 37, 41, .12);
+  border-radius: .45rem;
+  background: #fff;
+  box-shadow: 0 .125rem .35rem rgba(15, 23, 42, .06);
+  font-size: .76rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.settings-tab-card:hover,
+.settings-tab-card.active {
+  color: #0d6efd;
+  border-color: rgba(13, 110, 253, .45);
+  background: #f8fbff;
+}
+.settings-tab-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  flex: 0 0 1.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: .4rem;
+  background: #eef5ff;
+  color: #0d6efd;
+}
+.settings-tab-icon-warning {
+  background: #fff6db;
+  color: #b58100;
+}
+.settings-tab-icon-success {
+  background: #eaf7ef;
+  color: #198754;
+}
+.settings-tool-card {
+  color: inherit;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.settings-tool-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem;
+  height: 100%;
+}
+.settings-tool-card:hover {
+  border-color: rgba(13, 110, 253, .45);
+  box-shadow: 0 .5rem 1rem rgba(13, 110, 253, .12) !important;
+}
+.settings-tool-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: .45rem;
+  background: #eef5ff;
+  color: #0d6efd;
+  margin-bottom: .75rem;
+  font-size: 1.2rem;
+}
+.settings-tool-icon-warning {
+  background: #fff6db;
+  color: #b58100;
+}
+.settings-tool-icon-success {
+  background: #eaf7ef;
+  color: #198754;
+}
+.settings-embedded-panel {
+  overflow: hidden;
+}
+.settings-inline-frame {
+  display: block;
+  width: 100%;
+  min-height: 760px;
+  border: 0;
+  background: #fff;
+}
+.settings-inline-frame-tall {
+  min-height: 900px;
+}
+.settings-inline-text {
+  display: inline-block;
+  min-width: 4rem;
+  padding: .25rem .35rem;
+  border-radius: .25rem;
+  cursor: text;
+}
+.settings-inline-text:hover {
+  background: #f1f5f9;
+  box-shadow: inset 0 0 0 1px rgba(13, 110, 253, .22);
+}
+@media (max-width: 420px) {
+  .settings-page h3 { font-size: 1.2rem; }
+  .settings-page h4 { font-size: 1rem; }
+  .settings-backup-link { width: 100%; }
+  .settings-page .card-body { padding: .75rem; }
+  .settings-card-tab-grid { gap: .45rem; }
+  .settings-tab-card {
+    flex: 0 1 calc(25% - .45rem);
+    min-height: 3rem;
+    padding: .4rem .35rem;
+    font-size: .68rem;
+    gap: .28rem;
+  }
+  .settings-tab-icon {
+    width: 1.35rem;
+    height: 1.35rem;
+    flex-basis: 1.35rem;
+  }
+  .settings-method-table { font-size: .78rem; min-width: 560px; }
+  .settings-page .btn-sm { font-size: .75rem; padding: .32rem .45rem; }
+  .settings-savebar {
+    position: static;
+  }
+  .settings-savebar .card-body {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+  .settings-savebar .btn {
+    flex: 1 1 auto;
+  }
+  .settings-tool-stack {
+    gap: .75rem;
+  }
+}
+@media (max-width: 360px) {
+  .settings-page { font-size: .78rem; }
+  .settings-page .form-control,
+  .settings-page .form-select { font-size: .78rem; }
+  .settings-page {
+    margin-left: -.25rem;
+    margin-right: -.25rem;
+  }
+  .settings-header {
+    gap: .5rem !important;
+  }
+  .settings-tool-card h5 {
+    font-size: .95rem;
+  }
+}
+</style>
+
+<!-- ADD / EDIT MODAL -->
+<div class="modal fade" id="pmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="pm-form">
+        {% csrf_token %}
+        <input type="hidden" id="pm-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pmModalTitle">Add Payment Method</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="pm-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="pm-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="pm-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="pm-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="docCategoryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="doc-category-form">
+        {% csrf_token %}
+        <input type="hidden" id="doc-cat-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="docCategoryModalTitle">Add Lease Document Category</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="doc-cat-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="doc-cat-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="doc-cat-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="doc-cat-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="buildingTypeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="building-type-form">
+        {% csrf_token %}<input type="hidden" id="building-type-id" name="id">
+        <div class="modal-header"><h5 class="modal-title" id="buildingTypeModalTitle">Add Building Type</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Name</label><input class="form-control" id="building-type-name" name="name" required></div>
+          <div class="mb-3"><label class="form-label">Code (auto generated if empty)</label><input class="form-control" id="building-type-code" name="code"></div>
+          <div class="mb-3"><label class="form-label">Sort Order</label><input type="number" min="0" class="form-control" id="building-type-sort" name="sort_order" value="50"></div>
+          <div class="mb-3"><label class="form-label">Active</label><select id="building-type-active" name="is_active" class="form-select"><option value="1">Active</option><option value="0">Inactive</option></select></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary btn-sm">Save</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="relationshipTypeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="relationship-type-form">
+        {% csrf_token %}
+        <input type="hidden" id="relationship-type-id" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="relationshipTypeModalTitle">Add Family Relationship Type</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" id="relationship-type-name" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Code (auto generated if left empty)</label>
+            <input class="form-control" id="relationship-type-code" name="code">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Sort Order</label>
+            <input type="number" class="form-control" id="relationship-type-sort" name="sort_order" value="50">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Active</label>
+            <select id="relationship-type-active" name="is_active" class="form-select">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// CSRF helper
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const csrftoken = getCookie("csrftoken");
+  const settingsTabs = document.querySelectorAll(".settings-tab-card");
+  const settingsPanels = document.querySelectorAll(".settings-tab-panel");
+  const settingsForm = document.querySelector(".settings-form");
+  const settingsSavebar = document.querySelector(".settings-savebar");
+  const autosaveStatus = document.getElementById("settings-autosave-status");
+
+  function showSettingsPanel(targetId, updateHash) {
+    const targetPanel = document.getElementById(targetId);
+    if (!targetPanel) return;
+
+    settingsPanels.forEach(panel => panel.classList.add("d-none"));
+    targetPanel.classList.remove("d-none");
+
+    settingsTabs.forEach(tab => {
+      tab.classList.toggle("active", tab.dataset.settingsTarget === targetId);
+    });
+
+    const isGlobalSettingsPanel = targetId.indexOf("settings-group-") === 0 || targetId === "settings-development-tools";
+    if (settingsSavebar) {
+      settingsSavebar.classList.toggle("d-none", !isGlobalSettingsPanel);
+    }
+    if (autosaveStatus) {
+      autosaveStatus.classList.toggle("d-none", !isGlobalSettingsPanel);
+    }
+    if (updateHash) {
+      history.replaceState(null, "", "#" + targetId);
+    }
+  }
+
+  settingsTabs.forEach(tab => {
+    tab.addEventListener("click", function (event) {
+      if (!this.dataset.settingsTarget) return;
+      event.preventDefault();
+      showSettingsPanel(this.dataset.settingsTarget, true);
+    });
+  });
+
+  document.querySelectorAll("[data-settings-target]:not(.settings-tab-card)").forEach(link => {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      showSettingsPanel(this.dataset.settingsTarget, true);
+    });
+  });
+
+  document.querySelectorAll(".js-settings-frame-link").forEach(link => {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      const frame = document.getElementById(this.dataset.frame);
+      if (frame) {
+        frame.src = this.href;
+      }
+    });
+  });
+
+  if (window.location.hash) {
+    showSettingsPanel(window.location.hash.substring(1), false);
+  }
+
+  if (settingsForm && autosaveStatus) {
+    let autosaveTimer = null;
+    let autosaveController = null;
+    const autosaveFields = settingsForm.querySelectorAll("input, select, textarea");
+
+    function setAutosaveStatus(message, stateClass) {
+      autosaveStatus.className = "settings-autosave-status small mb-2 " + (stateClass || "text-muted");
+      autosaveStatus.textContent = message || "";
+    }
+
+    function runAutosave() {
+      if (autosaveController) {
+        autosaveController.abort();
+      }
+      autosaveController = new AbortController();
+      setAutosaveStatus("Saving settings...", "text-primary");
+
+      fetch(settingsForm.action || window.location.href, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrftoken,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: new FormData(settingsForm),
+        signal: autosaveController.signal,
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("Auto-save failed.");
+        }
+        if (!response.redirected) {
+          setAutosaveStatus("Could not auto-save. Check the highlighted fields, then use Save Settings.", "text-danger");
+          return;
+        }
+        setAutosaveStatus("Settings auto-saved.", "text-success");
+      })
+      .catch(error => {
+        if (error.name !== "AbortError") {
+          setAutosaveStatus("Auto-save failed. Use Save Settings to see details.", "text-danger");
+        }
+      });
+    }
+
+    autosaveFields.forEach(field => {
+      if (field.type === "hidden" || field.type === "file" || field.name === "csrfmiddlewaretoken") {
+        return;
+      }
+      field.addEventListener("change", function () {
+        clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(runAutosave, 500);
+      });
+      if (field.tagName !== "SELECT" && field.type !== "checkbox" && field.type !== "radio") {
+        field.addEventListener("input", function () {
+          clearTimeout(autosaveTimer);
+          setAutosaveStatus("Unsaved changes...", "text-muted");
+          autosaveTimer = setTimeout(runAutosave, 900);
+        });
+      }
+    });
+
+    settingsForm.querySelectorAll("input[type='file']").forEach(field => {
+      field.addEventListener("change", function () {
+        setAutosaveStatus("Logo and favicon files need the Save Settings button.", "text-muted");
+      });
+    });
+  }
+
+  const modalEl = document.getElementById("pmModal");
+  const modal = new bootstrap.Modal(modalEl);
+  const docCategoryModalEl = document.getElementById("docCategoryModal");
+  const docCategoryModal = new bootstrap.Modal(docCategoryModalEl);
+  const buildingTypeModalEl = document.getElementById("buildingTypeModal");
+  const buildingTypeModal = new bootstrap.Modal(buildingTypeModalEl);
+  const relationshipTypeModalEl = document.getElementById("relationshipTypeModal");
+  const relationshipTypeModal = new bootstrap.Modal(relationshipTypeModalEl);
+
+  const pmForm = document.getElementById("pm-form");
+  const btnAdd = document.getElementById("btn-add-method");
+  const docCategoryForm = document.getElementById("doc-category-form");
+  const btnAddDocCategory = document.getElementById("btn-add-doc-category");
+  const buildingTypeForm = document.getElementById("building-type-form");
+  const btnAddBuildingType = document.getElementById("btn-add-building-type");
+  const relationshipTypeForm = document.getElementById("relationship-type-form");
+  const btnAddRelationshipType = document.getElementById("btn-add-relationship-type");
+
+  document.querySelectorAll(".js-doc-cat-inline").forEach(field => {
+    field.addEventListener("change", function () {
+      const formData = new FormData();
+      formData.append("field", this.dataset.field);
+      formData.append("value", this.value);
+      this.classList.add("opacity-50");
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken, "X-Requested-With": "XMLHttpRequest"},
+        body: formData,
+      })
+      .then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+        return r.json();
+      })
+      .catch(err => alert("Could not update category: " + err.message))
+      .finally(() => this.classList.remove("opacity-50"));
+    });
+  });
+
+  function postInlineUpdate(url, field, value, done) {
+    const formData = new FormData();
+    formData.append("field", field);
+    formData.append("value", value);
+    fetch(url, {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken, "X-Requested-With": "XMLHttpRequest"},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(() => done && done())
+    .catch(err => alert("Could not update: " + err.message));
+  }
+
+  document.querySelectorAll(".js-click-edit").forEach(cell => {
+    cell.addEventListener("click", function () {
+      if (this.querySelector("input")) return;
+      const original = this.dataset.value || this.textContent.trim();
+      const input = document.createElement("input");
+      input.type = this.dataset.type || "text";
+      input.className = "form-control form-control-sm";
+      input.value = original;
+      this.textContent = "";
+      this.appendChild(input);
+      input.focus();
+      input.select();
+      const save = () => {
+        const next = input.value.trim();
+        if (next === original) {
+          this.textContent = original;
+          return;
+        }
+        postInlineUpdate(this.dataset.url, this.dataset.field, next, () => {
+          this.dataset.value = next;
+          this.textContent = next;
+        });
+      };
+      input.addEventListener("blur", save, { once: true });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") input.blur();
+        if (event.key === "Escape") {
+          input.removeEventListener("blur", save);
+          this.textContent = original;
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll(".js-relationship-inline").forEach(field => {
+    field.addEventListener("change", function () {
+      this.classList.add("opacity-50");
+      postInlineUpdate(this.dataset.url, this.dataset.field, this.value, () => {
+        this.classList.remove("opacity-50");
+      });
+    });
+  });
+
+  // Open empty modal for Add
+  btnAdd.addEventListener("click", function () {
+    document.getElementById("pmModalTitle").innerText = "Add Payment Method";
+    document.getElementById("pm-id").value = "";
+    document.getElementById("pm-name").value = "";
+    document.getElementById("pm-code").value = "";
+    document.getElementById("pm-sort").value = "50";
+    document.getElementById("pm-active").value = "1";
+    modal.show();
+  });
+
+  // Edit buttons
+  document.querySelectorAll(".btn-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const url = this.dataset.url;
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("pmModalTitle").innerText = "Edit Payment Method";
+          document.getElementById("pm-id").value = data.id;
+          document.getElementById("pm-name").value = data.name;
+          document.getElementById("pm-code").value = data.code || "";
+          document.getElementById("pm-sort").value = data.sort_order || 50;
+          document.getElementById("pm-active").value = data.is_active ? "1" : "0";
+          modal.show();
+        });
+    });
+  });
+
+  // Toggle active/inactive
+  document.querySelectorAll(".btn-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const url = this.dataset.url;
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrftoken,
+        },
+      })
+      .then(r => r.json())
+      .then(_ => {
+        // Simple solution: reload to refresh list
+        window.location.reload();
+      })
+      .catch(err => {
+        alert("Error toggling payment method: " + err.message);
+      });
+    });
+  });
+
+  // Save form via AJAX
+  pmForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(pmForm);
+    fetch("{% url 'core:payment_method_save' %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": csrftoken,
+      },
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) {
+        return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      }
+      return r.json();
+    })
+    .then(_ => {
+      modal.hide();
+      window.location.reload();  // simplest way to refresh table
+    })
+    .catch(err => {
+      alert("Could not save payment method: " + err.message);
+    });
+  });
+
+  btnAddDocCategory.addEventListener("click", function () {
+    document.getElementById("docCategoryModalTitle").innerText = "Add Lease Document Category";
+    document.getElementById("doc-cat-id").value = "";
+    document.getElementById("doc-cat-name").value = "";
+    document.getElementById("doc-cat-code").value = "";
+    document.getElementById("doc-cat-sort").value = "50";
+    document.getElementById("doc-cat-active").value = "1";
+    docCategoryModal.show();
+  });
+
+  document.querySelectorAll(".btn-cat-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("docCategoryModalTitle").innerText = "Edit Lease Document Category";
+          document.getElementById("doc-cat-id").value = data.id;
+          document.getElementById("doc-cat-name").value = data.name;
+          document.getElementById("doc-cat-code").value = data.code || "";
+          document.getElementById("doc-cat-sort").value = data.sort_order || 50;
+          document.getElementById("doc-cat-active").value = data.is_active ? "1" : "0";
+          docCategoryModal.show();
+        });
+    });
+  });
+
+  document.querySelectorAll(".btn-cat-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken},
+      })
+      .then(r => r.json())
+      .then(_ => window.location.reload())
+      .catch(err => alert("Error updating category: " + err.message));
+    });
+  });
+
+  docCategoryForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(docCategoryForm);
+    fetch("{% url 'core:lease_document_category_save' %}", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(_ => {
+      docCategoryModal.hide();
+      window.location.reload();
+    })
+    .catch(err => alert("Could not save category: " + err.message));
+  });
+
+  btnAddBuildingType.addEventListener("click", function () {
+    document.getElementById("buildingTypeModalTitle").innerText = "Add Building Type";
+    document.getElementById("building-type-id").value = "";
+    document.getElementById("building-type-name").value = "";
+    document.getElementById("building-type-code").value = "";
+    document.getElementById("building-type-sort").value = "50";
+    document.getElementById("building-type-active").value = "1";
+    buildingTypeModal.show();
+  });
+
+  document.querySelectorAll(".btn-building-type-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url).then(r => r.json()).then(data => {
+        document.getElementById("buildingTypeModalTitle").innerText = "Edit Building Type";
+        document.getElementById("building-type-id").value = data.id;
+        document.getElementById("building-type-name").value = data.name;
+        document.getElementById("building-type-code").value = data.code || "";
+        document.getElementById("building-type-sort").value = data.sort_order || 50;
+        document.getElementById("building-type-active").value = data.is_active ? "1" : "0";
+        buildingTypeModal.show();
+      });
+    });
+  });
+
+  document.querySelectorAll(".btn-building-type-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url, {method: "POST", headers: {"X-CSRFToken": csrftoken}})
+        .then(r => r.json().then(data => ({ok: r.ok, data: data})))
+        .then(result => { if (!result.ok) throw new Error(result.data.error || "Update failed"); window.location.reload(); })
+        .catch(err => alert("Could not update building type: " + err.message));
+    });
+  });
+
+  buildingTypeForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    fetch("{% url 'core:building_type_save' %}", {method: "POST", headers: {"X-CSRFToken": csrftoken}, body: new FormData(buildingTypeForm)})
+      .then(r => r.json().then(data => ({ok: r.ok, data: data})))
+      .then(result => { if (!result.ok || !result.data.ok) throw new Error(result.data.error || "Save failed"); buildingTypeModal.hide(); window.location.reload(); })
+      .catch(err => alert("Could not save building type: " + err.message));
+  });
+
+  btnAddRelationshipType.addEventListener("click", function () {
+    document.getElementById("relationshipTypeModalTitle").innerText = "Add Family Relationship Type";
+    document.getElementById("relationship-type-id").value = "";
+    document.getElementById("relationship-type-name").value = "";
+    document.getElementById("relationship-type-code").value = "";
+    document.getElementById("relationship-type-sort").value = "50";
+    document.getElementById("relationship-type-active").value = "1";
+    relationshipTypeModal.show();
+  });
+
+  document.querySelectorAll(".btn-relationship-edit").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById("relationshipTypeModalTitle").innerText = "Edit Family Relationship Type";
+          document.getElementById("relationship-type-id").value = data.id;
+          document.getElementById("relationship-type-name").value = data.name;
+          document.getElementById("relationship-type-code").value = data.code || "";
+          document.getElementById("relationship-type-sort").value = data.sort_order || 50;
+          document.getElementById("relationship-type-active").value = data.is_active ? "1" : "0";
+          relationshipTypeModal.show();
+        });
+    });
+  });
+
+  document.querySelectorAll(".btn-relationship-toggle").forEach(btn => {
+    btn.addEventListener("click", function () {
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken},
+      })
+      .then(r => r.json())
+      .then(_ => window.location.reload())
+      .catch(err => alert("Error updating relationship type: " + err.message));
+    });
+  });
+
+  relationshipTypeForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const formData = new FormData(relationshipTypeForm);
+    fetch("{% url 'core:lease_relationship_type_save' %}", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrftoken},
+      body: formData,
+    })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(t || "Failed to save"); });
+      return r.json();
+    })
+    .then(_ => {
+      relationshipTypeModal.hide();
+      window.location.reload();
+    })
+    .catch(err => alert("Could not save relationship type: " + err.message));
+  });
+
+  const moveOutBuildingType = document.getElementById("move-out-building-type");
+  const moveOutRow = moveOutBuildingType ? moveOutBuildingType.closest(".move-out-charge-row") : null;
+  function loadMoveOutCharges() {
+    if (!moveOutBuildingType || !moveOutRow) return;
+    const option = moveOutBuildingType.options[moveOutBuildingType.selectedIndex];
+    moveOutRow.querySelector(".inspection-charge").value = option.dataset.inspection || "0.00";
+    moveOutRow.querySelector(".key-charge").value = option.dataset.key || "0.00";
+  }
+  if (moveOutBuildingType) {
+    moveOutBuildingType.addEventListener("change", loadMoveOutCharges);
+    loadMoveOutCharges();
+  }
+
+  document.querySelectorAll(".save-move-out-charge").forEach(btn => {
+    btn.addEventListener("click", function () {
+      const row = this.closest(".move-out-charge-row");
+      const option = moveOutBuildingType.options[moveOutBuildingType.selectedIndex];
+      const status = row.querySelector(".move-out-save-status");
+      const data = new FormData();
+      data.set("inspection_incomplete_charge", row.querySelector(".inspection-charge").value);
+      data.set("key_card_not_returned_charge", row.querySelector(".key-charge").value);
+      this.disabled = true;
+      status.className = "small move-out-save-status text-muted";
+      status.textContent = "Saving...";
+      fetch(option.dataset.url, {method: "POST", headers: {"X-CSRFToken": csrftoken}, body: data})
+        .then(r => r.json().then(payload => ({ok: r.ok, payload: payload})))
+        .then(result => {
+          if (!result.ok || !result.payload.ok) throw new Error(result.payload.error || "Save failed");
+          status.className = "small move-out-save-status text-success";
+          status.textContent = "Saved";
+          option.dataset.inspection = row.querySelector(".inspection-charge").value;
+          option.dataset.key = row.querySelector(".key-charge").value;
+        })
+        .catch(error => {
+          status.className = "small move-out-save-status text-danger";
+          status.textContent = error.message;
+        })
+        .finally(() => { btn.disabled = false; });
+    });
+  });
+});
+</script>
+
+{% endblock %}

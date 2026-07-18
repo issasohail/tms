@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: Legal portrait; margin: 0.70in 0.55in; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    h2 { font-size: 13px; margin: 14px 0 6px; border-bottom: 1px solid #999; padding-bottom: 3px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th, td { border: 1px solid #bbb; padding: 5px; vertical-align: top; }
+    th { background: #f1f1f1; text-align: left; }
+    .muted { color: #666; }
+    .photo-row { display: table; width: 100%; margin: 10px 0 6px; }
+    .photo-box { display: table-cell; width: 50%; vertical-align: top; padding-right: 8px; }
+    .photo-frame { width: 92px; height: 92px; border: 1px solid #999; object-fit: cover; display: block; margin-top: 4px; }
+    .photo-empty { width: 92px; height: 92px; border: 1px solid #bbb; color: #777; display: table-cell; text-align: center; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <h1>Police Verification Summary</h1>
+  <div class="muted">Lease #{{ lease.pk }} | Generated {{ generated_at|date:"Y-m-d H:i" }}</div>
+
+  <div class="photo-row">
+    <div class="photo-box">
+      <strong>Owner Photo</strong>
+      {% if owner_photo_url %}
+        <img class="photo-frame" src="{{ owner_photo_url }}" alt="Owner photo">
+      {% elif property.owner_photo %}
+        <img class="photo-frame" src="{{ property.owner_photo.url }}" alt="Owner photo">
+      {% else %}
+        <div class="photo-empty">No photo</div>
+      {% endif %}
+    </div>
+    <div class="photo-box">
+      <strong>Tenant Photo</strong>
+      {% if tenant_photo_url %}
+        <img class="photo-frame" src="{{ tenant_photo_url }}" alt="Tenant photo">
+      {% elif tenant.photo %}
+        <img class="photo-frame" src="{{ tenant.photo.url }}" alt="Tenant photo">
+      {% else %}
+        <div class="photo-empty">No photo</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2>Owner Information</h2>
+  <table>
+    <tr><th>Name</th><td>{{ property.owner_name|default:"-" }}</td><th>Father Name</th><td>{{ property.owner_father_name|default:"-" }}</td></tr>
+    <tr><th>CNIC</th><td>{{ property.owner_cnic|format_cnic|default:"-" }}</td><th>Mobile</th><td>{{ property.owner_phone|format_phone|default:"-" }}</td></tr>
+    <tr><th>Address</th><td colspan="3">{{ property.owner_address|default:"-" }}</td></tr>
+  </table>
+
+  <h2>Tenant Information</h2>
+  <table>
+    <tr><th>Name</th><td>{{ tenant.get_full_name }}</td><th>Father/Husband</th><td>{{ tenant.last_name|default:"-" }}</td></tr>
+    <tr><th>CNIC</th><td>{{ tenant.cnic|format_cnic|default:"-" }}</td><th>Mobile</th><td>{{ tenant.phone|format_phone|default:"-" }}</td></tr>
+    <tr><th>Occupation</th><td>{{ tenant.occupation|default:"-" }}</td><th>Nationality</th><td>{{ tenant.nationality|default:"-" }}</td></tr>
+    <tr><th>Address</th><td colspan="3">{{ tenant.address|default:"-" }}</td></tr>
+    <tr><th>Temporary Address</th><td colspan="3">{{ tenant.temporary_address|default:"-" }}</td></tr>
+    <tr><th>Permanent Address</th><td colspan="3">{{ tenant.permanent_address|default:"-" }}</td></tr>
+    <tr><th>Working Address</th><td colspan="3">{{ tenant.working_address|default:"-" }}</td></tr>
+  </table>
+
+  <h2>Family Members</h2>
+  <table>
+    <thead><tr><th style="width:34px;">S.N</th><th>Name</th><th>Relationship</th><th>CNIC</th><th>DOB</th><th>Phone</th></tr></thead>
+    <tbody>
+      {% for member in family_members %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>{{ member.family_member.get_full_name }}</td>
+          <td>{{ member.relation }}</td>
+          <td>{{ member.family_member.cnic|format_cnic|default:"-" }}</td>
+          <td>{{ member.family_member.date_of_birth|date:"Y-m-d"|default:"-" }}</td>
+          <td>{{ member.family_member.phone|format_phone|default:"-" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">No family members recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Tenant Vehicle Information</h2>
+  <table>
+    <thead><tr><th style="width:34px;">S.N</th><th>Type</th><th>Registration #</th><th>Make / Model</th><th>Color</th><th>Owner</th><th>Owner CNIC</th><th>Parking</th></tr></thead>
+    <tbody>
+      {% for vehicle in vehicles %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>{{ vehicle.vehicle_type.name }}</td>
+          <td>{{ vehicle.registration_number }}</td>
+          <td>{{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}</td>
+          <td>{{ vehicle.color|default:"-" }}</td>
+          <td>{{ vehicle.owner_name|default:"-" }}</td>
+          <td>{{ vehicle.owner_cnic|format_cnic|default:"-" }}</td>
+          <td>{{ vehicle.parking_slot|default:"-" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8">No vehicle information recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Property Information</h2>
+  <table>
+    <tr><th>Property</th><td>{{ property.property_name }}</td><th>Unit</th><td>{{ unit.unit_number }}</td></tr>
+    <tr><th>Address</th><td colspan="3">{{ property.full_address|default:"-" }}</td></tr>
+    <tr><th>House #</th><td>{{ property.house_no|default:"-" }}</td><th>Street #</th><td>{{ property.street_no|default:"-" }}</td></tr>
+    <tr><th>Colony</th><td>{{ property.colony|default:"-" }}</td><th>Road</th><td>{{ property.road|default:"-" }}</td></tr>
+    <tr><th>Covered Area Type</th><td>{{ property.covered_area_type|default:"-" }}</td><th>Zila</th><td>{{ property.zila|default:"-" }}</td></tr>
+    <tr><th>Police Station</th><td>{{ property.police_station|default:"-" }}</td><th>Division</th><td>{{ property.police_division|default:"-" }}</td></tr>
+    <tr><th>Circle</th><td>{{ property.police_circle|default:"-" }}</td><th>District / City</th><td>{{ property.property_city|default:"-" }}</td></tr>
+  </table>
+</body>
+</html>

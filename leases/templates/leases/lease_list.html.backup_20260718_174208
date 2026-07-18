@@ -1,0 +1,2394 @@
+{% extends 'base.html' %}
+{% load render_table from django_tables2 %}
+{% load static %}
+{% load humanize money_tags %}
+
+{% block title %}Leases{% endblock %}
+{% block main_container_class %}container-fluid{% endblock %}
+{% block content %}
+{% url 'payments:payment_create' as payment_create_url %}
+
+<div class="ll-page {% if current_layout == '2' %}ll-page--layout2{% endif %}">
+
+  <div class="ll-header">
+    <div class="ll-title-wrap">
+      <h2 class="ll-title">Leases</h2>
+      <div class="ll-title-meta">
+        <div class="ll-subtitle">Manage all lease agreements</div>
+        <label class="ll-check ll-api-check mb-0" title="Use WhatsApp Cloud API instead of opening wa.me links">
+          <input type="checkbox" id="use-whatsapp-api" data-whatsapp-api-toggle="lease-list">
+          <span>Use WhatsApp API</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="ll-actions" aria-label="Lease actions">
+      <a href="{% url 'leases:lease_create' %}" class="ll-btn ll-btn--primary ll-action-add">
+        <i class="fas fa-plus"></i><span class="ll-btn-label">Add Lease</span>
+      </a>
+      <a href="{% url 'leases:inspection_sheet_home' %}" class="ll-btn ll-btn--primary ll-action-inspection">
+        <i class="fas fa-clipboard-check"></i><span class="ll-btn-label">Inspection</span>
+      </a>
+      <a href="{% url 'leases:default_clause_list' %}" class="ll-btn ll-btn--primary ll-action-default">
+        <i class="fas fa-book"></i><span class="ll-btn-label">Agreement</span>
+      </a>
+      <button id="send-all-reminders" type="button" class="ll-btn ll-btn--success ll-action-reminder">
+        <i class="fas fa-bell"></i><span class="ll-btn-label">Reminders</span>
+      </button>
+      <a href="{% url 'leases:lease_ledger' %}" class="ll-btn ll-btn--primary ll-action-ledger">
+        <i class="fas fa-book-open"></i><span class="ll-btn-label">Ledger</span>
+      </a>
+      <span class="ll-export-slot ll-action-export">
+        <span class="btn-group ll-export-group">
+          <button type="button" class="ll-btn ll-export-toggle dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-download"></i><span class="ll-btn-label">Export</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end ll-export-menu">
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=pdf"><i class="fas fa-file-pdf text-danger"></i><span>PDF</span></a></li>
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=jpg"><i class="fas fa-file-image text-primary"></i><span>JPG</span></a></li>
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=csv"><i class="fas fa-file-csv text-success"></i><span>CSV</span></a></li>
+            <li><a class="dropdown-item" href="?{% if request.GET %}{{ request.GET.urlencode }}&amp;{% endif %}_export=xlsx"><i class="fas fa-file-excel text-success"></i><span>Excel</span></a></li>
+          </ul>
+        </span>
+      </span>
+      <a href="{{ payment_create_url|default:'#' }}" class="ll-btn ll-btn--success ll-action-payment">
+        <i class="fas fa-search-dollar"></i><span class="ll-btn-label">Payment</span>
+      </a>
+      <span class="ll-layout-switch" aria-label="Tablet layout switch">
+        <a href="?layout=1" class="ll-layout-link {% if current_layout != '2' %}is-active{% endif %}" data-layout-link="1">Layout 1</a>
+        <a href="?layout=2" class="ll-layout-link {% if current_layout == '2' %}is-active{% endif %}" data-layout-link="2">Layout 2</a>
+      </span>
+    </div>
+  </div>
+
+  <form method="get" id="lease-filter-form" class="ll-filters">
+    <input type="hidden" name="layout" value="{{ current_layout|default:'1' }}">
+    {% if current_summary %}
+      <input type="hidden" name="summary" value="{{ current_summary }}">
+    {% endif %}
+    <div class="ll-filter-item ll-filter-property">
+      <label for="id_property" class="ll-label">Property</label>
+      <select name="property" class="ll-select" id="id_property">
+        <option value="">All Properties</option>
+        {% for property in all_properties %}
+          <option value="{{ property.id }}" {% if current_property == property.id|stringformat:"s" %}selected{% endif %}>
+            {{ property.property_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="ll-filter-item ll-filter-unit">
+      <label for="id_unit" class="ll-label">Unit</label>
+      <select name="unit" class="ll-select ll-select--unit" id="id_unit">
+        <option value="">All Units</option>
+        {% for unit in filtered_units %}
+          <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:"s" %}selected{% endif %}>
+            {{ unit.unit_number }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="ll-filter-item ll-filter-status">
+      <label for="id_status" class="ll-label">Status</label>
+      <select name="status" class="ll-select" id="id_status">
+        <option value="" {% if not current_status %}selected{% endif %}>All Statuses</option>
+        <option value="active" {% if current_status == 'active' %}selected{% endif %}>Active</option>
+        <option value="terminated" {% if current_status == 'terminated' %}selected{% endif %}>Terminated</option>
+        <option value="ended" {% if current_status == 'ended' %}selected{% endif %}>Ended</option>
+      </select>
+    </div>
+
+    <div class="ll-filter-item ll-filter-item--tenant ll-filter-tenant">
+      <label for="id_tenant" class="ll-label">Tenant</label>
+      <select name="tenant" class="ll-select select2" id="id_tenant">
+        <option value="">All</option>
+        {% for tenant in all_tenants %}
+          <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+            {{ tenant.get_full_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="ll-filter-checks">
+      <label class="ll-check ll-filter-nonzero">
+        <input type="checkbox" name="nonzero_balance" id="id_nonzero_balance" {% if nonzero_balance %}checked{% endif %}>
+        <span>Non-zero</span>
+      </label>
+
+      <label class="ll-check ll-filter-bill-water">
+        <input type="checkbox" name="bill_water_charges" id="id_bill_water_charges" {% if bill_water_charges_filter %}checked{% endif %}>
+        <span>Bill Water</span>
+      </label>
+    </div>
+
+    {% if request.GET %}
+      <a href="?" class="ll-btn ll-btn--clear ll-filter-clear" title="Clear filters" aria-label="Clear filters">
+        <i class="fas fa-times"></i><span class="ll-clear-label">Clear</span>
+      </a>
+    {% endif %}
+  </form>
+
+  <div class="ll-summary" aria-label="Lease totals">
+    <a href="{{ total_leases_url }}" class="ll-summary-card ll-summary-link {% if not current_summary %}is-active{% endif %}" title="Show total leases">
+      <span class="ll-summary-icon"><i class="fas fa-file-signature"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Total Leases</span>
+        <strong>{{ lease_count|default:"" }}</strong>
+      </span>
+    </a>
+    <a href="{{ ended_recently_url }}" class="ll-summary-card ll-summary-link {% if current_summary == 'ended_recently' %}is-active{% endif %}" title="Show leases ended in the past 60 days">
+      <span class="ll-summary-icon ll-summary-icon--purple"><i class="fas fa-history"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Past 60 Days</span>
+        <strong>{{ ended_recently_count|default:"0" }}</strong>
+      </span>
+    </a>
+    <a href="{{ expiring_soon_url }}" class="ll-summary-card ll-summary-link {% if current_summary == 'expiring_soon' %}is-active{% endif %}" title="Show leases expiring soon">
+      <span class="ll-summary-icon ll-summary-icon--green"><i class="fas fa-calendar-check"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Expiring Soon</span>
+        <strong>{{ expiring_soon_count|default:"0" }}</strong>
+      </span>
+    </a>
+    <a href="{{ balance_due_url }}" class="ll-summary-card ll-summary-link ll-summary-financial {% if current_summary == 'balance_due' %}is-active{% endif %}" title="Lease balance due for current filters: {{ total_balance|money:2 }}">
+      <span class="ll-summary-icon ll-summary-icon--orange"><i class="fas fa-balance-scale"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Total Balance</span>
+        <strong>{{ total_balance|money:2 }}</strong>
+      </span>
+    </a>
+    <a href="{{ security_due_url }}" class="ll-summary-card ll-summary-link ll-summary-financial {% if current_summary == 'security_due' %}is-active{% endif %}" title="Show leases with security deposit due">
+      <span class="ll-summary-icon ll-summary-icon--red"><i class="fas fa-lock"></i></span>
+      <span class="ll-summary-text">
+        <span class="ll-summary-label">Security Deposit Due</span>
+        <strong>{{ total_security_due|money:2 }}</strong>
+      </span>
+    </a>
+  </div>
+
+  {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
+  <div class="ll-table-wrap desktop-sticky-list">
+    {% render_table table %}
+  </div>
+
+  <div class="ll-card-grid" id="leaseCardGrid" aria-label="Lease cards"></div>
+
+</div>
+
+<div class="modal fade" id="vehicleInfoModal" tabindex="-1" aria-labelledby="vehicleInfoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title h6 mb-0" id="vehicleInfoModalLabel">Vehicle Information</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="vehicleInfoModalBody">
+        <div class="text-muted small">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+:root {
+  --ll-blue: #344054;
+  --ll-green: #198754;
+  --ll-red: #dc3545;
+  --ll-orange: #fd7e14;
+  --ll-dark: #101828;
+  --ll-muted: #667085;
+  --ll-border: #e4e7ec;
+  --ll-soft: #f8fafc;
+  --ll-radius: 10px;
+  --ll-gap: 8px;
+
+  --ll-font-label: .76rem;
+  --ll-font-control: .84rem;
+  --ll-font-table: .92rem;
+  --ll-font-table-head: .76rem;
+
+  --col-sn: 42px;
+  --col-id: 52px;
+  --col-tenant: 190px;
+  --col-prop: 78px;
+  --col-unit: 100px;
+  --col-family: 108px;
+  --col-police: 92px;
+  --col-bill-water: 82px;
+  --col-vehicle: 82px;
+  --col-monthly: 112px;
+  --col-due-date: 52px;
+  --col-status: 82px;
+  --col-start: 106px;
+  --col-end: 112px;
+  --col-balance: 112px;
+  --col-sec: 92px;
+  --col-actions: 150px;
+}
+
+.lease-water-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.lease-water-toggle input {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+.lease-water-label {
+  min-width: 32px;
+}
+
+.ll-page {
+  width: 100%;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+.ll-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.ll-title-wrap { flex: 0 0 auto; }
+.ll-title {
+  margin: 0;
+  font-size: 1.28rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--ll-dark);
+}
+.ll-subtitle {
+  margin-top: 2px;
+  font-size: .78rem;
+  color: var(--ll-muted);
+}
+.ll-title-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+.ll-api-check {
+  height: auto !important;
+  font-size: .72rem !important;
+}
+.ll-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.ll-btn,
+.ll-export-slot .btn,
+.ll-export-slot button,
+.ll-export-slot a {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 31px;
+  padding: 6px 11px !important;
+  border-radius: 7px !important;
+  font-size: .82rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+  text-decoration: none !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.08);
+}
+.ll-btn--primary { background: var(--ll-blue); color: #fff !important; }
+.ll-btn--success { background: var(--ll-green); color: #fff !important; }
+.ll-btn--clear { background: #fff; color: #475467 !important; border-color: var(--ll-border) !important; }
+.ll-action-add { background: #0d6efd !important; color: #fff !important; }
+.ll-action-inspection { background: #0f766e !important; color: #fff !important; }
+.ll-action-default { background: #6f42c1 !important; color: #fff !important; }
+.ll-action-reminder { background: #d97706 !important; color: #fff !important; }
+.ll-action-ledger { background: #344054 !important; color: #fff !important; }
+.ll-action-export .ll-export-toggle { background: #6c757d !important; color: #fff !important; }
+.ll-action-payment { background: #198754 !important; color: #fff !important; }
+.ll-export-slot .btn,
+.ll-export-slot button,
+.ll-export-slot a { background: #6c757d !important; color: #fff !important; }
+.ll-layout-switch {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ll-border);
+  border-radius: 7px;
+  background: #fff;
+}
+.ll-layout-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  color: #475467;
+  font-size: .70rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none !important;
+}
+.ll-layout-link.is-active {
+  background: var(--ll-blue);
+  color: #fff;
+}
+
+.ll-filters {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, .9fr) minmax(130px, .9fr) minmax(190px, 1.25fr) minmax(145px, auto) auto;
+  gap: 8px 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.ll-filter-item { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ll-label { font-size: var(--ll-font-label); color: var(--ll-muted); line-height: 1; }
+.ll-select {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #d0d5dd;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ll-dark);
+  padding: 5px 9px;
+  font-size: var(--ll-font-control);
+  line-height: 1.1;
+}
+.ll-filter-item--tenant .select2-container { width: 100% !important; min-width: 0 !important; }
+.ll-filter-item--tenant .select2-container .select2-selection--single {
+  height: 34px;
+  border: 1px solid #d0d5dd;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+}
+.ll-filter-item--tenant .select2-container .select2-selection__rendered {
+  font-size: var(--ll-font-control);
+  line-height: 32px;
+  padding-left: 9px;
+  padding-right: 28px;
+}
+.ll-filter-item--tenant .select2-container .select2-selection__arrow { height: 32px; }
+.ll-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  margin: 0;
+  color: #475467;
+  font-size: .82rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ll-check input { width: 15px; height: 15px; margin: 0; }
+.ll-filter-checks {
+  display: flex;
+  align-items: end;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.ll-filter-checks .ll-check span { line-height: 1; }
+.ll-filter-clear { height: 34px; align-self: end; }
+
+.ll-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  background: #fff;
+  border: 1px solid var(--ll-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(16,24,40,.06);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.ll-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 64px;
+  padding: 10px 18px;
+  border-right: 1px solid var(--ll-border);
+}
+.ll-summary-card:last-child { border-right: 0; }
+.ll-summary-link {
+  color: inherit;
+  text-decoration: none !important;
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+.ll-summary-link:hover {
+  background: #f8fbff;
+}
+.ll-summary-link.is-active {
+  box-shadow: inset 0 -3px 0 var(--ll-blue);
+}
+.ll-summary-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f0ff;
+  color: var(--ll-blue);
+  font-size: 1.1rem;
+  flex: 0 0 auto;
+}
+.ll-summary-icon--green { background: #e9f8ef; color: var(--ll-green); }
+.ll-summary-icon--orange { background: #fff3e6; color: var(--ll-orange); }
+.ll-summary-icon--red { background: #ffecef; color: var(--ll-red); }
+.ll-summary-icon--purple { background: #f0ecff; color: #6f42c1; }
+.ll-summary-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ll-summary-label { color: var(--ll-muted); font-size: .76rem; }
+.ll-summary-text strong {
+  color: var(--ll-dark);
+  font-size: 1.05rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.ll-summary-text small { color: var(--ll-muted); font-size: .72rem; }
+
+.ll-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  background: #fff;
+  border: 1px solid var(--ll-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(16,24,40,.06);
+}
+.ll-table-wrap table.table {
+  table-layout: fixed;
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: var(--ll-font-table);
+}
+.ll-table-wrap .col-sn { width: var(--col-sn); text-align: center; }
+.ll-table-wrap .col-id { width: var(--col-id); text-align: center; }
+.ll-table-wrap .col-tenant { width: var(--col-tenant); }
+.ll-table-wrap .col-property { width: var(--col-prop); }
+.ll-table-wrap .col-unit { width: var(--col-unit); }
+.ll-table-wrap .col-family { width: var(--col-family); text-align: center; }
+.ll-table-wrap .col-police { width: var(--col-police); text-align: center; }
+.ll-table-wrap .col-bill-water { width: var(--col-bill-water); text-align: center; }
+.ll-table-wrap .col-vehicle { width: var(--col-vehicle); text-align: center; }
+.ll-table-wrap .col-monthly { width: var(--col-monthly); text-align: right; }
+.ll-table-wrap .col-due-date { width: var(--col-due-date); text-align: center; font-size: .78rem; }
+.lease-due-date-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  max-width: 42px;
+  padding: 3px 5px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: .70rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.lease-due-date-badge:hover {
+  border-color: #0d6efd;
+  color: #0d6efd;
+  background: #f2f6ff;
+}
+.vehicle-info-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+.vehicle-info-pill--yes { background: #dcfce7; color: #087443 !important; }
+.vehicle-info-pill--pending { background: #fff3cd; color: #946200 !important; }
+.vehicle-info-pill--no { background: #e8f1ff; color: #344054 !important; }
+.vehicle-info-pill--missing { background: #eef2f7; color: #667085 !important; }
+.vehicle-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.vehicle-modal-card {
+  border: 1px solid var(--ll-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.vehicle-modal-photo {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  background: #eef2f7;
+}
+.vehicle-modal-card-body { padding: 9px; }
+.vehicle-modal-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .78rem;
+  line-height: 1.25;
+  border-bottom: 1px solid #f2f4f7;
+  padding: 3px 0;
+}
+.vehicle-modal-line span:first-child { color: #667085; font-weight: 700; }
+.vehicle-modal-line span:last-child { color: #101828; font-weight: 800; text-align: right; }
+.vehicle-modal-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.vehicle-entry-panel {
+  border: 1px solid var(--ll-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+.family-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #0d6efd !important;
+  font-size: .72rem;
+  font-weight: 900;
+  text-decoration: none !important;
+}
+.family-pending {
+  display: block;
+  margin-top: 3px;
+  color: #b54708;
+  font-size: .65rem;
+  font-weight: 900;
+}
+.police-ok {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #087443;
+  font-size: .72rem;
+  font-weight: 900;
+}
+.police-link-form {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  white-space: nowrap;
+}
+.police-missing {
+  color: #667085;
+  font-size: .72rem;
+  font-weight: 800;
+}
+.police-send-btn {
+  border: 1px solid var(--ll-green);
+  background: var(--ll-green);
+  color: #fff;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: .68rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+.ll-table-wrap .col-status { width: var(--col-status); text-align: center; }
+.ll-table-wrap .col-start { width: var(--col-start); }
+.ll-table-wrap .col-end { width: var(--col-end); }
+.ll-table-wrap .col-balance { width: var(--col-balance); text-align: right; }
+.ll-table-wrap .col-sec { width: var(--col-sec); text-align: right; }
+.ll-table-wrap .col-actions { width: var(--col-actions); }
+.ll-table-wrap table.table thead th {
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--ll-border);
+  color: #475467;
+  background: #f8fafc;
+  font-size: var(--ll-font-table-head);
+  font-weight: 800;
+  text-transform: none;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ll-table-wrap table.table tbody td {
+  padding: 10px 9px;
+  border-top: 1px solid var(--ll-border);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #101828;
+}
+.ll-table-wrap table.table tbody tr:nth-child(even) td { background: #fbfcfe; }
+.ll-table-wrap table.table tbody tr:hover td { background: #f2f6ff; }
+.ll-table-wrap a { color: #06f; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.ll-table-wrap td.col-tenant a,
+.ll-table-wrap td.col-tenant .tenant-text {
+  display: inline-block;
+  max-width: 100%;
+  color: #101828;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.ll-table-wrap td.col-tenant a:hover { color: var(--ll-blue); text-decoration: underline; }
+.ll-table-wrap td.col-status { font-size: .78rem; }
+.ll-status-pill,
+.ll-table-wrap td.col-status {
+  color: #087443;
+  font-weight: 800;
+}
+.end-soon,
+.ll-days-left { color: #dc3545 !important; font-weight: 900 !important; }
+.ll-renew-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.ll-renew-line .ll-days-left {
+  display: inline !important;
+  margin: 0 !important;
+  line-height: 1.1;
+}
+.ll-renew-btn {
+  min-height: 0 !important;
+  height: 16px;
+  padding: 0 5px !important;
+  font-size: .6rem;
+  line-height: 14px;
+  border-radius: 4px !important;
+  font-weight: 700;
+}
+.status-ended { color: #dc3545 !important; font-weight: 900 !important; }
+.ll-table-wrap td.col-balance a,
+.ll-table-wrap td.col-balance { color: #078044; }
+.ll-table-wrap td.col-sec { color: #101828; }
+.ll-table-wrap td.col-actions { overflow: visible; }
+.actions-wrap { display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
+.actions-wrap .btn {
+  width: 28px;
+  height: 26px;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px !important;
+  font-size: .72rem !important;
+  line-height: 1 !important;
+}
+.actions-wrap .btn > span { display: none !important; }
+.actions-wrap .btn,
+.actions-wrap .btn i { color: #fff !important; }
+.actions-wrap .btn i { margin: 0 !important; }
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  :root {
+    --ll-font-table: .70rem;      /* Tablet Layout 1 body font */
+    --ll-font-table-head: .60rem; /* Tablet Layout 1 header font */
+    --col-sn: 34px;
+    --col-id: 38px;
+    --col-tenant: 142px;
+    --col-prop: 54px;
+    --col-unit: 92px;
+    --col-vehicle: 70px;
+    --col-monthly: 94px;
+    --col-due-date: 48px;
+    --col-status: 50px;
+    --col-start: 76px;
+    --col-end: 82px;
+    --col-balance: 74px;
+    --col-sec: 64px;
+    --col-actions: 62px;
+  }
+  .ll-header { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .ll-title-wrap { flex: 1 1 180px; }
+  .ll-actions { flex: 1 1 100%; justify-content: flex-end; order: 2; }
+  .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a {
+    min-height: 30px;
+    padding: 6px 10px !important;
+    font-size: .76rem !important;
+  }
+  .ll-filters {
+    grid-template-columns: 1fr 1fr 1fr minmax(180px, 1.45fr) minmax(140px, auto) auto;
+    gap: 7px;
+  }
+  .ll-summary-card { min-height: 64px; padding: 10px 12px; gap: 9px; }
+  .ll-summary-icon { width: 35px; height: 35px; font-size: .95rem; border-radius: 10px; }
+  .ll-summary-text strong { font-size: .94rem; }
+  .ll-layout-switch { display: inline-flex; }
+  .ll-table-wrap table.table tbody td { padding: 7px 5px; }
+  .ll-table-wrap table.table thead th { padding: 7px 5px; }
+  .ll-table-wrap .col-tenant { width: var(--col-tenant); }
+  .ll-table-wrap td.col-tenant, .ll-table-wrap th.col-tenant { max-width: var(--col-tenant); }
+  .actions-wrap { gap: 5px; }
+  .actions-wrap .btn { width: 20px; height: 22px; font-size: .62rem !important; }
+
+  .ll-page--layout2 {
+    --ll-font-table: .58rem;
+    --ll-font-table-head: .50rem;
+    --col-sn: 28px;
+    --col-id: 32px;
+    --col-tenant: 118px;
+    --col-prop: 62px;
+    --col-unit: 62px;
+    --col-vehicle: 58px;
+    --col-monthly: 80px;
+    --col-due-date: 44px;
+    --col-status: 44px;
+    --col-start: 0;
+    --col-end: 62px;
+    --col-balance: 62px;
+    --col-sec: 0;
+    --col-actions: 84px;
+  }
+  .ll-page--layout2 .ll-table-wrap table.table thead th.col-start,
+  .ll-page--layout2 .ll-table-wrap table.table thead th.col-sec { display: none; }
+  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-start,
+  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-sec { display: none; }
+  .ll-page--layout2 .ll-table-wrap table.table tbody td,
+  .ll-page--layout2 .ll-table-wrap table.table thead th { padding: 6px 4px; }
+  .ll-page--layout2 .ll-table-wrap .col-property { width: var(--col-prop); }
+  .ll-page--layout2 .ll-table-wrap .col-end { width: var(--col-end); }
+  .ll-page--layout2 .ll-table-wrap .col-balance { width: var(--col-balance); }
+  .ll-layout2-sub {
+    display: block;
+    margin-top: 2px;
+    color: #667085;
+    font-size: .50rem;
+    font-weight: 800;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-page--layout2 .ll-table-wrap td.col-property,
+  .ll-page--layout2 .ll-table-wrap td.col-end,
+  .ll-page--layout2 .ll-table-wrap td.col-balance {
+    font-size: .54rem;
+    line-height: 1.05;
+  }
+  .ll-page--layout2 .actions-wrap {
+    display: inline-flex;
+    width: 80px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .ll-page--layout2 .actions-wrap .action-btn { display: none !important; }
+  .ll-page--layout2 .actions-wrap .btn-view,
+  .ll-page--layout2 .actions-wrap .btn-pay,
+  .ll-page--layout2 .actions-wrap .btn-wa-remind {
+    display: inline-flex !important;
+    width: 22px;
+    height: 22px;
+    padding: 0 !important;
+    align-items: center;
+    justify-content: center;
+  }
+  .ll-page--layout2 .actions-wrap .btn-view {
+    background: var(--ll-blue) !important;
+    border-color: var(--ll-blue) !important;
+    color: #fff !important;
+    order: 3;
+  }
+  .ll-page--layout2 .actions-wrap .btn-pay { order: 2; }
+  .ll-page--layout2 .actions-wrap .btn-wa-remind { order: 1; }
+  .ll-page--layout2 .actions-wrap .btn-pay {
+    width: 30px;
+    font-size: .58rem !important;
+    font-weight: 900;
+  }
+  .ll-page--layout2 .actions-wrap .btn-pay i { display: none !important; }
+  .ll-page--layout2 .actions-wrap .btn-pay span {
+    display: inline !important;
+    margin: 0 !important;
+    color: #fff !important;
+  }
+  .ll-page--layout2 .actions-wrap .btn-view i,
+  .ll-page--layout2 .actions-wrap .btn-view span { display: none !important; }
+  .ll-page--layout2 .actions-wrap .btn-view::before {
+    content: "\22EE";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff !important;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+}
+
+/* Dedicated tablet/mobile lease cards. Desktop table remains unchanged. */
+.ll-card-grid { display: none; }
+
+@media (max-width: 999.98px) {
+  .ll-layout-switch { display: none !important; }
+  .ll-table-wrap { display: none !important; }
+  .ll-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .ll-card {
+    min-width: 0;
+    background: #fff;
+    border: 1px solid #d7e0ea;
+    border-radius: 12px;
+    padding: 9px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.08);
+  }
+  .ll-card-head {
+    display: grid;
+    grid-template-columns: 28px minmax(0,1fr) auto;
+    align-items: start;
+    gap: 7px;
+    margin-bottom: 7px;
+  }
+  .ll-card-sn {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #0aa36c;
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 900;
+  }
+  .ll-card-title { min-width: 0; }
+  .ll-card-tenant {
+    display: block;
+    color: #101828;
+    font-size: .82rem;
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-card-unit {
+    display: block;
+    margin-top: 3px;
+    color: #06f;
+    font-size: .68rem;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-card-status {
+    border: 1px solid #7dd3a8;
+    border-radius: 999px;
+    padding: 2px 6px;
+    background: #ecfdf3;
+    color: #087443;
+    font-size: .58rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .ll-card-status.is-ended {
+    border-color: #fda29b;
+    background: #fff1f0;
+    color: #b42318;
+  }
+  .ll-card-money {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    border: 1px solid #c7d7fe;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+  }
+  .ll-card-money-item {
+    min-width: 0;
+    padding: 5px 3px;
+    text-align: center;
+    background: #f8fbff;
+    border-right: 1px solid #dbe5ff;
+  }
+  .ll-card-money-item:last-child { border-right: 0; }
+  .ll-card-label {
+    display: block;
+    color: #344054;
+    font-size: .52rem;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .ll-card-value {
+    display: block;
+    margin-top: 2px;
+    color: #101828;
+    font-size: .66rem;
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-card-value.is-balance { color: #dc3545; }
+  .ll-card-value.is-security { color: #078044; }
+  .ll-card-dates {
+    display: grid;
+    grid-template-columns: auto minmax(0,1fr) auto;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 4px;
+    border: 1px solid #c7d7fe;
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    font-size: .57rem;
+    font-weight: 800;
+  }
+  .ll-card-date { min-width: 0; white-space: nowrap; overflow: visible; }
+  .ll-card-date:last-child { text-align: right; }
+  .ll-card-countdown {
+    color: #dc3545;
+    font-size: .56rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .ll-card-countdown .ll-renew-btn { display: none !important; }
+  .ll-card-meta {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 5px;
+    margin-top: 7px;
+  }
+  .ll-card-meta-item {
+    min-width: 0;
+    padding: 4px 3px;
+    border-radius: 6px;
+    background: #f8fafc;
+    text-align: center;
+    font-size: .57rem;
+    font-weight: 800;
+    overflow: hidden;
+  }
+  .ll-card-meta-label {
+    display: block;
+    margin-bottom: 2px;
+    color: #667085;
+    font-size: .48rem;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  .ll-card-meta-item > * { max-width: 100%; }
+  .ll-card-meta-item form { justify-content: center; }
+  .ll-card-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .ll-card-actions .btn {
+    width: 100% !important;
+    height: 32px !important;
+    min-width: 0;
+    padding: 0 5px !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-size: .66rem !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    text-decoration: none !important;
+  }
+  .ll-card-actions .btn > span { display: inline !important; margin: 0 !important; }
+  .ll-card-actions .btn i { margin: 0 !important; }
+  .ll-card-actions .btn-ledger { color: #fff !important; }
+}
+
+@media (max-width: 699.98px) {
+  .ll-card-grid { grid-template-columns: minmax(0,1fr); gap: 9px; }
+}
+
+@media (max-width: 767.98px) {
+  .container,
+  .container-fluid,
+  main,
+  .content,
+  .page-content {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .ll-page {
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  .ll-header { display: block; margin-bottom: 9px; }
+  .ll-title { font-size: 1.08rem; }
+  .ll-subtitle { font-size: .72rem; }
+  .ll-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 9px;
+  }
+  .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a {
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 5px !important;
+    font-size: .68rem !important;
+  }
+  .ll-action-add { order: 1; }
+  .ll-action-default { order: 2; }
+  .ll-action-reminder { order: 3; }
+  .ll-action-ledger { order: 4; }
+  .ll-action-export { order: 5; }
+  .ll-action-payment { order: 6; }
+
+  .ll-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 9px;
+  }
+  .ll-filter-property { grid-column: 1; }
+  .ll-filter-unit { grid-column: 2; }
+  .ll-filter-status { grid-column: 3; }
+  .ll-filter-tenant { grid-column: 1 / span 2; }
+  .ll-filter-checks {
+    grid-column: 3;
+    align-self: end;
+    justify-content: center;
+    gap: 5px;
+    height: 29px;
+  }
+  .ll-filter-checks .ll-check {
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 29px;
+  }
+  .ll-filter-checks .ll-check span {
+    white-space: normal;
+    line-height: .92;
+  }
+  .ll-filter-clear { grid-column: 3; display: none !important; }
+  .ll-label { font-size: .62rem; }
+  .ll-select { height: 29px; padding: 4px 6px; font-size: .66rem; border-radius: 6px; }
+  .ll-filter-item--tenant .select2-container .select2-selection--single { height: 29px; border-radius: 6px; }
+  .ll-filter-item--tenant .select2-container .select2-selection__rendered { font-size: .66rem; line-height: 27px; padding-left: 7px; }
+  .ll-filter-item--tenant .select2-container .select2-selection__arrow { height: 27px; }
+  .ll-check { height: 29px; font-size: .64rem; gap: 4px; }
+  .ll-check input { width: 13px; height: 13px; }
+
+  .ll-summary {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    margin-bottom: 9px;
+    overflow: visible;
+  }
+  .ll-summary-card {
+    grid-column: span 2;
+    min-height: 54px;
+    padding: 8px;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid var(--ll-border) !important;
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05);
+  }
+  .ll-summary-financial { grid-column: span 3; }
+  .ll-summary-icon { width: 31px; height: 31px; border-radius: 9px; font-size: .85rem; }
+  .ll-summary-text { gap: 1px; }
+  .ll-summary-label { font-size: .58rem; line-height: 1.05; }
+  .ll-summary-text strong { font-size: .78rem; line-height: 1.05; }
+  .ll-summary-text small { display: none; }
+
+  .ll-table-wrap { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+  .ll-table-wrap table.table,
+  .ll-table-wrap table.table tbody,
+  .ll-table-wrap table.table tr,
+  .ll-table-wrap table.table td { display: block; width: 100% !important; box-sizing: border-box; }
+  .ll-table-wrap table.table thead { display: none; }
+  .ll-table-wrap table.table { table-layout: auto; border-collapse: separate; border-spacing: 0; }
+  .ll-table-wrap table.table tbody tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1fr);
+    gap: 6px 8px;
+    background: #fff;
+    border: 1px solid var(--ll-border);
+    border-radius: 11px;
+    padding: 8px 7px;
+    margin-bottom: 9px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.07);
+  }
+  .ll-table-wrap table.table tbody td {
+    border: 0;
+    padding: 0;
+    background: transparent !important;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: .72rem;
+    font-weight: 700;
+    color: #101828;
+  }
+  .ll-table-wrap td::before { display: none !important; }
+  .ll-table-wrap .col-sn,
+  .ll-table-wrap .col-id { display: none !important; }
+
+  .ll-table-wrap td.col-tenant {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto !important;
+    min-width: 0;
+    font-size: .82rem;
+    line-height: 1.15;
+    padding-right: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ll-table-wrap td.col-status {
+    position: static;
+    grid-column: 1;
+    grid-row: 3;
+    width: auto !important;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #dcfce7 !important;
+    color: #087443;
+    font-size: .62rem;
+    text-align: center;
+  }
+  .ll-table-wrap td.col-property {
+    grid-column: 2 / span 2;
+    grid-row: 1;
+    width: auto !important;
+    color: #475467;
+    font-size: .66rem;
+    text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ll-mobile-unit {
+    display: inline;
+    color: #475467;
+    font-weight: 800;
+  }
+  .ll-mobile-unit::before { content: "-"; padding: 0 2px; }
+  .ll-table-wrap td.col-property::after { content: " •"; }
+  .ll-table-wrap td.col-unit {
+    display: block !important;
+    grid-column: 2 / span 2;
+    grid-row: 1;
+    width: auto !important;
+    color: #475467;
+    font-size: .66rem;
+    padding-left: 0;
+    text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ll-table-wrap td.col-monthly {
+    grid-column: 1;
+    grid-row: 2;
+    text-align: left;
+  }
+  .ll-table-wrap td.col-sec {
+    grid-column: 1;
+    grid-row: 2;
+    padding-top: 1.05rem;
+    text-align: left;
+  }
+  .ll-table-wrap td.col-balance {
+    grid-column: 2 / span 2;
+    grid-row: 2;
+    text-align: right;
+  }
+  .ll-table-wrap td.col-monthly::before,
+  .ll-table-wrap td.col-balance::before,
+  .ll-table-wrap td.col-sec::before {
+    display: inline !important;
+    content: attr(data-short-label) ": ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-monthly,
+  .ll-table-wrap td.col-balance,
+  .ll-table-wrap td.col-sec {
+    white-space: nowrap;
+    font-size: .62rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-table-wrap td.col-start { grid-column: 2; grid-row: 3; text-align: left; }
+  .ll-table-wrap td.col-due-date { grid-column: 1; grid-row: 3; text-align: left; }
+  .ll-table-wrap td.col-end { grid-column: 3; grid-row: 3; text-align: right; }
+  .ll-table-wrap td.col-vehicle {
+    grid-column: 2;
+    grid-row: 4;
+    text-align: center;
+  }
+  .ll-table-wrap td.col-vehicle::before {
+    display: inline !important;
+    content: "Vehicle: ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-due-date::before {
+    display: inline !important;
+    content: "Due: ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-start::before {
+    display: inline !important;
+    content: attr(data-short-label) ": ";
+    color: #475467;
+    font-weight: 800;
+    font-size: .64rem;
+  }
+  .ll-table-wrap td.col-end::before { display: none !important; }
+  .ll-table-wrap td.col-status::before { display: none !important; }
+  .ll-table-wrap td.col-start,
+  .ll-table-wrap td.col-due-date,
+  .ll-table-wrap td.col-end {
+    font-size: .66rem;
+    color: #101828;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ll-table-wrap td.col-end .ll-days-left {
+    display: block !important;
+    margin-top: 2px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .ll-table-wrap td.col-end .ll-renew-line {
+    justify-content: flex-end;
+  }
+  .ll-table-wrap td.col-end .ll-renew-line .ll-days-left {
+    display: inline !important;
+    margin-top: 0;
+  }
+  .ll-table-wrap td.col-property::after { content: "" !important; }
+  .ll-table-wrap td.col-actions {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    padding-top: 7px;
+    border-top: 1px solid #eef2f7;
+    overflow: hidden;
+  }
+  .actions-wrap { display: grid; grid-template-columns: repeat(5, 1fr) 22px; gap: 6px; width: 100%; }
+  .actions-wrap .btn {
+    width: 100%;
+    height: 27px;
+    font-size: .68rem !important;
+    border-radius: 7px !important;
+    color: #fff !important;
+    border-color: rgba(255,255,255,.85) !important;
+  }
+  .actions-wrap .btn i { color: #fff !important; }
+  .actions-wrap .btn-pay i { display: none !important; }
+  .actions-wrap .btn-pay > span {
+    display: inline !important;
+    margin: 0 !important;
+    color: #fff !important;
+    font-size: .70rem;
+    font-weight: 900;
+  }
+}
+
+@media (min-width: 500px) and (max-width: 767.98px) {
+  .ll-actions {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .ll-actions .ll-btn,
+  .ll-actions .ll-export-slot .btn,
+  .ll-actions .ll-export-slot button,
+  .ll-actions .ll-export-slot a {
+    min-width: 0;
+    min-height: 28px;
+    padding: 5px 2px !important;
+    gap: 3px;
+    font-size: .56rem !important;
+  }
+  .ll-actions i { font-size: .58rem; }
+  .ll-action-add { order: 1; }
+  .ll-action-inspection { order: 2; }
+  .ll-action-default { order: 3; }
+  .ll-action-reminder { order: 4; }
+  .ll-action-ledger { order: 5; }
+  .ll-action-export { order: 6; min-width: 0; }
+  .ll-action-payment { order: 7; }
+
+  .ll-summary {
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  }
+  .ll-summary-card,
+  .ll-summary-financial { grid-column: auto; }
+  .ll-summary-card { padding: 6px; gap: 5px; }
+  .ll-summary-icon { width: 27px; height: 27px; font-size: .72rem; }
+  .ll-summary-financial .ll-summary-icon { display: none; }
+  .ll-summary-label { font-size: .52rem; }
+  .ll-summary-text strong { font-size: .68rem; }
+}
+
+@media (min-width: 500px) and (max-width: 999.98px) {
+  .ll-card-actions {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .ll-card-actions .btn {
+    height: 29px !important;
+    padding: 0 2px !important;
+    gap: 2px;
+    font-size: .56rem !important;
+  }
+  .ll-card-actions .btn i { font-size: .56rem; }
+  .ll-card-dates { gap: 3px; font-size: .54rem; }
+  .ll-card-countdown { font-size: .52rem; text-align: center; }
+}
+
+@media (max-width: 400px) {
+  .ll-actions { gap: 5px; }
+  .ll-btn, .ll-export-slot .btn, .ll-export-slot button, .ll-export-slot a { font-size: .62rem !important; }
+  .ll-table-wrap table.table tbody tr { padding: 9px 8px 7px; gap: 5px 6px; }
+  .ll-table-wrap td.col-monthly,
+  .ll-table-wrap td.col-balance,
+  .ll-table-wrap td.col-sec,
+  .ll-table-wrap td.col-start,
+  .ll-table-wrap td.col-end { font-size: .62rem; }
+}
+
+.ll-export-slot .ll-export-menu {
+  min-width: 145px;
+  padding: 5px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(16, 24, 40, .14);
+}
+.ll-export-slot .ll-export-menu .dropdown-item {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100% !important;
+  min-height: 30px;
+  padding: 6px 9px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #344054 !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
+  text-align: left;
+}
+.ll-export-slot .ll-export-menu .dropdown-item:hover,
+.ll-export-slot .ll-export-menu .dropdown-item:focus {
+  background: #f2f6ff !important;
+  color: #101828 !important;
+}
+.ll-export-slot .ll-export-menu .dropdown-item i {
+  width: 16px;
+  text-align: center;
+}
+
+.select2-dropdown .select2-results__option { font-size: .78rem; padding: 4px 8px; line-height: 1.2; }
+.select2-search__field { font-size: .78rem !important; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  (function buildLeaseCards() {
+    const grid = document.getElementById('leaseCardGrid');
+    const rows = document.querySelectorAll('.ll-table-wrap tbody tr');
+    if (!grid || !rows.length) return;
+
+    const text = (row, selector) => {
+      const el = row.querySelector(selector);
+      return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    };
+    const cleanDate = value => value.replace(/\s*(?:\d+\s+days?\s+(?:left|overdue)).*$/i, '').trim();
+    const compactDate = value => {
+      const match = value.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})$/);
+      if (!match) return value;
+      const month = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+        Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+      }[match[1]];
+      return month ? `${match[3]}-${month}-${match[2].padStart(2, '0')}` : value;
+    };
+
+    rows.forEach((row, index) => {
+      const card = document.createElement('article');
+      card.className = 'll-card';
+
+      const sn = text(row, '.col-sn') || String(index + 1);
+      const tenantCell = row.querySelector('.col-tenant');
+      const tenantName = tenantCell?.querySelector('[title]')?.getAttribute('title') || text(row, '.col-tenant') || 'Tenant';
+      const tenantHref = tenantCell?.querySelector('a')?.href || '#';
+      const unit = text(row, '.col-unit');
+      const property = text(row, '.col-property');
+      const status = text(row, '.col-status') || '-';
+      const statusEnded = /ended|terminated|inactive/i.test(status);
+      const monthly = text(row, '.col-monthly') || '-';
+      const balance = text(row, '.col-balance') || '-';
+      const security = text(row, '.col-sec') || '-';
+      const start = cleanDate(text(row, '.col-start')) || '-';
+      const endCell = row.querySelector('.col-end');
+      const end = compactDate(cleanDate(text(row, '.col-end'))) || '-';
+      const countdown = endCell?.querySelector('.ll-days-left')?.textContent.trim() || '';
+
+      card.innerHTML = `
+        <div class="ll-card-head">
+          <span class="ll-card-sn">${sn}</span>
+          <div class="ll-card-title">
+            <a class="ll-card-tenant" href="${tenantHref}" title="${tenantName.replace(/"/g, '&quot;')}">${tenantName}</a>
+            <span class="ll-card-unit">${property ? property + ' · ' : ''}${unit}</span>
+          </div>
+          <span class="ll-card-status${statusEnded ? ' is-ended' : ''}">${status}</span>
+        </div>
+        <div class="ll-card-money">
+          <div class="ll-card-money-item"><span class="ll-card-label">Monthly</span><span class="ll-card-value">${monthly}</span></div>
+          <div class="ll-card-money-item"><span class="ll-card-label">Balance</span><span class="ll-card-value is-balance">${balance}</span></div>
+          <div class="ll-card-money-item"><span class="ll-card-label">Sec. Balance</span><span class="ll-card-value is-security">${security}</span></div>
+        </div>
+        <div class="ll-card-dates">
+          <span class="ll-card-date">▣ Start ${start}</span>
+          <span class="ll-card-countdown">${countdown}</span>
+          <span class="ll-card-date">End ${end}</span>
+        </div>
+        <div class="ll-card-meta"></div>
+        <div class="ll-card-actions"></div>`;
+
+      const meta = card.querySelector('.ll-card-meta');
+      [
+        ['.col-family', 'Family'],
+        ['.col-vehicle', 'Vehicle'],
+        ['.col-police', 'Police'],
+        ['.col-bill-water', 'Water']
+      ].forEach(([selector, label]) => {
+        const source = row.querySelector(selector);
+        if (!source) return;
+        const item = document.createElement('div');
+        item.className = 'll-card-meta-item';
+        item.title = label;
+        const itemLabel = document.createElement('span');
+        itemLabel.className = 'll-card-meta-label';
+        itemLabel.textContent = label;
+        item.appendChild(itemLabel);
+        Array.from(source.childNodes).forEach(node => item.appendChild(node.cloneNode(true)));
+        meta.appendChild(item);
+      });
+
+      const actionTarget = card.querySelector('.ll-card-actions');
+      const sourceActions = row.querySelector('.actions-wrap');
+      if (sourceActions) {
+        const order = ['.btn-view', '.btn-edit', '.btn-pay', '.btn-ledger', '.btn-wa-remind', '.btn-delete'];
+        order.forEach(selector => {
+          const source = sourceActions.querySelector(selector);
+          if (!source) return;
+          const clone = source.cloneNode(true);
+          const labelMap = {
+            '.btn-view': 'View', '.btn-edit': 'Edit', '.btn-pay': 'Pay',
+            '.btn-ledger': 'Ledger', '.btn-wa-remind': 'WhatsApp', '.btn-delete': 'Delete'
+          };
+          let span = clone.querySelector('span');
+          if (!span) { span = document.createElement('span'); clone.appendChild(span); }
+          span.textContent = labelMap[selector];
+          actionTarget.appendChild(clone);
+        });
+      }
+      grid.appendChild(card);
+    });
+  })();
+
+  $('#id_tenant').select2({
+    placeholder: "Search tenant...",
+    allowClear: true,
+    width: '100%',
+    dropdownCssClass: 'tenant-compact',
+    templateResult: function (data) {
+      if (!data.id) return data.text;
+      const full = data.text || '';
+      const short = full.length > 36 ? full.slice(0, 36) + '…' : full;
+      return $('<span>').text(short).attr('title', full);
+    },
+    templateSelection: function (data) {
+      const full = data.text || '';
+      return full.length > 30 ? full.slice(0, 30) + '…' : full;
+    }
+  });
+
+  $('#id_tenant').on('select2:open', function () {
+    setTimeout(() => {
+      const inp = document.querySelector('.select2-container .select2-search__field');
+      if (inp) inp.focus();
+    }, 0);
+  });
+
+  $('#lease-filter-form input[type="checkbox"]').change(() => $('#lease-filter-form').submit());
+  $('#id_property, #id_unit, #id_status').change(function (event) {
+    if (event.target.id === 'id_property' || event.target.id === 'id_unit') {
+      $('#id_tenant').val('').trigger('change.select2');
+    }
+    $('#lease-filter-form').submit();
+  });
+  $('#id_tenant').change(function () {
+    if ($(this).val()) { $('#id_property, #id_unit').val(''); }
+    $('#lease-filter-form').submit();
+  });
+
+  document.querySelectorAll(".police-link-form").forEach(function(form) {
+    form.addEventListener("submit", function(event) {
+      const useApi = document.getElementById("use-whatsapp-api")?.checked;
+      if (!useApi) return;
+      event.preventDefault();
+      const button = form.querySelector("button[type='submit']");
+      const data = new FormData(form);
+      data.set("use_api", "1");
+      if (button) {
+        button.disabled = true;
+        button.dataset.originalText = button.textContent;
+        button.textContent = "Sending...";
+      }
+      fetch(form.action, {
+        method: "POST",
+        body: data,
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      })
+        .then(response => response.json().then(payload => ({ ok: response.ok, payload })))
+        .then(({ ok, payload }) => {
+          if (!ok || !payload.ok) throw new Error(payload.error || "WhatsApp API send failed.");
+          showLeaseToast("Police verification link and PDF sent via WhatsApp Business API.");
+        })
+        .catch(error => alert(error.message))
+        .finally(() => {
+          if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalText || "Send";
+          }
+        });
+    });
+  });
+
+  const today = new Date();
+  const MS = 86400000;
+  function daysUntil(s) {
+    const d = new Date(s);
+    if (isNaN(d)) return null;
+    const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const t1 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return Math.ceil((t1 - t0) / MS);
+  }
+
+  (function applyMobileCardLabels() {
+    const headerCells = document.querySelectorAll('.ll-table-wrap thead th');
+    const labels = Array.from(headerCells).map(th => th.textContent.trim());
+    document.querySelectorAll('.ll-table-wrap tbody tr').forEach(tr => {
+      const cells = tr.querySelectorAll('td');
+      cells.forEach((td, i) => {
+        if (labels[i]) td.setAttribute('data-label', labels[i]);
+        const normalized = (labels[i] || '').toLowerCase();
+        if (normalized.includes('monthly') || normalized.includes('rent')) td.setAttribute('data-short-label', 'Monthly');
+        if (normalized.includes('balance')) td.setAttribute('data-short-label', 'Bal');
+        if (normalized.includes('sec')) td.setAttribute('data-short-label', 'Sec Due');
+        if (normalized.includes('start')) td.setAttribute('data-short-label', 'Start');
+        if (normalized.includes('end')) td.setAttribute('data-short-label', 'End');
+      });
+    });
+  })();
+
+  (function applyTabletLayout2Stacking() {
+    if (!document.querySelector('.ll-page--layout2')) return;
+    document.querySelectorAll('.ll-table-wrap tbody tr').forEach(tr => {
+      const propertyCell = tr.querySelector('td.col-property');
+      const unitCell = tr.querySelector('td.col-unit');
+      const endCell = tr.querySelector('td.col-end');
+      const startCell = tr.querySelector('td.col-start');
+      const balanceCell = tr.querySelector('td.col-balance');
+      const secCell = tr.querySelector('td.col-sec');
+
+      function appendSub(target, source, prefix) {
+        if (!target || !source || target.querySelector(`[data-layout2-sub="${prefix}"]`)) return;
+        const text = (source.textContent || '').trim();
+        if (!text) return;
+        const sub = document.createElement('span');
+        sub.className = 'll-layout2-sub';
+        sub.dataset.layout2Sub = prefix;
+        sub.textContent = text;
+        target.appendChild(sub);
+      }
+
+      appendSub(propertyCell, unitCell, 'unit');
+      appendSub(endCell, startCell, 'start');
+      appendSub(balanceCell, secCell, 'sec');
+    });
+  })();
+
+  (function applyMobilePropertyUnit() {
+    document.querySelectorAll('.ll-table-wrap tbody tr').forEach(tr => {
+      const propertyCell = tr.querySelector('td.col-property');
+      const unitCell = tr.querySelector('td.col-unit');
+      if (!propertyCell || !unitCell || propertyCell.querySelector('.ll-mobile-unit')) return;
+      const unitText = (unitCell.textContent || '').trim();
+      if (!unitText) return;
+      const unitSpan = document.createElement('span');
+      unitSpan.className = 'll-mobile-unit';
+      unitSpan.textContent = unitText;
+      propertyCell.appendChild(unitSpan);
+    });
+  })();
+
+  document.querySelectorAll('.ll-table-wrap table tbody tr').forEach(tr => {
+    const tdTenant = tr.querySelector('td.col-tenant');
+    const tdEnd    = tr.querySelector('td.col-end');
+    const tdStatus = tr.querySelector('td.col-status');
+
+    if (tdTenant) {
+      const link = tdTenant.querySelector('a');
+      if (link) {
+        link.classList.add('tenant-text');
+        link.title = link.textContent.trim();
+      } else if (!tdTenant.querySelector('.tenant-text')) {
+        const fullName = (tdTenant.textContent || '').trim();
+        const sp = document.createElement('span');
+        sp.className = 'tenant-text';
+        sp.textContent = fullName;
+        sp.title = fullName;
+        tdTenant.innerHTML = '';
+        tdTenant.appendChild(sp);
+      }
+    }
+
+    if (tdStatus) {
+      const st = (tdStatus.textContent || '').trim().toLowerCase();
+      if (/ended|terminated|inactive/.test(st)) tdStatus.classList.add('status-ended');
+    }
+
+    if (tdEnd) {
+      const rawEnd = (tdEnd.textContent || '').trim();
+      const dl = daysUntil(rawEnd);
+      if (dl !== null) {
+        if (dl < 60) tdEnd.classList.add('end-soon');
+        if (dl < 60 && !tdEnd.querySelector('.ll-days-left')) {
+          const small = document.createElement('small');
+          small.className = 'll-days-left';
+          small.style.display = 'block';
+          small.style.fontSize = '0.68em';
+          small.style.fontWeight = '700';
+          small.style.color = '#dc3545';
+          small.textContent = dl >= 0 ? dl + ' days left' : Math.abs(dl) + ' days overdue';
+          tdEnd.appendChild(small);
+        }
+      }
+    }
+  });
+
+  document.querySelectorAll('[data-layout-link]').forEach(link => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('layout', link.dataset.layoutLink);
+    link.href = url.pathname + '?' + url.searchParams.toString();
+  });
+});
+</script>
+
+<script>
+const DEFAULT_COUNTRY_CODE = "{{ GLOBAL_SETTINGS.country_code|default:'+92'|escapejs }}";
+const TMS_CURRENCY_SYMBOL  = "{{ CURRENCY_SYMBOL|escapejs }}";
+const LEASE_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'lease' 0 'text' %}";
+const LEASE_RENEWAL_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'lease' 0 'renewal' %}";
+
+function normalizePhone(phone, defaultCountryCodeRaw) {
+  if (!phone) return null;
+  let raw = phone.toString().trim();
+  let defaultCode = (defaultCountryCodeRaw || '').trim();
+  if (defaultCode.startsWith('+')) defaultCode = defaultCode.slice(1);
+  if (raw.startsWith('+')) return raw.replace(/[^\d]/g, '') || null;
+  const cleaned = raw.replace(/\D/g, '');
+  if (!cleaned) return null;
+  if (cleaned.startsWith('00')) return cleaned.slice(2);
+  if (defaultCode && cleaned.startsWith(defaultCode)) return cleaned;
+  if (defaultCode && cleaned.startsWith('0')) return defaultCode + cleaned.slice(1);
+  return defaultCode ? defaultCode + cleaned : cleaned;
+}
+
+function leaseListCsrfToken() {
+  const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+  return m ? decodeURIComponent(m[2]) : "";
+}
+
+function formatLeaseMoneyValue(num) {
+  return (parseFloat(num) || 0).toLocaleString("en-PK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function whatsappApiUrl(template, objectId) {
+  return template.replace("/0/", "/" + encodeURIComponent(objectId) + "/");
+}
+
+function showLeaseToast(message, variant) {
+  let wrap = document.getElementById("leaseToastContainer");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "leaseToastContainer";
+    wrap.className = "position-fixed top-0 end-0 p-3";
+    wrap.style.zIndex = "1080";
+    document.body.appendChild(wrap);
+  }
+  const toast = document.createElement("div");
+  toast.className = "alert alert-" + (variant || "success") + " shadow-sm mb-2 py-2 px-3 small";
+  toast.setAttribute("role", "status");
+  toast.textContent = message;
+  wrap.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = "opacity .25s ease";
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+function leaseWhatsAppApiErrorMessage(payload, fallback) {
+  const debug = (payload && payload.debug) || {};
+  const lines = [payload?.error || fallback || "API send failed"];
+  if (debug.log_id) lines.push("Log ID: " + debug.log_id);
+  if (debug.template_name) lines.push("Template: " + debug.template_name);
+  if (debug.language_code) lines.push("Language: " + debug.language_code);
+  if (debug.body_parameter_count !== undefined) lines.push("Body params: " + debug.body_parameter_count);
+  if (debug.body_parameters && debug.body_parameters.length) lines.push("Values: " + debug.body_parameters.join(" | "));
+  if (debug.button_parameter) lines.push("Button: " + debug.button_parameter);
+  if (debug.meta_error_code) lines.push("Meta code: " + debug.meta_error_code);
+  if (debug.meta_error_subcode) lines.push("Meta subcode: " + debug.meta_error_subcode);
+  if (debug.meta_error_details) lines.push("Meta detail: " + debug.meta_error_details);
+  if (debug.meta_fbtrace_id) lines.push("fbtrace_id: " + debug.meta_fbtrace_id);
+  return lines.join("\n");
+}
+
+function showLeaseWhatsAppApiMessage(title, message) {
+  let modalEl = document.getElementById("leaseWhatsappApiMessageModal");
+  if (!modalEl) {
+    modalEl = document.createElement("div");
+    modalEl.id = "leaseWhatsappApiMessageModal";
+    modalEl.className = "modal fade";
+    modalEl.tabIndex = -1;
+    modalEl.innerHTML = `
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h5 class="modal-title h6 mb-0"></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <textarea class="form-control small" rows="12" readonly></textarea>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary js-copy-message">Copy</button>
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modalEl);
+    modalEl.querySelector(".js-copy-message").addEventListener("click", async function() {
+      const textArea = modalEl.querySelector("textarea");
+      textArea.select();
+      try {
+        await navigator.clipboard.writeText(textArea.value);
+      } catch (_) {
+        document.execCommand("copy");
+      }
+      this.textContent = "Copied";
+      setTimeout(() => { this.textContent = "Copy"; }, 1200);
+    });
+  }
+  modalEl.querySelector(".modal-title").textContent = title;
+  modalEl.querySelector("textarea").value = message;
+  if (window.bootstrap && bootstrap.Modal) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  } else {
+    console.error(message);
+    showLeaseToast(message.split("\n")[0] || title, "danger");
+  }
+}
+
+async function postLeaseWhatsAppApi(url) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "X-CSRFToken": leaseListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
+    credentials: "same-origin"
+  });
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch (_) {
+    payload = {};
+  }
+  if (!response.ok || payload.ok === false) {
+    throw new Error(leaseWhatsAppApiErrorMessage(payload, "HTTP " + response.status));
+  }
+  return payload;
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelectorAll("[data-whatsapp-api-toggle]").forEach(function(input) {
+    const key = "tms:" + input.dataset.whatsappApiToggle;
+    input.checked = localStorage.getItem(key) === "1";
+    input.addEventListener("click", function(event) {
+      event.stopPropagation();
+    }, true);
+    input.addEventListener("change", function(event) {
+      event.stopPropagation();
+      localStorage.setItem(key, input.checked ? "1" : "0");
+    });
+  });
+
+  document.querySelectorAll(".btn-wa-renew[data-object-id]").forEach(function(button) {
+    button.addEventListener("click", async function(event) {
+      event.preventDefault();
+      const leaseId = button.dataset.objectId;
+      if (!leaseId) return;
+      button.disabled = true;
+      try {
+        await postLeaseWhatsAppApi(whatsappApiUrl(LEASE_RENEWAL_WHATSAPP_API_URL_TEMPLATE, leaseId));
+        showLeaseToast("Expiry and renewal WhatsApp notices sent.");
+      } catch (error) {
+        showLeaseWhatsAppApiMessage("WhatsApp API Error", "Failed to send renewal notices:\n" + error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+});
+
+function sendWhatsAppReminder(phone, firstName, propertyName, unitNumber, balance,
+                               periodStart, periodEnd, securityRequired, securityStatus, securityBalance, leaseId, dueDate) {
+  try {
+    if (!phone) { alert("No phone number provided"); return; }
+    const formatted = normalizePhone(phone, DEFAULT_COUNTRY_CODE);
+    if (!formatted) { alert("Invalid phone number"); return; }
+    const useApi = document.getElementById("use-whatsapp-api")?.checked;
+    if (useApi && leaseId) {
+      fetch(whatsappApiUrl(LEASE_WHATSAPP_API_URL_TEMPLATE, leaseId), {
+        method: "POST",
+        headers: { "X-CSRFToken": leaseListCsrfToken(), "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      }).then(async function(response) {
+        let payload = {};
+        try {
+          payload = await response.json();
+        } catch (_) {
+          payload = {};
+        }
+        if (!response.ok || payload.ok === false) {
+          throw new Error(leaseWhatsAppApiErrorMessage(payload, `HTTP ${response.status}`));
+        }
+        showLeaseToast("WhatsApp reminder sent.");
+      }).catch(function(error) {
+        showLeaseWhatsAppApiMessage("WhatsApp API Error", "Failed to send via WhatsApp API:\n" + error.message);
+      });
+      return;
+    }
+    if (dueDate) {
+      periodEnd = `${periodEnd}\nDue Date: ${dueDate}`;
+    }
+    const formattedBalance = parseFloat(balance || 0).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let secBalanceLine = securityBalance ? `Security Deposit Balance: ${securityBalance}\n` : "";
+    const message = `Dear ${firstName},\n\n*Payment Reminder:*\nProperty: ${propertyName}\nUnit: ${unitNumber}\nPeriod: ${periodStart} – ${periodEnd}\nSecurity Deposit: ${securityRequired} (${securityStatus})\n${secBalanceLine}*Total Balance: ${TMS_CURRENCY_SYMBOL} ${formattedBalance}*\n\nPlease pay at your earliest convenience.`;
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
+  } catch (error) {
+    console.error("WhatsApp error:", error);
+    alert("Failed to send WhatsApp: " + error.message);
+  }
+}
+
+function leaseReminderRows() {
+  const seen = new Set();
+  return Array.from(document.querySelectorAll(".btn-wa-remind[data-object-id]"))
+    .filter(btn => {
+      const id = btn.dataset.objectId || "";
+      if (!id || seen.has(id) || btn.classList.contains("disabled") || parseFloat(btn.dataset.balance || "0") <= 0) return false;
+      seen.add(id);
+      return true;
+    })
+    .map(btn => ({
+      id: btn.dataset.objectId,
+      phone: btn.dataset.phone || "",
+      firstName: btn.dataset.firstName || "Tenant",
+      propertyName: btn.dataset.property || "",
+      unitNumber: btn.dataset.unit || "",
+      balance: btn.dataset.balance || "0",
+      periodStart: btn.dataset.periodStart || "",
+      periodEnd: btn.dataset.periodEnd || "",
+      securityRequired: btn.dataset.securityRequired || "",
+      securityStatus: btn.dataset.securityStatus || "",
+      securityBalance: btn.dataset.securityBalance || "",
+      dueDate: btn.dataset.dueDate || ""
+    }));
+}
+
+function openReminderSelectionModal() {
+  const rows = leaseReminderRows();
+  if (!rows.length) {
+    alert("No tenants with outstanding balance found on this filtered page.");
+    return;
+  }
+  const tbody = document.getElementById("reminder-selection-body");
+  tbody.innerHTML = "";
+  rows.forEach((row, index) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="text-center"><input type="checkbox" class="form-check-input reminder-select" data-index="${index}" checked></td>
+      <td>${row.firstName}</td>
+      <td>${row.propertyName} / ${row.unitNumber}</td>
+      <td>${row.dueDate || "-"}</td>
+      <td class="text-end">${formatLeaseMoneyValue(row.balance)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  window.leaseReminderSelection = rows;
+  const sendButton = document.getElementById("send-selected-reminders");
+  if (sendButton) {
+    sendButton.onclick = sendSelectedReminders;
+  }
+  const modalEl = document.getElementById("reminderSelectionModal");
+  if (window.bootstrap && bootstrap.Modal) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  } else {
+    modalEl.style.display = "block";
+  }
+}
+
+async function sendSelectedReminders() {
+  const rows = window.leaseReminderSelection || [];
+  const selected = Array.from(document.querySelectorAll(".reminder-select:checked"))
+    .map(input => rows[parseInt(input.dataset.index, 10)])
+    .filter(Boolean);
+  if (!selected.length) {
+    alert("Please select at least one tenant.");
+    return;
+  }
+  const useApi = document.getElementById("use-whatsapp-api")?.checked;
+  let sent = 0;
+  let failed = 0;
+  for (const row of selected) {
+    try {
+      if (useApi) {
+        await postLeaseWhatsAppApi(whatsappApiUrl(LEASE_WHATSAPP_API_URL_TEMPLATE, row.id));
+      } else {
+        sendWhatsAppReminder(row.phone, row.firstName, row.propertyName, row.unitNumber, row.balance, row.periodStart, row.periodEnd, row.securityRequired, row.securityStatus, row.securityBalance, row.id, row.dueDate);
+      }
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      console.error("Reminder send failed", row, error);
+    }
+  }
+  showLeaseToast(`Reminder send complete. Sent/opened: ${sent}. Failed: ${failed}.`, failed ? "warning" : "success");
+}
+document.querySelectorAll(".lease-water-badge").forEach(function (badge) {
+  badge.addEventListener("click", function () {
+    const oldValue = badge.dataset.value;
+    const newValue = oldValue === "1" ? "0" : "1";
+
+    badge.disabled = true;
+
+    const formData = new FormData();
+    formData.append("value", newValue);
+
+    fetch(badge.dataset.url, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) throw new Error("Update failed");
+
+        badge.dataset.value = data.bill_water_charges ? "1" : "0";
+        badge.textContent = data.label;
+        badge.classList.toggle("bg-success", data.bill_water_charges);
+        badge.classList.toggle("bg-secondary", !data.bill_water_charges);
+      })
+      .catch(() => {
+        alert("Could not update Bill Water.");
+      })
+      .finally(() => {
+        badge.disabled = false;
+      });
+  });
+});
+
+document.querySelectorAll(".lease-due-date-badge").forEach(function (badge) {
+  badge.addEventListener("click", function () {
+    const currentValue = badge.dataset.value || "";
+    const newValue = prompt("Update due date", currentValue);
+    if (newValue === null) return;
+    if (newValue.length > 100) {
+      alert("Due date cannot be more than 100 characters.");
+      return;
+    }
+
+    badge.disabled = true;
+
+    const formData = new FormData();
+    formData.append("value", newValue);
+
+    fetch(badge.dataset.url, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || "Update failed");
+
+        badge.dataset.value = data.due_date || "";
+        badge.textContent = data.short_label || "-";
+        badge.title = data.due_date || "Click to set due date";
+        showLeaseToast("Due date updated.");
+      })
+      .catch(error => {
+        alert(error.message || "Could not update Due Date.");
+      })
+      .finally(() => {
+        badge.disabled = false;
+      });
+  });
+});
+
+let activeVehicleBadge = null;
+let activeVehicleUrl = "";
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, function (ch) {
+    return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"}[ch];
+  });
+}
+
+function updateVehicleBadge(data) {
+  if (!activeVehicleBadge || !data) return;
+  activeVehicleBadge.textContent = data.label || "Not Entered";
+  activeVehicleBadge.classList.remove(
+    "vehicle-info-pill--yes",
+    "vehicle-info-pill--pending",
+    "vehicle-info-pill--no",
+    "vehicle-info-pill--missing"
+  );
+  if (data.status === "yes") activeVehicleBadge.classList.add("vehicle-info-pill--yes");
+  else if (data.status === "pending" || data.status === "need_info") activeVehicleBadge.classList.add("vehicle-info-pill--pending");
+  else if (data.status === "no") activeVehicleBadge.classList.add("vehicle-info-pill--no");
+  else activeVehicleBadge.classList.add("vehicle-info-pill--missing");
+}
+
+function vehicleFileActions(url, label) {
+  if (!url) return "";
+  const safeUrl = escapeHtml(url);
+  const safeLabel = escapeHtml(label);
+  return `
+    <a class="btn btn-sm btn-outline-primary" href="${safeUrl}" target="_blank" download>${safeLabel}</a>
+    <button type="button" class="btn btn-sm btn-outline-secondary vehicle-share-btn" data-share-url="${safeUrl}">Share</button>
+  `;
+}
+
+function vehicleCard(item, pending) {
+  const photo = item.vehicle_photo_url
+    ? `<img class="vehicle-modal-photo" src="${escapeHtml(item.vehicle_photo_url)}" alt="Vehicle photo">`
+    : `<div class="vehicle-modal-photo d-flex align-items-center justify-content-center text-muted small">No photo</div>`;
+  return `
+    <div class="vehicle-modal-card">
+      ${photo}
+      <div class="vehicle-modal-card-body">
+        <div class="vehicle-modal-line"><span>Status</span><span>${pending ? "Pending" : "Active"}</span></div>
+        <div class="vehicle-modal-line"><span>Type</span><span>${escapeHtml(item.type || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Reg #</span><span>${escapeHtml(item.registration_number || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Make / Model</span><span>${escapeHtml([item.make, item.model].filter(Boolean).join(" / ") || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Color</span><span>${escapeHtml(item.color || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Year</span><span>${escapeHtml(item.year || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Owner</span><span>${escapeHtml(item.owner_name || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>CNIC</span><span>${escapeHtml(item.owner_cnic_display || item.owner_cnic || "-")}</span></div>
+        <div class="vehicle-modal-line"><span>Parking</span><span>${escapeHtml(item.parking_slot || "-")}</span></div>
+        <div class="vehicle-modal-actions">
+          ${vehicleFileActions(item.vehicle_photo_url, "Vehicle Photo")}
+          ${vehicleFileActions(item.registration_book_url, "Reg Book")}
+          ${pending ? `<button type="button" class="btn btn-sm btn-success vehicle-approve-btn" data-approve-url="${escapeHtml(item.approve_url)}">Approve</button>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function vehicleTypeOptions(vehicleTypes) {
+  return (vehicleTypes || []).map(item => (
+    `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
+  )).join("");
+}
+
+function renderVehicleModal(data) {
+  updateVehicleBadge(data);
+  document.getElementById("vehicleInfoModalLabel").textContent =
+    `Vehicle Information - ${data.tenant || ""} ${data.unit ? "(" + data.unit + ")" : ""}`;
+
+  const vehiclesHtml = data.vehicles && data.vehicles.length
+    ? `<h6 class="mb-2">Saved Vehicle Info</h6><div class="vehicle-modal-grid mb-3">${data.vehicles.map(item => vehicleCard(item, false)).join("")}</div>`
+    : "";
+  const pendingHtml = data.pending && data.pending.length
+    ? `<h6 class="mb-2">Pending Vehicle Info</h6><div class="vehicle-modal-grid mb-3">${data.pending.map(item => vehicleCard(item, true)).join("")}</div>`
+    : "";
+
+  document.getElementById("vehicleInfoModalBody").innerHTML = `
+    ${vehiclesHtml}
+    ${pendingHtml}
+    ${!vehiclesHtml && !pendingHtml ? `<div class="alert alert-light border py-2 small mb-3">No vehicle information is saved yet.</div>` : ""}
+    <form id="vehicleInfoForm" class="vehicle-entry-panel" enctype="multipart/form-data">
+      <div class="fw-bold mb-2">Have Vehicle?</div>
+      <div class="d-flex gap-3 mb-3">
+        <label class="form-check-label"><input class="form-check-input me-1" type="radio" name="has_vehicle" value="1" ${data.has_vehicle === true ? "checked" : ""}> Yes</label>
+        <label class="form-check-label"><input class="form-check-input me-1" type="radio" name="has_vehicle" value="0" ${data.has_vehicle === false ? "checked" : ""}> No</label>
+      </div>
+      <div id="vehicleFields" class="${data.has_vehicle === false ? "d-none" : ""}">
+        <div class="row g-2">
+          <div class="col-12 col-md-4">
+            <label class="form-label small mb-1">Vehicle Type</label>
+            <select name="vehicle_type" class="form-select form-select-sm">
+              <option value="">Select type</option>
+              ${vehicleTypeOptions(data.vehicle_types)}
+            </select>
+          </div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Notes</label><input name="notes" class="form-control form-control-sm"></div>
+          <div class="col-12 col-md-4"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="submit" class="btn btn-sm btn-success">Save</button>
+      </div>
+    </form>
+  `;
+
+  bindVehicleModalEvents();
+}
+
+function bindVehicleModalEvents() {
+  document.querySelectorAll('input[name="has_vehicle"]').forEach(input => {
+    input.addEventListener("change", function () {
+      document.getElementById("vehicleFields")?.classList.toggle("d-none", input.value === "0" && input.checked);
+    });
+  });
+
+  document.querySelectorAll(".vehicle-share-btn").forEach(button => {
+    button.addEventListener("click", async function () {
+      const url = button.dataset.shareUrl;
+      if (navigator.share) {
+        await navigator.share({ title: "Vehicle file", url });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        showLeaseToast("File link copied.");
+      } else {
+        prompt("Copy file link", url);
+      }
+    });
+  });
+
+  document.querySelectorAll(".vehicle-approve-btn").forEach(button => {
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      fetch(button.dataset.approveUrl, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": getCookie("csrftoken"),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+      })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+          if (!ok || !data.success) throw new Error(data.error || "Approval failed");
+          renderVehicleModal(data);
+          showLeaseToast("Vehicle approved.");
+        })
+        .catch(error => alert(error.message || "Could not approve vehicle."))
+        .finally(() => { button.disabled = false; });
+    });
+  });
+
+  document.getElementById("vehicleInfoForm")?.addEventListener("submit", function (event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    fetch(activeVehicleUrl, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || "Save failed");
+        renderVehicleModal(data);
+        showLeaseToast("Vehicle information saved.");
+      })
+      .catch(error => alert(error.message || "Could not save vehicle information."))
+      .finally(() => { submitButton.disabled = false; });
+  });
+}
+
+document.querySelectorAll(".vehicle-info-pill").forEach(function (badge) {
+  badge.addEventListener("click", function () {
+    activeVehicleBadge = badge;
+    activeVehicleUrl = badge.dataset.vehicleUrl;
+    document.getElementById("vehicleInfoModalBody").innerHTML = '<div class="text-muted small">Loading...</div>';
+    const modalEl = document.getElementById("vehicleInfoModal");
+    if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else {
+      modalEl.style.display = "block";
+    }
+    fetch(activeVehicleUrl, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(response => response.json())
+      .then(data => renderVehicleModal(data))
+      .catch(() => {
+        document.getElementById("vehicleInfoModalBody").innerHTML = '<div class="alert alert-danger py-2 small">Could not load vehicle information.</div>';
+      });
+  });
+});
+
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(";").shift();
+  return "";
+}
+document.getElementById("send-all-reminders")?.addEventListener("click", openReminderSelectionModal);
+document.getElementById("send-selected-reminders")?.addEventListener("click", sendSelectedReminders);
+</script>
+
+<div class="modal fade" id="reminderSelectionModal" tabindex="-1" aria-labelledby="reminderSelectionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="reminderSelectionModalLabel">Select Balance Reminders</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th class="text-center">Send</th>
+                <th>Tenant</th>
+                <th>Property / Unit</th>
+                <th>Due Date</th>
+                <th class="text-end">Balance</th>
+              </tr>
+            </thead>
+            <tbody id="reminder-selection-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="send-selected-reminders">
+          <i class="fab fa-whatsapp"></i> Send Selected
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="progressModalLabel">Sending Reminders</h5>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3">
+          <div id="reminder-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+        <p id="progress-text">Preparing to send reminders...</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

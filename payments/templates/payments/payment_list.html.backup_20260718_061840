@@ -425,28 +425,15 @@
     max-width: 1700px;
   }
   .payment-list-dense {
-    /* =========================================================
-       TWEAK PANEL — this is the ONE place to adjust font sizes
-       and colors. These variables are read by desktop, tablet,
-       AND mobile rules further down (they're all scoped to this
-       same .payment-list-dense element), so a change here applies
-       everywhere unless a specific breakpoint overrides it below.
-       ========================================================= */
-    --payment-desktop-table-font-size: 1.12492rem;   /* base row text size, desktop table */
-    --payment-desktop-header-font-size: .78rem;      /* column header text size, desktop */
-
-    --payment-tenant-color: #185fa5;                 /* tenant name/link color — desktop, tablet, mobile */
-
-    --payment-desktop-tenant-size: .92rem;           /* was 1.92rem — far too large vs. the rest of the row */
-    --payment-desktop-tenant-weight: 600;            /* was 800 — 800 reads as shouty at this size */
+    /* Desktop payment list tweak panel */
+    --payment-desktop-table-font-size: 1.12492rem;
+    --payment-desktop-header-font-size: .78rem;
+    --payment-desktop-tenant-size: 1.92rem;
+    --payment-desktop-tenant-weight: 800;
     --payment-desktop-unit-size: 1.192rem;
     --payment-desktop-unit-weight: 800;
     --payment-desktop-amount-size: 1.594rem;
     --payment-desktop-amount-weight: 800;
-
-    --payment-card-tenant-size: .84rem;              /* tablet + mobile card view, was .92rem */
-    --payment-card-tenant-size-sm: .78rem;           /* mobile only (<=767px), was .86rem */
-
     --payment-col-sn: 3.5rem;
     --payment-col-tenant: 13rem;
     --payment-col-property: 8rem;
@@ -514,13 +501,6 @@
     font-weight: 700;
   }
 
-  @media (min-width: 992px) {
-  /* ===== Everything below (tenant/unit/amount sizing, header/hover styling,
-     table.table base rules) is DESKTOP-ONLY. Previously this had no @media
-     guard at all, so these rules (e.g. the 1.594rem amount font-size) were
-     leaking into mobile/tablet and silently overriding the card-view rules
-     on any element that matches both selectors, because a more specific
-     child rule beats an inherited parent value even under !important. ===== */
   .payment-list-dense table.table {
     width: 100%;
     table-layout: fixed;
@@ -547,7 +527,6 @@
   }
   .payment-list-dense td.col-tenant,
   .payment-list-dense td.col-tenant a {
-    /* DESKTOP tenant name size/weight — controlled by the tweak panel above */
     font-size: var(--payment-desktop-tenant-size);
     font-weight: var(--payment-desktop-tenant-weight);
   }
@@ -596,13 +575,8 @@
     background: #f2f6ff;
   }
   .payment-list-dense table.table a {
-    /* Only the tenant column contains links today, so this styles
-       the tenant name. Color comes from --payment-tenant-color above. */
-    color: var(--payment-tenant-color);
-    font-weight: 600;
-    text-decoration: none;
-  }
-  .payment-list-dense table.table a:hover {
+    color: #06f;
+    font-weight: 800;
     text-decoration: underline;
     text-underline-offset: 2px;
   }
@@ -704,9 +678,6 @@
     font-size: .76rem;
   }
 
-  }
-  /* end desktop-only guard */
-
   @media (min-width: 992px) {
     .payment-list-dense th.col-unit,
     .payment-list-dense td.col-unit {
@@ -807,12 +778,11 @@
       align-self: baseline !important;
     }
     .payment-list-dense td.col-tenant {
-      /* TABLET + MOBILE card view tenant size — controlled by --payment-card-tenant-size above */
       grid-column: 2 !important; grid-row: 1 !important;
-      font-size: var(--payment-card-tenant-size) !important; font-weight: 600 !important;
+      font-size: .92rem !important; font-weight: 600 !important;
       overflow: hidden !important; white-space: nowrap !important; text-overflow: ellipsis !important;
     }
-    .payment-list-dense td.col-tenant a { color: var(--payment-tenant-color) !important; text-decoration: none !important; }
+    .payment-list-dense td.col-tenant a { color: #0d6efd !important; text-decoration: none !important; }
     .payment-list-dense td.col-amount {
       grid-column: 3 !important; grid-row: 1 !important;
       text-align: right !important; white-space: nowrap !important;
@@ -838,10 +808,7 @@
     .payment-list-dense td.col-date i { margin-right: .2rem !important; }
 
     .payment-list-dense td.col-balance-row {
-      /* Spans the full row width; doesn't force column 3 wide the way a
-         non-spanning item would, since the space gets absorbed by the
-         flexible tenant/badge column instead. */
-      grid-column: 1 / 4 !important; grid-row: 3 !important;
+      grid-column: 1 / 3 !important; grid-row: 3 !important;
       display: flex !important; align-items: center !important;
       font-size: .78rem !important; font-weight: 600 !important;
       margin-top: .3rem !important; padding-top: .5rem !important;
@@ -852,13 +819,9 @@
     .payment-list-dense td.col-balance-row i { margin-right: .3rem !important; }
 
     .payment-list-dense td.col-actions {
-      /* Own row, full width, right-aligned — kept OUT of column 3 so the
-         four round buttons can't force that column (shared with amount
-         and date on rows 1-2) to balloon in width. This was the actual
-         cause of the tenant name looking cramped/truncated on mobile. */
-      grid-column: 1 / 4 !important; grid-row: 4 !important;
-      display: flex !important; justify-content: flex-end !important;
-      margin-top: .5rem !important;
+      grid-column: 3 !important; grid-row: 3 !important;
+      justify-self: end !important; align-self: center !important;
+      margin-top: .3rem !important; padding-top: .5rem !important;
     }
     .payment-list-dense td.col-actions .actions-wrap { display: flex !important; gap: .4rem !important; }
     .payment-list-dense td.col-actions .btn {
@@ -879,8 +842,6 @@
     .payment-list-dense td.col-unit,
     .payment-list-dense td.col-method,
     .payment-list-dense td.col-balance,
-    .payment-list-dense td.col-lease-balance,
-    .payment-list-dense td.col-security-balance,
     .payment-list-dense td.col-description { display: none !important; }
 
     .payment-filter-grid {
@@ -900,7 +861,7 @@
 
   @media (max-width: 767px) {
     .payment-list-dense table.table tbody tr { padding: .75rem .85rem !important; }
-    .payment-list-dense td.col-tenant { font-size: var(--payment-card-tenant-size-sm) !important; }  /* MOBILE-only override */
+    .payment-list-dense td.col-tenant { font-size: .86rem !important; }
     .payment-list-dense td.col-amount { font-size: .86rem !important; }
     .payment-list-dense td.col-property .prop-badge,
     .payment-list-dense td.col-property .unit-badge { max-width: 6.2rem !important; font-size: .64rem !important; }

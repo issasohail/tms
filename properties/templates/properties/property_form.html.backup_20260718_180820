@@ -1,0 +1,215 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}Update{% else %}Create{% endif %} Property{% endblock %}
+
+{% block extra_css %}
+<style>
+  .property-form-page {
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  .property-form-card {
+    border: 1px solid #dde3ea;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+    overflow: hidden;
+  }
+
+  .property-form-card .card-header {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-bottom: 1px solid #dde3ea;
+    padding: .7rem .9rem;
+  }
+
+  .property-form-title {
+    color: #111827;
+    font-size: 1.08rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  .property-form-card .card-body {
+    padding: .85rem .9rem;
+  }
+
+  .property-section {
+    border: 1px solid #e7ebf0;
+    border-radius: 8px;
+    padding: .65rem .7rem .2rem;
+    background: #fff;
+  }
+
+  .property-section + .property-section {
+    margin-top: .7rem;
+  }
+
+  .property-section-title {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    margin-bottom: .45rem;
+    color: #334155;
+    font-size: .76rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .property-form-page .mb-3 {
+    margin-bottom: .55rem !important;
+  }
+
+  .property-form-page label {
+    color: #1f2937;
+    font-size: .79rem;
+    font-weight: 600;
+    margin-bottom: .18rem;
+  }
+
+  .property-form-page .form-control,
+  .property-form-page .form-select {
+    min-height: 34px;
+    border-color: #d8dee6;
+    border-radius: 6px;
+    font-size: .86rem;
+    padding: .32rem .5rem;
+  }
+
+  .property-form-page textarea.form-control {
+    min-height: 58px;
+    max-height: 86px;
+    resize: vertical;
+  }
+
+  .property-form-page .form-text,
+  .property-form-page .invalid-feedback {
+    font-size: .73rem;
+    margin-top: .18rem;
+  }
+
+  .property-actions {
+    border-top: 1px solid #e7ebf0;
+    margin-top: .75rem;
+    padding-top: .75rem;
+  }
+
+  @media (max-width: 575.98px) {
+    .property-form-card .card-header,
+    .property-form-card .card-body {
+      padding-left: .7rem;
+      padding-right: .7rem;
+    }
+
+    .property-section {
+      padding-left: .6rem;
+      padding-right: .6rem;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="property-form-page">
+  <div class="card property-form-card">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <h4 class="property-form-title">
+        {% if form.instance.pk %}Update{% else %}Create{% endif %} Property
+      </h4>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="history.back()">
+        <i class="bi bi-arrow-left"></i> Go Back
+      </button>
+    </div>
+
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+        {{ form.non_field_errors }}
+
+        <div class="property-section">
+          <div class="property-section-title">
+            <i class="bi bi-building"></i>
+            Property
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-6 col-xl-3">{{ form.property_name|as_crispy_field }}</div>
+            <div class="col-6 col-md-3 col-xl-2">{{ form.type|as_crispy_field }}</div>
+            <div class="col-6 col-md-3 col-xl-2">{{ form.property_type|as_crispy_field }}</div>
+            <div class="col-6 col-md-3 col-xl-2">{{ form.total_units|as_crispy_field }}</div>
+            <div class="col-12 col-md-9 col-xl-3">{{ form.property_address1|as_crispy_field }}</div>
+            <div class="col-12 col-md-6 col-xl-3">{{ form.property_address2|as_crispy_field }}</div>
+            <div class="col-6 col-md-2 col-xl-2">{{ form.property_city|as_crispy_field }}</div>
+            <div class="col-6 col-md-2 col-xl-2">{{ form.property_state|as_crispy_field }}</div>
+            <div class="col-6 col-md-2 col-xl-2">{{ form.property_zipcode|as_crispy_field }}</div>
+            <div class="col-12 col-xl-3">{{ form.description|as_crispy_field }}</div>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <div class="property-section-title">
+            <i class="bi bi-shield-check"></i>
+            Police Verification Address
+          </div>
+          <div class="row g-2">
+            <div class="col-12 col-md-4 col-xl-3">{{ form.house_no|as_crispy_field }}</div>
+            <div class="col-6 col-md-2 col-xl-1">{{ form.street_no|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-3">{{ form.colony|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-3">{{ form.road|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.covered_area_type|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.police_station|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.police_division|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.police_circle|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.zila|as_crispy_field }}</div>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <div class="property-section-title">
+            <i class="bi bi-person-vcard"></i>
+            Owner
+          </div>
+          <div class="row g-2">
+            <div class="col-4 col-md-2 col-xl-1">{{ form.owner_prefix|as_crispy_field }}</div>
+            <div class="col-8 col-md-4 col-xl-3">{{ form.owner_name|as_crispy_field }}</div>
+            <div class="col-8 col-md-4 col-xl-3">{{ form.owner_father_name|as_crispy_field }}</div>
+            <div class="col-4 col-md-2 col-xl-1">{{ form.relation|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-2">{{ form.owner_cnic|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-2">{{ form.owner_phone|as_crispy_field }}</div>
+            <div class="col-12 col-md-8 col-xl-4">{{ form.owner_address|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-3">{{ form.owner_photo|as_crispy_field }}</div>
+            <div class="col-12 col-xl-8">{{ form.bank_account_details|as_crispy_field }}</div>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <div class="property-section-title">
+            <i class="bi bi-person-check"></i>
+            Caretaker
+          </div>
+          <div class="row g-2">
+            <div class="col-4 col-md-2 col-xl-1">{{ form.caretaker_prefix|as_crispy_field }}</div>
+            <div class="col-8 col-md-4 col-xl-3">{{ form.caretaker_name|as_crispy_field }}</div>
+            <div class="col-8 col-md-4 col-xl-3">{{ form.caretaker_father_name|as_crispy_field }}</div>
+            <div class="col-4 col-md-2 col-xl-1">{{ form.caretaker_relation|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-2">{{ form.caretaker_cnic|as_crispy_field }}</div>
+            <div class="col-12 col-md-4 col-xl-2">{{ form.caretaker_phone|as_crispy_field }}</div>
+            <div class="col-12 col-md-8 col-xl-4">{{ form.caretaker_address|as_crispy_field }}</div>
+          </div>
+        </div>
+
+        <div class="property-actions d-flex flex-wrap justify-content-end gap-2">
+          <a href="{% url 'properties:property_list' %}" class="btn btn-outline-secondary btn-sm">
+            Cancel
+          </a>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-check2-circle"></i> Save Property
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

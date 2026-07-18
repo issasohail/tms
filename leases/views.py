@@ -1385,7 +1385,7 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
     template_name = "leases/lease_form.html"
 
     def get_success_url(self):
-        return reverse("leases:lease_detail", kwargs={"pk": self.object.pk})
+        return reverse("leases:lease_welcome_whatsapp", kwargs={"pk": self.object.pk})
 
     # ---------- Form setup ----------
     def get_form(self, form_class=None):

@@ -8,6 +8,41 @@ from leases.models import AgreementPlaceholder, WhatsAppTemplate
 from core.utils.identity import format_phone
 
 
+DEFAULT_TENANT_WELCOME_MESSAGE = """*Welcome, [TENANT_NAME]!*
+
+Your rental agreement for *[PROPERTY_NAME] - Unit [UNIT_NUMBER]* has been generated.
+
+*Lease details*
+• Agreement period: [LEASE_START_DATE] to [LEASE_END_DATE]
+• Total monthly payment: Rs. [TOTAL_MONTHLY_PAYMENT]
+• Security deposit: Rs. [SECURITY_DEPOSIT]
+• Rent due: [DUE_DATE]
+[SMART_METER_DETAILS]
+
+*Owner payment account*
+[BANK_ACCOUNT]
+
+[LATE_FEE_NOTICE]
+
+Failure to make payment on time may affect utility services such as electricity, water, and internet.
+
+*Important WhatsApp contact*
+Please save *[BUSINESS_WHATSAPP_NUMBER]*. You will receive invoices from this number. You can also use it to:
+• Send payment receipts
+• Report maintenance issues
+• Ask rental or payment questions
+
+After making a payment, send the payment receipt to this WhatsApp number. If you do not receive a payment receipt or confirmation message within 24 hours, please contact the property owner or manager at [PROPERTY_CONTACT_NUMBER].
+
+*Before moving in*
+1. Read the agreement carefully, sign it, and submit the signed copy.
+2. Submit a copy of your police verification report.
+3. Tell the property owner or manager if anything in the unit is not working.
+4. Review and sign the inspection sheet together with the agreement.
+
+Thank you, and welcome to your new home!"""
+
+
 def _lease_bank_account(lease):
     if not lease:
         return ""
@@ -45,11 +80,70 @@ def _date(value):
     return value.strftime("%Y-%m-%d") if value else ""
 
 
+def _contact_phone(value):
+    raw = str(value or "").strip()
+    digits = re.sub(r"\D+", "", raw)
+    if len(digits) == 11 and digits.startswith("0"):
+        return f"{digits[:4]}-{digits[4:7]}-{digits[7:]}"
+    return format_phone(raw)
+
+
 def _lease_balance(lease):
     balance = getattr(lease, "get_balance", 0)
     if callable(balance):
         balance = balance()
     return balance or 0
+
+
+def _total_monthly_payment(lease):
+    return sum(
+        (
+            getattr(lease, "monthly_rent", 0) or 0,
+            getattr(lease, "society_maintenance", 0) or 0,
+            getattr(lease, "water_charges", 0) or 0,
+            getattr(lease, "internet_charges", 0) or 0,
+        )
+    )
+
+
+def _reading(value):
+    if value in (None, ""):
+        return ""
+    try:
+        return f"{Decimal(value):,.3f}"
+    except Exception:
+        return str(value)
+
+
+def _smart_meter_details(lease, unit):
+    if not unit or not getattr(unit, "is_smart_meter", False):
+        return ""
+
+    meter = None
+    meter_manager = getattr(unit, "current_meters", None)
+    if meter_manager is not None:
+        meter = (
+            meter_manager.filter(
+                is_active=True,
+                meter_type="electric",
+                meter_role="billing",
+            )
+            .order_by("id")
+            .first()
+        )
+
+    meter_number = (
+        getattr(meter, "meter_number", "")
+        or getattr(unit, "electric_meter_num", "")
+        or "Not recorded"
+    )
+    live_reading = getattr(getattr(meter, "latest_live", None), "total_energy", None)
+    reading = _reading(
+        live_reading
+        if live_reading is not None
+        else getattr(lease, "electricity_meter_reading", None)
+    ) or "Not available"
+    return f"• Smart electric meter: {meter_number}\n• Current meter reading: {reading} kWh"
 
 
 def _meter_numbers(unit):
@@ -70,9 +164,37 @@ def _meter_numbers(unit):
 
 
 def lease_whatsapp_context(lease, request=None):
+    from core.models import GlobalSettings
+    from leases.models_late_fee import get_effective_late_fee_settings
+
     tenant = getattr(lease, "tenant", None)
     unit = getattr(lease, "unit", None)
     property_obj = getattr(unit, "property", None)
+    settings_obj = GlobalSettings.get_solo()
+    late_fee_settings = get_effective_late_fee_settings(lease)
+    due_date = getattr(lease, "due_date", "") or "the stated due date"
+    due_date_in_sentence = str(due_date).rstrip(". ")
+    late_fee_notice = (
+        f"Please pay by {due_date_in_sentence} to avoid late-payment charges."
+    )
+    if late_fee_settings.get("enabled"):
+        interval_days = int(late_fee_settings.get("reminder_interval_days") or 1)
+        grace_days = int(late_fee_settings.get("grace_days") or 0)
+        if late_fee_settings.get("type") == "percent":
+            fee_charge = f"{_money(late_fee_settings.get('percent'))}%"
+        else:
+            amount = late_fee_settings.get("amount") or getattr(lease, "late_fee", 0)
+            fee_charge = f"Rs. {_money(amount)}"
+        grace_text = (
+            f" after a {grace_days}-day grace period"
+            if grace_days
+            else " after the due date"
+        )
+        late_fee_notice = (
+            f"Please pay by {due_date_in_sentence}. Late payment may incur a charge of "
+            f"{fee_charge} every {interval_days} days{grace_text}."
+        )
+
     context = {
         "TENANT_NAME": tenant.get_full_name() if tenant else "",
         "BUILDING_NAME": getattr(property_obj, "property_name", "") or "",
@@ -80,12 +202,29 @@ def lease_whatsapp_context(lease, request=None):
         "UNIT_NUMBER": getattr(unit, "unit_number", "") or "",
         "LEASE_START_DATE": _date(getattr(lease, "start_date", None)),
         "LEASE_END_DATE": _date(getattr(lease, "end_date", None)),
-        "DUE_DATE": getattr(lease, "due_date", "") or "",
+        # Backward-compatible aliases used by older saved WhatsApp templates.
+        "START_DATE": _date(getattr(lease, "start_date", None)),
+        "END_DATE": _date(getattr(lease, "end_date", None)),
+        "DUE_DATE": due_date,
         "MONTHLY_RENT": _money(getattr(lease, "monthly_rent", 0)),
+        "TOTAL_MONTHLY_PAYMENT": _money(_total_monthly_payment(lease)),
+        "TOTAL_PAYMENT": _money(_total_monthly_payment(lease)),
         "SECURITY_DEPOSIT": _money(getattr(lease, "security_deposit", 0)),
         "BALANCE_AMOUNT": _money(_lease_balance(lease)),
         "METER_NUMBERS": _meter_numbers(unit),
-        "BANK_ACCOUNT": _lease_bank_account(lease),
+        "BANK_ACCOUNT": _lease_bank_account(lease) or (
+            "Bank account information has not been recorded. Please contact the "
+            "property owner or manager before making payment."
+        ),
+        "SMART_METER_DETAILS": _smart_meter_details(lease, unit),
+        "BUSINESS_WHATSAPP_NUMBER": _contact_phone(settings_obj.whatsapp_number),
+        "OFFICE_NUMBER": _contact_phone(settings_obj.whatsapp_number),
+        "ELECTRIC_METER": getattr(unit, "electric_meter_num", "") or "Not recorded",
+        "PROPERTY_CONTACT_NUMBER": _contact_phone(
+            getattr(property_obj, "caretaker_phone", "")
+            or getattr(property_obj, "owner_phone", "")
+        ) or "the contact number provided to you",
+        "LATE_FEE_NOTICE": late_fee_notice,
     }
 
     if request is not None and unit is not None:
@@ -135,6 +274,12 @@ def render_whatsapp_template(template_type, lease, request=None):
         is_active=True,
     ).first()
     body = template.body if template else ""
+    if (
+        template_type == WhatsAppTemplate.TEMPLATE_TENANT_WELCOME
+        and template
+        and not body.strip()
+    ):
+        body = DEFAULT_TENANT_WELCOME_MESSAGE
     context = lease_whatsapp_context(lease, request=request)
     rendered = body or ""
     for key, value in context.items():

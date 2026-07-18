@@ -1,7 +1,81 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from django.test import TestCase
 from django.test import SimpleTestCase
+
+
+class TenantWelcomeWhatsAppTests(TestCase):
+    def test_empty_active_template_uses_readable_welcome_message(self):
+        from core.models import GlobalSettings
+        from leases.models import WhatsAppTemplate
+        from leases.whatsapp import render_whatsapp_template
+
+        settings_obj = GlobalSettings.get_solo()
+        settings_obj.whatsapp_number = "+923001234567"
+        settings_obj.late_fee_enabled = True
+        settings_obj.late_fee_type = "fixed"
+        settings_obj.late_fee_amount = 500
+        settings_obj.late_fee_grace_days = 2
+        settings_obj.late_fee_reminder_interval_days = 5
+        settings_obj.save()
+
+        WhatsAppTemplate.objects.update_or_create(
+            template_type=WhatsAppTemplate.TEMPLATE_TENANT_WELCOME,
+            defaults={
+                "name": "Tenant Welcome",
+                "body": "",
+                "is_active": True,
+            },
+        )
+        tenant = Mock()
+        tenant.get_full_name.return_value = "Ali Tenant"
+        property_obj = SimpleNamespace(
+            property_name="Garden Heights",
+            caretaker_phone="03007654321",
+            owner_phone="",
+            bank_account_details="",
+        )
+        unit = SimpleNamespace(
+            property=property_obj,
+            unit_number="A-12",
+            bank_account_details="",
+            use_property_bank_account=True,
+            electric_meter_num="",
+            gas_meter_num="",
+        )
+        lease = SimpleNamespace(
+            tenant=tenant,
+            unit=unit,
+            start_date=None,
+            end_date=None,
+            due_date="5th of each month",
+            monthly_rent=30000,
+            society_maintenance=1000,
+            water_charges=2000,
+            internet_charges=500,
+            security_deposit=60000,
+            late_fee=500,
+            get_balance=0,
+        )
+
+        template, message = render_whatsapp_template(
+            WhatsAppTemplate.TEMPLATE_TENANT_WELCOME,
+            lease,
+        )
+
+        self.assertIsNotNone(template)
+        self.assertIn("Welcome, Ali Tenant", message)
+        self.assertIn("Garden Heights - Unit A-12", message)
+        self.assertIn("Total monthly payment: Rs. 33,500", message)
+        self.assertIn("Security deposit: Rs. 60,000", message)
+        self.assertIn("Owner payment account", message)
+        self.assertIn("Bank account information has not been recorded", message)
+        self.assertIn("Rs. 500 every 5 days after a 2-day grace period", message)
+        self.assertIn("+92-300-123-4567", message)
+        self.assertIn("within 24 hours", message)
+        self.assertIn("may affect utility services", message)
+        self.assertNotIn("[TENANT_NAME]", message)
 
 
 class AuthorizedOccupantsPlaceholderTests(TestCase):

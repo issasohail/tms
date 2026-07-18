@@ -32,7 +32,7 @@
         </div>
         <div class="card-body">
           {% if message_text %}
-            <textarea class="form-control" rows="14" readonly>{{ message_text }}</textarea>
+            <textarea class="form-control whatsapp-message-preview" rows="26" readonly style="min-height:520px; overflow-y:hidden; resize:none;">{{ message_text }}</textarea>
           {% else %}
             <div class="alert alert-warning mb-0">
               The tenant welcome WhatsApp template is empty. Edit the template and add the message text with placeholders.
@@ -68,4 +68,13 @@
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  const preview = document.querySelector('.whatsapp-message-preview');
+  if (!preview) return;
+  preview.style.height = 'auto';
+  preview.style.height = `${Math.max(preview.scrollHeight + 2, 520)}px`;
+})();
+</script>
 {% endblock %}

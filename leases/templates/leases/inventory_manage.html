@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid px-2 px-md-3 py-2">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h3 class="mb-0">Inventory — {{ scope_object }}</h3><div class="text-muted small">{{ scope|title }} overrides; copy from {{ parent_label }} when required.</div></div>
+    <div class="d-flex gap-2">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="copy_all"><button class="btn btn-warning btn-sm" onclick="return confirm('Replace all inventory overrides with {{ parent_label }}?')">Copy All Defaults</button></form>
+      <a class="btn btn-secondary btn-sm" href="{% url return_target.0 return_target.1 %}">Back</a>
+    </div>
+  </div>
+  <div class="card shadow-sm"><div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0">
+    <thead class="table-light"><tr><th>Item</th><th style="width:110px">Quantity</th><th>Condition</th><th style="width:90px">Include</th><th style="width:115px">Source</th><th style="width:190px">Actions</th></tr></thead>
+    <tbody>{% for row in rows %}<tr><form method="post">{% csrf_token %}
+      <td class="fw-semibold">{{ row.item.name }}<input type="hidden" name="item_id" value="{{ row.item.id }}"></td>
+      <td><input class="form-control form-control-sm" type="number" min="0" name="quantity" value="{{ row.quantity }}"></td>
+      <td><input class="form-control form-control-sm" name="condition" value="{{ row.condition }}"></td>
+      <td class="text-center"><input class="form-check-input" type="checkbox" name="is_included" {% if row.is_included %}checked{% endif %}></td>
+      <td><span class="badge text-bg-light border">{{ row.source }}</span></td>
+      <td><button name="action" value="save" class="btn btn-primary btn-sm">Save</button> <button name="action" value="copy_item" class="btn btn-outline-warning btn-sm" onclick="return confirm('Copy default for {{ row.item.name }}?')">Copy Default</button></td>
+    </form></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endblock %}

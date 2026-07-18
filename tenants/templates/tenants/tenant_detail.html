@@ -107,31 +107,31 @@
         </div>
 
         <div class="td-hero-actions d-flex flex-wrap gap-2 justify-content-end">
-          <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" class="btn btn-sm btn-success">
+          <a href="/payments/create/?tenant={{ tenant.id }}{% if tenant.lease %}&lease={{ tenant.lease.id }}{% endif %}" class="btn btn-sm td-action-payment">
             <i class="fas fa-money-bill-wave me-1"></i> <span class="td-label-desktop">Record Payment</span><span class="td-label-mobile">Payment</span>
           </a>
           {% include "whatsapp/_dropdown.html" with phone=tenant.phone object_type="tenant" object_id=tenant.pk %}
           {% if tenant.pk %}
-            <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-sm btn-outline-primary">
+            <a href="{% url 'tenants:tenant_update' tenant.pk %}" class="btn btn-sm td-action-edit">
               <i class="fas fa-pen me-1"></i> <span class="td-label-desktop">Edit Tenant</span><span class="td-label-mobile">Edit</span>
             </a>
           {% endif %}
-          <button class="btn btn-sm btn-outline-secondary" onclick="history.back()">
+          <button class="btn btn-sm td-action-back" onclick="history.back()">
             <i class="fas fa-arrow-left me-1"></i> <span class="td-label-desktop">Go Back</span><span class="td-label-mobile">Back</span>
           </button>
           {% if registration_link %}
-            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#registrationLinkBox">
+            <button class="btn btn-sm td-action-registration" type="button" data-bs-toggle="collapse" data-bs-target="#registrationLinkBox">
               <i class="fas fa-link me-1"></i> Registration Link
             </button>
           {% endif %}
           {% if family_target_lease_count == 1 %}
             {% for lease_option in family_target_leases %}
-              <a class="btn btn-sm btn-outline-success" href="{% url 'leases:lease_detail' lease_option.pk %}?open_family_add=1#ld-tab-family">
+              <a class="btn btn-sm td-action-family" href="{% url 'leases:lease_detail' lease_option.pk %}?open_family_add=1#ld-tab-family">
                 <i class="fas fa-users me-1"></i> <span class="td-label-desktop">Add Family to Lease</span><span class="td-label-mobile">Add Family</span>
               </a>
             {% endfor %}
           {% elif family_target_lease_count > 1 %}
-            <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#addFamilyLeaseSelectModal">
+            <button class="btn btn-sm td-action-family" type="button" data-bs-toggle="modal" data-bs-target="#addFamilyLeaseSelectModal">
               <i class="fas fa-users me-1"></i> <span class="td-label-desktop">Add Family to Lease</span><span class="td-label-mobile">Add Family</span>
             </button>
           {% endif %}
@@ -1195,6 +1195,71 @@
 
   .td-hero-actions {
     min-width: 330px;
+  }
+
+  .td-hero-actions .btn {
+    color: #fff;
+    border-color: transparent;
+  }
+
+  .td-hero-actions .td-action-payment {
+    background: #d97706;
+    border-color: #d97706;
+  }
+
+  .td-hero-actions .td-action-payment:hover,
+  .td-hero-actions .td-action-payment:focus {
+    background: #b45309;
+    border-color: #b45309;
+    color: #fff;
+  }
+
+  .td-hero-actions .td-action-edit {
+    background: #2563eb;
+    border-color: #2563eb;
+  }
+
+  .td-hero-actions .td-action-edit:hover,
+  .td-hero-actions .td-action-edit:focus {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+  }
+
+  .td-hero-actions .td-action-back {
+    background: #64748b;
+    border-color: #64748b;
+  }
+
+  .td-hero-actions .td-action-back:hover,
+  .td-hero-actions .td-action-back:focus {
+    background: #475569;
+    border-color: #475569;
+    color: #fff;
+  }
+
+  .td-hero-actions .td-action-registration {
+    background: #0f766e;
+    border-color: #0f766e;
+  }
+
+  .td-hero-actions .td-action-registration:hover,
+  .td-hero-actions .td-action-registration:focus {
+    background: #115e59;
+    border-color: #115e59;
+    color: #fff;
+  }
+
+  .td-hero-actions .td-action-family {
+    background: #7c3aed;
+    border-color: #7c3aed;
+  }
+
+  .td-hero-actions .td-action-family:hover,
+  .td-hero-actions .td-action-family:focus {
+    background: #6d28d9;
+    border-color: #6d28d9;
+    color: #fff;
   }
 
   .td-card {

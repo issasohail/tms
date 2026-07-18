@@ -3,20 +3,67 @@ import base64
 import mimetypes
 import re
 
-from django.core.files.base import ContentFile
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.html import conditional_escape
-from weasyprint import HTML
+from weasyprint import DEFAULT_OPTIONS, Document, HTML
+from weasyprint.layout import LayoutContext
 
-from leases.models import AgreementSignatureTemplate, LeaseDocument
+from leases.models import AgreementSignatureTemplate
 from tenants.models import Tenant
 from leases.utils import do_replace_placeholders
 from core.utils.identity import format_cnic, format_phone, normalize_cnic
 
 
-def _pdf(html, request):
-    return HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
+class _QrExclusionShape:
+    """A non-painted first-page shape used only by WeasyPrint's line layout."""
+
+    style = {"float": "right"}
+
+    def __init__(self, x, y, width, height):
+        self.position_x = x
+        self.position_y = y
+        self._width = width
+        self._height = height
+
+    def margin_width(self):
+        return self._width
+
+    def margin_height(self):
+        return self._height
+
+
+class _QrExclusionLayoutContext(LayoutContext):
+    def create_block_formatting_context(self):
+        super().create_block_formatting_context()
+        exclusion = getattr(self, "first_page_qr_exclusion", None)
+        # The root formatting context is created immediately before WeasyPrint
+        # assigns page number 1. Later pages retain the previous page number.
+        if self.current_page is None and exclusion:
+            self.excluded_shapes.append(_QrExclusionShape(*exclusion))
+
+
+class _QrExclusionDocument(Document):
+    @classmethod
+    def _build_layout_context(cls, html, font_config, counter_style, options):
+        context = super()._build_layout_context(
+            html, font_config, counter_style, options
+        )
+        context.__class__ = _QrExclusionLayoutContext
+        context.first_page_qr_exclusion = html.first_page_qr_exclusion
+        return context
+
+
+def _pdf(html, request, first_page_qr_exclusion=None):
+    source = HTML(string=html, base_url=request.build_absolute_uri("/"))
+    if not first_page_qr_exclusion:
+        return source.write_pdf()
+    source.first_page_qr_exclusion = first_page_qr_exclusion
+    document = _QrExclusionDocument._render(
+        source, font_config=None, counter_style=None,
+        options=DEFAULT_OPTIONS.copy(),
+    )
+    return document.write_pdf()
 
 
 def _period(lease, history=None):
@@ -93,6 +140,7 @@ def _agreement_layout_settings():
         "qr_width": float(getattr(config, "legal_qr_reserve_width", 4.00) or 0),
         "qr_height": float(getattr(config, "legal_qr_reserve_height", 2.00) or 0),
         "identity_bottom": float(getattr(config, "legal_identity_bottom_reserve", 3.10) or 3.10),
+        "clause_spacing": float(getattr(config, "legal_clause_spacing", 5.00) or 0),
     }
 
 
@@ -225,31 +273,205 @@ def _pin_identity_cards_to_second_page(pdf_bytes, lease, history, reserve_inches
     return out.getvalue()
 
 
+def _agreement_signature_footer_page(width, height, lease, y, right_boundary=None):
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    packet = BytesIO()
+    pdf = canvas.Canvas(packet, pagesize=(float(width), float(height)))
+    left = 0.55 * 72
+    boundary = float(right_boundary or (float(width) - left))
+    column_gap = 12
+    line_width = (boundary - left - column_gap) / 2
+    right = left + line_width + column_gap
+    owner_name = str(getattr(lease.unit.property, "owner_name", "") or "________________")
+    tenant_name = lease.tenant.get_full_name() or "________________"
+    owner_cnic = format_cnic(getattr(lease.unit.property, "owner_cnic", "")) or "________________"
+    tenant_cnic = format_cnic(getattr(lease.tenant, "cnic", "")) or "________________"
+
+    for x, role, name, cnic in (
+        (left, "Owner", owner_name, owner_cnic),
+        (right, "Tenant", tenant_name, tenant_cnic),
+    ):
+        pdf.setLineWidth(0.55)
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawString(x, y + 16, f"{role} Signature:")
+        signature_start = x + 0.78 * 72
+        pdf.line(signature_start, y + 15, x + line_width, y + 15)
+        details = f"{role}: {name}    CNIC: {cnic}"
+        details_font_size = 6.5
+        while details_font_size > 4.5 and stringWidth(
+            details, "Helvetica", details_font_size
+        ) > line_width:
+            details_font_size -= 0.25
+        pdf.setFont("Helvetica", details_font_size)
+        pdf.drawString(x, y + 4, details)
+
+    pdf.save()
+    packet.seek(0)
+    from pypdf import PdfReader
+    return PdfReader(packet).pages[0]
+
+
+def _add_agreement_signature_footers(
+    pdf_bytes, lease, identity_bottom_reserve, qr_reserve_width
+):
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(BytesIO(pdf_bytes))
+    pages = list(reader.pages)
+    if len(pages) <= 1:
+        return pdf_bytes
+    for index, page in enumerate(pages[:-1]):
+        if index == 0:
+            y = 31
+            qr_width = max(0.0, float(qr_reserve_width or 0)) * 72
+            right_boundary = float(page.mediabox.width) - 0.55 * 72 - qr_width - 8
+        elif index == 1:
+            y = float(identity_bottom_reserve) * 72 + 8
+            right_boundary = None
+        else:
+            y = 31
+            right_boundary = None
+        overlay = _agreement_signature_footer_page(
+            page.mediabox.width,
+            page.mediabox.height,
+            lease,
+            y,
+            right_boundary=right_boundary,
+        )
+        page.merge_page(overlay, over=True)
+    writer = PdfWriter()
+    for page in pages:
+        writer.add_page(page)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def _agreement_page_count(pdf_bytes):
+    from pypdf import PdfReader
+    return len(PdfReader(BytesIO(pdf_bytes)).pages)
+
+
+def _add_first_page_qr_reserve_box(pdf_bytes, reserve_width, reserve_height):
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+
+    width_inches = max(0.0, float(reserve_width or 0))
+    height_inches = max(0.0, float(reserve_height or 0))
+    if not width_inches or not height_inches:
+        return pdf_bytes
+
+    reader = PdfReader(BytesIO(pdf_bytes))
+    pages = list(reader.pages)
+    if not pages:
+        return pdf_bytes
+
+    first_page = pages[0]
+    page_width = float(first_page.mediabox.width)
+    page_height = float(first_page.mediabox.height)
+    margin = 0.55 * 72
+    box_width = min(width_inches * 72, page_width - margin * 2)
+    box_height = min(height_inches * 72, page_height - margin * 2)
+    x = page_width - margin - box_width
+    y = margin
+
+    packet = BytesIO()
+    overlay_canvas = canvas.Canvas(packet, pagesize=(page_width, page_height))
+    overlay_canvas.setLineWidth(0.55)
+    overlay_canvas.rect(x, y, box_width, box_height, stroke=1, fill=0)
+    overlay_canvas.save()
+    packet.seek(0)
+    overlay = PdfReader(packet).pages[0]
+    first_page.merge_page(overlay, over=True)
+
+    writer = PdfWriter()
+    for page in pages:
+        writer.add_page(page)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 def agreement_pdf(request, lease, history, clauses):
     for clause in clauses:
         clause.rendered_text = do_replace_placeholders(clause.template_text, lease)
     legal_page = bool(getattr(history, "print_on_legal_page", False))
     layout = _agreement_layout_settings()
-    html = render_to_string(
-        "leases/agreement_preview.html",
-        {
-            "lease": lease,
-            "history": history,
-            "clauses": clauses,
-            "agreement_date": getattr(history, "agreement_date", None)
-            or getattr(history, "start_date", lease.start_date),
-            "legal_page": legal_page,
-            "legal_first_page_top_reserve": layout["first_top"],
-            "legal_qr_reserve_width": layout["qr_width"],
-            "legal_qr_reserve_height": layout["qr_height"],
-            "legal_identity_bottom_reserve": layout["identity_bottom"],
-        },
-        request=request,
+    first_bottom_reserve = 0.95
+    later_bottom_reserve = layout["identity_bottom"] + 0.72
+    css_px_per_inch = 96.0
+    legal_page_width = 8.5
+    legal_page_height = 14.0
+    qr_flow_height = max(
+        0.0, layout["qr_height"] - (first_bottom_reserve - 0.55)
     )
-    pdf_bytes = _pdf(html, request)
+    qr_exclusion = None
+    if legal_page and layout["qr_width"] > 0 and qr_flow_height > 0:
+        qr_text_gutter = 0.12
+        qr_exclusion = (
+            (
+                legal_page_width - 0.55 - layout["qr_width"] - qr_text_gutter
+            ) * css_px_per_inch,
+            (legal_page_height - 0.55 - layout["qr_height"]) * css_px_per_inch,
+            (layout["qr_width"] + qr_text_gutter) * css_px_per_inch,
+            qr_flow_height * css_px_per_inch,
+        )
+
+    def render(spacing):
+        html = render_to_string(
+            "leases/agreement_preview.html",
+            {
+                "lease": lease,
+                "history": history,
+                "clauses": clauses,
+                "agreement_date": getattr(history, "agreement_date", None)
+                or getattr(history, "start_date", lease.start_date),
+                "legal_page": legal_page,
+                "legal_first_page_top_reserve": layout["first_top"],
+                "legal_qr_reserve_width": layout["qr_width"],
+                "legal_qr_reserve_height": layout["qr_height"],
+                "legal_identity_bottom_reserve": layout["identity_bottom"],
+                "legal_first_page_bottom_reserve": first_bottom_reserve,
+                "legal_later_page_bottom_reserve": later_bottom_reserve,
+                "legal_clause_spacing": spacing,
+            },
+            request=request,
+        )
+        return _pdf(html, request, first_page_qr_exclusion=qr_exclusion)
+
     if legal_page:
+        pdf_bytes = None
+        requested_spacing = max(0.0, min(12.0, layout["clause_spacing"]))
+        spacing_candidates = []
+        current_spacing = requested_spacing
+        while current_spacing >= 0:
+            spacing_candidates.append(round(current_spacing, 2))
+            current_spacing -= 1
+        if spacing_candidates[-1] != 0:
+            spacing_candidates.append(0)
+        for spacing in spacing_candidates:
+            candidate = render(spacing)
+            pdf_bytes = candidate
+            if _agreement_page_count(candidate) <= 3:
+                break
+    else:
+        pdf_bytes = render(0)
+    if legal_page:
+        pdf_bytes = _add_first_page_qr_reserve_box(
+            pdf_bytes,
+            layout["qr_width"],
+            layout["qr_height"],
+        )
         pdf_bytes = _pin_identity_cards_to_second_page(
             pdf_bytes, lease, history, layout["identity_bottom"]
+        )
+        pdf_bytes = _add_agreement_signature_footers(
+            pdf_bytes,
+            lease,
+            layout["identity_bottom"],
+            layout["qr_width"],
         )
     return pdf_bytes
 
@@ -422,6 +644,37 @@ def _declaration_sections(lease, history, parties):
     return sections
 
 
+def _render_declaration_html(text, values):
+    rendered = text or ""
+    for key, value in values.items():
+        replacement = _bold(str(value))
+        rendered = rendered.replace("{{ " + key + " }}", replacement)
+        rendered = rendered.replace("{{" + key + "}}", replacement)
+    return rendered
+
+
+def _configured_declaration_sections(config, lease, history, values, parties):
+    sections = []
+    for role, heading, template_text in (
+        ("proposer", "Proposer Declaration", config.proposer_declaration),
+        ("seconder", "Seconder Declaration", config.seconder_declaration),
+    ):
+        rendered = _render_declaration_html(template_text, values)
+        paragraphs = [
+            paragraph.strip()
+            for paragraph in re.split(r"(?:\r?\n){2,}", rendered)
+            if paragraph.strip()
+        ]
+        if not paragraphs:
+            return _declaration_sections(lease, history, parties)
+        sections.append({
+            "heading": heading,
+            "party": parties[role],
+            "paragraphs": paragraphs,
+        })
+    return sections
+
+
 def signature_context(lease, history=None, snapshot=None):
     parties = snapshot or party_snapshot(lease, history)
     config = AgreementSignatureTemplate.current()
@@ -432,7 +685,9 @@ def signature_context(lease, history=None, snapshot=None):
         "proposer_declaration": _render_template_text(config.proposer_declaration, values),
         "seconder_declaration": _render_template_text(config.seconder_declaration, values),
         "generated_at": timezone.now(),
-        "declaration_sections": _declaration_sections(lease, history, parties),
+        "declaration_sections": _configured_declaration_sections(
+            config, lease, history, values, parties
+        ),
     }
 
 
@@ -521,17 +776,6 @@ def _package_basename(lease, history):
     title, _ = _package_labels(lease, history)
     return title
 
-def _save_document(request, lease, history, filename, content):
-    doc = LeaseDocument(
-        lease=lease, lease_history=history,
-        category="lease_renewal_agreement" if history and not history.is_original else "lease_agreement",
-        display_name=filename, original_filename=filename,
-        uploaded_by=request.user if request.user.is_authenticated else None,
-    )
-    doc.file.save(filename, ContentFile(content), save=True)
-    return doc
-
-
 def build_package(request, lease, history, clauses):
     components = []
     try:
@@ -552,7 +796,9 @@ def build_package(request, lease, history, clauses):
         raise RuntimeError(f"Signature page generation failed: {exc}") from exc
     merged = merge_pdfs(components, lease=lease, history=history)
     filename = _package_basename(lease, history) + ".pdf"
-    return merged, filename, _save_document(request, lease, history, filename, merged)
+    # Generated agreements are reproducible downloads. Do not persist them in
+    # Lease Documents; only user-uploaded signed documents should be retained.
+    return merged, filename, None
 
 
 # ----------------------------- DOCX package -----------------------------
@@ -784,4 +1030,5 @@ def build_docx_package(request, lease, history, clauses):
         raise RuntimeError(f"Proposer/seconder Word declaration generation failed: {exc}") from exc
     out = BytesIO(); doc.save(out); content = out.getvalue()
     filename = _package_basename(lease, history) + ".docx"
-    return content, filename, _save_document(request, lease, history, filename, content)
+    # Keep generated Word packages download-only for the same reason as PDFs.
+    return content, filename, None

@@ -14,6 +14,88 @@
 </div>
 
 <div class="card mb-4">
+    <div class="card-header bg-light d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0">Property Bank Accounts</h5>
+        <span class="small text-muted">Choose one account or all active accounts for tenant welcome messages.</span>
+    </div>
+    <div class="card-body">
+        {% if bank_accounts %}
+        <form method="post" action="{% url 'properties:property_bank_account_welcome_settings' property.pk %}" class="row g-2 align-items-end border rounded p-2 mb-3">
+            {% csrf_token %}
+            <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold">Welcome Message Accounts</label>
+                <select class="form-select form-select-sm" name="welcome_bank_account_mode" id="welcomeBankMode">
+                    <option value="selected" {% if property.welcome_bank_account_mode == 'selected' %}selected{% endif %}>Selected account only</option>
+                    <option value="all" {% if property.welcome_bank_account_mode == 'all' %}selected{% endif %}>All active accounts</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-5" id="selectedBankWrap">
+                <label class="form-label small fw-semibold">Selected Account</label>
+                <select class="form-select form-select-sm" name="selected_bank_account">
+                    {% for account in bank_accounts %}{% if account.is_active %}<option value="{{ account.pk }}" {% if account.is_default %}selected{% endif %}>{{ account.account_label }}{% if account.bank_name %} - {{ account.bank_name }}{% endif %}</option>{% endif %}{% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3"><button class="btn btn-primary btn-sm">Save Welcome Selection</button></div>
+        </form>
+        {% endif %}
+
+        <div class="row g-3">
+            {% for account in bank_accounts %}
+            <div class="col-12 col-lg-6">
+                <div class="border rounded p-3 h-100 {% if not account.is_active %}opacity-50{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <div class="fw-bold">{{ account.account_label }}</div>
+                            <div class="small text-muted">{{ account.bank_name|default:"Bank not specified" }}</div>
+                        </div>
+                        <div class="d-flex gap-1">
+                            {% if account.is_default %}<span class="badge bg-primary">Selected</span>{% endif %}
+                            {% if not account.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                            <a class="btn btn-success btn-sm" href="https://wa.me/?text={{ account.whatsapp_share_text|urlencode }}" target="_blank" rel="noopener" title="Share account details on WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                        </div>
+                    </div>
+                    <div class="small mt-2" style="white-space:pre-line">{{ account.formatted_details }}</div>
+                    <details class="mt-2"><summary class="small text-primary" style="cursor:pointer">Edit account</summary>
+                        <form method="post" action="{% url 'properties:property_bank_account_save' property.pk account.pk %}" class="row g-2 mt-1">{% csrf_token %}
+                            <div class="col-6">{{ account.edit_form.account_label.label_tag }}{{ account.edit_form.account_label }}</div>
+                            <div class="col-6">{{ account.edit_form.bank_name.label_tag }}{{ account.edit_form.bank_name }}</div>
+                            <div class="col-6">{{ account.edit_form.account_title.label_tag }}{{ account.edit_form.account_title }}</div>
+                            <div class="col-6">{{ account.edit_form.account_number.label_tag }}{{ account.edit_form.account_number }}</div>
+                            <div class="col-6">{{ account.edit_form.iban.label_tag }}{{ account.edit_form.iban }}</div>
+                            <div class="col-6">{{ account.edit_form.branch.label_tag }}{{ account.edit_form.branch }}</div>
+                            <div class="col-12">{{ account.edit_form.additional_details.label_tag }}{{ account.edit_form.additional_details }}</div>
+                            <div class="col-4 form-check ms-2">{{ account.edit_form.is_default }} {{ account.edit_form.is_default.label_tag }}</div>
+                            <div class="col-3 form-check">{{ account.edit_form.is_active }} {{ account.edit_form.is_active.label_tag }}</div>
+                            <div class="col-3">{{ account.edit_form.sort_order.label_tag }}{{ account.edit_form.sort_order }}</div>
+                            <div class="col-12"><button class="btn btn-primary btn-sm">Save Account</button></div>
+                        </form>
+                    </details>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12"><div class="text-muted">No structured bank account has been added yet.</div></div>
+            {% endfor %}
+        </div>
+
+        <details class="mt-3"><summary class="btn btn-outline-primary btn-sm">Add Bank Account</summary>
+            <form method="post" action="{% url 'properties:property_bank_account_add' property.pk %}" class="row g-2 border rounded p-2 mt-2">{% csrf_token %}
+                <div class="col-6 col-md-3">{{ bank_account_form.account_label.label_tag }}{{ bank_account_form.account_label }}</div>
+                <div class="col-6 col-md-3">{{ bank_account_form.bank_name.label_tag }}{{ bank_account_form.bank_name }}</div>
+                <div class="col-6 col-md-3">{{ bank_account_form.account_title.label_tag }}{{ bank_account_form.account_title }}</div>
+                <div class="col-6 col-md-3">{{ bank_account_form.account_number.label_tag }}{{ bank_account_form.account_number }}</div>
+                <div class="col-6 col-md-4">{{ bank_account_form.iban.label_tag }}{{ bank_account_form.iban }}</div>
+                <div class="col-6 col-md-4">{{ bank_account_form.branch.label_tag }}{{ bank_account_form.branch }}</div>
+                <div class="col-12 col-md-4">{{ bank_account_form.additional_details.label_tag }}{{ bank_account_form.additional_details }}</div>
+                <div class="col-4 col-md-2 form-check ms-2">{{ bank_account_form.is_default }} {{ bank_account_form.is_default.label_tag }}</div>
+                <div class="col-4 col-md-2 form-check">{{ bank_account_form.is_active }} {{ bank_account_form.is_active.label_tag }}</div>
+                <div class="col-4 col-md-2">{{ bank_account_form.sort_order.label_tag }}{{ bank_account_form.sort_order }}</div>
+                <div class="col-12"><button class="btn btn-success btn-sm">Add Account</button></div>
+            </form>
+        </details>
+    </div>
+</div>
+
+<div class="card mb-4">
     <div class="card-body">
         <h5 class="card-title">Property Details</h5>
         <p class="card-text"><strong>Address:</strong>
@@ -119,6 +201,36 @@
     </div>
 </div>
 
+<div class="row g-3 mb-3">
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Inventory</h5>
+                <a href="{% url 'leases:inventory_manage' 'property' property.pk %}" class="btn btn-sm btn-outline-primary">Manage</a>
+            </div>
+            <div class="card-body py-2">
+                {% for item in effective_inventory %}
+                    <span class="badge bg-light text-dark border me-1 mb-1">{{ item.item.name }}: {{ item.quantity }}</span>
+                {% empty %}<span class="text-muted">No inventory configured.</span>{% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Motorcycle Parking</h5>
+                <a href="{% url 'leases:parking_manage' 'property' property.pk %}" class="btn btn-sm btn-outline-primary">Manage</a>
+            </div>
+            <div class="card-body py-2 small">
+                <strong>{% if parking_enabled %}Enabled{% else %}Disabled{% endif %}</strong>
+                &middot; Rs. {{ parking_monthly_rate|floatformat:0 }}/month
+                &middot; Rs. {{ parking_penalty|floatformat:0 }} penalty
+                {% if parking_spaces %}<div class="mt-1">{% for space in parking_spaces %}<span class="badge bg-secondary me-1">{{ space.label }}</span>{% endfor %}</div>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header">
         <h5>Units</h5>
@@ -173,4 +285,14 @@
         </div>
     </div>
 </div>
+<script>
+(() => {
+  const mode = document.getElementById('welcomeBankMode');
+  const selectedWrap = document.getElementById('selectedBankWrap');
+  if (!mode || !selectedWrap) return;
+  const refresh = () => selectedWrap.classList.toggle('d-none', mode.value === 'all');
+  mode.addEventListener('change', refresh);
+  refresh();
+})();
+</script>
 {% endblock %}

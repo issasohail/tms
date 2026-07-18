@@ -580,7 +580,6 @@ class LeaseVehicleForm(forms.ModelForm):
             "year",
             "owner_name",
             "owner_cnic",
-            "parking_slot",
             "vehicle_photo",
             "is_active",
             "notes",
@@ -595,7 +594,6 @@ class LeaseVehicleForm(forms.ModelForm):
             "year": forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "1900"}),
             "owner_name": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "owner_cnic": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "parking_slot": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "vehicle_photo": forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}),
@@ -947,6 +945,7 @@ class AgreementSignatureTemplateForm(forms.ModelForm):
             "footer_text", "show_phone", "show_thumb_impression",
             "legal_first_page_top_reserve", "legal_qr_reserve_width",
             "legal_qr_reserve_height", "legal_identity_bottom_reserve",
+            "legal_clause_spacing",
         ]
         widgets = {
             "heading": forms.TextInput(attrs={"class": "form-control"}),
@@ -958,4 +957,5 @@ class AgreementSignatureTemplateForm(forms.ModelForm):
             "legal_qr_reserve_width": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
             "legal_qr_reserve_height": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
             "legal_identity_bottom_reserve": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
+            "legal_clause_spacing": forms.NumberInput(attrs={"class": "form-control", "step": "0.5"}),
         }

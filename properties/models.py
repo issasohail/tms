@@ -86,6 +86,18 @@ class Property(models.Model):
         null=True,
         help_text="Default bank account/payment instructions for this property.",
     )
+    WELCOME_BANK_SELECTED = "selected"
+    WELCOME_BANK_ALL = "all"
+    WELCOME_BANK_ACCOUNT_CHOICES = (
+        (WELCOME_BANK_SELECTED, "Selected account only"),
+        (WELCOME_BANK_ALL, "All active accounts"),
+    )
+    welcome_bank_account_mode = models.CharField(
+        max_length=12,
+        choices=WELCOME_BANK_ACCOUNT_CHOICES,
+        default=WELCOME_BANK_SELECTED,
+        help_text="Choose whether tenant welcome messages include the selected account or every active account.",
+    )
 
     type = models.CharField(max_length=50)  # with exactly these names
     property_type = models.CharField(max_length=20, choices=PROPERTY_TYPES)
@@ -133,9 +145,94 @@ class Property(models.Model):
         compress_instance_file_field(self, "owner_photo")
         super().save(*args, **kwargs)
 
+    def welcome_bank_accounts(self):
+        accounts = self.bank_accounts.filter(is_active=True).order_by(
+            "sort_order", "account_label", "id"
+        )
+        if self.welcome_bank_account_mode == self.WELCOME_BANK_ALL:
+            return list(accounts)
+        selected = accounts.filter(is_default=True).first() or accounts.first()
+        return [selected] if selected else []
+
+    def welcome_bank_account_details(self):
+        accounts = self.welcome_bank_accounts()
+        if accounts:
+            return "\n\n".join(account.formatted_details() for account in accounts)
+        return (self.bank_account_details or "").strip()
+
     class Meta:
         ordering = ["property_name"]
         verbose_name_plural = "Properties"
+
+
+class PropertyBankAccount(models.Model):
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name="bank_accounts"
+    )
+    account_label = models.CharField(
+        max_length=80, default="Primary Account",
+        help_text="A short label such as Rent Account or Maintenance Account.",
+    )
+    bank_name = models.CharField(max_length=120, blank=True)
+    account_title = models.CharField(max_length=120, blank=True)
+    account_number = models.CharField(max_length=80, blank=True)
+    iban = models.CharField(max_length=80, blank=True)
+    branch = models.CharField(max_length=120, blank=True)
+    additional_details = models.TextField(blank=True)
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Selected account used when the welcome-message mode is Selected account only.",
+    )
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "account_label", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "account_label"],
+                name="uniq_property_bank_account_label",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        self.account_label = smart_title(self.account_label)
+        self.bank_name = smart_title(self.bank_name)
+        self.account_title = smart_title(self.account_title)
+        if not self.is_active:
+            self.is_default = False
+        elif self.is_default:
+            PropertyBankAccount.objects.filter(
+                property_id=self.property_id, is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        elif self.property_id and not PropertyBankAccount.objects.filter(
+            property_id=self.property_id, is_default=True
+        ).exclude(pk=self.pk).exists():
+            self.is_default = True
+        super().save(*args, **kwargs)
+
+    def formatted_details(self):
+        lines = [self.account_label]
+        for label, value in (
+            ("Bank", self.bank_name),
+            ("Account Title", self.account_title),
+            ("Account Number", self.account_number),
+            ("IBAN", self.iban),
+            ("Branch", self.branch),
+        ):
+            if (value or "").strip():
+                lines.append(f"{label}: {value.strip()}")
+        if (self.additional_details or "").strip():
+            lines.append(self.additional_details.strip())
+        return "\n".join(lines)
+
+    def whatsapp_share_text(self):
+        return f"Payment account for {self.property.property_name}\n{self.formatted_details()}"
+
+    def __str__(self):
+        return f"{self.property.property_name} - {self.account_label}"
 
 
 class BuildingType(models.Model):

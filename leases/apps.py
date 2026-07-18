@@ -29,8 +29,23 @@ class LeasesConfig(AppConfig):
                 logging.getLogger(__name__).exception(
                     "Security invoice sync failed")
 
+        def _ensure_inventory(sender, instance, created=False, **kwargs):
+            if not created:
+                return
+            try:
+                from leases.services.inventory_parking import ensure_lease_inventory_snapshot
+                ensure_lease_inventory_snapshot(instance)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Lease inventory snapshot failed")
+
         post_save.connect(
             _sync_security,
             sender=Lease,
             dispatch_uid='leases_sync_security_invoice'
+        )
+        post_save.connect(
+            _ensure_inventory,
+            sender=Lease,
+            dispatch_uid='leases_ensure_inventory_snapshot',
         )

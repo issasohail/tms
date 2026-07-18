@@ -46,7 +46,7 @@ default_clauses = [
     "That the Tenant shall pay all utility bills timely and submit copies to the Owner upon request. Electricity bill will be paid at Rs. 50/- per unit to the Owner along with the rent.",
 
     # Clause 15
-    "That a 2-month advance written notice is required from either party to vacate the premises. Failure to do so by the Tenant will result in forfeiture of the Security Deposit.",
+    "The Owner may terminate this Agreement and require the Tenant to vacate the premises at any time by giving thirty (30) days' written notice. The Tenant may terminate this Agreement only after completing the minimum occupancy period stated in Clause 6 and must give thirty (30) days' written notice. If the Tenant vacates before completing the minimum occupancy period, the early-termination obligations and penalties stated in Clause 6 shall apply.",
 
     # Clause 16
     "That the Tenant will not rent or sublet the premises to any third party.",

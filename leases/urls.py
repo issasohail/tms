@@ -8,6 +8,7 @@ from . import (
     views_late_fee,
     views_lease_files,
     views_lease_photos,
+    views_parking_inventory,
 )
 from . import views_lease_photos as lpv  # <- import the file that has the view
 from .views import (
@@ -74,6 +75,10 @@ from .views_renewal import (
 app_name = "leases"
 
 urlpatterns = [
+    path("inventory/global/", views_parking_inventory.global_inventory_manage, name="global_inventory_manage"),
+    path("inventory/<str:scope>/<int:pk>/", views_parking_inventory.inventory_manage, name="inventory_manage"),
+    path("parking/<str:scope>/<int:pk>/", views_parking_inventory.parking_manage, name="parking_manage"),
+    path("parking/allocation/<int:pk>/end/", views_parking_inventory.parking_allocation_end, name="parking_allocation_end"),
     path("settings/agreement-signature-template/", views.agreement_signature_template_settings, name="agreement_signature_template_settings"),
     path("relationship-types/create-ajax/", views.create_relationship_type_ajax, name="create_relationship_type_ajax"),
     path("agreement-parties/create-ajax/", views.create_agreement_party_ajax, name="create_agreement_party_ajax"),

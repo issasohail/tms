@@ -88,6 +88,22 @@ class GlobalSettings(models.Model):
         validators=[MinValueValidator(1)],
         help_text="Default billing-day block used when monthly charges are prorated at move-out.",
     )
+    default_parking_enabled = models.BooleanField(
+        default=False,
+        help_text="Default parking availability for properties without an override.",
+    )
+    default_motorcycle_parking_rate = models.DecimalField(
+        max_digits=10, decimal_places=2, default=2000,
+        help_text="Default monthly motorcycle parking rate per reserved space.",
+    )
+    default_unauthorized_parking_penalty = models.DecimalField(
+        max_digits=10, decimal_places=2, default=5000,
+        help_text="Default penalty for each unauthorized parking violation.",
+    )
+    water_abuse_penalty_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=5000,
+        help_text="Penalty per blanket/item washed without Building Maintenance permission.",
+    )
     lease_file_share_valid_days = models.PositiveIntegerField(
         default=7,
         help_text="Default number of days public lease file share links remain valid.",

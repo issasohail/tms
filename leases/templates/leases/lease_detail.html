@@ -61,13 +61,22 @@
 .ld-wa-btn .ld-wa-api { display:flex; align-items:center; gap:4px; border-left:1px solid rgba(255,255,255,.4); padding-left:8px; font-weight:400; font-size:11px; }
 .ld-wa-btn .ld-wa-api input { margin:0; }
 
-/* Police report segmented button: report | copy | whatsapp, styled as one control */
-.ld-police-group { display:flex; }
-.ld-police-group .btn { border-right:1px solid rgba(255,255,255,.35); border-radius:0; }
-.ld-police-group .btn:first-child { border-top-left-radius:var(--bs-btn-border-radius,.25rem); border-bottom-left-radius:var(--bs-btn-border-radius,.25rem); }
-.ld-police-group .btn:last-child { border-right:0; border-top-right-radius:var(--bs-btn-border-radius,.25rem); border-bottom-right-radius:var(--bs-btn-border-radius,.25rem); }
-.ld-police-open { padding-left:6px !important; padding-right:6px !important; }
+/* Compact segmented link controls: main action | copy | whatsapp */
+.ld-segmented-group { display:flex; }
+.ld-segmented-group .btn { border-right:1px solid rgba(255,255,255,.35); border-radius:0; color:#fff; }
+.ld-segmented-group .btn:first-child { border-top-left-radius:var(--bs-btn-border-radius,.25rem); border-bottom-left-radius:var(--bs-btn-border-radius,.25rem); }
+.ld-segmented-group .btn:last-child { border-right:0; border-top-right-radius:var(--bs-btn-border-radius,.25rem); border-bottom-right-radius:var(--bs-btn-border-radius,.25rem); }
+.ld-action-edit { background:#2563eb; border-color:#2563eb; color:#fff; }
+.ld-action-edit:hover, .ld-action-edit:focus { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
+.ld-action-agreement { background:#7c3aed; border-color:#7c3aed; color:#fff; }
+.ld-action-agreement:hover, .ld-action-agreement:focus { background:#6d28d9; border-color:#6d28d9; color:#fff; }
+.ld-registration-group .btn { background:#0f766e; border-color:#0f766e; }
+.ld-registration-group .btn:hover, .ld-registration-group .btn:focus { background:#115e59; border-color:#115e59; color:#fff; }
+.ld-police-group .btn { background:#334155; border-color:#334155; }
+.ld-police-group .btn:hover, .ld-police-group .btn:focus { background:#1e293b; border-color:#1e293b; color:#fff; }
+.ld-registration-main, .ld-police-open { padding-left:6px !important; padding-right:6px !important; }
 .ld-police-copy, .ld-police-wa { min-width:25px; padding-left:5px !important; padding-right:5px !important; }
+.ld-registration-copy, .ld-registration-wa { min-width:25px; padding-left:5px !important; padding-right:5px !important; }
 
 /* Section 4 — vehicle thumbnail (fixed) */
 .ld-hdr-vehicle {
@@ -677,10 +686,12 @@
         </form>
       {% endif %}
 
-      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</a>
-      <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#tenantRegistrationLinkBox" aria-expanded="false" aria-controls="tenantRegistrationLinkBox">
-        <i class="fas fa-link"></i> Registration Link
-      </button>
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm ld-action-edit"><i class="fas fa-edit"></i> Edit</a>
+      <div class="btn-group ld-segmented-group ld-registration-group" role="group" aria-label="Registration link actions" data-registration-link="{{ registration_link }}">
+        <a href="{{ registration_link }}" target="_blank" rel="noopener" class="btn btn-sm ld-registration-main"><i class="fas fa-link"></i> Registration Link</a>
+        <button type="button" class="btn btn-sm ld-registration-copy" title="Copy registration link"><i class="fas fa-copy"></i></button>
+        <a href="{{ registration_whatsapp_url|default:'#' }}" target="_blank" rel="noopener" class="btn btn-sm ld-registration-wa {% if not registration_whatsapp_url %}disabled{% endif %}" title="Share registration link via WhatsApp"><i class="fab fa-whatsapp"></i></a>
+      </div>
       {% if lease.status == "active" %}
         <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#endLeaseModal">
           <i class="fas fa-door-open"></i> End Lease
@@ -691,7 +702,7 @@
         </button>
       {% endif %}
       <a href="{% url 'leases:lease_renew' lease.pk %}" class="btn btn-sm btn-info"><i class="fas fa-sync-alt"></i> Renew</a>
-      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-eye"></i> Agreement</a>
+      <a href="{% url 'leases:edit_clauses' lease.pk %}" class="btn btn-sm ld-action-agreement"><i class="fas fa-eye"></i> Agreement</a>
       <a href="{% url 'leases:lease_print' lease.pk %}" class="btn btn-sm btn-secondary"><i class="fas fa-file-pdf"></i> PDF Lease</a>
       <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-book"></i> Ledger</a>
       <a href="{% url 'leases:lease_late_fee_settings' lease.pk %}" class="btn btn-sm btn-warning"><i class="fas fa-clock"></i> Late Fee</a>
@@ -705,10 +716,10 @@
         </span>
       </div>
 
-      <div class="btn-group ld-police-group" role="group" aria-label="Police report actions" data-police-url="{% url 'leases:lease_police_verification_link' lease.pk %}">
-        <button type="button" class="btn btn-sm btn-primary ld-police-open"><i class="fas fa-shield-alt"></i> Police Report</button>
-        <button type="button" class="btn btn-sm btn-primary ld-police-copy" title="Copy public link"><i class="fas fa-copy"></i></button>
-        <button type="button" class="btn btn-sm btn-primary ld-police-wa" title="Share via WhatsApp"><i class="fab fa-whatsapp"></i></button>
+      <div class="btn-group ld-segmented-group ld-police-group" role="group" aria-label="Police report actions" data-police-url="{% url 'leases:lease_police_verification_link' lease.pk %}">
+        <button type="button" class="btn btn-sm ld-police-open"><i class="fas fa-shield-alt"></i> Police Report</button>
+        <button type="button" class="btn btn-sm ld-police-copy" title="Copy public link"><i class="fas fa-copy"></i></button>
+        <button type="button" class="btn btn-sm ld-police-wa" title="Share via WhatsApp"><i class="fab fa-whatsapp"></i></button>
       </div>
 
       {% if lease.signed_agreement %}
@@ -743,8 +754,7 @@
              data-preview-type="{{ vehicle.vehicle_type.name }}"
              data-preview-registration="{{ vehicle.registration_number }}"
              data-preview-make-model="{{ vehicle.make|default:'' }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}"
-             data-preview-owner="{{ vehicle.owner_name|default:'' }}"
-             data-preview-parking="{{ vehicle.parking_slot|default:'' }}">
+             data-preview-owner="{{ vehicle.owner_name|default:'' }}">
             <img src="{{ vehicle.vehicle_photo.url }}" alt="Vehicle" class="ld-doc-img">
             <span class="ld-doc-label">Vehicle</span>
           </a>
@@ -758,30 +768,6 @@
       {% endwith %}
     </div>
 
-  </div>
-
-  <div class="collapse mb-3" id="tenantRegistrationLinkBox">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body py-2">
-        <div class="input-group input-group-sm flex-wrap">
-          <span class="input-group-text fw-semibold">Tenant Update Link</span>
-          <input id="leaseTenantRegistrationLink" type="text" class="form-control text-break" value="{{ registration_link }}" readonly onclick="this.select();">
-          <button id="copyTenantRegistrationLinkBtn" class="btn btn-outline-primary" type="button">
-            <i class="far fa-copy me-1"></i> Copy
-          </button>
-          <a class="btn btn-outline-success {% if not registration_whatsapp_url %}disabled{% endif %}" target="_blank" rel="noopener" href="{{ registration_whatsapp_url|default:'#' }}">
-            <i class="fab fa-whatsapp me-1"></i> WhatsApp
-          </a>
-          <a href="{{ registration_link }}" target="_blank" rel="noopener" class="btn btn-outline-dark">
-            <i class="fas fa-external-link-alt me-1"></i> Open
-          </a>
-          <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-outline-secondary">
-            <i class="far fa-list-alt me-1"></i> Submissions
-          </a>
-        </div>
-        <div class="form-text">Public link expires after {{ registration_link_days }} days. Submitted changes require admin approval.</div>
-      </div>
-    </div>
   </div>
 
   <nav class="ld-mobile-section-nav no-print" aria-label="Lease detail sections">
@@ -1249,7 +1235,6 @@
                 <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
-                <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-3"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-4"><label class="form-label small mb-1">Notes</label><input name="notes" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-2"><button type="submit" class="btn btn-sm btn-success w-100">Save Vehicle</button></div>
@@ -1267,7 +1252,6 @@
                   <th>Color</th>
                   <th>Owner</th>
                   <th>Owner CNIC</th>
-                  <th>Parking</th>
                   <th>Photos</th>
                   <th>Status</th>
                   <th class="no-print">Actions</th>
@@ -1283,7 +1267,6 @@
                     <td data-label="Color">{{ vehicle.color|default:"-" }}</td>
                     <td data-label="Owner">{{ vehicle.owner_name|default:"-" }}</td>
                     <td data-label="Owner CNIC">{{ vehicle.owner_cnic|format_cnic|default:"-" }}</td>
-                    <td data-label="Parking">{{ vehicle.parking_slot|default:"-" }}</td>
                     <td data-label="Photos">
                       {% if vehicle.vehicle_photo %}
                         <button type="button"
@@ -1293,8 +1276,7 @@
                                 data-preview-type="{{ vehicle.vehicle_type.name }}"
                                 data-preview-registration="{{ vehicle.registration_number }}"
                                 data-preview-make-model="{{ vehicle.make|default:'' }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}"
-                                data-preview-owner="{{ vehicle.owner_name|default:'' }}"
-                                data-preview-parking="{{ vehicle.parking_slot|default:'' }}">
+                                data-preview-owner="{{ vehicle.owner_name|default:'' }}">
                           <img src="{{ vehicle.vehicle_photo.url }}" alt="Vehicle" class="ld-vehicle-thumb">
                         </button>
                       {% endif %}
@@ -1661,6 +1643,21 @@
   </div>
 </div>
 {% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center"><strong>Lease Inventory</strong><a href="{% url 'leases:inventory_manage' 'lease' lease.pk %}" class="btn btn-sm btn-outline-primary">Manage</a></div>
+      <div class="card-body py-2">{% for item in effective_inventory %}<span class="badge bg-light text-dark border me-1 mb-1">{{ item.item.name }}: {{ item.quantity }}</span>{% empty %}<span class="text-muted">No inventory configured.</span>{% endfor %}</div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center"><strong>Motorcycle Parking</strong><a href="{% url 'leases:parking_manage' 'lease' lease.pk %}" class="btn btn-sm btn-outline-primary">Manage</a></div>
+      <div class="card-body py-2 small"><strong>{% if parking_enabled %}Enabled{% else %}Disabled{% endif %}</strong> &middot; Rs. {{ parking_monthly_rate|floatformat:0 }}/month &middot; Rs. {{ parking_penalty|floatformat:0 }} penalty{% for allocation in parking_allocations %}<div class="mt-1"><span class="badge bg-success">{{ allocation.parking_space.label }}</span> Rs. {{ allocation.monthly_rate|floatformat:0 }}/month</div>{% endfor %}</div>
+    </div>
+  </div>
+</div>
 
 {% if lease.status == "active" %}
 <style>
@@ -2203,7 +2200,6 @@
             <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" id="vehicleEditYear" type="number" min="1900" class="form-control form-control-sm"></div>
             <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" id="vehicleEditOwner" class="form-control form-control-sm"></div>
             <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" id="vehicleEditCnic" class="form-control form-control-sm"></div>
-            <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" id="vehicleEditParking" class="form-control form-control-sm"></div>
             <div class="col-12 col-md-4"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
             <div class="col-12"><label class="form-label small mb-1">Notes</label><textarea name="notes" id="vehicleEditNotes" rows="2" class="form-control form-control-sm"></textarea></div>
             <div class="col-12">
@@ -2805,7 +2801,6 @@ function openRenewalMedia(btn) {
           document.getElementById('vehicleEditYear').value = v.year || '';
           document.getElementById('vehicleEditOwner').value = v.owner_name || '';
           document.getElementById('vehicleEditCnic').value = v.owner_cnic || '';
-          document.getElementById('vehicleEditParking').value = v.parking_slot || '';
           document.getElementById('vehicleEditNotes').value = v.notes || '';
           document.getElementById('vehicleEditActive').checked = !!v.is_active;
           if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(vehicleEditModalEl).show();
@@ -2851,26 +2846,21 @@ document.getElementById('copyMaintenanceLinkBtn')?.addEventListener('click', fun
   });
 });
 
-document.getElementById('copyTenantRegistrationLinkBtn')?.addEventListener('click', function () {
-  const input = document.getElementById('leaseTenantRegistrationLink');
-  const link = input?.value || '';
+document.querySelector('.ld-registration-copy')?.addEventListener('click', function () {
+  const link = this.closest('.ld-registration-group')?.dataset.registrationLink || '';
   if (!link) return;
   const button = this;
   const original = button.innerHTML;
   const showCopied = function () {
-    button.innerHTML = '<i class="fas fa-check"></i> Copied';
+    button.innerHTML = '<i class="fas fa-check"></i>';
     setTimeout(function () { button.innerHTML = original; }, 1600);
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(link).then(showCopied).catch(function () {
-      input.select();
-      document.execCommand('copy');
-      showCopied();
+      window.prompt('Copy registration link:', link);
     });
   } else {
-    input.select();
-    document.execCommand('copy');
-    showCopied();
+    window.prompt('Copy registration link:', link);
   }
 });
 

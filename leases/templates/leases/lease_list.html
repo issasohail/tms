@@ -2172,7 +2172,6 @@ function vehicleCard(item, pending) {
         <div class="vehicle-modal-line"><span>Year</span><span>${escapeHtml(item.year || "-")}</span></div>
         <div class="vehicle-modal-line"><span>Owner</span><span>${escapeHtml(item.owner_name || "-")}</span></div>
         <div class="vehicle-modal-line"><span>CNIC</span><span>${escapeHtml(item.owner_cnic_display || item.owner_cnic || "-")}</span></div>
-        <div class="vehicle-modal-line"><span>Parking</span><span>${escapeHtml(item.parking_slot || "-")}</span></div>
         <div class="vehicle-modal-actions">
           ${vehicleFileActions(item.vehicle_photo_url, "Vehicle Photo")}
           ${vehicleFileActions(item.registration_book_url, "Reg Book")}
@@ -2227,7 +2226,6 @@ function renderVehicleModal(data) {
           <div class="col-6 col-md-2"><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm"></div>
           <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm"></div>
           <div class="col-12 col-md-3"><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm"></div>
-          <div class="col-12 col-md-2"><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm"></div>
           <div class="col-12 col-md-4"><label class="form-label small mb-1">Notes</label><input name="notes" class="form-control form-control-sm"></div>
           <div class="col-12 col-md-4"><label class="form-label small mb-1">Vehicle Photo</label><input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm"></div>
         </div>

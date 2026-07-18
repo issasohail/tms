@@ -45,7 +45,7 @@
                   {% endif %}
                 </td>
                 <td><span class="badge text-bg-light border">{{ clause.get_category_display }}</span></td>
-                <td class="small">{{ clause.body|truncatechars:220 }}</td>
+                <td class="small clause-text-cell">{{ clause.body|linebreaksbr }}</td>
                 <td>
                   <a class="btn btn-outline-primary btn-sm" href="{% url 'leases:default_clause_edit' clause.pk %}">Edit</a>
                 </td>
@@ -65,6 +65,11 @@
 <style>
 .default-clause-table {
   min-width: 760px;
+}
+.clause-text-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 @media (max-width: 420px) {
   .default-clause-table { font-size: .8rem; }

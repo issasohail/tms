@@ -5,7 +5,7 @@ from crispy_forms.layout import Div, Layout
 from django import forms
 
 from core.utils.text import add_auto_titlecase_class
-from .models import BuildingType, Property, Unit
+from .models import BuildingType, Property, PropertyBankAccount, Unit
 
 
 def default_building_type_for_property(property_obj):
@@ -35,6 +35,10 @@ class PropertyForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["bank_account_details"].label = "Legacy Bank Account Fallback"
+        self.fields["bank_account_details"].help_text = (
+            "Kept for compatibility. Manage multiple structured accounts on the property detail page."
+        )
         add_auto_titlecase_class(
             self.fields,
             {
@@ -205,3 +209,25 @@ class UnitForm(forms.ModelForm):
             instance.save()
             self.save_m2m()
         return instance
+
+
+class PropertyBankAccountForm(forms.ModelForm):
+    class Meta:
+        model = PropertyBankAccount
+        fields = [
+            "account_label", "bank_name", "account_title", "account_number",
+            "iban", "branch", "additional_details", "is_default", "is_active",
+            "sort_order",
+        ]
+        widgets = {
+            "additional_details": forms.Textarea(attrs={"rows": 2}),
+            "sort_order": forms.NumberInput(attrs={"min": 0}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.setdefault("class", "form-check-input")
+            else:
+                field.widget.attrs.setdefault("class", "form-control form-control-sm")

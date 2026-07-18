@@ -54,8 +54,8 @@ from tenants.models import Tenant, TenantInterestType
 from utils.pdf_export import handle_export
 
 from .filters import UnitFilter
-from .forms import PropertyForm, UnitForm
-from .models import BuildingType, Property, PropertyMedia, Unit, UnitMedia
+from .forms import PropertyBankAccountForm, PropertyForm, UnitForm
+from .models import BuildingType, Property, PropertyBankAccount, PropertyMedia, Unit, UnitMedia
 from .tables import PropertyTable, UnitTable
 
 logger = logging.getLogger(__name__)
@@ -172,7 +172,81 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
             "sort_order",
             "uploaded_at",
         )[:6]
+        from leases.services.inventory_parking import (
+            effective_inventory,
+            effective_parking_policy,
+            policy_value,
+        )
+
+        parking_policy = effective_parking_policy(property_obj=self.object)
+        context["effective_inventory"] = effective_inventory(property_obj=self.object)
+        context["parking_enabled"] = bool(policy_value(parking_policy, "enabled"))
+        context["parking_monthly_rate"] = policy_value(parking_policy, "monthly_rate")
+        context["parking_penalty"] = policy_value(
+            parking_policy, "unauthorized_parking_penalty"
+        )
+        context["parking_spaces"] = self.object.parking_spaces.filter(is_active=True)
+        bank_accounts = list(self.object.bank_accounts.all())
+        for account in bank_accounts:
+            account.edit_form = PropertyBankAccountForm(
+                instance=account, prefix=f"bank-{account.pk}"
+            )
+        context["bank_accounts"] = bank_accounts
+        context["bank_account_form"] = PropertyBankAccountForm(prefix="new-bank")
         return context
+
+
+@login_required
+@require_POST
+def property_bank_account_save(request, property_pk, account_pk=None):
+    property_obj = get_object_or_404(Property, pk=property_pk)
+    account = None
+    if account_pk is not None:
+        account = get_object_or_404(
+            PropertyBankAccount, pk=account_pk, property=property_obj
+        )
+    prefix = f"bank-{account.pk}" if account else "new-bank"
+    form = PropertyBankAccountForm(request.POST, instance=account, prefix=prefix)
+    if form.is_valid():
+        saved = form.save(commit=False)
+        saved.property = property_obj
+        saved.save()
+        messages.success(request, f"Bank account {saved.account_label} saved.")
+    else:
+        messages.error(request, "Bank account could not be saved. Check the entered values.")
+    return redirect("properties:property_detail", pk=property_pk)
+
+
+@login_required
+@require_POST
+def property_bank_account_welcome_settings(request, property_pk):
+    property_obj = get_object_or_404(Property, pk=property_pk)
+    mode = request.POST.get("welcome_bank_account_mode")
+    if mode not in {
+        Property.WELCOME_BANK_SELECTED,
+        Property.WELCOME_BANK_ALL,
+    }:
+        messages.error(request, "Select a valid welcome-message bank account option.")
+        return redirect("properties:property_detail", pk=property_pk)
+
+    if mode == Property.WELCOME_BANK_SELECTED:
+        selected = PropertyBankAccount.objects.filter(
+            pk=request.POST.get("selected_bank_account"),
+            property=property_obj,
+            is_active=True,
+        ).first()
+        if selected is None:
+            messages.error(request, "Add or activate a bank account before selecting it.")
+            return redirect("properties:property_detail", pk=property_pk)
+        PropertyBankAccount.objects.filter(property=property_obj).update(
+            is_default=False
+        )
+        selected.is_default = True
+        selected.save(update_fields=["is_default", "updated_at"])
+    property_obj.welcome_bank_account_mode = mode
+    property_obj.save(update_fields=["welcome_bank_account_mode", "updated_at"])
+    messages.success(request, "Welcome-message bank account selection updated.")
+    return redirect("properties:property_detail", pk=property_pk)
 
 
 class PropertyUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
@@ -930,6 +1004,19 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update(_unit_detail_context(self.object))
+        from leases.services.inventory_parking import (
+            effective_inventory,
+            effective_parking_policy,
+            policy_value,
+        )
+
+        parking_policy = effective_parking_policy(unit=self.object)
+        context["effective_inventory"] = effective_inventory(unit=self.object)
+        context["parking_enabled"] = bool(policy_value(parking_policy, "enabled"))
+        context["parking_monthly_rate"] = policy_value(parking_policy, "monthly_rate")
+        context["parking_penalty"] = policy_value(
+            parking_policy, "unauthorized_parking_penalty"
+        )
         return context
 
 

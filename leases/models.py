@@ -335,7 +335,7 @@ class Lease(models.Model):
             # Clause 14
             "That the Tenant shall pay all utility bills timely and submit copies to the Owner upon request. Electricity bill will be paid at Rs. [ELECTRIC_UNIT_RATE]/- per unit to the Owner along with the rent.",
             # Clause 15
-            "That a 2-month advance written notice is required from either party to vacate the premises. Failure to do so by the Tenant will result in forfeiture of the Security Deposit.",
+            "The Owner may terminate this Agreement and require the Tenant to vacate the premises at any time by giving thirty (30) days' written notice. The Tenant may terminate this Agreement only after completing the minimum occupancy period stated in Clause 6 and must give thirty (30) days' written notice. If the Tenant vacates before completing the minimum occupancy period, the early-termination obligations and penalties stated in Clause 6 shall apply.",
             # Clause 16
             "That the Tenant will not rent or sublet the premises to any third party.",
             # Clause 17
@@ -1455,9 +1455,11 @@ class DefaultClause(models.Model):
 
     CATEGORY_GENERAL = "general"
     CATEGORY_ELECTRICITY = "electricity"
+    CATEGORY_PARKING = "parking"
     CATEGORY_CHOICES = [
         (CATEGORY_GENERAL, "General"),
         (CATEGORY_ELECTRICITY, "Electricity billed by owner"),
+        (CATEGORY_PARKING, "Parking Clause"),
     ]
 
     clause_number = models.PositiveIntegerField()
@@ -1465,7 +1467,7 @@ class DefaultClause(models.Model):
         max_length=30,
         choices=CATEGORY_CHOICES,
         default=CATEGORY_GENERAL,
-        help_text="Electricity clauses are copied only when electricity is billed by owner.",
+        help_text="Electricity and parking categories are included only when applicable to the lease.",
     )
     body = models.TextField(
         help_text="Use {{ }} variables like {{ monthly_rent }}, {{ tenant.full_name }}, etc."
@@ -1487,6 +1489,9 @@ class DefaultClause(models.Model):
         queryset = cls.objects.filter(is_active=True).order_by("clause_number")
         if not getattr(lease, "electricity_bill_by_owner", True):
             queryset = queryset.exclude(category=cls.CATEGORY_ELECTRICITY)
+        from leases.services.inventory_parking import effective_parking_policy, policy_value
+        if not policy_value(effective_parking_policy(lease=lease), "enabled"):
+            queryset = queryset.exclude(category=cls.CATEGORY_PARKING)
         return queryset
 
 
@@ -2095,8 +2100,6 @@ class LeaseVehicle(models.Model):
 
     owner_name = models.CharField(max_length=120, blank=True)
     owner_cnic = NormalizedCNICField(max_length=30, blank=True)
-    parking_slot = models.CharField(max_length=50, blank=True)
-
     registration_book_photo = models.ImageField(
         upload_to=lease_vehicle_book_upload_to,
         blank=True,
@@ -2187,8 +2190,6 @@ class PendingLeaseVehicleSubmission(models.Model):
 
     owner_name = models.CharField(max_length=120, blank=True)
     owner_cnic = NormalizedCNICField(max_length=30, blank=True)
-    parking_slot = models.CharField(max_length=50, blank=True)
-
     registration_book_photo = models.ImageField(
         upload_to="leases/vehicles/pending/registration_book/",
         blank=True,
@@ -2255,25 +2256,59 @@ class AgreementSignatureTemplate(models.Model):
     """Singleton-style editable wording/settings for the package signature page."""
     name = models.CharField(max_length=100, unique=True, default="Default Signature Page")
     heading = models.CharField(max_length=160, default="Proposer, Seconder and Witness Signatures")
-    proposer_declaration = models.TextField(default="I recommend the applicant for tenancy and confirm the information stated below.")
-    seconder_declaration = models.TextField(default="I support the proposal for tenancy and confirm the information stated below.")
+    proposer_declaration = models.TextField(default=(
+        "I, {{ proposer_name }}, holding CNIC No. {{ proposer_cnic }}, and having the relationship of "
+        "{{ proposer_relationship }} with the Tenant, hereby declare that I personally know "
+        "{{ tenant_name }}, holding CNIC No. {{ tenant_cnic }}.\n\n"
+        "I understand that the Tenant is entering into a tenancy for {{ property_unit }}, for the period "
+        "from {{ lease_start_date }} to {{ lease_end_date }}.\n\n"
+        "Based on my personal knowledge of the Tenant's character, conduct, and financial responsibility, "
+        "I believe that the Tenant is trustworthy, responsible, suitable for tenancy, and capable of paying "
+        "the agreed rent, utility charges, and other lawful amounts on time. I recommend and vouch for the "
+        "Tenant's suitability for this tenancy.\n\n"
+        "If any dispute, misunderstanding, payment issue, complaint, or other matter arises between the Tenant "
+        "and the Management/Landlord, I shall, when reasonably requested, be willing to assist in good faith in "
+        "communicating with the parties and helping them reach an amicable resolution. I confirm that I am giving "
+        "this declaration voluntarily and authorize the Management/Landlord to contact me for verification of my "
+        "identity, relationship with the Tenant, and the information provided in this declaration. I understand "
+        "that this declaration is a personal reference only and does not make me financially liable for the "
+        "Tenant's obligations unless I separately sign a written guarantee."
+    ))
+    seconder_declaration = models.TextField(default=(
+        "I, {{ seconder_name }}, holding CNIC No. {{ seconder_cnic }}, and having the relationship of "
+        "{{ seconder_relationship }} with the Tenant, hereby declare that I personally know "
+        "{{ tenant_name }}, holding CNIC No. {{ tenant_cnic }}.\n\n"
+        "I understand that the Tenant is entering into a tenancy for {{ property_unit }}, for the period "
+        "from {{ lease_start_date }} to {{ lease_end_date }}.\n\n"
+        "Based on my personal knowledge of the Tenant's character, conduct, and financial responsibility, "
+        "I believe that the Tenant is trustworthy, responsible, suitable for tenancy, and capable of paying "
+        "the agreed rent, utility charges, and other lawful amounts on time. I support and second the proposal "
+        "for this tenancy.\n\n"
+        "If any dispute, misunderstanding, payment issue, complaint, or other matter arises between the Tenant "
+        "and the Management/Landlord, I shall, when reasonably requested, be willing to assist in good faith in "
+        "communicating with the parties and helping them reach an amicable resolution. I confirm that I am giving "
+        "this declaration voluntarily and authorize the Management/Landlord to contact me for verification of my "
+        "identity, relationship with the Tenant, and the information provided in this declaration. I understand "
+        "that this declaration is a personal reference only and does not make me financially liable for the "
+        "Tenant's obligations unless I separately sign a written guarantee."
+    ))
     witness_declaration = models.TextField(default="I confirm that I witnessed the execution of this agreement.")
     footer_text = models.TextField(blank=True, default="")
     show_phone = models.BooleanField(default=True)
     show_address = models.BooleanField(default=True)
     show_thumb_impression = models.BooleanField(default=False)
     legal_first_page_top_reserve = models.DecimalField(
-        max_digits=4, decimal_places=2, default=Decimal("4.80"),
+        max_digits=4, decimal_places=2, default=Decimal("0.55"),
         validators=[MinValueValidator(Decimal("0.50")), MaxValueValidator(Decimal("8.00"))],
-        help_text="Top blank area, in inches, on the first Legal agreement page.",
+        help_text="Top margin, in inches, on the first Legal agreement page.",
     )
     legal_qr_reserve_width = models.DecimalField(
-        max_digits=4, decimal_places=2, default=Decimal("4.00"),
+        max_digits=4, decimal_places=2, default=Decimal("2.00"),
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("7.50"))],
         help_text="Width, in inches, of the QR/stamp reserve on the first Legal page.",
     )
     legal_qr_reserve_height = models.DecimalField(
-        max_digits=4, decimal_places=2, default=Decimal("2.00"),
+        max_digits=4, decimal_places=2, default=Decimal("4.00"),
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("5.00"))],
         help_text="Height, in inches, of the QR/stamp reserve on the first Legal page.",
     )
@@ -2281,6 +2316,11 @@ class AgreementSignatureTemplate(models.Model):
         max_digits=4, decimal_places=2, default=Decimal("3.10"),
         validators=[MinValueValidator(Decimal("2.00")), MaxValueValidator(Decimal("5.00"))],
         help_text="Bottom area, in inches, reserved for the four CNIC cards on Legal agreement page 2.",
+    )
+    legal_clause_spacing = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("5.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("12.00"))],
+        help_text="Maximum space, in points, inserted after each clause on Legal agreement pages.",
     )
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -2295,3 +2335,14 @@ class AgreementSignatureTemplate(models.Model):
     @classmethod
     def current(cls):
         return cls.objects.filter(is_active=True).order_by("pk").first() or cls.objects.create()
+
+
+from .models_parking_inventory import (  # noqa: E402,F401
+    InventoryItemDefinition,
+    LeaseInventoryItem,
+    LeaseParkingAllocation,
+    ParkingPolicy,
+    ParkingSpace,
+    PropertyInventoryItem,
+    UnitInventoryItem,
+)

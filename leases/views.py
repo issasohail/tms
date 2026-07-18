@@ -590,7 +590,7 @@ def resolve_placeholders(lease, text):
     for placeholder, value in replacements.items():
         text = text.replace(placeholder, value)
 
-    return text
+    return do_replace_placeholders(text, lease)
 
 
 def _is_owner_billed_electricity_clause(text):
@@ -604,12 +604,24 @@ def _lease_clauses_for_agreement(lease):
 
 
 def _filter_electricity_clauses(clauses, lease):
+    from leases.services.inventory_parking import effective_parking_policy, policy_value
+    parking_enabled = policy_value(effective_parking_policy(lease=lease), "enabled")
+    def is_parking_clause(clause):
+        text = clause.template_text or ""
+        return "[PARKING_" in text or "[UNAUTHORIZED_PARKING_PENALTY]" in text
     if getattr(lease, "electricity_bill_by_owner", True):
-        return clauses
+        return [
+            clause for clause in clauses
+            if parking_enabled or not is_parking_clause(clause)
+        ]
     return [
         clause
         for clause in clauses
-        if not _is_owner_billed_electricity_clause(clause.template_text)
+        if (parking_enabled or not is_parking_clause(clause))
+        and (
+            clause.clause_number == 19
+            or not _is_owner_billed_electricity_clause(clause.template_text)
+        )
     ]
 
 
@@ -702,7 +714,6 @@ def _vehicle_dict(request, vehicle):
         "owner_name": vehicle.owner_name,
         "owner_cnic": vehicle.owner_cnic,
         "owner_cnic_display": format_cnic(vehicle.owner_cnic),
-        "parking_slot": vehicle.parking_slot,
         "notes": vehicle.notes,
         "is_active": vehicle.is_active,
         "vehicle_photo_url": _absolute_file_url(request, vehicle.vehicle_photo),
@@ -724,7 +735,6 @@ def _pending_vehicle_dict(request, submission):
         "owner_name": submission.owner_name,
         "owner_cnic": submission.owner_cnic,
         "owner_cnic_display": format_cnic(submission.owner_cnic),
-        "parking_slot": submission.parking_slot,
         "source": submission.source,
         "status": submission.status,
         "status_label": submission.get_status_display(),
@@ -856,7 +866,6 @@ def lease_vehicle_info_ajax(request, pk):
             year=year,
             owner_name=(request.POST.get("owner_name") or "").strip(),
             owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
-            parking_slot=(request.POST.get("parking_slot") or "").strip(),
             vehicle_photo=request.FILES.get("vehicle_photo"),
             notes=(request.POST.get("notes") or "").strip(),
         )
@@ -1773,7 +1782,6 @@ def lease_vehicle_add(request, pk):
             year=year,
             owner_name=(request.POST.get("owner_name") or "").strip(),
             owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
-            parking_slot=(request.POST.get("parking_slot") or "").strip(),
             vehicle_photo=request.FILES.get("vehicle_photo"),
             notes=(request.POST.get("notes") or "").strip(),
         )
@@ -1843,7 +1851,6 @@ def lease_vehicle_edit(request, pk, vehicle_id):
     vehicle.year = year
     vehicle.owner_name = (request.POST.get("owner_name") or "").strip()
     vehicle.owner_cnic = (request.POST.get("owner_cnic") or "").strip()
-    vehicle.parking_slot = (request.POST.get("parking_slot") or "").strip()
     vehicle.notes = (request.POST.get("notes") or "").strip()
     vehicle.is_active = request.POST.get("is_active") in ("1", "on", "true", "yes")
     if request.FILES.get("vehicle_photo"):
@@ -4012,6 +4019,23 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             }
         )
 
+        from leases.services.inventory_parking import (
+            effective_inventory,
+            effective_parking_policy,
+            policy_value,
+        )
+
+        parking_policy = effective_parking_policy(lease=self.object)
+        ctx["effective_inventory"] = effective_inventory(lease=self.object)
+        ctx["parking_enabled"] = bool(policy_value(parking_policy, "enabled"))
+        ctx["parking_monthly_rate"] = policy_value(parking_policy, "monthly_rate")
+        ctx["parking_penalty"] = policy_value(
+            parking_policy, "unauthorized_parking_penalty"
+        )
+        ctx["parking_allocations"] = self.object.parking_allocations.select_related(
+            "parking_space", "vehicle"
+        ).filter(is_active=True)
+
         return ctx
 
 
@@ -5826,6 +5850,19 @@ def create_relationship_type_ajax(request):
     return JsonResponse({"ok": True, "id": relationship.pk, "text": relationship.name, "created": True})
 
 
+def _renumber_history_clauses(history):
+    clauses = list(history.clauses.order_by("clause_number", "id"))
+    if not clauses:
+        return
+    temporary_start = max(clause.clause_number for clause in clauses) + len(clauses) + 1
+    for index, clause in enumerate(clauses):
+        type(clause).objects.filter(pk=clause.pk).update(
+            clause_number=temporary_start + index
+        )
+    for index, clause in enumerate(clauses, start=1):
+        type(clause).objects.filter(pk=clause.pk).update(clause_number=index)
+
+
 @require_http_methods(["GET", "POST"])
 def edit_clauses(request, pk):
     from copy import copy
@@ -5903,6 +5940,19 @@ def edit_clauses(request, pk):
         request.method == "POST"
         and request.headers.get("x-requested-with") == "XMLHttpRequest"
     ):
+        if request.POST.get("action") == "delete_clause":
+            clause = get_object_or_404(
+                history.clauses,
+                pk=request.POST.get("clause_id"),
+            )
+            deleted_number = clause.clause_number
+            with transaction.atomic():
+                clause.delete()
+                _renumber_history_clauses(history)
+            return JsonResponse({
+                "status": "success",
+                "message": f"Clause {deleted_number} deleted and remaining clauses renumbered.",
+            })
         for key, value in request.POST.items():
             if key.startswith("clause_"):
                 clause_id = key.split("_")[1]
@@ -5993,7 +6043,7 @@ def generate_agreement_pdf(request, pk):
     history.print_on_legal_page = request.GET.get("legal") in ("1", "true", "on", "yes")
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
-        pdf_bytes, filename, document = build_package(request, lease, history, clauses)
+        pdf_bytes, filename, _document = build_package(request, lease, history, clauses)
     except RuntimeError as exc:
         return HttpResponse(str(exc), status=500, content_type="text/plain")
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
@@ -6904,8 +6954,6 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
     legal = bool(getattr(history, "print_on_legal_page", False))
     layout_config = AgreementSignatureTemplate.current()
     first_top = float(getattr(layout_config, "legal_first_page_top_reserve", 4.8) or 4.8)
-    qr_width = float(getattr(layout_config, "legal_qr_reserve_width", 4.0) or 0)
-    qr_height = float(getattr(layout_config, "legal_qr_reserve_height", 2.0) or 0)
     set_doc_margins(doc, legal=legal)
     add_page_number_footer(doc)  # Page X of Y
     if legal:
@@ -6996,9 +7044,6 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         for child in clause_div.children:
             _append_inline(p, child, br_as_space=False)
 
-        if legal and clause_index == 2 and qr_width > 0 and qr_height > 0:
-            _add_floating_reserve_box(doc, width=qr_width, height=qr_height)
-
     # 5) Signature (table look + spacing)
     add_signature_block(doc, lease, history=history)
 
@@ -7080,7 +7125,7 @@ def download_preview_docx(request, lease_id):
     history.print_on_legal_page = request.GET.get("legal") in ("1", "true", "on", "yes")
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
-        docx_bytes, filename, document = build_docx_package(request, lease, history, clauses)
+        docx_bytes, filename, _document = build_docx_package(request, lease, history, clauses)
     except RuntimeError as exc:
         return HttpResponse(str(exc), status=500, content_type="text/plain")
     return FileResponse(

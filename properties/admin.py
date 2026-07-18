@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Property, Unit  # Import models from models.py only
+from .models import Property, PropertyBankAccount, Unit  # Import models from models.py only
 
 
 # Method 2: Recommended way with custom admin class
@@ -16,7 +16,13 @@ class UnitAdmin(admin.ModelAdmin):
     list_editable = ("is_smart_meter", "electric_meter_num")
 
 
+class PropertyBankAccountInline(admin.TabularInline):
+    model = PropertyBankAccount
+    extra = 0
+
+
 class PropertyAdmin(admin.ModelAdmin):
+    inlines = [PropertyBankAccountInline]
     list_display = ('property_name', 'property_address1',
                     'total_units')  # , 'manager')
    # list_filter = ('manager',)
@@ -61,6 +67,7 @@ class PropertyAdmin(admin.ModelAdmin):
                 "property_state",
                 "property_zipcode",
                 "bank_account_details",
+                "welcome_bank_account_mode",
             )
         }),
     )

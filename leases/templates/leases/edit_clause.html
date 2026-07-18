@@ -44,6 +44,7 @@
 .clause-textarea{
   flex: 1 1 auto;
 }
+.clause-delete-btn { flex: 0 0 auto; margin-top: 1px; }
 
 .panel-scroll{
   height: 80vh;          /* same height on both sides */
@@ -334,6 +335,7 @@
                             <textarea class="form-control clause-editor clause-textarea"
                                 name="clause_{{ clause.id }}"
                                 id="clause_{{ clause.id }}">{{ clause.template_text }}</textarea>
+                            <button type="button" class="btn btn-outline-danger btn-sm clause-delete-btn" data-clause-id="{{ clause.id }}" data-clause-number="{{ clause.clause_number }}" title="Delete clause {{ clause.clause_number }}"><i class="fas fa-trash-alt"></i></button>
                             </div>
 
                         {% endfor %}
@@ -407,6 +409,14 @@
                 }
             });
         });
+
+        $('.role-select, .relationship-select')
+            .off('select2:open.partyFocus')
+            .on('select2:open.partyFocus', function () {
+                window.setTimeout(function () {
+                    document.querySelector('.select2-container--open .select2-search__field')?.focus();
+                }, 0);
+            });
     }
 
     const clauseFilterUrl = "{% url 'leases:agreement_clause_filter_options_ajax' %}";
@@ -476,6 +486,13 @@
 
     if (window.$?.fn?.select2) {
       $('.clause-filter-select').select2({theme:'bootstrap-5', width:'100%'});
+      $('.clause-filter-select')
+        .off('select2:open.clauseFilterFocus')
+        .on('select2:open.clauseFilterFocus', function () {
+          window.setTimeout(function () {
+            document.querySelector('.select2-container--open .select2-search__field')?.focus();
+          }, 0);
+        });
     }
     bindClauseFilterChange(propertyFilter, () => refreshClauseFilters({propertyChanged:true}));
     bindClauseFilterChange(unitFilter, () => refreshClauseFilters({unitChanged:true}));
@@ -665,6 +682,31 @@
 
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
+  document.querySelectorAll('.clause-delete-btn').forEach(button => {
+    button.addEventListener('click', async () => {
+      const clauseNumber = button.dataset.clauseNumber;
+      if (!confirm(`Delete clause ${clauseNumber}? Remaining clauses will be renumbered.`)) return;
+      const body = new FormData();
+      body.append('action', 'delete_clause');
+      body.append('clause_id', button.dataset.clauseId);
+      body.append('history_id', '{{ history.pk }}');
+      body.append('csrfmiddlewaretoken', document.querySelector('#clauseForm [name=csrfmiddlewaretoken]').value);
+      button.disabled = true;
+      try {
+        const response = await fetch(document.getElementById('clauseForm').action, {
+          method: 'POST',
+          headers: {'X-Requested-With': 'XMLHttpRequest'},
+          body,
+        });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Could not delete clause.');
+        window.location.reload();
+      } catch (error) {
+        button.disabled = false;
+        alert(error.message);
+      }
+    });
+  });
 
 
 

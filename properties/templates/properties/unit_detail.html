@@ -603,6 +603,28 @@
         </div>
     </div>
 
+    <div class="row g-3 mb-3">
+        <div class="col-lg-7">
+            <div class="card unit-detail-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Inventory</h5>
+                    <a href="{% url 'leases:inventory_manage' 'unit' unit.pk %}" class="btn btn-sm btn-outline-primary">Manage</a>
+                </div>
+                <div class="card-body py-2">
+                    {% for item in effective_inventory %}<span class="badge bg-light text-dark border me-1 mb-1">{{ item.item.name }}: {{ item.quantity }}</span>{% empty %}<span class="text-muted">No inventory configured.</span>{% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card unit-detail-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Motorcycle Parking</h5>
+                    <a href="{% url 'leases:parking_manage' 'unit' unit.pk %}" class="btn btn-sm btn-outline-primary">Manage</a>
+                </div>
+                <div class="card-body py-2 small"><strong>{% if parking_enabled %}Enabled{% else %}Disabled{% endif %}</strong> &middot; Rs. {{ parking_monthly_rate|floatformat:0 }}/month &middot; Rs. {{ parking_penalty|floatformat:0 }} penalty</div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>

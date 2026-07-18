@@ -14,7 +14,6 @@ VEHICLE_FIELD_NAMES = [
     "year",
     "owner_name",
     "owner_cnic",
-    "parking_slot",
 ]
 
 
@@ -94,7 +93,6 @@ def create_pending_vehicle_submissions_from_post(
             year=year,
             owner_name=values["owner_name"],
             owner_cnic=values["owner_cnic"],
-            parking_slot=values["parking_slot"],
             vehicle_photo=vehicle_photo,
             registration_book_photo=registration_book_photo,
         )
@@ -125,7 +123,6 @@ def copy_pending_vehicle_to_lease_vehicle(submission, *, lease=None, reviewed_by
         year=submission.year,
         owner_name=submission.owner_name,
         owner_cnic=submission.owner_cnic,
-        parking_slot=submission.parking_slot,
     )
 
     if submission.registration_book_photo:

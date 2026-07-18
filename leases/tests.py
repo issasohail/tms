@@ -85,21 +85,35 @@ class AuthorizedOccupantsPlaceholderTests(TestCase):
         self.assertIn("authorized_occupants_table", PLACEHOLDER_REGISTRY)
         self.assertIn("authorized_occupants_names", PLACEHOLDER_REGISTRY)
         self.assertIn("authorized_occupants_count", PLACEHOLDER_REGISTRY)
+        self.assertIn("PARKING_CLAUSE", PLACEHOLDER_REGISTRY)
+        self.assertIn("PARKING_ENABLED", PLACEHOLDER_REGISTRY)
+        self.assertIn("PARKING_SPACE", PLACEHOLDER_REGISTRY)
+        self.assertIn("PARKING_ASSIGNMENT_TERMS", PLACEHOLDER_REGISTRY)
+        self.assertIn("PARKING_MONTHLY_RATE", PLACEHOLDER_REGISTRY)
+        self.assertIn("UNAUTHORIZED_PARKING_PENALTY", PLACEHOLDER_REGISTRY)
 
-    def test_table_includes_primary_tenant_and_three_column_layout(self):
+    def test_table_formats_all_cnics_and_uses_four_column_layout(self):
         from leases.utils.utils import authorized_occupants_table
 
-        tenant = Mock(cnic="61101-1234567-1")
+        tenant = Mock(cnic="6110112345671")
         tenant.get_full_name.return_value = "Primary Tenant"
-        manager = Mock()
-        manager.select_related.return_value.filter.return_value.__iter__ = lambda self: (
-            iter([])
+        family_member = Mock(cnic="4210112345671")
+        family_member.get_full_name.return_value = "Family Member"
+        link = SimpleNamespace(
+            family_member=family_member,
+            relation="Spouse",
+            relationship_type=None,
         )
+        manager = Mock()
+        manager.select_related.return_value.filter.return_value = [link]
         lease = Mock(tenant=tenant, family_members=manager)
         html = authorized_occupants_table(lease)
         self.assertIn("Primary Tenant", html)
         self.assertIn("61101-1234567-1", html)
-        self.assertEqual(html.count('class="occupant-card"'), 3)
+        self.assertIn("42101-1234567-1", html)
+        self.assertNotIn("6110112345671", html)
+        self.assertNotIn("4210112345671", html)
+        self.assertEqual(html.count('class="occupant-card"'), 4)
         self.assertNotIn("N/A", html)
 
     def test_double_curly_placeholder_is_replaced(self):
@@ -115,6 +129,91 @@ class AuthorizedOccupantsPlaceholderTests(TestCase):
         rendered = do_replace_placeholders("{{authorized_occupants_table}}", lease)
         self.assertIn("Tenant One", rendered)
         self.assertNotIn("{{authorized_occupants_table}}", rendered)
+
+
+class ActiveClauseEditorDeletionTests(TestCase):
+    def setUp(self):
+        from datetime import date, timedelta
+
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Permission
+        from leases.models import Lease, LeaseRenewalClause
+        from leases.services.lease_history import ensure_original_history
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        property_obj = Property.objects.create(
+            property_name="Clause Deletion Property",
+            owner_name="Test Owner",
+            owner_cnic="61101-1111111-1",
+            type="Residential",
+            property_type="house",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="C-1")
+        tenant = Tenant.objects.create(
+            first_name="Clause",
+            last_name="Tenant",
+            cnic="61101-2222222-2",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            monthly_rent=10000,
+        )
+        self.history = ensure_original_history(self.lease)
+        self.user = get_user_model().objects.create_user(
+            username="clause-delete-user",
+            password="test-password",
+        )
+        self.user.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="leases",
+                codename="change_lease",
+            )
+        )
+        self.client.force_login(self.user)
+        self.history.clauses.all().delete()
+        LeaseRenewalClause.objects.bulk_create([
+            LeaseRenewalClause(
+                renewal=self.history,
+                clause_number=number,
+                template_text=f"Original clause {number}",
+            )
+            for number in range(1, 6)
+        ])
+
+    def test_delete_clause_renumbers_contiguously_and_preserves_text_order(self):
+        from django.urls import reverse
+
+        clause_three = self.history.clauses.get(clause_number=3)
+        response = self.client.post(
+            reverse("leases:edit_clauses", args=[self.lease.pk]),
+            {
+                "action": "delete_clause",
+                "clause_id": clause_three.pk,
+                "history_id": self.history.pk,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        remaining = list(
+            self.history.clauses.order_by("clause_number").values_list(
+                "clause_number", "template_text"
+            )
+        )
+        self.assertEqual(
+            remaining,
+            [
+                (1, "Original clause 1"),
+                (2, "Original clause 2"),
+                (3, "Original clause 4"),
+                (4, "Original clause 5"),
+            ],
+        )
 
 
 class AgreementPartyAjaxTests(TestCase):

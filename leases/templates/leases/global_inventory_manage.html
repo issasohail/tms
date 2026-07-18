@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid px-2 px-md-3 py-2">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h3 class="mb-0">Global Inventory Defaults</h3><div class="text-muted small">These values apply to every property unless overridden at property, unit, or lease level.</div></div>
+    <a class="btn btn-secondary btn-sm" href="{% url 'core:settings' %}#settings-group-parking-water-penalties">Back to Settings</a>
+  </div>
+  <div class="card shadow-sm"><div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0">
+    <thead class="table-light"><tr><th>Item</th><th style="width:120px">Quantity</th><th>Condition</th><th style="width:110px">In Clause</th><th style="width:90px">Active</th><th style="width:90px"></th></tr></thead>
+    <tbody>{% for item in items %}<tr><form method="post">{% csrf_token %}
+      <td class="fw-semibold">{{ item.name }}<input type="hidden" name="item_id" value="{{ item.pk }}"></td>
+      <td><input class="form-control form-control-sm" type="number" min="0" name="quantity" value="{{ item.default_quantity }}"></td>
+      <td><input class="form-control form-control-sm" name="condition" value="{{ item.default_condition }}"></td>
+      <td class="text-center"><input class="form-check-input" type="checkbox" name="include_in_clause" {% if item.include_in_clause %}checked{% endif %}></td>
+      <td class="text-center"><input class="form-check-input" type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %}></td>
+      <td><button class="btn btn-primary btn-sm">Save</button></td>
+    </form></tr>{% empty %}<tr><td colspan="6" class="text-muted text-center">No inventory definitions.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endblock %}

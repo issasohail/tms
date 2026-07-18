@@ -263,7 +263,6 @@ class LeaseVehicleInline(admin.TabularInline):
         "color",
         "owner_name",
         "owner_cnic",
-        "parking_slot",
         "is_active",
     )
 
@@ -808,7 +807,6 @@ class LeaseVehicleAdmin(admin.ModelAdmin):
         "model",
         "color",
         "owner_name",
-        "parking_slot",
         "is_active",
     )
     list_filter = ("vehicle_type", "is_active")

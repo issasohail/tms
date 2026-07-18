@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid px-2 px-md-3 py-2">
+  <div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="mb-0">Parking — {{ scope_object }}</h3><div class="text-muted small">Global → Property → Unit → Lease inheritance</div></div><a class="btn btn-secondary btn-sm" href="{% url return_target.0 return_target.1 %}">Back</a></div>
+  <div class="card shadow-sm mb-3"><div class="card-header fw-semibold">{{ scope|title }} Parking Policy</div><div class="card-body">
+    <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="save_policy">
+      <div class="col-12 col-md-2"><label class="form-label">Enabled</label><div>{{ policy_form.enabled }}</div></div>
+      <div class="col-6 col-md-3"><label class="form-label">Monthly Rate</label>{{ policy_form.monthly_rate }}</div>
+      <div class="col-6 col-md-3"><label class="form-label">Unauthorized Penalty</label>{{ policy_form.unauthorized_parking_penalty }}</div>
+      <div class="col-12 col-md-4"><button class="btn btn-primary btn-sm">Save Override</button> <button name="action" value="copy_policy" class="btn btn-outline-warning btn-sm" onclick="return confirm('Copy parent parking defaults?')">Copy Default</button></div>
+    </form>
+  </div></div>
+  {% if space_form %}<div class="card shadow-sm mb-3"><div class="card-header fw-semibold">Property Parking Spaces</div><div class="card-body">
+    <form method="post" class="row g-2 align-items-end mb-3">{% csrf_token %}<input type="hidden" name="action" value="add_space">
+      <div class="col-6 col-md-2"><label class="form-label">Label</label>{{ space_form.label }}</div><div class="col-6 col-md-2"><label class="form-label">Vehicle Type</label>{{ space_form.vehicle_type }}</div><div class="col-6 col-md-2"><label class="form-label">Rate Override</label>{{ space_form.monthly_rate_override }}</div><div class="col-6 col-md-1"><label class="form-label">Active</label>{{ space_form.is_active }}</div><div class="col-12 col-md-3"><label class="form-label">Notes</label>{{ space_form.notes }}</div><div class="col-12 col-md-2"><button class="btn btn-success btn-sm">Add Space</button></div>
+    </form>
+    <div class="d-flex flex-wrap gap-2">{% for space in spaces %}<span class="badge {% if space.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %} p-2">{{ space.label }}{% if space.vehicle_type %} · {{ space.vehicle_type.name }}{% endif %}</span>{% empty %}<span class="text-muted">No spaces created.</span>{% endfor %}</div>
+  </div></div>{% endif %}
+  {% if allocation_form %}<div class="card shadow-sm"><div class="card-header fw-semibold">Lease Parking Allocation</div><div class="card-body">
+    <form method="post" class="row g-2 align-items-end mb-3">{% csrf_token %}<input type="hidden" name="action" value="allocate"><div class="col-6 col-md-2"><label class="form-label">Space</label>{{ allocation_form.parking_space }}</div><div class="col-6 col-md-2"><label class="form-label">Vehicle</label>{{ allocation_form.vehicle }}</div><div class="col-6 col-md-2"><label class="form-label">Monthly Rate</label>{{ allocation_form.agreed_monthly_rate }}</div><div class="col-6 col-md-2"><label class="form-label">Start Date</label>{{ allocation_form.start_date }}</div><div class="col-12 col-md-2"><label class="form-label">Notes</label>{{ allocation_form.notes }}</div><div class="col-12 col-md-2"><button class="btn btn-success btn-sm">Allocate</button></div></form>
+    <div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Space</th><th>Vehicle</th><th>Rate</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>{% for row in allocations %}<tr><td>{{ row.parking_space.label }}</td><td>{{ row.vehicle|default:"—" }}</td><td>Rs. {{ row.agreed_monthly_rate|floatformat:0 }}</td><td>{{ row.start_date }} – {{ row.end_date|default:"Current" }}</td><td>{% if row.is_active %}Active{% else %}Ended{% endif %}</td><td>{% if row.is_active %}<form method="post" action="{% url 'leases:parking_allocation_end' row.pk %}">{% csrf_token %}<button class="btn btn-outline-danger btn-sm" onclick="return confirm('End this parking allocation?')">End</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted">No parking allocation.</td></tr>{% endfor %}</tbody></table></div>
+  </div></div>{% endif %}
+</div>
+{% endblock %}

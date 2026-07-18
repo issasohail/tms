@@ -53,6 +53,11 @@ def _lease_bank_account(lease):
     property_bank = (getattr(property_obj, "bank_account_details", None) or "").strip()
     if unit_bank and not use_property:
         return unit_bank
+    structured_resolver = getattr(property_obj, "welcome_bank_account_details", None)
+    if callable(structured_resolver):
+        structured_bank = structured_resolver()
+        if structured_bank:
+            return structured_bank
     return property_bank or unit_bank
 
 

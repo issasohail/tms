@@ -31,6 +31,8 @@ class GlobalSettingsForm(forms.ModelForm):
                   "billing_cap_amount",
                   "default_lease_months",
                   "end_lease_proration_interval_days",
+                  "default_parking_enabled", "default_motorcycle_parking_rate",
+                  "default_unauthorized_parking_penalty", "water_abuse_penalty_amount",
                   "lease_file_share_valid_days",
                   "police_verification_document_category_code",
                   "police_verification_link_valid_hours",
@@ -75,6 +77,10 @@ class GlobalSettingsForm(forms.ModelForm):
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
             "default_lease_months",
             "end_lease_proration_interval_days",
+        ]),
+        ("Parking & Water Penalties", "fas fa-motorcycle", [
+            "default_parking_enabled", "default_motorcycle_parking_rate",
+            "default_unauthorized_parking_penalty", "water_abuse_penalty_amount",
         ]),
         ("Police Verification", "fas fa-shield-alt", [
             "police_verification_document_category_code",

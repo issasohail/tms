@@ -211,7 +211,7 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             follow=True,
         )
 
-    def test_missing_source_file_returns_friendly_response(self):
+    def test_missing_source_file_can_be_approved_with_warning(self):
         pending = PendingWhatsAppMedia.objects.create(
             phone=self.tenant.phone,
             file="whatsapp/pending/missing-source.pdf",
@@ -229,10 +229,12 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            "The source media file is missing from storage. Restore or re-upload it before approval.",
+            "missing source file(s) were marked approved but could not be attached to the destination",
         )
 
-    def test_missing_source_file_leaves_status_pending(self):
+    def test_missing_source_file_records_approval_without_destination_document(self):
+        from leases.models import LeaseDocument
+
         pending = PendingWhatsAppMedia.objects.create(
             phone=self.tenant.phone,
             file="whatsapp/pending/missing-status-source.pdf",
@@ -245,9 +247,11 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self._approve(pending, f"lease_document:{self.lease.pk}")
 
         pending.refresh_from_db()
-        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
-        self.assertIsNone(pending.approved_at)
-        self.assertIsNone(pending.approved_by)
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
+        self.assertIsNotNone(pending.approved_at)
+        self.assertEqual(pending.approved_by, self.user)
+        self.assertIn("Approved without destination attachment", pending.ai_notes)
+        self.assertFalse(LeaseDocument.objects.filter(lease=self.lease).exists())
 
     def test_other_media_without_target_cannot_be_approved(self):
         pending = self._pending(lease=None, property=None, unit=None)
@@ -568,6 +572,18 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("Lease Balance", response)
         self.assertIn(room.unit_number, response)
         self.assertIn(str(room_lease.get_balance), response)
+        self.assertIn("10. Change unit", response)
+        self.assertIn("11. Change property", response)
+        staff_conversation.refresh_from_db()
+        self.assertEqual(staff_conversation.pending_state, "staff_selected_lease_menu")
+        self.assertEqual(staff_conversation.selected_lease, room_lease)
+
+        follow_up = assistant._consume_staff_menu_state(
+            self.message, staff_conversation, "tenant details", self.staff1
+        )
+
+        self.assertIn("Tenant Summary", follow_up)
+        self.assertIn("Selected: F56 Basement", follow_up)
 
     def test_unit_only_staff_shortcut_asks_for_property(self):
         WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
@@ -656,8 +672,8 @@ class WhatsAppControlledAssistantTests(TestCase):
         conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
             staff_user=self.staff1,
-            selected_mode=WhatsAppConversation.MODE_STAFF,
-            mode_expires_at=timezone.now() + timedelta(hours=1),
+            selected_mode="",
+            pending_state="mode_selection",
         )
         start_log = WhatsAppMessageLog.objects.create(
             direction=WhatsAppMessageLog.DIRECTION_INBOUND,
@@ -665,13 +681,13 @@ class WhatsAppControlledAssistantTests(TestCase):
             wa_message_id="wamid.simulator.start",
             message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
             status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={"type": "text", "text": {"body": f"act as tenant {self.tenant.phone}"}},
+            payload={"type": "text", "text": {"body": f"Tenant {self.tenant.phone}"}},
         )
 
         response, start_intent, _metadata = assistant._handle(start_log, conversation)
 
         self.assertEqual(start_intent, "staff")
-        self.assertIn("TENANT SIMULATOR - READ ONLY", response)
+        self.assertIn("TENANT TEST - READ ONLY", response)
         conversation.refresh_from_db()
         self.assertEqual(conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk)
         simulated_identity = resolve_sender(self.staff1.whatsapp_number, conversation=conversation)
@@ -696,13 +712,39 @@ class WhatsAppControlledAssistantTests(TestCase):
             wa_message_id="wamid.simulator.exit",
             message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
             status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={"type": "text", "text": {"body": "exit tenant"}},
+            payload={"type": "text", "text": {"body": "to staff"}},
         )
         exit_response, exit_intent, _metadata = assistant._handle(exit_log, conversation)
         self.assertEqual(exit_intent, "staff_tenant_simulation_ended")
         self.assertIn("Staff Inbox / Menu", exit_response)
         conversation.refresh_from_db()
         self.assertNotIn("staff_tenant_simulation", conversation.context)
+
+    def test_selected_staff_can_open_tenant_testing_by_tenant_number(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
+        self.staff1.groups.add(simulator_group)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            pending_state="mode_selection",
+        )
+        message = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.simulator.tenant-number",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": f"Tenant {self.tenant.pk}"}},
+        )
+
+        response, intent, _metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
+
+        self.assertEqual(intent, "staff")
+        self.assertIn("TENANT TEST - READ ONLY", response)
+        self.assertIn(self.tenant.get_full_name(), response)
 
     def test_tenant_account_selection_shows_property_and_opens_without_cnic_step(self):
         second_tenant = Tenant.objects.create(
@@ -849,7 +891,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         assistant._consume_staff_menu_state(message, staff_conversation, "1", self.staff1)
         staff_conversation.refresh_from_db()
         self.assertEqual(staff_conversation.pending_state, "staff_upload_target_query")
-        assistant._consume_staff_menu_state(message, staff_conversation, "Test Residency", self.staff1)
+        assistant._consume_staff_menu_state(message, staff_conversation, "Test Residency#1", self.staff1)
         staff_conversation.refresh_from_db()
         self.assertEqual(staff_conversation.pending_state, "staff_waiting_upload")
 

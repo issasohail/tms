@@ -6,7 +6,7 @@
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
       <h3 class="mb-1"><i class="fab fa-whatsapp me-2"></i>WhatsApp Staff Access</h3>
-      <div class="text-muted small">Manage the Tenant Simulator group and property access for staff WhatsApp numbers.</div>
+      <div class="text-muted small">Manage read-only tenant testing and property access for staff WhatsApp numbers.</div>
     </div>
     <div class="d-flex gap-2">
       <a href="{% url 'whatsapp:simulator' %}" class="btn btn-sm btn-success">Role Simulator</a>
@@ -15,9 +15,9 @@
   </div>
 
   <div class="alert alert-info py-2 small">
-    Authorized staff can send <code>tenant simulator</code> or
-    <code>act as tenant 03001234567</code> from their registered WhatsApp number.
-    The phone simulator is read-only and remains limited to the selected properties.
+    Authorized staff can send <code>TENANT 03001234567</code> or
+    <code>TENANT 1234</code> from their registered WhatsApp number.
+    Tenant testing is read-only and remains limited to the selected properties.
   </div>
 
   <div class="d-flex align-items-center gap-2 mb-2 small">
@@ -53,7 +53,7 @@
                          name="simulator_enabled" id="simulator-{{ row.user.pk }}"
                          {% if row.simulator_enabled %}checked{% endif %}>
                 {% endif %}
-                <label class="form-check-label" for="simulator-{{ row.user.pk }}">Tenant Simulator</label>
+                <label class="form-check-label" for="simulator-{{ row.user.pk }}">Tenant Testing</label>
               </div>
             </div>
 

@@ -1,11 +1,11 @@
 import subprocess
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.backup_utils import (
@@ -14,6 +14,40 @@ from core.backup_utils import (
     _mysqldump_compatibility_args,
     _run_mysql_command,
 )
+from core.views import _pending_approval_filter_state
+
+
+class PendingApprovalFilterTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_defaults_to_pending_status_and_all_dates(self):
+        filters = _pending_approval_filter_state(self.factory.get("/pending-approvals/"))
+
+        self.assertEqual(filters["status"], "pending")
+        self.assertEqual(filters["date_range"], "all")
+        self.assertIsNone(filters["date_from"])
+        self.assertIsNone(filters["date_to"])
+
+    @patch("core.views.timezone.localdate", return_value=date(2026, 7, 19))
+    def test_last_week_uses_previous_monday_to_sunday(self, _localdate):
+        request = self.factory.get("/pending-approvals/", {"date_range": "last_week"})
+
+        filters = _pending_approval_filter_state(request)
+
+        self.assertEqual(filters["date_from"], date(2026, 7, 6))
+        self.assertEqual(filters["date_to"], date(2026, 7, 12))
+
+    def test_custom_reversed_dates_are_normalized(self):
+        request = self.factory.get(
+            "/pending-approvals/",
+            {"date_range": "custom", "date_from": "2026-07-19", "date_to": "2026-07-01"},
+        )
+
+        filters = _pending_approval_filter_state(request)
+
+        self.assertEqual(filters["date_from"], date(2026, 7, 1))
+        self.assertEqual(filters["date_to"], date(2026, 7, 19))
 
 
 class BackupMySQLCommandTests(SimpleTestCase):

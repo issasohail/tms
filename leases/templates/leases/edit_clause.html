@@ -160,7 +160,7 @@
             <button type="button" id="btnPdf" class="btn btn-danger"><i class="fas fa-file-pdf"></i> PDF</button>
             <label class="form-check-label small mt-1 text-nowrap" for="printOnLegalPage"><input class="form-check-input me-1" type="checkbox" id="printOnLegalPage">Print on Legal Page</label>
         </div>
-        <a class="btn btn-outline-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
+        <a class="btn btn-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
         <button type="button" id="btnDocx" class="btn btn-success me-1"><i class="fas fa-file-word"></i> Word</button>
         <form method="post" action="{% url 'leases:reset_clauses_from_default' master_lease.pk %}?history={{ history.pk }}" onsubmit="return confirm('This will overwrite your current clauses. Continue?');" class="d-inline">
             {% csrf_token %}<input type="hidden" name="history_id" value="{{ history.pk }}">

@@ -185,7 +185,7 @@ class WhatsAppAIAssistant:
         lowered_text = (text or "").strip().lower()
         simulation = (conversation.context or {}).get("staff_tenant_simulation")
         if simulation and lowered_text in {
-            "exit tenant", "exit simulation", "stop simulation", "staff", "staff mode", "staff inbox",
+            "to staff", "exit tenant", "exit simulation", "stop simulation", "staff", "staff mode", "staff inbox",
         }:
             conversation.context.pop("staff_tenant_simulation", None)
             self._clear_context_keys(conversation, "lease_options", "selected_tenant_identity_id")
@@ -215,6 +215,31 @@ class WhatsAppAIAssistant:
                 }
             return guest_menu_text(), "staff_tenant_simulation_ended", {}
         identity = identify_sender(message_log.phone_number, conversation=conversation)
+
+        # Selected staff may enter read-only tenant testing directly, even while
+        # the conversation is waiting at role or tenant-account selection.
+        tenant_test_identifier = self._tenant_test_command_identifier(text)
+        if tenant_test_identifier is not None and identity.has_staff:
+            staff_user = identity.staff_user
+            if not staff_can_simulate_tenant(staff_user):
+                log_staff_action(
+                    staff_user,
+                    message_log.phone_number,
+                    "tenant_simulation_blocked",
+                    "blocked",
+                    reason="Tenant Simulator group required",
+                )
+                return (
+                    "Tenant testing is restricted. Ask an administrator to enable Tenant Testing for your staff user.",
+                    "staff_tenant_simulation_blocked",
+                    {"staff_user": staff_user},
+                )
+            resolve_mode(conversation, "staff", identity)
+            self._start_staff_tenant_simulator(message_log, conversation, staff_user)
+            response = self._consume_staff_tenant_simulator(
+                message_log, conversation, tenant_test_identifier, staff_user
+            )
+            return response, "staff", {"staff_user": staff_user}
 
         if simulation:
             simulator_staff = identity.staff_user
@@ -247,7 +272,7 @@ class WhatsAppAIAssistant:
                         simulated_tenant_id=simulation.get("tenant_id"),
                     )
                 return (
-                    "Tenant Simulator was closed because its staff or property permission is no longer active.\n\n"
+                    "Tenant testing was closed because its staff or property permission is no longer active.\n\n"
                     + staff_menu_text(simulator_staff),
                     "staff_tenant_simulation_blocked",
                     {"staff_user": simulator_staff},
@@ -255,8 +280,8 @@ class WhatsAppAIAssistant:
 
         if simulation and message_type in {"image", "document", "video", "audio"}:
             return (
-                "Tenant Simulator is read-only. Files, payments, and requests are not submitted. "
-                "Type EXIT TENANT to return to Staff Mode.",
+                "Tenant testing is read-only. Files, payments, and requests are not submitted. "
+                "Type TO STAFF to return to Staff Mode.",
                 "staff_tenant_simulation_read_only",
                 {"tenant": identity.tenant, "lease": conversation.selected_lease},
             )
@@ -337,8 +362,8 @@ class WhatsAppAIAssistant:
                 "meter", "police_verification",
             } or detect_handover_request(text):
                 return (
-                    "Tenant Simulator is read-only, so no payment, upload, maintenance, renewal, "
-                    "move-out, or contact request was submitted. Type EXIT TENANT to return to Staff Mode.",
+                    "Tenant testing is read-only, so no payment, upload, maintenance, renewal, "
+                    "move-out, or contact request was submitted. Type TO STAFF to return to Staff Mode.",
                     "staff_tenant_simulation_read_only",
                     {"tenant": identity.tenant, "lease": conversation.selected_lease},
                 )
@@ -1073,17 +1098,8 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
             return staff_menu_text(staff_user)
-        if lowered in {"11", "tenant simulator", "simulate tenant", "act as tenant"}:
+        if lowered in {"11", "tenant testing", "test tenant"}:
             return self._start_staff_tenant_simulator(message_log, conversation, staff_user)
-        for simulator_prefix in ("tenant simulator ", "simulate tenant ", "act as tenant "):
-            if lowered.startswith(simulator_prefix):
-                start_response = self._start_staff_tenant_simulator(message_log, conversation, staff_user)
-                if conversation.pending_state != "staff_tenant_simulator_lookup":
-                    return start_response
-                identifier = text[len(simulator_prefix):].strip()
-                return self._consume_staff_tenant_simulator(
-                    message_log, conversation, identifier, staff_user
-                )
         natural_staff_response = self._handle_staff_natural_language(message_log, conversation, text, staff_user)
         if natural_staff_response:
             return natural_staff_response
@@ -1265,26 +1281,38 @@ class WhatsAppAIAssistant:
                 reason="Tenant Simulator group required",
             )
             return (
-                "Tenant Simulator is restricted. Ask an administrator to add your user to the "
-                "Tenant Simulator group."
+                "Tenant testing is restricted. Ask an administrator to enable Tenant Testing for your staff user."
             )
         conversation.pending_state = "staff_tenant_simulator_lookup"
         self._clear_context_keys(conversation, "staff_tenant_simulator_options")
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return (
-            "Tenant Simulator (Read-only)\n\n"
+            "Tenant Testing (Read-only)\n\n"
             "Send the tenant's phone number, CNIC, tenant number, or name. Only active leases in "
             "properties you can access are available.\n\n"
             "No payment, upload, maintenance, or other request will be submitted.\n"
             "Reply BACK to cancel."
         )
 
+    def _tenant_test_command_identifier(self, text):
+        match = re.fullmatch(r"\s*tenant\s+#?\s*(.+?)\s*", text or "", flags=re.IGNORECASE)
+        if not match:
+            return None
+        identifier = match.group(1).strip()
+        lowered = identifier.lower()
+        if lowered in {"mode", "management", "account", "registration", "menu"}:
+            return None
+        digits = "".join(ch for ch in identifier if ch.isdigit())
+        if len(digits) >= 7 or re.fullmatch(r"#?\s*\d{1,6}", identifier):
+            return identifier
+        return None
+
     def _consume_staff_tenant_simulator(self, message_log, conversation, text, staff_user):
         if not staff_can_simulate_tenant(staff_user):
             conversation.pending_state = ""
             self._clear_context_keys(conversation, "staff_tenant_simulator_options")
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return "Tenant Simulator access is no longer assigned to your staff user."
+            return "Tenant Testing access is no longer assigned to your staff user."
 
         if conversation.pending_state == "staff_tenant_simulator_selection":
             options = conversation.context.get("staff_tenant_simulator_options") or []
@@ -1383,10 +1411,10 @@ class WhatsAppAIAssistant:
             property=leases[0].unit.property if len(leases) == 1 else None,
         )
         header = (
-            "TENANT SIMULATOR - READ ONLY\n"
-            f"Acting as: {tenant.get_full_name()}\n"
+            "TENANT TEST - READ ONLY\n"
+            f"Tenant: {tenant.get_full_name()}\n"
             "Replies are sent to your staff phone, not the tenant.\n"
-            "Type EXIT TENANT to return to Staff Mode.\n\n"
+            "Type TO STAFF to return to Staff Mode.\n\n"
         )
         if len(leases) == 1:
             return header + self._tenant_welcome_menu(leases[0])
@@ -1397,6 +1425,10 @@ class WhatsAppAIAssistant:
         lowered = (text or "").strip().lower()
         if state in {"staff_tenant_simulator_lookup", "staff_tenant_simulator_selection"}:
             return self._consume_staff_tenant_simulator(message_log, conversation, text, staff_user)
+        if state == "staff_selected_lease_menu":
+            return self._consume_staff_selected_lease_menu(
+                message_log, conversation, text, staff_user
+            )
         if state == "staff_tenant_management":
             if lowered in {"2", "search tenant", "search"}:
                 return self._start_staff_search(conversation, "tenant_search", "Send tenant name, phone, CNIC, property, or unit.")
@@ -1556,7 +1588,14 @@ class WhatsAppAIAssistant:
         kind = conversation.context.get("staff_upload_kind")
         options = []
         if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
-            matches = [item for item in self._staff_accessible_properties(staff_user) if (text or "").strip().lower() in item.property_name.lower()]
+            accessible_properties = self._staff_accessible_properties(staff_user)
+            resolved_property, _unit_hint = self._resolve_staff_property_unit_text(
+                text, accessible_properties
+            )
+            matches = [resolved_property] if resolved_property else [
+                item for item in accessible_properties
+                if self._selector_key(text) in self._selector_key(item.property_name)
+            ]
             options = [{"type": "property", "id": item.pk, "label": item.property_name} for item in matches[:9]]
         elif kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
             matches = self._staff_search_units(staff_user, text)
@@ -1623,6 +1662,7 @@ class WhatsAppAIAssistant:
 
     def _staff_lease_property_options_text(self, properties, action, unit_hint=""):
         labels = {
+            "lease_select": "select",
             "lease_renew": "renew",
             "lease_end": "end",
             "lease_view": "view",
@@ -1813,8 +1853,123 @@ class WhatsAppAIAssistant:
         if action == "lease_agreement":
             view_link = self._create_staff_agreement_link_for_lease(message_log, staff_user, lease, WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW)
             edit_link = self._create_staff_agreement_link_for_lease(message_log, staff_user, lease, WhatsAppExternalLinkToken.LINK_AGREEMENT_EDIT)
-            return f"Agreement Links\n\n{unit.property.property_name} / {unit.unit_number}\nTenant: {lease.tenant.get_full_name()}\n\nView:\n{view_link}\n\nEdit:\n{edit_link}"
-        return self._staff_lease_action_reply(message_log, staff_user, lease, action)
+            response = f"Agreement Links\n\n{unit.property.property_name} / {unit.unit_number}\nTenant: {lease.tenant.get_full_name()}\n\nView:\n{view_link}\n\nEdit:\n{edit_link}"
+        elif action == "lease_select":
+            response = (
+                "Unit selected\n\n"
+                f"{unit.property.property_name} / {unit.unit_number}\n"
+                f"Tenant: {lease.tenant.get_full_name()}"
+            )
+        else:
+            response = self._staff_lease_action_reply(message_log, staff_user, lease, action)
+        return self._staff_selected_lease_result(conversation, lease, response)
+
+    def _staff_selected_lease_result(self, conversation, lease, response):
+        conversation.selected_lease = lease
+        conversation.selected_property = lease.unit.property
+        conversation.selected_unit = lease.unit
+        conversation.pending_state = "staff_selected_lease_menu"
+        conversation.context["staff_selected_lease_id"] = lease.pk
+        conversation.save(update_fields=[
+            "selected_lease", "selected_property", "selected_unit",
+            "pending_state", "context", "updated_at",
+        ])
+        return f"{response}\n\n{self._staff_selected_lease_menu_text(lease)}"
+
+    def _staff_selected_lease_menu_text(self, lease):
+        return (
+            f"Selected: {lease.unit.property.property_name} / {lease.unit.unit_number}\n\n"
+            "1. Lease information\n"
+            "2. Balance\n"
+            "3. Ledger\n"
+            "4. Agreement\n"
+            "5. Last payment\n"
+            "6. Tenant details\n"
+            "7. Renew lease\n"
+            "8. End lease\n"
+            "9. Upload document\n"
+            "10. Change unit\n"
+            "11. Change property\n"
+            "12. Staff menu\n\n"
+            "Reply with a number or type your request."
+        )
+
+    def _consume_staff_selected_lease_menu(self, message_log, conversation, text, staff_user):
+        lease = Lease.objects.select_related("tenant", "unit__property").filter(
+            pk=conversation.context.get("staff_selected_lease_id") or conversation.selected_lease_id
+        ).first()
+        if not lease or not staff_can_access_property(staff_user, lease.unit.property):
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "staff_selected_lease_id")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return "The selected lease is no longer available.\n\n" + staff_menu_text(staff_user)
+
+        lowered = (text or "").strip().lower()
+        action_aliases = {
+            "1": "lease_view", "lease": "lease_view", "lease information": "lease_view", "view lease": "lease_view",
+            "2": "lease_balance", "balance": "lease_balance", "show balance": "lease_balance",
+            "3": "lease_ledger", "ledger": "lease_ledger", "statement": "lease_ledger", "view ledger": "lease_ledger",
+            "4": "lease_agreement", "agreement": "lease_agreement", "view agreement": "lease_agreement",
+            "7": "lease_renew", "renew": "lease_renew", "renew lease": "lease_renew",
+            "8": "lease_end", "end": "lease_end", "end lease": "lease_end", "terminate": "lease_end",
+            "9": "lease_upload", "upload": "lease_upload", "upload document": "lease_upload",
+        }
+        action = action_aliases.get(lowered)
+        if not action and "balance" in lowered:
+            action = "lease_balance"
+        elif not action and ("ledger" in lowered or "statement" in lowered):
+            action = "lease_ledger"
+        elif not action and "agreement" in lowered:
+            action = "lease_agreement"
+        elif not action and "renew" in lowered:
+            action = "lease_renew"
+        elif not action and ("end lease" in lowered or "terminate" in lowered):
+            action = "lease_end"
+        elif not action and "upload" in lowered and "document" in lowered:
+            action = "lease_upload"
+        if action:
+            return self._complete_staff_lease_target(
+                message_log, conversation, staff_user, lease, action
+            )
+        if lowered in {"5", "last payment", "latest payment", "last receipt", "payment receipt"} or (
+            ("last" in lowered or "latest" in lowered) and ("payment" in lowered or "receipt" in lowered)
+        ):
+            payment = lease.payments.order_by("-payment_date", "-id").first()
+            if payment:
+                response = (
+                    "Last Payment\n\n"
+                    f"Date: {payment.payment_date}\n"
+                    f"Amount: Rs. {payment.amount}\n"
+                    f"Reference: {payment.reference_number or '-'}\n"
+                    f"Method: {payment.payment_method or '-'}"
+                )
+            else:
+                response = "No payment record was found for the selected lease."
+            return self._staff_selected_lease_result(conversation, lease, response)
+        if lowered in {"6", "tenant", "tenant details", "view tenant"} or "tenant detail" in lowered:
+            response = self._staff_tenant_action_reply(
+                message_log, staff_user, lease.tenant, "tenant_view"
+            )
+            return self._staff_selected_lease_result(conversation, lease, response)
+        if lowered in {"10", "change unit", "another unit", "select unit"}:
+            units = list(Unit.objects.filter(property=lease.unit.property).order_by("unit_number")[:50])
+            conversation.context["staff_lease_target"] = {
+                "action": "lease_select",
+                "property_options": [lease.unit.property_id],
+                "property_id": lease.unit.property_id,
+                "unit_options": [unit.pk for unit in units],
+            }
+            conversation.pending_state = "staff_lease_target_unit"
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return self._staff_lease_unit_options_text(lease.unit.property, units)
+        if lowered in {"11", "change property", "another property", "select property"}:
+            return self._start_staff_lease_target(conversation, staff_user, "lease_select")
+        if lowered in {"12", "staff menu", "main menu"}:
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "staff_selected_lease_id")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return staff_menu_text(staff_user)
+        return "Please choose an option for the selected unit.\n\n" + self._staff_selected_lease_menu_text(lease)
 
     def _looks_like_staff_tenant_identifier(self, text):
         value = (text or "").strip().lower()

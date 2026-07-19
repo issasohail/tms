@@ -9,14 +9,19 @@
   .pending-approval-table td {
     vertical-align: middle;
   }
-  .pending-created { width: 118px; }
-  .pending-phone { width: 114px; }
+  .pending-created { width: 104px; }
+  .pending-phone { width: 152px; }
   .pending-photo { width: 54px; }
-  .pending-tenant { width: 230px; }
-  .pending-property { width: 230px; }
-  .pending-status { width: 132px; }
-  .pending-handyman { width: 190px; }
-  .pending-review { width: 190px; }
+  .pending-tenant { width: 215px; }
+  .pending-property { width: 168px; }
+  .pending-status { width: 122px; }
+  .pending-handyman { width: 150px; }
+  .pending-details { width: 160px; }
+  .pending-maintenance-details { width: 175px; }
+  .pending-review { width: 174px; }
+  .pending-created-date,
+  .pending-created-time { display: block; }
+  .pending-created-time { color: #6c757d; font-size: .72rem; }
   .pending-nowrap {
     white-space: nowrap;
     overflow: hidden;
@@ -53,6 +58,14 @@
     z-index: 1080;
     max-width: 420px;
   }
+  .pending-filter-card .form-label {
+    font-size: .75rem;
+    margin-bottom: .2rem;
+    color: #5f6670;
+  }
+  .pending-filter-actions {
+    padding-top: 1.35rem;
+  }
   @media (max-width: 768px) {
     .pending-approval-table { min-width: 980px; }
   }
@@ -61,12 +74,47 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
       <h4 class="mb-0">Pending Approvals</h4>
-      <div class="text-muted small">Review pending leases, agreement edits, WhatsApp payments, documents, and maintenance submissions.</div>
+      <div class="text-muted small">Review current pending items or search previous approval records.</div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm pending-filter-card mb-3">
+    <div class="card-body py-2">
+      <form method="get" class="row g-2 align-items-end" id="pendingApprovalFilters">
+        <div class="col-12 col-sm-6 col-lg-2">
+          <label class="form-label" for="approvalStatus">Status</label>
+          <select class="form-select form-select-sm" id="approvalStatus" name="status">
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if approval_filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2">
+          <label class="form-label" for="approvalDateRange">Date</label>
+          <select class="form-select form-select-sm" id="approvalDateRange" name="date_range">
+            {% for value, label in date_range_choices %}
+              <option value="{{ value }}" {% if approval_filters.date_range == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2 pending-custom-date">
+          <label class="form-label" for="approvalDateFrom">From</label>
+          <input class="form-control form-control-sm" id="approvalDateFrom" name="date_from" type="date" value="{{ approval_filters.date_from_value }}">
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2 pending-custom-date">
+          <label class="form-label" for="approvalDateTo">To</label>
+          <input class="form-control form-control-sm" id="approvalDateTo" name="date_to" type="date" value="{{ approval_filters.date_to_value }}">
+        </div>
+        <div class="col-12 col-lg-auto pending-filter-actions d-flex gap-2">
+          <button class="btn btn-sm btn-primary" type="submit">Apply Filters</button>
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'core:pending_approvals' %}">Reset</a>
+        </div>
+      </form>
     </div>
   </div>
 
   <div class="row g-3">
-    {% for section in sections %}
+    {% for section in visible_sections %}
       <div class="col-12">
         <div class="card shadow-sm">
           <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -82,7 +130,7 @@
                   {% if section.kind == "family" %}<th class="pending-photo">Photo</th>{% endif %}
                   <th class="pending-tenant">Tenant</th>
                   <th class="pending-property">Property / Unit</th>
-                  <th>Details</th>
+                  <th class="pending-details {% if section.kind == 'maintenance' %}pending-maintenance-details{% endif %}">Details</th>
                   {% if section.kind == "maintenance" %}<th class="pending-handyman">Handyman</th>{% endif %}
                   <th class="pending-status" {% if section.kind == "maintenance" %}style="width:235px;"{% endif %}>Status</th>
                   <th class="pending-review">Review</th>
@@ -94,10 +142,16 @@
                   <tr data-pending-row>
                     <td>{{ forloop.counter }}</td>
                     {% if section.kind == "registration" %}
-                      <td class="pending-nowrap" title="{{ item.submitted_at|date:'M d, Y H:i' }}">{{ item.submitted_at|date:"M d, Y H:i" }}</td>
+                      <td class="pending-nowrap" title="{{ item.submitted_at|date:'M d, Y H:i' }}">
+                        <span class="pending-created-date">{{ item.submitted_at|date:"M d, Y" }}</span>
+                        <span class="pending-created-time">{{ item.submitted_at|date:"H:i" }}</span>
+                      </td>
                       <td class="pending-nowrap" title="{{ item.tenant.phone|format_phone|default:'-' }}">{{ item.tenant.phone|format_phone|default:"-" }}</td>
                     {% else %}
-                      <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">{{ item.created_at|date:"M d, Y H:i" }}</td>
+                      <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">
+                        <span class="pending-created-date">{{ item.created_at|date:"M d, Y" }}</span>
+                        <span class="pending-created-time">{{ item.created_at|date:"H:i" }}</span>
+                      </td>
                       <td class="pending-nowrap" title="{{ item.phone|format_phone|default:'-' }}">{{ item.phone|format_phone|default:"-" }}</td>
                     {% endif %}
                     {% if section.kind == "family" %}
@@ -153,7 +207,7 @@
                     {% endif %}
                     <td>
                       <span class="{% if section.kind == 'maintenance' %}pending-maintenance-actions{% else %}pending-status-line{% endif %}">
-                        <span class="badge bg-secondary">{{ item.get_status_display }}</span>
+                        <span class="badge {% if item.status == 'approved' or item.status == 'active' %}bg-success{% elif item.status == 'rejected' %}bg-danger{% elif item.status == 'pending' or item.status == 'pending_approval' or item.status == 'confirmed' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ item.get_status_display }}</span>
                         {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
                           <form method="post" action="{{ row.urls.approve }}" class="d-inline pending-approval-action" data-action="approve" {% if section.kind == "maintenance" %}id="maintenance-approval-{{ item.pk }}"{% endif %}>
                             {% csrf_token %}
@@ -182,11 +236,18 @@
                   </tr>
                   {% endwith %}
                 {% empty %}
-                  <tr><td colspan="{% if section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No pending items.</td></tr>
+                  <tr><td colspan="{% if section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No items match the selected filters.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+    {% empty %}
+      <div class="col-12">
+        <div class="alert alert-light border shadow-sm text-center py-4 mb-0">
+          <div class="fw-semibold">No approvals match the selected filters.</div>
+          <div class="text-muted small mt-1">Change the status or date filter to view other records.</div>
         </div>
       </div>
     {% endfor %}
@@ -196,6 +257,20 @@
 <script>
 (function () {
   const feedback = document.getElementById("pendingApprovalFeedback");
+  const dateRange = document.getElementById("approvalDateRange");
+  const customDateFields = document.querySelectorAll(".pending-custom-date");
+
+  function updateCustomDateVisibility() {
+    const show = dateRange && dateRange.value === "custom";
+    customDateFields.forEach(function (field) {
+      field.classList.toggle("d-none", !show);
+      const input = field.querySelector("input");
+      if (input) input.disabled = !show;
+    });
+  }
+
+  if (dateRange) dateRange.addEventListener("change", updateCustomDateVisibility);
+  updateCustomDateVisibility();
 
   function showFeedback(message, ok) {
     feedback.innerHTML = "";

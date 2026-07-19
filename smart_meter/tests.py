@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -7,10 +7,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from leases.models import Lease, LeaseUnitOccupancy
 from properties.models import Property, Unit
-from smart_meter.models import Meter, MeterInstallation, MeterRoleHistory
+from smart_meter.models import Meter, MeterInstallation, MeterReading, MeterRoleHistory
 from smart_meter.services.invoicing import ElectricBillContext
 from tenants.models import Tenant
 
@@ -75,6 +76,68 @@ class MeterRoleUpdateTests(TestCase):
         self.meter.refresh_from_db()
         self.assertEqual(self.meter.meter_role, Meter.METER_ROLE_CHECK)
         self.assertEqual(self.meter.role_history.filter(is_active=True, end_date__isnull=True).count(), 1)
+
+
+class EnergyDashboardMeterRoleTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="energy-role-user", password="test-pass"
+        )
+        self.user.user_permissions.add(Permission.objects.get(codename="view_meter"))
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="H9 Building",
+            owner_name="Owner",
+            owner_cnic="1234512345678",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="Invert 1")
+        self.billing_meter = Meter.objects.create(
+            meter_number="DASH-BILL-1", unit=unit, meter_role=Meter.METER_ROLE_BILLING
+        )
+        self.check_meter = Meter.objects.create(
+            meter_number="DASH-CHECK-1", unit=unit, meter_role=Meter.METER_ROLE_CHECK
+        )
+        now = timezone.now()
+        for meter in (self.billing_meter, self.check_meter):
+            MeterReading.objects.create(
+                meter=meter, ts=now - timedelta(minutes=30), total_energy=Decimal("100.000")
+            )
+            MeterReading.objects.create(
+                meter=meter, ts=now, total_energy=Decimal("110.000")
+            )
+
+    def _dashboard(self, role=None):
+        params = {
+            "start": timezone.localdate().isoformat(),
+            "end": timezone.localdate().isoformat(),
+            "report_type": "daily",
+        }
+        if role:
+            params["role"] = role
+        return self.client.get(reverse("smart_meter:energy_dashboard"), params)
+
+    def test_default_dashboard_shows_only_billing_role(self):
+        response = self._dashboard()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_role"], Meter.METER_ROLE_BILLING)
+        self.assertEqual({row["meter_role"] for row in response.context["rows"]}, {Meter.METER_ROLE_BILLING})
+
+    def test_check_filter_uses_saved_meter_role(self):
+        response = self._dashboard(Meter.METER_ROLE_CHECK)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({row["meter_number"] for row in response.context["rows"]}, {self.check_meter.meter_number})
+        self.assertEqual({dataset["meterRole"] for dataset in response.context["datasets"]}, {Meter.METER_ROLE_CHECK})
+
+    def test_all_roles_are_grouped_billing_then_check(self):
+        response = self._dashboard("all")
+
+        roles = [dataset["meterRole"] for dataset in response.context["datasets"]]
+        self.assertEqual(roles, [Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK])
 
 
 class ElectricBillDescriptionTests(TestCase):

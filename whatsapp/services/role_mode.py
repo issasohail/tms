@@ -162,7 +162,7 @@ def guest_menu_text():
 
 
 def staff_menu_text(user=None):
-    simulator_option = "\n11. Tenant Simulator" if staff_can_simulate_tenant(user) else ""
+    simulator_option = "\n11. Tenant <phone or tenant number> (read-only)" if staff_can_simulate_tenant(user) else ""
     return (
         "Staff Inbox / Menu\n\n"
         "Type Handovers to view tenant handovers.\n\n"

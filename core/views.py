@@ -8,6 +8,7 @@ from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 from datetime import timedelta
 from decimal import Decimal
@@ -42,6 +43,76 @@ PENDING_KIND_LABELS = {
     "police": "Police Verification",
     "registration": "Tenant Registration",
 }
+
+PENDING_APPROVAL_STATUS_CHOICES = (
+    ("pending", "Pending"),
+    ("approved", "Approved"),
+    ("rejected", "Rejected"),
+    ("all", "All statuses"),
+)
+
+PENDING_APPROVAL_DATE_CHOICES = (
+    ("all", "All dates"),
+    ("this_week", "This week"),
+    ("last_week", "Last week"),
+    ("this_month", "This month"),
+    ("last_month", "Last month"),
+    ("custom", "Custom dates"),
+)
+
+
+def _pending_approval_filter_state(request):
+    valid_statuses = {value for value, _label in PENDING_APPROVAL_STATUS_CHOICES}
+    valid_ranges = {value for value, _label in PENDING_APPROVAL_DATE_CHOICES}
+    selected_status = (request.GET.get("status") or "pending").lower()
+    selected_range = (request.GET.get("date_range") or "all").lower()
+    if selected_status not in valid_statuses:
+        selected_status = "pending"
+    if selected_range not in valid_ranges:
+        selected_range = "all"
+
+    today = timezone.localdate()
+    date_from = None
+    date_to = None
+    if selected_range == "this_week":
+        date_from = today - timedelta(days=today.weekday())
+        date_to = today
+    elif selected_range == "last_week":
+        this_week_start = today - timedelta(days=today.weekday())
+        date_from = this_week_start - timedelta(days=7)
+        date_to = this_week_start - timedelta(days=1)
+    elif selected_range == "this_month":
+        date_from = today.replace(day=1)
+        date_to = today
+    elif selected_range == "last_month":
+        this_month_start = today.replace(day=1)
+        date_to = this_month_start - timedelta(days=1)
+        date_from = date_to.replace(day=1)
+    elif selected_range == "custom":
+        date_from = parse_date(request.GET.get("date_from", ""))
+        date_to = parse_date(request.GET.get("date_to", ""))
+        if date_from and date_to and date_from > date_to:
+            date_from, date_to = date_to, date_from
+
+    return {
+        "status": selected_status,
+        "date_range": selected_range,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_from_value": date_from.isoformat() if date_from else "",
+        "date_to_value": date_to.isoformat() if date_to else "",
+    }
+
+
+def _filter_pending_approval_queryset(queryset, filters, status_filters, date_field="created_at"):
+    selected_status = filters["status"]
+    if selected_status != "all":
+        queryset = queryset.filter(status_filters[selected_status])
+    if filters["date_from"]:
+        queryset = queryset.filter(**{f"{date_field}__date__gte": filters["date_from"]})
+    if filters["date_to"]:
+        queryset = queryset.filter(**{f"{date_field}__date__lte": filters["date_to"]})
+    return queryset
 
 
 def _pending_item_urls(kind, item):
@@ -205,14 +276,33 @@ def pending_approvals(request):
     from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission, PendingPoliceVerificationSubmission
     from tenants.models import TenantRegistrationSubmission
 
-    pending_payments = PendingWhatsAppPayment.objects.filter(
-        status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
-        approved=False,
-        rejected=False,
-    ).select_related("tenant", "lease", "property", "unit")[:50]
-    pending_media = list(PendingWhatsAppMedia.objects.filter(
-        status=PendingWhatsAppMedia.STATUS_PENDING,
-    ).exclude(
+    filters = _pending_approval_filter_state(request)
+    common_status_filters = {
+        "pending": models.Q(status="pending"),
+        "approved": models.Q(status="approved"),
+        "rejected": models.Q(status="rejected"),
+    }
+    lease_status_filters = {
+        "pending": models.Q(status="pending_approval"),
+        "approved": models.Q(status__in=["active", "ended", "terminated"]),
+        "rejected": models.Q(status="rejected"),
+    }
+    payment_status_filters = {
+        "pending": models.Q(
+            status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
+            approved=False,
+            rejected=False,
+        ),
+        "approved": models.Q(status=PendingWhatsAppPayment.STATUS_APPROVED) | models.Q(approved=True),
+        "rejected": models.Q(status=PendingWhatsAppPayment.STATUS_REJECTED) | models.Q(rejected=True),
+    }
+
+    pending_payments = _filter_pending_approval_queryset(
+        PendingWhatsAppPayment.objects.select_related("tenant", "lease", "property", "unit"),
+        filters,
+        payment_status_filters,
+    ).order_by("-created_at")
+    pending_media_queryset = PendingWhatsAppMedia.objects.exclude(
         purpose__in=[
             PendingWhatsAppMedia.PURPOSE_PAYMENT,
             PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
@@ -223,77 +313,68 @@ def pending_approvals(request):
         police_verification_submissions__status="pending",
     ).select_related(
         "tenant", "lease", "property", "unit", "submitted_by_staff"
-    ).distinct()[:200])
-    pending_media = _group_pending_media(pending_media)[:50]
-    pending_maintenance = PendingWhatsAppMaintenance.objects.filter(
-        status=PendingWhatsAppMaintenance.STATUS_PENDING,
-    ).select_related("tenant", "lease", "property", "unit")[:50]
-    pending_leases = Lease.objects.filter(status="pending_approval").select_related("tenant", "unit__property")[:50]
-    pending_agreements = PendingAgreementApproval.objects.filter(
-        status=PendingAgreementApproval.STATUS_PENDING,
-    ).select_related("lease__tenant", "lease__unit__property", "submitted_by")[:50]
-    pending_family = PendingLeaseFamilyMemberSubmission.objects.filter(
-        status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING,
-    ).select_related("lease__tenant", "lease__unit__property", "primary_tenant", "relationship_type")[:50]
-    pending_police = PendingPoliceVerificationSubmission.objects.filter(
-        status=PendingPoliceVerificationSubmission.STATUS_PENDING,
-    ).select_related("lease__tenant", "lease__unit__property", "tenant")[:50]
-    pending_registrations = TenantRegistrationSubmission.objects.filter(
-        status="pending",
-    ).select_related("tenant").prefetch_related("pending_people")[:50]
+    ).distinct()
+    pending_media_queryset = _filter_pending_approval_queryset(
+        pending_media_queryset, filters, common_status_filters
+    ).order_by("-created_at")
+    pending_media = _group_pending_media(list(pending_media_queryset[:200]))[:50]
+    pending_maintenance = _filter_pending_approval_queryset(
+        PendingWhatsAppMaintenance.objects.select_related("tenant", "lease", "property", "unit"),
+        filters,
+        common_status_filters,
+    ).order_by("-created_at")
+    pending_leases = _filter_pending_approval_queryset(
+        Lease.objects.select_related("tenant", "unit__property"),
+        filters,
+        lease_status_filters,
+    ).order_by("-created_at")
+    pending_agreements = _filter_pending_approval_queryset(
+        PendingAgreementApproval.objects.select_related(
+            "lease__tenant", "lease__unit__property", "submitted_by"
+        ),
+        filters,
+        common_status_filters,
+    ).order_by("-created_at")
+    pending_family = _filter_pending_approval_queryset(
+        PendingLeaseFamilyMemberSubmission.objects.select_related(
+            "lease__tenant", "lease__unit__property", "primary_tenant", "relationship_type"
+        ),
+        filters,
+        common_status_filters,
+    ).order_by("-created_at")
+    pending_police = _filter_pending_approval_queryset(
+        PendingPoliceVerificationSubmission.objects.select_related(
+            "lease__tenant", "lease__unit__property", "tenant"
+        ),
+        filters,
+        common_status_filters,
+        date_field="submitted_at",
+    ).order_by("-submitted_at")
+    pending_registrations = _filter_pending_approval_queryset(
+        TenantRegistrationSubmission.objects.select_related("tenant").prefetch_related("pending_people"),
+        filters,
+        common_status_filters,
+        date_field="submitted_at",
+    ).order_by("-submitted_at")
+
+    def section(title, kind, queryset_or_items):
+        if isinstance(queryset_or_items, list):
+            items = queryset_or_items
+            count = len(items)
+        else:
+            count = queryset_or_items.count()
+            items = list(queryset_or_items[:50])
+        return {"title": title, "kind": kind, "items": items, "count": count}
+
     sections = [
-        {
-            "title": "Pending Leases",
-            "kind": "lease",
-            "items": pending_leases,
-            "count": Lease.objects.filter(status="pending_approval").count(),
-        },
-        {
-            "title": "Pending Agreement Edits",
-            "kind": "agreement",
-            "items": pending_agreements,
-            "count": PendingAgreementApproval.objects.filter(status=PendingAgreementApproval.STATUS_PENDING).count(),
-        },
-        {
-            "title": "WhatsApp Payments",
-            "kind": "payment",
-            "items": pending_payments,
-            "count": PendingWhatsAppPayment.objects.filter(
-                status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
-                approved=False,
-                rejected=False,
-            ).count(),
-        },
-        {
-            "title": "WhatsApp Documents / Media",
-            "kind": "media",
-            "items": pending_media,
-            "count": len(pending_media),
-        },
-        {
-            "title": "WhatsApp Maintenance",
-            "kind": "maintenance",
-            "items": pending_maintenance,
-            "count": PendingWhatsAppMaintenance.objects.filter(status=PendingWhatsAppMaintenance.STATUS_PENDING).count(),
-        },
-        {
-            "title": "Lease Family Members",
-            "kind": "family",
-            "items": pending_family,
-            "count": PendingLeaseFamilyMemberSubmission.objects.filter(status=PendingLeaseFamilyMemberSubmission.STATUS_PENDING).count(),
-        },
-        {
-            "title": "Police Verification",
-            "kind": "police",
-            "items": pending_police,
-            "count": PendingPoliceVerificationSubmission.objects.filter(status=PendingPoliceVerificationSubmission.STATUS_PENDING).count(),
-        },
-        {
-            "title": "Tenant Registration Submissions",
-            "kind": "registration",
-            "items": pending_registrations,
-            "count": TenantRegistrationSubmission.objects.filter(status="pending").count(),
-        },
+        section("Leases", "lease", pending_leases),
+        section("Agreement Edits", "agreement", pending_agreements),
+        section("WhatsApp Payments", "payment", pending_payments),
+        section("WhatsApp Documents / Media", "media", pending_media),
+        section("WhatsApp Maintenance", "maintenance", pending_maintenance),
+        section("Lease Family Members", "family", pending_family),
+        section("Police Verification", "police", pending_police),
+        section("Tenant Registration Submissions", "registration", pending_registrations),
     ]
     for section in sections:
         section["items"] = [
@@ -304,11 +385,17 @@ def pending_approvals(request):
             }
             for item in section["items"]
         ]
+    visible_sections = [section for section in sections if section["count"]]
     return render(
         request,
         "core/pending_approvals.html",
         {
             "sections": sections,
+            "visible_sections": visible_sections,
+            "visible_approval_count": sum(section["count"] for section in visible_sections),
+            "approval_filters": filters,
+            "status_choices": PENDING_APPROVAL_STATUS_CHOICES,
+            "date_range_choices": PENDING_APPROVAL_DATE_CHOICES,
             "active_handymen": HandymanProfile.objects.filter(
                 is_active=True
             ).order_by("-is_preferred", "full_name"),
@@ -557,6 +644,17 @@ def _attach_pending_media_from_core(pending, user):
     return destination
 
 
+def _pending_media_source_exists(pending):
+    if not pending.file or not pending.file.name:
+        return False
+    try:
+        return pending.file.storage.exists(pending.file.name)
+    except Exception as exc:
+        raise ValueError(
+            "The source media storage could not be checked. Please try approval again."
+        ) from exc
+
+
 def _apply_pending_media_destination(pending, submitted_destination):
     from whatsapp.models import PendingWhatsAppMedia
 
@@ -756,19 +854,42 @@ def pending_approval_approve(request, kind, pk):
                     batch_key=item.batch_key,
                 ) if item.batch_key else [item]
                 approved_count = 0
+                missing_count = 0
                 for batch_item in batch_items:
                     _apply_pending_media_destination(
                         batch_item, request.POST.get("media_destination", "")
                     )
-                    _attach_pending_media_from_core(batch_item, request.user)
+                    if _pending_media_source_exists(batch_item):
+                        _attach_pending_media_from_core(batch_item, request.user)
+                    else:
+                        missing_count += 1
+                        audit_note = (
+                            "Approved without destination attachment because the source file "
+                            f"was missing from storage. Approved by {request.user.get_username()} "
+                            f"at {timezone.now().isoformat()}."
+                        )
+                        batch_item.ai_notes = "\n".join(
+                            part for part in (batch_item.ai_notes.strip(), audit_note) if part
+                        )
                     batch_item.status = PendingWhatsAppMedia.STATUS_APPROVED
                     batch_item.approved_by = request.user
                     batch_item.approved_at = timezone.now()
                     batch_item.save(update_fields=[
-                        "purpose", "target_kind", "status", "approved_by", "approved_at", "updated_at"
+                        "purpose", "target_kind", "ai_notes", "status", "approved_by", "approved_at", "updated_at"
                     ])
                     approved_count += 1
-            messages.success(request, f"{approved_count} WhatsApp media file(s) approved.")
+            if missing_count:
+                approval_message = (
+                    f"{approved_count} WhatsApp media file(s) approved. "
+                    f"{missing_count} missing source file(s) were marked approved but could not be attached to the destination."
+                )
+                messages.warning(request, approval_message)
+            else:
+                approval_message = f"{approved_count} WhatsApp media file(s) approved."
+                messages.success(request, approval_message)
+            ajax_response = _pending_ajax_response(request, approval_message)
+            if ajax_response:
+                return ajax_response
         elif kind == "maintenance":
             from handyman.models import HandymanProfile
             from whatsapp.services.whatsapp import WhatsAppService

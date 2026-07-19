@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from django.utils import timezone
 
 from handyman.models import HandymanProfile
 from leases.models import Lease
@@ -85,33 +84,17 @@ def resolve_sender(phone_number, conversation=None, log_ambiguity=True):
             conversation.context.pop("selected_tenant_identity_id", None)
 
     tenant_ids = [item.pk for item in tenants]
-    today = timezone.localdate()
     active_leases = list(
         Lease.objects.select_related("tenant", "unit__property")
-        .prefetch_related("family_members", "legacy_family_members")
         .filter(
             Q(tenant_id__in=tenant_ids)
             | Q(family_members__family_member_id__in=tenant_ids)
             | Q(legacy_family_members__tenant_id__in=tenant_ids),
             status="active",
-            start_date__lte=today,
-            end_date__gte=today,
         )
         .distinct()
         .order_by("unit__property__property_name", "unit__unit_number", "id")
     )
-    eligible_tenant_ids = set()
-    for tenant in tenants:
-        if any(
-            lease.tenant_id == tenant.pk
-            or any(member.family_member_id == tenant.pk for member in lease.family_members.all())
-            or any(member.tenant_id == tenant.pk for member in lease.legacy_family_members.all())
-            for lease in active_leases
-        ):
-            eligible_tenant_ids.add(tenant.pk)
-    # A reused phone number on an old tenant record must not create a phantom
-    # account choice. Only accounts that can actually enter Tenant Mode appear.
-    tenants = [tenant for tenant in tenants if tenant.pk in eligible_tenant_ids]
     permissions = {
         user.pk: list(
             WhatsAppStaffPropertyAccess.objects.filter(staff_user=user, is_active=True)

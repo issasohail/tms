@@ -587,11 +587,14 @@
 
   function populateTenantFilter(){
     const $sel = $('#id_tenant_search');
+    const requestSeq = ++tenantFilterRequestSeq;
     $.get("{% url 'payments:get_filtered_leases' %}", {
       property_id: $('#id_property').val() || '',
       include_inactive: $('#id_include_inactive').is(':checked')
     }, null, 'json')
     .done(function(data){
+      if (requestSeq !== tenantFilterRequestSeq) return;
+      const current = $sel.val();
       const leases = (data && Array.isArray(data.leases)) ? data.leases : [];
       const frag = document.createDocumentFragment();
       const unique = new Set();
@@ -605,6 +608,7 @@
       });
 
       $sel.empty()[0].appendChild(frag);
+      if (current && unique.has(String(current))) $sel.val(String(current));
       $sel.trigger('change.select2');
       updateLeaseList();
     })
@@ -612,10 +616,13 @@
   }
 
   function populateUnitFilter(){
+    const requestSeq = ++unitFilterRequestSeq;
     $.get("{% url 'payments:get_filtered_leases' %}", {
       property_id: $('#id_property').val() || '',
       include_inactive: $('#id_include_inactive').is(':checked')
     }, function(data){
+      if (requestSeq !== unitFilterRequestSeq) return;
+      const current = $('#id_unit').val();
       const $sel = $('#id_unit').empty().append('<option value=""></option>');
       const seen = new Set();
       (data.leases || []).forEach(l => {
@@ -625,6 +632,7 @@
         const label = `${(l.unit||'').trim()} — ${(l.tenant||l.text||'').slice(0,20)}${(l.tenant||l.text||'').length>20?'…':''}`;
         $('<option>').val(unitId).text(label).appendTo($sel);
       });
+      if (current && $sel.find('option[value="' + current + '"]').length) $sel.val(String(current));
       $sel.trigger('change.select2');
       updateLeaseList();
     });
@@ -635,6 +643,9 @@
     return m && String(m).trim() ? m : null;
   }
   let didURLPreselect = false;
+  let tenantFilterRequestSeq = 0;
+  let unitFilterRequestSeq = 0;
+  let leaseListRequestSeq = 0;
 
   function setBalancesUI(leaseData){
     const lb = document.getElementById("lease-balance-display");
@@ -654,6 +665,7 @@
     const $lease = $('#id_lease');
     const urlLease = getLeaseIdFromURL();
     const current = $lease.val() || (!didURLPreselect && urlLease);
+    const requestSeq = ++leaseListRequestSeq;
 
     $.get("{% url 'payments:get_filtered_leases' %}", {
       tenant_id: $('#id_tenant_search').val() || '',
@@ -662,6 +674,7 @@
       include_inactive: $('#id_include_inactive').is(':checked'),
       lease: urlLease || ''
     }, function(data){
+      if (requestSeq !== leaseListRequestSeq) return;
       const leases = data.leases || [];
       $lease.empty().append('<option value=""></option>');
 
@@ -725,6 +738,8 @@
 
   // Lease change → update balances
   $('#id_lease').on('change', function(){
+    // A direct selection supersedes any older lease-list request still in flight.
+    leaseListRequestSeq += 1;
     const $opt = $(this).find(':selected');
     if (!$opt.val()){
       setBalancesUI(null);
@@ -979,11 +994,12 @@ Thank you!`;
     const $label = $('#allocation-derived-label');
     if (!$form.length || !$mode.length || !$total.length || !$lease.length || !$sec.length) return;
 
-    $total.prop('readonly', true);
+    $total.prop('readonly', false);
     $lease.prop('readonly', false);
     $sec.prop('readonly', false);
+    let totalDrivenMode = ($mode.val() || 'LEASE').toUpperCase();
 
-    function syncFromAllocations(){
+    function syncFromAllocations(updateTotal, updateEntryMode){
       const leaseAmt = n($lease.val());
       const secAmt = n($sec.val());
       let mode = 'LEASE';
@@ -1010,7 +1026,8 @@ Thank you!`;
 
       $mode.val(mode);
       $securityType.val(mode === 'REFUND' ? 'REFUND' : 'PAYMENT');
-      $total.val(f2(leaseAmt + secAmt));
+      if (updateTotal !== false) $total.val(f2(leaseAmt + secAmt));
+      if (updateEntryMode !== false) totalDrivenMode = mode;
       $lease[0].setCustomValidity(invalid);
       $sec[0].setCustomValidity(invalid);
       $label
@@ -1019,8 +1036,32 @@ Thank you!`;
         .text(invalid || ('Detected automatically: ' + label + '.'));
     }
 
+    function syncFromTotal(){
+      const total = n($total.val());
+
+      if (totalDrivenMode === 'REFUND'){
+        $lease.val(f2(0));
+        $sec.val(f2(-Math.abs(total)));
+      } else if (totalDrivenMode === 'LEASE_REFUND'){
+        $lease.val(f2(-Math.abs(total)));
+        $sec.val(f2(0));
+      } else if (totalDrivenMode === 'SECURITY'){
+        $lease.val(f2(0));
+        $sec.val(f2(Math.abs(total)));
+      } else {
+        // A normal edited amount starts fully allocated to the lease.
+        $lease.val(f2(total));
+        $sec.val(f2(0));
+      }
+
+      // Keep typing smooth; format the total only after change/submit.
+      syncFromAllocations(false, false);
+    }
+
     $lease.on('input change', syncFromAllocations);
     $sec.on('input change', syncFromAllocations);
+    $total.on('input', syncFromTotal);
+    $total.on('change', function(){ syncFromAllocations(); });
     $form.on('submit', function(){
       syncFromAllocations();
       if (!$lease[0].checkValidity()) $lease[0].reportValidity();

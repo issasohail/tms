@@ -201,53 +201,6 @@ def _resolve_mysql_executable(configured_path, executable_name, label):
     )
 
 
-def _mysql_client_environment(db):
-    env = os.environ.copy()
-    if db.get("PASSWORD"):
-        # Avoid exposing database credentials in the operating-system process list.
-        env["MYSQL_PWD"] = str(db["PASSWORD"])
-    return env
-
-
-def _mysqldump_compatibility_args(mysqldump_path):
-    """Return privilege-safe options supported by the installed client."""
-    try:
-        help_result = subprocess.run(
-            [mysqldump_path, "--help"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        help_text = help_result.stdout or ""
-    except OSError:
-        help_text = ""
-    args = []
-    if "--no-tablespaces" in help_text:
-        args.append("--no-tablespaces")
-    if "--masking-policies" in help_text:
-        args.append("--skip-masking-policies")
-    return args
-
-
-def _run_mysql_command(cmd, *, operation, stdin=None, stdout=None, env=None):
-    try:
-        return subprocess.run(
-            cmd,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-            env=env,
-        )
-    except subprocess.CalledProcessError as exc:
-        detail = " ".join((exc.stderr or "").strip().split())
-        if not detail:
-            detail = f"MySQL client exited with code {exc.returncode}."
-        raise RuntimeError(f"{operation} failed: {detail}") from exc
-
-
 def create_db_backup(config):
     if not config.get("enable_db_backup"):
         raise RuntimeError("Database backup is disabled in backup settings.")
@@ -271,23 +224,15 @@ def create_db_backup(config):
         mysqldump_path,
         "--single-transaction",
         "--quick",
-        *_mysqldump_compatibility_args(mysqldump_path),
         f"--host={db.get('HOST') or 'localhost'}",
         f"--port={db.get('PORT') or 3306}",
         f"--user={db.get('USER') or ''}",
     ]
+    if db.get("PASSWORD"):
+        cmd.append(f"--password={db['PASSWORD']}")
     cmd.append(db["NAME"])
-    try:
-        with target.open("w", encoding="utf-8") as output:
-            _run_mysql_command(
-                cmd,
-                operation="Database backup",
-                stdout=output,
-                env=_mysql_client_environment(db),
-            )
-    except Exception:
-        target.unlink(missing_ok=True)
-        raise
+    with target.open("w", encoding="utf-8") as output:
+        subprocess.run(cmd, stdout=output, stderr=subprocess.PIPE, text=True, check=True)
     return target
 
 
@@ -367,14 +312,11 @@ def restore_database(config, backup_id):
         f"--port={db.get('PORT') or 3306}",
         f"--user={db.get('USER') or ''}",
     ]
+    if db.get("PASSWORD"):
+        cmd.append(f"--password={db['PASSWORD']}")
     cmd.append(db["NAME"])
     with path.open("r", encoding="utf-8") as input_sql:
-        _run_mysql_command(
-            cmd,
-            operation="Database restore",
-            stdin=input_sql,
-            env=_mysql_client_environment(db),
-        )
+        subprocess.run(cmd, stdin=input_sql, stderr=subprocess.PIPE, text=True, check=True)
 
 
 def restore_media(config, backup_id):

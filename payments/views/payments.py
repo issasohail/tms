@@ -1248,7 +1248,7 @@ def build_payment_receipt_message(request, pay):
     heading = "Lease payment refunded" if is_lease_refund else "Security deposit refunded" if is_refund else "Payment received"
     lines = [
         f"Dear {first_name},",
-        f"{heading} for {property_name}.",
+        f"*{heading}* for {property_name}.",
         f"Unit: {unit_number}",
         f"Period: {start_date:%b %d, %Y} - {end_date:%b %d, %Y}" if start_date and end_date else "",
     ]
@@ -1259,7 +1259,7 @@ def build_payment_receipt_message(request, pay):
             lines.append(f"Security Deposit Balance: Rs. {float(sec_balance_to_collect):,.2f}")
 
     if payment_date:
-        lines.append(f"Date: {payment_date:%b %d, %Y}")
+        lines.append(f"*Date: {payment_date:%b %d, %Y}*")
 
     lease_portion = Decimal(str(lease_portion or 0))
     security_portion = Decimal(str(security_portion or 0))
@@ -1275,7 +1275,7 @@ def build_payment_receipt_message(request, pay):
     amount_label = "Refund Amount" if (is_refund or is_lease_refund) else "Total Amount Received"
     if not is_refund and not is_lease_refund and len(positive_parts) == 1:
         amount_label = f"{amount_label} for {positive_parts[0]}"
-    lines.append(f"{amount_label}: Rs. {abs(float(amount)):,.2f}")
+    lines.append(f"*{amount_label}: Rs. {abs(float(amount)):,.2f}*")
     if len(positive_parts) > 1 and lease_portion > 0:
         lines.append(f"Lease Portion: Rs. {float(lease_portion):,.2f}")
     if len(positive_parts) > 1 and security_portion > 0:

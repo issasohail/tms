@@ -48,14 +48,21 @@ from reportlab.pdfgen import canvas
 from core.models import GlobalSettings
 from invoices.models import Invoice
 from leases.models import Lease, LeaseRenewal, WhatsAppTemplate
-from payments.models import Payment
 from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
+from payments.models import Payment
 from tenants.models import Tenant, TenantInterestType
 from utils.pdf_export import handle_export
 
 from .filters import UnitFilter
 from .forms import PropertyBankAccountForm, PropertyForm, UnitForm
-from .models import BuildingType, Property, PropertyBankAccount, PropertyMedia, Unit, UnitMedia
+from .models import (
+    BuildingType,
+    Property,
+    PropertyBankAccount,
+    PropertyMedia,
+    Unit,
+    UnitMedia,
+)
 from .tables import PropertyTable, UnitTable
 
 logger = logging.getLogger(__name__)
@@ -69,7 +76,7 @@ class PropertyListView(SingleTableView):
     template_name = "properties/property_list.html"
     ordering = ["-created_at"]
     context_object_name = "properties"
-    table_pagination = {"per_page": 5, "paginator_class": LazyPaginator}
+    table_pagination = {"per_page": 15, "paginator_class": LazyPaginator}
 
     def get_queryset(self):
         return Property.objects.all()
@@ -126,10 +133,22 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
             self.object.units.annotate(
                 has_active_lease=Exists(active_lease),
                 has_active_lease_history=Exists(active_lease_history),
-                has_ending_soon_lease=Exists(active_lease.filter(end_date__lte=ending_date)),
-                has_ending_soon_lease_history=Exists(active_lease_history.filter(end_date__lte=ending_date)),
-                active_lease_end_date=Subquery(active_lease.order_by("end_date", "id").values("end_date")[:1], output_field=DateField()),
-                active_lease_history_end_date=Subquery(active_lease_history.order_by("end_date", "id").values("end_date")[:1], output_field=DateField()),
+                has_ending_soon_lease=Exists(
+                    active_lease.filter(end_date__lte=ending_date)
+                ),
+                has_ending_soon_lease_history=Exists(
+                    active_lease_history.filter(end_date__lte=ending_date)
+                ),
+                active_lease_end_date=Subquery(
+                    active_lease.order_by("end_date", "id").values("end_date")[:1],
+                    output_field=DateField(),
+                ),
+                active_lease_history_end_date=Subquery(
+                    active_lease_history.order_by("end_date", "id").values("end_date")[
+                        :1
+                    ],
+                    output_field=DateField(),
+                ),
             ).order_by("unit_number")
         )
         active_unit_ids = set(
@@ -213,7 +232,9 @@ def property_bank_account_save(request, property_pk, account_pk=None):
         saved.save()
         messages.success(request, f"Bank account {saved.account_label} saved.")
     else:
-        messages.error(request, "Bank account could not be saved. Check the entered values.")
+        messages.error(
+            request, "Bank account could not be saved. Check the entered values."
+        )
     return redirect("properties:property_detail", pk=property_pk)
 
 
@@ -236,7 +257,9 @@ def property_bank_account_welcome_settings(request, property_pk):
             is_active=True,
         ).first()
         if selected is None:
-            messages.error(request, "Add or activate a bank account before selecting it.")
+            messages.error(
+                request, "Add or activate a bank account before selecting it."
+            )
             return redirect("properties:property_detail", pk=property_pk)
         PropertyBankAccount.objects.filter(property=property_obj).update(
             is_default=False
@@ -997,8 +1020,10 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "unit"
 
     def get_queryset(self):
-        return super().get_queryset().select_related(
-            "property", "building_type", "interest_type"
+        return (
+            super()
+            .get_queryset()
+            .select_related("property", "building_type", "interest_type")
         )
 
     def get_context_data(self, **kwargs):
@@ -1095,9 +1120,7 @@ def unit_inline_update(request):
                     BuildingType, pk=value, is_active=True
                 )
                 unit.building_type = building_type
-                unit.interest_type = getattr(
-                    building_type, "lead_interest_type", None
-                )
+                unit.interest_type = getattr(building_type, "lead_interest_type", None)
                 new_value = building_type.name
             else:
                 unit.building_type = None

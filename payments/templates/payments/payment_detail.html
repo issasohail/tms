@@ -543,15 +543,15 @@ body.exporting-receipt-jpg .printable-content .card {
         // Build message as lines (Django controls whether sec balance line appears)
         const lines = [
             `Dear {{ payment_detail.payment.lease.tenant.first_name|escapejs }},`,
-            `{% if payment_detail.lease_amount < 0 %}Lease payment refunded{% elif payment_detail.security_type == "REFUND" %}Security deposit refunded{% else %}Payment received{% endif %} for {{ payment_detail.payment.lease.unit.property.property_name|escapejs }}.`,
+            `*{% if payment_detail.lease_amount < 0 %}Lease payment refunded{% elif payment_detail.security_type == "REFUND" %}Security deposit refunded{% else %}Payment received{% endif %}* for {{ payment_detail.payment.lease.unit.property.property_name|escapejs }}.`,
             `Unit: {{ payment_detail.payment.lease.unit.unit_number|escapejs }}`,
             `Period: {{ payment_detail.payment.lease.start_date|date:"M d, Y"|escapejs }} - {{ payment_detail.payment.lease.end_date|date:"M d, Y"|escapejs }}`,
             `Security Deposit: ${securityRequired} (${securityStatus})`,
             {% if sec_totals.balance_to_collect > 0 %}
             `Security Deposit Balance: {{ CURRENCY_SYMBOL|escapejs }} ${secBalStr}`,
             {% endif %}
-            `Date: {{ payment_detail.payment.payment_date|date:"M d, Y"|escapejs }}`,
-            `${totalAmountLabel}: {{ payment_detail.payment.amount|money:2|escapejs }}`,
+            `*Date: {{ payment_detail.payment.payment_date|date:"M d, Y"|escapejs }}*`,
+            `*${totalAmountLabel}: {{ payment_detail.payment.amount|money:2|escapejs }}*`,
             {% if payment_detail.lease_amount > 0 and payment_detail.security_amount > 0 %}
             `Lease Portion: {{ payment_detail.lease_amount|money:2|escapejs }}`,
             {% endif %}

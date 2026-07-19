@@ -19,8 +19,6 @@ from whatsapp.services.whatsapp_ai import WhatsAppAIAssistant, detect_intent
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
 from leases.models import Lease
-from invoices.models import Invoice
-from payments.models import Payment, PaymentDetail
 from leases.models_lease_photos import LeaseMedia
 from properties.models import Property, Unit
 from tenants.models import Tenant
@@ -382,7 +380,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.save()
         self.assertEqual(resolve_mode(self.conversation, "staff", sender), WhatsAppConversation.MODE_STAFF)
 
-    def test_staff_mode_is_available_when_same_phone_matches_stale_tenant(self):
+    def test_staff_mode_is_available_when_same_phone_matches_multiple_tenants(self):
         Tenant.objects.create(
             first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-4444444-4"
         )
@@ -393,21 +391,14 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.pending_state = ""
         self.conversation.save()
         sender = resolve_sender(self.phone, conversation=self.conversation)
-        self.assertFalse(sender.ambiguous)
+        self.assertTrue(sender.ambiguous)
         self.assertEqual(resolve_mode(self.conversation, "hi", sender), "choose_mode")
         sender = resolve_sender(self.phone, conversation=self.conversation)
         self.assertEqual(resolve_mode(self.conversation, "staff", sender), WhatsAppConversation.MODE_STAFF)
 
     def test_multiple_tenant_matches_start_verified_tenant_selection(self):
-        second_tenant = Tenant.objects.create(
+        Tenant.objects.create(
             first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-5555555-5"
-        )
-        second_unit = Unit.objects.create(property=self.property, unit_number="B-05", status="occupied")
-        Lease.objects.create(
-            tenant=second_tenant, unit=second_unit,
-            start_date=timezone.localdate() - timedelta(days=10),
-            end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("20000"), status="active",
         )
         self.staff1.whatsapp_number = self.phone
         self.staff1.save(update_fields=["whatsapp_number"])
@@ -420,89 +411,6 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.refresh_from_db()
         self.assertEqual(self.conversation.pending_state, "tenant_identity_selection")
         self.assertEqual(len(self.conversation.context["tenant_identity_options"]), 2)
-
-    def test_stale_tenant_phone_record_is_not_shown_as_an_account(self):
-        Tenant.objects.create(
-            first_name="Old", last_name="Account", phone=self.phone, cnic="37405-9999999-9"
-        )
-
-        sender = resolve_sender(self.phone)
-
-        self.assertEqual(sender.tenant_matches, [self.tenant])
-        self.assertFalse(sender.ambiguous)
-
-    def test_whatsapp_balance_uses_canonical_lease_allocations(self):
-        Invoice.objects.create(
-            lease=self.lease,
-            issue_date=timezone.localdate(),
-            due_date=timezone.localdate(),
-            amount=Decimal("18300.00"),
-            status="cancelled",
-        )
-        payment = Payment.objects.create(
-            lease=self.lease,
-            payment_date=timezone.localdate(),
-            amount=Decimal("18300.00"),
-        )
-        PaymentDetail.objects.create(
-            payment=payment,
-            lease_amount=Decimal("0.00"),
-            security_amount=Decimal("18300.00"),
-        )
-
-        from whatsapp.services.tenant_context import build_lease_context
-
-        self.assertEqual(build_lease_context(self.lease).balance, Decimal("0.00"))
-
-    def test_staff_lease_action_accepts_property_unit_shortcut(self):
-        basement = Property.objects.create(
-            property_name="F56 Basement", owner_name="Owner", owner_cnic="37405-7777777-7",
-            type="Residential", property_type="apartment", total_units=1,
-        )
-        room = Unit.objects.create(property=basement, unit_number="F56-ROOM# 02", status="occupied")
-        room_lease = Lease.objects.create(
-            tenant=self.tenant, unit=room,
-            start_date=timezone.localdate() - timedelta(days=10),
-            end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("18000"), status="active",
-        )
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=basement)
-        assistant = WhatsAppAIAssistant(service=MagicMock())
-        staff_conversation = WhatsAppConversation.objects.create(
-            phone_number=self.staff1.whatsapp_number,
-            staff_user=self.staff1,
-            selected_mode=WhatsAppConversation.MODE_STAFF,
-            mode_expires_at=timezone.now() + timedelta(hours=1),
-        )
-
-        prompt = assistant._start_staff_lease_target(staff_conversation, self.staff1, "lease_balance")
-        response = assistant._consume_staff_lease_target(
-            self.message, staff_conversation, "f56-room2", self.staff1
-        )
-
-        self.assertIn("F56 Basement", prompt)
-        self.assertIn("Lease Balance", response)
-        self.assertIn(room.unit_number, response)
-        self.assertIn(str(room_lease.get_balance), response)
-
-    def test_unit_only_staff_shortcut_asks_for_property(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
-        assistant = WhatsAppAIAssistant(service=MagicMock())
-        staff_conversation = WhatsAppConversation.objects.create(
-            phone_number=self.staff1.whatsapp_number,
-            staff_user=self.staff1,
-            selected_mode=WhatsAppConversation.MODE_STAFF,
-            mode_expires_at=timezone.now() + timedelta(hours=1),
-        )
-        assistant._start_staff_lease_target(staff_conversation, self.staff1, "lease_view")
-
-        response = assistant._consume_staff_lease_target(
-            self.message, staff_conversation, "flat 7", self.staff1
-        )
-
-        self.assertIn("Which property contains unit 7?", response)
-        staff_conversation.refresh_from_db()
-        self.assertEqual(staff_conversation.pending_state, "staff_lease_target_property")
 
     def test_tenant_account_selection_shows_property_and_opens_without_cnic_step(self):
         second_tenant = Tenant.objects.create(

@@ -1,6 +1,5 @@
 # core/views.py
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.contrib.auth import logout
 from django.contrib import messages
 from django.core.files.base import ContentFile
 from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
@@ -1913,9 +1912,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                 else:
                     safety = create_db_backup({**config, "enable_db_backup": True})
                     restore_database(config, form.cleaned_data["backup_id"])
-                    logout(request)
-                    messages.success(request, f"Database restore completed. Safety backup created first: {safety.name}. Please log in again.")
-                    return redirect(settings.LOGIN_URL)
+                    messages.success(request, f"Database restore completed. Safety backup created first: {safety.name}")
             elif action == "restore_media":
                 form = BackupRestoreForm(request.POST, backup_choices=choices_for(list_backups(config), "media"))
                 if not form.is_valid() or form.cleaned_data["confirm_text"] != "RESTORE MEDIA":
@@ -1923,9 +1920,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                 else:
                     safety = create_media_backup({**config, "enable_media_backup": True})
                     restore_media(config, form.cleaned_data["backup_id"])
-                    logout(request)
-                    messages.success(request, f"Media restore completed. Safety backup created first: {safety.name}. Please log in again.")
-                    return redirect(settings.LOGIN_URL)
+                    messages.success(request, f"Media restore completed. Safety backup created first: {safety.name}")
             elif action == "restore_full":
                 form = BackupRestoreForm(request.POST, backup_choices=choices_for(list_backups(config), "full"))
                 if not form.is_valid() or form.cleaned_data["confirm_text"] != "RESTORE FULL":
@@ -1933,9 +1928,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                 else:
                     safety = create_full_backup({**config, "enable_full_backup": True})
                     restore_full(config, form.cleaned_data["backup_id"])
-                    logout(request)
-                    messages.success(request, f"Full restore completed. Safety backup created first: {safety.name}. Please log in again.")
-                    return redirect(settings.LOGIN_URL)
+                    messages.success(request, f"Full restore completed. Safety backup created first: {safety.name}")
             elif action == "fresh_reset":
                 messages.error(request, "Fresh reset is intentionally disabled until a TMS reset profile is configured.")
             else:

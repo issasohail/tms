@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 import time
 import uuid
 from datetime import timedelta
@@ -738,8 +737,6 @@ class WhatsAppAIAssistant:
                     | Q(family_members__family_member_id=tenant.pk)
                     | Q(legacy_family_members__tenant_id=tenant.pk),
                     status="active",
-                    start_date__lte=timezone.localdate(),
-                    end_date__gte=timezone.localdate(),
                 )
                 .distinct()
                 .order_by("unit__property__property_name", "unit__unit_number", "id")
@@ -759,25 +756,13 @@ class WhatsAppAIAssistant:
             self._clear_context_keys(conversation, "tenant_identity_options", "pending_tenant_identity_id")
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return mode_selection_text(), "mode_selection", {}
-        eligible_tenants = list(identity.tenant_matches)
-        eligible_ids = [tenant.pk for tenant in eligible_tenants]
-        if conversation.context.get("tenant_identity_options") != eligible_ids:
-            conversation.context["tenant_identity_options"] = eligible_ids
-            conversation.save(update_fields=["context", "updated_at"])
-        if len(eligible_tenants) == 1:
-            return self._activate_selected_tenant(conversation, eligible_tenants[0])
-        if not eligible_tenants:
-            conversation.pending_state = "mode_selection"
-            self._clear_context_keys(conversation, "tenant_identity_options", "pending_tenant_identity_id")
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return mode_selection_text(), "mode_selection", {}
         try:
             index = int((text or "").strip()) - 1
         except ValueError:
-            return self._tenant_identity_options_text(eligible_tenants), "tenant_identity_selection", {}
-        option_ids = eligible_ids
+            return self._tenant_identity_options_text(identity.tenant_matches), "tenant_identity_selection", {}
+        option_ids = conversation.context.get("tenant_identity_options") or []
         if index < 0 or index >= len(option_ids):
-            return self._tenant_identity_options_text(eligible_tenants), "tenant_identity_selection", {}
+            return self._tenant_identity_options_text(identity.tenant_matches), "tenant_identity_selection", {}
         from tenants.models import Tenant
 
         tenant = Tenant.objects.filter(pk=option_ids[index], is_active=True).first()
@@ -962,7 +947,6 @@ class WhatsAppAIAssistant:
                 "staff_search_action",
                 "staff_search_options",
                 "staff_upload_hint",
-                "staff_lease_target",
             )
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return staff_menu_text(staff_user)
@@ -974,7 +958,6 @@ class WhatsAppAIAssistant:
                 "staff_search_action",
                 "staff_search_options",
                 "staff_upload_hint",
-                "staff_lease_target",
             )
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
@@ -983,7 +966,7 @@ class WhatsAppAIAssistant:
         if natural_staff_response:
             return natural_staff_response
         if "ledger" in lowered or "statement" in lowered:
-            return self._start_staff_lease_target(conversation, staff_user, "lease_ledger")
+            return self._start_staff_search(conversation, "tenant_ledger", "Send tenant name, phone, CNIC, property, or unit for ledger.")
         if lowered in {"add tenant", "new tenant"}:
             conversation.pending_state = "staff_add_tenant"
             conversation.save(update_fields=["pending_state", "updated_at"])
@@ -1174,27 +1157,33 @@ class WhatsAppAIAssistant:
 
         if state == "staff_lease_management":
             if lowered in {"2", "renew lease", "renew"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_renew")
+                return self._start_staff_search(conversation, "lease_renew", "Send tenant, property, unit, or CNIC for the lease to renew.")
             if lowered in {"3", "end lease", "terminate"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_end")
+                return self._start_staff_search(conversation, "lease_end", "Send tenant, property, unit, or CNIC for the lease to end.")
             if lowered in {"4", "view lease", "view"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_view")
+                return self._start_staff_search(conversation, "lease_view", "Send tenant, property, unit, or CNIC to view lease.")
             if lowered in {"5", "upload lease document", "upload"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_upload")
+                return self._start_staff_upload_target_search(
+                    conversation,
+                    PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
+                    "Send tenant name, property, unit, phone, or CNIC to select the lease document target.",
+                )
             if lowered in {"6", "lease ledger", "ledger"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_ledger")
+                return self._start_staff_search(conversation, "lease_ledger", "Send tenant, property, unit, or CNIC for lease ledger.")
             if lowered in {"7", "lease balance", "balance"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_balance")
+                return self._start_staff_search(conversation, "lease_balance", "Send tenant, property, unit, or CNIC for lease balance.")
             if lowered in {"8", "agreement", "agreement view", "agreement edit"}:
-                return self._start_staff_lease_target(conversation, staff_user, "lease_agreement")
+                return (
+                    "Agreement Links\n\n"
+                    "Reply with:\n"
+                    "agreement view TENANT_ID_NUMBER\n"
+                    "agreement edit TENANT_ID_NUMBER"
+                )
             if lowered in {"9", "back"}:
                 conversation.pending_state = ""
                 conversation.save(update_fields=["pending_state", "updated_at"])
                 return staff_menu_text(staff_user)
             return "Please choose a Lease Management option by number, or type BACK."
-
-        if state in {"staff_lease_target_property", "staff_lease_target_unit"}:
-            return self._consume_staff_lease_target(message_log, conversation, text, staff_user)
 
         if state == "staff_billing_management":
             if lowered in {"1", "outstanding tenants", "outstanding"}:
@@ -1363,198 +1352,6 @@ class WhatsAppAIAssistant:
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         log_staff_action(staff_user, message_log.phone_number, "photo_upload_target_selected", "pending", property=property_obj, target=option)
         return f"Target selected: {option['label']}\n\nSend one or more photos/files. Reply DONE when finished. Each file will wait for approval."
-
-    def _start_staff_lease_target(self, conversation, staff_user, action):
-        properties = self._staff_accessible_properties(staff_user)
-        if not properties:
-            return "No WhatsApp property access is assigned to your staff user."
-        conversation.pending_state = "staff_lease_target_property"
-        conversation.context["staff_lease_target"] = {
-            "action": action,
-            "property_options": [item.pk for item in properties],
-        }
-        self._clear_context_keys(conversation, "staff_search_action", "staff_search_options")
-        conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        return self._staff_lease_property_options_text(properties, action)
-
-    def _staff_lease_property_options_text(self, properties, action, unit_hint=""):
-        labels = {
-            "lease_renew": "renew",
-            "lease_end": "end",
-            "lease_view": "view",
-            "lease_upload": "upload a document for",
-            "lease_ledger": "open the ledger for",
-            "lease_balance": "check the balance for",
-            "lease_agreement": "open the agreement for",
-        }
-        if unit_hint:
-            lines = [f"Which property contains unit {unit_hint}?"]
-        else:
-            lines = [f"Select a property to {labels.get(action, 'open')} a lease:"]
-        for index, property_obj in enumerate(properties, start=1):
-            lines.append(f"{index}. {property_obj.property_name}")
-        lines.extend([
-            "",
-            "Or type property and unit together, for example:",
-            "f35-7 or f56-room7",
-        ])
-        return "\n".join(lines)
-
-    def _consume_staff_lease_target(self, message_log, conversation, text, staff_user):
-        data = conversation.context.get("staff_lease_target") or {}
-        action = data.get("action") or "lease_view"
-        properties = list(Property.objects.filter(pk__in=data.get("property_options") or []).order_by("property_name"))
-        properties = [item for item in properties if staff_can_access_property(staff_user, item)]
-        if not properties:
-            conversation.pending_state = ""
-            conversation.context.pop("staff_lease_target", None)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return "Your WhatsApp property access is no longer available."
-
-        if conversation.pending_state == "staff_lease_target_property":
-            property_obj, unit_hint = self._resolve_staff_property_unit_text(text, properties)
-            if property_obj is None:
-                property_obj = self._option_from_number(text, Property, data.get("property_options") or [])
-            if property_obj is None:
-                unit_hint = unit_hint or self._unit_only_hint(text)
-                if unit_hint:
-                    data["unit_hint"] = unit_hint
-                    conversation.context["staff_lease_target"] = data
-                    conversation.save(update_fields=["context", "updated_at"])
-                    return self._staff_lease_property_options_text(properties, action, unit_hint)
-                return "Please choose a property number, type its name, or send property and unit together (for example f56-room7)."
-            if not staff_can_access_property(staff_user, property_obj):
-                return "You do not have WhatsApp access to that property."
-            unit_hint = unit_hint or data.get("unit_hint") or ""
-            units = list(Unit.objects.filter(property=property_obj).order_by("unit_number")[:50])
-            if not units:
-                return f"No units are configured for {property_obj.property_name}."
-            if unit_hint:
-                unit = self._match_unit_text(unit_hint, property_obj, units)
-                if unit:
-                    return self._finish_staff_lease_target(message_log, conversation, staff_user, unit, action)
-            data.update({
-                "property_id": property_obj.pk,
-                "unit_options": [unit.pk for unit in units],
-            })
-            conversation.context["staff_lease_target"] = data
-            conversation.pending_state = "staff_lease_target_unit"
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return self._staff_lease_unit_options_text(property_obj, units, unit_hint)
-
-        property_obj = Property.objects.filter(pk=data.get("property_id")).first()
-        if not property_obj or not staff_can_access_property(staff_user, property_obj):
-            return "The selected property is no longer available. Type BACK and try again."
-        units = list(Unit.objects.filter(pk__in=data.get("unit_options") or [], property=property_obj).order_by("unit_number"))
-        unit = self._option_from_number(text, Unit, data.get("unit_options") or [])
-        if unit is None:
-            unit = self._match_unit_text(text, property_obj, units)
-        if not unit:
-            return self._staff_lease_unit_options_text(property_obj, units, text)
-        return self._finish_staff_lease_target(message_log, conversation, staff_user, unit, action)
-
-    def _staff_lease_unit_options_text(self, property_obj, units, unmatched=""):
-        lines = [f"Select unit for {property_obj.property_name}:"]
-        for index, unit in enumerate(units, start=1):
-            lines.append(f"{index}. {unit.unit_number}")
-        if unmatched:
-            lines.extend(["", f"I could not match unit '{unmatched}' exactly. Please choose from the list."])
-        lines.append("\nReply BACK to return to the Staff Menu.")
-        return "\n".join(lines)
-
-    def _resolve_staff_property_unit_text(self, text, properties):
-        normalized = self._selector_key(text)
-        if not normalized:
-            return None, ""
-        matches = []
-        for property_obj in properties:
-            property_key = self._selector_key(property_obj.property_name)
-            property_code = self._property_code(property_obj.property_name)
-            matched_key = ""
-            if property_key and normalized.startswith(property_key):
-                matched_key = property_key
-            elif property_code and normalized.startswith(property_code):
-                matched_key = property_code
-            elif property_key and normalized == property_key:
-                matched_key = property_key
-            if matched_key:
-                matches.append((len(matched_key), property_obj, normalized[len(matched_key):]))
-        if not matches:
-            return None, ""
-        _length, property_obj, unit_hint = max(matches, key=lambda item: item[0])
-        return property_obj, unit_hint
-
-    def _match_unit_text(self, text, property_obj, units):
-        query = self._selector_key(text)
-        if not query:
-            return None
-        property_keys = {self._selector_key(property_obj.property_name), self._property_code(property_obj.property_name)}
-        candidates = []
-        for unit in units:
-            unit_key = self._selector_key(unit.unit_number)
-            aliases = {unit_key, self._strip_selector_words(unit_key)}
-            for property_key in property_keys:
-                if property_key and unit_key.startswith(property_key):
-                    remainder = unit_key[len(property_key):]
-                    aliases.update({remainder, self._strip_selector_words(remainder)})
-            normalized_aliases = {self._normalize_selector_digits(alias) for alias in aliases if alias}
-            query_variants = {
-                self._normalize_selector_digits(query),
-                self._normalize_selector_digits(self._strip_selector_words(query)),
-            }
-            if normalized_aliases & query_variants:
-                candidates.append(unit)
-        return candidates[0] if len(candidates) == 1 else None
-
-    def _unit_only_hint(self, text):
-        lowered = (text or "").strip().lower()
-        if re.search(r"\b(flat|unit|room)\s*#?\s*[a-z0-9-]+", lowered):
-            return self._strip_selector_words(self._selector_key(lowered)) or self._selector_key(lowered)
-        return ""
-
-    def _selector_key(self, value):
-        return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
-
-    def _property_code(self, value):
-        match = re.search(r"[a-z]+\s*[-#]?\s*\d+", str(value or "").lower())
-        return self._selector_key(match.group(0)) if match else ""
-
-    def _strip_selector_words(self, value):
-        result = str(value or "")
-        for word in ("unit", "flat", "room", "number", "no"):
-            result = result.replace(word, "")
-        return result
-
-    def _normalize_selector_digits(self, value):
-        return re.sub(r"\d+", lambda match: str(int(match.group(0))), str(value or ""))
-
-    def _finish_staff_lease_target(self, message_log, conversation, staff_user, unit, action):
-        lease_qs = self._staff_accessible_leases(staff_user).filter(unit=unit)
-        if action in {"lease_renew", "lease_end", "lease_upload", "lease_agreement"}:
-            lease = lease_qs.filter(status="active").order_by("-start_date", "-id").first()
-        else:
-            lease = lease_qs.order_by("-start_date", "-id").first()
-        if not lease:
-            return f"No {'active ' if action in {'lease_renew', 'lease_end', 'lease_upload', 'lease_agreement'} else ''}lease was found for {unit.property.property_name} / {unit.unit_number}. Choose another unit or type BACK."
-
-        conversation.context.pop("staff_lease_target", None)
-        if action == "lease_upload":
-            conversation.context["staff_upload_kind"] = PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT
-            conversation.pending_state = "staff_upload_target_selection"
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return self._select_staff_upload_target(
-                message_log,
-                conversation,
-                staff_user,
-                {"type": "lease", "id": lease.pk, "label": f"{unit.property.property_name} / {unit.unit_number} - {lease.tenant.get_full_name()}"},
-            )
-        conversation.pending_state = ""
-        conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        if action == "lease_agreement":
-            view_link = self._create_staff_agreement_link_for_lease(message_log, staff_user, lease, WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW)
-            edit_link = self._create_staff_agreement_link_for_lease(message_log, staff_user, lease, WhatsAppExternalLinkToken.LINK_AGREEMENT_EDIT)
-            return f"Agreement Links\n\n{unit.property.property_name} / {unit.unit_number}\nTenant: {lease.tenant.get_full_name()}\n\nView:\n{view_link}\n\nEdit:\n{edit_link}"
-        return self._staff_lease_action_reply(message_log, staff_user, lease, action)
 
     def _start_staff_search(self, conversation, action, prompt):
         conversation.pending_state = "staff_search_query"
@@ -2026,6 +1823,13 @@ class WhatsAppAIAssistant:
         lowered = (text or "").strip().lower()
         if state == "staff_lease_management" and lowered in {"1", "create lease", "add lease"}:
             return self._start_staff_add_lease(message_log, conversation, staff_user)
+        if state == "staff_lease_management" and lowered in {"8", "agreement", "agreement view", "agreement edit"}:
+            return (
+                "Agreement Links\n\n"
+                "Reply with:\n"
+                "agreement view TENANT_ID_NUMBER\n"
+                "agreement edit TENANT_ID_NUMBER"
+            )
         if state == "staff_add_lease_tenant_id":
             return self._staff_add_lease_select_tenant(message_log, conversation, text, staff_user)
         if state == "staff_add_lease_property":
@@ -2186,17 +1990,11 @@ class WhatsAppAIAssistant:
         if not staff_can_access_property(staff_user, property_obj):
             log_staff_action(staff_user, message_log.phone_number, "agreement_link_property_blocked", "blocked", property=property_obj, tenant=tenant, lease=lease)
             return "You do not have WhatsApp access to that property's agreement."
-        link = self._create_staff_agreement_link_for_lease(message_log, staff_user, lease, link_type)
-        label = "Agreement view link" if link_type == WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW else "Agreement edit link"
-        return f"{label} created.\n\nLink:\n{link}"
-
-    def _create_staff_agreement_link_for_lease(self, message_log, staff_user, lease, link_type):
-        property_obj = lease.unit.property
         base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=link_type,
             phone_number=message_log.phone_number,
-            tenant=lease.tenant,
+            tenant=tenant,
             staff_user=staff_user,
             target_app_label="leases",
             target_model="lease",
@@ -2206,8 +2004,9 @@ class WhatsAppAIAssistant:
         )
         url_name = "leases:public_agreement_view" if link_type == WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW else "leases:public_agreement_edit"
         link = f"{base_url.rstrip('/')}{reverse(url_name, args=[token.token])}"
-        log_staff_action(staff_user, message_log.phone_number, "agreement_link_created", "allowed", property=property_obj, tenant=lease.tenant, lease=lease, link_type=link_type)
-        return link
+        log_staff_action(staff_user, message_log.phone_number, "agreement_link_created", "allowed", property=property_obj, tenant=tenant, lease=lease, link_type=link_type)
+        label = "Agreement view link" if link_type == WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW else "Agreement edit link"
+        return f"{label} created.\n\nLink:\n{link}"
 
     def _consume_tenant_upload_type(self, message_log, conversation, text, selected_lease):
         if conversation.pending_state != "tenant_upload_type":

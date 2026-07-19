@@ -111,7 +111,7 @@ def api_payment_detail_receipt_whatsapp(request, pk: int):
         f"Unit: {getattr(unit, 'unit_number', '') or ''}",
     ]
     if getattr(payment, "payment_date", None):
-        lines.append(f"Date: {payment.payment_date:%b %d, %Y}")
+        lines.append(f"*Date: {payment.payment_date:%b %d, %Y}*")
     lease_amount = _dec(detail.lease_amount)
     security_amount = _dec(detail.security_amount)
     positive_parts = [

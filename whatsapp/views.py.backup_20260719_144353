@@ -9,12 +9,10 @@ from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.contrib import messages
 from django import forms
 from django.core.paginator import Paginator
 from django.core.cache import cache
-from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -26,7 +24,6 @@ from invoices.models import Invoice
 from leases.models import Lease
 from maintenance.models import MaintenanceRequest
 from payments.models import Payment
-from properties.models import Property
 from tenants.models import Tenant
 from handyman.models import HandymanProfile
 
@@ -35,7 +32,6 @@ from .models import (
     WhatsAppAIInteractionLog,
     WhatsAppConversation,
     WhatsAppMessageLog,
-    WhatsAppStaffPropertyAccess,
     WhatsAppUtilityTemplate,
     WhatsAppWebhookLog,
 )
@@ -43,97 +39,10 @@ from .services.tenant_context import find_active_leases_for_phone
 from .services.whatsapp import WhatsAppService, is_whatsapp_session_open
 
 logger = logging.getLogger(__name__)
-TENANT_SIMULATOR_GROUP = "Tenant Simulator"
 
 
 def _can_view_whatsapp_logs(user):
     return user.is_staff or user.has_perm("core.view_globalsettings")
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def whatsapp_staff_access(request):
-    if not request.user.is_superuser:
-        raise PermissionDenied("Only a superuser can manage WhatsApp staff access.")
-
-    simulator_group, _created = Group.objects.get_or_create(name=TENANT_SIMULATOR_GROUP)
-    User = get_user_model()
-    staff_users = list(
-        User.objects.filter(is_active=True, is_staff=True)
-        .prefetch_related("groups")
-        .order_by("username")
-    )
-    properties = list(Property.objects.order_by("property_name", "id"))
-
-    if request.method == "POST":
-        staff_user = get_object_or_404(
-            User,
-            pk=request.POST.get("staff_id"),
-            is_active=True,
-            is_staff=True,
-        )
-        if request.POST.get("simulator_enabled") == "on":
-            staff_user.groups.add(simulator_group)
-        else:
-            staff_user.groups.remove(simulator_group)
-
-        selected_property_ids = {
-            int(value)
-            for value in request.POST.getlist("property_ids")
-            if value.isdigit()
-        }
-        valid_property_ids = set(
-            Property.objects.filter(pk__in=selected_property_ids).values_list("pk", flat=True)
-        )
-        existing = {
-            access.property_id: access
-            for access in WhatsAppStaffPropertyAccess.objects.filter(staff_user=staff_user)
-        }
-        for property_obj in properties:
-            should_enable = property_obj.pk in valid_property_ids
-            access = existing.get(property_obj.pk)
-            if access and access.is_active != should_enable:
-                access.is_active = should_enable
-                access.save(update_fields=["is_active", "updated_at"])
-            elif not access and should_enable:
-                WhatsAppStaffPropertyAccess.objects.create(
-                    staff_user=staff_user,
-                    property=property_obj,
-                    is_active=True,
-                    notes="Managed from WhatsApp Staff Access.",
-                )
-        messages.success(request, f"WhatsApp access updated for {staff_user.username}.")
-        return redirect("whatsapp:staff_access")
-
-    staff_rows = []
-    for staff_user in staff_users:
-        active_property_ids = set(
-            WhatsAppStaffPropertyAccess.objects.filter(
-                staff_user=staff_user,
-                is_active=True,
-            ).values_list("property_id", flat=True)
-        )
-        staff_rows.append({
-            "user": staff_user,
-            "simulator_enabled": (
-                staff_user.is_superuser
-                or staff_user.groups.filter(name=TENANT_SIMULATOR_GROUP).exists()
-            ),
-            "properties": [
-                {"property": property_obj, "selected": property_obj.pk in active_property_ids}
-                for property_obj in properties
-            ],
-            "active_property_count": len(active_property_ids),
-        })
-    return render(
-        request,
-        "whatsapp/staff_access.html",
-        {
-            "staff_rows": staff_rows,
-            "property_count": len(properties),
-            "simulator_group": simulator_group,
-        },
-    )
 
 
 class WhatsAppUtilityTemplateForm(forms.ModelForm):

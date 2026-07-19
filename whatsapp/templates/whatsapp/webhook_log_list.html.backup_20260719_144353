@@ -24,7 +24,6 @@
     <div class="text-muted small">Sent and received messages, delivery statuses, and raw Meta webhook payloads.</div>
   </div>
   <div class="d-flex gap-2">
-    {% if request.user.is_superuser %}<a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:staff_access' %}"><i class="bi bi-people me-1"></i> Staff Access</a>{% endif %}
     <a class="btn btn-sm btn-success" href="{% url 'whatsapp:simulator' %}"><i class="bi bi-phone me-1"></i> Role Simulator</a>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'core:settings' %}#settings-tool-whatsapp-webhook-logs">
       <i class="bi bi-arrow-left me-1"></i> Settings

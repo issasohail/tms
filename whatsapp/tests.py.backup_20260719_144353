@@ -2,7 +2,6 @@ from datetime import timedelta
 from decimal import Decimal
 import hashlib
 import hmac
-import importlib
 import json
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -10,7 +9,6 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.cache import cache
-from django.apps import apps as django_apps
 from django.core.files.base import ContentFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -54,88 +52,6 @@ from whatsapp.services.identity.mode_resolver import infer_mode
 from whatsapp.services.identity.sender_resolver import resolve_sender
 from whatsapp.services.role_mode import resolve_mode
 from whatsapp.views import _log_webhook_payload
-
-
-class WhatsAppStaffAccessManagementTests(TestCase):
-    def setUp(self):
-        User = get_user_model()
-        self.admin = User.objects.create_superuser(
-            "admin",
-            password="test",
-            email="admin-whatsapp@example.com",
-            whatsapp_number="+923001111111",
-        )
-        self.manager = User.objects.create_user(
-            "fida",
-            password="test",
-            email="fida-whatsapp@example.com",
-            whatsapp_number="+923002222222",
-            is_staff=True,
-        )
-        self.property = Property.objects.create(
-            property_name="Access Property",
-            owner_name="Owner",
-            owner_cnic="37405-1212121-1",
-            type="Residential",
-            property_type="apartment",
-            total_units=1,
-        )
-
-    def test_seed_migration_assigns_both_configured_users(self):
-        migration = importlib.import_module(
-            "whatsapp.migrations.0017_seed_tenant_simulator_staff_access"
-        )
-
-        migration.add_initial_simulator_access(django_apps, None)
-
-        group = Group.objects.get(name="Tenant Simulator")
-        self.assertTrue(self.admin.groups.filter(pk=group.pk).exists())
-        self.assertTrue(self.manager.groups.filter(pk=group.pk).exists())
-        self.assertTrue(
-            WhatsAppStaffPropertyAccess.objects.filter(
-                staff_user=self.admin,
-                property=self.property,
-                is_active=True,
-            ).exists()
-        )
-        self.assertTrue(
-            WhatsAppStaffPropertyAccess.objects.filter(
-                staff_user=self.manager,
-                property=self.property,
-                is_active=True,
-            ).exists()
-        )
-
-    def test_superuser_can_manage_simulator_and_property_access(self):
-        self.client.force_login(self.admin)
-
-        response = self.client.post(
-            reverse("whatsapp:staff_access"),
-            {
-                "staff_id": self.manager.pk,
-                "simulator_enabled": "on",
-                "property_ids": [str(self.property.pk)],
-            },
-            follow=True,
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "WhatsApp access updated for fida")
-        self.assertTrue(self.manager.groups.filter(name="Tenant Simulator").exists())
-        self.assertTrue(
-            WhatsAppStaffPropertyAccess.objects.filter(
-                staff_user=self.manager,
-                property=self.property,
-                is_active=True,
-            ).exists()
-        )
-
-    def test_non_superuser_cannot_open_staff_access_ui(self):
-        self.client.force_login(self.manager)
-
-        response = self.client.get(reverse("whatsapp:staff_access"))
-
-        self.assertEqual(response.status_code, 403)
 
 
 class PendingWhatsAppMediaApprovalTests(TestCase):
@@ -650,7 +566,7 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_selected_staff_can_run_read_only_tenant_simulator_and_exit(self):
         WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
-        simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
+        simulator_group = Group.objects.create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
         assistant = WhatsAppAIAssistant(service=MagicMock())
         conversation = WhatsAppConversation.objects.create(

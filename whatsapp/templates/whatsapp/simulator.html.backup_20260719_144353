@@ -7,10 +7,7 @@
       <h3 class="mb-1"><i class="bi bi-phone me-2"></i>WhatsApp Role Simulator</h3>
       <div class="text-muted small">Test tenant, staff, or handyman behaviour without changing registered phone numbers.</div>
     </div>
-    <div class="d-flex gap-2">
-      {% if request.user.is_superuser %}<a href="{% url 'whatsapp:staff_access' %}" class="btn btn-outline-success btn-sm">Staff Access</a>{% endif %}
-      <a href="{% url 'whatsapp:webhook_log_list' %}" class="btn btn-outline-secondary btn-sm">WhatsApp Logs</a>
-    </div>
+    <a href="{% url 'whatsapp:webhook_log_list' %}" class="btn btn-outline-secondary btn-sm">WhatsApp Logs</a>
   </div>
 
   <div class="alert alert-warning py-2 small">

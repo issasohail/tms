@@ -29,7 +29,6 @@ ROLE_GROUP_NAMES = [
 
 MODE_COMMANDS = {"menu", "switch", "switch mode", "staff", "staff mode", "staff inbox", "tenant", "tenant mode", "my account", "my tenant account", "handyman", "handyman mode"}
 MODE_TTL_MINUTES = getattr(settings, "WHATSAPP_MODE_SESSION_MINUTES", 60)
-TENANT_SIMULATOR_GROUP = "Tenant Simulator"
 
 
 @dataclass
@@ -162,7 +161,6 @@ def guest_menu_text():
 
 
 def staff_menu_text(user=None):
-    simulator_option = "\n11. Tenant Simulator" if staff_can_simulate_tenant(user) else ""
     return (
         "Staff Inbox / Menu\n\n"
         "Type Handovers to view tenant handovers.\n\n"
@@ -175,19 +173,10 @@ def staff_menu_text(user=None):
         "7. Upload Documents\n"
         "8. Search\n"
         "9. Switch Mode\n"
-        "10. Suggestion / advice"
-        f"{simulator_option}\n\n"
+        "10. Suggestion / advice\n\n"
         "Type Pending Requests to view WhatsApp items waiting for review.\n\n"
         "Reply with a number or type your request."
     )
-
-
-def staff_can_simulate_tenant(user):
-    if not user or not user.is_active or not user.is_staff:
-        return False
-    if user.is_superuser:
-        return True
-    return user.groups.filter(name=TENANT_SIMULATOR_GROUP).exists()
 
 
 def tenant_menu_text():

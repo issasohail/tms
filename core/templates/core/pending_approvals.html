@@ -12,7 +12,7 @@
   .pending-created { width: 104px; }
   .pending-phone { width: 152px; }
   .pending-photo { width: 54px; }
-  .pending-tenant { width: 215px; }
+  .pending-tenant { width: 135px; }
   .pending-property { width: 168px; }
   .pending-status { width: 122px; }
   .pending-handyman { width: 150px; }
@@ -43,10 +43,13 @@
     background: #f3f4f6;
   }
   .pending-maintenance-actions {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, max-content));
     align-items: center;
-    flex-wrap: wrap;
-    gap: .2rem;
+    gap: .25rem .35rem;
+  }
+  .pending-maintenance-actions .pending-approval-action {
+    display: contents !important;
   }
   .pending-maintenance-actions .btn {
     font-size: .65rem;
@@ -66,8 +69,69 @@
   .pending-filter-actions {
     padding-top: 1.35rem;
   }
-  @media (max-width: 768px) {
-    .pending-approval-table { min-width: 980px; }
+  @media (max-width: 991.98px) {
+    .pending-filter-actions { padding-top: 0; }
+    .table-responsive { overflow-x: visible; }
+    .pending-approval-table,
+    .pending-approval-table tbody {
+      display: block;
+      width: 100%;
+    }
+    .pending-approval-table thead { display: none; }
+    .pending-approval-table tr[data-pending-row] {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin: .5rem;
+      border: 1px solid #d8dee6;
+      border-radius: .5rem;
+      overflow: hidden;
+      background: var(--bs-body-bg, #fff);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+    }
+    .pending-approval-table tr[data-pending-row] > td {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      width: auto !important;
+      padding: .4rem .5rem;
+      border: 0;
+      border-bottom: 1px solid #edf0f3;
+    }
+    .pending-approval-table tr[data-pending-row] > td::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: .14rem;
+      color: #6c757d;
+      font-size: .63rem;
+      font-weight: 700;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .pending-approval-table .pending-details,
+    .pending-approval-table .pending-handyman {
+      grid-column: 1 / -1;
+    }
+    .pending-approval-table .pending-status,
+    .pending-approval-table .pending-review {
+      min-height: 70px;
+    }
+    .pending-status-line,
+    .pending-review-line { flex-wrap: wrap; }
+    .pending-maintenance-actions {
+      grid-template-columns: repeat(2, minmax(58px, max-content));
+    }
+    .pending-empty-row,
+    .pending-empty-row > td {
+      display: block;
+      width: 100%;
+    }
+  }
+  @media (max-width: 575.98px) {
+    .container-fluid.py-3 { padding-left: .5rem; padding-right: .5rem; }
+    .pending-approval-table tr[data-pending-row] { margin: .4rem; }
+    .pending-approval-table tr[data-pending-row] > td { padding: .35rem .4rem; }
+    .pending-review-line .btn { padding: .2rem .4rem; font-size: .72rem; }
   }
 </style>
 <div class="container-fluid py-3" style="max-width:1400px;">
@@ -132,7 +196,7 @@
                   <th class="pending-property">Property / Unit</th>
                   <th class="pending-details {% if section.kind == 'maintenance' %}pending-maintenance-details{% endif %}">Details</th>
                   {% if section.kind == "maintenance" %}<th class="pending-handyman">Handyman</th>{% endif %}
-                  <th class="pending-status" {% if section.kind == "maintenance" %}style="width:235px;"{% endif %}>Status</th>
+                  <th class="pending-status">Status</th>
                   <th class="pending-review">Review</th>
                 </tr>
               </thead>
@@ -140,22 +204,22 @@
                 {% for row in section.items %}
                   {% with item=row.object %}
                   <tr data-pending-row>
-                    <td>{{ forloop.counter }}</td>
+                    <td class="pending-sn" data-label="SN">{{ forloop.counter }}</td>
                     {% if section.kind == "registration" %}
-                      <td class="pending-nowrap" title="{{ item.submitted_at|date:'M d, Y H:i' }}">
+                      <td class="pending-nowrap pending-created" data-label="Created" title="{{ item.submitted_at|date:'M d, Y H:i' }}">
                         <span class="pending-created-date">{{ item.submitted_at|date:"M d, Y" }}</span>
                         <span class="pending-created-time">{{ item.submitted_at|date:"H:i" }}</span>
                       </td>
-                      <td class="pending-nowrap" title="{{ item.tenant.phone|format_phone|default:'-' }}">{{ item.tenant.phone|format_phone|default:"-" }}</td>
+                      <td class="pending-nowrap pending-phone" data-label="Phone" title="{{ item.tenant.phone|format_phone:GLOBAL_SETTINGS.country_code|default:'-' }}">{{ item.tenant.phone|format_phone:GLOBAL_SETTINGS.country_code|default:"-" }}</td>
                     {% else %}
-                      <td class="pending-nowrap" title="{{ item.created_at|date:'M d, Y H:i' }}">
+                      <td class="pending-nowrap pending-created" data-label="Created" title="{{ item.created_at|date:'M d, Y H:i' }}">
                         <span class="pending-created-date">{{ item.created_at|date:"M d, Y" }}</span>
                         <span class="pending-created-time">{{ item.created_at|date:"H:i" }}</span>
                       </td>
-                      <td class="pending-nowrap" title="{{ item.phone|format_phone|default:'-' }}">{{ item.phone|format_phone|default:"-" }}</td>
+                      <td class="pending-nowrap pending-phone" data-label="Phone" title="{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code|default:'-' }}">{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code|default:"-" }}</td>
                     {% endif %}
                     {% if section.kind == "family" %}
-                      <td>
+                      <td class="pending-photo" data-label="Photo">
                         {% if item.photo %}
                           <a href="{{ row.urls.photo }}" target="_blank"><img src="{{ row.urls.photo }}" class="pending-family-photo" alt=""></a>
                         {% else %}
@@ -163,13 +227,13 @@
                         {% endif %}
                       </td>
                     {% endif %}
-                    <td class="pending-nowrap" title="{% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}">
-                      {% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}
+                    <td class="pending-nowrap pending-tenant" data-label="Tenant" title="{% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}">
+                      {% if item.tenant %}{{ item.tenant|truncatechars:15 }}{% elif item.lease %}{{ item.lease.tenant|truncatechars:15 }}{% else %}-{% endif %}
                     </td>
-                    <td class="pending-nowrap" title="{{ row.property_unit_label }}">
+                    <td class="pending-nowrap pending-property" data-label="Property / Unit" title="{{ row.property_unit_label }}">
                       {{ row.property_unit_label }}
                     </td>
-                    <td>
+                    <td class="pending-details {% if section.kind == 'maintenance' %}pending-maintenance-details{% endif %}" data-label="Details">
                       {% if item.amount %}Rs. {{ item.amount }}{% endif %}
                       {% if item.issue_type %}{{ item.issue_type }}{% endif %}
                       {% if item.purpose %}{{ item.get_purpose_display }}{% endif %}
@@ -196,7 +260,7 @@
                       {% endif %}
                     </td>
                     {% if section.kind == "maintenance" %}
-                      <td>
+                      <td class="pending-handyman" data-label="Handyman">
                         <select name="handyman" form="maintenance-approval-{{ item.pk }}" class="form-select form-select-sm" aria-label="Assign handyman">
                           <option value="">Select handyman</option>
                           {% for handyman in active_handymen %}
@@ -205,8 +269,8 @@
                         </select>
                       </td>
                     {% endif %}
-                    <td>
-                      <span class="{% if section.kind == 'maintenance' %}pending-maintenance-actions{% else %}pending-status-line{% endif %}">
+                    <td class="pending-status" data-label="Status">
+                      <div class="{% if section.kind == 'maintenance' %}pending-maintenance-actions{% else %}pending-status-line{% endif %}">
                         <span class="badge {% if item.status == 'approved' or item.status == 'active' %}bg-success{% elif item.status == 'rejected' %}bg-danger{% elif item.status == 'pending' or item.status == 'pending_approval' or item.status == 'confirmed' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ item.get_status_display }}</span>
                         {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
                           <form method="post" action="{{ row.urls.approve }}" class="d-inline pending-approval-action" data-action="approve" {% if section.kind == "maintenance" %}id="maintenance-approval-{{ item.pk }}"{% endif %}>
@@ -220,10 +284,10 @@
                             {% endif %}
                           </form>
                         {% endif %}
-                      </span>
+                      </div>
                     </td>
-                    <td>
-                      <span class="pending-review-line">
+                    <td class="pending-review" data-label="Review">
+                      <div class="pending-review-line">
                       <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">{% if section.kind == "registration" %}Review{% else %}Detail{% endif %}</a>
                       {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
                         <form method="post" action="{{ row.urls.reject }}" class="d-inline pending-approval-action" data-action="reject">
@@ -231,12 +295,12 @@
                           <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
                         </form>
                       {% endif %}
-                      </span>
+                      </div>
                     </td>
                   </tr>
                   {% endwith %}
                 {% empty %}
-                  <tr><td colspan="{% if section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No items match the selected filters.</td></tr>
+                  <tr class="pending-empty-row"><td colspan="{% if section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No items match the selected filters.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -257,8 +321,11 @@
 <script>
 (function () {
   const feedback = document.getElementById("pendingApprovalFeedback");
+  const filterForm = document.getElementById("pendingApprovalFilters");
+  const statusFilter = document.getElementById("approvalStatus");
   const dateRange = document.getElementById("approvalDateRange");
   const customDateFields = document.querySelectorAll(".pending-custom-date");
+  const customDateInputs = document.querySelectorAll(".pending-custom-date input");
 
   function updateCustomDateVisibility() {
     const show = dateRange && dateRange.value === "custom";
@@ -269,8 +336,32 @@
     });
   }
 
-  if (dateRange) dateRange.addEventListener("change", updateCustomDateVisibility);
   updateCustomDateVisibility();
+
+  function submitFilters() {
+    if (filterForm) filterForm.requestSubmit();
+  }
+
+  if (statusFilter) statusFilter.addEventListener("change", submitFilters);
+  if (dateRange) {
+    dateRange.addEventListener("change", function () {
+      updateCustomDateVisibility();
+      if (dateRange.value !== "custom") submitFilters();
+    });
+  }
+  customDateInputs.forEach(function (input) {
+    input.addEventListener("change", function () {
+      const values = Array.from(customDateInputs).map(function (field) { return field.value; });
+      if (dateRange && dateRange.value === "custom" && values.every(Boolean)) submitFilters();
+    });
+  });
+
+  function renumberRows(card) {
+    if (!card) return;
+    card.querySelectorAll("tbody tr[data-pending-row] .pending-sn").forEach(function (cell, index) {
+      cell.textContent = String(index + 1);
+    });
+  }
 
   function showFeedback(message, ok) {
     feedback.innerHTML = "";
@@ -306,11 +397,13 @@
       const card = form.closest(".card");
       if (row) row.remove();
       if (card) {
+        renumberRows(card);
         const badge = card.querySelector(".pending-section-count");
         if (badge) badge.textContent = Math.max(0, Number(badge.textContent || 0) - 1);
         const tbody = card.querySelector("tbody");
         if (tbody && !tbody.querySelector("tr[data-pending-row]")) {
           const empty = document.createElement("tr");
+          empty.className = "pending-empty-row";
           empty.innerHTML = '<td colspan="9" class="text-muted text-center py-3">No pending items.</td>';
           tbody.appendChild(empty);
         }

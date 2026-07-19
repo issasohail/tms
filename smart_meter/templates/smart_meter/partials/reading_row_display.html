@@ -47,7 +47,7 @@
             data-previous="{{ r.meter.meter_role }}"
             aria-label="Role for meter {{ r.meter.meter_number }}">
       <option value="billing" {% if r.meter.meter_role == 'billing' %}selected{% endif %}>Billing</option>
-      <option value="check" {% if r.meter.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
+      <option value="check" {% if r.meter.meter_role == 'check' %}selected{% endif %}>Audit</option>
     </select>
   </td>
 

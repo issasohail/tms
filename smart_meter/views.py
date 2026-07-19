@@ -667,7 +667,7 @@ SMART_METER_CHIPS = OrderedDict([
     ("cutoff", {"label": "Cut Off", "class": "danger", "help": "Meters whose saved power status is off."}),
     ("needs_attention", {"label": "Needs Attention", "class": "warning", "help": "Inactive, offline, low/negative balance, or cut-off meters."}),
     ("billing_issues", {"label": "Billing Issues", "class": "info", "help": "Billing-role meters missing a unit/rate, or occupied meters with no reading."}),
-    ("check", {"label": "Check Meters", "class": "info", "help": "Meters assigned the Check / Audit role."}),
+    ("check", {"label": "Audit Meters", "class": "info", "help": "Meters assigned the Audit role."}),
 ])
 
 

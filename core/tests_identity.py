@@ -79,6 +79,16 @@ class IdentityUtilityTests(TestCase):
             with self.subTest(supplied=supplied):
                 self.assertEqual(format_phone(supplied), expected)
 
+    def test_phone_display_replaces_local_zero_with_country_setting(self):
+        self.assertEqual(
+            format_phone("0332-512-6929", country_code="+92"),
+            "+92-332-512-6929",
+        )
+        self.assertEqual(
+            format_phone("+92-332-512-6929", country_code="+92"),
+            "+92-332-512-6929",
+        )
+
 
 class IdentityIntegrationTests(TestCase):
     def setUp(self):

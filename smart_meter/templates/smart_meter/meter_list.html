@@ -202,7 +202,7 @@
                         data-previous="{{ m.meter_role }}"
                         aria-label="Role for meter {{ m.meter_number }}">
                   <option value="billing" {% if m.meter_role == 'billing' %}selected{% endif %}>Billing</option>
-                  <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
+                  <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Audit</option>
                 </select>
                 </div>
               </td>
@@ -290,7 +290,7 @@
               <button type="button" class="ld-role-display" data-role-display>{{ m.get_meter_role_display }}</button>
               <select class="form-select form-select-sm ld-role-select d-none" data-meter-role data-meter-id="{{ m.id }}" data-update-url="{% url 'smart_meter:meter_role_update' m.id %}" data-previous="{{ m.meter_role }}">
                 <option value="billing" {% if m.meter_role == 'billing' %}selected{% endif %}>Billing</option>
-                <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Check / Audit</option>
+                <option value="check" {% if m.meter_role == 'check' %}selected{% endif %}>Audit</option>
               </select>
             </div>
           </div>
@@ -400,7 +400,7 @@
 .col-status { width: 68px; }
 .col-meter { width: 106px; }
 .col-prop { width: 82px; overflow: hidden; text-overflow: ellipsis; }
-.col-unit { width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.col-unit { width: 92px; overflow: hidden; text-overflow: ellipsis; }
 .col-tenant { width: 130px; overflow: hidden; text-overflow: ellipsis; }
 .col-power { width: 112px; }
 .col-narrow { width: 64px; }
@@ -536,9 +536,9 @@ body.meter-exporting #meterListExportArea {
   .meter-mobile-card { padding: .5rem; }
 }
 
-.ld-col-role { width: 92px; }
+.ld-col-role { width: 82px; }
 .ld-role-select {
-  min-width: 88px;
+  min-width: 78px;
   padding-top: .15rem;
   padding-bottom: .15rem;
   font-size: .72rem;

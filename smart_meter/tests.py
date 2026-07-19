@@ -72,7 +72,7 @@ class MeterRoleUpdateTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["role"], Meter.METER_ROLE_CHECK)
-        self.assertEqual(response.json()["label"], "Check / Audit")
+        self.assertEqual(response.json()["label"], "Audit")
         self.meter.refresh_from_db()
         self.assertEqual(self.meter.meter_role, Meter.METER_ROLE_CHECK)
         self.assertEqual(self.meter.role_history.filter(is_active=True, end_date__isnull=True).count(), 1)

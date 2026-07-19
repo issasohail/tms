@@ -48,12 +48,26 @@ def normalize_phone(value):
     return ("+" if leading_plus else "") + digits
 
 
-def format_phone(value):
+def format_phone(value, country_code=""):
     normalized = normalize_phone(value)
     if not normalized:
         return ""
     has_plus = normalized.startswith("+")
     digits = normalized[1:] if has_plus else normalized
+
+    # Convert a local phone such as 03325126929 to the configured international
+    # prefix. Already-international values and short/legacy identifiers remain
+    # unchanged so this formatter never guesses their meaning.
+    country_digits = NON_DIGITS_RE.sub("", str(country_code or ""))
+    if (
+        not has_plus
+        and country_digits
+        and len(digits) >= 10
+        and digits.startswith("0")
+        and not digits.startswith("00")
+    ):
+        digits = country_digits + digits[1:]
+        has_plus = True
 
     if len(digits) > 10:
         prefix, final_ten = digits[:-10], digits[-10:]

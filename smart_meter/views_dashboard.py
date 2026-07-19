@@ -413,7 +413,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             usage_charges += usage_amt
             service_total += service_amt
 
-    # Keep Billing and Check/Audit meters grouped consistently.
+    # Keep Billing and Audit meters grouped consistently.
     combined_rows.sort(key=lambda x: (
         0 if x["meter_role"] == Meter.METER_ROLE_BILLING else 1,
         x["period_key"], x["property_name"], x["unit_number"], x["meter_number"]))

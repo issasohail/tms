@@ -46,7 +46,7 @@ class Meter(models.Model):
     METER_ROLE_CHECK = "check"
     METER_ROLE_CHOICES = [
         (METER_ROLE_BILLING, "Billing"),
-        (METER_ROLE_CHECK, "Check / Audit"),
+        (METER_ROLE_CHECK, "Audit"),
     ]
 
     unit = models.ForeignKey(
@@ -125,7 +125,7 @@ class Meter(models.Model):
                 self.check_group_memberships.filter(is_active=True, end_date__isnull=True).exists()
             ):
                 raise ValidationError({
-                    "meter_role": "End this meter's active Check Group membership before changing it to Check / Audit."
+                    "meter_role": "End this meter's active Check Group membership before changing it to Audit."
                 })
 
         with transaction.atomic():
@@ -388,7 +388,7 @@ class MeterCheckGroup(models.Model):
 
     def clean(self):
         if self.check_meter_id and self.check_meter.meter_role != Meter.METER_ROLE_CHECK:
-            raise ValidationError({"check_meter": "Selected meter is not marked as a Check/Audit meter."})
+            raise ValidationError({"check_meter": "Selected meter is not marked as an Audit meter."})
 
     def active_billing_meters(self, as_of=None):
         as_of = as_of or timezone.localdate()

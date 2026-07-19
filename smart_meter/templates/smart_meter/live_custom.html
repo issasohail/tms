@@ -1551,7 +1551,7 @@
             <select name="role" class="form-select form-select-sm w-auto">
               <option value="">All roles</option>
               <option value="billing" {% if current_role == "billing" %}selected{% endif %}>Billing</option>
-              <option value="check" {% if current_role == "check" %}selected{% endif %}>Check / Audit</option>
+              <option value="check" {% if current_role == "check" %}selected{% endif %}>Audit</option>
             </select>
 
             <select name="active" class="form-select form-select-sm w-auto">
@@ -1662,7 +1662,7 @@
               <a href="{% url 'smart_meter:meter_detail' m.id %}" class="live-detail-link">{{ m.meter_number }}</a>
               <div>
                 {% if m.is_check_meter %}
-                  <span class="badge bg-info text-dark">Check</span>
+                  <span class="badge bg-info text-dark">Audit</span>
                 {% else %}
                   <span class="badge bg-success">Billing</span>
                 {% endif %}

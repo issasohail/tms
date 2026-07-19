@@ -58,7 +58,7 @@
           <label class="form-label mb-1">Role</label>
           <select name="role" class="form-select form-select-sm">
             <option value="billing" {% if current_role == 'billing' %}selected{% endif %}>Billing</option>
-            <option value="check" {% if current_role == 'check' %}selected{% endif %}>Check / Audit</option>
+            <option value="check" {% if current_role == 'check' %}selected{% endif %}>Audit</option>
             <option value="all" {% if current_role == 'all' %}selected{% endif %}>All roles</option>
           </select>
         </div>
@@ -186,7 +186,7 @@
           {% if current_meter %}<div class="small text-muted">Meter {{ selected_meter.meter_number }} — Unit {{ selected_meter.unit.unit_number }}</div>{% endif %}
           <div class="small mt-1">
             {% if current_role == 'all' or current_role == 'billing' %}<span class="badge bg-success me-1">Billing</span>{% endif %}
-            {% if current_role == 'all' or current_role == 'check' %}<span class="badge bg-warning text-dark">Check / Audit</span>{% endif %}
+            {% if current_role == 'all' or current_role == 'check' %}<span class="badge bg-warning text-dark">Audit</span>{% endif %}
           </div>
         </div>
         <canvas id="energyChart" height="120" class="mt-2"></canvas>
@@ -266,7 +266,7 @@
               </div>
               <div class="small">
                 {% if r.meter_role == 'check' %}
-                  <span class="badge bg-info text-dark">Check / Audit</span>
+                  <span class="badge bg-info text-dark">Audit</span>
                 {% else %}
                   <span class="badge bg-success">Billing</span>
                 {% endif %}

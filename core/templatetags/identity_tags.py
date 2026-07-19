@@ -14,8 +14,8 @@ def format_cnic(value):
 
 
 @register.filter(name="format_phone")
-def format_phone(value):
-    return format_phone_value(value)
+def format_phone(value, country_code=""):
+    return format_phone_value(value, country_code=country_code)
 
 
 @register.filter(name="normalize_phone")

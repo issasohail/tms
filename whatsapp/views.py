@@ -16,6 +16,7 @@ from django.core.paginator import Paginator
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
+from django.db.models import Max, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -669,10 +670,16 @@ def webhook_log_list(request):
 def _conversation_summary():
     summary = []
     seen = set()
-    logs = (
+    latest_message_ids = (
         WhatsAppMessageLog.objects.exclude(phone_number="")
+        .values("phone_number")
+        .annotate(latest_id=Max("id"))
+        .values("latest_id")
+    )
+    logs = (
+        WhatsAppMessageLog.objects.filter(pk__in=Subquery(latest_message_ids))
         .select_related("tenant", "lease__tenant", "lease__unit__property")
-        .order_by("-created_at")[:300]
+        .order_by("-created_at")
     )
     for index, log in enumerate(logs, start=1):
         if log.phone_number in seen:

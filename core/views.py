@@ -1,8 +1,12 @@
 # core/views.py
+import json
+import logging
+
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth import logout
 from django.contrib import messages
 from django.core.files.base import ContentFile
+from django.core.serializers.json import DjangoJSONEncoder
 from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
 from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
@@ -31,6 +35,7 @@ from smart_meter.models import LiveReading
 from django.contrib.auth.decorators import login_required
 
 METER_ONLINE_MINUTES = 3
+logger = logging.getLogger(__name__)
 
 
 PENDING_KIND_LABELS = {
@@ -94,6 +99,15 @@ def _pending_approval_filter_state(request):
         if date_from and date_to and date_from > date_to:
             date_from, date_to = date_to, date_from
 
+    try:
+        property_id = int(request.GET.get("property", "") or 0) or None
+    except (TypeError, ValueError):
+        property_id = None
+    try:
+        unit_id = int(request.GET.get("unit", "") or 0) or None
+    except (TypeError, ValueError):
+        unit_id = None
+
     return {
         "status": selected_status,
         "date_range": selected_range,
@@ -101,6 +115,9 @@ def _pending_approval_filter_state(request):
         "date_to": date_to,
         "date_from_value": date_from.isoformat() if date_from else "",
         "date_to_value": date_to.isoformat() if date_to else "",
+        "property_id": property_id,
+        "unit_id": unit_id,
+        "search": (request.GET.get("q") or "").strip()[:160],
     }
 
 
@@ -112,6 +129,30 @@ def _filter_pending_approval_queryset(queryset, filters, status_filters, date_fi
         queryset = queryset.filter(**{f"{date_field}__date__gte": filters["date_from"]})
     if filters["date_to"]:
         queryset = queryset.filter(**{f"{date_field}__date__lte": filters["date_to"]})
+    return queryset
+
+
+def _filter_pending_approval_scope(
+    queryset,
+    filters,
+    *,
+    property_field=None,
+    unit_field=None,
+    search_fields=(),
+):
+    if filters["property_id"]:
+        if not property_field:
+            return queryset.none()
+        queryset = queryset.filter(**{property_field: filters["property_id"]})
+    if filters["unit_id"]:
+        if not unit_field:
+            return queryset.none()
+        queryset = queryset.filter(**{unit_field: filters["unit_id"]})
+    if filters["search"] and search_fields:
+        search_query = models.Q()
+        for field_name in search_fields:
+            search_query |= models.Q(**{f"{field_name}__icontains": filters["search"]})
+        queryset = queryset.filter(search_query)
     return queryset
 
 
@@ -272,7 +313,7 @@ def _handyman_maintenance_message(request, pending, ticket, handyman):
 @login_required
 def pending_approvals(request):
     from handyman.models import HandymanProfile
-    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
+    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment, WhatsAppExternalLinkToken
     from leases.models import PendingAgreementApproval, PendingLeaseFamilyMemberSubmission, PendingPoliceVerificationSubmission
     from tenants.models import TenantRegistrationSubmission
 
@@ -302,6 +343,16 @@ def pending_approvals(request):
         filters,
         payment_status_filters,
     ).order_by("-created_at")
+    pending_payments = _filter_pending_approval_scope(
+        pending_payments,
+        filters,
+        property_field="property_id",
+        unit_field="unit_id",
+        search_fields=(
+            "phone", "tenant__first_name", "tenant__last_name", "reference",
+            "property__property_name", "unit__unit_number", "ai_notes",
+        ),
+    )
     pending_media_queryset = PendingWhatsAppMedia.objects.exclude(
         purpose__in=[
             PendingWhatsAppMedia.PURPOSE_PAYMENT,
@@ -317,17 +368,57 @@ def pending_approvals(request):
     pending_media_queryset = _filter_pending_approval_queryset(
         pending_media_queryset, filters, common_status_filters
     ).order_by("-created_at")
+    pending_media_queryset = _filter_pending_approval_scope(
+        pending_media_queryset,
+        filters,
+        property_field="property_id",
+        unit_field="unit_id",
+        search_fields=(
+            "phone", "tenant__first_name", "tenant__last_name", "original_filename",
+            "property__property_name", "unit__unit_number", "purpose", "target_kind", "ai_notes",
+        ),
+    )
     pending_media = _group_pending_media(list(pending_media_queryset[:200]))[:50]
     pending_maintenance = _filter_pending_approval_queryset(
         PendingWhatsAppMaintenance.objects.select_related("tenant", "lease", "property", "unit"),
         filters,
         common_status_filters,
     ).order_by("-created_at")
+    pending_maintenance = _filter_pending_approval_scope(
+        pending_maintenance,
+        filters,
+        property_field="property_id",
+        unit_field="unit_id",
+        search_fields=(
+            "phone", "tenant__first_name", "tenant__last_name", "property__property_name",
+            "unit__unit_number", "issue_type", "description", "ai_notes",
+        ),
+    )
+    approval_lease_ids = WhatsAppExternalLinkToken.objects.filter(
+        link_type=WhatsAppExternalLinkToken.LINK_LEASE_CREATION,
+        target_app_label="leases",
+        target_model="lease",
+        target_object_id__isnull=False,
+    ).values_list("target_object_id", flat=True)
+    approval_lease_queryset = Lease.objects.filter(
+        models.Q(status__in=["pending_approval", "rejected"])
+        | models.Q(pk__in=approval_lease_ids)
+    ).select_related("tenant", "unit__property")
     pending_leases = _filter_pending_approval_queryset(
-        Lease.objects.select_related("tenant", "unit__property"),
+        approval_lease_queryset,
         filters,
         lease_status_filters,
     ).order_by("-created_at")
+    pending_leases = _filter_pending_approval_scope(
+        pending_leases,
+        filters,
+        property_field="unit__property_id",
+        unit_field="unit_id",
+        search_fields=(
+            "tenant__first_name", "tenant__last_name", "tenant__phone", "tenant__cnic",
+            "unit__property__property_name", "unit__unit_number", "notes", "terms",
+        ),
+    )
     pending_agreements = _filter_pending_approval_queryset(
         PendingAgreementApproval.objects.select_related(
             "lease__tenant", "lease__unit__property", "submitted_by"
@@ -335,6 +426,16 @@ def pending_approvals(request):
         filters,
         common_status_filters,
     ).order_by("-created_at")
+    pending_agreements = _filter_pending_approval_scope(
+        pending_agreements,
+        filters,
+        property_field="lease__unit__property_id",
+        unit_field="lease__unit_id",
+        search_fields=(
+            "lease__tenant__first_name", "lease__tenant__last_name", "lease__tenant__phone",
+            "lease__unit__property__property_name", "lease__unit__unit_number", "proposed_terms", "review_notes",
+        ),
+    )
     pending_family = _filter_pending_approval_queryset(
         PendingLeaseFamilyMemberSubmission.objects.select_related(
             "lease__tenant", "lease__unit__property", "primary_tenant", "relationship_type"
@@ -342,6 +443,17 @@ def pending_approvals(request):
         filters,
         common_status_filters,
     ).order_by("-created_at")
+    pending_family = _filter_pending_approval_scope(
+        pending_family,
+        filters,
+        property_field="lease__unit__property_id",
+        unit_field="lease__unit_id",
+        search_fields=(
+            "first_name", "last_name", "phone", "cnic", "notes",
+            "lease__tenant__first_name", "lease__tenant__last_name",
+            "lease__unit__property__property_name", "lease__unit__unit_number",
+        ),
+    )
     pending_police = _filter_pending_approval_queryset(
         PendingPoliceVerificationSubmission.objects.select_related(
             "lease__tenant", "lease__unit__property", "tenant"
@@ -350,12 +462,27 @@ def pending_approvals(request):
         common_status_filters,
         date_field="submitted_at",
     ).order_by("-submitted_at")
+    pending_police = _filter_pending_approval_scope(
+        pending_police,
+        filters,
+        property_field="lease__unit__property_id",
+        unit_field="lease__unit_id",
+        search_fields=(
+            "phone", "tenant__first_name", "tenant__last_name", "original_filename", "notes",
+            "lease__unit__property__property_name", "lease__unit__unit_number",
+        ),
+    )
     pending_registrations = _filter_pending_approval_queryset(
         TenantRegistrationSubmission.objects.select_related("tenant").prefetch_related("pending_people"),
         filters,
         common_status_filters,
         date_field="submitted_at",
     ).order_by("-submitted_at")
+    pending_registrations = _filter_pending_approval_scope(
+        pending_registrations,
+        filters,
+        search_fields=("tenant__first_name", "tenant__last_name", "tenant__phone", "tenant__cnic", "admin_notes"),
+    )
 
     def section(title, kind, queryset_or_items):
         if isinstance(queryset_or_items, list):
@@ -396,6 +523,10 @@ def pending_approvals(request):
             "approval_filters": filters,
             "status_choices": PENDING_APPROVAL_STATUS_CHOICES,
             "date_range_choices": PENDING_APPROVAL_DATE_CHOICES,
+            "filter_properties": Property.objects.order_by("property_name"),
+            "filter_units": Unit.objects.filter(
+                **({"property_id": filters["property_id"]} if filters["property_id"] else {})
+            ).select_related("property").order_by("property__property_name", "unit_number"),
             "active_handymen": HandymanProfile.objects.filter(
                 is_active=True
             ).order_by("-is_preferred", "full_name"),
@@ -698,6 +829,111 @@ def _apply_pending_media_destination(pending, submitted_destination):
     pending.purpose = purpose
 
 
+def _reclassify_pending_media_as_payment(pending):
+    from whatsapp.models import PendingWhatsAppMedia, PendingWhatsAppPayment
+    from whatsapp.services.ai_config import get_whatsapp_ai_config
+    from whatsapp.services.media_processor import run_payment_ocr
+
+    if pending.status != PendingWhatsAppMedia.STATUS_PENDING:
+        raise ValueError("This media has already been reviewed.")
+    ocr_json = run_payment_ocr(pending, get_whatsapp_ai_config())
+    lookup = {}
+    if pending.original_whatsapp_message_id:
+        lookup["original_whatsapp_message_id"] = pending.original_whatsapp_message_id
+    elif pending.file and pending.file.name:
+        lookup["screenshot"] = pending.file.name
+    payment = PendingWhatsAppPayment.objects.filter(
+        **lookup,
+        rejected=False,
+    ).order_by("-created_at").first() if lookup else None
+    if payment is None:
+        payment = PendingWhatsAppPayment()
+    payment.tenant = pending.tenant or getattr(pending.lease, "tenant", None)
+    payment.lease = pending.lease
+    payment.property = pending.property or getattr(getattr(pending.lease, "unit", None), "property", None)
+    payment.unit = pending.unit or getattr(pending.lease, "unit", None)
+    payment.phone = pending.phone
+    payment.screenshot = pending.file
+    payment.ocr_json = json.loads(json.dumps(ocr_json, cls=DjangoJSONEncoder))
+    payment.amount = ocr_json.get("amount")
+    payment.date = ocr_json.get("date")
+    payment.reference = ocr_json.get("reference", "")
+    payment.bank_information = ocr_json.get("bank_information") or {}
+    payment.ai_confidence = int(ocr_json.get("confidence") or 0)
+    payment.ai_notes = "Reclassified from WhatsApp Documents / Media for payment verification."
+    payment.original_whatsapp_message = pending.original_whatsapp_message
+    payment.conversation = pending.conversation
+    payment.status = PendingWhatsAppPayment.STATUS_PENDING
+    payment.approved = False
+    payment.rejected = False
+    payment.save()
+
+    pending.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
+    pending.target_kind = ""
+    pending.ai_confidence = max(pending.ai_confidence or 0, int(ocr_json.get("confidence") or 0))
+    pending.ai_notes = "\n".join(
+        part for part in (
+            pending.ai_notes.strip(),
+            f"Reclassified as Payment Receipt; pending payment #{payment.pk} created.",
+        ) if part
+    )
+    pending.save(update_fields=["purpose", "target_kind", "ai_confidence", "ai_notes", "updated_at"])
+    return payment
+
+
+def _reclassify_pending_payment_as_media(pending, submitted_destination):
+    from whatsapp.models import PendingWhatsAppMedia, PendingWhatsAppPayment
+
+    if pending.approved or pending.rejected:
+        raise ValueError("This payment has already been reviewed.")
+    linked_media = PendingWhatsAppMedia.objects.filter(status=PendingWhatsAppMedia.STATUS_PENDING)
+    if pending.original_whatsapp_message_id:
+        linked_media = linked_media.filter(original_whatsapp_message_id=pending.original_whatsapp_message_id)
+    elif pending.screenshot and pending.screenshot.name:
+        linked_media = linked_media.filter(file=pending.screenshot.name)
+    else:
+        linked_media = linked_media.none()
+    media = linked_media.order_by("-created_at").first()
+    if media is None:
+        if not pending.screenshot or not pending.screenshot.name:
+            raise ValueError("This pending payment has no screenshot to reclassify.")
+        media = PendingWhatsAppMedia.objects.create(
+            conversation=pending.conversation,
+            original_whatsapp_message=pending.original_whatsapp_message,
+            phone=pending.phone,
+            file=pending.screenshot.name,
+            original_filename=pending.screenshot.name.rsplit("/", 1)[-1],
+            media_type="image",
+            tenant=pending.tenant,
+            lease=pending.lease,
+            property=pending.property,
+            unit=pending.unit,
+            purpose=PendingWhatsAppMedia.PURPOSE_OTHER,
+            ai_notes="Reclassified from a pending WhatsApp payment.",
+        )
+    _apply_pending_media_destination(media, submitted_destination)
+    media.status = PendingWhatsAppMedia.STATUS_PENDING
+    media.ai_notes = "\n".join(
+        part for part in (
+            media.ai_notes.strip(),
+            f"Reclassified from pending payment #{pending.pk}.",
+        ) if part
+    )
+    media.save(update_fields=["purpose", "target_kind", "status", "ai_notes", "updated_at"])
+
+    pending.rejected = True
+    pending.approved = False
+    pending.status = PendingWhatsAppPayment.STATUS_REJECTED
+    pending.ai_notes = "\n".join(
+        part for part in (
+            pending.ai_notes.strip(),
+            f"Reclassified to {media.get_target_kind_display()} as pending media #{media.pk}.",
+        ) if part
+    )
+    pending.save(update_fields=["rejected", "approved", "status", "ai_notes", "updated_at"])
+    return media
+
+
 def _approve_pending_payment(pending, user):
     from whatsapp.models import PendingWhatsAppMedia, PendingWhatsAppPayment
 
@@ -739,6 +975,7 @@ def _approve_pending_payment(pending, user):
         approved_at=timezone.now(),
         updated_at=timezone.now(),
     )
+    return payment
 
 
 def _approve_pending_maintenance(pending, user, handyman=None):
@@ -796,6 +1033,14 @@ def pending_approval_approve(request, kind, pk):
 
     item = _pending_item_for_kind(kind, pk)
     try:
+        if kind == "payment" and request.POST.get("approval_action") == "reclassify":
+            with transaction.atomic():
+                media = _reclassify_pending_payment_as_media(
+                    item,
+                    request.POST.get("reclassify_destination", ""),
+                )
+            messages.success(request, "Payment screenshot moved to Documents / Media for approval.")
+            return redirect("core:pending_approval_detail", kind="media", pk=media.pk)
         if kind == "lease":
             if item.status != "pending_approval":
                 raise ValueError("This lease is not pending approval.")
@@ -840,9 +1085,37 @@ def pending_approval_approve(request, kind, pk):
             messages.success(request, "Police verification approved and attached to the lease.")
             return redirect("leases:lease_detail", pk=item.lease_id)
         if kind == "payment":
-            _approve_pending_payment(item, request.user)
+            payment = _approve_pending_payment(item, request.user)
+            try:
+                from whatsapp.services.whatsapp import WhatsAppService
+
+                WhatsAppService(created_by=request.user).send_payment_confirmation(
+                    payment,
+                    phone_number=item.phone,
+                    message=(
+                        f"Payment verified. Rs. {payment.amount:,.2f} dated "
+                        f"{payment.payment_date.strftime('%d-%m-%Y')} has been approved and posted."
+                    ),
+                )
+            except Exception:
+                logger.exception(
+                    "Payment #%s was approved, but WhatsApp confirmation failed.",
+                    payment.pk,
+                )
+                messages.warning(
+                    request,
+                    "Payment was posted, but the WhatsApp confirmation could not be sent.",
+                )
             messages.success(request, "WhatsApp payment approved and posted.")
         elif kind == "media":
+            if request.POST.get("media_destination") == "payment_receipt":
+                with transaction.atomic():
+                    item = PendingWhatsAppMedia.objects.select_for_update().select_related(
+                        "conversation", "lease__tenant", "lease__unit__property", "tenant", "property", "unit"
+                    ).get(pk=item.pk)
+                    payment = _reclassify_pending_media_as_payment(item)
+                messages.success(request, "Media moved to WhatsApp Payments for pending bank verification.")
+                return redirect("core:pending_approval_detail", kind="payment", pk=payment.pk)
             with transaction.atomic():
                 item = PendingWhatsAppMedia.objects.select_for_update().select_related(
                     "lease", "property", "unit"

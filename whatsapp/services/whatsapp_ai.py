@@ -571,9 +571,11 @@ class WhatsAppAIAssistant:
                 {"lease": lease, "tenant": getattr(lease, "tenant", None)},
             )
         if lowered in {"6", "upload", "photo", "upload receipt", "upload photo"}:
+            conversation.pending_state = "tenant_waiting_payment_receipt"
+            conversation.save(update_fields=["pending_state", "updated_at"])
             return (
-                "Please upload the payment receipt or maintenance photo here, and I will attach it to your active lease for admin review.",
-                "upload_prompt",
+                "Please upload the payment receipt screenshot here. I will read its amount, date, and reference, then submit it for bank verification.",
+                "payment_receipt_upload_prompt",
                 {"lease": lease, "tenant": getattr(lease, "tenant", None)},
             )
 
@@ -603,6 +605,7 @@ class WhatsAppAIAssistant:
         )
 
     def _handle_media_message(self, message_log, conversation, text, message_type, identity):
+        expects_payment_receipt = conversation.pending_state == "tenant_waiting_payment_receipt"
         selected_lease = self._selected_active_lease(conversation)
         if not selected_lease and identity.active_leases and len(identity.active_leases) == 1:
             selected_lease = identity.active_leases[0]
@@ -659,6 +662,10 @@ class WhatsAppAIAssistant:
             return police_response
 
         media = create_pending_media(message_log, conversation, selected_lease)
+        if expects_payment_receipt:
+            media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
+            media.ai_notes = f"{media.ai_notes} Tenant selected Upload Payment Receipt.".strip()
+            media.save(update_fields=["purpose", "ai_notes", "updated_at"])
         pending_maintenance_id = conversation.context.get("pending_maintenance_id")
         if conversation.pending_state == "pending_maintenance" and pending_maintenance_id:
             pending = PendingWhatsAppMaintenance.objects.filter(
@@ -681,7 +688,7 @@ class WhatsAppAIAssistant:
                     {"lease": pending.lease, "tenant": pending.tenant, "pending_maintenance_id": pending.pk},
                 )
         ocr_json = run_payment_ocr(media, self.ai_config) if message_type == "image" else {"engine": "skipped", "confidence": 0}
-        if media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT or _ocr_looks_like_payment(ocr_json):
+        if expects_payment_receipt or media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT or _ocr_looks_like_payment(ocr_json):
             media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
             media.ai_confidence = max(media.ai_confidence or 0, int(ocr_json.get("confidence") or 0), 85 if ocr_json.get("amount") else 0)
             media.ai_notes = f"{media.ai_notes} AI classified this upload as a payment receipt.".strip()
@@ -3050,7 +3057,9 @@ class WhatsAppAIAssistant:
         match = match_payment_to_active_lease(message_log.phone_number, ocr_json)
         matched_lease = lease or match.get("lease")
         duplicate_note = _payment_duplicate_note(matched_lease, ocr_json)
-        ai_notes = "\n".join(part for part in [match.get("notes", ""), duplicate_note] if part).strip()
+        ai_notes = "\n".join(
+            part for part in [ocr_json.get("notes", ""), match.get("notes", ""), duplicate_note] if part
+        ).strip()
         pending = PendingWhatsAppPayment.objects.create(
             tenant=getattr(matched_lease, "tenant", None),
             lease=matched_lease,
@@ -3068,7 +3077,7 @@ class WhatsAppAIAssistant:
             original_whatsapp_message=message_log,
             conversation=conversation,
         )
-        conversation.pending_state = "pending_payment_confirmation"
+        conversation.pending_state = "" if media else "pending_payment_confirmation"
         self._clear_context_keys(
             conversation,
             "pending_media_id",
@@ -3078,7 +3087,8 @@ class WhatsAppAIAssistant:
         conversation.context["pending_payment_id"] = pending.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         notify_staff_pending_request("payment", pending)
-        return _payment_confirmation_text(pending), "payment_pending", {"lease": matched_lease, "tenant": getattr(matched_lease, "tenant", None), "pending_payment_id": pending.pk}
+        response = _payment_received_text(pending) if media else _payment_confirmation_text(pending)
+        return response, "payment_pending", {"lease": matched_lease, "tenant": getattr(matched_lease, "tenant", None), "pending_payment_id": pending.pk}
 
     def _stage_unassigned_payment(self, message_log, conversation, media, text, ocr_json):
         pending = PendingWhatsAppPayment.objects.create(
@@ -3162,11 +3172,11 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "updated_at"])
             return self._ledger_link_reply(lease), "ledger", {"lease": lease, "tenant": lease.tenant}
         if lowered in {"4", "upload", "upload receipt", "receipt", "photo"}:
-            conversation.pending_state = ""
+            conversation.pending_state = "tenant_waiting_payment_receipt"
             conversation.save(update_fields=["pending_state", "updated_at"])
             return (
-                "Please upload the payment receipt here, and I will attach it to your active lease for admin review.",
-                "upload_prompt",
+                "Please upload the payment receipt screenshot here. I will read its amount, date, and reference, then submit it for bank verification.",
+                "payment_receipt_upload_prompt",
                 {"lease": lease, "tenant": lease.tenant},
             )
         if lowered in {"5", "latest invoice", "last invoice", "request last invoice", "request latest invoice"}:
@@ -4098,6 +4108,19 @@ def _payment_confirmation_text(pending):
         (pending.bank_information or {}).get("receiver_name")
         or (pending.ocr_json or {}).get("sender_name")
         or "Not detected"
+    )
+
+
+def _payment_received_text(pending):
+    amount = f"{pending.amount:,.2f}" if pending.amount is not None else "Not detected"
+    payment_date = pending.date.strftime("%d-%m-%Y") if pending.date else "Not detected"
+    reference = pending.reference or "Not detected"
+    return (
+        "Payment receipt received.\n\n"
+        f"Amount: Rs. {amount}\n"
+        f"Date: {payment_date}\n"
+        f"Reference: {reference}\n\n"
+        "It has been submitted for pending approval. You will receive confirmation shortly after bank verification."
     )
     return (
         "I read this image as a payment receipt.\n\n"

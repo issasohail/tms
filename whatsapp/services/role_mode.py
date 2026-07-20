@@ -198,7 +198,7 @@ def tenant_menu_text():
         "3. Maintenance request\n"
         "4. Lease information\n"
         "5. Meter readings / utility bills\n"
-        "6. Upload receipt or photo\n"
+        "6. Upload Payment Receipt\n"
         "7. Vacant units\n"
         "8. Tenant registration\n"
         "9. Contact office\n"

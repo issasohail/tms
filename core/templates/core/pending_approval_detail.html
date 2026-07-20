@@ -14,7 +14,8 @@
           {% csrf_token %}
           {% if kind == "media" %}
             <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" required aria-label="Media destination">
-              <option value="">Choose destination</option>
+              <option value="">Choose category / destination</option>
+              <option value="payment_receipt" {% if item.purpose == "payment" %}selected{% endif %}>Payment Receipt â€” Pending Verification</option>
               {% if item.lease %}
                 <option value="lease_photo:{{ item.lease_id }}" {% if item.target_kind == "lease_photo" %}selected{% endif %}>Lease Gallery — {{ item.lease }}</option>
                 <option value="lease_document:{{ item.lease_id }}" {% if item.target_kind == "lease_document" %}selected{% elif item.purpose == "lease" and item.target_kind != "lease_photo" %}selected{% endif %}>Lease Document — {{ item.lease }}</option>
@@ -24,6 +25,21 @@
               {% endif %}
               {% if item.unit %}
                 <option value="unit_photo:{{ item.unit_id }}" {% if item.target_kind == "unit_photo" or item.purpose == "unit" %}selected{% endif %}>Unit Photo — {{ item.unit }}</option>
+              {% endif %}
+            </select>
+          {% endif %}
+          {% if kind == "payment" %}
+            <select name="reclassify_destination" class="form-select form-select-sm" style="width:auto;max-width:260px;" aria-label="Change payment screenshot category">
+              <option value="">Change screenshot category</option>
+              {% if item.lease %}
+                <option value="lease_photo:{{ item.lease_id }}">Lease Gallery â€” {{ item.lease }}</option>
+                <option value="lease_document:{{ item.lease_id }}">Lease Document â€” {{ item.lease }}</option>
+              {% endif %}
+              {% if item.property %}
+                <option value="property_photo:{{ item.property_id }}">Property Photo â€” {{ item.property }}</option>
+              {% endif %}
+              {% if item.unit %}
+                <option value="unit_photo:{{ item.unit_id }}">Unit Photo â€” {{ item.unit }}</option>
               {% endif %}
             </select>
           {% endif %}
@@ -37,8 +53,11 @@
             <button type="submit" name="notify_mode" value="" class="btn btn-sm btn-success">Approve</button>
             <button type="submit" name="notify_mode" value="api" class="btn btn-sm btn-success"><i class="bi bi-whatsapp me-1"></i>API</button>
             <button type="submit" name="notify_mode" value="manual" class="btn btn-sm btn-outline-success"><i class="bi bi-whatsapp me-1"></i>Manual</button>
+          {% elif kind == "payment" %}
+            <button type="submit" name="approval_action" value="approve" class="btn btn-sm btn-success">Approve Payment</button>
+            <button type="submit" name="approval_action" value="reclassify" class="btn btn-sm btn-outline-primary">Change Category</button>
           {% else %}
-            <button type="submit" class="btn btn-sm btn-success">Approve</button>
+            <button type="submit" class="btn btn-sm btn-success">Apply / Approve</button>
           {% endif %}
         </form>
         <form method="post" action="{{ urls.reject }}" class="pending-detail-action">
@@ -62,7 +81,11 @@
             <dd class="col-7">{{ item.created_at|date:"M d, Y H:i" }}</dd>
 
             <dt class="col-5">Phone</dt>
-            <dd class="col-7">{{ item.phone|format_phone|default:"-" }}</dd>
+            <dd class="col-7">
+              {% with wa_number=item.phone|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
+                {% if wa_number %}<a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code }}</a>{% else %}-{% endif %}
+              {% endwith %}
+            </dd>
 
             <dt class="col-5">Tenant</dt>
             <dd class="col-7">{% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}</dd>
@@ -125,7 +148,7 @@
             <p class="mb-2"><strong>AI Notes</strong></p>
             <pre class="small bg-light border rounded p-2 text-wrap" style="white-space:pre-wrap;">{{ item.ai_notes|default:"No notes." }}</pre>
             {% if item.purpose == "other" %}
-              <div class="alert alert-warning py-2 small mb-0">This upload is marked Other. Approval needs a Property, Unit, or Lease Document target before it can be attached.</div>
+              <div class="alert alert-warning py-2 small mb-0">This upload is marked Other. Choose Payment Receipt, Property Photo, Unit Photo, Lease Gallery, or Lease Document before approval.</div>
             {% endif %}
           {% elif kind == "maintenance" %}
             <p class="mb-2"><strong>Description</strong></p>

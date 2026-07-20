@@ -1,6 +1,7 @@
 import base64
 import json
 import mimetypes
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -13,6 +14,8 @@ Return only JSON with these keys:
 amount, date, time, reference, transaction_id, sender_name, sender_phone,
 receiver_name, receiver_account, bank, channel, description, confidence.
 Use null for unknown values. Confidence must be 0-100.
+Return date in YYYY-MM-DD format. Treat the large transferred/paid value as the
+payment amount; do not use a transaction fee as the payment amount.
 """
 
 
@@ -73,7 +76,7 @@ def _parse_json(raw_text):
 def _normalize(data):
     normalized = dict(data or {})
     normalized["amount"] = _decimal_or_none(normalized.get("amount"))
-    normalized["date"] = parse_date(str(normalized.get("date") or "")) if normalized.get("date") else None
+    normalized["date"] = _date_or_none(normalized.get("date"))
     normalized["reference"] = normalized.get("reference") or normalized.get("transaction_id") or ""
     normalized["confidence"] = int(normalized.get("confidence") or 0)
     normalized["bank_information"] = {
@@ -92,6 +95,21 @@ def _decimal_or_none(value):
         return Decimal(str(value).replace(",", ""))
     except (InvalidOperation, ValueError):
         return None
+
+
+def _date_or_none(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    parsed = parse_date(text)
+    if parsed:
+        return parsed
+    for date_format in ("%B %d, %Y", "%b %d, %Y", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _unavailable(reason):

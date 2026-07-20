@@ -29,6 +29,7 @@ from tenants.models import Tenant
 from whatsapp.models import (
     PendingWhatsAppMaintenance,
     PendingWhatsAppMedia,
+    PendingWhatsAppPayment,
     WhatsAppConversation,
     WhatsAppHandover,
     WhatsAppMessageLog,
@@ -327,6 +328,89 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertFalse(PropertyMedia.objects.filter(property=self.property).exists())
         self.assertContains(response, "The media could not be saved to the selected destination.")
 
+    def test_other_media_can_be_reclassified_to_pending_payment(self):
+        pending = self._pending(filename="payment-receipt.jpg", media_type="image")
+        ocr_result = {
+            "amount": Decimal("63580.00"),
+            "date": timezone.datetime(2026, 7, 20).date(),
+            "reference": "718126681061",
+            "confidence": 96,
+            "bank_information": {"channel": "Bank Transfer"},
+        }
+
+        with patch("whatsapp.services.media_processor.run_payment_ocr", return_value=ocr_result):
+            response = self._approve(pending, "payment_receipt")
+
+        pending.refresh_from_db()
+        payment = PendingWhatsAppPayment.objects.get(screenshot=pending.file.name)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
+        self.assertEqual(pending.purpose, PendingWhatsAppMedia.PURPOSE_PAYMENT)
+        self.assertEqual(payment.amount, Decimal("63580.00"))
+        self.assertEqual(payment.lease, self.lease)
+        self.assertEqual(payment.status, PendingWhatsAppPayment.STATUS_PENDING)
+
+    def test_pending_payment_screenshot_can_be_reclassified_to_unit_photo(self):
+        media = self._pending(
+            filename="not-a-payment.jpg",
+            media_type="image",
+            purpose=PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        )
+        payment = PendingWhatsAppPayment.objects.create(
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            phone=self.tenant.phone,
+            screenshot=media.file.name,
+            amount=Decimal("1000.00"),
+        )
+
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["payment", payment.pk]),
+            {
+                "approval_action": "reclassify",
+                "reclassify_destination": f"unit_photo:{self.unit.pk}",
+            },
+        )
+
+        media.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse("core:pending_approval_detail", args=["media", media.pk]),
+        )
+        self.assertEqual(media.purpose, PendingWhatsAppMedia.PURPOSE_UNIT)
+        self.assertEqual(media.target_kind, PendingWhatsAppMedia.TARGET_UNIT_PHOTO)
+        self.assertEqual(media.status, PendingWhatsAppMedia.STATUS_PENDING)
+        self.assertTrue(payment.rejected)
+        self.assertEqual(payment.status, PendingWhatsAppPayment.STATUS_REJECTED)
+
+    def test_payment_approval_posts_payment_and_sends_whatsapp_confirmation(self):
+        pending = PendingWhatsAppPayment.objects.create(
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            phone=self.tenant.phone,
+            amount=Decimal("63580.00"),
+            date=timezone.datetime(2026, 7, 20).date(),
+            reference="718126681061",
+        )
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService.send_payment_confirmation") as send_confirmation:
+            response = self.client.post(
+                reverse("core:pending_approval_approve", args=["payment", pending.pk]),
+            )
+
+        pending.refresh_from_db()
+        self.assertRedirects(response, reverse("core:pending_approvals"))
+        self.assertTrue(pending.approved)
+        self.assertIsNotNone(pending.created_payment)
+        send_confirmation.assert_called_once()
+        self.assertEqual(send_confirmation.call_args.kwargs["phone_number"], self.tenant.phone)
+        self.assertIn("Rs. 63,580.00", send_confirmation.call_args.kwargs["message"])
+
 
 class WhatsAppAssistantIntentTests(SimpleTestCase):
     def test_tenant_self_service_intents(self):
@@ -444,6 +528,61 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertTrue(sender.has_active_tenant)
         self.assertFalse(sender.has_staff)
         self.assertEqual(sender.active_leases, [self.lease])
+
+    def test_tenant_payment_receipt_is_ocr_read_and_staged_for_approval(self):
+        self.conversation.pending_state = "tenant_waiting_payment_receipt"
+        self.conversation.save(update_fields=["pending_state", "updated_at"])
+        image_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.payment.receipt.ocr",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "image", "image": {"caption": "", "filename": "receipt.jpg"}},
+        )
+        staged = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            original_whatsapp_message=image_log,
+            phone=self.phone,
+            file=ContentFile(b"jpg", name="receipt.jpg"),
+            original_filename="receipt.jpg",
+            media_type="image",
+            lease=self.lease,
+            tenant=self.tenant,
+            property=self.property,
+            unit=self.unit,
+        )
+        image_log.api_response = {"simulator_pending_media_id": staged.pk}
+        image_log.save(update_fields=["api_response"])
+        ocr_result = {
+            "amount": Decimal("63580.00"),
+            "date": timezone.datetime(2026, 7, 20).date(),
+            "reference": "718126681061",
+            "confidence": 97,
+            "bank_information": {"channel": "Bank Transfer"},
+        }
+
+        with patch("whatsapp.services.whatsapp_ai.run_payment_ocr", return_value=ocr_result):
+            response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle_media_message(
+                image_log,
+                self.conversation,
+                "",
+                "image",
+                resolve_sender(self.phone, conversation=self.conversation),
+            )
+
+        staged.refresh_from_db()
+        payment = PendingWhatsAppPayment.objects.get(pk=metadata["pending_payment_id"])
+        self.conversation.refresh_from_db()
+        self.assertEqual(intent, "payment_pending")
+        self.assertIn("Amount: Rs. 63,580.00", response)
+        self.assertIn("Date: 20-07-2026", response)
+        self.assertIn("confirmation shortly after bank verification", response)
+        self.assertEqual(staged.purpose, PendingWhatsAppMedia.PURPOSE_PAYMENT)
+        self.assertEqual(payment.amount, Decimal("63580.00"))
+        self.assertEqual(payment.status, PendingWhatsAppPayment.STATUS_PENDING)
+        self.assertEqual(self.conversation.pending_state, "")
+        self.assertIn("6. Upload Payment Receipt", WhatsAppAIAssistant()._tenant_welcome_menu(self.lease))
 
     def test_staff_only_sender_opens_staff_inbox(self):
         sender = resolve_sender(self.staff1.whatsapp_number)
@@ -1158,6 +1297,34 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
         context = build_safe_context(resolve_sender(self.phone), self.conversation, lease=self.lease)
         self.assertNotIn("OTHER TENANT SECRET", str(context))
+
+    def test_conversation_summary_keeps_older_phone_after_many_newer_status_rows(self):
+        from whatsapp.views import _conversation_summary
+
+        older_phone = "+923007777778"
+        WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=older_phone,
+            wa_message_id="wamid.older.phone",
+            message_type="text",
+            status="received",
+            payload={"type": "text", "text": {"body": "older conversation"}},
+        )
+        WhatsAppMessageLog.objects.bulk_create([
+            WhatsAppMessageLog(
+                direction=WhatsAppMessageLog.DIRECTION_STATUS,
+                phone_number=self.phone,
+                wa_message_id=f"wamid.status.{index}",
+                message_type="status",
+                status="delivered",
+            )
+            for index in range(305)
+        ])
+
+        phones = {row["phone_number"] for row in _conversation_summary()}
+
+        self.assertIn(older_phone, phones)
+        self.assertIn(self.phone, phones)
 
     def test_duplicate_webhook_message_is_ignored(self):
         payload = {"entry": [{"id": "entry", "changes": [{"field": "messages", "value": {"messages": [{

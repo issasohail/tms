@@ -145,6 +145,28 @@
   <div class="card shadow-sm pending-filter-card mb-3">
     <div class="card-body py-2">
       <form method="get" class="row g-2 align-items-end" id="pendingApprovalFilters">
+        <div class="col-12 col-lg-3">
+          <label class="form-label" for="approvalSearch">Search anywhere</label>
+          <input class="form-control form-control-sm" id="approvalSearch" name="q" type="search" value="{{ approval_filters.search }}" placeholder="Phone, tenant, property, unit, reference..." autocomplete="off">
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2">
+          <label class="form-label" for="approvalProperty">Property</label>
+          <select class="form-select form-select-sm pending-select2" id="approvalProperty" name="property" data-placeholder="All Properties">
+            <option value="">All Properties</option>
+            {% for property in filter_properties %}
+              <option value="{{ property.pk }}" {% if approval_filters.property_id == property.pk %}selected{% endif %}>{{ property.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-2">
+          <label class="form-label" for="approvalUnit">Unit</label>
+          <select class="form-select form-select-sm pending-select2" id="approvalUnit" name="unit" data-placeholder="All Units">
+            <option value="">All Units</option>
+            {% for unit in filter_units %}
+              <option value="{{ unit.pk }}" {% if approval_filters.unit_id == unit.pk %}selected{% endif %}>{{ unit.property.property_name }} / {{ unit.unit_number }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="col-12 col-sm-6 col-lg-2">
           <label class="form-label" for="approvalStatus">Status</label>
           <select class="form-select form-select-sm" id="approvalStatus" name="status">
@@ -210,13 +232,21 @@
                         <span class="pending-created-date">{{ item.submitted_at|date:"M d, Y" }}</span>
                         <span class="pending-created-time">{{ item.submitted_at|date:"H:i" }}</span>
                       </td>
-                      <td class="pending-nowrap pending-phone" data-label="Phone" title="{{ item.tenant.phone|format_phone:GLOBAL_SETTINGS.country_code|default:'-' }}">{{ item.tenant.phone|format_phone:GLOBAL_SETTINGS.country_code|default:"-" }}</td>
+                      <td class="pending-nowrap pending-phone" data-label="Phone" title="{{ item.tenant.phone|format_phone:GLOBAL_SETTINGS.country_code|default:'-' }}">
+                        {% with wa_number=item.tenant.phone|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
+                          {% if wa_number %}<a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.tenant.phone|format_phone:GLOBAL_SETTINGS.country_code }}</a>{% else %}-{% endif %}
+                        {% endwith %}
+                      </td>
                     {% else %}
                       <td class="pending-nowrap pending-created" data-label="Created" title="{{ item.created_at|date:'M d, Y H:i' }}">
                         <span class="pending-created-date">{{ item.created_at|date:"M d, Y" }}</span>
                         <span class="pending-created-time">{{ item.created_at|date:"H:i" }}</span>
                       </td>
-                      <td class="pending-nowrap pending-phone" data-label="Phone" title="{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code|default:'-' }}">{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code|default:"-" }}</td>
+                      <td class="pending-nowrap pending-phone" data-label="Phone" title="{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code|default:'-' }}">
+                        {% with wa_number=item.phone|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
+                          {% if wa_number %}<a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.phone|format_phone:GLOBAL_SETTINGS.country_code }}</a>{% else %}-{% endif %}
+                        {% endwith %}
+                      </td>
                     {% endif %}
                     {% if section.kind == "family" %}
                       <td class="pending-photo" data-label="Photo">
@@ -323,6 +353,9 @@
   const feedback = document.getElementById("pendingApprovalFeedback");
   const filterForm = document.getElementById("pendingApprovalFilters");
   const statusFilter = document.getElementById("approvalStatus");
+  const propertyFilter = document.getElementById("approvalProperty");
+  const unitFilter = document.getElementById("approvalUnit");
+  const searchFilter = document.getElementById("approvalSearch");
   const dateRange = document.getElementById("approvalDateRange");
   const customDateFields = document.querySelectorAll(".pending-custom-date");
   const customDateInputs = document.querySelectorAll(".pending-custom-date input");
@@ -343,6 +376,20 @@
   }
 
   if (statusFilter) statusFilter.addEventListener("change", submitFilters);
+  if (propertyFilter) {
+    propertyFilter.addEventListener("change", function () {
+      if (unitFilter) unitFilter.value = "";
+      submitFilters();
+    });
+  }
+  if (unitFilter) unitFilter.addEventListener("change", submitFilters);
+  let searchTimer = null;
+  if (searchFilter) {
+    searchFilter.addEventListener("input", function () {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(submitFilters, 500);
+    });
+  }
   if (dateRange) {
     dateRange.addEventListener("change", function () {
       updateCustomDateVisibility();
@@ -355,6 +402,17 @@
       if (dateRange && dateRange.value === "custom" && values.every(Boolean)) submitFilters();
     });
   });
+
+  if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+    const $filters = window.jQuery(".pending-select2");
+    $filters.select2({theme: "bootstrap-5", width: "100%"});
+    window.jQuery(document).on("select2:open", function () {
+      window.setTimeout(function () {
+        const input = document.querySelector(".select2-container--open .select2-search__field");
+        if (input) input.focus();
+      }, 0);
+    });
+  }
 
   function renumberRows(card) {
     if (!card) return;

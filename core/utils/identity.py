@@ -68,6 +68,13 @@ def format_phone(value, country_code=""):
     ):
         digits = country_digits + digits[1:]
         has_plus = True
+    elif (
+        not has_plus
+        and country_digits
+        and digits.startswith(country_digits)
+        and len(digits) >= len(country_digits) + 7
+    ):
+        has_plus = True
 
     if len(digits) > 10:
         prefix, final_ten = digits[:-10], digits[-10:]
@@ -81,6 +88,20 @@ def format_phone(value, country_code=""):
 
     formatted = "-".join(group for group in groups if group)
     return ("+" if has_plus else "") + formatted
+
+
+def whatsapp_phone_digits(value, country_code=""):
+    """Return an international digits-only number suitable for a wa.me link."""
+    normalized = normalize_phone(value)
+    if not normalized:
+        return ""
+    digits = NON_DIGITS_RE.sub("", normalized)
+    if digits.startswith("00"):
+        digits = digits[2:]
+    country_digits = NON_DIGITS_RE.sub("", str(country_code or ""))
+    if country_digits and digits.startswith("0") and not digits.startswith("00"):
+        digits = country_digits + digits[1:]
+    return digits
 
 
 def _conservative_right_groups(digits):

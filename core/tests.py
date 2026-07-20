@@ -1,5 +1,6 @@
 import subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +8,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from core.backup_utils import (
     BackupItem,
@@ -48,6 +50,81 @@ class PendingApprovalFilterTests(SimpleTestCase):
 
         self.assertEqual(filters["date_from"], date(2026, 7, 1))
         self.assertEqual(filters["date_to"], date(2026, 7, 19))
+
+    def test_property_unit_and_text_search_are_normalized(self):
+        request = self.factory.get(
+            "/pending-approvals/",
+            {"property": "12", "unit": "34", "q": "  receipt  "},
+        )
+
+        filters = _pending_approval_filter_state(request)
+
+        self.assertEqual(filters["property_id"], 12)
+        self.assertEqual(filters["unit_id"], 34)
+        self.assertEqual(filters["search"], "receipt")
+
+
+class PendingApprovalLeaseScopeTests(TestCase):
+    def setUp(self):
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        self.user = get_user_model().objects.create_superuser(
+            "approval-scope", email="approval-scope@example.com", password="test"
+        )
+        self.client.force_login(self.user)
+        self.property = Property.objects.create(
+            property_name="Scope Property",
+            owner_name="Owner",
+            owner_cnic="37405-7654321-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=2,
+        )
+        self.unit = Unit.objects.create(property=self.property, unit_number="S-01", status="occupied")
+        self.tenant = Tenant.objects.create(
+            first_name="Scope", last_name="Tenant", phone="+923001234567", cnic="37405-1234567-1"
+        )
+
+    def _lease(self, status):
+        from leases.models import Lease
+
+        return Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=timezone.localdate() - timedelta(days=30),
+            end_date=timezone.localdate() + timedelta(days=335),
+            monthly_rent=Decimal("25000"),
+            status=status,
+        )
+
+    def test_all_status_excludes_unrelated_historical_active_leases(self):
+        from whatsapp.models import WhatsAppExternalLinkToken
+
+        historical = self._lease("active")
+        linked = self._lease("active")
+        pending = self._lease("pending_approval")
+        WhatsAppExternalLinkToken.objects.create(
+            link_type=WhatsAppExternalLinkToken.LINK_LEASE_CREATION,
+            phone_number=self.tenant.phone,
+            tenant=self.tenant,
+            target_app_label="leases",
+            target_model="lease",
+            target_object_id=linked.pk,
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        response = self.client.get(
+            reverse("core:pending_approvals"),
+            {"status": "all", "property": self.property.pk, "unit": self.unit.pk, "q": "Scope"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        lease_section = next(section for section in response.context["sections"] if section["kind"] == "lease")
+        shown_ids = {row["object"].pk for row in lease_section["items"]}
+        self.assertNotIn(historical.pk, shown_ids)
+        self.assertIn(linked.pk, shown_ids)
+        self.assertIn(pending.pk, shown_ids)
 
 
 class BackupMySQLCommandTests(SimpleTestCase):

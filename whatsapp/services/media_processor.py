@@ -111,7 +111,16 @@ def run_payment_ocr(pending_media, ai_config):
     if ai_config.ocr_provider == "openai" and ai_config.openai_api_key_configured:
         from whatsapp.services.openai_ocr import extract_receipt_with_openai
 
-        return extract_receipt_with_openai(pending_media.file, ai_config.model)
+        try:
+            return extract_receipt_with_openai(pending_media.file, ai_config.model)
+        except Exception as exc:
+            logger.exception("Payment receipt OCR failed for pending media %s", pending_media.pk)
+            return {
+                "engine": "unavailable",
+                "text": "",
+                "confidence": 0,
+                "notes": "Payment OCR was unavailable; staff must verify the receipt manually.",
+            }
     result = run_basic_ocr(pending_media)
     if ai_config.ocr_provider == "openai":
         result["notes"] = "OpenAI OCR is selected, but OPENAI_API_KEY is not configured."

@@ -88,6 +88,10 @@ class IdentityUtilityTests(TestCase):
             format_phone("+92-332-512-6929", country_code="+92"),
             "+92-332-512-6929",
         )
+        self.assertEqual(
+            format_phone("923325126929", country_code="+92"),
+            "+92-332-512-6929",
+        )
 
 
 class IdentityIntegrationTests(TestCase):

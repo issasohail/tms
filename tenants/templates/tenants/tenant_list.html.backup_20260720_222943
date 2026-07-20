@@ -533,38 +533,6 @@
             </span>
         </div>
 
-        <div class="tcv2-doc-row tcv2-mobile-doc-row" aria-label="Document availability">
-            {% if tenant.photo %}
-                <a href="{{ tenant.photo.url }}" data-toggle="lightbox" class="tcv2-doc-chip is-ok">
-                    Photo <i class="fas fa-check" aria-hidden="true"></i>
-                </a>
-            {% else %}
-                <span class="tcv2-doc-chip is-missing-doc">
-                    Photo <i class="fas fa-times" aria-hidden="true"></i>
-                </span>
-            {% endif %}
-
-            {% if tenant.cnic_front %}
-                <a href="{{ tenant.cnic_front.url }}" data-toggle="lightbox" class="tcv2-doc-chip is-ok">
-                    CNIC Front <i class="fas fa-check" aria-hidden="true"></i>
-                </a>
-            {% else %}
-                <span class="tcv2-doc-chip is-missing-doc">
-                    CNIC Front <i class="fas fa-times" aria-hidden="true"></i>
-                </span>
-            {% endif %}
-
-            {% if tenant.cnic_back %}
-                <a href="{{ tenant.cnic_back.url }}" data-toggle="lightbox" class="tcv2-doc-chip is-ok">
-                    CNIC Back <i class="fas fa-check" aria-hidden="true"></i>
-                </a>
-            {% else %}
-                <span class="tcv2-doc-chip is-missing-doc">
-                    CNIC Back <i class="fas fa-times" aria-hidden="true"></i>
-                </span>
-            {% endif %}
-        </div>
-
         
         <div class="tcv2-lease-box {% if not lease %}no-active-lease{% endif %}">
             {% if lease %}
@@ -3975,74 +3943,6 @@ img.is-missing{
     .tenant-filter-card.mobile-filters-open .reset-btn{
         display:flex !important;
         grid-column:3 !important;
-    }
-}
-
-/* Keep the tenant filter/action controls available in both card layouts. */
-.tcv2-mobile-doc-row{
-    display:none;
-}
-
-@media (max-width:991.98px){
-    .mobile-action-toolbar{
-        display:grid !important;
-        grid-template-columns:repeat(3,minmax(0,1fr)) !important;
-        gap:.42rem !important;
-    }
-}
-
-@media (min-width:576px) and (max-width:991.98px){
-    .mobile-action-btn,
-    .mobile-action-btn-wrap > .mobile-action-btn{
-        width:100% !important;
-        min-width:0 !important;
-        height:36px !important;
-        display:flex !important;
-        align-items:center !important;
-        justify-content:center !important;
-        gap:.35rem !important;
-        padding:.25rem .45rem !important;
-        border:1px solid #d7deea !important;
-        border-radius:9px !important;
-        background:#fff !important;
-        color:#334155 !important;
-        font-size:.7rem !important;
-        font-weight:850 !important;
-        text-decoration:none !important;
-        white-space:nowrap !important;
-    }
-
-    .mobile-action-quick{
-        color:#fff !important;
-        background:#16a36a !important;
-        border-color:#16a36a !important;
-    }
-}
-
-@media (max-width:575.98px){
-    .tcv2-head{
-        grid-template-columns:22px 40px minmax(0,1fr) auto !important;
-    }
-
-    .tcv2-head > .tcv2-cnic-thumb{
-        display:none !important;
-    }
-
-    .tcv2-main,
-    .tcv2-name-row,
-    .tcv2-name{
-        min-width:0 !important;
-    }
-
-    .tcv2-name{
-        display:block !important;
-        overflow:hidden !important;
-        text-overflow:ellipsis !important;
-        white-space:nowrap !important;
-    }
-
-    .tcv2-mobile-doc-row{
-        display:grid !important;
     }
 }
 </style>

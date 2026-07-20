@@ -146,10 +146,11 @@ class PaymentListTable(tables.Table):
 
     def render_tenant(self, value, record):
         full = f"{record.lease.tenant.first_name} {record.lease.tenant.last_name}".strip()
+        short = (full[:15] + "…") if len(full) > 15 else full
         url = reverse("tenants:tenant_detail", args=[record.lease.tenant.pk])
         return format_html(
             '<a href="{}" title="{}" class="text-decoration-none">{}</a>',
-            url, full, full
+            url, full, short
         )
 
     def _balance_html(self, amt):

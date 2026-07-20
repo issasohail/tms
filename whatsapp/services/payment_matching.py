@@ -8,7 +8,12 @@ from django.utils.dateparse import parse_date
 from .tenant_context import build_lease_context, find_active_leases_for_phone
 
 
-AMOUNT_RE = re.compile(r"(?:rs\.?|pkr|amount|paid|total)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)", re.I)
+LABELED_AMOUNT_RE = re.compile(
+    r"(?:amount|total|paid|transferred|rs\.?|pkr)\s*(?:rs\.?|pkr)?\s*[:=-]?\s*"
+    r"([0-9][0-9,]*(?:\.\d{1,2})?)",
+    re.I,
+)
+STANDALONE_AMOUNT_RE = re.compile(r"(?<![A-Za-z0-9])([0-9][0-9,]*(?:\.\d{1,2})?)(?![A-Za-z0-9])")
 REF_RE = re.compile(r"(?:ref|reference|tid|transaction|trx|rrn|id)[\s#:.-]*([A-Z0-9-]{5,})", re.I)
 DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b")
 
@@ -16,7 +21,8 @@ DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b")
 def extract_payment_text_fields(text):
     amount = None
     reference = ""
-    for match in AMOUNT_RE.finditer(text or ""):
+    matches = list(LABELED_AMOUNT_RE.finditer(text or "")) or list(STANDALONE_AMOUNT_RE.finditer(text or ""))
+    for match in matches:
         try:
             amount = Decimal(match.group(1).replace(",", ""))
             break
@@ -43,7 +49,7 @@ def _extract_payment_date(text):
         return today
     match = DATE_RE.search(text or "")
     if not match:
-        return today
+        return None
     value = match.group(1)
     parsed = parse_date(value)
     if parsed:
@@ -51,14 +57,14 @@ def _extract_payment_date(text):
     separator = "/" if "/" in value else "-"
     parts = value.split(separator)
     if len(parts) != 3:
-        return today
+        return None
     day, month, year = parts
     if len(year) == 2:
         year = f"20{year}"
     try:
         return timezone.datetime(int(year), int(month), int(day)).date()
     except ValueError:
-        return today
+        return None
 
 
 def match_payment_to_active_lease(phone_number, ocr_data=None):

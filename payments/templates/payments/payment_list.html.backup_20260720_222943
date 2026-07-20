@@ -771,8 +771,6 @@
      badges and balance as a chip by the JS enhancer further below;
      this CSS just lays the resulting markup out and themes it.
      ================================================================ */
-  .payment-list-dense td.col-split-breakdown { display: none; }
-
   @media (max-width: 991px) {
     .payment-list-container {
       max-width: 100% !important;
@@ -812,21 +810,14 @@
       /* TABLET + MOBILE card view tenant size — controlled by --payment-card-tenant-size above */
       grid-column: 2 !important; grid-row: 1 !important;
       font-size: var(--payment-card-tenant-size) !important; font-weight: 600 !important;
-      min-width: 0 !important;
       overflow: hidden !important; white-space: nowrap !important; text-overflow: ellipsis !important;
     }
-    .payment-list-dense td.col-tenant a {
-      display: block !important; width: 100% !important; min-width: 0 !important;
-      color: var(--payment-tenant-color) !important; text-decoration: none !important;
-      overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
-    }
+    .payment-list-dense td.col-tenant a { color: var(--payment-tenant-color) !important; text-decoration: none !important; }
     .payment-list-dense td.col-amount {
       grid-column: 3 !important; grid-row: 1 !important;
-      min-width: 0 !important;
       text-align: right !important; white-space: nowrap !important;
       font-size: .92rem !important; font-weight: 700 !important; color: #12b76a !important;
     }
-    .payment-list-dense td.col-amount > .small { display: none !important; }
 
     .payment-list-dense td.col-property {
       grid-column: 1 / 3 !important; grid-row: 2 !important;
@@ -847,23 +838,27 @@
     .payment-list-dense td.col-date i { margin-right: .2rem !important; }
 
     .payment-list-dense td.col-balance-row {
-      grid-column: 1 !important; grid-row: 3 !important;
+      /* Spans the full row width; doesn't force column 3 wide the way a
+         non-spanning item would, since the space gets absorbed by the
+         flexible tenant/badge column instead. */
+      grid-column: 1 / 4 !important; grid-row: 3 !important;
       display: flex !important; align-items: center !important;
       font-size: .78rem !important; font-weight: 600 !important;
       margin-top: .3rem !important; padding-top: .5rem !important;
       border-top: 1px dashed #e5e7eb !important;
-      white-space: nowrap !important;
     }
     .payment-list-dense tr.pc-negative td.col-balance-row { color: #a32d2d !important; }
     .payment-list-dense tr.pc-positive td.col-balance-row { color: #3b6d11 !important; }
     .payment-list-dense td.col-balance-row i { margin-right: .3rem !important; }
 
     .payment-list-dense td.col-actions {
-      grid-column: 2 / 4 !important; grid-row: 3 !important;
+      /* Own row, full width, right-aligned — kept OUT of column 3 so the
+         four round buttons can't force that column (shared with amount
+         and date on rows 1-2) to balloon in width. This was the actual
+         cause of the tenant name looking cramped/truncated on mobile. */
+      grid-column: 1 / 4 !important; grid-row: 4 !important;
       display: flex !important; justify-content: flex-end !important;
-      align-items: center !important; margin-top: .3rem !important;
-      padding-top: .5rem !important;
-      border-top: 1px dashed #e5e7eb !important;
+      margin-top: .5rem !important;
     }
     .payment-list-dense td.col-actions .actions-wrap { display: flex !important; gap: .4rem !important; }
     .payment-list-dense td.col-actions .btn {
@@ -880,15 +875,6 @@
     .payment-list-dense td.col-actions .btn-outline-success i { color: #3b6d11 !important; }
     .payment-list-dense td.col-actions .btn-outline-danger { background: #fcebeb !important; }
     .payment-list-dense td.col-actions .btn-outline-danger i { color: #a32d2d !important; }
-
-    .payment-list-dense td.col-split-breakdown {
-      grid-column: 1 / 4 !important; grid-row: 3 !important;
-      display: block !important; width: 100% !important;
-      text-align: right !important; white-space: normal !important;
-      color: #6b7280 !important; font-size: .72rem !important; line-height: 1.3 !important;
-    }
-    .payment-list-dense tr.has-split-breakdown td.col-balance-row,
-    .payment-list-dense tr.has-split-breakdown td.col-actions { grid-row: 4 !important; }
 
     .payment-list-dense td.col-unit,
     .payment-list-dense td.col-method,
@@ -1125,18 +1111,6 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!isNaN(numeric)) tr.classList.add(numeric < 0 ? 'pc-negative' : 'pc-positive');
     }
 
-    function buildSplitBreakdown(tr, tdAmount){
-      if (!tdAmount || tr.querySelector('td.col-split-breakdown')) return;
-      const source = tdAmount.querySelector('.small');
-      if (!source) return;
-
-      const row = document.createElement('td');
-      row.className = 'col-split-breakdown';
-      row.innerHTML = source.innerHTML;
-      tr.appendChild(row);
-      tr.classList.add('has-split-breakdown');
-    }
-
     function enhance(){
       if (!MQ.matches) return;
       document.querySelectorAll(TABLE_SEL).forEach(table=>{
@@ -1147,12 +1121,10 @@ document.addEventListener("DOMContentLoaded", function () {
           const tdProperty = get('td.col-property');
           const tdUnit     = get('td.col-unit');
           const tdDate     = get('td.col-date');
-          const tdAmount   = get('td.col-amount');
           const tdBalance  = get('td.col-balance');
 
           buildBadges(tdProperty, tdUnit ? tdUnit.textContent : '');
           buildDate(tdDate);
-          buildSplitBreakdown(tr, tdAmount);
           buildBalanceRow(tr, tdDate, tdBalance ? tdBalance.textContent : '');
 
           tr.dataset.enhanced = '1';

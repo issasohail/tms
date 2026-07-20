@@ -98,6 +98,10 @@
             {% if kind == "payment" %}
               <dt class="col-5">Amount</dt><dd class="col-7">Rs. {{ item.amount|default:"-" }}</dd>
               <dt class="col-5">Date</dt><dd class="col-7">{{ item.date|default:"-" }}</dd>
+              <dt class="col-5">OCR Amount</dt><dd class="col-7">{% if item.ocr_json.ocr_amount %}Rs. {{ item.ocr_json.ocr_amount }}{% else %}-{% endif %}</dd>
+              <dt class="col-5">Tenant Amount</dt><dd class="col-7">{% if item.ocr_json.tenant_amount %}Rs. {{ item.ocr_json.tenant_amount }}{% else %}-{% endif %}</dd>
+              <dt class="col-5">OCR Date</dt><dd class="col-7">{{ item.ocr_json.ocr_date|default:"-" }}</dd>
+              <dt class="col-5">Tenant Date</dt><dd class="col-7">{{ item.ocr_json.tenant_date|default:"-" }}</dd>
               <dt class="col-5">Reference</dt><dd class="col-7">{{ item.reference|default:"-" }}</dd>
               <dt class="col-5">Confidence</dt><dd class="col-7">{{ item.ai_confidence }}%</dd>
             {% elif kind == "media" %}

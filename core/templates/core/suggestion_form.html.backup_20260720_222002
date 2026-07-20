@@ -44,33 +44,4 @@
     </form>
   </div>
 </div>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const description = document.querySelector("textarea[name='description']");
-  if (!description) return;
-
-  description.addEventListener("focus", function () {
-    if (!description.value.trim()) {
-      description.value = "1. ";
-      description.setSelectionRange(description.value.length, description.value.length);
-    }
-  });
-
-  description.addEventListener("keydown", function (event) {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    const cursor = description.selectionStart;
-    const lineStart = description.value.lastIndexOf("\n", cursor - 1) + 1;
-    const currentLine = description.value.slice(lineStart, cursor);
-    const match = currentLine.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
-    if (!match) return;
-
-    event.preventDefault();
-    if (!match[3].trim()) {
-      description.setRangeText("", lineStart, cursor, "end");
-      return;
-    }
-    description.setRangeText("\n" + match[1] + (Number(match[2]) + 1) + ". ", cursor, cursor, "end");
-  });
-});
-</script>
 {% endblock %}

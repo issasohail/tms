@@ -17,7 +17,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from whatsapp.services.payment_matching import extract_payment_text_fields
-from whatsapp.services.whatsapp_ai import WhatsAppAIAssistant, detect_intent
+from whatsapp.services.openai_ocr import _normalize as normalize_openai_receipt
+from whatsapp.services.whatsapp_ai import WhatsAppAIAssistant, _ocr_looks_like_payment, detect_intent
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
 from leases.models import Lease
@@ -53,7 +54,7 @@ from whatsapp.services.handover.routing import eligible_staff, staff_can_access_
 from whatsapp.services.handover.workflow import handle_active_tenant_message, handle_staff_handover_message
 from whatsapp.services.identity.mode_resolver import infer_mode
 from whatsapp.services.identity.sender_resolver import resolve_sender
-from whatsapp.services.role_mode import resolve_mode
+from whatsapp.services.role_mode import resolve_mode, staff_menu_text
 from whatsapp.views import _log_webhook_payload
 
 
@@ -411,6 +412,33 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertEqual(send_confirmation.call_args.kwargs["phone_number"], self.tenant.phone)
         self.assertIn("Rs. 63,580.00", send_confirmation.call_args.kwargs["message"])
 
+    def test_pending_payment_detail_shows_ocr_and_tenant_confirmed_values(self):
+        pending = PendingWhatsAppPayment.objects.create(
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            phone=self.tenant.phone,
+            amount=Decimal("63580.00"),
+            date=timezone.datetime(2026, 7, 20).date(),
+            ocr_json={
+                "ocr_amount": "6.00",
+                "tenant_amount": "63580",
+                "ocr_date": "2026-07-20",
+                "tenant_date": "2026-07-20",
+            },
+        )
+
+        response = self.client.get(
+            reverse("core:pending_approval_detail", args=["payment", pending.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "OCR Amount")
+        self.assertContains(response, "Rs. 6.00")
+        self.assertContains(response, "Tenant Amount")
+        self.assertContains(response, "Rs. 63580")
+
 
 class WhatsAppAssistantIntentTests(SimpleTestCase):
     def test_tenant_self_service_intents(self):
@@ -441,6 +469,33 @@ class WhatsAppAssistantIntentTests(SimpleTestCase):
         self.assertEqual(parsed["amount"], Decimal("12000"))
         self.assertEqual(parsed["date"], timezone.localdate() - timedelta(days=1))
         self.assertEqual(parsed["reference"], "ABCD12345")
+
+    def test_openai_receipt_normalizes_currency_amount_and_long_date(self):
+        parsed = normalize_openai_receipt(
+            {
+                "document_type": "bank transfer receipt",
+                "is_payment_receipt": True,
+                "amount": "Rs. 63,580.00",
+                "date": "July 20, 2026 at 10:20",
+                "confidence": 97,
+            }
+        )
+
+        self.assertEqual(parsed["amount"], Decimal("63580.00"))
+        self.assertEqual(parsed["date"], timezone.datetime(2026, 7, 20).date())
+        self.assertTrue(parsed["is_payment_receipt"])
+
+    def test_explicit_non_payment_image_is_not_classified_as_receipt(self):
+        self.assertFalse(
+            _ocr_looks_like_payment(
+                {
+                    "is_payment_receipt": False,
+                    "document_type": "lease document",
+                    "amount": Decimal("63580.00"),
+                    "confidence": 99,
+                }
+            )
+        )
 
     def test_multiple_requests_produce_multiple_tool_calls(self):
         decision = fallback_decision("Mera balance aur last payment bata dein aur bathroom mein pani leak ho raha hai")
@@ -529,6 +584,34 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertFalse(sender.has_staff)
         self.assertEqual(sender.active_leases, [self.lease])
 
+    def test_staff_menu_registration_option_sends_public_registration_link(self):
+        self.assertIn("12. New Tenant Registration", staff_menu_text(self.staff1))
+        tenant_count = Tenant.objects.count()
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+        )
+        message = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.new-tenant-registration",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "12"}},
+        )
+
+        response, intent, _metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
+
+        self.assertEqual(intent, "staff")
+        self.assertIn("Tenant registration link created", response)
+        self.assertIn(reverse("tenants:tenant_public_registration_new"), response)
+        self.assertIn("Pending Approval", response)
+        self.assertEqual(Tenant.objects.count(), tenant_count)
+
     def test_tenant_payment_receipt_is_ocr_read_and_staged_for_approval(self):
         self.conversation.pending_state = "tenant_waiting_payment_receipt"
         self.conversation.save(update_fields=["pending_state", "updated_at"])
@@ -572,17 +655,140 @@ class WhatsAppControlledAssistantTests(TestCase):
             )
 
         staged.refresh_from_db()
-        payment = PendingWhatsAppPayment.objects.get(pk=metadata["pending_payment_id"])
         self.conversation.refresh_from_db()
-        self.assertEqual(intent, "payment_pending")
+        self.assertEqual(intent, "payment_receipt_confirmation")
         self.assertIn("Amount: Rs. 63,580.00", response)
         self.assertIn("Date: 20-07-2026", response)
-        self.assertIn("confirmation shortly after bank verification", response)
+        self.assertIn("Reply YES", response)
         self.assertEqual(staged.purpose, PendingWhatsAppMedia.PURPOSE_PAYMENT)
+        self.assertFalse(PendingWhatsAppPayment.objects.exists())
+        self.assertEqual(self.conversation.pending_state, "payment_receipt_confirmation")
+
+        confirm_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.payment.receipt.confirm",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "YES"}},
+        )
+        confirmed_response, confirmed_intent, confirmed_metadata = WhatsAppAIAssistant(
+            service=MagicMock()
+        )._handle(confirm_log, self.conversation)
+
+        payment = PendingWhatsAppPayment.objects.get(
+            pk=confirmed_metadata["pending_payment_id"]
+        )
+        self.conversation.refresh_from_db()
+        self.assertEqual(confirmed_intent, "payment_confirmed")
+        self.assertIn("Amount: Rs. 63,580.00", confirmed_response)
+        self.assertIn("confirmation shortly after bank verification", confirmed_response)
         self.assertEqual(payment.amount, Decimal("63580.00"))
-        self.assertEqual(payment.status, PendingWhatsAppPayment.STATUS_PENDING)
+        self.assertEqual(payment.status, PendingWhatsAppPayment.STATUS_CONFIRMED)
+        self.assertTrue(payment.confirmed_by_tenant)
+        self.assertEqual(payment.ocr_json["ocr_amount"], "63580.00")
+        self.assertEqual(payment.ocr_json["tenant_amount"], "63580.00")
         self.assertEqual(self.conversation.pending_state, "")
         self.assertIn("6. Upload Payment Receipt", WhatsAppAIAssistant()._tenant_welcome_menu(self.lease))
+
+    def test_tenant_can_correct_wrong_ocr_amount_before_pending_payment(self):
+        staged = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            original_whatsapp_message=self.message,
+            phone=self.phone,
+            file=ContentFile(b"jpg", name="receipt-correction.jpg"),
+            original_filename="receipt-correction.jpg",
+            media_type="image",
+            lease=self.lease,
+            tenant=self.tenant,
+            property=self.property,
+            unit=self.unit,
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        assistant._prepare_payment_receipt_confirmation(
+            self.message,
+            self.conversation,
+            self.lease,
+            staged,
+            "6",
+            ocr_json={
+                "amount": Decimal("6.00"),
+                "date": timezone.datetime(2026, 7, 20).date(),
+                "reference": "718126681061",
+                "confidence": 60,
+                "is_payment_receipt": True,
+            },
+        )
+        correction_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.payment.receipt.correct-amount",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "AMOUNT 63580"}},
+        )
+
+        correction_response, correction_intent, _metadata = assistant._handle(
+            correction_log, self.conversation
+        )
+
+        self.assertEqual(correction_intent, "payment_receipt_correction")
+        self.assertIn("Amount: Rs. 63,580.00", correction_response)
+        self.assertIn("OCR originally read: Rs. 6.00", correction_response)
+        self.assertFalse(PendingWhatsAppPayment.objects.exists())
+
+        confirm_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.payment.receipt.correct-confirm",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "YES"}},
+        )
+        _response, intent, metadata = assistant._handle(confirm_log, self.conversation)
+        payment = PendingWhatsAppPayment.objects.get(pk=metadata["pending_payment_id"])
+
+        self.assertEqual(intent, "payment_confirmed")
+        self.assertEqual(payment.amount, Decimal("63580.00"))
+        self.assertEqual(payment.ocr_json["ocr_amount"], "6.00")
+        self.assertEqual(payment.ocr_json["tenant_amount"], "63580")
+        self.assertTrue(payment.ocr_json["tenant_corrected_amount"])
+        self.assertIn("OCR recognized amount: Rs. 6.00", payment.ai_notes)
+        self.assertIn("Tenant confirmed amount: Rs. 63,580.00", payment.ai_notes)
+
+    def test_payment_menu_choice_six_is_never_used_as_receipt_amount(self):
+        staged = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            original_whatsapp_message=self.message,
+            phone=self.phone,
+            file=ContentFile(b"jpg", name="receipt-no-ocr.jpg"),
+            original_filename="receipt-no-ocr.jpg",
+            media_type="image",
+            lease=self.lease,
+            tenant=self.tenant,
+            property=self.property,
+            unit=self.unit,
+        )
+        self.conversation.pending_state = "tenant_upload_type"
+        self.conversation.context["pending_media_id"] = staged.pk
+        self.conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+
+        with patch(
+            "whatsapp.services.whatsapp_ai.run_payment_ocr",
+            return_value={"engine": "unavailable", "confidence": 0, "text": ""},
+        ):
+            response, intent, _metadata = assistant._consume_tenant_upload_type(
+                self.message, self.conversation, "6", self.lease
+            )
+
+        self.conversation.refresh_from_db()
+        self.assertEqual(intent, "payment_receipt_confirmation")
+        self.assertIn("Amount: Not detected", response)
+        self.assertEqual(
+            self.conversation.context["payment_receipt_review"]["ocr_amount"], ""
+        )
+        self.assertFalse(PendingWhatsAppPayment.objects.exists())
 
     def test_staff_only_sender_opens_staff_inbox(self):
         sender = resolve_sender(self.staff1.whatsapp_number)

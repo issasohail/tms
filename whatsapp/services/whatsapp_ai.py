@@ -426,7 +426,9 @@ class WhatsAppAIAssistant:
                 return police_response
             media = create_pending_media(message_log, conversation, selected_lease)
             if media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT:
-                return self._stage_payment(message_log, conversation, selected_lease, media, text)
+                return self._prepare_payment_receipt_confirmation(
+                    message_log, conversation, selected_lease, media, text
+                )
             if media.purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
                 pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
                 conversation.pending_state = "pending_maintenance"
@@ -694,7 +696,9 @@ class WhatsAppAIAssistant:
             media.ai_notes = f"{media.ai_notes} AI classified this upload as a payment receipt.".strip()
             media.save(update_fields=["purpose", "ai_confidence", "ai_notes", "updated_at"])
             if selected_lease:
-                return self._stage_payment(message_log, conversation, selected_lease, media, text, ocr_json=ocr_json)
+                return self._prepare_payment_receipt_confirmation(
+                    message_log, conversation, selected_lease, media, text, ocr_json=ocr_json
+                )
             return self._stage_unassigned_payment(message_log, conversation, media, text, ocr_json)
 
         if media.purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
@@ -770,6 +774,8 @@ class WhatsAppAIAssistant:
             return self._consume_tenant_identity_selection(conversation, text, identity)
         if conversation.pending_state == "tenant_identity_verify":
             return self._consume_tenant_identity_verification(conversation, text)
+        if conversation.pending_state == "payment_receipt_confirmation":
+            return self._consume_payment_receipt_confirmation(message_log, conversation, text)
         if conversation.pending_state == "pending_maintenance":
             pending = PendingWhatsAppMaintenance.objects.filter(
                 pk=conversation.context.get("pending_maintenance_id"),
@@ -1092,6 +1098,13 @@ class WhatsAppAIAssistant:
             return staff_menu_text(staff_user)
         if lowered in {"11", "tenant testing", "test tenant"}:
             return self._start_staff_tenant_simulator(message_log, conversation, staff_user)
+        if lowered in {
+            "12",
+            "new tenant registration",
+            "tenant registration link",
+            "send tenant registration link",
+        }:
+            return self._create_registration_link_for_staff(message_log, conversation, staff_user)
         if lowered in {"upload property photo", "upload property photos", "property photo", "property photos"}:
             return self._start_staff_upload_target_search(
                 conversation,
@@ -1233,33 +1246,9 @@ class WhatsAppAIAssistant:
         return "\n".join(lines)
 
     def _create_registration_link_for_staff(self, message_log, conversation, staff_user):
-        from tenants.models import Tenant
-        from tenants.views import tenant_registration_token
-        from whatsapp.models import WhatsAppExternalLinkToken
-
-        tenant = Tenant.objects.create(
-            first_name="New",
-            last_name="Registration",
-            phone="",
-            email="",
-            cnic=f"NEW{timezone.now().strftime('%y%m%d%H%M%S')}",
-            is_active=False,
-            notes=f"Created from WhatsApp registration link by {staff_user or 'staff'}.",
-        )
-        path = reverse("tenants:tenant_public_registration", args=[tenant_registration_token(tenant)])
+        path = reverse("tenants:tenant_public_registration_new")
         base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
         link = f"{base_url.rstrip('/')}{path}"
-        WhatsAppExternalLinkToken.objects.create(
-            link_type=WhatsAppExternalLinkToken.LINK_TENANT_REGISTRATION,
-            phone_number=message_log.phone_number,
-            tenant=tenant,
-            staff_user=staff_user,
-            target_app_label="tenants",
-            target_model="tenant",
-            target_object_id=tenant.pk,
-            metadata={"generated_link": link},
-            expires_at=timezone.now() + timedelta(days=7),
-        )
         conversation.pending_state = ""
         conversation.save(update_fields=["pending_state", "updated_at"])
         log_staff_action(
@@ -1267,7 +1256,6 @@ class WhatsAppAIAssistant:
             message_log.phone_number,
             "tenant_registration_link_created",
             "allowed",
-            tenant=tenant,
             link=link,
         )
         return (
@@ -2769,7 +2757,9 @@ class WhatsAppAIAssistant:
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
 
         if purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT:
-            return self._stage_payment(message_log, conversation, selected_lease, media, text)
+            return self._prepare_payment_receipt_confirmation(
+                message_log, conversation, selected_lease, media, text
+            )
         if purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
             pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
             notify_staff_pending_request("maintenance", pending)
@@ -3049,11 +3039,177 @@ class WhatsAppAIAssistant:
             return list(identity.active_leases)
         return matches
 
+    def _prepare_payment_receipt_confirmation(
+        self, message_log, conversation, lease, media, text, ocr_json=None
+    ):
+        ocr_json = dict(
+            ocr_json
+            or (run_payment_ocr(media, self.ai_config) if media else extract_payment_text_fields(text))
+        )
+        if not ocr_json.get("amount") or not ocr_json.get("date"):
+            fallback_text = ocr_json.get("text") or ""
+            if _upload_purpose_from_text(text) != PendingWhatsAppMedia.PURPOSE_PAYMENT:
+                fallback_text = f"{fallback_text}\n{text or ''}".strip()
+            extracted = extract_payment_text_fields(fallback_text)
+            for field in ("amount", "date", "reference"):
+                if not ocr_json.get(field) and extracted.get(field):
+                    ocr_json[field] = extracted[field]
+
+        recognized_amount = ocr_json.get("amount")
+        recognized_date = ocr_json.get("date")
+        ocr_json["ocr_amount"] = recognized_amount
+        ocr_json["ocr_date"] = recognized_date
+        media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
+        media.lease = lease or media.lease
+        media.tenant = getattr(media.lease, "tenant", None)
+        media.property = getattr(getattr(media.lease, "unit", None), "property", None)
+        media.unit = getattr(media.lease, "unit", None)
+        media.ai_confidence = max(
+            media.ai_confidence or 0,
+            int(ocr_json.get("confidence") or 0),
+            85 if recognized_amount else 0,
+        )
+        media.ai_notes = (
+            f"{media.ai_notes} Classified as a payment receipt; awaiting sender confirmation."
+        ).strip()
+        media.save(
+            update_fields=[
+                "purpose", "lease", "tenant", "property", "unit",
+                "ai_confidence", "ai_notes", "updated_at",
+            ]
+        )
+
+        review = {
+            "media_id": media.pk,
+            "lease_id": getattr(media.lease, "pk", None),
+            "ocr": _json_safe(ocr_json),
+            "ocr_amount": str(recognized_amount) if recognized_amount is not None else "",
+            "ocr_date": recognized_date.isoformat() if hasattr(recognized_date, "isoformat") else str(recognized_date or ""),
+            "tenant_amount": "",
+            "tenant_date": "",
+            "property_name": getattr(media.property, "property_name", ""),
+            "unit_number": getattr(media.unit, "unit_number", ""),
+        }
+        conversation.pending_state = "payment_receipt_confirmation"
+        conversation.context["payment_receipt_review"] = review
+        conversation.context["pending_media_id"] = media.pk
+        conversation.context.pop("pending_payment_id", None)
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            _payment_receipt_review_text(review),
+            "payment_receipt_confirmation",
+            {"lease": media.lease, "tenant": media.tenant, "pending_media_id": media.pk},
+        )
+
+    def _consume_payment_receipt_confirmation(self, message_log, conversation, text):
+        review = dict((conversation.context or {}).get("payment_receipt_review") or {})
+        if not review:
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "payment_receipt_review", "pending_media_id")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return "The payment receipt review expired. Please upload the image again.", "payment_review_missing", {}
+
+        lowered = (text or "").strip().lower()
+        if lowered in {"cancel", "back", "no"}:
+            conversation.pending_state = ""
+            self._clear_context_keys(conversation, "payment_receipt_review", "pending_media_id")
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            return "Payment submission cancelled. The image remains available for staff review.", "payment_cancelled", {}
+
+        corrected_amount = _payment_amount_correction(text)
+        if corrected_amount is not None:
+            review["tenant_amount"] = str(corrected_amount)
+            conversation.context["payment_receipt_review"] = review
+            conversation.save(update_fields=["context", "updated_at"])
+            return (
+                _payment_receipt_review_text(review, "The payment amount was corrected."),
+                "payment_receipt_correction",
+                {"pending_media_id": review.get("media_id")},
+            )
+
+        corrected_date = _payment_date_correction(text)
+        if corrected_date is not None:
+            review["tenant_date"] = corrected_date.isoformat()
+            conversation.context["payment_receipt_review"] = review
+            conversation.save(update_fields=["context", "updated_at"])
+            return (
+                _payment_receipt_review_text(review, "The payment date was corrected."),
+                "payment_receipt_correction",
+                {"pending_media_id": review.get("media_id")},
+            )
+
+        if not _looks_like_yes(text):
+            return (
+                _payment_receipt_review_text(review, "Please confirm or send a correction."),
+                "payment_receipt_confirmation",
+                {"pending_media_id": review.get("media_id")},
+            )
+
+        final_amount = _review_decimal(review.get("tenant_amount") or review.get("ocr_amount"))
+        final_date = _review_date(review.get("tenant_date") or review.get("ocr_date"))
+        if final_amount is None or final_date is None:
+            missing = "amount and date" if final_amount is None and final_date is None else "amount" if final_amount is None else "date"
+            return (
+                _payment_receipt_review_text(
+                    review,
+                    f"I could not confirm the {missing}. Please correct it first.",
+                ),
+                "payment_receipt_confirmation",
+                {"pending_media_id": review.get("media_id")},
+            )
+
+        media = PendingWhatsAppMedia.objects.filter(
+            pk=review.get("media_id"), status=PendingWhatsAppMedia.STATUS_PENDING
+        ).first()
+        lease = Lease.objects.select_related("tenant", "unit__property").filter(
+            pk=review.get("lease_id"), status="active"
+        ).first()
+        if not media or not lease:
+            return "The receipt or active lease is no longer available. Please upload it again.", "payment_review_missing", {}
+
+        ocr_json = dict(review.get("ocr") or {})
+        ocr_json["amount"] = final_amount
+        ocr_json["date"] = final_date
+        ocr_json["ocr_amount"] = review.get("ocr_amount") or None
+        ocr_json["ocr_date"] = review.get("ocr_date") or None
+        ocr_json["tenant_amount"] = str(final_amount)
+        ocr_json["tenant_date"] = final_date.isoformat()
+        amount_corrected = bool(review.get("tenant_amount"))
+        date_corrected = bool(review.get("tenant_date"))
+        ocr_json["tenant_corrected_amount"] = amount_corrected
+        ocr_json["tenant_corrected_date"] = date_corrected
+        audit_notes = [
+            f"OCR recognized amount: Rs. {review.get('ocr_amount') or 'Not detected'}.",
+            f"Tenant confirmed amount: Rs. {final_amount:,.2f}.",
+            f"OCR recognized date: {review.get('ocr_date') or 'Not detected'}.",
+            f"Tenant confirmed date: {final_date.strftime('%d-%m-%Y')}.",
+        ]
+        if amount_corrected or date_corrected:
+            audit_notes.append("The tenant corrected the OCR result before confirmation.")
+        ocr_json["notes"] = " ".join(
+            part for part in [ocr_json.get("notes", ""), *audit_notes] if part
+        )
+
+        response, _intent, metadata = self._stage_payment(
+            message_log, conversation, lease, media, text, ocr_json=ocr_json
+        )
+        pending = PendingWhatsAppPayment.objects.filter(pk=metadata.get("pending_payment_id")).first()
+        if pending:
+            pending.confirmed_by_tenant = True
+            pending.status = PendingWhatsAppPayment.STATUS_CONFIRMED
+            pending.save(update_fields=["confirmed_by_tenant", "status", "updated_at"])
+        return response, "payment_confirmed", metadata
+
     def _stage_payment(self, message_log, conversation, lease, media, text, ocr_json=None):
         ocr_json = ocr_json or (run_payment_ocr(media, self.ai_config) if media else extract_payment_text_fields(text))
         if not ocr_json.get("amount"):
-            extracted = extract_payment_text_fields((ocr_json.get("text") or "") + "\n" + (text or ""))
-            ocr_json.update(extracted)
+            fallback_text = ocr_json.get("text") or ""
+            if not media:
+                fallback_text += "\n" + (text or "")
+            extracted = extract_payment_text_fields(fallback_text)
+            for field in ("amount", "date", "reference", "raw_text"):
+                if not ocr_json.get(field) and extracted.get(field):
+                    ocr_json[field] = extracted[field]
         match = match_payment_to_active_lease(message_log.phone_number, ocr_json)
         matched_lease = lease or match.get("lease")
         duplicate_note = _payment_duplicate_note(matched_lease, ocr_json)
@@ -3072,9 +3228,9 @@ class WhatsAppAIAssistant:
             date=ocr_json.get("date"),
             reference=ocr_json.get("reference", ""),
             bank_information=ocr_json.get("bank_information") or {"channel": _payment_channel(text or ocr_json.get("raw_text", ""))},
-            ai_confidence=match.get("confidence", 0),
+            ai_confidence=max(int(ocr_json.get("confidence") or 0), match.get("confidence", 0)),
             ai_notes=ai_notes,
-            original_whatsapp_message=message_log,
+            original_whatsapp_message=getattr(media, "original_whatsapp_message", None) or message_log,
             conversation=conversation,
         )
         conversation.pending_state = "" if media else "pending_payment_confirmation"
@@ -3083,6 +3239,7 @@ class WhatsAppAIAssistant:
             "pending_media_id",
             "payment_apply_lease_options",
             "payment_apply_retry_count",
+            "payment_receipt_review",
         )
         conversation.context["pending_payment_id"] = pending.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
@@ -4081,6 +4238,11 @@ def _parse_json_object(raw_text):
 def _ocr_looks_like_payment(ocr_json):
     if not ocr_json:
         return False
+    if "is_payment_receipt" in ocr_json:
+        if ocr_json.get("is_payment_receipt") and int(ocr_json.get("confidence") or 0) >= 35:
+            return True
+        if not ocr_json.get("is_payment_receipt"):
+            return False
     bank_info = ocr_json.get("bank_information") or {}
     text = " ".join(
         str(value or "")
@@ -4088,6 +4250,7 @@ def _ocr_looks_like_payment(ocr_json):
             ocr_json.get("text"),
             ocr_json.get("raw_text"),
             ocr_json.get("description"),
+            ocr_json.get("document_type"),
             ocr_json.get("reference"),
             bank_info.get("bank"),
             bank_info.get("channel"),
@@ -4095,7 +4258,10 @@ def _ocr_looks_like_payment(ocr_json):
             bank_info.get("receiver_name"),
         ]
     ).lower()
-    payment_words = ("payment", "receipt", "sent", "amount", "easypaisa", "jazzcash", "raast", "bank", "account", "transaction")
+    payment_words = (
+        "payment", "receipt", "sent", "amount", "easypaisa", "jazzcash", "raast",
+        "bank", "account", "transaction", "transfer", "transferred", "successful",
+    )
     has_payment_words = any(word in text for word in payment_words)
     return bool(ocr_json.get("amount") and (has_payment_words or int(ocr_json.get("confidence") or 0) >= 50))
 
@@ -4108,19 +4274,6 @@ def _payment_confirmation_text(pending):
         (pending.bank_information or {}).get("receiver_name")
         or (pending.ocr_json or {}).get("sender_name")
         or "Not detected"
-    )
-
-
-def _payment_received_text(pending):
-    amount = f"{pending.amount:,.2f}" if pending.amount is not None else "Not detected"
-    payment_date = pending.date.strftime("%d-%m-%Y") if pending.date else "Not detected"
-    reference = pending.reference or "Not detected"
-    return (
-        "Payment receipt received.\n\n"
-        f"Amount: Rs. {amount}\n"
-        f"Date: {payment_date}\n"
-        f"Reference: {reference}\n\n"
-        "It has been submitted for pending approval. You will receive confirmation shortly after bank verification."
     )
     return (
         "I read this image as a payment receipt.\n\n"
@@ -4136,6 +4289,108 @@ def _payment_received_text(pending):
         "Is this correct? Reply YES to confirm.\n"
         "Reply OTHER if this belongs to another property/unit."
     )
+
+
+def _payment_receipt_review_text(review, notice=""):
+    amount_value = _review_decimal(review.get("tenant_amount") or review.get("ocr_amount"))
+    date_value = _review_date(review.get("tenant_date") or review.get("ocr_date"))
+    amount = f"Rs. {amount_value:,.2f}" if amount_value is not None else "Not detected"
+    payment_date = date_value.strftime("%d-%m-%Y") if date_value else "Not detected"
+    reference = (review.get("ocr") or {}).get("reference") or "Not detected"
+    lines = []
+    if notice:
+        lines.extend([notice, ""])
+    lines.extend(
+        [
+            "I recognized this image as a payment receipt.",
+            "",
+            f"Amount: {amount}",
+            f"Date: {payment_date}",
+            f"Reference: {reference}",
+        ]
+    )
+    if review.get("property_name") or review.get("unit_number"):
+        lines.append(
+            "Apply to: "
+            f"{review.get('property_name') or 'Not detected'} / {review.get('unit_number') or 'Not detected'}"
+        )
+    if review.get("tenant_amount") and review.get("ocr_amount"):
+        original_amount = _review_decimal(review.get("ocr_amount"))
+        if original_amount is not None:
+            lines.append(f"OCR originally read: Rs. {original_amount:,.2f}")
+    if review.get("tenant_date") and review.get("ocr_date"):
+        original_date = _review_date(review.get("ocr_date"))
+        if original_date:
+            lines.append(f"OCR originally read date: {original_date.strftime('%d-%m-%Y')}")
+    lines.extend(
+        [
+            "",
+            "Is this correct? Reply YES to submit it for payment approval.",
+            "To correct it, reply AMOUNT 63580 or DATE 20-07-2026.",
+            "Reply CANCEL to stop.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _payment_received_text(pending):
+    amount = f"{pending.amount:,.2f}" if pending.amount is not None else "Not detected"
+    payment_date = pending.date.strftime("%d-%m-%Y") if pending.date else "Not detected"
+    reference = pending.reference or "Not detected"
+    return (
+        "Payment receipt received.\n\n"
+        f"Amount: Rs. {amount}\n"
+        f"Date: {payment_date}\n"
+        f"Reference: {reference}\n\n"
+        "It has been submitted for pending approval. You will receive confirmation shortly after bank verification."
+    )
+
+
+def _payment_amount_correction(text):
+    match = re.fullmatch(
+        r"\s*(?:(?:correct(?:ed)?\s+)?amount(?:\s+is)?|rs\.?|pkr)?\s*[:=-]?\s*"
+        r"([0-9][0-9,]*(?:\.\d{1,2})?)\s*",
+        text or "",
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        amount = Decimal(match.group(1).replace(",", ""))
+    except (ValueError, ArithmeticError):
+        return None
+    return amount if amount > 0 else None
+
+
+def _payment_date_correction(text):
+    match = re.fullmatch(
+        r"\s*(?:date(?:\s+is)?\s*[:=-]?\s*)?"
+        r"(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s*",
+        text or "",
+        flags=re.IGNORECASE,
+    )
+    return _review_date(match.group(1)) if match else None
+
+
+def _review_decimal(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value).replace(",", ""))
+    except (ValueError, ArithmeticError):
+        return None
+
+
+def _review_date(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    for date_format in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return timezone.datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _media_confirmation_text(media):

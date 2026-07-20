@@ -41,9 +41,8 @@
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
     gap: .4rem .75rem; margin-top: .5rem; font-size: .78rem; color: #6c757d;
   }
-  .ticket-card-meta-left { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: .6rem; min-width: 0; }
+  .ticket-card-meta-left { display: flex; flex-wrap: wrap; gap: .6rem; }
   .ticket-card-meta .btn { padding: .25rem .5rem; font-size: .85rem; line-height: 1; }
-  .ticket-card-meta .js-ticket-delete { flex: 0 0 auto; margin-left: auto; }
   @media (max-width: 999.98px) {
     .ticket-table-card { display: none; }
     .ticket-cards { display: block; }
@@ -60,9 +59,9 @@
 <div class="ticket-page">
   <div class="d-flex justify-content-between align-items-center mb-2 ticket-hdr">
     <h5 class="mb-0">Suggestions / Report Errors</h5>
-    <a href="{% url 'core:suggestion_create' %}" class="btn btn-primary btn-sm">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newTicketModal">
       <i class="bi bi-plus-circle"></i> New
-    </a>
+    </button>
   </div>
 
   <form method="get" class="card card-body shadow-sm mb-2 py-2 ticket-filters">
@@ -427,35 +426,6 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
       showError(err && err.message ? err.message : "Invalid photo.");
     }
-  });
-});
-</script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const description = document.querySelector("#newTicketModal textarea[name='description']");
-  if (!description) return;
-
-  description.addEventListener("focus", function () {
-    if (!description.value.trim()) {
-      description.value = "1. ";
-      description.setSelectionRange(description.value.length, description.value.length);
-    }
-  });
-
-  description.addEventListener("keydown", function (event) {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    const cursor = description.selectionStart;
-    const lineStart = description.value.lastIndexOf("\n", cursor - 1) + 1;
-    const currentLine = description.value.slice(lineStart, cursor);
-    const match = currentLine.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
-    if (!match) return;
-
-    event.preventDefault();
-    if (!match[3].trim()) {
-      description.setRangeText("", lineStart, cursor, "end");
-      return;
-    }
-    description.setRangeText("\n" + match[1] + (Number(match[2]) + 1) + ". ", cursor, cursor, "end");
   });
 });
 </script>

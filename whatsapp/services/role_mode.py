@@ -176,7 +176,8 @@ def staff_menu_text(user=None):
         "8. Search\n"
         "9. Switch Mode\n"
         "10. Suggestion / advice"
-        f"{simulator_option}\n\n"
+        f"{simulator_option}\n"
+        "12. New Tenant Registration\n\n"
         "Type Pending Requests to view WhatsApp items waiting for review.\n\n"
         "Reply with a number or type your request."
     )

@@ -162,7 +162,7 @@ def guest_menu_text():
 
 
 def staff_menu_text(user=None):
-    simulator_option = "\n11. Tenant <phone or tenant number> (read-only)" if staff_can_simulate_tenant(user) else ""
+    simulator_option = "\n11. Act as Tenant <phone or tenant number> (live until EXIT)" if staff_can_simulate_tenant(user) else ""
     return (
         "Staff Inbox / Menu\n\n"
         "Type Handovers to view tenant handovers.\n\n"
@@ -231,7 +231,7 @@ def staff_submenu_text(text):
             "2. Renew Lease\n"
             "3. End Lease\n"
             "4. View Lease\n"
-            "5. Upload Lease Document\n"
+            "5. Upload Lease Document / Photos\n"
             "6. Lease Ledger\n"
             "7. Lease Balance\n"
             "8. Agreement View/Edit\n"

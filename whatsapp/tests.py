@@ -664,7 +664,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("Lease Balance", response)
         self.assertIn(self.unit.unit_number, response)
 
-    def test_selected_staff_can_run_read_only_tenant_simulator_and_exit(self):
+    def test_selected_staff_can_act_as_tenant_with_live_actions_and_exit(self):
         WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
@@ -687,7 +687,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         response, start_intent, _metadata = assistant._handle(start_log, conversation)
 
         self.assertEqual(start_intent, "staff")
-        self.assertIn("TENANT TEST - READ ONLY", response)
+        self.assertIn("ACTING AS TENANT (LIVE)", response)
         conversation.refresh_from_db()
         self.assertEqual(conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk)
         simulated_identity = resolve_sender(self.staff1.whatsapp_number, conversation=conversation)
@@ -702,9 +702,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             status=WhatsAppMessageLog.STATUS_RECEIVED,
             payload={"type": "text", "text": {"body": "maintenance request"}},
         )
-        blocked_response, blocked_intent, _metadata = assistant._handle(maintenance_log, conversation)
-        self.assertEqual(blocked_intent, "staff_tenant_simulation_read_only")
-        self.assertIn("read-only", blocked_response)
+        live_response, live_intent, _metadata = assistant._handle(maintenance_log, conversation)
+        self.assertNotEqual(live_intent, "staff_tenant_simulation_read_only")
+        self.assertNotIn("read-only", live_response.lower())
 
         exit_log = WhatsAppMessageLog.objects.create(
             direction=WhatsAppMessageLog.DIRECTION_INBOUND,
@@ -743,8 +743,85 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         self.assertEqual(intent, "staff")
-        self.assertIn("TENANT TEST - READ ONLY", response)
+        self.assertIn("ACTING AS TENANT (LIVE)", response)
         self.assertIn(self.tenant.get_full_name(), response)
+
+    def test_tenant_assist_replies_to_staff_number_with_selected_location(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
+        self.staff1.groups.add(simulator_group)
+        service = MagicMock()
+        assistant = WhatsAppAIAssistant(service=service)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            pending_state="mode_selection",
+        )
+        start_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.assist.location.start",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": f"Tenant {self.tenant.phone}"}},
+        )
+        assistant._handle(start_log, conversation)
+        conversation.refresh_from_db()
+        conversation.mode_expires_at = timezone.now() - timedelta(minutes=1)
+        conversation.save(update_fields=["mode_expires_at", "updated_at"])
+        service.reset_mock()
+        menu_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.assist.location.menu",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "menu"}},
+        )
+
+        assistant.handle_inbound_message(menu_log)
+
+        sent_phone, sent_text = service.send_text.call_args.args[:2]
+        self.assertEqual(sent_phone, self.staff1.whatsapp_number)
+        self.assertIn("ACTING AS TENANT (LIVE)", sent_text)
+        self.assertIn(f"{self.property.property_name} / {self.unit.unit_number}", sent_text)
+        self.assertIn("Type EXIT", sent_text)
+
+    def test_staff_lease_menu_exposes_and_selects_lease_photo_upload(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            pending_state="staff_lease_management",
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+
+        kind_menu = assistant._consume_staff_menu_state(
+            self.message, conversation, "5", self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn("Lease Photos", kind_menu)
+        self.assertEqual(conversation.pending_state, "staff_lease_upload_kind")
+
+        property_menu = assistant._consume_staff_menu_state(
+            self.message, conversation, "2", self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn(self.property.property_name, property_menu)
+        self.assertEqual(conversation.context["staff_lease_target"]["action"], "lease_photo")
+
+        assistant._consume_staff_menu_state(self.message, conversation, "1", self.staff1)
+        conversation.refresh_from_db()
+        assistant._consume_staff_menu_state(self.message, conversation, "1", self.staff1)
+        conversation.refresh_from_db()
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertEqual(
+            conversation.context["staff_upload_kind"],
+            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+        )
+        self.assertEqual(conversation.context["staff_upload_lease_id"], self.lease.pk)
 
     def test_tenant_account_selection_shows_property_and_opens_without_cnic_step(self):
         second_tenant = Tenant.objects.create(

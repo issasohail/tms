@@ -16,10 +16,10 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import signing
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import EmailMessage
 from django.core.signing import BadSignature, SignatureExpired
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import (
     Case,
     DecimalField,
@@ -88,6 +88,7 @@ from .models import (
     PendingRegistrationPerson,
     Tenant,
     TenantRegistrationSubmission,
+    TenantRegistrationSubmissionAudit,
 )
 from .tables import (
     LedgerTable,  # We'll create this later
@@ -675,6 +676,7 @@ def _registration_submission_comparison(submission):
                 "existing": existing_display,
                 "submitted": submitted_display,
                 "changed": changed,
+                "is_phone": field_name in phone_fields,
             }
         )
 
@@ -887,13 +889,15 @@ def tenant_public_registration_update(request, token):
         "notes": tenant.notes,
     }
     if request.method == "POST":
-        form = TenantPublicRegistrationForm(request.POST, request.FILES)
+        form = TenantPublicRegistrationForm(
+            request.POST, request.FILES, role_data=request.POST
+        )
         if form.is_valid():
             Tenant.objects.select_for_update().get(pk=tenant.pk)
             existing_pending = (
                 TenantRegistrationSubmission.objects.filter(
                     tenant=tenant,
-                    status="pending",
+                    status__in=TenantRegistrationSubmission.EDITABLE_STATUSES,
                 )
                 .order_by("-submitted_at")
                 .first()
@@ -1084,9 +1088,24 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
                 args=[tenant_registration_token(self.object.tenant)],
             )
         )
-        context["pending_vehicle_submissions"] = (
+        pending_vehicles = list(
             self.object.pending_vehicle_submissions.select_related("vehicle_type")
         )
+        for vehicle in pending_vehicles:
+            duplicate = (
+                LeaseVehicle.objects.filter(
+                    registration_number__iexact=vehicle.registration_number,
+                    is_active=True,
+                    lease__status="active",
+                )
+                .select_related("lease", "tenant")
+                .first()
+            )
+            vehicle.duplicate_warning = (
+                f"Already active on Lease #{duplicate.lease_id} for {duplicate.tenant}."
+                if duplicate else ""
+            )
+        context["pending_vehicle_submissions"] = pending_vehicles
         context["pending_people"] = self.object.pending_people.select_related(
             "matched_tenant", "processed_tenant"
         )
@@ -1099,97 +1118,246 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         context["identity_documents"] = _registration_identity_documents(
             self.object
         )
+        from tenants.services.registration_workflow import applicant_cnic_conflict
+
+        context["cnic_conflict"] = applicant_cnic_conflict(self.object)
+        context["can_edit_submission"] = (
+            self.object.is_editable
+            and self.request.user.has_perm("tenants.change_tenantregistrationsubmission")
+        )
+        context["can_apply_submission"] = (
+            context["can_edit_submission"]
+            and self.request.user.has_perm("tenants.change_tenant")
+        )
+        context["audit_entries"] = self.object.audit_entries.select_related("edited_by")[:10]
         return context
 
 
 @login_required
 @require_POST
+@transaction.atomic
 def tenant_registration_submission_review(request, pk):
-    submission = get_object_or_404(TenantRegistrationSubmission, pk=pk)
-    form = TenantRegistrationSubmissionReviewForm(request.POST, instance=submission)
-    if form.is_valid():
+    if not request.user.has_perm("tenants.change_tenantregistrationsubmission"):
+        raise PermissionDenied
+    submission = get_object_or_404(
+        TenantRegistrationSubmission.objects.select_for_update(), pk=pk
+    )
+    action = request.POST.get("action") or "save_review"
+    if not submission.is_editable:
+        messages.error(request, "This submission is no longer editable or has already created a lease.")
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+
+    if action == "save_review":
+        form = TenantRegistrationSubmissionReviewForm(request.POST, instance=submission)
+        if not form.is_valid():
+            messages.error(request, "Could not update registration submission.")
+            return redirect("tenants:registration_submission_detail", pk=submission.pk)
+        old_values = {"status": submission.status, "admin_notes": submission.admin_notes}
         obj = form.save(commit=False)
+        if obj.status in {obj.STATUS_APPROVED, obj.STATUS_PROCESSING}:
+            messages.error(request, "Use the approval action to apply applicant data.")
+            return redirect("tenants:registration_submission_detail", pk=submission.pk)
         obj.reviewed_by = request.user
         obj.reviewed_at = timezone.now()
         obj.save()
-        if obj.status == "approved":
-            tenant = obj.tenant
-            tenant.is_active = True
-            allowed = [
-                "prefix",
-                "first_name",
-                "relation",
-                "last_name",
-                "email",
-                "phone",
-                "phone2",
-                "phone3",
-                "cnic",
-                "occupation",
-                "employer_name",
-                "employer_phone",
-                "employer_address",
-                "reference_name_1",
-                "reference_phone_1",
-                "reference_relation_1",
-                "reference_name_2",
-                "reference_phone_2",
-                "reference_relation_2",
-                "nationality",
-                "city",
-                "province",
-                "country",
-                "gender",
-                "date_of_birth",
-                "address",
-                "temporary_address",
-                "permanent_address",
-                "working_address",
-                "emergency_contact_name",
-                "emergency_contact_phone",
-                "emergency_contact_relation",
-                "number_of_family_member",
-                "family_member_adults",
-                "family_member_children",
-                "nadra_family_no",
-                "notes",
-            ]
-            for field in allowed:
-                value = obj.submitted_data.get(field, getattr(tenant, field))
-                if field == "date_of_birth" and value:
-                    value = parse_date(value)
-                setattr(tenant, field, value)
-            if obj.photo:
-                tenant.photo = obj.photo
-            if obj.cnic_front:
-                tenant.cnic_front = obj.cnic_front
-            if obj.cnic_back:
-                tenant.cnic_back = obj.cnic_back
-            tenant.save()
-            if "interested_in" in obj.submitted_data:
-                tenant.interested_in.set(obj.submitted_data.get("interested_in") or [])
-            family_count = _apply_family_members_from_submission(
-                tenant,
-                obj.submitted_data.get("family_members", []),
-            )
-            family_updates_applied = _apply_pending_family_person_updates(obj, tenant)
-            if family_count:
-                messages.success(
-                    request, f"{family_count} family member relationship(s) saved."
-                )
-            if family_updates_applied:
-                messages.success(
-                    request,
-                    f"{family_updates_applied} family member update(s) applied.",
-                )
-            messages.success(
-                request, "Tenant registration update approved and applied."
-            )
+        TenantRegistrationSubmissionAudit.objects.create(
+            submission=obj,
+            edited_by=request.user,
+            action="save_review",
+            changes={
+                key: {"old": old_values[key], "new": getattr(obj, key)}
+                for key in old_values if old_values[key] != getattr(obj, key)
+            },
+        )
+        messages.success(request, "Tenant registration submission updated.")
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+
+    from tenants.services.registration_workflow import (
+        applicant_cnic_conflict,
+        apply_registration_applicant,
+    )
+
+    conflict = applicant_cnic_conflict(submission)
+    if action == "reject_collision":
+        reason = (request.POST.get("rejection_reason") or "").strip()
+        if not conflict or not reason:
+            messages.error(request, "A rejection reason is required for the CNIC conflict.")
+            return redirect("tenants:registration_submission_detail", pk=submission.pk)
+        old_status = submission.status
+        submission.status = submission.STATUS_REJECTED
+        submission.admin_notes = reason
+        submission.reviewed_by = request.user
+        submission.reviewed_at = timezone.now()
+        submission.save(update_fields=["status", "admin_notes", "reviewed_by", "reviewed_at"])
+        TenantRegistrationSubmissionAudit.objects.create(
+            submission=submission,
+            edited_by=request.user,
+            action="reject_cnic_collision",
+            changes={"status": {"old": old_status, "new": submission.status}, "reason": {"old": "", "new": reason}},
+        )
+        messages.success(request, "Registration rejected without changing either tenant.")
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+
+    if action != "approve_and_create_lease":
+        messages.error(request, "Unknown review action.")
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+    if not request.user.has_perm("tenants.change_tenant"):
+        raise PermissionDenied
+
+    comparison = _registration_submission_comparison(submission)
+    decisions = dict(submission.field_decisions or {})
+    missing = []
+    for row in comparison:
+        if not row["changed"]:
+            continue
+        decision = request.POST.get(f"decision_{row['field']}")
+        if decision not in {"keep_existing", "accept_submitted"}:
+            missing.append(row["label"])
         else:
-            messages.success(request, "Tenant registration submission updated.")
+            decisions[row["field"]] = decision
+    if missing:
+        messages.error(request, "Choose a decision for: " + ", ".join(missing))
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+    collision_action = request.POST.get("collision_action") or ""
+    if conflict and collision_action != "merge":
+        messages.error(request, f"CNIC matches Tenant #{conflict.pk}; explicitly choose merge or reject.")
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+
+    submission.field_decisions = decisions
+    submission.status = submission.STATUS_PROCESSING
+    submission.reviewed_by = request.user
+    submission.reviewed_at = timezone.now()
+    submission.save(update_fields=["field_decisions", "status", "reviewed_by", "reviewed_at"])
+    shell_id = submission.tenant_id
+    try:
+        with transaction.atomic():
+            tenant, merged_tenant = apply_registration_applicant(
+                submission, collision_action=collision_action
+            )
+    except (IntegrityError, ValidationError) as exc:
+        submission.status = submission.STATUS_PROCESSING_FAILED
+        submission.admin_notes = str(exc)
+        submission.save(update_fields=["status", "admin_notes"])
+        TenantRegistrationSubmissionAudit.objects.create(
+            submission=submission,
+            edited_by=request.user,
+            action="processing_failed",
+            changes={"error": {"old": "", "new": str(exc)}},
+        )
+        messages.error(request, f"Approval failed safely: {exc}")
+        return redirect("tenants:registration_submission_detail", pk=submission.pk)
+    submission.status = submission.STATUS_APPROVED
+    submission.save(update_fields=["status"])
+    TenantRegistrationSubmissionAudit.objects.create(
+        submission=submission,
+        edited_by=request.user,
+        action="approve_and_merge" if merged_tenant else "approve",
+        changes={
+            "field_decisions": {"old": {}, "new": decisions},
+            "tenant_id": {"old": shell_id, "new": tenant.pk},
+        },
+    )
+    messages.success(request, "Registration approved. Complete the existing lease setup form to create the lease.")
+    return redirect(
+        f"{reverse('leases:lease_create')}?pending_registration_submission={submission.pk}&tenant={tenant.pk}"
+    )
+
+
+@login_required
+@transaction.atomic
+def tenant_registration_submission_edit(request, pk):
+    if not request.user.has_perm("tenants.change_tenantregistrationsubmission"):
+        raise PermissionDenied
+    submission = get_object_or_404(
+        TenantRegistrationSubmission.objects.select_for_update().prefetch_related("pending_people"),
+        pk=pk,
+    )
+    if not submission.is_editable:
+        return HttpResponse("This submission is not editable.", status=409)
+
+    people = list(submission.pending_people.all())
+    role_prefix = {
+        PendingRegistrationPerson.ROLE_PROPOSER: "proposer",
+        PendingRegistrationPerson.ROLE_SECONDER: "seconder",
+        PendingRegistrationPerson.ROLE_WITNESS_1: "witness1",
+        PendingRegistrationPerson.ROLE_WITNESS_2: "witness2",
+    }
+    for person in people:
+        person.edit_prefix = role_prefix.get(person.role, f"person-{person.pk}")
+    if request.method == "POST":
+        form = TenantPublicRegistrationForm(request.POST, request.FILES, role_data=request.POST)
+        if form.is_valid():
+            old_data = dict(submission.submitted_data or {})
+            new_data = form.cleaned_data.copy()
+            new_data["interested_in"] = [item.pk for item in new_data.get("interested_in", [])]
+            if new_data.get("date_of_birth"):
+                new_data["date_of_birth"] = new_data["date_of_birth"].isoformat()
+            for file_field in ("photo", "cnic_front", "cnic_back"):
+                new_data.pop(file_field, None)
+                if request.FILES.get(file_field):
+                    setattr(submission, file_field, request.FILES[file_field])
+            new_data["family_members"] = old_data.get("family_members", [])
+            submission.submitted_data = new_data
+            submission.save()
+
+            changes = {
+                f"applicant.{field}": {"old": old_data.get(field), "new": new_value}
+                for field, new_value in new_data.items()
+                if old_data.get(field) != new_value
+            }
+            from tenants.services.registration_workflow import match_tenant_by_cnic, proposed_changes
+
+            for person in people:
+                prefix = role_prefix.get(person.role, f"person-{person.pk}")
+                old_person = {
+                    field: str(getattr(person, field) or "")
+                    for field in (
+                        "first_name", "last_name", "father_husband_name", "cnic",
+                        "phone", "date_of_birth", "address", "relationship",
+                        "relationship_type_id", "photo", "cnic_front", "cnic_back",
+                    )
+                }
+                for field in (
+                    "first_name", "last_name", "father_husband_name", "cnic",
+                    "phone", "address", "relationship",
+                ):
+                    setattr(person, field, (request.POST.get(f"{prefix}-{field}") or "").strip())
+                person.date_of_birth = parse_date(
+                    request.POST.get(f"{prefix}-date_of_birth") or ""
+                )
+                relationship_type = request.POST.get(f"{prefix}-relationship_type") or None
+                person.relationship_type_id = (
+                    int(relationship_type)
+                    if relationship_type and str(relationship_type).isdigit()
+                    else None
+                )
+                for file_field in ("photo", "cnic_front", "cnic_back"):
+                    if request.FILES.get(f"{prefix}-{file_field}"):
+                        setattr(person, file_field, request.FILES[f"{prefix}-{file_field}"])
+                if old_person["cnic"] != str(person.cnic or ""):
+                    person.matched_tenant = match_tenant_by_cnic(person.cnic)
+                person.proposed_updates = proposed_changes(person)
+                person.save()
+                for field, old_value in old_person.items():
+                    new_value = str(getattr(person, field) or "")
+                    if old_value != new_value:
+                        changes[f"{prefix}.{field}"] = {"old": old_value, "new": new_value}
+            TenantRegistrationSubmissionAudit.objects.create(
+                submission=submission,
+                edited_by=request.user,
+                action="edit",
+                changes=changes,
+            )
+            messages.success(request, "Registration submission edits saved.")
+            return redirect("tenants:registration_submission_detail", pk=submission.pk)
     else:
-        messages.error(request, "Could not update registration submission.")
-    return redirect("tenants:registration_submission_detail", pk=submission.pk)
+        form = TenantPublicRegistrationForm(initial=submission.submitted_data)
+
+    return render(
+        request,
+        "tenants/registration_submission_edit.html",
+        {"submission": submission, "form": form, "people": people, "role_prefix": role_prefix},
+    )
 
 
 def get_units_by_property(request):
@@ -2824,7 +2992,9 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             _tenant_list_public_registration_payload(self.request)
         )
         context["pending_registration_count"] = (
-            TenantRegistrationSubmission.objects.filter(status="pending").count()
+            TenantRegistrationSubmission.objects.filter(
+                status__in=TenantRegistrationSubmission.EDITABLE_STATUSES
+            ).count()
         )
         active_lease_exists = Lease.objects.filter(
             tenant_id=OuterRef("pk"), status="active"

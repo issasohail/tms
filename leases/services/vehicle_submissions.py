@@ -72,6 +72,43 @@ def create_pending_vehicle_submissions_from_post(
             errors.append(f"Vehicle {index + 1}: registration number is required.")
             continue
 
+        duplicate_pending = PendingLeaseVehicleSubmission.objects.filter(
+            registration_number__iexact=registration_number,
+            status=PendingLeaseVehicleSubmission.STATUS_PENDING,
+        )
+        if pending_tenant_submission is not None:
+            duplicate_pending = duplicate_pending.filter(
+                pending_tenant_submission=pending_tenant_submission
+            )
+        elif lease is not None:
+            duplicate_pending = duplicate_pending.filter(lease=lease)
+        elif tenant is not None:
+            duplicate_pending = duplicate_pending.filter(tenant=tenant)
+        if duplicate_pending.exists() or any(
+            item.registration_number.lower() == registration_number.lower()
+            for item in created
+        ):
+            errors.append(
+                f"Vehicle {index + 1}: registration number {registration_number} is already in this submission."
+            )
+            continue
+
+        existing_vehicle = LeaseVehicle.objects.filter(
+            registration_number__iexact=registration_number,
+            is_active=True,
+        ).select_related("lease", "tenant").first()
+        if existing_vehicle:
+            if lease is not None and existing_vehicle.lease_id == lease.pk:
+                message = "already exists on this lease"
+            elif existing_vehicle.lease.status == "active":
+                message = f"is already on active Lease #{existing_vehicle.lease_id}"
+            elif tenant is not None and existing_vehicle.tenant_id == tenant.pk:
+                message = "is already registered for this tenant"
+            else:
+                message = "already exists as an active vehicle record"
+            errors.append(f"Vehicle {index + 1}: registration number {registration_number} {message}.")
+            continue
+
         year = None
         if values["year"]:
             try:

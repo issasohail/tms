@@ -145,7 +145,7 @@ class TenantPublicRegistrationForm(forms.Form):
     relation = forms.ChoiceField(required=False, choices=[("S/O.", "S/O."), ("D/O.", "D/O."), ("W/O.", "W/O."), ("H/O.", "H/O."), ("C/O.", "C/O."), ("", "Other / None")], widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
     last_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
-    phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
+    phone = forms.CharField(required=True, widget=forms.TextInput(attrs={"class": "form-control form-control-sm", "required": True, "aria-required": "true"}))
     phone2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     phone3 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     cnic = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
@@ -196,6 +196,7 @@ class TenantPublicRegistrationForm(forms.Form):
     }))
 
     def __init__(self, *args, **kwargs):
+        self.role_data = kwargs.pop("role_data", None)
         super().__init__(*args, **kwargs)
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         for field_name in (
@@ -215,19 +216,63 @@ class TenantPublicRegistrationForm(forms.Form):
         self.fields["employer_address"].label = "Employer Address"
         add_auto_titlecase_class(self.fields)
 
+    def _clean_phone_field(self, field_name, required=False):
+        value = normalize_phone(self.cleaned_data.get(field_name))
+        if required and not value:
+            raise ValidationError("Enter a valid phone number containing digits.")
+        return value
+
+    def clean_phone(self):
+        return self._clean_phone_field("phone", required=True)
+
+    def clean_phone2(self):
+        return self._clean_phone_field("phone2")
+
+    def clean_phone3(self):
+        return self._clean_phone_field("phone3")
+
+    def clean_employer_phone(self):
+        return self._clean_phone_field("employer_phone")
+
+    def clean_reference_phone_1(self):
+        return self._clean_phone_field("reference_phone_1")
+
+    def clean_reference_phone_2(self):
+        return self._clean_phone_field("reference_phone_2")
+
+    def clean_emergency_contact_phone(self):
+        return self._clean_phone_field("emergency_contact_phone")
+
     def clean(self):
         cleaned = super().clean()
-        for field_name in (
-            "phone", "phone2", "phone3", "employer_phone", "reference_phone_1",
-            "reference_phone_2", "emergency_contact_phone",
-        ):
-            cleaned[field_name] = normalize_phone(cleaned.get(field_name))
         cnic = normalize_cnic(cleaned.get("cnic"))
         try:
             validate_cnic(cnic)
         except ValidationError as exc:
             self.add_error("cnic", exc)
         cleaned["cnic"] = cnic
+        if "phone" in self.errors:
+            raise ValidationError("Please correct the required applicant phone number before submitting.")
+        if self.role_data is not None:
+            role_errors = []
+            for prefix, label, always_required in (
+                ("proposer", "Proposer", True),
+                ("seconder", "Seconder", True),
+                ("witness1", "Witness 1", False),
+                ("witness2", "Witness 2", False),
+            ):
+                values = [
+                    (self.role_data.get(f"{prefix}-{field}") or "").strip()
+                    for field in ("first_name", "last_name", "cnic", "phone")
+                ]
+                has_any_data = any(values)
+                phone = normalize_phone(values[-1])
+                if (always_required or has_any_data) and not phone:
+                    role_errors.append(f"{label} phone is required and must contain digits.")
+                elif len(phone) > 32:
+                    role_errors.append(f"{label} phone is too long.")
+            if role_errors:
+                raise ValidationError(role_errors)
         return cleaned
 
 

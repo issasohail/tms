@@ -1410,6 +1410,22 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             full_name=Concat("first_name", Value(" "), "last_name")
         ).order_by(Lower("full_name"), "id")
 
+        pending_id = self.request.GET.get("pending_registration_submission")
+        if self.request.method == "GET" and pending_id:
+            from tenants.models import TenantRegistrationSubmission
+
+            pending = TenantRegistrationSubmission.objects.filter(
+                pk=pending_id,
+                status__in=[
+                    TenantRegistrationSubmission.STATUS_PENDING,
+                    TenantRegistrationSubmission.STATUS_APPROVED,
+                ],
+                created_lease__isnull=True,
+            ).first()
+            if pending:
+                form.fields["pending_registration_submission"].initial = pending.pk
+                form.fields["tenant"].initial = pending.tenant_id
+
         # property/unit prefill supports links from Unit Detail.
         prop_id = self.request.POST.get("property") or self.request.GET.get("property")
         unit_id = self.request.POST.get("unit") or self.request.GET.get("unit")
@@ -1500,6 +1516,7 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         return ctx
 
     # ---------- Main SAVE logic ----------
+    @transaction.atomic
     def form_valid(self, form):
         """
         CREATE logic:
@@ -1513,6 +1530,20 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         """
         confirmed = self.request.POST.get("confirm_billing") == "1"
         debug_sql = self.request.GET.get("debug_sql") == "1"
+        pending_submission = form.cleaned_data.get("pending_registration_submission")
+        if confirmed and pending_submission:
+            from tenants.models import TenantRegistrationSubmission
+
+            pending_submission = TenantRegistrationSubmission.objects.select_for_update().get(
+                pk=pending_submission.pk
+            )
+            if pending_submission.created_lease_id:
+                messages.info(
+                    self.request,
+                    f"This registration already created Lease #{pending_submission.created_lease_id}.",
+                )
+                return redirect("leases:lease_detail", pk=pending_submission.created_lease_id)
+            form.cleaned_data["pending_registration_submission"] = pending_submission
 
         # Family formset
         family_fs = LeaseFamilyFormSet(
@@ -1572,7 +1603,6 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             self.object,
             user=self.request.user if self.request.user.is_authenticated else None,
         )
-        pending_submission = form.cleaned_data.get("pending_registration_submission")
         if pending_submission:
             from tenants.services.registration_workflow import attach_registration_to_lease
             with transaction.atomic():
@@ -1580,7 +1610,8 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 pending_submission.status = "approved"
                 pending_submission.reviewed_by = self.request.user
                 pending_submission.reviewed_at = timezone.now()
-                pending_submission.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+                pending_submission.created_lease = self.object
+                pending_submission.save(update_fields=["status", "reviewed_by", "reviewed_at", "created_lease"])
             messages.success(self.request, f"Pending registration linked: {len(workflow_result['people'])} people and {workflow_result['vehicles']} vehicles.")
 
         # Family links

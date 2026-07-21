@@ -55,6 +55,11 @@ urlpatterns = [
         name="registration_submission_review",
     ),
     path(
+        "registration-submissions/<int:pk>/edit/",
+        views.tenant_registration_submission_edit,
+        name="registration_submission_edit",
+    ),
+    path(
         "<int:pk>/lead-inline-update/",
         views.tenant_lead_inline_update,
         name="tenant_lead_inline_update",

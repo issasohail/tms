@@ -392,11 +392,27 @@ class Tenant(models.Model):
 
 
 class TenantRegistrationSubmission(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_NEEDS_INFORMATION = "needs_information"
+    STATUS_READY_FOR_APPROVAL = "ready_for_approval"
+    STATUS_PROCESSING = "processing"
+    STATUS_PROCESSING_FAILED = "processing_failed"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
     STATUS_CHOICES = [
-        ("pending", "Pending"),
-        ("approved", "Approved"),
-        ("rejected", "Rejected"),
+        (STATUS_PENDING, "Pending"),
+        (STATUS_NEEDS_INFORMATION, "Needs Information"),
+        (STATUS_READY_FOR_APPROVAL, "Ready for Approval"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_PROCESSING_FAILED, "Processing Failed"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
     ]
+    EDITABLE_STATUSES = {
+        STATUS_PENDING,
+        STATUS_NEEDS_INFORMATION,
+        STATUS_READY_FOR_APPROVAL,
+    }
 
     tenant = models.ForeignKey(
         Tenant,
@@ -418,6 +434,14 @@ class TenantRegistrationSubmission(models.Model):
         related_name="reviewed_tenant_registration_submissions",
     )
     admin_notes = models.TextField(blank=True, default="")
+    field_decisions = models.JSONField(default=dict, blank=True)
+    created_lease = models.OneToOneField(
+        "leases.Lease",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="registration_submission",
+    )
 
     class Meta:
         ordering = ["-submitted_at"]
@@ -443,6 +467,31 @@ class TenantRegistrationSubmission(models.Model):
         for field_name in ("photo", "cnic_front", "cnic_back"):
             compress_instance_file_field(self, field_name)
         super().save(*args, **kwargs)
+
+    @property
+    def is_editable(self):
+        return self.status in self.EDITABLE_STATUSES and not self.created_lease_id
+
+
+class TenantRegistrationSubmissionAudit(models.Model):
+    submission = models.ForeignKey(
+        TenantRegistrationSubmission,
+        on_delete=models.CASCADE,
+        related_name="audit_entries",
+    )
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenant_registration_submission_edits",
+    )
+    edited_at = models.DateTimeField(auto_now_add=True)
+    action = models.CharField(max_length=40, default="edit")
+    changes = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["-edited_at", "-id"]
 
 
 

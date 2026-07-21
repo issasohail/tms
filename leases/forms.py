@@ -161,7 +161,9 @@ class LeaseForm(forms.ModelForm):
                 property=self.instance.unit.property
             )
         from tenants.models import TenantRegistrationSubmission
-        self.fields["pending_registration_submission"].queryset = TenantRegistrationSubmission.objects.filter(status__in=["pending", "approved"]).select_related("tenant").order_by("-submitted_at")
+        self.fields["pending_registration_submission"].queryset = TenantRegistrationSubmission.objects.filter(
+            status__in=["pending", "approved"], created_lease__isnull=True
+        ).select_related("tenant").order_by("-submitted_at")
         add_auto_titlecase_class(self.fields)
 
     def clean(self):
@@ -182,6 +184,12 @@ class LeaseForm(forms.ModelForm):
         if start_date and end_date and end_date < start_date:
             raise forms.ValidationError("End date cannot be before start date")
         tenant = cleaned_data.get("tenant")
+        pending_submission = cleaned_data.get("pending_registration_submission")
+        if pending_submission and tenant and pending_submission.tenant_id != tenant.pk:
+            self.add_error(
+                "tenant",
+                "Tenant must match the selected pending registration submission.",
+            )
         proposer = cleaned_data.get("proposer")
         seconder = cleaned_data.get("seconder")
         if tenant and proposer == tenant:

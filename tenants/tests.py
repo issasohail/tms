@@ -108,3 +108,218 @@ class PendingRegistrationWorkflowTests(SimpleTestCase):
     def test_role_history_url_exists_in_urlconf(self):
         from django.urls import reverse
         self.assertTrue(reverse("tenants:tenant_role_history", args=[25]).endswith("/tenants/25/role-history/"))
+
+
+class RegistrationOnboardingTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Permission
+
+        self.user = get_user_model().objects.create_user(
+            "reviewer", email="reviewer@example.com", password="test-pass"
+        )
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="change_tenantregistrationsubmission"),
+            Permission.objects.get(codename="change_tenant"),
+        )
+
+    def make_shell(self):
+        from tenants.models import Tenant
+
+        return Tenant.objects.create(
+            first_name="New",
+            last_name="Registration",
+            phone="03001234567",
+            cnic="",
+            is_active=False,
+        )
+
+    def public_post_data(self, **overrides):
+        data = {
+            "first_name": "Applicant",
+            "last_name": "Person",
+            "phone": "03001234567",
+            "proposer-phone": "03001111111",
+            "seconder-phone": "03002222222",
+            "vehicle-TOTAL_FORMS": "0",
+        }
+        data.update(overrides)
+        return data
+
+    def test_required_party_phones_are_validated_before_any_submission_write(self):
+        from django.urls import reverse
+        from tenants.models import TenantRegistrationSubmission
+        from tenants.views import tenant_registration_token
+
+        for missing in ("phone", "proposer-phone", "seconder-phone"):
+            shell = self.make_shell()
+            data = self.public_post_data()
+            data.pop(missing)
+            response = self.client.post(
+                reverse("tenants:tenant_public_registration", args=[tenant_registration_token(shell)]),
+                data,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(TenantRegistrationSubmission.objects.filter(tenant=shell).count(), 0)
+
+    def test_empty_witness_is_optional_but_started_witness_requires_phone(self):
+        from tenants.forms import TenantPublicRegistrationForm
+
+        empty = TenantPublicRegistrationForm(
+            self.public_post_data(), role_data=self.public_post_data()
+        )
+        self.assertTrue(empty.is_valid(), empty.errors)
+        started_data = self.public_post_data(**{"witness1-first_name": "Witness"})
+        started = TenantPublicRegistrationForm(started_data, role_data=started_data)
+        self.assertFalse(started.is_valid())
+        self.assertIn("Witness 1 phone is required", str(started.non_field_errors()))
+
+    def test_unpermitted_edit_returns_403(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from tenants.models import TenantRegistrationSubmission
+
+        submission = TenantRegistrationSubmission.objects.create(
+            tenant=self.make_shell(), submitted_data=self.public_post_data()
+        )
+        user = get_user_model().objects.create_user(
+            "no-permission", email="no-permission@example.com", password="test-pass"
+        )
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("tenants:registration_submission_edit", args=[submission.pk])
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_editing_person_cnic_refreshes_match_and_proposed_updates(self):
+        from django.urls import reverse
+        from tenants.models import PendingRegistrationPerson, Tenant, TenantRegistrationSubmission
+
+        target = Tenant.objects.create(
+            first_name="Existing", last_name="Match", phone="03009999999", cnic="6110112345671"
+        )
+        submission = TenantRegistrationSubmission.objects.create(
+            tenant=self.make_shell(), submitted_data=self.public_post_data()
+        )
+        PendingRegistrationPerson.objects.create(
+            submission=submission, role=PendingRegistrationPerson.ROLE_PROPOSER,
+            first_name="Proposer", phone="03001111111",
+        )
+        PendingRegistrationPerson.objects.create(
+            submission=submission, role=PendingRegistrationPerson.ROLE_SECONDER,
+            first_name="Seconder", phone="03002222222",
+        )
+        witness = PendingRegistrationPerson.objects.create(
+            submission=submission, role=PendingRegistrationPerson.ROLE_WITNESS_1,
+            first_name="Different", phone="03008888888", cnic="4220112345671",
+            proposed_updates={"stale": {"existing": "x", "submitted": "y"}},
+        )
+        data = self.public_post_data(**{
+            "witness1-first_name": "Different",
+            "witness1-cnic": target.cnic,
+            "witness1-phone": "03008888888",
+        })
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("tenants:registration_submission_edit", args=[submission.pk]), data
+        )
+        self.assertEqual(response.status_code, 302)
+        witness.refresh_from_db()
+        self.assertEqual(witness.matched_tenant, target)
+        self.assertNotIn("stale", witness.proposed_updates)
+        self.assertIn("first_name", witness.proposed_updates)
+
+    def test_shell_cnic_collision_requires_and_performs_explicit_merge(self):
+        from django.urls import reverse
+        from tenants.models import Tenant, TenantRegistrationSubmission
+        from tenants.views import _registration_submission_comparison
+
+        real = Tenant.objects.create(
+            first_name="Real", last_name="Tenant", phone="03007777777", cnic="3520212345671"
+        )
+        shell = self.make_shell()
+        submission = TenantRegistrationSubmission.objects.create(
+            tenant=shell,
+            submitted_data={
+                "first_name": "Real", "last_name": "Tenant",
+                "phone": "03006666666", "cnic": real.cnic,
+            },
+        )
+        self.client.force_login(self.user)
+        url = reverse("tenants:registration_submission_review", args=[submission.pk])
+        blocked = self.client.post(url, {"action": "approve_and_create_lease"})
+        self.assertEqual(blocked.status_code, 302)
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, submission.STATUS_PENDING)
+
+        data = {"action": "approve_and_create_lease", "collision_action": "merge"}
+        for row in _registration_submission_comparison(submission):
+            if row["changed"]:
+                data[f"decision_{row['field']}"] = "accept_submitted"
+        merged = self.client.post(url, data)
+        expected = reverse("leases:lease_create")
+        self.assertRedirects(
+            merged,
+            f"{expected}?pending_registration_submission={submission.pk}&tenant={real.pk}",
+            fetch_redirect_response=False,
+        )
+        submission.refresh_from_db()
+        self.assertEqual(submission.tenant, real)
+        self.assertFalse(Tenant.objects.filter(pk=shell.pk).exists())
+        self.assertEqual(Tenant.objects.filter(cnic_digits="3520212345671").count(), 1)
+
+    def test_attach_workflow_links_each_role_family_vehicle_once(self):
+        from leases.models import (
+            Lease, LeaseFamilyMember, LeaseVehicle, LeaseVehicleType,
+            PendingLeaseVehicleSubmission,
+        )
+        from properties.models import Property, Unit
+        from tenants.models import PendingRegistrationPerson, Tenant, TenantRegistrationSubmission
+        from tenants.services.registration_workflow import attach_registration_to_lease
+
+        primary = Tenant.objects.create(first_name="Primary", last_name="Tenant", phone="03000000001", cnic="1111111111111")
+        submission = TenantRegistrationSubmission.objects.create(tenant=primary, submitted_data={})
+        roles = {}
+        for index, role in enumerate((
+            PendingRegistrationPerson.ROLE_PROPOSER,
+            PendingRegistrationPerson.ROLE_SECONDER,
+            PendingRegistrationPerson.ROLE_WITNESS_1,
+            PendingRegistrationPerson.ROLE_WITNESS_2,
+            PendingRegistrationPerson.ROLE_FAMILY,
+        ), start=2):
+            tenant = Tenant.objects.create(first_name=role, last_name="Person", phone=f"0300000000{index}", cnic=str(index) * 13)
+            roles[role] = tenant
+            PendingRegistrationPerson.objects.create(
+                submission=submission, role=role, first_name=tenant.first_name,
+                phone=tenant.phone, cnic=tenant.cnic, matched_tenant=tenant,
+            )
+        prop = Property.objects.create(
+            property_name="Test Property", owner_name="Owner", owner_cnic="3333333333333",
+            type="house", property_type="house", total_units=1,
+        )
+        unit = Unit.objects.create(property=prop, unit_number="1")
+        lease = Lease.objects.create(
+            tenant=primary, unit=unit, start_date=timezone.localdate(),
+            end_date=timezone.localdate() + timedelta(days=330), monthly_rent=25000,
+        )
+        vehicle_type, _ = LeaseVehicleType.objects.get_or_create(
+            code="registration-test-car", defaults={"name": "Registration Test Car"}
+        )
+        PendingLeaseVehicleSubmission.objects.create(
+            pending_tenant_submission=submission, tenant=primary,
+            vehicle_type=vehicle_type, registration_number="ABC-123",
+        )
+        attach_registration_to_lease(submission, lease, self.user)
+        attach_registration_to_lease(submission, lease, self.user)
+        lease.refresh_from_db()
+        self.assertEqual(lease.proposer, roles[PendingRegistrationPerson.ROLE_PROPOSER])
+        self.assertEqual(lease.seconder, roles[PendingRegistrationPerson.ROLE_SECONDER])
+        self.assertEqual(lease.witness1_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_1])
+        self.assertEqual(lease.witness2_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_2])
+        self.assertEqual(LeaseFamilyMember.objects.filter(lease=lease).count(), 1)
+        self.assertEqual(LeaseVehicle.objects.filter(lease=lease).count(), 1)
+        submission.created_lease = lease
+        submission.status = submission.STATUS_APPROVED
+        submission.save(update_fields=["created_lease", "status"])
+        self.assertFalse(submission.is_editable)
+        self.assertEqual(Lease.objects.filter(pk=lease.pk).count(), 1)

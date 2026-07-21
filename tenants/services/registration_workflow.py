@@ -1,12 +1,26 @@
 from pathlib import Path
 from django.core.files.base import ContentFile
+from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils.dateparse import parse_date
 from django.utils import timezone
 from tenants.models import Tenant, PendingRegistrationPerson, normalize_cnic
 from leases.models import LeaseFamilyMember, LeaseRelationshipType, LeaseVehicle, PendingLeaseVehicleSubmission
 
 PERSON_FIELDS = ("first_name", "last_name", "phone", "date_of_birth", "address")
 FILE_FIELDS = ("photo", "cnic_front", "cnic_back")
+APPLICANT_FIELDS = (
+    "prefix", "first_name", "relation", "last_name", "email", "phone", "phone2",
+    "phone3", "cnic", "occupation", "employer_name", "employer_phone",
+    "employer_address", "reference_name_1", "reference_phone_1",
+    "reference_relation_1", "reference_name_2", "reference_phone_2",
+    "reference_relation_2", "nationality", "city", "province", "country",
+    "gender", "date_of_birth", "address", "temporary_address",
+    "permanent_address", "working_address", "emergency_contact_name",
+    "emergency_contact_phone", "emergency_contact_relation",
+    "number_of_family_member", "family_member_adults", "family_member_children",
+    "nadra_family_no", "notes",
+)
 
 
 def family_member_can_have_blank_cnic(person):
@@ -41,6 +55,57 @@ def proposed_changes(person):
         if getattr(person, field):
             changes[field] = {"existing": bool(getattr(tenant, field)), "submitted": True}
     return changes
+
+
+def applicant_cnic_conflict(submission):
+    digits = normalize_cnic((submission.submitted_data or {}).get("cnic"))
+    if not digits:
+        return None
+    return Tenant.objects.exclude(pk=submission.tenant_id).filter(cnic_digits=digits).first()
+
+
+def _merge_shell_references(shell, target):
+    """Move every reverse FK from an unused registration shell, then remove it."""
+    target.interested_in.add(*shell.interested_in.all())
+    for relation in shell._meta.related_objects:
+        if relation.many_to_many:
+            continue
+        field_name = relation.field.name
+        relation.related_model._base_manager.filter(**{field_name: shell}).update(
+            **{field_name: target}
+        )
+    shell.delete()
+
+
+def apply_registration_applicant(submission, *, collision_action=""):
+    """Apply reviewer-selected applicant fields, merging a shell on CNIC conflict."""
+    shell = submission.tenant
+    conflict = applicant_cnic_conflict(submission)
+    if conflict and collision_action != "merge":
+        raise ValidationError(
+            f"Submitted CNIC already belongs to Tenant #{conflict.pk}. Choose merge or reject."
+        )
+    tenant = conflict or shell
+    decisions = submission.field_decisions or {}
+    for field in APPLICANT_FIELDS:
+        if decisions.get(field) != "accept_submitted" or field not in submission.submitted_data:
+            continue
+        value = submission.submitted_data[field]
+        if field == "date_of_birth" and value:
+            value = parse_date(value)
+        setattr(tenant, field, value)
+    for field in FILE_FIELDS:
+        if decisions.get(field) == "accept_submitted" and getattr(submission, field):
+            setattr(tenant, field, getattr(submission, field))
+    tenant.is_active = True
+    tenant.save()
+    if decisions.get("interested_in") == "accept_submitted":
+        tenant.interested_in.set(submission.submitted_data.get("interested_in") or [])
+    if conflict:
+        submission.tenant = tenant
+        submission.save(update_fields=["tenant"])
+        _merge_shell_references(shell, tenant)
+    return tenant, conflict
 
 
 def _copy_file(source, target, field_name):
@@ -122,7 +187,7 @@ def attach_registration_to_lease(submission, lease, user=None):
     for item in pending_vehicles:
         LeaseVehicle.objects.update_or_create(
             lease=lease, registration_number=item.registration_number,
-            defaults={"tenant": lease.tenant, "vehicle_type": item.vehicle_type, "make": item.make, "model": item.model, "color": item.color, "year": item.year, "owner_name": item.owner_name, "owner_cnic": item.owner_cnic, "parking_slot": item.parking_slot, "registration_book_photo": item.registration_book_photo, "vehicle_photo": item.vehicle_photo, "is_active": True},
+            defaults={"tenant": lease.tenant, "vehicle_type": item.vehicle_type, "make": item.make, "model": item.model, "color": item.color, "year": item.year, "owner_name": item.owner_name, "owner_cnic": item.owner_cnic, "registration_book_photo": item.registration_book_photo, "vehicle_photo": item.vehicle_photo, "is_active": True},
         )
         item.lease = lease; item.tenant = lease.tenant; item.status = PendingLeaseVehicleSubmission.STATUS_APPROVED; item.reviewed_by = user; item.reviewed_at = timezone.now(); item.save(update_fields=["lease", "tenant", "status", "reviewed_by", "reviewed_at"])
         result["vehicles"] += 1

@@ -153,6 +153,10 @@ APP_MODEL_DEFAULTS = {
 }
 
 URL_MODEL_HINTS = {
+    "tenants": {
+        "submission": "tenantregistrationsubmission",
+        "submissions": "tenantregistrationsubmission",
+    },
     "properties": {
         "unit": "unit",
         "property": "property",

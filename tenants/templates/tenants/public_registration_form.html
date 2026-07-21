@@ -1445,7 +1445,7 @@
       <div class="td-card-header"><i class="fas fa-user-check text-success"></i><h6>Proposer</h6></div>
       <div class="party-card-body">
         <div><label class="field-label">First Name</label><input class="field-control" name="proposer-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="proposer-last_name"></div>
-        <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone" required aria-required="true"></div>
         <div class="wide"><label class="field-label">Address</label><input class="field-control" name="proposer-address"></div>
         <div class="party-docs"><label>Photo<input type="file" class="field-control" name="proposer-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="proposer-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="proposer-cnic_back" accept="image/*"></label></div>
       </div>
@@ -1454,7 +1454,7 @@
       <div class="td-card-header"><i class="fas fa-user-check text-warning"></i><h6>Seconder</h6></div>
       <div class="party-card-body">
         <div><label class="field-label">First Name</label><input class="field-control" name="seconder-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="seconder-last_name"></div>
-        <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone" required aria-required="true"></div>
         <div class="wide"><label class="field-label">Address</label><input class="field-control" name="seconder-address"></div>
         <div class="party-docs"><label>Photo<input type="file" class="field-control" name="seconder-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="seconder-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="seconder-cnic_back" accept="image/*"></label></div>
       </div>
@@ -1464,7 +1464,7 @@
       <div class="td-card-header"><i class="fas fa-users text-primary"></i><h6>Witness {{ number }}</h6></div>
       <div class="party-card-body">
         <div><label class="field-label">First Name</label><input class="field-control" name="witness{{ number }}-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="witness{{ number }}-last_name"></div>
-        <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone" aria-required="false"></div>
         <div class="wide"><label class="field-label">Address</label><input class="field-control" name="witness{{ number }}-address"></div>
         <div class="party-docs"><label>Photo<input type="file" class="field-control" name="witness{{ number }}-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="witness{{ number }}-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="witness{{ number }}-cnic_back" accept="image/*"></label></div>
       </div>

@@ -412,7 +412,6 @@ class TenantRegistrationSubmission(models.Model):
         STATUS_PENDING,
         STATUS_NEEDS_INFORMATION,
         STATUS_READY_FOR_APPROVAL,
-        STATUS_PROCESSING_FAILED,
     }
 
     tenant = models.ForeignKey(

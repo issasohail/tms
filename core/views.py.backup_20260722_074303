@@ -2213,14 +2213,10 @@ from .backup_utils import (
     create_db_backup,
     create_full_backup,
     create_media_backup,
-    backup_storage_summary,
     delete_backup,
-    detect_uploaded_backup_type,
     list_backups,
     load_backup_settings,
     prune_old_backups,
-    protected_backup_ids,
-    purge_old_backups,
     restore_database,
     restore_full,
     restore_media,
@@ -2238,11 +2234,6 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
     def _context(self, settings_form=None):
         config = load_backup_settings()
         backups = list_backups(config)
-        for serial_number, backup in enumerate(backups, start=1):
-            backup.serial_number = serial_number
-        protected_ids = protected_backup_ids(backups)
-        for backup in backups:
-            backup.is_protected = backup.id in protected_ids
         selected_backup = (
             self.request.GET.get("selected_backup")
             or self.request.GET.get("selected_db")
@@ -2253,11 +2244,11 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
         restore_choices.extend(
             (
                 backup.id,
-                f"S.N {backup.serial_number} · {backup.get_backup_type_display()} · {backup.name} "
+                f"{backup.get_backup_type_display()} — {backup.name} "
                 f"({backup.created_at:%Y-%m-%d %H:%M})",
             )
             for backup in backups
-            if backup.file_exists and backup.backup_type in {"db", "media", "full"}
+            if backup.backup_type in {"db", "media", "full"}
         )
         return {
             "backup_settings_form": settings_form or BackupSettingsForm(initial=config),
@@ -2267,24 +2258,6 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
             ),
             "backup_upload_form": BackupUploadForm(),
             "backups": backups,
-            "backup_storage": backup_storage_summary(config),
-            "backup_help_modals": [
-                (
-                    "retentionHelpModal",
-                    "Retention Count",
-                    "Automatic pruning keeps this many newest backups overall after a new backup is created. The Purge button separately keeps the newest three files of each backup type.",
-                ),
-                (
-                    "mysqldumpHelpModal",
-                    "mysqldump Path",
-                    "The server executable used to export MySQL database backups. Use mysqldump when it is available on PATH, or provide its absolute executable path.",
-                ),
-                (
-                    "mysqlHelpModal",
-                    "mysql Path",
-                    "The server executable used to import SQL backups during database restore. Use mysql when it is available on PATH, or provide its absolute executable path.",
-                ),
-            ],
             "fresh_reset_scope": {
                 "profile_name": "tms_safe",
                 "profile_description": "Fresh reset is disabled until a TMS-specific reset profile is configured.",
@@ -2311,22 +2284,18 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
             if action == "upload_backup":
                 form = BackupUploadForm(request.POST, request.FILES)
                 if form.is_valid():
-                    backup_type = detect_uploaded_backup_type(form.cleaned_data["backup_file"])
                     uploaded = save_uploaded_backup(
                         config,
-                        backup_type,
+                        form.cleaned_data["backup_type"],
                         form.cleaned_data["backup_file"],
                     )
-                    messages.success(
-                        request,
-                        f"{backup_type.title()} backup detected and uploaded: {uploaded.name}",
-                    )
+                    messages.success(request, f"Backup uploaded: {uploaded.name}")
                     return redirect(
                         f"{reverse('core:backup_center')}?"
                         f"selected_backup={quote(uploaded.name, safe='')}#restore-backup"
                     )
                 else:
-                    messages.error(request, "Upload failed. Choose a valid backup file.")
+                    messages.error(request, "Upload failed. Check the selected type and file extension.")
                 return redirect("core:backup_center")
 
             if action == "backup_db":
@@ -2345,26 +2314,13 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                 created = create_full_backup(config)
                 prune_old_backups(config)
                 messages.success(request, f"Full backup created: {created.name}")
-            elif action == "purge_old_backups":
-                if request.POST.get("confirm_text") != "PURGE":
-                    messages.error(request, "Backup purge was not confirmed.")
-                else:
-                    result = purge_old_backups(config)
-                    messages.success(
-                        request,
-                        f"Purged {len(result['deleted'])} old backup file(s). "
-                        f"Reclaimed {result['reclaimed_bytes'] / (1024 * 1024):.2f} MB. "
-                        "The newest 3 files of each backup type were kept.",
-                    )
             elif action == "restore_smart":
                 backups = list_backups(config)
-                for serial_number, backup in enumerate(backups, start=1):
-                    backup.serial_number = serial_number
                 restore_choices = [("", "----------")]
                 restore_choices.extend(
                     (backup.id, backup.name)
                     for backup in backups
-                    if backup.file_exists and backup.backup_type in {"db", "media", "full"}
+                    if backup.backup_type in {"db", "media", "full"}
                 )
                 form = BackupRestoreForm(request.POST, backup_choices=restore_choices)
                 if not form.is_valid() or form.cleaned_data["confirm_text"] != "RESTORE":

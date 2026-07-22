@@ -63,7 +63,7 @@
 
   <div class="row g-3">
     <form method="post" action="{% url 'tenants:registration_submission_review' submission.pk %}" class="col-xl-9" id="registrationApprovalForm">
-      {% csrf_token %}<input type="hidden" name="action" value="approve_registration">
+      {% csrf_token %}<input type="hidden" name="action" value="approve_and_create_lease">
       <div class="card">
         <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
           <span>Tenant Changes</span>
@@ -104,14 +104,7 @@
                         {% if row.can_update_submitted %}
                           <input type="{{ row.input_type }}" class="form-control form-control-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" value="{{ row.submitted_raw }}" aria-label="Updated {{ row.label }}" hidden disabled>
                         {% endif %}
-                      {% elif row.changed %}<span class="badge bg-warning text-dark">Changed</span>
-                      {% elif row.can_update_submitted and can_apply_submission %}
-                        <select class="form-select form-select-sm result-decision" name="decision_{{ row.field }}" data-update-target="updated_{{ row.field }}">
-                          <option value="keep_existing" selected>{% if row.submitted_is_blank %}Leave blank{% else %}Keep same value{% endif %}</option>
-                          <option value="update_submitted">Enter staff value</option>
-                        </select>
-                        <input type="{{ row.input_type }}" class="form-control form-control-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" value="{{ row.submitted_raw }}" aria-label="Staff value for {{ row.label }}" hidden disabled>
-                      {% else %}<span class="badge bg-light text-secondary border">Unchanged</span>{% endif %}
+                      {% elif row.changed %}<span class="badge bg-warning text-dark">Changed</span>{% else %}<span class="badge bg-light text-secondary border">Unchanged</span>{% endif %}
                     </td>
                   </tr>
                 {% empty %}
@@ -124,36 +117,7 @@
       </div>
 
       <div class="card mt-3">
-        <div class="card-header bg-dark text-white py-2 px-3">Required Proposer and Seconder</div>
-        <div class="card-body">
-          <div class="row g-2">
-            {% for review in required_party_reviews %}
-              <div class="col-12 col-md-6">
-                <div class="border rounded p-2 h-100 {% if not review.is_complete %}border-danger bg-danger-subtle{% endif %}">
-                  <div class="d-flex justify-content-between align-items-center mb-2">
-                    <strong>{{ review.label }}</strong>
-                    {% if review.is_complete %}<span class="badge bg-success">Complete</span>{% else %}<span class="badge bg-danger">Missing Information</span>{% endif %}
-                  </div>
-                  {% if review.person %}
-                    <div><strong>{{ review.person.first_name|default:"—" }} {{ review.person.last_name|default:"" }}</strong></div>
-                    <div class="small">CNIC: {{ review.person.cnic|format_cnic|default:"—" }}</div>
-                    <div class="small">Phone: {% include "tenants/_whatsapp_phone_link.html" with phone=review.person.phone label=review.person.phone name=review.person.first_name only %}</div>
-                    <div class="small">Address: {{ review.person.address|default:"—" }}</div>
-                    {% if review.person.matched_tenant %}<div class="small mt-1"><span class="badge bg-info text-dark">Matches Tenant #{{ review.person.matched_tenant_id }}</span></div>{% endif %}
-                  {% else %}
-                    <div class="small text-danger">No {{ review.label|lower }} was submitted.</div>
-                  {% endif %}
-                  {% if review.missing %}<div class="small text-danger mt-1">Required: {{ review.missing|join:", " }}</div>{% endif %}
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-          {% if not required_parties_complete and can_edit_submission %}<a class="btn btn-sm btn-outline-danger mt-2" href="{% url 'tenants:registration_submission_edit' submission.pk %}">Complete Required Parties</a>{% endif %}
-        </div>
-      </div>
-
-      <div class="card mt-3">
-        <div class="card-header bg-dark text-white py-2 px-3">Family Members and Witnesses</div>
+        <div class="card-header bg-dark text-white py-2 px-3">Family Members and Other People</div>
         <div class="card-body p-0">
           <div class="table-responsive">
             <table class="table table-sm table-bordered align-middle mb-0 ld-review-table">
@@ -204,7 +168,7 @@
                     <td><span class="badge bg-light text-dark border">{{ person.get_status_display }}</span></td>
                   </tr>
                 {% empty %}
-                  <tr><td colspan="5" class="text-muted text-center py-3">No family-member or witness changes were captured in this submission.</td></tr>
+                  <tr><td colspan="5" class="text-muted text-center py-3">No family-member, proposer, seconder, or witness changes were captured in this submission.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -238,7 +202,6 @@
           {% if can_edit_submission %}<form method="post" action="{% url 'tenants:registration_submission_review' submission.pk %}">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_review">
-            <div class="alert alert-info py-2 small">Saving status or notes does not create tenants and does not create a lease.</div>
             {% for field in form %}
               <div class="mb-2">
                 <label class="form-label small mb-1" for="{{ field.id_for_label }}">
@@ -259,39 +222,32 @@
       </div>
       {% if can_apply_submission %}
       <div class="card mb-3">
-        <div class="card-header bg-success text-white py-2 px-3">Final Approval</div>
+        <div class="card-header bg-success text-white py-2 px-3">Approve Registration &amp; Create Lease</div>
         <div class="card-body">
           <p class="small text-muted mb-2">
-            Leave Property and Unit blank to create the tenant and related people only. Select both to also create the lease, assign people and vehicles, and open Lease Detail.
+            This single action applies the Result choices, creates or updates the tenant, assigns submitted family members, proposer, seconder, witnesses and vehicles, creates the lease, then opens Lease Detail for rent and agreement editing.
           </p>
-          {% if can_create_registration_lease %}<div class="row g-2">
+          <div class="row g-2">
             <div class="col-6">
               <label class="form-label small mb-1" for="registrationProperty">Property</label>
-              <select class="form-select form-select-sm" id="registrationProperty" name="property" form="registrationApprovalForm">
-                <option value="">No lease yet</option>
-                {% for property in properties %}<option value="{{ property.pk }}" {% if selected_registration_property_id == property.pk %}selected{% endif %}>{{ property.property_name }}</option>{% endfor %}
+              <select class="form-select form-select-sm" id="registrationProperty" name="property" form="registrationApprovalForm" required>
+                <option value="">Select property…</option>
+                {% for property in properties %}<option value="{{ property.pk }}">{{ property.property_name }}</option>{% endfor %}
               </select>
             </div>
             <div class="col-6">
               <label class="form-label small mb-1" for="registrationUnit">Unit</label>
-              <select class="form-select form-select-sm" id="registrationUnit" name="unit" form="registrationApprovalForm" disabled>
-                <option value="">No unit</option>
-                {% for unit in units %}<option value="{{ unit.pk }}" data-property="{{ unit.property_id }}" {% if selected_registration_unit_id == unit.pk %}selected{% endif %}>{{ unit.unit_number }}</option>{% endfor %}
+              <select class="form-select form-select-sm" id="registrationUnit" name="unit" form="registrationApprovalForm" required disabled>
+                <option value="">Select property first…</option>
+                {% for unit in units %}<option value="{{ unit.pk }}" data-property="{{ unit.property_id }}">{{ unit.unit_number }}</option>{% endfor %}
               </select>
             </div>
-          </div>{% else %}<div class="alert alert-info py-2 small">You can approve and create tenant records. Lease creation controls require lease permissions.</div>{% endif %}
+          </div>
           {% if cnic_conflict %}
             <div class="alert alert-danger py-2 small mt-3 mb-2">Submitted CNIC belongs to Tenant #{{ cnic_conflict.pk }} — {{ cnic_conflict.get_full_name }}.</div>
-            <label class="form-check mb-2"><input class="form-check-input" type="radio" name="collision_action" value="merge" form="registrationApprovalForm" required {% if approval_error.collision_action == 'merge' %}checked{% endif %}> <span class="form-check-label small">Merge the registration shell into Tenant #{{ cnic_conflict.pk }}</span></label>
+            <label class="form-check mb-2"><input class="form-check-input" type="radio" name="collision_action" value="merge" form="registrationApprovalForm" required> <span class="form-check-label small">Merge the registration shell into Tenant #{{ cnic_conflict.pk }}</span></label>
           {% endif %}
-          {% if not required_parties_complete %}
-            <div class="border border-warning bg-warning-subtle rounded px-2 py-2 small mt-2 mb-0" role="status">
-              <strong>Approval is disabled:</strong>
-              {% for review in required_party_reviews %}{% if not review.is_complete %}{{ review.label }} needs {{ review.missing|join:", " }}{% if not forloop.last %}. {% endif %}{% endif %}{% endfor %}.
-              <a href="{% url 'tenants:registration_submission_edit' submission.pk %}">Complete this information</a> to enable tenant or lease approval.
-            </div>
-          {% endif %}
-          <button class="btn btn-success btn-sm mt-2 w-100" id="registrationApprovalButton" type="submit" form="registrationApprovalForm" data-parties-complete="{{ required_parties_complete|yesno:'true,false' }}" {% if not required_parties_complete %}disabled title="Complete proposer and seconder first."{% endif %}>Approve &amp; Create Tenant</button>
+          <button class="btn btn-success btn-sm mt-2 w-100" type="submit" form="registrationApprovalForm">Approve &amp; Create Lease</button>
         </div>
       </div>
       {% endif %}
@@ -323,43 +279,6 @@
   </div>
 </div>
 
-{% if approval_error %}
-<div class="modal fade" id="registrationApprovalErrorModal" tabindex="-1" aria-labelledby="registrationApprovalErrorTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-danger">
-      <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="registrationApprovalErrorTitle">Lease Could Not Be Created</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="alert alert-danger mb-3" role="alert">{{ approval_error.message }}</div>
-        {% if approval_error.active_lease_id %}
-          <div class="small mb-3">
-            <strong>Conflicting lease:</strong> #{{ approval_error.active_lease_id }}<br>
-            <strong>Existing period:</strong> {{ approval_error.active_lease_start_date }} to {{ approval_error.active_lease_end_date }}<br>
-            <strong>Your attempted start date:</strong> {{ approval_error.attempted_start_date }}
-          </div>
-        {% endif %}
-        <label class="form-label fw-semibold" for="registrationLeaseStartDate">Correct the new lease start date</label>
-        <input type="date"
-               class="form-control"
-               id="registrationLeaseStartDate"
-               name="lease_start_date"
-               value="{{ approval_error.suggested_start_date }}"
-               {% if approval_error.active_lease_end_date %}min="{{ approval_error.suggested_start_date }}"{% endif %}
-               form="registrationApprovalForm"
-               required>
-        <div class="form-text">You can also close this popup and select a different property or unit.</div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Change Property / Unit</button>
-        <button type="submit" class="btn btn-danger btn-sm" form="registrationApprovalForm">Use Date &amp; Retry Approval</button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
 <div class="modal fade" id="registrationStatusHelpModal" tabindex="-1" aria-labelledby="registrationStatusHelpTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
@@ -371,10 +290,10 @@
         <dl class="mb-0">
           <dt>Pending</dt><dd>The submission has arrived and still needs review.</dd>
           <dt>Needs Information</dt><dd>Information is missing or needs correction. Add a note explaining what is required.</dd>
-          <dt>Ready for Approval</dt><dd>Review is complete. This optional marker does not create anything.</dd>
-          <dt>Processing</dt><dd>A temporary system status while TMS applies tenant data and optionally creates a lease. It cannot be selected manually.</dd>
-          <dt>Processing Failed</dt><dd>The automatic transaction failed safely. Read the admin note, correct the cause, then retry the final approval action.</dd>
-          <dt>Approved</dt><dd>The final approval action applied tenant information. A lease is also created when Property and Unit were selected.</dd>
+          <dt>Ready for Approval</dt><dd>Review is complete. This is an optional marker before using Approve &amp; Create Lease.</dd>
+          <dt>Processing</dt><dd>A temporary automatic status while TMS applies tenant data and creates the lease. You normally do not select this manually.</dd>
+          <dt>Processing Failed</dt><dd>The automatic transaction failed safely. Read the admin note, correct the cause, then retry Approve &amp; Create Lease.</dd>
+          <dt>Approved</dt><dd>Tenant information was applied and the lease was created successfully.</dd>
           <dt>Rejected</dt><dd>The submission was declined and no lease will be created.</dd>
         </dl>
       </div>
@@ -439,49 +358,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var propertySelect = document.getElementById('registrationProperty');
   var unitSelect = document.getElementById('registrationUnit');
-  var approvalButton = document.getElementById('registrationApprovalButton');
   if (propertySelect && unitSelect) {
-    function filterUnitOptions(resetSelection) {
+    propertySelect.addEventListener('change', function () {
       var propertyId = propertySelect.value;
-      if (resetSelection) unitSelect.value = '';
+      unitSelect.value = '';
       unitSelect.disabled = !propertyId;
       Array.from(unitSelect.options).forEach(function (option, index) {
         if (index === 0) return;
         option.hidden = option.dataset.property !== propertyId;
         option.disabled = option.hidden;
       });
-      unitSelect.options[0].textContent = propertyId ? 'Select unit…' : 'No unit';
-    }
-
-    function updateApprovalAction() {
-      if (!approvalButton) return;
-      var partiesComplete = approvalButton.dataset.partiesComplete === 'true';
-      if (!propertySelect.value) {
-        approvalButton.textContent = 'Approve & Create Tenant';
-        approvalButton.disabled = !partiesComplete;
-        approvalButton.title = partiesComplete ? '' : 'Complete proposer and seconder first.';
-      } else if (!unitSelect.value) {
-        approvalButton.textContent = 'Select Unit to Create Lease';
-        approvalButton.disabled = true;
-        approvalButton.title = 'Select a unit, or clear Property for tenant-only approval.';
-      } else {
-        approvalButton.textContent = 'Approve & Create Lease';
-        approvalButton.disabled = !partiesComplete;
-        approvalButton.title = partiesComplete ? '' : 'Complete proposer and seconder first.';
-      }
-    }
-    propertySelect.addEventListener('change', function () {
-      filterUnitOptions(true);
-      updateApprovalAction();
+      unitSelect.options[0].textContent = propertyId ? 'Select unit…' : 'Select property first…';
     });
-    unitSelect.addEventListener('change', updateApprovalAction);
-    filterUnitOptions(false);
-    updateApprovalAction();
-  }
-
-  var approvalErrorModal = document.getElementById('registrationApprovalErrorModal');
-  if (approvalErrorModal && window.bootstrap) {
-    bootstrap.Modal.getOrCreateInstance(approvalErrorModal).show();
   }
 });
 </script>

@@ -119,7 +119,6 @@ class RegistrationOnboardingTests(TestCase):
             "reviewer", email="reviewer@example.com", password="test-pass"
         )
         self.user.user_permissions.add(
-            Permission.objects.get(codename="view_tenantregistrationsubmission"),
             Permission.objects.get(codename="change_tenantregistrationsubmission"),
             Permission.objects.get(codename="change_tenant"),
             Permission.objects.get(codename="add_lease"),
@@ -143,38 +142,12 @@ class RegistrationOnboardingTests(TestCase):
             "first_name": "Applicant",
             "last_name": "Person",
             "phone": "03001234567",
-            "proposer-first_name": "Primary",
-            "proposer-last_name": "Proposer",
-            "proposer-cnic": "6110112345671",
             "proposer-phone": "03001111111",
-            "seconder-first_name": "Primary",
-            "seconder-last_name": "Seconder",
-            "seconder-cnic": "6110112345672",
             "seconder-phone": "03002222222",
             "vehicle-TOTAL_FORMS": "0",
         }
         data.update(overrides)
         return data
-
-    def make_required_parties(self, submission):
-        from tenants.models import PendingRegistrationPerson
-
-        PendingRegistrationPerson.objects.create(
-            submission=submission,
-            role=PendingRegistrationPerson.ROLE_PROPOSER,
-            first_name="Primary",
-            last_name="Proposer",
-            cnic="6110112345671",
-            phone="03001111111",
-        )
-        PendingRegistrationPerson.objects.create(
-            submission=submission,
-            role=PendingRegistrationPerson.ROLE_SECONDER,
-            first_name="Primary",
-            last_name="Seconder",
-            cnic="6110112345672",
-            phone="03002222222",
-        )
 
     def make_unit(self, suffix=""):
         from properties.models import Property, Unit
@@ -272,77 +245,6 @@ class RegistrationOnboardingTests(TestCase):
         self.assertNotIn("stale", witness.proposed_updates)
         self.assertIn("first_name", witness.proposed_updates)
 
-    def test_edit_submission_can_add_family_relationship_and_vehicle(self):
-        from django.urls import reverse
-        from leases.models import LeaseRelationshipType, LeaseVehicleType, PendingLeaseVehicleSubmission
-        from tenants.models import PendingRegistrationPerson, TenantRegistrationSubmission
-
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(),
-            submitted_data=self.public_post_data(number_of_family_member="1"),
-        )
-        self.make_required_parties(submission)
-        vehicle_type = LeaseVehicleType.objects.create(name="Car", code="edit-car")
-        data = self.public_post_data(**{
-            "number_of_family_member": "1",
-            "new-family-0-first_name": "Family",
-            "new-family-0-last_name": "Member",
-            "new-family-0-phone": "03003333333",
-            "new-family-0-relationship_type": "__new__",
-            "new-family-0-relationship_new": "Cousin",
-            "new-vehicle-0-vehicle_type": str(vehicle_type.pk),
-            "new-vehicle-0-registration_number": "ABC-123",
-            "new-vehicle-0-make": "Honda",
-        })
-
-        self.client.force_login(self.user)
-        response = self.client.post(
-            reverse("tenants:registration_submission_edit", args=[submission.pk]), data
-        )
-
-        self.assertEqual(response.status_code, 302)
-        family = submission.pending_people.get(role=PendingRegistrationPerson.ROLE_FAMILY)
-        relationship = LeaseRelationshipType.objects.get(name="Cousin")
-        self.assertEqual(family.relationship_type_id, relationship.pk)
-        self.assertEqual(family.relationship, relationship.code)
-        vehicle = PendingLeaseVehicleSubmission.objects.get(
-            pending_tenant_submission=submission
-        )
-        self.assertEqual(vehicle.registration_number, "ABC-123")
-        self.assertEqual(vehicle.make, "Honda")
-
-    def test_edit_submission_shows_existing_family_and_vehicle_values(self):
-        from django.urls import reverse
-        from leases.models import LeaseVehicleType, PendingLeaseVehicleSubmission
-        from tenants.models import PendingRegistrationPerson, TenantRegistrationSubmission
-
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(), submitted_data=self.public_post_data()
-        )
-        self.make_required_parties(submission)
-        PendingRegistrationPerson.objects.create(
-            submission=submission,
-            role=PendingRegistrationPerson.ROLE_FAMILY,
-            first_name="VisibleFamily",
-            last_name="Record",
-        )
-        vehicle_type = LeaseVehicleType.objects.create(name="Bike", code="edit-bike")
-        PendingLeaseVehicleSubmission.objects.create(
-            pending_tenant_submission=submission,
-            tenant=submission.tenant,
-            vehicle_type=vehicle_type,
-            registration_number="VISIBLE-456",
-        )
-
-        self.client.force_login(self.user)
-        response = self.client.get(
-            reverse("tenants:registration_submission_edit", args=[submission.pk])
-        )
-
-        self.assertContains(response, "VisibleFamily")
-        self.assertContains(response, "VISIBLE-456")
-        self.assertContains(response, "Add new relationship")
-
     def test_shell_cnic_collision_requires_and_performs_explicit_merge(self):
         from django.urls import reverse
         from tenants.models import Tenant, TenantRegistrationSubmission
@@ -359,7 +261,6 @@ class RegistrationOnboardingTests(TestCase):
                 "phone": "03006666666", "cnic": real.cnic,
             },
         )
-        self.make_required_parties(submission)
         self.client.force_login(self.user)
         url = reverse("tenants:registration_submission_review", args=[submission.pk])
         blocked = self.client.post(url, {"action": "approve_and_create_lease"})
@@ -396,119 +297,6 @@ class RegistrationOnboardingTests(TestCase):
         )
         from leases.models import Lease
         self.assertEqual(Lease.objects.filter(registration_submission=submission).count(), 1)
-
-    def test_tenant_only_approval_processes_required_people_without_lease(self):
-        from django.urls import reverse
-        from tenants.models import TenantRegistrationSubmission
-        from tenants.views import _registration_submission_comparison
-
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(),
-            submitted_data={
-                "first_name": "Approved",
-                "last_name": "Applicant",
-                "phone": "03001234567",
-                "cnic": "3520212345672",
-                "occupation": "",
-                "relation": "S/O.",
-            },
-        )
-        self.make_required_parties(submission)
-        data = {"action": "approve_registration"}
-        for row in _registration_submission_comparison(submission):
-            if row["changed"]:
-                data[f"decision_{row['field']}"] = "accept_submitted"
-        data["decision_occupation"] = "update_submitted"
-        data["updated_occupation"] = "Engineer"
-        data["decision_relation"] = "update_submitted"
-        data["updated_relation"] = "D/O."
-
-        self.client.force_login(self.user)
-        response = self.client.post(
-            reverse("tenants:registration_submission_review", args=[submission.pk]),
-            data,
-        )
-
-        submission.refresh_from_db()
-        self.assertEqual(submission.status, submission.STATUS_APPROVED)
-        self.assertIsNone(submission.created_lease_id)
-        submission.tenant.refresh_from_db()
-        self.assertEqual(submission.tenant.occupation, "Engineer")
-        self.assertEqual(submission.tenant.relation, "D/O.")
-        self.assertEqual(
-            submission.pending_people.filter(processed_tenant__isnull=False).count(),
-            2,
-        )
-        self.assertRedirects(
-            response,
-            reverse("tenants:tenant_detail", args=[submission.tenant_id]),
-            fetch_redirect_response=False,
-        )
-
-    def test_active_unit_lease_opens_date_correction_modal_and_allows_retry(self):
-        from django.urls import reverse
-        from leases.models import Lease
-        from tenants.models import Tenant, TenantRegistrationSubmission
-
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(),
-            submitted_data={
-                "first_name": "New",
-                "last_name": "Registration",
-                "phone": "03001234567",
-                "cnic": "",
-            },
-        )
-        self.make_required_parties(submission)
-        prop, unit = self.make_unit("7")
-        active_start = timezone.localdate() - timedelta(days=30)
-        active_end = timezone.localdate() + timedelta(days=30)
-        occupant = Tenant.objects.create(
-            first_name="Current",
-            last_name="Occupant",
-            phone="03009990000",
-            cnic="3520299999999",
-        )
-        active_lease = Lease.objects.create(
-            tenant=occupant,
-            unit=unit,
-            start_date=active_start,
-            end_date=active_end,
-            monthly_rent=25000,
-            status="active",
-        )
-        url = reverse("tenants:registration_submission_review", args=[submission.pk])
-        detail_url = reverse("tenants:registration_submission_detail", args=[submission.pk])
-        data = {
-            "action": "approve_registration",
-            "property": prop.pk,
-            "unit": unit.pk,
-        }
-
-        self.client.force_login(self.user)
-        blocked = self.client.post(url, data, follow=True)
-
-        submission.refresh_from_db()
-        suggested_start = active_end + timedelta(days=1)
-        self.assertEqual(submission.status, submission.STATUS_PENDING)
-        self.assertIsNone(submission.created_lease_id)
-        self.assertContains(blocked, 'id="registrationApprovalErrorModal"')
-        self.assertContains(blocked, f"active Lease #{active_lease.pk}")
-        self.assertContains(blocked, suggested_start.isoformat())
-        self.assertContains(blocked, f'value="{prop.pk}" selected')
-        self.assertContains(blocked, f'value="{unit.pk}" data-property="{prop.pk}" selected')
-
-        data["lease_start_date"] = suggested_start.isoformat()
-        retried = self.client.post(url, data)
-
-        submission.refresh_from_db()
-        self.assertIsNotNone(submission.created_lease_id)
-        self.assertEqual(submission.created_lease.start_date, suggested_start)
-        self.assertRedirects(
-            retried,
-            reverse("leases:lease_detail", args=[submission.created_lease_id]),
-            fetch_redirect_response=False,
-        )
 
     def test_attach_workflow_links_each_role_family_vehicle_once(self):
         from leases.models import (
@@ -565,14 +353,3 @@ class RegistrationOnboardingTests(TestCase):
         submission.save(update_fields=["created_lease", "status"])
         self.assertFalse(submission.is_editable)
         self.assertEqual(Lease.objects.filter(pk=lease.pk).count(), 1)
-
-    def test_processing_failed_submission_can_be_corrected_and_retried(self):
-        from tenants.models import TenantRegistrationSubmission
-
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(),
-            submitted_data=self.public_post_data(),
-            status=TenantRegistrationSubmission.STATUS_PROCESSING_FAILED,
-        )
-
-        self.assertTrue(submission.is_editable)

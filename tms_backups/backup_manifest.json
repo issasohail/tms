@@ -1,0 +1,158 @@
+{
+  "tms_db_backup_20260605_013906.sql": {
+    "backup_type": "db",
+    "size": 37168035,
+    "created_at": "2026-06-05T01:39:14.940948",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260605_140813.sql": {
+    "backup_type": "db",
+    "size": 37178397,
+    "created_at": "2026-06-05T14:08:18.459916",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260612_024509.sql": {
+    "backup_type": "db",
+    "size": 43414838,
+    "created_at": "2026-06-12T02:45:14.266835",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260629_154323.sql": {
+    "backup_type": "db",
+    "size": 45322323,
+    "created_at": "2026-06-29T15:43:27.489305",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260629_170134.sql": {
+    "backup_type": "db",
+    "size": 50227379,
+    "created_at": "2026-06-29T17:01:39.673445",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260703_164620.sql": {
+    "backup_type": "db",
+    "size": 50908021,
+    "created_at": "2026-07-03T16:46:25.948437",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260703_164716.sql": {
+    "backup_type": "db",
+    "size": 1143057,
+    "created_at": "2026-07-03T16:47:19.218255",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260703_164751.sql": {
+    "backup_type": "db",
+    "size": 1456413,
+    "created_at": "2026-07-03T16:47:55.049350",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260719_061321.sql": {
+    "backup_type": "db",
+    "size": 52221595,
+    "created_at": "2026-07-19T06:13:31.043279",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260719_061328.sql": {
+    "backup_type": "db",
+    "size": 1438316,
+    "created_at": "2026-07-19T06:13:31.220298",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260719_061432.sql": {
+    "backup_type": "db",
+    "size": 1384941,
+    "created_at": "2026-07-19T06:14:34.987845",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260719_064046.sql": {
+    "backup_type": "db",
+    "size": 57407790,
+    "created_at": "2026-07-19T06:40:51.808046",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260722_070115.sql": {
+    "backup_type": "db",
+    "size": 57415349,
+    "created_at": "2026-07-22T07:01:22.195643",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260722_070813.sql": {
+    "backup_type": "db",
+    "size": 58786534,
+    "created_at": "2026-07-22T07:08:19.368902",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_20260722_071917.sql": {
+    "backup_type": "db",
+    "size": 57415646,
+    "created_at": "2026-07-22T07:19:24.729764",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260605_140728.sql": {
+    "backup_type": "db",
+    "size": 43716005,
+    "created_at": "2026-06-05T14:07:28.143793",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260611_233115.sql": {
+    "backup_type": "db",
+    "size": 45565299,
+    "created_at": "2026-06-11T23:31:15.713188",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260612_024334.sql": {
+    "backup_type": "db",
+    "size": 45605218,
+    "created_at": "2026-06-12T02:43:35.023442",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260629_154242.sql": {
+    "backup_type": "db",
+    "size": 50571565,
+    "created_at": "2026-06-29T15:42:43.008899",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260629_170122.sql": {
+    "backup_type": "db",
+    "size": 50609015,
+    "created_at": "2026-06-29T17:01:22.847779",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260703_164611.sql": {
+    "backup_type": "db",
+    "size": 52240020,
+    "created_at": "2026-07-03T16:46:12.007113",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260719_061305.sql": {
+    "backup_type": "db",
+    "size": 57812367,
+    "created_at": "2026-07-19T06:13:05.494557",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260719_064031.sql": {
+    "backup_type": "db",
+    "size": 57812367,
+    "created_at": "2026-07-19T06:40:31.486770",
+    "storage_mode": "sql"
+  },
+  "tms_db_backup_uploaded_20260722_070044.sql": {
+    "backup_type": "db",
+    "size": 59197233,
+    "created_at": "2026-07-22T07:00:44.536965",
+    "storage_mode": "sql"
+  },
+  "tms_media_backup_uploaded_20260722_070056.zip": {
+    "backup_type": "media",
+    "size": 295009532,
+    "created_at": "2026-07-22T07:00:57.268914",
+    "storage_mode": "zip"
+  },
+  "tms_media_backup_uploaded_20260722_071505.zip": {
+    "backup_type": "media",
+    "size": 295009532,
+    "created_at": "2026-07-22T07:15:06.013248",
+    "storage_mode": "zip"
+  }
+}

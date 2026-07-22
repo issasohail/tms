@@ -6,14 +6,9 @@ from django.utils.dateparse import parse_date
 from django.utils import timezone
 from tenants.models import Tenant, PendingRegistrationPerson, normalize_cnic
 from leases.models import LeaseFamilyMember, LeaseRelationshipType, LeaseVehicle, PendingLeaseVehicleSubmission
-from core.utils.identity import validate_cnic
 
 PERSON_FIELDS = ("first_name", "last_name", "phone", "date_of_birth", "address")
 FILE_FIELDS = ("photo", "cnic_front", "cnic_back")
-REQUIRED_PARTY_ROLES = (
-    (PendingRegistrationPerson.ROLE_PROPOSER, "Proposer"),
-    (PendingRegistrationPerson.ROLE_SECONDER, "Seconder"),
-)
 APPLICANT_FIELDS = (
     "prefix", "first_name", "relation", "last_name", "email", "phone", "phone2",
     "phone3", "cnic", "occupation", "employer_name", "employer_phone",
@@ -67,53 +62,6 @@ def applicant_cnic_conflict(submission):
     if not digits:
         return None
     return Tenant.objects.exclude(pk=submission.tenant_id).filter(cnic_digits=digits).first()
-
-
-def registration_required_party_reviews(submission):
-    people = {
-        person.role: person
-        for person in submission.pending_people.all()
-        if person.role in dict(REQUIRED_PARTY_ROLES)
-    }
-    reviews = []
-    for role, label in REQUIRED_PARTY_ROLES:
-        person = people.get(role)
-        missing = []
-        if not person:
-            missing.append("record")
-        else:
-            for field_name, field_label in (
-                ("first_name", "first name"),
-                ("last_name", "last name"),
-                ("cnic", "CNIC"),
-                ("phone", "phone"),
-            ):
-                if not str(getattr(person, field_name, "") or "").strip():
-                    missing.append(field_label)
-            if person.cnic:
-                try:
-                    validate_cnic(person.cnic)
-                except ValidationError:
-                    if "CNIC" not in missing:
-                        missing.append("valid CNIC")
-        reviews.append(
-            {
-                "role": role,
-                "label": label,
-                "person": person,
-                "missing": missing,
-                "is_complete": not missing,
-            }
-        )
-    return reviews
-
-
-def registration_required_party_errors(submission):
-    return [
-        f"{review['label']}: {', '.join(review['missing'])}"
-        for review in registration_required_party_reviews(submission)
-        if review["missing"]
-    ]
 
 
 def _merge_shell_references(shell, target):
@@ -210,31 +158,14 @@ def resolve_pending_person(person):
     return tenant, created
 
 
-def _resolve_registration_people(submission):
-    resolved = []
-    for person in submission.pending_people.select_for_update().exclude(
-        status=PendingRegistrationPerson.STATUS_REJECTED
-    ):
+@transaction.atomic
+def attach_registration_to_lease(submission, lease, user=None):
+    result = {"people": [], "vehicles": 0}
+    for person in submission.pending_people.select_for_update().exclude(status=PendingRegistrationPerson.STATUS_REJECTED):
         if person.status == PendingRegistrationPerson.STATUS_PROCESSED and person.processed_tenant_id:
             tenant, created = person.processed_tenant, False
         else:
             tenant, created = resolve_pending_person(person)
-        resolved.append((person, tenant, created))
-    return resolved
-
-
-@transaction.atomic
-def process_registration_people(submission):
-    return [
-        {"role": person.role, "tenant_id": tenant.pk, "created": created}
-        for person, tenant, created in _resolve_registration_people(submission)
-    ]
-
-
-@transaction.atomic
-def attach_registration_to_lease(submission, lease, user=None):
-    result = {"people": [], "vehicles": 0}
-    for person, tenant, created in _resolve_registration_people(submission):
         if person.role == PendingRegistrationPerson.ROLE_FAMILY:
             relationship_type = LeaseRelationshipType.objects.filter(pk=person.relationship_type_id).first()
             LeaseFamilyMember.objects.update_or_create(

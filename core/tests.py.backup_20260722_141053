@@ -24,7 +24,6 @@ from core.backup_utils import (
     create_db_backup,
     detect_uploaded_backup_type,
     list_backups,
-    purge_old_backups,
 )
 from core.views import _pending_approval_filter_state
 
@@ -243,26 +242,6 @@ class BackupUploadDetectionTests(SimpleTestCase):
     def test_full_package_zip_is_detected_from_contents(self):
         upload = self._zip_upload("backup.zip", ["full/tms_db_backup_test.sql"])
         self.assertEqual(detect_uploaded_backup_type(upload), "full")
-
-    def test_purge_keeps_three_files_of_each_backup_type(self):
-        with TemporaryDirectory() as backup_root:
-            root = Path(backup_root)
-            for index in range(5):
-                path = root / f"tms_db_backup_{index}.sql"
-                path.write_text(str(index), encoding="utf-8")
-                os.utime(path, (1000 + index, 1000 + index))
-            for index in range(4):
-                path = root / f"tms_media_backup_{index}.zip"
-                with zipfile.ZipFile(path, "w") as archive:
-                    archive.writestr("file.txt", str(index))
-                os.utime(path, (2000 + index, 2000 + index))
-
-            result = purge_old_backups({"backup_root": backup_root})
-            remaining = [backup for backup in list_backups({"backup_root": backup_root}) if backup.file_exists]
-
-            self.assertEqual(len(result["deleted"]), 3)
-            self.assertEqual(sum(backup.backup_type == "db" for backup in remaining), 3)
-            self.assertEqual(sum(backup.backup_type == "media" for backup in remaining), 3)
 
 
 class BackupRestoreViewTests(TestCase):

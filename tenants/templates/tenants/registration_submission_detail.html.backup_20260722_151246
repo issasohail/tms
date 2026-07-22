@@ -269,27 +269,20 @@
               <label class="form-label small mb-1" for="registrationProperty">Property</label>
               <select class="form-select form-select-sm" id="registrationProperty" name="property" form="registrationApprovalForm">
                 <option value="">No lease yet</option>
-                {% for property in properties %}<option value="{{ property.pk }}" {% if selected_registration_property_id == property.pk %}selected{% endif %}>{{ property.property_name }}</option>{% endfor %}
+                {% for property in properties %}<option value="{{ property.pk }}">{{ property.property_name }}</option>{% endfor %}
               </select>
             </div>
             <div class="col-6">
               <label class="form-label small mb-1" for="registrationUnit">Unit</label>
               <select class="form-select form-select-sm" id="registrationUnit" name="unit" form="registrationApprovalForm" disabled>
                 <option value="">No unit</option>
-                {% for unit in units %}<option value="{{ unit.pk }}" data-property="{{ unit.property_id }}" {% if selected_registration_unit_id == unit.pk %}selected{% endif %}>{{ unit.unit_number }}</option>{% endfor %}
+                {% for unit in units %}<option value="{{ unit.pk }}" data-property="{{ unit.property_id }}">{{ unit.unit_number }}</option>{% endfor %}
               </select>
             </div>
           </div>{% else %}<div class="alert alert-info py-2 small">You can approve and create tenant records. Lease creation controls require lease permissions.</div>{% endif %}
           {% if cnic_conflict %}
             <div class="alert alert-danger py-2 small mt-3 mb-2">Submitted CNIC belongs to Tenant #{{ cnic_conflict.pk }} — {{ cnic_conflict.get_full_name }}.</div>
-            <label class="form-check mb-2"><input class="form-check-input" type="radio" name="collision_action" value="merge" form="registrationApprovalForm" required {% if approval_error.collision_action == 'merge' %}checked{% endif %}> <span class="form-check-label small">Merge the registration shell into Tenant #{{ cnic_conflict.pk }}</span></label>
-          {% endif %}
-          {% if not required_parties_complete %}
-            <div class="border border-warning bg-warning-subtle rounded px-2 py-2 small mt-2 mb-0" role="status">
-              <strong>Approval is disabled:</strong>
-              {% for review in required_party_reviews %}{% if not review.is_complete %}{{ review.label }} needs {{ review.missing|join:", " }}{% if not forloop.last %}. {% endif %}{% endif %}{% endfor %}.
-              <a href="{% url 'tenants:registration_submission_edit' submission.pk %}">Complete this information</a> to enable tenant or lease approval.
-            </div>
+            <label class="form-check mb-2"><input class="form-check-input" type="radio" name="collision_action" value="merge" form="registrationApprovalForm" required> <span class="form-check-label small">Merge the registration shell into Tenant #{{ cnic_conflict.pk }}</span></label>
           {% endif %}
           <button class="btn btn-success btn-sm mt-2 w-100" id="registrationApprovalButton" type="submit" form="registrationApprovalForm" data-parties-complete="{{ required_parties_complete|yesno:'true,false' }}" {% if not required_parties_complete %}disabled title="Complete proposer and seconder first."{% endif %}>Approve &amp; Create Tenant</button>
         </div>
@@ -322,43 +315,6 @@
     </div>
   </div>
 </div>
-
-{% if approval_error %}
-<div class="modal fade" id="registrationApprovalErrorModal" tabindex="-1" aria-labelledby="registrationApprovalErrorTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-danger">
-      <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="registrationApprovalErrorTitle">Lease Could Not Be Created</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="alert alert-danger mb-3" role="alert">{{ approval_error.message }}</div>
-        {% if approval_error.active_lease_id %}
-          <div class="small mb-3">
-            <strong>Conflicting lease:</strong> #{{ approval_error.active_lease_id }}<br>
-            <strong>Existing period:</strong> {{ approval_error.active_lease_start_date }} to {{ approval_error.active_lease_end_date }}<br>
-            <strong>Your attempted start date:</strong> {{ approval_error.attempted_start_date }}
-          </div>
-        {% endif %}
-        <label class="form-label fw-semibold" for="registrationLeaseStartDate">Correct the new lease start date</label>
-        <input type="date"
-               class="form-control"
-               id="registrationLeaseStartDate"
-               name="lease_start_date"
-               value="{{ approval_error.suggested_start_date }}"
-               {% if approval_error.active_lease_end_date %}min="{{ approval_error.suggested_start_date }}"{% endif %}
-               form="registrationApprovalForm"
-               required>
-        <div class="form-text">You can also close this popup and select a different property or unit.</div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Change Property / Unit</button>
-        <button type="submit" class="btn btn-danger btn-sm" form="registrationApprovalForm">Use Date &amp; Retry Approval</button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
 
 <div class="modal fade" id="registrationStatusHelpModal" tabindex="-1" aria-labelledby="registrationStatusHelpTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
@@ -441,18 +397,6 @@ document.addEventListener('DOMContentLoaded', function () {
   var unitSelect = document.getElementById('registrationUnit');
   var approvalButton = document.getElementById('registrationApprovalButton');
   if (propertySelect && unitSelect) {
-    function filterUnitOptions(resetSelection) {
-      var propertyId = propertySelect.value;
-      if (resetSelection) unitSelect.value = '';
-      unitSelect.disabled = !propertyId;
-      Array.from(unitSelect.options).forEach(function (option, index) {
-        if (index === 0) return;
-        option.hidden = option.dataset.property !== propertyId;
-        option.disabled = option.hidden;
-      });
-      unitSelect.options[0].textContent = propertyId ? 'Select unit…' : 'No unit';
-    }
-
     function updateApprovalAction() {
       if (!approvalButton) return;
       var partiesComplete = approvalButton.dataset.partiesComplete === 'true';
@@ -471,17 +415,19 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
     propertySelect.addEventListener('change', function () {
-      filterUnitOptions(true);
+      var propertyId = propertySelect.value;
+      unitSelect.value = '';
+      unitSelect.disabled = !propertyId;
+      Array.from(unitSelect.options).forEach(function (option, index) {
+        if (index === 0) return;
+        option.hidden = option.dataset.property !== propertyId;
+        option.disabled = option.hidden;
+      });
+      unitSelect.options[0].textContent = propertyId ? 'Select unit…' : 'No unit';
       updateApprovalAction();
     });
     unitSelect.addEventListener('change', updateApprovalAction);
-    filterUnitOptions(false);
     updateApprovalAction();
-  }
-
-  var approvalErrorModal = document.getElementById('registrationApprovalErrorModal');
-  if (approvalErrorModal && window.bootstrap) {
-    bootstrap.Modal.getOrCreateInstance(approvalErrorModal).show();
   }
 });
 </script>

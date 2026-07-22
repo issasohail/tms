@@ -28,24 +28,72 @@
     <div class="card mb-3">
       <div class="card-header bg-dark text-white py-2">Related People</div>
       <div class="card-body">
+        <div class="alert alert-info py-2 small">
+          Proposer and seconder require first name, last name, valid CNIC, and phone. Family-member cards marked "Staff entry" were not submitted as individual records and may be completed here.
+        </div>
         <div class="row g-3">
           {% for person in people %}
             <div class="col-12 col-xl-6">
               <div class="border rounded p-2 h-100">
-                <h2 class="fs-6">{{ person.get_role_display }}</h2>
+                <div class="d-flex justify-content-between align-items-center">
+                  <h2 class="fs-6 mb-2">{{ person.get_role_display }}</h2>
+                  {% if person.is_staff_entry %}<span class="badge bg-info text-dark">Staff entry</span>{% endif %}
+                </div>
                 <div class="row g-2">
-                  <div class="col-6"><label class="form-label small">First name</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-first_name" value="{{ person.first_name }}"></div>
-                  <div class="col-6"><label class="form-label small">Last name</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-last_name" value="{{ person.last_name }}"></div>
+                  <div class="col-6"><label class="form-label small">First name</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-first_name" value="{{ person.first_name }}" {% if person.role == 'proposer' or person.role == 'seconder' %}required aria-required="true"{% endif %}></div>
+                  <div class="col-6"><label class="form-label small">Last name</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-last_name" value="{{ person.last_name }}" {% if person.role == 'proposer' or person.role == 'seconder' %}required aria-required="true"{% endif %}></div>
                   <div class="col-6"><label class="form-label small">Father / husband</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-father_husband_name" value="{{ person.father_husband_name }}"></div>
-                  <div class="col-6"><label class="form-label small">CNIC</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-cnic" value="{{ person.cnic }}"></div>
+                  <div class="col-6"><label class="form-label small">CNIC</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-cnic" value="{{ person.cnic }}" {% if person.role == 'proposer' or person.role == 'seconder' %}required aria-required="true"{% endif %}></div>
                   <div class="col-6"><label class="form-label small">Phone</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-phone" value="{{ person.phone }}" {% if person.role == 'proposer' or person.role == 'seconder' %}required aria-required="true"{% endif %}></div>
                   <div class="col-6"><label class="form-label small">Date of birth</label><input type="date" class="form-control form-control-sm" name="{{ person.edit_prefix }}-date_of_birth" value="{{ person.date_of_birth|date:'Y-m-d' }}"></div>
-                  <div class="col-6"><label class="form-label small">Relationship</label><input class="form-control form-control-sm" name="{{ person.edit_prefix }}-relationship" value="{{ person.relationship }}"></div>
-                  <div class="col-6"><label class="form-label small">Relationship type ID</label><input type="number" class="form-control form-control-sm" name="{{ person.edit_prefix }}-relationship_type" value="{{ person.relationship_type_id|default:'' }}"></div>
+                  <div class="col-6">
+                    <label class="form-label small">Relationship</label>
+                    <select class="form-select form-select-sm relationship-select" name="{{ person.edit_prefix }}-relationship_type" data-new-target="{{ person.edit_prefix }}-relationship-new">
+                      <option value="">Select relationship</option>
+                      {% for relationship_type in relationship_types %}<option value="{{ relationship_type.pk }}" {% if person.selected_relationship_type.pk == relationship_type.pk %}selected{% endif %}>{{ relationship_type.name }}</option>{% endfor %}
+                      <option value="__new__" {% if person.custom_relationship %}selected{% endif %}>Add new relationship…</option>
+                    </select>
+                  </div>
+                  <div class="col-6 relationship-new-wrap" {% if not person.custom_relationship %}hidden{% endif %}>
+                    <label class="form-label small">New relationship name</label>
+                    <input id="{{ person.edit_prefix }}-relationship-new" class="form-control form-control-sm" name="{{ person.edit_prefix }}-relationship_new" value="{{ person.custom_relationship }}" maxlength="80">
+                  </div>
                   <div class="col-12"><label class="form-label small">Address</label><textarea class="form-control form-control-sm" name="{{ person.edit_prefix }}-address" rows="2">{{ person.address }}</textarea></div>
                   <div class="col-4"><label class="form-label small">Photo</label><input type="file" class="form-control form-control-sm" name="{{ person.edit_prefix }}-photo" accept="image/*"></div>
                   <div class="col-4"><label class="form-label small">CNIC front</label><input type="file" class="form-control form-control-sm" name="{{ person.edit_prefix }}-cnic_front" accept="image/*"></div>
                   <div class="col-4"><label class="form-label small">CNIC back</label><input type="file" class="form-control form-control-sm" name="{{ person.edit_prefix }}-cnic_back" accept="image/*"></div>
+                  {% if person.photo or person.cnic_front or person.cnic_back %}<div class="col-12 small text-muted">Existing files remain unless a replacement is uploaded.</div>{% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header bg-dark text-white py-2">Vehicles</div>
+      <div class="card-body">
+        <div class="alert alert-info py-2 small">Existing submitted vehicles can be corrected here. If no vehicle row was submitted, use the blank Staff entry card to add one.</div>
+        <div class="row g-3">
+          {% for vehicle in vehicles %}
+            <div class="col-12 col-xl-6">
+              <div class="border rounded p-2 h-100">
+                <div class="d-flex justify-content-between align-items-center">
+                  <h2 class="fs-6 mb-2">{% if vehicle.pk %}Vehicle {{ forloop.counter }}{% else %}Add Vehicle{% endif %}</h2>
+                  {% if vehicle.is_staff_entry %}<span class="badge bg-info text-dark">Staff entry</span>{% endif %}
+                </div>
+                <div class="row g-2">
+                  <div class="col-6"><label class="form-label small">Vehicle type</label><select class="form-select form-select-sm" name="{{ vehicle.edit_prefix }}-vehicle_type"><option value="">Select type</option>{% for vehicle_type in vehicle_types %}<option value="{{ vehicle_type.pk }}" {% if vehicle.vehicle_type_id == vehicle_type.pk %}selected{% endif %}>{{ vehicle_type.name }}</option>{% endfor %}</select></div>
+                  <div class="col-6"><label class="form-label small">Registration #</label><input class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-registration_number" value="{{ vehicle.registration_number }}"></div>
+                  <div class="col-6"><label class="form-label small">Make</label><input class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-make" value="{{ vehicle.make }}"></div>
+                  <div class="col-6"><label class="form-label small">Model</label><input class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-model" value="{{ vehicle.model }}"></div>
+                  <div class="col-6"><label class="form-label small">Color</label><input class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-color" value="{{ vehicle.color }}"></div>
+                  <div class="col-6"><label class="form-label small">Year</label><input type="number" min="1900" class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-year" value="{{ vehicle.year|default:'' }}"></div>
+                  <div class="col-6"><label class="form-label small">Owner name</label><input class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-owner_name" value="{{ vehicle.owner_name }}"></div>
+                  <div class="col-6"><label class="form-label small">Owner CNIC</label><input class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-owner_cnic" value="{{ vehicle.owner_cnic }}"></div>
+                  <div class="col-6"><label class="form-label small">Vehicle photo</label><input type="file" class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-vehicle_photo" accept="image/*"></div>
+                  <div class="col-6"><label class="form-label small">Registration book</label><input type="file" class="form-control form-control-sm" name="{{ vehicle.edit_prefix }}-registration_book_photo" accept="image/*"></div>
+                  {% if vehicle.vehicle_photo or vehicle.registration_book_photo %}<div class="col-12 small text-muted">Existing files remain unless a replacement is uploaded.</div>{% endif %}
                 </div>
               </div>
             </div>
@@ -56,4 +104,22 @@
     <button class="btn btn-primary btn-sm" type="submit">Save Edits</button>
   </form>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+document.querySelectorAll('.relationship-select').forEach(function (select) {
+  function toggleNewRelationship() {
+    var input = document.getElementById(select.dataset.newTarget);
+    if (!input) return;
+    var wrapper = input.closest('.relationship-new-wrap');
+    var show = select.value === '__new__';
+    wrapper.hidden = !show;
+    input.required = show;
+  }
+  select.addEventListener('change', toggleNewRelationship);
+  toggleNewRelationship();
+});
+</script>
 {% endblock %}

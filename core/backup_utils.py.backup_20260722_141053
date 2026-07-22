@@ -181,52 +181,6 @@ def choices_for(backups, backup_type):
     return choices
 
 
-def protected_backup_ids(backups, keep_per_type=MIN_PROTECTED_BACKUPS):
-    protected = set()
-    counts = {}
-    for backup in backups:
-        if not backup.file_exists:
-            continue
-        count = counts.get(backup.backup_type, 0)
-        if count < keep_per_type:
-            protected.add(backup.id)
-            counts[backup.backup_type] = count + 1
-    return protected
-
-
-def backup_storage_summary(config):
-    root = ensure_backup_root(config)
-    usage = shutil.disk_usage(root)
-    backup_bytes = sum(
-        backup.size for backup in list_backups(config) if backup.file_exists
-    )
-    return {
-        "backup_bytes": backup_bytes,
-        "disk_total": usage.total,
-        "disk_used": usage.used,
-        "disk_free": usage.free,
-    }
-
-
-def purge_old_backups(config, keep_per_type=MIN_PROTECTED_BACKUPS):
-    root = ensure_backup_root(config)
-    backups = list_backups(config)
-    protected = protected_backup_ids(backups, keep_per_type=keep_per_type)
-    deleted = []
-    reclaimed_bytes = 0
-    for backup in backups:
-        if not backup.file_exists or backup.id in protected:
-            continue
-        path = Path(backup.display_path).resolve()
-        if root.resolve() not in path.parents or not path.is_file():
-            continue
-        path.unlink()
-        _remove_manifest_entry(root, backup.id)
-        deleted.append(backup.id)
-        reclaimed_bytes += backup.size
-    return {"deleted": deleted, "reclaimed_bytes": reclaimed_bytes}
-
-
 def _timestamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -542,7 +496,7 @@ def delete_backup(config, backup_id):
     item = next((backup for backup in backups if backup.id == backup_id), None)
     if not item:
         raise RuntimeError("Selected backup was not found.")
-    protected_ids = protected_backup_ids(backups)
+    protected_ids = {backup.id for backup in backups[:MIN_PROTECTED_BACKUPS]}
     if item.id in protected_ids:
         raise RuntimeError("The latest 3 backups are protected and cannot be deleted.")
     root = ensure_backup_root(config).resolve()

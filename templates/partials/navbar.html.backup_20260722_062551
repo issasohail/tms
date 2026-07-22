@@ -29,7 +29,7 @@
 
         {% if user.is_authenticated %}
           <div class="nav-tablet-alerts">
-            <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-warning suggestion-nav-link">Pending Approval{% if PENDING_APPROVAL_COUNT %} <span class="badge bg-danger ms-1">{{ PENDING_APPROVAL_COUNT }}</span>{% endif %}</a>
+            <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-warning suggestion-nav-link">Pending Approval</a>
             <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">Suggestions</a>
           </div>
         {% endif %}
@@ -44,7 +44,7 @@
             {% if perms.leases.add_lease       %}<li><a class="dropdown-item" href="{% url 'leases:lease_create' %}"><i class="bi bi-plus-circle me-1 text-success"></i>Add Lease</a></li>{% endif %}
             {% if perms.invoices.add_invoice   %}<li><a class="dropdown-item" href="{% url 'invoices:invoice_create' %}"><i class="bi bi-plus-circle me-1 text-success"></i>Add Invoice</a></li>{% endif %}
             <li><hr class="dropdown-divider my-1"></li>
-            <li><a class="dropdown-item" href="{% url 'core:pending_approvals' %}"><i class="bi bi-check2-square me-1 text-warning"></i>Pending Approval{% if PENDING_APPROVAL_COUNT %} <span class="badge bg-danger ms-1">{{ PENDING_APPROVAL_COUNT }}</span>{% endif %}</a></li>
+            <li><a class="dropdown-item" href="{% url 'core:pending_approvals' %}"><i class="bi bi-check2-square me-1 text-warning"></i>Pending Approval</a></li>
             {% if perms.properties.view_property%}<li><a class="dropdown-item" href="{% url 'properties:property_list' %}">Properties</a></li>{% endif %}
             {% if perms.properties.view_unit   %}<li><a class="dropdown-item" href="{% url 'properties:unit_list' %}">Units</a></li>{% endif %}
             {% if perms.maintenance.view_maintenancerequest %}<li><a class="dropdown-item" href="{% url 'maintenance:request_list' %}"><i class="bi bi-tools me-1 text-warning"></i>Maintenance</a></li>{% endif %}
@@ -137,7 +137,7 @@
         {% if user.is_authenticated %}
           <div class="nav-desktop-alerts d-flex align-items-center gap-2 flex-shrink-0">
             <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-warning suggestion-nav-link">
-              <span>Pending Approval{% if PENDING_APPROVAL_COUNT %} <span class="badge bg-danger ms-1">{{ PENDING_APPROVAL_COUNT }}</span>{% endif %}</span>
+              <span>Pending Approval</span>
             </a>
             <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">
               <span>Suggestions</span>

@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
 from urllib.parse import quote
@@ -41,7 +41,6 @@ from django.urls import (
     reverse,
     reverse_lazy,
 )
-from django.utils.text import slugify
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
@@ -67,7 +66,6 @@ from leases.models import (
     LeaseRelationshipType,
     LeaseVehicle,
     LeaseVehicleType,
-    PendingLeaseVehicleSubmission,
 )
 from leases.models_renewal import LeaseRenewal
 from leases.services.lease_expiry import attach_lease_expiry_countdown
@@ -679,7 +677,6 @@ def _registration_submission_comparison(submission):
                 "existing": existing_display,
                 "submitted": submitted_display,
                 "submitted_raw": submitted_compare if field_name != "interested_in" else "",
-                "submitted_is_blank": not submitted if field_name != "interested_in" else not submitted_ids,
                 "changed": changed,
                 "is_phone": field_name in phone_fields,
                 "can_update_submitted": field_name != "interested_in",
@@ -717,7 +714,6 @@ def _registration_submission_comparison(submission):
                 ),
                 "existing_url": existing_file.url if existing_exists else "",
                 "submitted_url": submitted_file.url if submitted_exists else "",
-                "submitted_is_blank": False,
                 "changed": True,
                 "can_update_submitted": False,
             }
@@ -1160,16 +1156,6 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         context["units"] = Unit.objects.select_related("property").order_by(
             "property__property_name", "unit_number"
         )
-        approval_error = self.request.session.pop(
-            f"registration_approval_error_{self.object.pk}", None
-        )
-        context["approval_error"] = approval_error
-        context["selected_registration_property_id"] = (
-            approval_error.get("property_id") if approval_error else None
-        )
-        context["selected_registration_unit_id"] = (
-            approval_error.get("unit_id") if approval_error else None
-        )
         context["audit_entries"] = self.object.audit_entries.select_related("edited_by")[:10]
         return context
 
@@ -1263,7 +1249,6 @@ def tenant_registration_submission_review(request, pk):
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
     create_lease = bool(property_id and unit_id)
     unit = None
-    lease_start_date = timezone.localdate()
     if create_lease:
         if not (
             request.user.has_perm("leases.add_lease")
@@ -1277,46 +1262,8 @@ def tenant_registration_submission_review(request, pk):
         if not unit:
             messages.error(request, "Select a valid property and unit for the new lease.")
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
-
-        requested_start_date = (request.POST.get("lease_start_date") or "").strip()
-        if requested_start_date:
-            lease_start_date = parse_date(requested_start_date)
-            if lease_start_date is None:
-                request.session[f"registration_approval_error_{submission.pk}"] = {
-                    "message": "Enter a valid start date for the new lease.",
-                    "property_id": unit.property_id,
-                    "unit_id": unit.pk,
-                    "collision_action": request.POST.get("collision_action") or "",
-                    "attempted_start_date": requested_start_date,
-                    "suggested_start_date": timezone.localdate().isoformat(),
-                }
-                return redirect("tenants:registration_submission_detail", pk=submission.pk)
-
-        active_lease = (
-            Lease.objects.filter(unit=unit, status="active")
-            .select_related("tenant")
-            .order_by("-end_date", "-pk")
-            .first()
-        )
-        if active_lease and lease_start_date <= active_lease.end_date:
-            suggested_start_date = active_lease.end_date + timedelta(days=1)
-            request.session[f"registration_approval_error_{submission.pk}"] = {
-                "message": (
-                    f"{unit.property.property_name} - Unit {unit.unit_number} already has "
-                    f"active Lease #{active_lease.pk} for {active_lease.tenant}, from "
-                    f"{active_lease.start_date:%Y-%m-%d} through {active_lease.end_date:%Y-%m-%d}. "
-                    f"Choose a start date on or after {suggested_start_date:%Y-%m-%d}, "
-                    "or select a different unit."
-                ),
-                "property_id": unit.property_id,
-                "unit_id": unit.pk,
-                "collision_action": request.POST.get("collision_action") or "",
-                "active_lease_id": active_lease.pk,
-                "active_lease_start_date": active_lease.start_date.isoformat(),
-                "active_lease_end_date": active_lease.end_date.isoformat(),
-                "attempted_start_date": lease_start_date.isoformat(),
-                "suggested_start_date": suggested_start_date.isoformat(),
-            }
+        if Lease.objects.filter(unit=unit, status="active").exists():
+            messages.error(request, "The selected unit already has an active lease.")
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
 
     party_errors = registration_required_party_errors(submission)
@@ -1334,20 +1281,9 @@ def tenant_registration_submission_review(request, pk):
     updated_values = {}
     previous_updated_values = {}
     for row in comparison:
-        decision = request.POST.get(f"decision_{row['field']}")
         if not row["changed"]:
-            if (
-                decision == "update_submitted"
-                and row.get("can_update_submitted")
-            ):
-                previous_updated_values[row["field"]] = (
-                    submission.submitted_data or {}
-                ).get(row["field"])
-                updated_values[row["field"]] = request.POST.get(
-                    f"updated_{row['field']}", ""
-                )
-                decisions[row["field"]] = "accept_submitted"
             continue
+        decision = request.POST.get(f"decision_{row['field']}")
         if decision == "update_submitted" and row.get("can_update_submitted"):
             previous_updated_values[row["field"]] = (submission.submitted_data or {}).get(
                 row["field"]
@@ -1418,13 +1354,14 @@ def tenant_registration_submission_review(request, pk):
                 from leases.services.lease_history import ensure_original_history
                 from tenants.services.registration_workflow import attach_registration_to_lease
 
+                start_date = timezone.localdate()
                 lease_months = GlobalSettings.get_solo().default_lease_months or 11
                 lease = Lease.objects.create(
                     tenant=tenant,
                     unit=unit,
-                    agreement_date=lease_start_date,
-                    start_date=lease_start_date,
-                    end_date=calculate_lease_end_date(lease_start_date, lease_months),
+                    agreement_date=start_date,
+                    start_date=start_date,
+                    end_date=calculate_lease_end_date(start_date, lease_months),
                     lease_months=lease_months,
                     monthly_rent=unit.monthly_rent,
                     society_maintenance=unit.society_maintenance,
@@ -1502,16 +1439,13 @@ def tenant_registration_submission_edit(request, pk):
     if not request.user.has_perm("tenants.change_tenantregistrationsubmission"):
         raise PermissionDenied
     submission = get_object_or_404(
-        TenantRegistrationSubmission.objects.select_for_update().prefetch_related(
-            "pending_people", "pending_vehicle_submissions"
-        ),
+        TenantRegistrationSubmission.objects.select_for_update().prefetch_related("pending_people"),
         pk=pk,
     )
     if not submission.is_editable:
         return HttpResponse("This submission is not editable.", status=409)
 
     people = list(submission.pending_people.all())
-    vehicles = list(submission.pending_vehicle_submissions.select_related("vehicle_type"))
     role_prefix = {
         PendingRegistrationPerson.ROLE_PROPOSER: "proposer",
         PendingRegistrationPerson.ROLE_SECONDER: "seconder",
@@ -1532,233 +1466,79 @@ def tenant_registration_submission_edit(request, pk):
             )
     for person in people:
         person.edit_prefix = role_prefix.get(person.role, f"person-{person.pk}")
-
-    existing_family_count = sum(
-        person.role == PendingRegistrationPerson.ROLE_FAMILY and person.pk
-        for person in people
-    )
-    try:
-        requested_family_count = int(
-            (submission.submitted_data or {}).get("number_of_family_member") or 0
-        )
-    except (TypeError, ValueError):
-        requested_family_count = 0
-    blank_family_count = max(1, min(10, requested_family_count) - existing_family_count)
-    for index in range(blank_family_count):
-        person = PendingRegistrationPerson(
-            submission=submission,
-            role=PendingRegistrationPerson.ROLE_FAMILY,
-        )
-        person.edit_prefix = f"new-family-{index}"
-        person.is_staff_entry = True
-        people.append(person)
-
-    for vehicle in vehicles:
-        vehicle.edit_prefix = f"vehicle-{vehicle.pk}"
-    blank_vehicle = PendingLeaseVehicleSubmission(
-        pending_tenant_submission=submission,
-        tenant=submission.tenant,
-    )
-    blank_vehicle.edit_prefix = "new-vehicle-0"
-    blank_vehicle.is_staff_entry = True
-    vehicles.append(blank_vehicle)
-
-    relationship_types = list(
-        LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
-    )
-    vehicle_types = list(
-        LeaseVehicleType.objects.filter(is_active=True).order_by("sort_order", "name")
-    )
-
-    def selected_relationship(person):
-        selected = next(
-            (item for item in relationship_types if item.pk == person.relationship_type_id),
-            None,
-        )
-        person.selected_relationship_type = selected
-        person.custom_relationship = "" if selected else person.relationship
-
-    for person in people:
-        selected_relationship(person)
-
     if request.method == "POST":
         form = TenantPublicRegistrationForm(request.POST, request.FILES, role_data=request.POST)
         if form.is_valid():
-            try:
-                with transaction.atomic():
-                    old_data = dict(submission.submitted_data or {})
-                    new_data = form.cleaned_data.copy()
-                    new_data["interested_in"] = [item.pk for item in new_data.get("interested_in", [])]
-                    if new_data.get("date_of_birth"):
-                        new_data["date_of_birth"] = new_data["date_of_birth"].isoformat()
-                    for file_field in ("photo", "cnic_front", "cnic_back"):
-                        new_data.pop(file_field, None)
-                        if request.FILES.get(file_field):
-                            setattr(submission, file_field, request.FILES[file_field])
-                    new_data["family_members"] = old_data.get("family_members", [])
-                    submission.submitted_data = new_data
-                    submission.save()
+            old_data = dict(submission.submitted_data or {})
+            new_data = form.cleaned_data.copy()
+            new_data["interested_in"] = [item.pk for item in new_data.get("interested_in", [])]
+            if new_data.get("date_of_birth"):
+                new_data["date_of_birth"] = new_data["date_of_birth"].isoformat()
+            for file_field in ("photo", "cnic_front", "cnic_back"):
+                new_data.pop(file_field, None)
+                if request.FILES.get(file_field):
+                    setattr(submission, file_field, request.FILES[file_field])
+            new_data["family_members"] = old_data.get("family_members", [])
+            submission.submitted_data = new_data
+            submission.save()
 
-                    changes = {
-                        f"applicant.{field}": {"old": old_data.get(field), "new": new_value}
-                        for field, new_value in new_data.items()
-                        if old_data.get(field) != new_value
-                    }
-                    from tenants.services.registration_workflow import match_tenant_by_cnic, proposed_changes
+            changes = {
+                f"applicant.{field}": {"old": old_data.get(field), "new": new_value}
+                for field, new_value in new_data.items()
+                if old_data.get(field) != new_value
+            }
+            from tenants.services.registration_workflow import match_tenant_by_cnic, proposed_changes
 
-                    for person in people:
-                        prefix = person.edit_prefix
-                        posted_values = {
-                            field: (request.POST.get(f"{prefix}-{field}") or "").strip()
-                            for field in (
-                                "first_name", "last_name", "father_husband_name", "cnic",
-                                "phone", "address",
-                            )
-                        }
-                        relationship_choice = (
-                            request.POST.get(f"{prefix}-relationship_type") or ""
-                        ).strip()
-                        custom_relationship = (
-                            request.POST.get(f"{prefix}-relationship_new") or ""
-                        ).strip()
-                        has_files = any(
-                            request.FILES.get(f"{prefix}-{field}")
-                            for field in ("photo", "cnic_front", "cnic_back")
-                        )
-                        if not person.pk and not any(posted_values.values()) and not relationship_choice and not custom_relationship and not has_files:
-                            continue
-
-                        old_person = {
-                            field: str(getattr(person, field) or "")
-                            for field in (
-                                "first_name", "last_name", "father_husband_name", "cnic",
-                                "phone", "date_of_birth", "address", "relationship",
-                                "relationship_type_id", "photo", "cnic_front", "cnic_back",
-                            )
-                        }
-                        for field, value in posted_values.items():
-                            setattr(person, field, value)
-                        person.date_of_birth = parse_date(
-                            request.POST.get(f"{prefix}-date_of_birth") or ""
-                        )
-                        relationship_type = None
-                        if relationship_choice.isdigit():
-                            relationship_type = next(
-                                (item for item in relationship_types if item.pk == int(relationship_choice)),
-                                None,
-                            )
-                            if not relationship_type:
-                                raise ValidationError(f"{person.get_role_display()}: select a valid relationship.")
-                        elif relationship_choice == "__new__":
-                            if not custom_relationship:
-                                raise ValidationError(f"{person.get_role_display()}: enter the new relationship name.")
-                            relationship_type = LeaseRelationshipType.objects.filter(
-                                name__iexact=custom_relationship
-                            ).first()
-                            if not relationship_type:
-                                base_code = slugify(custom_relationship)[:70] or "relationship"
-                                code = base_code
-                                suffix = 2
-                                while LeaseRelationshipType.objects.filter(code=code).exists():
-                                    code = f"{base_code[:74]}-{suffix}"
-                                    suffix += 1
-                                relationship_type = LeaseRelationshipType.objects.create(
-                                    name=custom_relationship[:80], code=code
-                                )
-                                relationship_types.append(relationship_type)
-                        person.relationship_type_id = relationship_type.pk if relationship_type else None
-                        person.relationship = (
-                            relationship_type.code if relationship_type else custom_relationship
-                        )[:30]
-                        for file_field in ("photo", "cnic_front", "cnic_back"):
-                            if request.FILES.get(f"{prefix}-{file_field}"):
-                                setattr(person, file_field, request.FILES[f"{prefix}-{file_field}"])
-                        if old_person["cnic"] != str(person.cnic or ""):
-                            person.matched_tenant = match_tenant_by_cnic(person.cnic)
-                        person.proposed_updates = proposed_changes(person)
-                        person.save()
-                        for field, old_value in old_person.items():
-                            new_value = str(getattr(person, field) or "")
-                            if old_value != new_value:
-                                changes[f"{prefix}.{field}"] = {"old": old_value, "new": new_value}
-
-                    active_vehicle_types = {str(item.pk): item for item in vehicle_types}
-                    seen_registrations = set()
-                    for vehicle in vehicles:
-                        prefix = vehicle.edit_prefix
-                        vehicle_type_id = (request.POST.get(f"{prefix}-vehicle_type") or "").strip()
-                        values = {
-                            field: (request.POST.get(f"{prefix}-{field}") or "").strip()
-                            for field in (
-                                "registration_number", "make", "model", "color", "year",
-                                "owner_name", "owner_cnic",
-                            )
-                        }
-                        has_files = any(
-                            request.FILES.get(f"{prefix}-{field}")
-                            for field in ("vehicle_photo", "registration_book_photo")
-                        )
-                        if not vehicle.pk and not vehicle_type_id and not any(values.values()) and not has_files:
-                            continue
-                        if vehicle_type_id not in active_vehicle_types:
-                            raise ValidationError(f"Vehicle {vehicle.pk or 'new'}: vehicle type is required.")
-                        if not values["registration_number"]:
-                            raise ValidationError(f"Vehicle {vehicle.pk or 'new'}: registration number is required.")
-                        registration_key = values["registration_number"].casefold()
-                        if registration_key in seen_registrations:
-                            raise ValidationError(f"Duplicate vehicle registration number: {values['registration_number']}.")
-                        seen_registrations.add(registration_key)
-                        old_vehicle = {
-                            field: str(getattr(vehicle, field) or "")
-                            for field in (
-                                "vehicle_type_id", "registration_number", "make", "model",
-                                "color", "year", "owner_name", "owner_cnic",
-                            )
-                        }
-                        vehicle.vehicle_type = active_vehicle_types[vehicle_type_id]
-                        for field in ("registration_number", "make", "model", "color", "owner_name", "owner_cnic"):
-                            setattr(vehicle, field, values[field])
-                        try:
-                            vehicle.year = int(values["year"]) if values["year"] else None
-                        except (TypeError, ValueError):
-                            raise ValidationError(f"Vehicle {vehicle.pk or 'new'}: year must be a number.")
-                        vehicle.pending_tenant_submission = submission
-                        vehicle.tenant = submission.tenant
-                        for file_field in ("vehicle_photo", "registration_book_photo"):
-                            if request.FILES.get(f"{prefix}-{file_field}"):
-                                setattr(vehicle, file_field, request.FILES[f"{prefix}-{file_field}"])
-                        vehicle.full_clean()
-                        vehicle.save()
-                        for field, old_value in old_vehicle.items():
-                            new_value = str(getattr(vehicle, field) or "")
-                            if old_value != new_value:
-                                changes[f"{prefix}.{field}"] = {"old": old_value, "new": new_value}
-
-                    TenantRegistrationSubmissionAudit.objects.create(
-                        submission=submission,
-                        edited_by=request.user,
-                        action="edit",
-                        changes=changes,
+            for person in people:
+                prefix = role_prefix.get(person.role, f"person-{person.pk}")
+                old_person = {
+                    field: str(getattr(person, field) or "")
+                    for field in (
+                        "first_name", "last_name", "father_husband_name", "cnic",
+                        "phone", "date_of_birth", "address", "relationship",
+                        "relationship_type_id", "photo", "cnic_front", "cnic_back",
                     )
-            except ValidationError as exc:
-                form.add_error(None, exc)
-            else:
-                messages.success(request, "Registration submission edits saved.")
-                return redirect("tenants:registration_submission_detail", pk=submission.pk)
+                }
+                for field in (
+                    "first_name", "last_name", "father_husband_name", "cnic",
+                    "phone", "address", "relationship",
+                ):
+                    setattr(person, field, (request.POST.get(f"{prefix}-{field}") or "").strip())
+                person.date_of_birth = parse_date(
+                    request.POST.get(f"{prefix}-date_of_birth") or ""
+                )
+                relationship_type = request.POST.get(f"{prefix}-relationship_type") or None
+                person.relationship_type_id = (
+                    int(relationship_type)
+                    if relationship_type and str(relationship_type).isdigit()
+                    else None
+                )
+                for file_field in ("photo", "cnic_front", "cnic_back"):
+                    if request.FILES.get(f"{prefix}-{file_field}"):
+                        setattr(person, file_field, request.FILES[f"{prefix}-{file_field}"])
+                if old_person["cnic"] != str(person.cnic or ""):
+                    person.matched_tenant = match_tenant_by_cnic(person.cnic)
+                person.proposed_updates = proposed_changes(person)
+                person.save()
+                for field, old_value in old_person.items():
+                    new_value = str(getattr(person, field) or "")
+                    if old_value != new_value:
+                        changes[f"{prefix}.{field}"] = {"old": old_value, "new": new_value}
+            TenantRegistrationSubmissionAudit.objects.create(
+                submission=submission,
+                edited_by=request.user,
+                action="edit",
+                changes=changes,
+            )
+            messages.success(request, "Registration submission edits saved.")
+            return redirect("tenants:registration_submission_detail", pk=submission.pk)
     else:
         form = TenantPublicRegistrationForm(initial=submission.submitted_data)
 
     return render(
         request,
         "tenants/registration_submission_edit.html",
-        {
-            "submission": submission,
-            "form": form,
-            "people": people,
-            "vehicles": vehicles,
-            "relationship_types": relationship_types,
-            "vehicle_types": vehicle_types,
-        },
+        {"submission": submission, "form": form, "people": people, "role_prefix": role_prefix},
     )
 
 

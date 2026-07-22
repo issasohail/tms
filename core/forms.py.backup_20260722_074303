@@ -342,6 +342,10 @@ class BackupRestoreForm(forms.Form):
 
 
 class BackupUploadForm(forms.Form):
+    backup_type = forms.ChoiceField(
+        choices=(("db", "Database"), ("media", "Media"), ("full", "Full")),
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
     backup_file = forms.FileField(
         widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
     )
@@ -349,8 +353,11 @@ class BackupUploadForm(forms.Form):
     def clean_backup_file(self):
         upload = self.cleaned_data["backup_file"]
         name = upload.name.lower()
-        if not name.endswith((".sql", ".sqlite3", ".zip")):
-            raise forms.ValidationError("Backup upload must be a .sql, .sqlite3, or .zip file.")
+        backup_type = self.cleaned_data.get("backup_type")
+        if backup_type == "db" and not (name.endswith(".sql") or name.endswith(".sqlite3")):
+            raise forms.ValidationError("Database restore upload must be .sql or .sqlite3.")
+        if backup_type in {"media", "full"} and not name.endswith(".zip"):
+            raise forms.ValidationError("Media and full restore uploads must be .zip files.")
         return upload
 
 

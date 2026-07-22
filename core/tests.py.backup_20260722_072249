@@ -1,7 +1,5 @@
 import subprocess
 import zipfile
-import os
-from io import BytesIO
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -10,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -22,9 +19,6 @@ from core.backup_utils import (
     _mysqldump_compatibility_args,
     _run_mysql_command,
     create_db_backup,
-    detect_uploaded_backup_type,
-    list_backups,
-    purge_old_backups,
 )
 from core.views import _pending_approval_filter_state
 
@@ -224,47 +218,6 @@ class BackupMySQLCommandTests(SimpleTestCase):
             )
 
 
-class BackupUploadDetectionTests(SimpleTestCase):
-    def _zip_upload(self, name, members):
-        content = BytesIO()
-        with zipfile.ZipFile(content, "w") as archive:
-            for member in members:
-                archive.writestr(member, "test")
-        return SimpleUploadedFile(name, content.getvalue(), content_type="application/zip")
-
-    def test_database_file_is_detected_from_extension(self):
-        upload = SimpleUploadedFile("backup.sql", b"SELECT 1;")
-        self.assertEqual(detect_uploaded_backup_type(upload), "db")
-
-    def test_regular_zip_is_detected_as_media(self):
-        upload = self._zip_upload("backup.zip", ["tenant_photos/photo.jpg"])
-        self.assertEqual(detect_uploaded_backup_type(upload), "media")
-
-    def test_full_package_zip_is_detected_from_contents(self):
-        upload = self._zip_upload("backup.zip", ["full/tms_db_backup_test.sql"])
-        self.assertEqual(detect_uploaded_backup_type(upload), "full")
-
-    def test_purge_keeps_three_files_of_each_backup_type(self):
-        with TemporaryDirectory() as backup_root:
-            root = Path(backup_root)
-            for index in range(5):
-                path = root / f"tms_db_backup_{index}.sql"
-                path.write_text(str(index), encoding="utf-8")
-                os.utime(path, (1000 + index, 1000 + index))
-            for index in range(4):
-                path = root / f"tms_media_backup_{index}.zip"
-                with zipfile.ZipFile(path, "w") as archive:
-                    archive.writestr("file.txt", str(index))
-                os.utime(path, (2000 + index, 2000 + index))
-
-            result = purge_old_backups({"backup_root": backup_root})
-            remaining = [backup for backup in list_backups({"backup_root": backup_root}) if backup.file_exists]
-
-            self.assertEqual(len(result["deleted"]), 3)
-            self.assertEqual(sum(backup.backup_type == "db" for backup in remaining), 3)
-            self.assertEqual(sum(backup.backup_type == "media" for backup in remaining), 3)
-
-
 class BackupRestoreViewTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
@@ -281,14 +234,12 @@ class BackupRestoreViewTests(TestCase):
         uploaded.name = "media.zip"
 
         with patch("core.views.BackupUploadForm") as upload_form_class, patch(
-            "core.views.detect_uploaded_backup_type",
-            return_value="media",
-        ), patch(
             "core.views.save_uploaded_backup",
             return_value=Path("C:/backup-test/tms_media_backup_uploaded_test.zip"),
         ):
             upload_form_class.return_value.is_valid.return_value = True
             upload_form_class.return_value.cleaned_data = {
+                "backup_type": "media",
                 "backup_file": uploaded,
             }
             response = self.client.post(
@@ -299,42 +250,9 @@ class BackupRestoreViewTests(TestCase):
         self.assertRedirects(
             response,
             f"{reverse('core:backup_center')}?"
-            "selected_backup=tms_media_backup_uploaded_test.zip#restore-backup",
+            "selected_media=tms_media_backup_uploaded_test.zip#restore-media",
             fetch_redirect_response=False,
         )
-
-    def test_missing_file_keeps_serial_but_is_excluded_from_restore_choices(self):
-        with TemporaryDirectory() as backup_root:
-            root = Path(backup_root)
-            database_file = root / "tms_db_backup_old.sql"
-            missing_file = root / "tms_media_backup_new.zip"
-            database_file.write_text("SELECT 1;", encoding="utf-8")
-            with zipfile.ZipFile(missing_file, "w") as archive:
-                archive.writestr("photo.jpg", "test")
-            os.utime(database_file, (1000, 1000))
-            os.utime(missing_file, (2000, 2000))
-            config = {"backup_root": backup_root}
-            list_backups(config)
-            missing_file.unlink()
-
-            with patch("core.views.load_backup_settings", return_value=config):
-                response = self.client.get(reverse("core:backup_center"))
-
-            backups = response.context["backups"]
-            self.assertEqual(backups[0].id, missing_file.name)
-            self.assertEqual(backups[0].serial_number, 1)
-            self.assertFalse(backups[0].file_exists)
-            restore_values = {
-                value for value, _label in response.context["restore_form"].fields["backup_id"].choices
-            }
-            self.assertNotIn(missing_file.name, restore_values)
-            self.assertIn(database_file.name, restore_values)
-            database_label = next(
-                label
-                for value, label in response.context["restore_form"].fields["backup_id"].choices
-                if value == database_file.name
-            )
-            self.assertIn("S.N 2", database_label)
 
     def test_media_restore_extracts_uploaded_archive_into_media_root(self):
         with TemporaryDirectory() as work_dir:
@@ -357,9 +275,9 @@ class BackupRestoreViewTests(TestCase):
                 response = self.client.post(
                     reverse("core:backup_center"),
                     {
-                        "action": "restore_smart",
+                        "action": "restore_media",
                         "backup_id": archive_name,
-                        "confirm_text": "RESTORE",
+                        "confirm_text": "RESTORE MEDIA",
                     },
                 )
 
@@ -367,77 +285,6 @@ class BackupRestoreViewTests(TestCase):
             self.assertTrue(restored.exists())
             self.assertEqual(restored.read_text(encoding="utf-8"), "restored media")
             self.assertRedirects(response, settings.LOGIN_URL, fetch_redirect_response=False)
-
-    @patch("core.views.restore_database")
-    @patch("core.views.create_db_backup", return_value=Path("safety.sql"))
-    @patch("core.views.load_backup_settings", return_value={})
-    @patch("core.views.list_backups")
-    def test_smart_restore_routes_database_backup_correctly(
-        self,
-        list_backups,
-        _load_settings,
-        create_backup,
-        restore_database,
-    ):
-        backup = BackupItem(
-            id="tms_db_backup_test.sql",
-            name="tms_db_backup_test",
-            backup_type="db",
-            status="success",
-            size=10,
-            created_at=datetime.now(),
-            display_path=__file__,
-            storage_mode="sql",
-        )
-        list_backups.return_value = [backup]
-
-        response = self.client.post(
-            reverse("core:backup_center"),
-            {
-                "action": "restore_smart",
-                "backup_id": backup.id,
-                "confirm_text": "RESTORE",
-            },
-        )
-
-        create_backup.assert_called_once_with({"enable_db_backup": True})
-        restore_database.assert_called_once_with({}, backup.id)
-        self.assertRedirects(response, settings.LOGIN_URL, fetch_redirect_response=False)
-
-    @patch("core.views.restore_full")
-    @patch("core.views.create_full_backup", return_value=Path("safety.zip"))
-    @patch("core.views.load_backup_settings", return_value={})
-    @patch("core.views.list_backups")
-    def test_smart_restore_routes_full_backup_correctly(
-        self,
-        list_backups,
-        _load_settings,
-        create_backup,
-        restore_full,
-    ):
-        backup = BackupItem(
-            id="tms_full_backup_test.zip",
-            name="tms_full_backup_test",
-            backup_type="full",
-            status="success",
-            size=10,
-            created_at=datetime.now(),
-            display_path=__file__,
-        )
-        list_backups.return_value = [backup]
-
-        response = self.client.post(
-            reverse("core:backup_center"),
-            {
-                "action": "restore_smart",
-                "backup_id": backup.id,
-                "confirm_text": "RESTORE",
-            },
-        )
-
-        create_backup.assert_called_once_with({"enable_full_backup": True})
-        restore_full.assert_called_once_with({}, backup.id)
-        self.assertRedirects(response, settings.LOGIN_URL, fetch_redirect_response=False)
 
     @patch("core.views.restore_database")
     @patch("core.views.create_db_backup", return_value=Path("safety.sql"))

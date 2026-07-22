@@ -13,7 +13,6 @@ from django.conf import settings
 
 
 SETTINGS_FILE_NAME = "backup_settings.json"
-BACKUP_MANIFEST_FILE_NAME = "backup_manifest.json"
 MIN_PROTECTED_BACKUPS = 3
 MYSQL_CONCURRENT_DDL_RETRY_ATTEMPTS = 3
 
@@ -72,10 +71,6 @@ class BackupItem:
     storage_mode: str = "zip"
 
     @property
-    def file_exists(self):
-        return Path(self.display_path).is_file()
-
-    @property
     def human_size(self):
         size = float(self.size or 0)
         for unit in ("B", "KB", "MB", "GB"):
@@ -102,75 +97,33 @@ def ensure_backup_root(config=None):
     return root
 
 
-def _load_backup_manifest(root):
-    path = Path(root) / BACKUP_MANIFEST_FILE_NAME
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _save_backup_manifest(root, manifest):
-    path = Path(root) / BACKUP_MANIFEST_FILE_NAME
-    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-
-def _backup_type_from_name(name):
-    name = name.lower()
-    if name.startswith("tms_db_backup_"):
-        return "db"
-    if name.startswith("tms_media_backup_"):
-        return "media"
-    if name.startswith("tms_code_backup_"):
-        return "code"
-    if name.startswith("tms_full_backup_"):
-        return "full"
-    return None
-
-
-def _remove_manifest_entry(root, backup_id):
-    manifest = _load_backup_manifest(root)
-    if manifest.pop(backup_id, None) is not None:
-        _save_backup_manifest(root, manifest)
-
-
 def list_backups(config=None):
     root = ensure_backup_root(config)
-    manifest = _load_backup_manifest(root)
+    items = []
     for path in root.iterdir():
-        if not path.is_file() or path.name in {SETTINGS_FILE_NAME, BACKUP_MANIFEST_FILE_NAME}:
+        if not path.is_file() or path.name == SETTINGS_FILE_NAME:
             continue
-        btype = _backup_type_from_name(path.name)
-        if not btype:
+        name = path.name.lower()
+        if name.startswith("tms_db_backup_"):
+            btype = "db"
+        elif name.startswith("tms_media_backup_"):
+            btype = "media"
+        elif name.startswith("tms_code_backup_"):
+            btype = "code"
+        elif name.startswith("tms_full_backup_"):
+            btype = "full"
+        else:
             continue
         stat = path.stat()
-        manifest[path.name] = {
-            "backup_type": btype,
-            "size": stat.st_size,
-            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            "storage_mode": "zip" if path.suffix.lower() == ".zip" else path.suffix.lower().lstrip("."),
-        }
-    _save_backup_manifest(root, manifest)
-
-    items = []
-    for backup_id, metadata in manifest.items():
-        try:
-            created_at = datetime.fromisoformat(metadata["created_at"])
-        except (KeyError, TypeError, ValueError):
-            created_at = datetime.fromtimestamp(0)
-        path = root / backup_id
         items.append(BackupItem(
-            id=backup_id,
-            name=Path(backup_id).stem,
-            backup_type=metadata.get("backup_type") or _backup_type_from_name(backup_id) or "unknown",
-            status="success" if path.is_file() else "missing",
-            size=metadata.get("size") or 0,
-            created_at=created_at,
+            id=path.name,
+            name=path.stem,
+            backup_type=btype,
+            status="success",
+            size=stat.st_size,
+            created_at=datetime.fromtimestamp(stat.st_mtime),
             display_path=str(path),
-            storage_mode=metadata.get("storage_mode") or Path(backup_id).suffix.lower().lstrip("."),
+            storage_mode="zip" if path.suffix.lower() == ".zip" else path.suffix.lower().lstrip("."),
         ))
     return sorted(items, key=lambda item: item.created_at, reverse=True)
 
@@ -181,74 +134,8 @@ def choices_for(backups, backup_type):
     return choices
 
 
-def protected_backup_ids(backups, keep_per_type=MIN_PROTECTED_BACKUPS):
-    protected = set()
-    counts = {}
-    for backup in backups:
-        if not backup.file_exists:
-            continue
-        count = counts.get(backup.backup_type, 0)
-        if count < keep_per_type:
-            protected.add(backup.id)
-            counts[backup.backup_type] = count + 1
-    return protected
-
-
-def backup_storage_summary(config):
-    root = ensure_backup_root(config)
-    usage = shutil.disk_usage(root)
-    backup_bytes = sum(
-        backup.size for backup in list_backups(config) if backup.file_exists
-    )
-    return {
-        "backup_bytes": backup_bytes,
-        "disk_total": usage.total,
-        "disk_used": usage.used,
-        "disk_free": usage.free,
-    }
-
-
-def purge_old_backups(config, keep_per_type=MIN_PROTECTED_BACKUPS):
-    root = ensure_backup_root(config)
-    backups = list_backups(config)
-    protected = protected_backup_ids(backups, keep_per_type=keep_per_type)
-    deleted = []
-    reclaimed_bytes = 0
-    for backup in backups:
-        if not backup.file_exists or backup.id in protected:
-            continue
-        path = Path(backup.display_path).resolve()
-        if root.resolve() not in path.parents or not path.is_file():
-            continue
-        path.unlink()
-        _remove_manifest_entry(root, backup.id)
-        deleted.append(backup.id)
-        reclaimed_bytes += backup.size
-    return {"deleted": deleted, "reclaimed_bytes": reclaimed_bytes}
-
-
 def _timestamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-def detect_uploaded_backup_type(uploaded_file):
-    suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix in {".sql", ".sqlite3"}:
-        return "db"
-    if suffix != ".zip":
-        raise RuntimeError("Backup uploads must be .sql, .sqlite3, or .zip files.")
-
-    original_position = uploaded_file.tell() if hasattr(uploaded_file, "tell") else 0
-    try:
-        uploaded_file.seek(0)
-        with zipfile.ZipFile(uploaded_file) as archive:
-            names = [name.replace("\\", "/").lower() for name in archive.namelist()]
-    except (zipfile.BadZipFile, OSError) as exc:
-        raise RuntimeError("The uploaded ZIP file is not a valid backup archive.") from exc
-    finally:
-        uploaded_file.seek(original_position)
-
-    return "full" if any(name.startswith("full/") for name in names) else "media"
 
 
 def save_uploaded_backup(config, backup_type, uploaded_file):
@@ -542,7 +429,7 @@ def delete_backup(config, backup_id):
     item = next((backup for backup in backups if backup.id == backup_id), None)
     if not item:
         raise RuntimeError("Selected backup was not found.")
-    protected_ids = protected_backup_ids(backups)
+    protected_ids = {backup.id for backup in backups[:MIN_PROTECTED_BACKUPS]}
     if item.id in protected_ids:
         raise RuntimeError("The latest 3 backups are protected and cannot be deleted.")
     root = ensure_backup_root(config).resolve()
@@ -550,7 +437,6 @@ def delete_backup(config, backup_id):
     if root not in path.parents or not path.is_file():
         raise RuntimeError("Invalid backup path.")
     path.unlink()
-    _remove_manifest_entry(root, item.id)
     return item
 
 
@@ -560,6 +446,5 @@ def prune_old_backups(config):
     for item in backups[retention:]:
         try:
             Path(item.display_path).unlink()
-            _remove_manifest_entry(ensure_backup_root(config), item.id)
         except OSError:
             pass

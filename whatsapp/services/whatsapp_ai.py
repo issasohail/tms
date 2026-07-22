@@ -2762,6 +2762,9 @@ class WhatsAppAIAssistant:
             )
         if purpose == PendingWhatsAppMedia.PURPOSE_MAINTENANCE:
             pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
+            conversation.pending_state = "pending_maintenance"
+            conversation.context["pending_maintenance_id"] = pending.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             notify_staff_pending_request("maintenance", pending)
             return (
                 "We received your maintenance photo. Please share the issue type and urgency if not already included.",
@@ -4011,9 +4014,16 @@ def _tenant_invoice_payment_menu_text():
 
 def notify_staff_pending_request(request_type, pending):
     conversation = getattr(pending, "conversation", None)
-    if conversation and (conversation.context or {}).get("simulator_identity"):
-        return
     staff_numbers = _pending_request_staff_numbers(pending)
+    if conversation:
+        simulation = (conversation.context or {}).get("staff_tenant_simulation")
+        if simulation:
+            # Staff testing/assisting via "Act as Tenant" already sees every reply
+            # on this same phone; don't also send them the staff pending-request
+            # alert for their own simulated action. Other staff numbers still
+            # get notified normally.
+            self_number = WhatsAppService.normalize_phone_number(conversation.phone_number)
+            staff_numbers = [number for number in staff_numbers if number != self_number]
     if not staff_numbers:
         return
     message = _pending_request_staff_message(request_type, pending)
@@ -4326,7 +4336,7 @@ def _payment_receipt_review_text(review, notice=""):
         [
             "",
             "Is this correct? Reply YES to submit it for payment approval.",
-            "To correct it, reply AMOUNT 63580 or DATE 20-07-2026.",
+            "To correct it, reply AMOUNT <correct amount> or DATE DD-MM-YYYY.",
             "Reply CANCEL to stop.",
         ]
     )

@@ -267,20 +267,9 @@ class TenantPublicRegistrationForm(forms.Form):
                 ]
                 has_any_data = any(values)
                 phone = normalize_phone(values[-1])
-                if always_required:
-                    for field_label, value in zip(
-                        ("first name", "last name", "CNIC", "phone"), values
-                    ):
-                        if not value:
-                            role_errors.append(f"{label} {field_label} is required.")
-                    if values[2]:
-                        try:
-                            validate_cnic(values[2])
-                        except ValidationError:
-                            role_errors.append(f"{label} CNIC must contain exactly 13 digits.")
-                elif has_any_data and not phone:
+                if (always_required or has_any_data) and not phone:
                     role_errors.append(f"{label} phone is required and must contain digits.")
-                if phone and len(phone) > 32:
+                elif len(phone) > 32:
                     role_errors.append(f"{label} phone is too long.")
             if role_errors:
                 raise ValidationError(role_errors)
@@ -307,18 +296,6 @@ class TenantPreRegistrationLinkForm(forms.Form):
 
 
 class TenantRegistrationSubmissionReviewForm(forms.ModelForm):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        system_statuses = {
-            TenantRegistrationSubmission.STATUS_PROCESSING,
-            TenantRegistrationSubmission.STATUS_APPROVED,
-        }
-        self.fields["status"].choices = [
-            choice
-            for choice in self.fields["status"].choices
-            if choice[0] not in system_statuses
-        ]
-
     class Meta:
         model = TenantRegistrationSubmission
         fields = ["status", "admin_notes"]

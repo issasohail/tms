@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% block title %}Backup & Restore{% endblock %}
+{% block content %}
+<div class="backup-center container-fluid py-3 px-0">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h3 class="mb-0">Backup &amp; Restore</h3>
+      <div class="text-muted small">
+        Superuser only. Backup, restore, and reset actions are protected and use POST-only actions.
+      </div>
+    </div>
+    <div class="backup-actions d-flex flex-wrap gap-2">
+      <form method="post" class="d-inline js-long-operation" data-operation-label="Database backup">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="backup_db">
+        <button type="submit" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-database me-1"></i> Backup DB
+        </button>
+      </form>
+      <form method="post" class="d-inline js-long-operation" data-operation-label="Media backup">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="backup_media">
+        <button type="submit" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-images me-1"></i> Backup Media
+        </button>
+      </form>
+      <form method="post" class="d-inline js-long-operation" data-operation-label="Full backup">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="backup_full">
+        <button type="submit" class="btn btn-sm btn-danger">
+          <i class="bi bi-shield-check me-1"></i> Full Backup
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="alert alert-warning py-2 small">
+    <strong>Important:</strong>
+    Restore operations are destructive. The system now creates a safety backup immediately before restore actions.
+    Live source code restore should remain disabled in production unless you intentionally enable it.
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2"><strong>Backup Settings</strong></div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_backup_settings">
+            <div class="mb-2">
+              <label class="form-label small mb-1">Backup Root Folder</label>
+              {{ backup_settings_form.backup_root.as_hidden }}
+              <div class="form-control form-control-sm bg-light text-muted">Configured server backup storage</div>
+              <div class="form-text small">The absolute server filesystem path is intentionally hidden.</div>
+              {% if backup_settings_form.backup_root.errors %}
+                <div class="text-danger small mt-1">{{ backup_settings_form.backup_root.errors }}</div>
+              {% endif %}
+            </div>
+            <div class="row g-2 align-items-end">
+              <div class="col-md-6">
+                <label class="form-label small mb-1">Retention Count</label>
+                {{ backup_settings_form.retention_count }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small mb-1">mysqldump Path</label>
+                {{ backup_settings_form.mysqldump_path }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small mb-1">mysql Path</label>
+                {{ backup_settings_form.mysql_path }}
+              </div>
+            </div>
+            <div class="row g-3 mt-1">
+              <div class="col-md-6">
+                <div class="border rounded p-2 h-100">
+                  <div class="mb-2 fw-semibold small">Full Backup Defaults</div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.include_db_in_full }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.include_db_in_full.id_for_label }}">Include DB in Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.include_media_in_full }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.include_media_in_full.id_for_label }}">Include Media in Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.include_code_in_full }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.include_code_in_full.id_for_label }}">Include Code in Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.compress_backups }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.compress_backups.id_for_label }}">Compress Backups into ZIP</label>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="border rounded p-2 h-100">
+                  <div class="mb-2 fw-semibold small">Enable / Disable Types</div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_db_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_db_backup.id_for_label }}">Enable Database Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_media_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_media_backup.id_for_label }}">Enable Media Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_code_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_code_backup.id_for_label }}">Enable Code Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.enable_full_backup }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.enable_full_backup.id_for_label }}">Enable Full Backup</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    {{ backup_settings_form.fresh_reset_enabled }}
+                    <label class="form-check-label small" for="{{ backup_settings_form.fresh_reset_enabled.id_for_label }}">Enable Fresh Reset</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">Save Backup Settings</button>
+          </form>
+          <hr class="my-2">
+          <div class="mb-2 fw-semibold small">Upload Backup for Restore</div>
+          <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload_backup">
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1">Backup File</label>
+                {{ backup_upload_form.backup_file }}
+                <div class="form-text small">Type is detected automatically: SQL/SQLite = Database, Full-package ZIP = Full, other ZIP = Media.</div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Upload Backup</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-6">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header py-2" id="restore-backup"><strong>Smart Restore</strong></div>
+            <div class="card-body">
+              <div class="alert alert-danger py-2 small">
+                TMS detects whether the selected backup is Database, Media, or Full and runs the correct restore automatically.
+              </div>
+              <form method="post" class="js-long-operation" data-operation-label="Restore" data-is-restore="true" data-confirm-message="Restore the selected backup? A safety backup will be created first.">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="restore_smart">
+                <input type="hidden" name="confirm_text" value="RESTORE">
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Select Backup</label>
+                  {{ restore_form.backup_id }}
+                </div>
+                <div class="alert alert-warning py-2 small">
+                  A matching safety backup is created first. After a successful restore, you will be logged out.
+                </div>
+                <button type="submit" class="btn btn-sm btn-danger">Restore Selected Backup</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100 border-danger">
+            <div class="card-header py-2 bg-danger-subtle"><strong>Fresh Reset</strong></div>
+            <div class="card-body">
+              <div class="alert alert-warning py-2 small">
+                Intended for dummy/test environments. A safety backup should be taken before reset.
+              </div>
+              {% if fresh_reset_scope %}
+                <div class="small mb-2"><strong>Reset Profile:</strong> {{ fresh_reset_scope.profile_name|default:"default" }}</div>
+                {% if fresh_reset_scope.profile_description %}
+                  <div class="small text-muted mb-2">{{ fresh_reset_scope.profile_description }}</div>
+                {% endif %}
+                <div class="small mb-2">
+                  <strong>Rows to wipe:</strong> {{ fresh_reset_scope.wipe_total_rows|default:0 }}<br>
+                  <strong>Rows to keep:</strong> {{ fresh_reset_scope.keep_total_rows|default:0 }}
+                </div>
+              {% endif %}
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="fresh_reset">
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Type <code>RESET TMS</code></label>
+                  <input type="text" name="confirm_text" class="form-control form-control-sm" placeholder="RESET TMS">
+                </div>
+                <button type="submit" class="btn btn-sm btn-outline-danger">Run Fresh Reset</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <strong>Latest Available Backups</strong>
+          <div class="text-muted small">Newest first</div>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 56px;">#</th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Size</th>
+                  <th>Created</th>
+                  <th>Storage</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for b in backups %}
+                  <tr data-backup-id="{{ b.id }}">
+                    <td data-label="S.N">{{ b.serial_number }}</td>
+                    <td data-label="Name">
+                      <div class="fw-semibold">{{ b.name }}</div>
+                    </td>
+                    <td data-label="Type">{{ b.get_backup_type_display }}</td>
+                    <td data-label="Status">
+                      {% if b.file_exists %}<span class="badge text-bg-success">Available</span>{% else %}<span class="badge text-bg-danger">File Missing</span>{% endif %}
+                    </td>
+                    <td data-label="Size">{% if b.file_exists %}{{ b.human_size }}{% else %}—{% endif %}</td>
+                    <td data-label="Created">{{ b.created_at|date:"Y-m-d H:i:s" }}</td>
+                    <td data-label="Storage">{{ b.get_storage_mode_display }}</td>
+                    <td data-label="Actions">
+                      <div class="d-flex flex-wrap gap-1">
+                        {% if b.file_exists %}<a href="{% url 'core:backup_download' b.id %}" class="btn btn-sm btn-outline-primary">Download</a>{% endif %}
+                        {% if not b.file_exists %}
+                          <span class="text-danger small">Restore unavailable</span>
+                        {% elif b.serial_number <= 3 %}
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-secondary"
+                                  disabled
+                                  title="The latest 3 backups are protected.">
+                            Protected
+                          </button>
+                        {% else %}
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-danger js-backup-delete"
+                                  data-url="{% url 'core:backup_delete' b.id %}">
+                            Delete
+                          </button>
+                        {% endif %}
+                        {% if b.file_exists and b.backup_type == 'db' or b.file_exists and b.backup_type == 'media' or b.file_exists and b.backup_type == 'full' %}
+                          <a href="{% url 'core:backup_center' %}?selected_backup={{ b.id }}#restore-backup" class="btn btn-sm btn-outline-secondary">Use for Restore</a>
+                        {% else %}
+                          <span class="text-muted small">Code backup</span>
+                        {% endif %}
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="8" class="text-center text-muted py-4">No backups found yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="backupProgressOverlay" class="backup-progress-overlay d-none" role="alert" aria-live="assertive" aria-busy="true">
+  <div class="backup-progress-window shadow-lg">
+    <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+    <h5 class="mb-2" id="backupProgressTitle">Backup in progress</h5>
+    <div class="fw-semibold text-danger mb-2">Do not close this window.</div>
+    <p class="text-muted small mb-2" id="backupProgressMessage">Please wait while TMS completes this operation.</p>
+    <div id="backupRestoreLogoutWarning" class="alert alert-warning py-2 small d-none mb-3">
+      When the restore is complete, you will be logged out. Please log in again.
+    </div>
+    <div class="small text-uppercase text-muted">Elapsed time</div>
+    <div class="backup-progress-timer" id="backupProgressTimer">00:00:00</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.backup-center .card { border-radius: .4rem; }
+.backup-center .backup-actions .btn { white-space: nowrap; }
+.backup-progress-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, .72);
+  backdrop-filter: blur(2px);
+}
+.backup-progress-overlay.d-none { display: none !important; }
+.backup-progress-window {
+  width: min(440px, 100%);
+  padding: 1.5rem;
+  border-radius: .65rem;
+  background: #fff;
+  text-align: center;
+}
+.backup-progress-timer {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .08em;
+}
+@media (max-width: 420px) {
+  .backup-center h3 { font-size: 1.25rem; }
+  .backup-center .backup-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: .25rem !important; }
+  .backup-center .backup-actions form,
+  .backup-center .backup-actions button { width: 100%; }
+  .backup-center .backup-actions .btn { min-height: 2.25rem; padding: .25rem .15rem; font-size: .62rem; white-space: normal; line-height: 1.1; }
+  .backup-center .backup-actions .bi { margin-right: .15rem !important; }
+  .backup-center .card-body { padding: .75rem; }
+  .backup-center .table { font-size: .78rem; }
+  .backup-center .btn-sm { font-size: .75rem; padding: .32rem .45rem; }
+  .backup-center .form-control-sm,
+  .backup-center .form-select-sm { font-size: .78rem; min-height: 2rem; }
+}
+@media (max-width: 360px) {
+  .backup-center { font-size: .78rem; }
+  .backup-center .table th,
+  .backup-center .table td { padding: .3rem; }
+}
+@media (max-width: 991.98px) {
+  .backup-center .table-responsive { overflow-x: visible; }
+  .backup-center .table thead { display: none; }
+  .backup-center .table,
+  .backup-center .table tbody,
+  .backup-center .table tr,
+  .backup-center .table td { display: block; width: 100%; }
+  .backup-center .table tbody { padding: .5rem; }
+  .backup-center .table tr { border: 1px solid #dee2e6; border-radius: .45rem; margin-bottom: .65rem; padding: .35rem .55rem; }
+  .backup-center .table td { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .5rem; border: 0; padding: .25rem 0; overflow-wrap: anywhere; }
+  .backup-center .table td::before { content: attr(data-label); color: #6c757d; font-weight: 600; }
+  .backup-center .table td[data-label="Actions"] > div { min-width: 0; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll(".js-long-operation").forEach(function (form) {
+  form.addEventListener("submit", function (event) {
+    if (!form.checkValidity()) return;
+    event.preventDefault();
+    const confirmation = form.dataset.confirmMessage;
+    if (confirmation && !window.confirm(confirmation)) return;
+    const overlay = document.getElementById("backupProgressOverlay");
+    const title = document.getElementById("backupProgressTitle");
+    const message = document.getElementById("backupProgressMessage");
+    const timer = document.getElementById("backupProgressTimer");
+    const logoutWarning = document.getElementById("backupRestoreLogoutWarning");
+    const label = form.dataset.operationLabel || "Backup operation";
+    const isRestore = form.dataset.isRestore === "true";
+    title.textContent = label + " in progress";
+    message.textContent = isRestore
+      ? "TMS is creating a safety backup and restoring the selected data."
+      : "TMS is preparing and saving your backup.";
+    logoutWarning.classList.toggle("d-none", !isRestore);
+    overlay.classList.remove("d-none");
+    document.body.style.overflow = "hidden";
+    const startedAt = Date.now();
+    const updateTimer = function () {
+      const totalSeconds = Math.floor((Date.now() - startedAt) / 1000);
+      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+      const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      timer.textContent = hours + ":" + minutes + ":" + seconds;
+    };
+    updateTimer();
+    window.setInterval(updateTimer, 1000);
+    window.requestAnimationFrame(function () {
+      window.setTimeout(function () {
+        HTMLFormElement.prototype.submit.call(form);
+      }, 50);
+    });
+  });
+});
+
+document.addEventListener("click", function (event) {
+  const button = event.target.closest(".js-backup-delete");
+  if (!button) return;
+  if (!confirm("Delete this backup file?")) return;
+  const csrf = "{{ csrf_token }}";
+  fetch(button.dataset.url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRFToken": csrf,
+      "X-Requested-With": "XMLHttpRequest"
+    }
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (!data.success) {
+        alert(data.error || "Could not delete backup.");
+        return;
+      }
+      button.closest("tr")?.remove();
+    })
+    .catch(() => alert("Could not delete backup."));
+});
+</script>
+{% endblock %}

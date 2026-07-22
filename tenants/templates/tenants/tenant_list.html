@@ -6,9 +6,6 @@
 {% block main_container_class %}container-fluid px-2{% endblock %}
 
 {% block content %}
-<div style="background:#ff00ff;color:#fff;text-align:center;font-weight:900;font-size:16px;padding:10px;position:sticky;top:0;z-index:99999;">
-    🔴 DIAGNOSTIC MARKER — TENANT_LIST BUILD 2026-07-21-A — if you see this pink bar, the browser IS loading this file.
-</div>
 <div class="tenant-list-page">
 
     <div class="tenant-page-head mb-3">
@@ -2567,7 +2564,7 @@ img.is-missing{
     .tenant-filter-card{ order:2 !important; margin-bottom:0 !important; }
     .mobile-action-toolbar{ order:3 !important; }
     .tenant-summary-grid{ order:4 !important; margin-bottom:0 !important; }
-    .tenant-cards{ order:5 !important; }
+    #tenant-list-results{ order:5 !important; width:100%; min-width:0; }
 
     .tenant-page-head .tenant-top-actions{
         display:none !important;

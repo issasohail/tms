@@ -7,9 +7,6 @@
 {% block main_container_class %}container-fluid payment-list-container{% endblock %}
 
 {% block content %}
-<div style="background:#ff00ff;color:#fff;text-align:center;font-weight:900;font-size:16px;padding:10px;position:sticky;top:0;z-index:99999;">
-    🔴 DIAGNOSTIC MARKER — PAYMENT_LIST BUILD 2026-07-21-A — if you see this pink bar, the browser IS loading this file.
-</div>
 {% include "payments/_payment_detail_split_modal.html" %}
 <script>
   window.PAYMENT_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'payment' 0 'receipt' %}";
@@ -911,9 +908,17 @@
     .payment-list-dense td.col-description { display: none !important; }
   }
 
-  /* MOBILE-ONLY (<=599px). Tablet (600-999px) keeps the single-line,
-     horizontally-scrollable filter bar defined by the default
-     .payment-filter-grid rules further up the file. */
+  @media (min-width: 600px) and (max-width: 767.98px) {
+    .payment-filter-grid {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: .5rem !important;
+      overflow-x: visible !important;
+    }
+  }
+
+  /* MOBILE-ONLY (<=599px). Narrow tablets use the 3-by-2 filter grid
+     above; wider tablet/desktop widths keep the single-line filter bar. */
   @media (max-width: 599px) {
     .payment-filter-grid {
       display: grid !important;
@@ -929,12 +934,61 @@
       font-size: .8rem !important;
     }
 
-    .payment-list-dense table.table tbody tr { padding: .75rem .85rem !important; }
+    .payment-list-dense table.table tbody tr {
+      grid-template-columns: 1.25rem minmax(0, 1fr) 7.75rem !important;
+      padding: .75rem .85rem !important;
+    }
+    .payment-list-dense td.col-sn {
+      width: auto !important;
+      min-width: 0 !important;
+    }
     .payment-list-dense td.col-tenant { font-size: var(--payment-card-tenant-size-sm) !important; }  /* MOBILE-only override */
-    .payment-list-dense td.col-amount { font-size: .86rem !important; }
+    .payment-list-dense td.col-amount {
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      font-size: .86rem !important;
+    }
     .payment-list-dense td.col-property .prop-badge,
     .payment-list-dense td.col-property .unit-badge { max-width: 6.2rem !important; font-size: .64rem !important; }
+    .payment-list-dense td.col-balance-row .balance-text {
+      display: block !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .payment-list-dense td.col-actions {
+      width: 7.75rem !important;
+      min-width: 7.75rem !important;
+    }
+    .payment-list-dense td.col-actions .actions-wrap { gap: .25rem !important; }
     .payment-list-dense td.col-actions .btn { width: 28px !important; height: 28px !important; }
+
+    .payment-list-dense .pagination {
+      flex-wrap: nowrap !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+    .payment-list-dense .pagination .page-item.payment-mobile-page-hidden {
+      display: none !important;
+    }
+    .payment-list-dense .pagination .page-link {
+      min-width: 28px !important;
+      padding: .28rem .38rem !important;
+      text-align: center !important;
+    }
+    .payment-list-dense .pagination .previous .page-link,
+    .payment-list-dense .pagination .next .page-link {
+      width: 28px !important;
+      overflow: hidden !important;
+      font-size: 0 !important;
+    }
+    .payment-list-dense .pagination .previous .page-link span,
+    .payment-list-dense .pagination .next .page-link span {
+      font-size: .85rem !important;
+    }
   }
 </style>
 {% endblock %}
@@ -1134,7 +1188,7 @@ document.addEventListener("DOMContentLoaded", function () {
         tr.appendChild(row);
       }
       const val = (balanceText || '').trim();
-      row.innerHTML = '<i class="fas fa-wallet"></i> Bal: ' + val;
+      row.innerHTML = '<i class="fas fa-wallet"></i><span class="balance-text">Bal: ' + val + '</span>';
 
       tr.classList.remove('pc-negative', 'pc-positive');
       const numeric = parseFloat(val.replace(/[^0-9.-]/g, ''));
@@ -1176,12 +1230,47 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enhance); else enhance();
-    window.addEventListener('load', enhance);
+    const MOBILE_PAGINATION = window.matchMedia('(max-width: 599px)');
+
+    function compactPagination(){
+      document.querySelectorAll('.payment-list-dense .pagination').forEach(pagination => {
+        const rangeItems = Array.from(pagination.children).filter(item =>
+          !item.classList.contains('previous') && !item.classList.contains('next')
+        );
+
+        rangeItems.forEach(item => item.classList.remove('payment-mobile-page-hidden'));
+        if (!MOBILE_PAGINATION.matches || rangeItems.length <= 5) return;
+
+        const activeIndex = rangeItems.findIndex(item => item.classList.contains('active'));
+        const keep = new Set([0, rangeItems.length - 1]);
+        if (activeIndex >= 0) {
+          keep.add(activeIndex);
+          for (let distance = 1; keep.size < 5 && distance < rangeItems.length; distance += 1) {
+            const before = activeIndex - distance;
+            const after = activeIndex + distance;
+            if (before > 0 && rangeItems[before].textContent.trim() !== '...') keep.add(before);
+            if (keep.size < 5 && after < rangeItems.length - 1 && rangeItems[after].textContent.trim() !== '...') keep.add(after);
+          }
+        }
+
+        rangeItems.forEach((item, index) => {
+          item.classList.toggle('payment-mobile-page-hidden', !keep.has(index));
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function(){ enhance(); compactPagination(); });
+    } else {
+      enhance();
+      compactPagination();
+    }
+    window.addEventListener('load', function(){ enhance(); compactPagination(); });
     MQ.addEventListener('change', function(){
       document.querySelectorAll('tbody tr').forEach(tr=>{ delete tr.dataset.enhanced; });
       enhance();
     });
+    MOBILE_PAGINATION.addEventListener('change', compactPagination);
   })();
 
 });

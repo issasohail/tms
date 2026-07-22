@@ -1168,6 +1168,162 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
         self.assertEqual(conversation.context["staff_upload_lease_id"], self.lease.pk)
 
+    def test_staff_media_lease_photos_use_property_then_unit_steps(self):
+        property_obj = Property.objects.create(
+            property_name="F35 Building", owner_name="Owner", owner_cnic="37405-7777777-7",
+            type="Residential", property_type="apartment", total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="F35-FLAT# 01", status="occupied")
+        lease = Lease.objects.create(
+            tenant=self.tenant, unit=unit,
+            start_date=timezone.localdate() - timedelta(days=10),
+            end_date=timezone.localdate() + timedelta(days=100),
+            monthly_rent=Decimal("18000"), status="active",
+        )
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=property_obj)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            pending_state="staff_property_media_menu",
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+
+        property_menu = assistant._consume_staff_menu_state(
+            self.message, conversation, "3", self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn("1. F35 Building", property_menu)
+        self.assertEqual(conversation.pending_state, "staff_upload_target_query")
+
+        unit_menu = assistant._consume_staff_menu_state(
+            self.message, conversation, "1", self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn("Select unit for F35 Building", unit_menu)
+        self.assertIn(unit.unit_number, unit_menu)
+        self.assertEqual(conversation.pending_state, "staff_upload_target_selection")
+
+        response = assistant._consume_staff_menu_state(
+            self.message, conversation, "1", self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn("Target selected", response)
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertEqual(conversation.context["staff_upload_lease_id"], lease.pk)
+        self.assertEqual(
+            conversation.context["staff_upload_kind"],
+            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+        )
+
+    def test_staff_media_lease_photo_shortcut_skips_property_and_unit_menus(self):
+        property_obj = Property.objects.create(
+            property_name="F35 Building", owner_name="Owner", owner_cnic="37405-7777777-7",
+            type="Residential", property_type="apartment", total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="F35-FLAT# 01", status="occupied")
+        lease = Lease.objects.create(
+            tenant=self.tenant, unit=unit,
+            start_date=timezone.localdate() - timedelta(days=10),
+            end_date=timezone.localdate() + timedelta(days=100),
+            monthly_rent=Decimal("18000"), status="active",
+        )
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=property_obj)
+        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        assistant._start_staff_upload_target_search(
+            conversation,
+            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+            "Send the target.",
+            self.staff1,
+        )
+
+        response = assistant._consume_staff_upload_target_query(
+            self.message, conversation, "f35-1", self.staff1
+        )
+
+        conversation.refresh_from_db()
+        self.assertIn("Target selected", response)
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertEqual(conversation.context["staff_upload_lease_id"], lease.pk)
+
+    def test_staff_media_sentence_resolves_structured_target_without_name_false_positive(self):
+        property_obj = Property.objects.create(
+            property_name="F35 Building", owner_name="Owner", owner_cnic="37405-7777777-7",
+            type="Residential", property_type="apartment", total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="F35-FLAT# 01", status="occupied")
+        lease = Lease.objects.create(
+            tenant=self.tenant, unit=unit,
+            start_date=timezone.localdate() - timedelta(days=10),
+            end_date=timezone.localdate() + timedelta(days=100),
+            monthly_rent=Decimal("18000"), status="active",
+        )
+        unrelated_property = Property.objects.create(
+            property_name="Other Place", owner_name="Owner", owner_cnic="37405-8888888-8",
+            type="Residential", property_type="apartment", total_units=2,
+        )
+        for index, first_name in enumerate(("Danish", "Nisar"), start=1):
+            tenant = Tenant.objects.create(
+                first_name=first_name, last_name="Example", phone=f"+92300888888{index}",
+                cnic=f"37405-888888{index}-{index}",
+            )
+            other_unit = Unit.objects.create(
+                property=unrelated_property, unit_number=f"B-{index}", status="occupied"
+            )
+            Lease.objects.create(
+                tenant=tenant, unit=other_unit,
+                start_date=timezone.localdate() - timedelta(days=10),
+                end_date=timezone.localdate() + timedelta(days=100),
+                monthly_rent=Decimal("17000"), status="active",
+            )
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=property_obj)
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=unrelated_property)
+        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        assistant._start_staff_upload_target_search(
+            conversation,
+            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+            "Send the target.",
+            self.staff1,
+        )
+
+        response = assistant._consume_staff_upload_target_query(
+            self.message, conversation, "this is for f35 flat 1 lease photos", self.staff1
+        )
+
+        conversation.refresh_from_db()
+        self.assertIn("Target selected", response)
+        self.assertNotIn("Danish", response)
+        self.assertNotIn("Nisar", response)
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertEqual(conversation.context["staff_upload_lease_id"], lease.pk)
+        self.assertEqual(
+            assistant._staff_search_leases(self.staff1, "this is for the lease photos"),
+            [],
+        )
+
+    def test_staff_media_upload_can_resolve_by_tenant_name(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        assistant._start_staff_upload_target_search(
+            conversation,
+            PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
+            "Send the target.",
+            self.staff1,
+        )
+
+        response = assistant._consume_staff_upload_target_query(
+            self.message, conversation, "Ahmed Khan", self.staff1
+        )
+
+        conversation.refresh_from_db()
+        self.assertIn("Target selected", response)
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertEqual(conversation.context["staff_upload_lease_id"], self.lease.pk)
+
     def test_tenant_account_selection_shows_property_and_opens_without_cnic_step(self):
         second_tenant = Tenant.objects.create(
             first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-5555555-5"

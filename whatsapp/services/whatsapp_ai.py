@@ -75,6 +75,20 @@ from handyman.whatsapp import handle_handyman_media_message, handle_handyman_wha
 logger = logging.getLogger(__name__)
 
 
+STAFF_SEARCH_STOPWORDS = {
+    "this", "is", "for", "the", "and", "of", "to", "a", "an", "please", "kindly",
+    "photo", "photos", "lease", "upload", "document", "documents", "tenant",
+}
+
+
+def _staff_search_tokens(value, minimum_length=2):
+    return [
+        token
+        for token in re.findall(r"[a-z0-9]+", str(value or "").lower())
+        if len(token) >= minimum_length and token not in STAFF_SEARCH_STOPWORDS
+    ]
+
+
 CENTRAL_ASSISTANT_PROMPT = """
 You are the Sonaz Property Management WhatsApp Assistant.
 Always identify the sender by WhatsApp phone number first.
@@ -1110,12 +1124,14 @@ class WhatsAppAIAssistant:
                 conversation,
                 PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO,
                 "Send the building/property name to select the photo target.",
+                staff_user,
             )
         if lowered in {"upload unit photo", "upload unit photos", "unit photo", "unit photos"}:
             return self._start_staff_upload_target_search(
                 conversation,
                 PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
                 "Send the property and unit to select the unit target.",
+                staff_user,
             )
         if lowered in {"upload lease photo", "upload lease photos", "lease photo", "lease photos"}:
             return self._start_staff_lease_target(conversation, staff_user, "lease_photo")
@@ -1364,7 +1380,7 @@ class WhatsAppAIAssistant:
         tenant_number = re.fullmatch(r"(?:tenant\s*)?#?\s*(\d{1,6})", lowered)
         if tenant_number:
             query |= Q(pk=int(tenant_number.group(1)))
-        for token in [item for item in lowered.replace(",", " ").split() if len(item) >= 2 and not item.isdigit()]:
+        for token in [item for item in _staff_search_tokens(lowered, minimum_length=4) if not item.isdigit()]:
             query |= Q(first_name__icontains=token) | Q(last_name__icontains=token)
         if not query:
             return []
@@ -1512,7 +1528,7 @@ class WhatsAppAIAssistant:
             if lowered in kind_map:
                 kind = kind_map[lowered]
                 prompt = "Send the building/property name to select the photo target." if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO else "Send the property and unit to select the unit target." if kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO else "Send tenant name, property, unit, phone, or CNIC to select the lease target."
-                return self._start_staff_upload_target_search(conversation, kind, prompt)
+                return self._start_staff_upload_target_search(conversation, kind, prompt, staff_user)
             if lowered in {"5", "view photos"}:
                 return self._staff_property_media_summary(message_log, staff_user)
             if lowered in {"6", "back"}:
@@ -1577,7 +1593,11 @@ class WhatsAppAIAssistant:
             return self._consume_staff_search_selection(message_log, conversation, text, staff_user)
         return None
 
-    def _start_staff_upload_target_search(self, conversation, kind, prompt):
+    def _start_staff_upload_target_search(self, conversation, kind, prompt, staff_user=None):
+        staff_user = staff_user or conversation.staff_user
+        properties = self._staff_accessible_properties(staff_user)
+        if not properties:
+            return "No WhatsApp property access is assigned to your staff user."
         conversation.pending_state = "staff_upload_target_query"
         conversation.context["staff_upload_kind"] = kind
         self._clear_context_keys(
@@ -1585,8 +1605,31 @@ class WhatsAppAIAssistant:
             "staff_upload_batch_key", "staff_upload_property_id", "staff_upload_unit_id",
             "staff_upload_lease_id", "staff_upload_target_options",
         )
+        conversation.context["staff_upload_target_options"] = [
+            {"type": "property", "id": item.pk, "label": item.property_name}
+            for item in properties
+        ]
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        return f"{prompt}\n\nType BACK to cancel."
+        return self._staff_upload_property_options_text(properties, kind)
+
+    def _staff_upload_property_options_text(self, properties, kind, unit_hint=""):
+        if unit_hint:
+            lines = [f"Which property contains unit {unit_hint}?"]
+        elif kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
+            lines = ["Select a property for the property photos:"]
+        else:
+            lines = ["Select the target property:"]
+        for index, property_obj in enumerate(properties, start=1):
+            lines.append(f"{index}. {property_obj.property_name}")
+        lines.extend([
+            "",
+            "Or type property and unit together, for example:",
+            "f35-1 or f56-room7",
+            "You can also send the tenant name, phone, or CNIC.",
+            "",
+            "Type BACK to cancel.",
+        ])
+        return "\n".join(lines)
 
     def _consume_staff_upload_target_query(self, message_log, conversation, text, staff_user):
         if (text or "").strip().lower() in {"back", "cancel"}:
@@ -1594,33 +1637,80 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "updated_at"])
             return staff_submenu_text("5")
         kind = conversation.context.get("staff_upload_kind")
-        options = []
-        if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
-            accessible_properties = self._staff_accessible_properties(staff_user)
-            resolved_property, _unit_hint = self._resolve_staff_property_unit_text(
-                text, accessible_properties
+        properties = self._staff_accessible_properties(staff_user)
+        if not properties:
+            return "No WhatsApp property access is assigned to your staff user."
+
+        property_obj, unit_hint = self._resolve_staff_property_unit_text(text, properties)
+        if property_obj is None:
+            property_ids = [item.pk for item in properties]
+            property_obj = self._option_from_number(text, Property, property_ids)
+
+        if property_obj is None:
+            tenants = self._staff_tenant_identifier_matches(staff_user, text)
+            tenant_ids = [tenant.pk for tenant in tenants]
+            leases = list(
+                self._staff_current_accessible_leases(staff_user)
+                .filter(tenant_id__in=tenant_ids)
+                .order_by("unit__property__property_name", "unit__unit_number", "-start_date", "-id")
             )
-            matches = [resolved_property] if resolved_property else [
-                item for item in accessible_properties
-                if self._selector_key(text) in self._selector_key(item.property_name)
-            ]
-            options = [{"type": "property", "id": item.pk, "label": item.property_name} for item in matches[:9]]
-        elif kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
-            matches = self._staff_search_units(staff_user, text)
-            options = [{"type": "unit", "id": item.pk, "label": f"{item.property.property_name} / {item.unit_number}"} for item in matches[:9]]
-        else:
-            matches = self._staff_search_leases(staff_user, text)
-            options = [{"type": "lease", "id": item.pk, "label": f"{item.tenant.get_full_name()} - {item.unit.property.property_name} / {item.unit.unit_number}"} for item in matches[:9]]
-        if not options:
-            return "No accessible target matched. Send another search term or type BACK."
-        if len(options) == 1:
-            return self._select_staff_upload_target(message_log, conversation, staff_user, options[0])
+            options = self._staff_upload_options_from_leases(kind, leases)
+            if len(options) == 1:
+                return self._select_staff_upload_target(message_log, conversation, staff_user, options[0])
+            if options:
+                conversation.pending_state = "staff_upload_target_selection"
+                conversation.context["staff_upload_target_options"] = options[:9]
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                lines = ["Select upload target:"] + [
+                    f"{index}. {item['label']}" for index, item in enumerate(options[:9], start=1)
+                ]
+                lines.append("\nReply with a number.")
+                return "\n".join(lines)
+            unit_hint = unit_hint or self._unit_only_hint(text)
+            return self._staff_upload_property_options_text(properties, kind, unit_hint)
+
+        if not staff_can_access_property(staff_user, property_obj):
+            return "You do not have WhatsApp access to that property."
+        if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
+            return self._select_staff_upload_target(
+                message_log,
+                conversation,
+                staff_user,
+                {"type": "property", "id": property_obj.pk, "label": property_obj.property_name},
+            )
+
+        units = list(Unit.objects.filter(property=property_obj).order_by("unit_number")[:50])
+        if not units:
+            return f"No units are configured for {property_obj.property_name}."
+        if unit_hint:
+            unit = self._match_unit_text(unit_hint, property_obj, units)
+            if unit:
+                return self._finish_staff_upload_unit_target(
+                    message_log, conversation, staff_user, unit, kind
+                )
         conversation.pending_state = "staff_upload_target_selection"
-        conversation.context["staff_upload_target_options"] = options
+        conversation.context["staff_upload_target_options"] = [
+            {"type": "unit", "id": unit.pk, "label": f"{property_obj.property_name} / {unit.unit_number}"}
+            for unit in units
+        ]
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        lines = ["Select upload target:"] + [f"{index}. {item['label']}" for index, item in enumerate(options, start=1)]
-        lines.append("\nReply with a number.")
-        return "\n".join(lines)
+        return self._staff_lease_unit_options_text(property_obj, units, unit_hint)
+
+    def _staff_upload_options_from_leases(self, kind, leases):
+        options = []
+        seen = set()
+        for lease in leases:
+            if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
+                option = {"type": "property", "id": lease.unit.property_id, "label": lease.unit.property.property_name}
+            elif kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
+                option = {"type": "unit", "id": lease.unit_id, "label": f"{lease.unit.property.property_name} / {lease.unit.unit_number}"}
+            else:
+                option = {"type": "lease", "id": lease.pk, "label": f"{lease.tenant.get_full_name()} - {lease.unit.property.property_name} / {lease.unit.unit_number}"}
+            key = (option["type"], option["id"])
+            if key not in seen:
+                seen.add(key)
+                options.append(option)
+        return options
 
     def _consume_staff_upload_target_selection(self, message_log, conversation, text, staff_user):
         try:
@@ -1630,7 +1720,34 @@ class WhatsAppAIAssistant:
         options = conversation.context.get("staff_upload_target_options") or []
         if index < 0 or index >= len(options):
             return "That target number is not in the list. Please choose again."
-        return self._select_staff_upload_target(message_log, conversation, staff_user, options[index])
+        option = options[index]
+        kind = conversation.context.get("staff_upload_kind")
+        if option.get("type") == "unit" and kind != PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
+            unit = Unit.objects.select_related("property").filter(pk=option.get("id")).first()
+            if not unit:
+                return "That unit is no longer available. Type BACK and try again."
+            return self._finish_staff_upload_unit_target(
+                message_log, conversation, staff_user, unit, kind
+            )
+        return self._select_staff_upload_target(message_log, conversation, staff_user, option)
+
+    def _finish_staff_upload_unit_target(self, message_log, conversation, staff_user, unit, kind):
+        if kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
+            return self._select_staff_upload_target(
+                message_log,
+                conversation,
+                staff_user,
+                {"type": "unit", "id": unit.pk, "label": f"{unit.property.property_name} / {unit.unit_number}"},
+            )
+        lease = self._staff_current_accessible_leases(staff_user).filter(unit=unit).first()
+        if not lease:
+            return f"No active lease was found for {unit.property.property_name} / {unit.unit_number}. Choose another unit or type BACK."
+        return self._select_staff_upload_target(
+            message_log,
+            conversation,
+            staff_user,
+            {"type": "lease", "id": lease.pk, "label": f"{unit.property.property_name} / {unit.unit_number} - {lease.tenant.get_full_name()}"},
+        )
 
     def _select_staff_upload_target(self, message_log, conversation, staff_user, option):
         property_obj = None
@@ -1775,18 +1892,18 @@ class WhatsAppAIAssistant:
         for property_obj in properties:
             property_key = self._selector_key(property_obj.property_name)
             property_code = self._property_code(property_obj.property_name)
-            matched_key = ""
-            if property_key and normalized.startswith(property_key):
-                matched_key = property_key
-            elif property_code and normalized.startswith(property_code):
-                matched_key = property_code
-            elif property_key and normalized == property_key:
-                matched_key = property_key
-            if matched_key:
-                matches.append((len(matched_key), property_obj, normalized[len(matched_key):]))
+            for matched_key in {property_key, property_code}:
+                position = normalized.find(matched_key) if matched_key else -1
+                if position >= 0:
+                    matches.append((len(matched_key), -position, property_obj, matched_key, position))
         if not matches:
             return None, ""
-        _length, property_obj, unit_hint = max(matches, key=lambda item: item[0])
+        _length, _position_rank, property_obj, matched_key, position = max(
+            matches, key=lambda item: (item[0], item[1])
+        )
+        unit_hint = self._unit_only_hint(text)
+        if not unit_hint and position == 0:
+            unit_hint = self._strip_selector_words(normalized[len(matched_key):])
         return property_obj, unit_hint
 
     def _match_unit_text(self, text, property_obj, units):
@@ -1813,9 +1930,8 @@ class WhatsAppAIAssistant:
 
     def _unit_only_hint(self, text):
         lowered = (text or "").strip().lower()
-        if re.search(r"\b(flat|unit|room)\s*#?\s*[a-z0-9-]+", lowered):
-            return self._strip_selector_words(self._selector_key(lowered)) or self._selector_key(lowered)
-        return ""
+        match = re.search(r"\b(?:flat|unit|room)\s*#?\s*([a-z0-9]+(?:-[a-z0-9]+)?)", lowered)
+        return self._selector_key(match.group(1)) if match else ""
 
     def _selector_key(self, value):
         return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
@@ -2129,7 +2245,7 @@ class WhatsAppAIAssistant:
         cnic_digits = normalize_cnic(query)
         tenant_query = Q()
         if query:
-            for token in [item for item in query.lower().replace(",", " ").split() if len(item) >= 2]:
+            for token in _staff_search_tokens(query, minimum_length=4):
                 tenant_query |= Q(first_name__icontains=token) | Q(last_name__icontains=token)
         if len(cnic_digits) == 13:
             tenant_query |= Q(cnic_digits=cnic_digits) | Q(cnic__icontains=query)
@@ -2143,7 +2259,6 @@ class WhatsAppAIAssistant:
 
     def _staff_search_leases(self, staff_user, text):
         query_text = (text or "").strip()
-        lowered = query_text.lower()
         digits = "".join(ch for ch in query_text if ch.isdigit())
         cnic_digits = normalize_cnic(query_text)
         query = Q()
@@ -2155,8 +2270,10 @@ class WhatsAppAIAssistant:
         matching_unit_ids = self._staff_unit_ids_matching_text(staff_user, query_text)
         if matching_unit_ids:
             query |= Q(unit_id__in=matching_unit_ids)
-        for token in [item for item in lowered.replace(",", " ").split() if len(item) >= 2]:
-            query |= Q(tenant__first_name__icontains=token) | Q(tenant__last_name__icontains=token)
+        search_tokens = _staff_search_tokens(query_text)
+        for token in search_tokens:
+            if len(token) >= 4:
+                query |= Q(tenant__first_name__icontains=token) | Q(tenant__last_name__icontains=token)
             query |= Q(unit__property__property_name__icontains=token) | Q(unit__unit_number__icontains=token)
         if not query:
             return []
@@ -2165,10 +2282,15 @@ class WhatsAppAIAssistant:
     def _staff_search_invoices(self, staff_user, text):
         leases = self._staff_accessible_leases(staff_user)
         query = (text or "").strip()
-        invoice_query = Q(invoice_number__icontains=query)
-        for token in [item for item in query.lower().replace(",", " ").split() if len(item) >= 2]:
-            invoice_query |= Q(lease__tenant__first_name__icontains=token) | Q(lease__tenant__last_name__icontains=token)
+        invoice_query = Q()
+        if query:
+            invoice_query |= Q(invoice_number__icontains=query)
+        for token in _staff_search_tokens(query):
+            if len(token) >= 4:
+                invoice_query |= Q(lease__tenant__first_name__icontains=token) | Q(lease__tenant__last_name__icontains=token)
             invoice_query |= Q(lease__unit__property__property_name__icontains=token) | Q(lease__unit__unit_number__icontains=token)
+        if not invoice_query:
+            return []
         return list(Invoice.objects.select_related("lease__tenant", "lease__unit__property").filter(invoice_query, lease__in=leases).order_by("-issue_date", "-id")[:10])
 
     def _staff_search_units(self, staff_user, text):
@@ -2180,9 +2302,13 @@ class WhatsAppAIAssistant:
         exact_ids = self._staff_unit_ids_matching_text(staff_user, query)
         if exact_ids:
             return list(units.filter(pk__in=exact_ids).order_by("property__property_name", "unit_number")[:10])
-        unit_query = Q(unit_number__icontains=query)
-        for token in [item for item in query.lower().replace(",", " ").split() if len(item) >= 2]:
+        unit_query = Q()
+        if query:
+            unit_query |= Q(unit_number__icontains=query)
+        for token in _staff_search_tokens(query):
             unit_query |= Q(property__property_name__icontains=token) | Q(unit_number__icontains=token)
+        if not unit_query:
+            return []
         return list(units.filter(unit_query).order_by("property__property_name", "unit_number")[:10])
 
     def _staff_unit_ids_matching_text(self, staff_user, text):
@@ -3010,7 +3136,6 @@ class WhatsAppAIAssistant:
         query_text = (text or "").strip()
         digits = "".join(ch for ch in query_text if ch.isdigit())
         cnic_digits = normalize_cnic(query_text)
-        lowered = query_text.lower()
         today = timezone.localdate()
         leases = Lease.objects.select_related("tenant", "unit__property").filter(
             status="active",
@@ -3032,8 +3157,9 @@ class WhatsAppAIAssistant:
                 | Q(tenant__emergency_contact_phone__icontains=suffix)
                 | Q(unit__unit_number__icontains=query_text)
             )
-        for token in [item for item in lowered.replace(",", " ").split() if len(item) >= 2]:
-            query |= Q(tenant__first_name__icontains=token) | Q(tenant__last_name__icontains=token)
+        for token in _staff_search_tokens(query_text):
+            if len(token) >= 4:
+                query |= Q(tenant__first_name__icontains=token) | Q(tenant__last_name__icontains=token)
             query |= Q(unit__property__property_name__icontains=token) | Q(unit__unit_number__icontains=token)
         if not query:
             return []

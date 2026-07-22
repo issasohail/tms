@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+
+{% block title %}Review Tenant Registration{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3 px-2 px-lg-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1 fs-5">Review Registration - {{ submission.tenant.get_full_name }}</h2>
+      <div class="small text-muted">
+        Submitted {{ submission.submitted_at|date:"M d, Y H:i" }} ·
+        <span class="badge bg-{% if submission.status == 'pending' %}warning text-dark{% elif submission.status == 'approved' %}success{% else %}secondary{% endif %}">{{ submission.get_status_display }}</span>
+      </div>
+    </div>
+    <a href="{% url 'tenants:registration_submission_list' %}" class="btn btn-secondary btn-sm">Back</a>
+  </div>
+
+  <div class="registration-hero card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+        <div class="registration-doc-strip">
+          {% for document in identity_documents %}
+            <div class="registration-doc-item {% if document.field == 'photo' %}registration-doc-photo{% endif %}">
+              {% if document.submitted_url %}
+                <a href="{{ document.submitted_url }}" target="_blank" rel="noopener">
+                  <img src="{{ document.submitted_url }}" alt="Submitted {{ document.label }}">
+                </a>
+                <span class="badge bg-success registration-doc-source">Submitted</span>
+              {% elif document.submitted_missing %}
+                <div class="registration-doc-empty text-danger">File missing from storage</div>
+                <span class="badge bg-danger registration-doc-source">Missing</span>
+              {% elif document.current_url %}
+                <a href="{{ document.current_url }}" target="_blank" rel="noopener">
+                  <img src="{{ document.current_url }}" alt="Current {{ document.label }}">
+                </a>
+                <span class="badge bg-secondary registration-doc-source">Current</span>
+              {% else %}
+                <div class="registration-doc-empty">No file submitted</div>
+              {% endif %}
+              <div class="registration-doc-label">{{ document.label }}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="flex-grow-1 min-w-0">
+          <h2 class="fs-4 mb-1">{{ submission.tenant.get_full_name }}</h2>
+          <div class="small text-muted mb-2">
+            {{ submission.tenant.cnic|format_cnic|default:"No CNIC" }} &middot;
+            {{ submission.tenant.phone|format_phone|default:"No phone" }}
+          </div>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-{% if submission.status == 'pending' %}warning text-dark{% elif submission.status == 'approved' %}success{% else %}secondary{% endif %}">{{ submission.get_status_display }}</span>
+            <span class="small text-muted">Submitted {{ submission.submitted_at|date:"M d, Y H:i" }}</span>
+            <span class="badge {% if submission_change_count %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}">{{ submission_change_count }} change{{ submission_change_count|pluralize }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card">
+        <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
+          <span>Tenant Changes</span>
+          <span class="badge {% if submission_change_count %}bg-warning text-dark{% else %}bg-success{% endif %}">
+            {{ submission_change_count }} change{{ submission_change_count|pluralize }}
+          </span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0 registration-compare-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Current Value</th>
+                  <th>Submitted Value</th>
+                  <th class="text-center">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in submission_comparison %}
+                  <tr class="{% if row.changed %}table-warning{% endif %}">
+                    <th>{{ row.label }}</th>
+                    <td>
+                      {% if row.existing_url %}<a href="{{ row.existing_url }}" target="_blank" rel="noopener"><img src="{{ row.existing_url }}" class="comparison-photo" alt="Current {{ row.label }}"></a><br>{% endif %}
+                      <span class="{% if row.changed %}old-value{% endif %}">{{ row.existing|default:"-" }}</span>
+                    </td>
+                    <td>
+                      {% if row.submitted_url %}<a href="{{ row.submitted_url }}" target="_blank" rel="noopener"><img src="{{ row.submitted_url }}" class="comparison-photo" alt="Submitted {{ row.label }}"></a><br>{% endif %}
+                      <span class="{% if row.changed %}new-value{% endif %}">{{ row.submitted|default:"-" }}</span>
+                    </td>
+                    <td class="text-center">
+                      {% if row.changed %}<span class="badge bg-warning text-dark">Changed</span>{% else %}<span class="badge bg-light text-secondary border">Unchanged</span>{% endif %}
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="4" class="text-muted text-center py-3">No submitted tenant fields.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header bg-dark text-white py-2 px-3">Family Members and Other People</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Submitted</th>
+                  <th>Existing Match</th>
+                  <th>Detected Changes</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for person in pending_people %}
+                  <tr class="{% if person.proposed_updates %}table-warning{% endif %}">
+                    <td>{{ person.get_role_display }}</td>
+                    <td>
+                      <strong>{{ person.first_name }} {{ person.last_name }}</strong><br>
+                      <small>{{ person.cnic|format_cnic|default:"No CNIC" }} · {{ person.phone|format_phone|default:"No phone" }}</small>
+                      <div class="person-photo-row mt-1">
+                        {% if person.photo %}<a href="{{ person.photo.url }}" target="_blank" rel="noopener"><img src="{{ person.photo.url }}" class="person-photo" alt="Submitted photo" title="Submitted photo"></a>{% endif %}
+                        {% if person.cnic_front %}<a href="{{ person.cnic_front.url }}" target="_blank" rel="noopener"><img src="{{ person.cnic_front.url }}" class="person-document" alt="Submitted CNIC front" title="Submitted CNIC front"></a>{% endif %}
+                        {% if person.cnic_back %}<a href="{{ person.cnic_back.url }}" target="_blank" rel="noopener"><img src="{{ person.cnic_back.url }}" class="person-document" alt="Submitted CNIC back" title="Submitted CNIC back"></a>{% endif %}
+                      </div>
+                    </td>
+                    <td>
+                      {% if person.matched_tenant %}
+                        <a href="{% url 'tenants:tenant_detail' person.matched_tenant.pk %}"><strong>{{ person.matched_tenant.get_full_name }}</strong></a><br>
+                        <small>{{ person.matched_tenant.cnic|format_cnic|default:"No CNIC" }}</small>
+                        {% if person.matched_tenant.photo %}<br><a href="{{ person.matched_tenant.photo.url }}" target="_blank" rel="noopener"><img src="{{ person.matched_tenant.photo.url }}" class="person-photo mt-1" alt="Current photo" title="Current photo"></a>{% endif %}
+                      {% else %}
+                        <span class="badge bg-info text-dark">New person</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% for field, change in person.proposed_updates.items %}
+                        <div class="change-line">
+                          <strong>{{ field|title }}:</strong>
+                          <span class="old-value">{{ change.existing|default:"None" }}</span>
+                          <span aria-hidden="true">→</span>
+                          <span class="new-value">{{ change.submitted|default:"Empty" }}</span>
+                        </div>
+                      {% empty %}
+                        {% if person.matched_tenant %}<span class="text-muted">No field changes detected.</span>{% else %}<span class="text-info">All information is new.</span>{% endif %}
+                      {% endfor %}
+                    </td>
+                    <td><span class="badge bg-light text-dark border">{{ person.get_status_display }}</span></td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="5" class="text-muted text-center py-3">No family-member, proposer, seconder, or witness changes were captured in this submission.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header bg-dark text-white py-2 px-3">Pending Vehicle Submissions</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+              <thead><tr><th>Type</th><th>Registration #</th><th>Owner</th><th>Status</th><th>Note</th></tr></thead>
+              <tbody>
+                {% for vehicle in pending_vehicle_submissions %}
+                  <tr><td>{{ vehicle.vehicle_type.name }}</td><td>{{ vehicle.registration_number }}</td><td>{{ vehicle.owner_name|default:"-" }}</td><td>{{ vehicle.get_status_display }}</td><td class="text-muted small">Waiting for lease assignment before approval.</td></tr>
+                {% empty %}
+                  <tr><td colspan="5" class="text-muted text-center py-3">No vehicle submissions.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-4">
+      <div class="card mb-3">
+        <div class="card-header bg-dark text-white py-2 px-3">Review</div>
+        <div class="card-body">
+          <form method="post" action="{% url 'tenants:registration_submission_review' submission.pk %}">
+            {% csrf_token %}
+            {% for field in form %}
+              <div class="mb-2">
+                <label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-primary btn-sm">Save Review</button>
+          </form>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header bg-dark text-white py-2 px-3">Fresh Public Link</div>
+        <div class="card-body">
+          <input class="form-control form-control-sm" value="{{ registration_link }}" readonly onclick="this.select();">
+          <div class="form-text">This link expires after 7 days. A new submission is blocked while another submission is pending.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .registration-compare-table th:first-child { min-width: 150px; }
+  .old-value { color: #b42318; text-decoration: line-through; }
+  .new-value { color: #067647; font-weight: 700; }
+  .comparison-photo { width: 90px; height: 68px; object-fit: contain; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; }
+  .person-photo-row { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+  .person-photo { width: 58px; height: 58px; object-fit: cover; border: 1px solid #d0d5dd; border-radius: 6px; }
+  .person-document { width: 78px; height: 58px; object-fit: contain; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; }
+  .change-line { margin-bottom: .2rem; white-space: normal; }
+  .registration-doc-strip { display:flex; gap:.6rem; align-items:stretch; }
+  .registration-doc-item { position:relative; width:132px; }
+  .registration-doc-item img,
+  .registration-doc-empty { width:132px; height:92px; object-fit:contain; border:1px solid #d0d5dd; border-radius:8px; background:#f8fafc; }
+  .registration-doc-photo img,
+  .registration-doc-photo .registration-doc-empty { object-fit:cover; }
+  .registration-doc-empty { display:flex; align-items:center; justify-content:center; padding:.5rem; text-align:center; color:#667085; font-size:.72rem; }
+  .registration-doc-label { text-align:center; margin-top:.25rem; font-size:.7rem; font-weight:700; text-transform:uppercase; color:#344054; }
+  .registration-doc-source { position:absolute; top:5px; right:5px; font-size:.6rem; }
+  @media (max-width: 767.98px) {
+    .registration-doc-strip { width:100%; }
+    .registration-doc-item,
+    .registration-doc-item img,
+    .registration-doc-empty { width:100%; min-width:0; }
+    .registration-doc-item { flex:1 1 0; }
+  }
+</style>
+{% endblock %}

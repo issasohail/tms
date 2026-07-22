@@ -7,6 +7,9 @@
 {% block main_container_class %}container-fluid payment-list-container{% endblock %}
 
 {% block content %}
+<div style="background:#ff00ff;color:#fff;text-align:center;font-weight:900;font-size:16px;padding:10px;position:sticky;top:0;z-index:99999;">
+    🔴 DIAGNOSTIC MARKER — PAYMENT_LIST BUILD 2026-07-21-A — if you see this pink bar, the browser IS loading this file.
+</div>
 {% include "payments/_payment_detail_split_modal.html" %}
 <script>
   window.PAYMENT_WHATSAPP_API_URL_TEMPLATE = "{% url 'whatsapp:send_object_message' 'payment' 0 'receipt' %}";
@@ -165,14 +168,14 @@
   }
   .select2-container--default .select2-selection--single .select2-selection__arrow{ height:32px; }
 
-  @media (min-width:992px){
+  @media (min-width:1000px){
     .payment-list-dense th.col-amount, .payment-list-dense td.col-amount{
       text-align:right; font-variant-numeric:tabular-nums;
     }
   }
 
   /* ================================================================
-     FILTER BAR — "table view" (>=768px, covers tablet + desktop)
+     FILTER BAR — "table view" (>=600px, covers tablet + desktop)
      One line. Fields shrink to fit; if they truly can't, the row
      scrolls horizontally instead of wrapping.
      ================================================================ */
@@ -190,7 +193,7 @@
   .payment-filter-grid .form-select,
   .payment-filter-grid .form-control{ width:100%; }
 
-  @media (min-width: 992px) {
+  @media (min-width: 1000px) {
     .payment-list-dense th.col-tenant,
     .payment-list-dense td.col-tenant {
       max-width: var(--lg-tenant-w, 18rem);
@@ -296,7 +299,7 @@
      changes needed. Serial number, every column's data, and every
      action button all remain visible.
      ================================================================ */
-  @media (max-width:767px){
+  @media (max-width:599px){
     .payment-list-container{ font-size:10px; }
     .payment-page-compact .card .card-body{ overflow: hidden; }
 
@@ -514,7 +517,7 @@
     font-weight: 700;
   }
 
-  @media (min-width: 992px) {
+  @media (min-width: 1000px) {
   /* ===== Everything below (tenant/unit/amount sizing, header/hover styling,
      table.table base rules) is DESKTOP-ONLY. Previously this had no @media
      guard at all, so these rules (e.g. the 1.594rem amount font-size) were
@@ -707,7 +710,7 @@
   }
   /* end desktop-only guard */
 
-  @media (min-width: 992px) {
+  @media (min-width: 1000px) {
     .payment-list-dense th.col-unit,
     .payment-list-dense td.col-unit {
       min-width: var(--payment-col-unit);
@@ -766,14 +769,14 @@
   }
 
   /* ================================================================
-     CARD LAYOUT — shared by mobile (<768px) and tablet (768-991px).
+     CARD LAYOUT — shared by mobile (<=599px) and tablet (600-999px).
      Table becomes a stack of cards. Property/unit are rendered as
      badges and balance as a chip by the JS enhancer further below;
      this CSS just lays the resulting markup out and themes it.
      ================================================================ */
   .payment-list-dense td.col-split-breakdown { display: none; }
 
-  @media (max-width: 991px) {
+  @media (max-width: 999px) {
     .payment-list-container {
       max-width: 100% !important;
       padding-left: 10px !important;
@@ -847,19 +850,29 @@
     .payment-list-dense td.col-date i { margin-right: .2rem !important; }
 
     .payment-list-dense td.col-balance-row {
-      grid-column: 1 !important; grid-row: 3 !important;
+      /* Columns 1-2 (SN + the flexible middle track), NOT column 1 alone —
+         pinning this to column 1 alone forces that narrow auto-sized SN
+         track to balloon to fit the balance text, which starves the
+         actions column next to it. Spanning 1-2 lets the flexible
+         middle track (1fr) absorb the balance text's width instead. */
+      grid-column: 1 / 3 !important; grid-row: 3 !important;
+      min-width: 0 !important;
       display: flex !important; align-items: center !important;
       font-size: .78rem !important; font-weight: 600 !important;
       margin-top: .3rem !important; padding-top: .5rem !important;
       border-top: 1px dashed #e5e7eb !important;
       white-space: nowrap !important;
+      overflow: hidden !important; text-overflow: ellipsis !important;
     }
     .payment-list-dense tr.pc-negative td.col-balance-row { color: #a32d2d !important; }
     .payment-list-dense tr.pc-positive td.col-balance-row { color: #3b6d11 !important; }
     .payment-list-dense td.col-balance-row i { margin-right: .3rem !important; }
 
     .payment-list-dense td.col-actions {
-      grid-column: 2 / 4 !important; grid-row: 3 !important;
+      /* Its own dedicated column (3) — this guarantees the auto-sized
+         track grows to fit the four action buttons instead of sharing
+         space with the balance text on the left. */
+      grid-column: 3 / 4 !important; grid-row: 3 !important;
       display: flex !important; justify-content: flex-end !important;
       align-items: center !important; margin-top: .3rem !important;
       padding-top: .5rem !important;
@@ -896,7 +909,12 @@
     .payment-list-dense td.col-lease-balance,
     .payment-list-dense td.col-security-balance,
     .payment-list-dense td.col-description { display: none !important; }
+  }
 
+  /* MOBILE-ONLY (<=599px). Tablet (600-999px) keeps the single-line,
+     horizontally-scrollable filter bar defined by the default
+     .payment-filter-grid rules further up the file. */
+  @media (max-width: 599px) {
     .payment-filter-grid {
       display: grid !important;
       grid-template-columns: repeat(2, 1fr) !important;
@@ -910,9 +928,7 @@
     #payment-filter-form .select2-container--default .select2-selection--single {
       font-size: .8rem !important;
     }
-  }
 
-  @media (max-width: 767px) {
     .payment-list-dense table.table tbody tr { padding: .75rem .85rem !important; }
     .payment-list-dense td.col-tenant { font-size: var(--payment-card-tenant-size-sm) !important; }  /* MOBILE-only override */
     .payment-list-dense td.col-amount { font-size: .86rem !important; }

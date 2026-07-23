@@ -139,7 +139,7 @@ def _stored_file_exists(field_file):
 def _record_missing_file(missing_files, context, field_name, path):
     if missing_files is not None:
         missing_files.append(
-            f"{context}: {field_name.replace('_', ' ').title()} file is missing. "
+            f"{context} {field_name.replace('_', ' ')} file is missing. "
             f"The saved path was kept unchanged: {path}"
         )
 
@@ -211,10 +211,8 @@ def _copy_file(
             deferred_file_paths[field_name] = source_field.name
         _record_missing_file(missing_files, context, field_name, source_field.name)
         return True
-    opened = False
     try:
         source_field.open("rb")
-        opened = True
         data = source_field.read()
     except (FileNotFoundError, OSError):
         if deferred_file_paths is not None:
@@ -222,8 +220,7 @@ def _copy_file(
         _record_missing_file(missing_files, context, field_name, source_field.name)
         return True
     finally:
-        if opened:
-            source_field.close()
+        source_field.close()
     getattr(target, field_name).save(Path(source_field.name).name, ContentFile(data), save=False)
     return True
 

@@ -129,29 +129,6 @@ def _merge_shell_references(shell, target):
     shell.delete()
 
 
-def _stored_file_exists(field_file):
-    try:
-        return bool(field_file and field_file.name and field_file.storage.exists(field_file.name))
-    except (OSError, ValueError):
-        return False
-
-
-def _record_missing_file(missing_files, context, field_name, path):
-    if missing_files is not None:
-        missing_files.append(
-            f"{context}: {field_name.replace('_', ' ').title()} file is missing. "
-            f"The saved path was kept unchanged: {path}"
-        )
-
-
-def _apply_deferred_file_paths(tenant, deferred_file_paths):
-    if not deferred_file_paths:
-        return
-    Tenant.objects.filter(pk=tenant.pk).update(**deferred_file_paths)
-    for field_name, path in deferred_file_paths.items():
-        setattr(tenant, field_name, path)
-
-
 def apply_registration_applicant(submission, *, collision_action="", missing_files=None):
     """Apply reviewer-selected applicant fields, merging a shell on CNIC conflict."""
     shell = submission.tenant
@@ -174,17 +151,22 @@ def apply_registration_applicant(submission, *, collision_action="", missing_fil
         source_file = getattr(submission, field)
         if decisions.get(field) != "accept_submitted" or not source_file:
             continue
-        if _stored_file_exists(source_file):
+        if source_file.storage.exists(source_file.name):
             setattr(tenant, field, source_file)
         else:
             deferred_missing_files[field] = source_file.name
-            _record_missing_file(
-                missing_files, "Applicant", field, source_file.name
-            )
+            if missing_files is not None:
+                missing_files.append(
+                    f"{field.replace('_', ' ').title()} file is missing. "
+                    f"The saved path was kept unchanged: {source_file.name}"
+                )
     tenant.is_active = True
     tenant.save()
-    # Bypass image-cropping's pre-save file read for paths whose files are absent.
-    _apply_deferred_file_paths(tenant, deferred_missing_files)
+    if deferred_missing_files:
+        # Bypass image-cropping's pre-save file read for paths whose files are absent.
+        Tenant.objects.filter(pk=tenant.pk).update(**deferred_missing_files)
+        for field, path in deferred_missing_files.items():
+            setattr(tenant, field, path)
     if decisions.get("interested_in") == "accept_submitted":
         tenant.interested_in.set(submission.submitted_data.get("interested_in") or [])
     if conflict:
@@ -194,45 +176,20 @@ def apply_registration_applicant(submission, *, collision_action="", missing_fil
     return tenant, conflict
 
 
-def _copy_file(
-    source,
-    target,
-    field_name,
-    *,
-    deferred_file_paths=None,
-    missing_files=None,
-    context="Registration person",
-):
+def _copy_file(source, target, field_name):
     source_field = getattr(source, field_name)
     if not source_field:
         return False
-    if not _stored_file_exists(source_field):
-        if deferred_file_paths is not None:
-            deferred_file_paths[field_name] = source_field.name
-        _record_missing_file(missing_files, context, field_name, source_field.name)
-        return True
-    opened = False
-    try:
-        source_field.open("rb")
-        opened = True
-        data = source_field.read()
-    except (FileNotFoundError, OSError):
-        if deferred_file_paths is not None:
-            deferred_file_paths[field_name] = source_field.name
-        _record_missing_file(missing_files, context, field_name, source_field.name)
-        return True
-    finally:
-        if opened:
-            source_field.close()
+    source_field.open("rb")
+    data = source_field.read()
+    source_field.close()
     getattr(target, field_name).save(Path(source_field.name).name, ContentFile(data), save=False)
     return True
 
 
-def resolve_pending_person(person, missing_files=None):
+def resolve_pending_person(person):
     tenant = person.matched_tenant or match_tenant_by_cnic(person.cnic)
     created = False
-    deferred_file_paths = {}
-    person_context = f"{person.get_role_display()} ({person.first_name} {person.last_name})".strip()
     if not tenant:
         tenant = Tenant(
             first_name=person.first_name or "Unknown",
@@ -244,19 +201,11 @@ def resolve_pending_person(person, missing_files=None):
             address=person.address,
         )
         for field in FILE_FIELDS:
-            _copy_file(
-                person,
-                tenant,
-                field,
-                deferred_file_paths=deferred_file_paths,
-                missing_files=missing_files,
-                context=person_context,
-            )
+            _copy_file(person, tenant, field)
         tenant.full_clean(
             exclude=["cnic"] if family_member_can_have_blank_cnic(person) else None
         )
         tenant.save()
-        _apply_deferred_file_paths(tenant, deferred_file_paths)
         created = True
     else:
         update_fields = []
@@ -266,18 +215,10 @@ def resolve_pending_person(person, missing_files=None):
             if field in PERSON_FIELDS:
                 setattr(tenant, field, getattr(person, field))
                 update_fields.append(field)
-            elif field in FILE_FIELDS and _copy_file(
-                person,
-                tenant,
-                field,
-                deferred_file_paths=deferred_file_paths,
-                missing_files=missing_files,
-                context=person_context,
-            ):
+            elif field in FILE_FIELDS and _copy_file(person, tenant, field):
                 update_fields.append(field)
         if update_fields:
             tenant.save(update_fields=list(dict.fromkeys(update_fields + ["updated_at"])))
-            _apply_deferred_file_paths(tenant, deferred_file_paths)
     person.processed_tenant = tenant
     person.processing_result = {"action": "created" if created else "reused_or_updated", "tenant_id": tenant.pk}
     person.status = PendingRegistrationPerson.STATUS_PROCESSED
@@ -285,7 +226,7 @@ def resolve_pending_person(person, missing_files=None):
     return tenant, created
 
 
-def _resolve_registration_people(submission, missing_files=None):
+def _resolve_registration_people(submission):
     resolved = []
     for person in submission.pending_people.select_for_update().exclude(
         status=PendingRegistrationPerson.STATUS_REJECTED
@@ -293,27 +234,23 @@ def _resolve_registration_people(submission, missing_files=None):
         if person.status == PendingRegistrationPerson.STATUS_PROCESSED and person.processed_tenant_id:
             tenant, created = person.processed_tenant, False
         else:
-            tenant, created = resolve_pending_person(person, missing_files=missing_files)
+            tenant, created = resolve_pending_person(person)
         resolved.append((person, tenant, created))
     return resolved
 
 
 @transaction.atomic
-def process_registration_people(submission, missing_files=None):
+def process_registration_people(submission):
     return [
         {"role": person.role, "tenant_id": tenant.pk, "created": created}
-        for person, tenant, created in _resolve_registration_people(
-            submission, missing_files=missing_files
-        )
+        for person, tenant, created in _resolve_registration_people(submission)
     ]
 
 
 @transaction.atomic
-def attach_registration_to_lease(submission, lease, user=None, missing_files=None):
+def attach_registration_to_lease(submission, lease, user=None):
     result = {"people": [], "vehicles": 0}
-    for person, tenant, created in _resolve_registration_people(
-        submission, missing_files=missing_files
-    ):
+    for person, tenant, created in _resolve_registration_people(submission):
         if person.role == PendingRegistrationPerson.ROLE_FAMILY:
             relationship_type = LeaseRelationshipType.objects.filter(pk=person.relationship_type_id).first()
             LeaseFamilyMember.objects.update_or_create(
@@ -333,18 +270,9 @@ def attach_registration_to_lease(submission, lease, user=None, missing_files=Non
     lease.save(update_fields=["proposer", "seconder", "witness1_tenant", "witness2_tenant", "updated_at"])
     pending_vehicles = PendingLeaseVehicleSubmission.objects.select_for_update().filter(pending_tenant_submission=submission, status=PendingLeaseVehicleSubmission.STATUS_PENDING)
     for item in pending_vehicles:
-        vehicle_files = {}
-        vehicle_context = f"Vehicle {item.registration_number}"
-        for field_name in ("registration_book_photo", "vehicle_photo"):
-            source_file = getattr(item, field_name)
-            vehicle_files[field_name] = source_file.name if source_file else None
-            if source_file and not _stored_file_exists(source_file):
-                _record_missing_file(
-                    missing_files, vehicle_context, field_name, source_file.name
-                )
         LeaseVehicle.objects.update_or_create(
             lease=lease, registration_number=item.registration_number,
-            defaults={"tenant": lease.tenant, "vehicle_type": item.vehicle_type, "make": item.make, "model": item.model, "color": item.color, "year": item.year, "owner_name": item.owner_name, "owner_cnic": item.owner_cnic, **vehicle_files, "is_active": True},
+            defaults={"tenant": lease.tenant, "vehicle_type": item.vehicle_type, "make": item.make, "model": item.model, "color": item.color, "year": item.year, "owner_name": item.owner_name, "owner_cnic": item.owner_cnic, "registration_book_photo": item.registration_book_photo, "vehicle_photo": item.vehicle_photo, "is_active": True},
         )
         item.lease = lease; item.tenant = lease.tenant; item.status = PendingLeaseVehicleSubmission.STATUS_APPROVED; item.reviewed_by = user; item.reviewed_at = timezone.now(); item.save(update_fields=["lease", "tenant", "status", "reviewed_by", "reviewed_at"])
         result["vehicles"] += 1

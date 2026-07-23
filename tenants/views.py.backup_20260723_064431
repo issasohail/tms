@@ -1436,17 +1436,12 @@ def tenant_registration_submission_review(request, pk):
                     notes="Created from tenant registration. Review and complete lease details.",
                 )
                 workflow_result = attach_registration_to_lease(
-                    submission,
-                    lease,
-                    request.user,
-                    missing_files=missing_file_warnings,
+                    submission, lease, request.user
                 )
                 ensure_original_history(lease, user=request.user)
             else:
                 workflow_result = {
-                    "people": process_registration_people(
-                        submission, missing_files=missing_file_warnings
-                    ),
+                    "people": process_registration_people(submission),
                     "vehicles": 0,
                 }
             submission.status = submission.STATUS_APPROVED

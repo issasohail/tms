@@ -1408,13 +1408,10 @@ def tenant_registration_submission_review(request, pk):
     submission.save(update_fields=["field_decisions", "status", "reviewed_by", "reviewed_at"])
     shell_id = submission.tenant_id
     lease = None
-    missing_file_warnings = []
     try:
         with transaction.atomic():
             tenant, merged_tenant = apply_registration_applicant(
-                submission,
-                collision_action=collision_action,
-                missing_files=missing_file_warnings,
+                submission, collision_action=collision_action
             )
             if create_lease:
                 from leases.lease_term import calculate_lease_end_date
@@ -1436,17 +1433,12 @@ def tenant_registration_submission_review(request, pk):
                     notes="Created from tenant registration. Review and complete lease details.",
                 )
                 workflow_result = attach_registration_to_lease(
-                    submission,
-                    lease,
-                    request.user,
-                    missing_files=missing_file_warnings,
+                    submission, lease, request.user
                 )
                 ensure_original_history(lease, user=request.user)
             else:
                 workflow_result = {
-                    "people": process_registration_people(
-                        submission, missing_files=missing_file_warnings
-                    ),
+                    "people": process_registration_people(submission),
                     "vehicles": 0,
                 }
             submission.status = submission.STATUS_APPROVED
@@ -1488,8 +1480,6 @@ def tenant_registration_submission_review(request, pk):
             },
         },
     )
-    for warning in missing_file_warnings:
-        messages.warning(request, warning)
     if lease:
         messages.success(
             request,

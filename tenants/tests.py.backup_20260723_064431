@@ -487,57 +487,6 @@ class RegistrationOnboardingTests(TestCase):
             )
         )
 
-    def test_approval_keeps_missing_registration_person_photo_path(self):
-        from django.contrib.messages import get_messages
-        from django.urls import reverse
-        from tenants.models import PendingRegistrationPerson, TenantRegistrationSubmission
-        from tenants.views import _registration_submission_comparison
-
-        missing_path = (
-            "tenants/registration_people/10/proposer/"
-            "932f30dc984f41a5ac6e0d9520afbac5.jpeg"
-        )
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(),
-            submitted_data={
-                "first_name": "Approved",
-                "last_name": "Applicant",
-                "phone": "03001234567",
-                "cnic": "3520212345672",
-            },
-        )
-        self.make_required_parties(submission)
-        proposer = submission.pending_people.get(
-            role=PendingRegistrationPerson.ROLE_PROPOSER
-        )
-        proposer.photo.name = missing_path
-        proposer.save(update_fields=["photo"])
-        data = {"action": "approve_registration"}
-        for row in _registration_submission_comparison(submission):
-            if row["changed"]:
-                data[f"decision_{row['field']}"] = "accept_submitted"
-
-        self.client.force_login(self.user)
-        response = self.client.post(
-            reverse("tenants:registration_submission_review", args=[submission.pk]),
-            data,
-        )
-
-        submission.refresh_from_db()
-        proposer.refresh_from_db()
-        proposer.processed_tenant.refresh_from_db()
-        self.assertEqual(submission.status, submission.STATUS_APPROVED)
-        self.assertEqual(proposer.processed_tenant.photo.name, missing_path)
-        response_messages = [str(message) for message in get_messages(response.wsgi_request)]
-        self.assertTrue(
-            any(
-                "Proposer" in message
-                and "Photo file is missing" in message
-                and missing_path in message
-                for message in response_messages
-            )
-        )
-
     def test_active_unit_lease_opens_date_correction_modal_and_allows_retry(self):
         from django.urls import reverse
         from leases.models import Lease
@@ -640,21 +589,11 @@ class RegistrationOnboardingTests(TestCase):
         vehicle_type, _ = LeaseVehicleType.objects.get_or_create(
             code="registration-test-car", defaults={"name": "Registration Test Car"}
         )
-        pending_vehicle = PendingLeaseVehicleSubmission.objects.create(
+        PendingLeaseVehicleSubmission.objects.create(
             pending_tenant_submission=submission, tenant=primary,
             vehicle_type=vehicle_type, registration_number="ABC-123",
         )
-        missing_vehicle_path = "leases/vehicles/pending/photos/missing-abc-123.jpg"
-        missing_book_path = "leases/vehicles/pending/registration_book/missing-abc-123.jpg"
-        pending_vehicle.vehicle_photo.name = missing_vehicle_path
-        pending_vehicle.registration_book_photo.name = missing_book_path
-        pending_vehicle.save(
-            update_fields=["vehicle_photo", "registration_book_photo"]
-        )
-        missing_files = []
-        attach_registration_to_lease(
-            submission, lease, self.user, missing_files=missing_files
-        )
+        attach_registration_to_lease(submission, lease, self.user)
         attach_registration_to_lease(submission, lease, self.user)
         lease.refresh_from_db()
         self.assertEqual(lease.proposer, roles[PendingRegistrationPerson.ROLE_PROPOSER])
@@ -663,13 +602,6 @@ class RegistrationOnboardingTests(TestCase):
         self.assertEqual(lease.witness2_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_2])
         self.assertEqual(LeaseFamilyMember.objects.filter(lease=lease).count(), 1)
         self.assertEqual(LeaseVehicle.objects.filter(lease=lease).count(), 1)
-        vehicle = LeaseVehicle.objects.get(lease=lease)
-        self.assertEqual(vehicle.vehicle_photo.name, missing_vehicle_path)
-        self.assertEqual(vehicle.registration_book_photo.name, missing_book_path)
-        self.assertTrue(any("Vehicle Photo file is missing" in item for item in missing_files))
-        self.assertTrue(
-            any("Registration Book Photo file is missing" in item for item in missing_files)
-        )
         submission.created_lease = lease
         submission.status = submission.STATUS_APPROVED
         submission.save(update_fields=["created_lease", "status"])

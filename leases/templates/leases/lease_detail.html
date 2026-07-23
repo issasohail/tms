@@ -688,9 +688,9 @@
         </form>
       {% endif %}
 
-      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm ld-action-edit"><i class="fas fa-edit"></i> Edit Lease</a>
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm ld-action-edit"><i class="fas fa-edit"></i> Edit Lease Detail</a>
       {% if active_history %}
-      <a href="{% url 'leases:lease_history_edit' lease.pk active_history.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-file-signature"></i> Edit Current Agreement</a>
+      <a href="{% url 'leases:lease_history_edit' lease.pk active_history.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-file-signature"></i> Edit Current Lease</a>
       {% endif %}
       <div class="btn-group ld-segmented-group ld-registration-group" role="group" aria-label="Registration link actions" data-registration-link="{{ registration_link }}">
         <a href="{{ registration_link }}" target="_blank" rel="noopener" class="btn btn-sm ld-registration-main"><i class="fas fa-link"></i> Registration Link</a>

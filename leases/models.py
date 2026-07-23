@@ -315,13 +315,13 @@ class Lease(models.Model):
             # Clause 4
             "That a further sum of Rs. [SECURITY_DEPOSIT]/- ([SECURITY_DEPOSIT_IN_WORDS]) Rupees Only will be paid by the tenant to the Owner as Security before taking possession. If paying in installments, first installment of Rs. [SECURITY_INSTALLMENT_1_AMOUNT]/- is due on [SECURITY_INSTALLMENT_1_DATE], and second installment of Rs. [SECURITY_INSTALLMENT_2_AMOUNT]/- is due on [SECURITY_INSTALLMENT_2_DATE]. The security is refundable at the time of vacation of said premises after deducting breakage, damages, and clearance of all utility bills (Electricity, Sui Gas, Society/Building Maintenance Charges, Telephone, etc.).",
             # Clause 5
-            "That the period of tenancy is hereby agreed as [LEASE_DURATION_MONTHS] months, commencing from [START_DATE] to [END_DATE], with a rent increase of @ [RENT_INCREASE_PERCENT]% after [LEASE_DURATION_MONTHS] months. Renewal is possible with mutual consent of both parties. The Tenant shall vacate peacefully after the lease expires.",
+            "That the period of tenancy is hereby agreed as [LEASE_DURATION_MONTHS] months, commencing from [START_DATE] to [END_DATE], with a rent increase of @ [RENT_INCREASE_PERCENT]% after [LEASE_DURATION_MONTHS] months or the market rate, whichever is higher. Renewal is possible with mutual consent of both parties. To continue residing after [END_DATE], the Tenant must sign a new written agreement before that date. Without a new agreement, the Tenant shall vacate on or before [END_DATE]; continued occupation will be treated as unauthorized possession, subject to applicable law.",
             # Clause 6
             "That the Tenant is bound not to vacate the premises within [MIN_OCCUPANCY_PERIOD] months. If they choose to vacate earlier, they must pay Rs. [EARLY_TERMINATION_PENALTY]/- per month as penalty.",
             # Clause 7
             "That [KEYS_ISSUED] keys/keycards will be issued to the Tenant, to be returned upon vacating the premises. If lost, Rs. [KEY_REPLACEMENT_COST]/- per key/keycard will be deducted from the Security Deposit.",
             # Clause 8
-            "That the Tenant shall maintain the premises in good condition, including all fittings and fixtures, and replace any broken items with equal quality. No alterations or wall drilling is allowed without written permission. Subletting is strictly prohibited.",
+            "That the Tenant shall maintain the premises, including all fittings and fixtures, in good condition and replace with equal quality any item broken or damaged by the Tenant, occupants, guests, negligence, or misuse. Kitchen cabinets and wardrobes shall be kept clean, dry, ventilated, and protected from termites, excessive humidity, dampness, mold, and fungus. The Tenant shall promptly notify the Owner of any such condition and arrange necessary cleaning, drying, ventilation, termite spray or treatment, or anti-fungal treatment. The Tenant is responsible for damage caused or worsened by failure to take reasonable preventive action or give prompt notice, excluding documented pre-existing conditions, structural defects, hidden water leakage, and normal wear and tear. No alterations or wall drilling is allowed without written permission. Subletting is strictly prohibited.",
             # Clause 9
             "That in case the Owner sells the property, the Tenant shall have no objection and will cooperate in executing a fresh lease agreement with the new Owner for the remaining term.",
             # Clause 10
@@ -339,7 +339,7 @@ class Lease(models.Model):
             # Clause 16
             "That the Tenant will not rent or sublet the premises to any third party.",
             # Clause 17
-            "That the Owner may visit the premises with reasonable advance notice.",
+            "That the Owner or the Owner's authorized representative may inspect the premises once every three months after giving the Tenant reasonable advance notice, except in an emergency. The Tenant shall provide reasonable access and promptly repair or replace, at the Tenant's expense, anything broken or damaged by the Tenant, occupants, guests, negligence, or misuse, excluding normal wear and tear and defects not caused by the Tenant.",
             # Clause 18
             "That during the lease period, any complaints from the society against the Tenant shall be the Tenant's responsibility.",
             # Clause 19

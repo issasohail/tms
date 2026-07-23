@@ -12,8 +12,6 @@
   .pending-created { width: 104px; }
   .pending-phone { width: 152px; }
   .pending-photo { width: 54px; }
-  .pending-attachment { width: 118px; }
-  .pending-move { width: 145px; }
   .pending-tenant { width: 135px; }
   .pending-property { width: 168px; }
   .pending-status { width: 122px; }
@@ -43,30 +41,6 @@
     border-radius: 50%;
     border: 1px solid #d8dee6;
     background: #f3f4f6;
-  }
-  .pending-attachment-list {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: .3rem;
-  }
-  .pending-attachment-thumb,
-  .pending-attachment-video {
-    width: 52px;
-    height: 42px;
-    object-fit: cover;
-    border: 1px solid #d8dee6;
-    border-radius: .3rem;
-    background: #f3f4f6;
-  }
-  .pending-move-form {
-    display: flex;
-    align-items: center;
-    gap: .3rem;
-  }
-  .pending-move-form .form-select {
-    min-width: 0;
-    font-size: .7rem;
   }
   .pending-maintenance-actions {
     display: grid;
@@ -135,9 +109,7 @@
       text-transform: uppercase;
     }
     .pending-approval-table .pending-details,
-    .pending-approval-table .pending-handyman,
-    .pending-approval-table .pending-attachment,
-    .pending-approval-table .pending-move {
+    .pending-approval-table .pending-handyman {
       grid-column: 1 / -1;
     }
     .pending-approval-table .pending-status,
@@ -250,13 +222,11 @@
                   <th class="pending-created">Created</th>
                   <th class="pending-phone">Phone</th>
                   {% if section.kind == "family" %}<th class="pending-photo">Photo</th>{% endif %}
-                  {% if section.kind == "media" %}<th class="pending-attachment">Attachment</th>{% endif %}
                   <th class="pending-tenant">Tenant</th>
                   <th class="pending-property">Property / Unit</th>
                   <th class="pending-details {% if section.kind == 'maintenance' %}pending-maintenance-details{% endif %}">Details</th>
                   {% if section.kind == "maintenance" %}<th class="pending-handyman">Handyman</th>{% endif %}
                   <th class="pending-status">Status</th>
-                  {% if section.kind == "media" %}<th class="pending-move">Move To</th>{% endif %}
                   <th class="pending-review">Review</th>
                 </tr>
               </thead>
@@ -293,27 +263,6 @@
                         {% else %}
                           <span class="text-muted small">-</span>
                         {% endif %}
-                      </td>
-                    {% endif %}
-                    {% if section.kind == "media" %}
-                      <td class="pending-attachment" data-label="Attachment">
-                        <div class="pending-attachment-list">
-                          {% for preview in row.media_previews %}
-                            {% if preview.preview_kind == "image" %}
-                              <a href="{{ preview.file_url }}" target="_blank" rel="noopener" title="{{ preview.filename }}">
-                                <img src="{{ preview.file_url }}" class="pending-attachment-thumb" alt="{{ preview.filename }}">
-                              </a>
-                            {% elif preview.preview_kind == "video" %}
-                              <video src="{{ preview.file_url }}" class="pending-attachment-video" controls preload="metadata" title="{{ preview.filename }}"></video>
-                            {% elif preview.preview_kind == "pdf" %}
-                              <a href="{{ preview.file_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-danger py-1 px-2" title="{{ preview.filename }}">PDF</a>
-                            {% elif preview.file_url %}
-                              <a href="{{ preview.file_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-primary py-1 px-2" title="{{ preview.filename }}">Open</a>
-                            {% endif %}
-                          {% empty %}
-                            <span class="text-muted small">No file</span>
-                          {% endfor %}
-                        </div>
                       </td>
                     {% endif %}
                     <td class="pending-nowrap pending-tenant" data-label="Tenant" title="{% if item.tenant %}{{ item.tenant }}{% elif item.lease %}{{ item.lease.tenant }}{% else %}-{% endif %}">
@@ -375,22 +324,6 @@
                         {% endif %}
                       </div>
                     </td>
-                    {% if section.kind == "media" %}
-                      <td class="pending-move" data-label="Move To">
-                        {% if item.status == "pending" %}
-                          <form method="post" action="{{ row.urls.approve }}" class="pending-approval-action pending-move-form" data-action="move">
-                            {% csrf_token %}
-                            <select name="media_destination" class="form-select form-select-sm" aria-label="Move media to">
-                              <option value="maintenance">Maintenance</option>
-                              <option value="payment_receipt">WhatsApp Payments</option>
-                            </select>
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">Move</button>
-                          </form>
-                        {% else %}
-                          <span class="text-muted small">Reviewed</span>
-                        {% endif %}
-                      </td>
-                    {% endif %}
                     <td class="pending-review" data-label="Review">
                       <div class="pending-review-line">
                       <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">{% if section.kind == "registration" %}Review{% else %}Detail{% endif %}</a>
@@ -405,7 +338,7 @@
                   </tr>
                   {% endwith %}
                 {% empty %}
-                  <tr class="pending-empty-row"><td colspan="{% if section.kind == 'media' %}10{% elif section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No items match the selected filters.</td></tr>
+                  <tr class="pending-empty-row"><td colspan="{% if section.kind == 'family' or section.kind == 'maintenance' %}9{% else %}8{% endif %}" class="text-muted text-center py-3">No items match the selected filters.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

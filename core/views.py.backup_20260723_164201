@@ -216,13 +216,11 @@ def _group_pending_media(items):
             if item.batch_key in seen_batches:
                 continue
             seen_batches.add(item.batch_key)
-            item.pending_group_items = [
-                candidate for candidate in items
-                if candidate.batch_key == item.batch_key
-            ]
+            item.pending_group_count = sum(
+                1 for candidate in items if candidate.batch_key == item.batch_key
+            )
         else:
-            item.pending_group_items = [item]
-        item.pending_group_count = len(item.pending_group_items)
+            item.pending_group_count = 1
         grouped.append(item)
     return grouped
 
@@ -533,14 +531,6 @@ def pending_approvals(request):
                 "object": item,
                 "urls": _pending_item_urls(section["kind"], item),
                 "property_unit_label": _property_unit_label(item),
-                "media_previews": (
-                    [
-                        _pending_media_context(media)
-                        for media in getattr(item, "pending_group_items", [item])
-                    ]
-                    if section["kind"] == "media"
-                    else []
-                ),
             }
             for item in section["items"]
         ]
@@ -922,84 +912,6 @@ def _reclassify_pending_media_as_payment(pending):
     return payment
 
 
-def _reclassify_pending_media_as_maintenance(pending):
-    from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia
-    from whatsapp.services.maintenance_ai import (
-        _message_text,
-        detect_maintenance_issue,
-    )
-
-    if pending.status != PendingWhatsAppMedia.STATUS_PENDING:
-        raise ValueError("This media has already been reviewed.")
-
-    batch_items = list(
-        PendingWhatsAppMedia.objects.select_for_update()
-        .filter(
-            status=PendingWhatsAppMedia.STATUS_PENDING,
-            batch_key=pending.batch_key,
-        )
-        .order_by("created_at", "pk")
-    ) if pending.batch_key else [pending]
-
-    existing = (
-        PendingWhatsAppMaintenance.objects.select_for_update()
-        .filter(
-            status=PendingWhatsAppMaintenance.STATUS_PENDING,
-            media__in=batch_items,
-        )
-        .distinct()
-        .first()
-    )
-    message_text = ""
-    if pending.original_whatsapp_message_id:
-        message_text = _message_text(
-            pending.original_whatsapp_message.payload or {}
-        ).strip()
-    issue_type, urgency, confidence = detect_maintenance_issue(
-        "\n".join(
-            part for part in (message_text, pending.ai_notes) if part
-        )
-    )
-    if existing is None:
-        lease = pending.lease
-        unit = pending.unit or getattr(lease, "unit", None)
-        property_obj = pending.property or getattr(unit, "property", None)
-        tenant = pending.tenant or getattr(lease, "tenant", None)
-        existing = PendingWhatsAppMaintenance.objects.create(
-            conversation=pending.conversation,
-            original_whatsapp_message=pending.original_whatsapp_message,
-            phone=pending.phone,
-            tenant=tenant,
-            lease=lease,
-            property=property_obj,
-            unit=unit,
-            issue_type=issue_type,
-            urgency=urgency,
-            description=(
-                message_text
-                or pending.ai_notes.strip()
-                or f"Maintenance attachment: {pending.original_filename or pending.file.name}"
-            ),
-            ai_confidence=max(pending.ai_confidence or 0, confidence),
-            ai_notes=(
-                "Moved from WhatsApp Documents / Media for maintenance review."
-            ),
-        )
-    existing.media.add(*batch_items)
-
-    audit_note = f"Moved to pending maintenance #{existing.pk}."
-    for media in batch_items:
-        media.purpose = PendingWhatsAppMedia.PURPOSE_MAINTENANCE
-        media.target_kind = ""
-        media.ai_notes = "\n".join(
-            part for part in (media.ai_notes.strip(), audit_note) if part
-        )
-        media.save(
-            update_fields=["purpose", "target_kind", "ai_notes", "updated_at"]
-        )
-    return existing
-
-
 def _reclassify_pending_payment_as_media(pending, submitted_destination):
     from whatsapp.models import PendingWhatsAppMedia, PendingWhatsAppPayment
 
@@ -1227,46 +1139,13 @@ def pending_approval_approve(request, kind, pk):
                 )
             messages.success(request, "WhatsApp payment approved and posted.")
         elif kind == "media":
-            if request.POST.get("media_destination") == "maintenance":
-                with transaction.atomic():
-                    item = (
-                        PendingWhatsAppMedia.objects.select_for_update()
-                        .select_related(
-                            "conversation",
-                            "original_whatsapp_message",
-                            "lease__tenant",
-                            "lease__unit__property",
-                            "tenant",
-                            "property",
-                            "unit",
-                        )
-                        .get(pk=item.pk)
-                    )
-                    maintenance = _reclassify_pending_media_as_maintenance(item)
-                move_message = (
-                    f"Media moved to WhatsApp Maintenance #{maintenance.pk} "
-                    "and kept pending for maintenance approval."
-                )
-                ajax_response = _pending_ajax_response(request, move_message)
-                if ajax_response:
-                    return ajax_response
-                messages.success(request, move_message)
-                return redirect(
-                    "core:pending_approval_detail",
-                    kind="maintenance",
-                    pk=maintenance.pk,
-                )
             if request.POST.get("media_destination") == "payment_receipt":
                 with transaction.atomic():
                     item = PendingWhatsAppMedia.objects.select_for_update().select_related(
                         "conversation", "lease__tenant", "lease__unit__property", "tenant", "property", "unit"
                     ).get(pk=item.pk)
                     payment = _reclassify_pending_media_as_payment(item)
-                move_message = "Media moved to WhatsApp Payments for pending bank verification."
-                ajax_response = _pending_ajax_response(request, move_message)
-                if ajax_response:
-                    return ajax_response
-                messages.success(request, move_message)
+                messages.success(request, "Media moved to WhatsApp Payments for pending bank verification.")
                 return redirect("core:pending_approval_detail", kind="payment", pk=payment.pk)
             with transaction.atomic():
                 item = PendingWhatsAppMedia.objects.select_for_update().select_related(

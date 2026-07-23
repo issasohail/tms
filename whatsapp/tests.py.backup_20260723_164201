@@ -245,51 +245,6 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             "missing source file(s) were marked approved but could not be attached to the destination",
         )
 
-    def test_media_can_be_moved_to_pending_maintenance(self):
-        pending = self._pending(
-            filename="leaking-pipe.jpg",
-            media_type="image/jpeg",
-            ai_notes="Water leak under the sink.",
-        )
-
-        response = self.client.post(
-            reverse(
-                "core:pending_approval_approve",
-                args=["media", pending.pk],
-            ),
-            {"media_destination": "maintenance"},
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
-            HTTP_ACCEPT="application/json",
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["ok"])
-        maintenance = PendingWhatsAppMaintenance.objects.get()
-        pending.refresh_from_db()
-        self.assertEqual(
-            pending.purpose,
-            PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
-        )
-        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
-        self.assertEqual(maintenance.lease, self.lease)
-        self.assertEqual(maintenance.unit, self.unit)
-        self.assertTrue(maintenance.media.filter(pk=pending.pk).exists())
-        self.assertIn("Water", maintenance.issue_type)
-
-    def test_pending_list_shows_media_attachment_and_move_column(self):
-        pending = self._pending(
-            filename="maintenance-photo.jpg",
-            media_type="image/jpeg",
-        )
-
-        response = self.client.get(reverse("core:pending_approvals"))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Attachment")
-        self.assertContains(response, "Move To")
-        self.assertContains(response, pending.file.url)
-        self.assertContains(response, "Maintenance")
-
     def test_missing_source_file_records_approval_without_destination_document(self):
         from leases.models import LeaseDocument
 

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import importlib.util
+import logging
 import os
 from pathlib import Path
 
@@ -151,6 +152,38 @@ WHATSAPP_AI_ENABLED = os.getenv("WHATSAPP_AI_ENABLED", "true").lower() in {
 }
 WHATSAPP_AI_PROVIDER = os.getenv("WHATSAPP_AI_PROVIDER", "rules")
 WHATSAPP_AI_OCR_PROVIDER = os.getenv("WHATSAPP_AI_OCR_PROVIDER", "basic")
+WHATSAPP_AI_OCR_IMAGE_DETAIL = os.getenv(
+    "WHATSAPP_AI_OCR_IMAGE_DETAIL",
+    "low",
+).strip().lower()
+if WHATSAPP_AI_OCR_IMAGE_DETAIL not in {"low", "high", "auto"}:
+    logging.getLogger(__name__).warning(
+        "Invalid WHATSAPP_AI_OCR_IMAGE_DETAIL configured; using low."
+    )
+    WHATSAPP_AI_OCR_IMAGE_DETAIL = "low"
+WHATSAPP_AI_OCR_HIGH_DETAIL_FALLBACK = os.getenv(
+    "WHATSAPP_AI_OCR_HIGH_DETAIL_FALLBACK",
+    "true",
+).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _whatsapp_ocr_positive_int(name, default, minimum):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    if value < minimum:
+        logging.getLogger(__name__).warning("Invalid %s configured; using %s.", name, default)
+        value = default
+    return value
+
+
+WHATSAPP_AI_OCR_MAX_IMAGE_DIMENSION = _whatsapp_ocr_positive_int(
+    "WHATSAPP_AI_OCR_MAX_IMAGE_DIMENSION", 1600, 256
+)
+WHATSAPP_AI_OCR_MAX_OUTPUT_TOKENS = _whatsapp_ocr_positive_int(
+    "WHATSAPP_AI_OCR_MAX_OUTPUT_TOKENS", 300, 100
+)
 WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in {
     "1",
     "true",

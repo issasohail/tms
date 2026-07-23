@@ -149,7 +149,7 @@
           <label class="form-label" for="approvalSearch">Search anywhere</label>
           <input class="form-control form-control-sm" id="approvalSearch" name="q" type="search" value="{{ approval_filters.search }}" placeholder="Phone, tenant, property, unit, reference..." autocomplete="off">
         </div>
-        <div class="col-12 col-sm-6 col-lg-2">
+        <div class="col-6 col-sm-6 col-lg-2">
           <label class="form-label" for="approvalProperty">Property</label>
           <select class="form-select form-select-sm pending-select2" id="approvalProperty" name="property" data-placeholder="All Properties">
             <option value="">All Properties</option>
@@ -158,7 +158,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-12 col-sm-6 col-lg-2">
+        <div class="col-6 col-sm-6 col-lg-2">
           <label class="form-label" for="approvalUnit">Unit</label>
           <select class="form-select form-select-sm pending-select2" id="approvalUnit" name="unit" data-placeholder="All Units">
             <option value="">All Units</option>
@@ -167,7 +167,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-12 col-sm-6 col-lg-2">
+        <div class="col-6 col-sm-6 col-lg-2">
           <label class="form-label" for="approvalStatus">Status</label>
           <select class="form-select form-select-sm" id="approvalStatus" name="status">
             {% for value, label in status_choices %}
@@ -175,7 +175,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-12 col-sm-6 col-lg-2">
+        <div class="col-6 col-sm-6 col-lg-2">
           <label class="form-label" for="approvalDateRange">Date</label>
           <select class="form-select form-select-sm" id="approvalDateRange" name="date_range">
             {% for value, label in date_range_choices %}
@@ -183,11 +183,11 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-12 col-sm-6 col-lg-2 pending-custom-date">
+        <div class="col-6 col-sm-6 col-lg-2 pending-custom-date">
           <label class="form-label" for="approvalDateFrom">From</label>
           <input class="form-control form-control-sm" id="approvalDateFrom" name="date_from" type="date" value="{{ approval_filters.date_from_value }}">
         </div>
-        <div class="col-12 col-sm-6 col-lg-2 pending-custom-date">
+        <div class="col-6 col-sm-6 col-lg-2 pending-custom-date">
           <label class="form-label" for="approvalDateTo">To</label>
           <input class="form-control form-control-sm" id="approvalDateTo" name="date_to" type="date" value="{{ approval_filters.date_to_value }}">
         </div>

@@ -1,8 +1,10 @@
 import logging
 import os
+import json
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.core.serializers.json import DjangoJSONEncoder
 
 from whatsapp.models import PendingWhatsAppMedia
 from whatsapp.services.whatsapp import WhatsAppService
@@ -108,11 +110,32 @@ def run_basic_ocr(pending_media):
 
 
 def run_payment_ocr(pending_media, ai_config):
+    message_log = getattr(pending_media, "original_whatsapp_message", None)
+    message_id = getattr(message_log, "wa_message_id", "") or ""
+    cached_result = ((getattr(message_log, "api_response", None) or {}).get("receipt_ocr_result"))
+    if cached_result:
+        logger.info("Reused receipt OCR result for duplicate message_id=%s", message_id)
+        from whatsapp.services.openai_ocr import _normalize
+        return _normalize(cached_result)
+
     if ai_config.ocr_provider == "openai" and ai_config.openai_api_key_configured:
         from whatsapp.services.openai_ocr import extract_receipt_with_openai
 
         try:
-            return extract_receipt_with_openai(pending_media.file, ai_config.model)
+            result = extract_receipt_with_openai(
+                pending_media.file,
+                ai_config.model,
+                message_id=message_id,
+                receipt_expected=pending_media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT,
+            )
+            if message_log:
+                api_response = dict(message_log.api_response or {})
+                api_response["receipt_ocr_result"] = json.loads(
+                    json.dumps(result, cls=DjangoJSONEncoder)
+                )
+                message_log.api_response = api_response
+                message_log.save(update_fields=["api_response", "updated_at"])
+            return result
         except Exception as exc:
             logger.exception("Payment receipt OCR failed for pending media %s", pending_media.pk)
             return {

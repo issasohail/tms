@@ -3175,6 +3175,12 @@ class WhatsAppAIAssistant:
             ocr_json
             or (run_payment_ocr(media, self.ai_config) if media else extract_payment_text_fields(text))
         )
+        validation = _payment_receipt_validation(ocr_json)
+        if media and not validation["is_valid"]:
+            return self._route_unreadable_receipt_to_staff(
+                conversation, media, validation
+            )
+        ocr_json.update(validation["normalized_data"])
         if not ocr_json.get("amount") or not ocr_json.get("date"):
             fallback_text = ocr_json.get("text") or ""
             if _upload_purpose_from_text(text) != PendingWhatsAppMedia.PURPOSE_PAYMENT:
@@ -3227,7 +3233,46 @@ class WhatsAppAIAssistant:
         return (
             _payment_receipt_review_text(review),
             "payment_receipt_confirmation",
-            {"lease": media.lease, "tenant": media.tenant, "pending_media_id": media.pk},
+            {
+                "lease": media.lease,
+                "tenant": media.tenant,
+                "pending_media_id": media.pk,
+                "receipt_media_handled": True,
+            },
+        )
+
+    def _route_unreadable_receipt_to_staff(self, conversation, media, validation):
+        problem_fields = validation["missing_fields"] + validation["invalid_fields"]
+        media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
+        media.ai_notes = (
+            f"{media.ai_notes} Receipt OCR requires staff review; required fields: "
+            f"{', '.join(problem_fields) or 'invalid structured output'}."
+        ).strip()
+        media.save(update_fields=["purpose", "ai_notes", "updated_at"])
+        conversation.pending_state = ""
+        self._clear_context_keys(conversation, "payment_receipt_review", "pending_media_id")
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        notify_staff_pending_request("upload", media)
+        logger.warning(
+            "Receipt OCR routed to staff: message_id=%s missing=%s invalid=%s",
+            getattr(media.original_whatsapp_message, "wa_message_id", ""),
+            ",".join(validation["missing_fields"]) or "-",
+            ",".join(validation["invalid_fields"]) or "-",
+        )
+        return (
+            "We could not reliably read all required payment details from this receipt.\n"
+            "Your receipt has been saved for staff review.",
+            "payment_receipt_staff_review",
+            {
+                "lease": media.lease,
+                "tenant": media.tenant,
+                "pending_media_id": media.pk,
+                "receipt_media_handled": True,
+                "ocr_validation": {
+                    "missing_fields": validation["missing_fields"],
+                    "invalid_fields": validation["invalid_fields"],
+                },
+            },
         )
 
     def _consume_payment_receipt_confirmation(self, message_log, conversation, text):
@@ -3276,12 +3321,17 @@ class WhatsAppAIAssistant:
 
         final_amount = _review_decimal(review.get("tenant_amount") or review.get("ocr_amount"))
         final_date = _review_date(review.get("tenant_date") or review.get("ocr_date"))
-        if final_amount is None or final_date is None:
-            missing = "amount and date" if final_amount is None and final_date is None else "amount" if final_amount is None else "date"
+        reference = (review.get("ocr") or {}).get("reference")
+        final_validation = _payment_receipt_validation(
+            {"amount": final_amount, "date": final_date, "reference": reference}
+        )
+        if not final_validation["is_valid"]:
+            problem_fields = final_validation["missing_fields"] + final_validation["invalid_fields"]
+            missing = ", ".join(problem_fields)
             return (
                 _payment_receipt_review_text(
                     review,
-                    f"I could not confirm the {missing}. Please correct it first.",
+                    f"I could not confirm the required {missing}. Staff review is required.",
                 ),
                 "payment_receipt_confirmation",
                 {"pending_media_id": review.get("media_id")},
@@ -4402,6 +4452,20 @@ def _ocr_looks_like_payment(ocr_json):
     return bool(ocr_json.get("amount") and (has_payment_words or int(ocr_json.get("confidence") or 0) >= 50))
 
 
+def _payment_receipt_validation(ocr_json):
+    from whatsapp.services.openai_ocr import validate_payment_receipt
+
+    validation = (ocr_json or {}).get("validation") or {}
+    if {"is_valid", "missing_fields", "invalid_fields"}.issubset(validation):
+        return {
+            "is_valid": bool(validation["is_valid"]),
+            "missing_fields": list(validation["missing_fields"]),
+            "invalid_fields": list(validation["invalid_fields"]),
+            "normalized_data": dict(ocr_json or {}),
+        }
+    return validate_payment_receipt(ocr_json)
+
+
 def _payment_confirmation_text(pending):
     prop = getattr(pending.property, "property_name", "") or "Not detected"
     unit = getattr(pending.unit, "unit_number", "") or "Not detected"
@@ -4597,9 +4661,32 @@ def process_inbound_whatsapp_message(message_log):
     # conversation prevents concurrent workers from opening one maintenance draft
     # per photo before the first photo has saved the shared pending state.
     with transaction.atomic():
+        locked_message = WhatsAppMessageLog.objects.select_for_update().get(pk=message_log.pk)
+        processing = dict((locked_message.api_response or {}).get("ai_processing") or {})
+        if processing.get("state") == "complete":
+            logger.info(
+                "Ignored duplicate WhatsApp processing message_id=%s state=complete",
+                locked_message.wa_message_id,
+            )
+            return
+        api_response = dict(locked_message.api_response or {})
+        api_response["ai_processing"] = {
+            "state": "processing",
+            "started_at": timezone.now().isoformat(),
+        }
+        locked_message.api_response = api_response
+        locked_message.save(update_fields=["api_response", "updated_at"])
         conversation, _ = WhatsAppConversation.objects.get_or_create(
-            phone_number=message_log.phone_number,
+            phone_number=locked_message.phone_number,
             defaults={"last_message_at": timezone.now()},
         )
         WhatsAppConversation.objects.select_for_update().get(pk=conversation.pk)
-        WhatsAppAIAssistant().handle_inbound_message(message_log)
+        WhatsAppAIAssistant().handle_inbound_message(locked_message)
+        locked_message.refresh_from_db(fields=["api_response"])
+        api_response = dict(locked_message.api_response or {})
+        api_response["ai_processing"] = {
+            "state": "complete",
+            "completed_at": timezone.now().isoformat(),
+        }
+        locked_message.api_response = api_response
+        locked_message.save(update_fields=["api_response", "updated_at"])

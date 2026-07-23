@@ -6,29 +6,38 @@
     <!-- ===== MOBILE (< 768px) ===== -->
     <div class="nav-mobile">
 
-      <!-- Brand -->
-      <a class="tms-brand" href="{% url 'dashboard:home' %}">
-        <img src="{% static 'images/logo.png' %}" alt="" width="18" height="18">
-        <span>TMS</span>
-      </a>
-
-      <!-- Center scrollable links — Maintenance intentionally excluded (moved to + menu) -->
-      <ul class="nav-center" role="list">
+      <!-- Brand + viewport toggle -->
+      <div class="mobile-brand-stack">
+        <a class="tms-brand" href="{% url 'dashboard:home' %}">
+          <img src="{% static 'images/logo.png' %}" alt="" width="18" height="18">
+          <span>TMS</span>
+        </a>
         {% if user.is_authenticated %}
-          <li class="nav-tablet-priority"><a class="mlink mlink--priority" href="{% url 'accounts:profile' %}">Profile</a></li>
+          <label class="vp-toggle vp-toggle--mobile" title="Toggle viewport bar">
+            <input class="form-check-input js-viewport-toggle" type="checkbox" aria-label="Viewport bar">
+            <span>View</span>
+          </label>
+        {% endif %}
+      </div>
+
+      <!-- First-row primary links -->
+      <ul class="nav-center nav-center--primary" role="list">
+        {% if user.is_authenticated %}
+          <li class="tablet-only"><a class="mlink mlink--priority" href="{% url 'accounts:profile' %}">Profile</a></li>
         {% endif %}
         {% if perms.payments.view_payment %}<li><a class="mlink" href="{% url 'payments:payment_list' %}">Payments</a></li>{% endif %}
         {% if perms.tenants.view_tenant  %}<li><a class="mlink" href="{% url 'tenants:tenant_list' %}">Tenants</a></li>{% endif %}
         {% if perms.leases.view_lease    %}<li><a class="mlink" href="{% url 'leases:lease_list' %}">Leases</a></li>{% endif %}
-        {% if perms.smart_meter.view_meter%}<li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>{% endif %}
-        {% if perms.invoices.view_invoice%}<li><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
+        {% if perms.invoices.view_invoice %}<li class="phone-extra-tab"><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
+        {% if perms.smart_meter.view_meter %}<li class="tablet-only"><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>{% endif %}
+        {% if perms.invoices.view_invoice %}<li class="tablet-only"><a class="mlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
       </ul>
 
-      <!-- Right actions -->
-      <div class="right-actions">
+      <!-- First-row right actions -->
+      <div class="right-actions right-actions--primary">
 
         {% if user.is_authenticated %}
-          <div class="nav-tablet-alerts">
+          <div class="nav-tablet-alerts tablet-only">
             <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-warning suggestion-nav-link">Pending Approval{% if PENDING_APPROVAL_COUNT %} <span class="badge bg-danger ms-1">{{ PENDING_APPROVAL_COUNT }}</span>{% endif %}</a>
             <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-warning suggestion-nav-link">Suggestions</a>
           </div>
@@ -60,9 +69,8 @@
           </ul>
         </div>
 
-        <!-- Viewport toggle -->
         {% if user.is_authenticated %}
-          <label class="vp-toggle" title="Toggle viewport bar">
+          <label class="vp-toggle tablet-viewport-toggle tablet-only" title="Toggle viewport bar">
             <input class="form-check-input js-viewport-toggle" type="checkbox" aria-label="Viewport bar">
           </label>
 
@@ -96,6 +104,26 @@
           </a>
         {% endif %}
       </div>
+
+      <!-- Second-row center links -->
+      <ul class="nav-center nav-center--secondary" role="list">
+        {% if perms.smart_meter.view_meter %}<li><a class="mlink" href="{% url 'smart_meter:smart_meter_live_custom' %}">Meter</a></li>{% endif %}
+        {% if perms.expenses.view_expense %}<li><a class="mlink" href="{% url 'expenses:expense_list' %}">Expenses</a></li>{% endif %}
+        {% if perms.maintenance.view_maintenancerequest %}<li><a class="mlink" href="{% url 'maintenance:request_list' %}">Maint.</a></li>{% endif %}
+        {% if perms.utilities.view_utility %}<li class="phone-extra-tab"><a class="mlink" href="{% url 'utilities:utility_list' %}">Utilities</a></li>{% endif %}
+        {% if perms.reports.view_report %}<li class="phone-extra-tab"><a class="mlink" href="{% url 'reports:report_list' %}">Reports</a></li>{% endif %}
+      </ul>
+
+      <!-- Second-row approval and profile links -->
+      {% if user.is_authenticated %}
+        <div class="right-actions right-actions--secondary">
+          <a href="{% url 'core:pending_approvals' %}" class="mobile-pending-link" aria-label="Pending Approval: {{ PENDING_APPROVAL_COUNT|default:0 }}" title="Pending Approval">
+            <span>Pending</span>
+            <span class="mobile-pending-count">{{ PENDING_APPROVAL_COUNT|default:0 }}</span>
+          </a>
+          <a href="{% url 'accounts:profile' %}" class="mobile-profile-link">My Profile</a>
+        </div>
+      {% endif %}
     </div><!-- /nav-mobile -->
 
     <!-- ===== DESKTOP (≥ 768px) ===== -->
@@ -202,12 +230,28 @@
   /* ---- MOBILE LAYOUT ---- */
   .nav-mobile {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: repeat(2, 24px);
     align-items: center;
-    gap: .2rem;
-    min-height: 40px;
+    column-gap: .25rem;
+    row-gap: .12rem;
+    min-height: 54px;
+    padding: .12rem 0;
   }
   .nav-desktop { display: none; }
+
+  .mobile-brand-stack {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    align-self: stretch;
+    min-width: 42px;
+  }
+  .mobile-brand-stack .tms-brand { padding: 0; }
+  .tablet-only { display: none !important; }
 
   @media (min-width: 768px) {
     .nav-mobile  { display: none !important; }
@@ -224,6 +268,8 @@
   /* Mobile center scrollable strip */
   .nav-center {
     display: flex;
+    align-items: center;
+    justify-content: flex-start;
     min-width: 0;
     gap: 0;
     margin: 0;
@@ -235,19 +281,18 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    /* Extra padding so last link isn't hidden under the right-actions cluster (~110px) */
-    padding-inline-end: 116px;
   }
+  .nav-center--primary { grid-column: 2; grid-row: 1; }
+  .nav-center--secondary { grid-column: 2; grid-row: 2; }
   .nav-center::-webkit-scrollbar { display: none; }
   .nav-center > li { margin: 0; }
-  .nav-tablet-priority { display: none; }
 
   /* Mobile nav link */
   .mlink {
     display: block;
     padding: .2rem .32rem;
     font-size: .6rem;
-    font-weight: 500;
+    font-weight: 600;
     line-height: 1;
     color: rgba(255,255,255,.82);
     text-decoration: none;
@@ -265,23 +310,40 @@
     gap: .18rem;
     flex: 0 0 auto;
   }
+  .right-actions--primary { grid-column: 3; grid-row: 1; }
+  .right-actions--secondary { grid-column: 3; grid-row: 2; }
 
-  .nav-tablet-alerts {
-    display: none;
-  }
-
+  /* Preserve the original single-row tablet navbar. */
   @media (min-width: 576px) and (max-width: 767.98px) {
-    .tms-responsive-shell .nav-center {
+    .tms-responsive-shell .nav-mobile {
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: auto;
+      gap: .2rem;
+      min-height: 40px;
+      padding: 0;
+    }
+    .tms-responsive-shell .mobile-brand-stack {
+      grid-column: 1;
+      grid-row: 1;
+      display: block;
+      min-width: 0;
+    }
+    .tms-responsive-shell .mobile-brand-stack .tms-brand { padding: .3rem 0; }
+    .tms-responsive-shell .vp-toggle--mobile { display: none; }
+    .tms-responsive-shell .nav-center--primary {
+      grid-column: 2;
+      grid-row: 1;
       justify-content: center;
       overflow: hidden;
-      padding-inline-end: 0;
     }
-    .tms-responsive-shell .nav-center > li {
-      flex: 0 0 auto;
+    .tms-responsive-shell .nav-center--secondary,
+    .tms-responsive-shell .right-actions--secondary { display: none; }
+    .tms-responsive-shell .phone-extra-tab { display: none !important; }
+    .tms-responsive-shell .right-actions--primary {
+      grid-column: 3;
+      grid-row: 1;
     }
-    .tms-responsive-shell .nav-tablet-priority {
-      display: list-item;
-    }
+    .tms-responsive-shell .nav-center > li.tablet-only { display: list-item !important; }
     .tms-responsive-shell .mlink {
       padding: .2rem .28rem;
       font-size: .56rem;
@@ -290,11 +352,9 @@
       color: #fff;
       font-weight: 700;
     }
-    .tms-responsive-shell .mobile-suggestion-icon {
-      display: none;
-    }
+    .tms-responsive-shell .mobile-suggestion-icon { display: none; }
     .tms-responsive-shell .nav-tablet-alerts {
-      display: inline-flex;
+      display: inline-flex !important;
       align-items: center;
       gap: .18rem;
       flex: 0 0 auto;
@@ -311,6 +371,7 @@
       font-weight: 700;
       line-height: 1;
     }
+    .tms-responsive-shell .tablet-viewport-toggle { display: inline-flex !important; }
   }
 
   .icon-btn {
@@ -346,6 +407,63 @@
     cursor: pointer;
     flex-shrink: 0;
   }
+  .vp-toggle--mobile {
+    gap: .15rem;
+    margin-top: .12rem;
+    padding: .05rem .25rem;
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 999px;
+    background: rgba(255,255,255,.08);
+    color: rgba(255,255,255,.82);
+    font-size: .48rem;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .vp-toggle--mobile .form-check-input {
+    width: .72rem;
+    height: .72rem;
+    border-radius: 3px;
+  }
+
+  .mobile-pending-link,
+  .mobile-profile-link {
+    display: inline-flex;
+    align-items: center;
+    height: 21px;
+    border-radius: 4px;
+    text-decoration: none;
+    white-space: nowrap;
+    font-size: .54rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .mobile-pending-link {
+    gap: .18rem;
+    padding: 0 .2rem 0 .3rem;
+    background: #ffc107;
+    color: #111;
+  }
+  .mobile-pending-link:hover,
+  .mobile-pending-link:focus { background: #e6ac00; color: #111; }
+  .mobile-pending-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 .18rem;
+    border-radius: 3px;
+    background: #fff3a3;
+    color: #5f4700;
+    font-size: .55rem;
+  }
+  .mobile-profile-link {
+    padding: 0 .28rem;
+    border: 1px solid rgba(255,255,255,.28);
+    color: rgba(255,255,255,.9);
+  }
+  .mobile-profile-link:hover,
+  .mobile-profile-link:focus { background: rgba(255,255,255,.1); color: #fff; }
 
   /* Desktop nav links */
   @media (min-width: 768px) {
@@ -414,7 +532,11 @@
 
   /* Very small screens */
   @media (max-width: 360px) {
-    .mlink { font-size: .55rem; padding: .18rem .25rem; }
+    .mlink { font-size: .66rem; font-weight: 600; padding: .18rem .28rem; }
     .icon-btn { width: 22px; height: 22px; font-size: .7rem; }
+    .vp-toggle--mobile { font-size: .52rem; }
+    .mobile-pending-link,
+    .mobile-profile-link { font-size: .58rem; }
+    .mobile-pending-link > span:first-child { display: none; }
   }
 </style>

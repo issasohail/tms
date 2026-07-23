@@ -240,6 +240,17 @@
             </div>
         </div>
 
+        <button type="button"
+                class="mobile-inline-filter-toggle"
+                data-mobile-filter-toggle
+                data-label-closed="More Filters"
+                data-label-open="Hide Filters"
+                aria-expanded="false"
+                aria-controls="filter-form">
+            <i class="fas fa-sliders-h"></i>
+            <span>More Filters</span>
+        </button>
+
         <!-- Active / inactive filter -->
         <div class="fg status">
             <select name="tenant_status" class="form-control form-control-sm" id="tenant-status-select">
@@ -292,7 +303,7 @@
                 <i class="fas fa-filter"></i> Filter
             </button>
 
-            <a href="{% url 'tenants:tenant_list' %}" class="btn btn-light btn-sm reset-btn">
+            <a href="{% url 'tenants:tenant_list' %}" class="btn btn-light btn-sm reset-btn" title="Reset all filters" aria-label="Reset all filters">
                 <i class="fas fa-undo"></i> Reset
             </a>
         </div>
@@ -317,7 +328,7 @@
 </form>
 
 <div class="mobile-action-toolbar d-lg-none" aria-label="Mobile tenant actions">
-    <button type="button" class="mobile-action-btn mobile-action-filter" id="mobileFilterToggle" aria-expanded="false" aria-controls="filter-form">
+    <button type="button" class="mobile-action-btn mobile-action-filter" id="mobileFilterToggle" data-mobile-filter-toggle aria-expanded="false" aria-controls="filter-form">
         <i class="fas fa-filter"></i>
         <span>Filter</span>
     </button>
@@ -3979,6 +3990,10 @@ img.is-missing{
 }
 
 /* Keep the tenant filter/action controls available in both card layouts. */
+.mobile-inline-filter-toggle{
+    display:none;
+}
+
 .tcv2-mobile-doc-row{
     display:none;
 }
@@ -4020,8 +4035,108 @@ img.is-missing{
 }
 
 @media (max-width:599.98px){
+    .filters-grid{
+        grid-template-columns:minmax(0,1fr) auto !important;
+        grid-template-areas:"phone filtertoggle" !important;
+    }
+
+    .mobile-inline-filter-toggle{
+        grid-area:filtertoggle !important;
+        display:inline-flex !important;
+        align-items:center !important;
+        justify-content:center !important;
+        gap:.3rem !important;
+        height:42px !important;
+        min-width:92px !important;
+        padding:0 .58rem !important;
+        border:1px solid #d7deea !important;
+        border-radius:10px !important;
+        background:#fff !important;
+        color:#334155 !important;
+        font-size:.64rem !important;
+        font-weight:850 !important;
+        white-space:nowrap !important;
+        box-shadow:0 2px 8px rgba(16,24,40,.04) !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .mobile-inline-filter-toggle{
+        color:#0d6efd !important;
+        border-color:#bfdbfe !important;
+        background:#f8fbff !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .filters-grid{
+        grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+        grid-template-areas:
+            "phone filtertoggle"
+            "property unit"
+            "name status"
+            "interest interest" !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .fg.name,
+    .tenant-filter-card.mobile-filters-open .fg.property,
+    .tenant-filter-card.mobile-filters-open .fg.unit,
+    .tenant-filter-card.mobile-filters-open .fg.status{
+        display:block !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .mobile-active-filter-chips,
+    .tenant-filter-card.mobile-filters-open .filter-btn{
+        display:none !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .fg.interest-actions{
+        display:flex !important;
+        align-items:center !important;
+        flex-wrap:nowrap !important;
+        gap:.38rem !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .interest-label{
+        flex:0 0 auto !important;
+        margin:0 !important;
+        white-space:nowrap !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .interest-check{
+        flex:1 1 0 !important;
+        min-width:0 !important;
+        margin:0 !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .reset-btn{
+        display:inline-flex !important;
+        flex:0 0 28px !important;
+        align-items:center !important;
+        justify-content:center !important;
+        width:28px !important;
+        min-width:28px !important;
+        height:28px !important;
+        padding:0 !important;
+        margin:0 !important;
+        border:1px solid #d7deea !important;
+        border-radius:7px !important;
+        background:#f8fafc !important;
+        color:#334155 !important;
+        font-size:0 !important;
+    }
+
+    .tenant-filter-card.mobile-filters-open .reset-btn i{
+        font-size:.68rem !important;
+        margin:0 !important;
+    }
+
+    .mobile-action-toolbar{
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    }
+
+    .mobile-action-toolbar > .mobile-action-filter{
+        display:none !important;
+    }
+
     .tcv2-head{
-        grid-template-columns:22px 40px minmax(0,1fr) auto !important;
+        grid-template-columns:22px 40px minmax(0,1fr) !important;
     }
 
     .tcv2-head > .tcv2-cnic-thumb{
@@ -4032,6 +4147,37 @@ img.is-missing{
     .tcv2-name-row,
     .tcv2-name{
         min-width:0 !important;
+    }
+
+    .tcv2-status{
+        position:absolute !important;
+        top:.62rem !important;
+        right:.48rem !important;
+    }
+
+    .tcv2-name-row{
+        padding-right:2.75rem !important;
+    }
+
+    .tcv2-phone-row .tcv2-phone{
+        display:flex !important;
+        align-items:center !important;
+    }
+
+    .tcv2-phone-row .tcv2-phone > i{
+        flex:0 0 auto !important;
+    }
+
+    .tcv2-phone-row .phone-wa-link{
+        display:block !important;
+        min-width:0 !important;
+        overflow:hidden !important;
+        text-overflow:ellipsis !important;
+        white-space:nowrap !important;
+    }
+
+    .tcv2-no-lease-inline{
+        margin-left:auto !important;
     }
 
     .tcv2-name{
@@ -4176,11 +4322,19 @@ document.addEventListener('DOMContentLoaded', function () {
   const $inactive  = $('#show_inactive');
   const $leadOnly  = $();
 
-  const mobileFilterToggle = document.getElementById("mobileFilterToggle");
-  if (mobileFilterToggle && $form.length) {
-    mobileFilterToggle.addEventListener("click", function () {
-      const isOpen = $form[0].classList.toggle("mobile-filters-open");
-      mobileFilterToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  const mobileFilterToggles = document.querySelectorAll("[data-mobile-filter-toggle]");
+  if (mobileFilterToggles.length && $form.length) {
+    mobileFilterToggles.forEach(function (toggle) {
+      toggle.addEventListener("click", function () {
+        const isOpen = $form[0].classList.toggle("mobile-filters-open");
+        mobileFilterToggles.forEach(function (button) {
+          button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          const label = button.querySelector("span");
+          if (label && button.dataset.labelClosed) {
+            label.textContent = isOpen ? button.dataset.labelOpen : button.dataset.labelClosed;
+          }
+        });
+      });
     });
   }
   const registrationButton = document.getElementById("btnNewRegistrationLink");
@@ -4465,10 +4619,17 @@ document.addEventListener('DOMContentLoaded', function () {
     $form.submit();
   });
 
-  // Phone: press Enter to submit (no auto-submit on typing)
-  $('input[name="phone"]').on('keydown', function (e) {
+  // Search: debounce typing so the list updates after the user pauses.
+  let tenantSearchTimer = null;
+  $('input[name="phone"]').on('input', function () {
+    clearTimeout(tenantSearchTimer);
+    tenantSearchTimer = setTimeout(function () {
+      $form.trigger('submit');
+    }, 450);
+  }).on('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault();
+      clearTimeout(tenantSearchTimer);
       $form.trigger('submit');
     }
   });

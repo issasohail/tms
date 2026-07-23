@@ -1,10 +1,12 @@
 from datetime import timedelta
 from decimal import Decimal
+import base64
 import hashlib
 import hmac
 import importlib
 import json
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
@@ -17,8 +19,17 @@ from django.urls import reverse
 from django.utils import timezone
 
 from whatsapp.services.payment_matching import extract_payment_text_fields
-from whatsapp.services.openai_ocr import _normalize as normalize_openai_receipt
-from whatsapp.services.whatsapp_ai import WhatsAppAIAssistant, _ocr_looks_like_payment, detect_intent
+from whatsapp.services.openai_ocr import (
+    _normalize as normalize_openai_receipt,
+    extract_receipt_with_openai,
+    validate_payment_receipt,
+)
+from whatsapp.services.whatsapp_ai import (
+    WhatsAppAIAssistant,
+    _ocr_looks_like_payment,
+    detect_intent,
+    process_inbound_whatsapp_message,
+)
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
 from leases.models import Lease
@@ -536,6 +547,163 @@ class WhatsAppAssistantIntentTests(SimpleTestCase):
         self.assertNotIn("preference", decision.handover_reason.lower())
 
 
+@override_settings(
+    OPENAI_API_KEY="test-key",
+    WHATSAPP_AI_OCR_IMAGE_DETAIL="low",
+    WHATSAPP_AI_OCR_HIGH_DETAIL_FALLBACK=True,
+    WHATSAPP_AI_OCR_MAX_IMAGE_DIMENSION=1600,
+    WHATSAPP_AI_OCR_MAX_OUTPUT_TOKENS=300,
+)
+class OpenAIReceiptOCRTests(SimpleTestCase):
+    PNG = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+
+    def _file(self):
+        return ContentFile(self.PNG, name="receipt.png")
+
+    def _result(self, **overrides):
+        data = {
+            "document_type": "payment_receipt",
+            "amount": "63580.00",
+            "transaction_date": "2026-07-20",
+            "reference_id": "0718126681061",
+            "recipient_name": None,
+            "sender_name": None,
+            "bank_name": "Test Bank",
+            "confidence": {
+                "document_type": 0.99,
+                "amount": 0.99,
+                "transaction_date": 0.98,
+                "reference_id": 0.97,
+            },
+        }
+        data.update(overrides)
+        usage = SimpleNamespace(
+            input_tokens=120,
+            output_tokens=55,
+            total_tokens=175,
+            input_tokens_details=SimpleNamespace(cached_tokens=10),
+        )
+        return SimpleNamespace(output_text=json.dumps(data), usage=usage)
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_clear_receipt_uses_low_detail_once_and_limits_output(self, openai):
+        openai.return_value.responses.create.return_value = self._result()
+
+        with self.assertLogs("whatsapp.services.openai_ocr", level="INFO") as logs:
+            result = extract_receipt_with_openai(
+                self._file(), "gpt-4o-mini", message_id="wamid.low", receipt_expected=True
+            )
+
+        self.assertTrue(result["validation"]["is_valid"])
+        self.assertEqual(result["reference"], "0718126681061")
+        self.assertEqual(openai.return_value.responses.create.call_count, 1)
+        request = openai.return_value.responses.create.call_args.kwargs
+        self.assertEqual(request["max_output_tokens"], 300)
+        self.assertEqual(request["input"][0]["content"][1]["detail"], "low")
+        self.assertEqual(request["text"]["format"]["type"], "json_schema")
+        usage_log = " ".join(logs.output)
+        self.assertIn("input_tokens=120", usage_log)
+        self.assertIn("cached_tokens=10", usage_log)
+        self.assertNotIn("test-key", usage_log)
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_missing_amount_retries_once_at_high_detail(self, openai):
+        openai.return_value.responses.create.side_effect = [
+            self._result(amount=None),
+            self._result(),
+        ]
+
+        result = extract_receipt_with_openai(
+            self._file(), "gpt-4o-mini", message_id="wamid.fallback", receipt_expected=True
+        )
+
+        calls = openai.return_value.responses.create.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0].kwargs["input"][0]["content"][1]["detail"], "low")
+        self.assertEqual(calls[1].kwargs["input"][0]["content"][1]["detail"], "high")
+        self.assertTrue(result["validation"]["is_valid"])
+        self.assertTrue(result["fallback_used"])
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_missing_optional_field_does_not_retry(self, openai):
+        openai.return_value.responses.create.return_value = self._result(bank_name=None)
+
+        result = extract_receipt_with_openai(
+            self._file(), "gpt-4o-mini", message_id="wamid.optional", receipt_expected=True
+        )
+
+        self.assertTrue(result["validation"]["is_valid"])
+        self.assertEqual(openai.return_value.responses.create.call_count, 1)
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_invalid_date_retries_once(self, openai):
+        openai.return_value.responses.create.side_effect = [
+            self._result(transaction_date="2026-02-31"),
+            self._result(),
+        ]
+
+        result = extract_receipt_with_openai(
+            self._file(), "gpt-4o-mini", message_id="wamid.date", receipt_expected=True
+        )
+
+        self.assertEqual(openai.return_value.responses.create.call_count, 2)
+        self.assertTrue(result["validation"]["is_valid"])
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_missing_reference_after_fallback_stays_invalid(self, openai):
+        openai.return_value.responses.create.side_effect = [
+            self._result(reference_id=None),
+            self._result(reference_id=None),
+        ]
+
+        result = extract_receipt_with_openai(
+            self._file(), "gpt-4o-mini", message_id="wamid.reference", receipt_expected=True
+        )
+
+        self.assertEqual(openai.return_value.responses.create.call_count, 2)
+        self.assertFalse(result["validation"]["is_valid"])
+        self.assertIn("reference_id", result["validation"]["missing_fields"])
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_malformed_json_falls_back_only_once(self, openai):
+        malformed = SimpleNamespace(output_text="not-json", usage=SimpleNamespace())
+        openai.return_value.responses.create.side_effect = [malformed, self._result()]
+
+        result = extract_receipt_with_openai(
+            self._file(), "gpt-4o-mini", message_id="wamid.json", receipt_expected=True
+        )
+
+        self.assertEqual(openai.return_value.responses.create.call_count, 2)
+        self.assertTrue(result["validation"]["is_valid"])
+
+    @patch("whatsapp.services.openai_ocr._openai_client")
+    def test_quota_error_is_safe_and_does_not_retry_uncontrollably(self, openai):
+        openai.return_value.responses.create.side_effect = RuntimeError("insufficient_quota")
+
+        result = extract_receipt_with_openai(
+            self._file(), "gpt-4o-mini", message_id="wamid.quota", receipt_expected=True
+        )
+
+        self.assertEqual(result["engine"], "unavailable")
+        self.assertEqual(openai.return_value.responses.create.call_count, 1)
+
+    def test_validator_normalizes_money_date_and_reference(self):
+        result = validate_payment_receipt(
+            {
+                "amount": "PKR 63,580.00",
+                "transaction_date": "20-07-2026",
+                "reference_id": " 0718 1266 81061 ",
+            }
+        )
+
+        self.assertTrue(result["is_valid"])
+        self.assertEqual(result["normalized_data"]["amount"], Decimal("63580.00"))
+        self.assertEqual(result["normalized_data"]["transaction_date"], "2026-07-20")
+        self.assertEqual(result["normalized_data"]["reference"], "0718126681061")
+
+
 class WhatsAppControlledAssistantTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -783,11 +951,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             )
 
         self.conversation.refresh_from_db()
-        self.assertEqual(intent, "payment_receipt_confirmation")
-        self.assertIn("Amount: Not detected", response)
-        self.assertEqual(
-            self.conversation.context["payment_receipt_review"]["ocr_amount"], ""
-        )
+        self.assertEqual(intent, "payment_receipt_staff_review")
+        self.assertIn("saved for staff review", response)
+        self.assertNotIn("payment_receipt_review", self.conversation.context)
         self.assertFalse(PendingWhatsAppPayment.objects.exists())
 
     def test_staff_only_sender_opens_staff_inbox(self):
@@ -1696,6 +1862,24 @@ class WhatsAppControlledAssistantTests(TestCase):
             _log_webhook_payload(payload)
             _log_webhook_payload(payload)
         self.assertEqual(WhatsAppMessageLog.objects.filter(wa_message_id="wamid.duplicate").count(), 1)
+
+    def test_database_processing_state_allows_only_one_worker(self):
+        message = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.worker-race",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "hello"}},
+        )
+
+        with patch.object(WhatsAppAIAssistant, "handle_inbound_message") as handle:
+            process_inbound_whatsapp_message(message)
+            process_inbound_whatsapp_message(message)
+
+        message.refresh_from_db()
+        self.assertEqual(handle.call_count, 1)
+        self.assertEqual(message.api_response["ai_processing"]["state"], "complete")
 
     @override_settings(WHATSAPP_APP_SECRET="test-secret")
     def test_webhook_signature_is_verified(self):

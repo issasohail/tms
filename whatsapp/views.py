@@ -16,6 +16,7 @@ from django.core.paginator import Paginator
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
+from django.db import transaction
 from django.db.models import Max, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -408,28 +409,33 @@ def _log_webhook_payload(payload):
             for message in value.get("messages", []) or []:
                 inbound_phone = WhatsAppService.normalize_phone_number(message.get("from", "") or phone_number)
                 message_id = message.get("id", "")
-                if message_id and (
-                    WhatsAppMessageLog.objects.filter(
+                inbound_at = _message_received_at(message)
+                with transaction.atomic():
+                    conversation = _touch_inbound_conversation(inbound_phone, message, inbound_at)
+                    if conversation:
+                        conversation = WhatsAppConversation.objects.select_for_update().get(
+                            pk=conversation.pk
+                        )
+                    if message_id and WhatsAppMessageLog.objects.select_for_update().filter(
                         direction=WhatsAppMessageLog.DIRECTION_INBOUND,
                         wa_message_id=message_id,
-                    ).exists()
-                    or not cache.add(f"whatsapp:inbound-message:{message_id}", 1, timeout=86400)
-                ):
-                    logger.info("Ignored duplicate WhatsApp inbound message %s", message_id)
-                    continue
-                inbound_at = _message_received_at(message)
-                conversation = _touch_inbound_conversation(inbound_phone, message, inbound_at)
-                message_log = WhatsAppMessageLog.objects.create(
-                    direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-                    phone_number=inbound_phone,
-                    wa_message_id=message_id,
-                    message_type=message.get("type", WhatsAppMessageLog.MESSAGE_TYPE_WEBHOOK),
-                    status=WhatsAppMessageLog.STATUS_RECEIVED,
-                    payload=message,
-                    api_response={"entry_id": entry.get("id"), "field": change.get("field")},
-                    tenant=conversation.tenant if conversation else None,
-                    lease=conversation.selected_lease if conversation else None,
-                )
+                    ).exists():
+                        logger.info(
+                            "Ignored duplicate WhatsApp inbound message_id=%s state=already_recorded",
+                            message_id,
+                        )
+                        continue
+                    message_log = WhatsAppMessageLog.objects.create(
+                        direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+                        phone_number=inbound_phone,
+                        wa_message_id=message_id,
+                        message_type=message.get("type", WhatsAppMessageLog.MESSAGE_TYPE_WEBHOOK),
+                        status=WhatsAppMessageLog.STATUS_RECEIVED,
+                        payload=message,
+                        api_response={"entry_id": entry.get("id"), "field": change.get("field")},
+                        tenant=conversation.tenant if conversation else None,
+                        lease=conversation.selected_lease if conversation else None,
+                    )
                 if _inbound_rate_allowed(inbound_phone):
                     _queue_ai_message(message_log.pk)
                 else:

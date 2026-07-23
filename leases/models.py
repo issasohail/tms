@@ -382,6 +382,14 @@ class Lease(models.Model):
             errors["seconder"] = "Primary tenant cannot be seconder on the same lease."
         if self.proposer_id and self.proposer_id == self.seconder_id:
             errors["seconder"] = "The same person cannot be proposer and seconder on the same lease."
+        if self.pk:
+            family_member_ids = set(
+                self.family_members.values_list("family_member_id", flat=True)
+            )
+            if self.proposer_id in family_member_ids:
+                errors["proposer"] = "A family member cannot be proposer on the same lease."
+            if self.seconder_id in family_member_ids:
+                errors["seconder"] = "A family member cannot be seconder on the same lease."
         if errors:
             raise ValidationError(errors)
 

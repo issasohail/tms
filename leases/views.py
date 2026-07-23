@@ -106,7 +106,10 @@ from leases.services.vehicle_submissions import (
     create_pending_vehicle_submissions_from_post,
 )
 from leases.models_renewal import LeaseRenewal
-from leases.services.lease_history import ensure_original_history
+from leases.services.lease_history import (
+    ensure_original_history,
+    sync_history_to_master_lease,
+)
 from leases.services.police_verification import (
     build_police_whatsapp_message,
     create_pending_police_submission,
@@ -119,6 +122,7 @@ from leases.services.police_verification import (
 from leases.utils import do_replace_placeholders
 from maintenance.public_links import make_public_maintenance_token
 from payments.models import Payment
+from payments.services.payment_detail import sync_security_deposit_paid_flag
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant, normalize_cnic
@@ -155,6 +159,7 @@ from .utils import generate_lease_agreement
 from .utils.agreement_generator import generate_lease_agreement
 from .utils.billing import (
     apply_initial_billing,
+    ensure_move_in_proration_invoice,
     preview_billing_on_change,
     preview_initial_billing,
     update_billing_on_change,
@@ -178,6 +183,28 @@ from .utils.end_lease import (
 
 
 ZERO = Decimal("0.00")
+
+
+def sync_lease_move_in_occupancy(lease, move_in_date):
+    if not move_in_date:
+        return None
+    occupancy = lease.unit_occupancies.filter(move_out_date__isnull=True).first()
+    if occupancy:
+        changed = []
+        if occupancy.unit_id != lease.unit_id:
+            occupancy.unit = lease.unit
+            changed.append("unit")
+        if occupancy.move_in_date != move_in_date:
+            occupancy.move_in_date = move_in_date
+            changed.append("move_in_date")
+        if changed:
+            occupancy.save(update_fields=changed + ["updated_at"])
+        return occupancy
+    return LeaseUnitOccupancy.objects.create(
+        lease=lease,
+        unit=lease.unit,
+        move_in_date=move_in_date,
+    )
 
 
 def _get_valid_whatsapp_link(token, link_type):
@@ -527,12 +554,20 @@ def create_initial_security_required(lease):
     if amount <= 0:
         return None
 
-    return SecurityDepositTransaction.objects.create(
+    required_row = SecurityDepositTransaction.objects.create(
         lease=lease,
         type="REQUIRED",
         amount=amount,
         notes="Initial required security deposit set from lease.",
     )
+    if lease.security_deposit_paid:
+        SecurityDepositTransaction.objects.create(
+            lease=lease,
+            type="PAYMENT",
+            amount=amount,
+            notes="Initial security deposit marked paid on lease form.",
+        )
+    return required_row
 
 
 def _plan_summary(plan):
@@ -1135,16 +1170,9 @@ class LeaseListView(SingleTableView):
 
             sd = sd_by_lease[lease.id]
             sd_paid = sd.get("PAYMENT", Decimal("0.00"))
-            sd_refund = sd.get("REFUND", Decimal("0.00"))
-            sd_damage = sd.get("DAMAGE", Decimal("0.00"))
-            sd_adjust = sd.get("ADJUST", Decimal("0.00"))
-
             lease.list_security_deposit_due = (
                 (getattr(lease, "security_deposit", None) or Decimal("0.00"))
                 - sd_paid
-                + sd_refund
-                + sd_damage
-                + sd_adjust
             )
 
         return leases
@@ -1578,6 +1606,29 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             with transaction.atomic():
                 tmp = form.save()
                 plan = preview_initial_billing(tmp)
+                move_in_date = form.cleaned_data.get("move_in_date")
+                proration_mode = (
+                    form.cleaned_data.get("move_in_proration_mode") or "exact"
+                )
+                if (
+                    form.cleaned_data.get("create_move_in_proration")
+                    and proration_mode != "waive"
+                    and move_in_date
+                    and move_in_date < tmp.start_date
+                ):
+                    proration_invoice = ensure_move_in_proration_invoice(
+                        tmp,
+                        move_in_date=move_in_date,
+                        mode=proration_mode,
+                        manual_days=form.cleaned_data.get(
+                            "move_in_proration_days"
+                        ),
+                    )
+                    if proration_invoice:
+                        plan["move_in_proration"] = {
+                            "description": proration_invoice.description,
+                            "amount": proration_invoice.amount,
+                        }
                 transaction.set_rollback(True)
 
             # Keep in create mode (no pk) – don't show "created" yet
@@ -1599,6 +1650,8 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         # Actually save the lease
         response = super().form_valid(form)  # self.object is now saved
         _save_tenant_document_uploads(self.request, self.object)
+        move_in_date = form.cleaned_data.get("move_in_date")
+        sync_lease_move_in_occupancy(self.object, move_in_date)
         ensure_original_history(
             self.object,
             user=self.request.user if self.request.user.is_authenticated else None,
@@ -1664,6 +1717,23 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 include_backfill=include_backfill,
                 update_existing=update_existing,
             )
+            proration_mode = (
+                form.cleaned_data.get("move_in_proration_mode") or "exact"
+            )
+            if (
+                form.cleaned_data.get("create_move_in_proration")
+                and proration_mode != "waive"
+                and move_in_date
+                and move_in_date < self.object.start_date
+            ):
+                ensure_move_in_proration_invoice(
+                    self.object,
+                    move_in_date=move_in_date,
+                    mode=proration_mode,
+                    manual_days=form.cleaned_data.get(
+                        "move_in_proration_days"
+                    ),
+                )
             messages.success(
                 self.request, "Lease created. Billing & security initialized."
             )
@@ -3231,6 +3301,26 @@ def create_security_required_adjustment(old_lease, new_lease):
     )
 
 
+def record_security_paid_from_lease_form(lease):
+    """
+    Convert the lease form's legacy "Security Deposit Paid" checkbox into a
+    real PAYMENT ledger row. ADJUST rows only audit required-amount changes.
+    """
+    if not lease.security_deposit_paid:
+        return None
+
+    amount = security_deposit_totals(lease)["balance_to_collect"]
+    if amount <= ZERO:
+        return None
+
+    return SecurityDepositTransaction.objects.create(
+        lease=lease,
+        type="PAYMENT",
+        amount=amount,
+        notes="Security deposit marked paid on lease form.",
+    )
+
+
 def _sync_current_renewal_end_date(lease, *, user=None):
     """
     Keep the active/current renewal history row aligned when the master lease
@@ -3357,8 +3447,12 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         )
         if lease_instance and lease_instance.pk:
             sec_totals = security_deposit_totals(lease_instance)
+            active_history = lease_instance.renewals.order_by(
+                "-renewal_number", "-id"
+            ).first()
             ctx.update(
                 {
+                    "active_history": active_history,
                     "security_required": sec_totals["required"],
                     "security_paid_in": sec_totals["paid_in"],
                     "security_refunded": sec_totals["refunded"],
@@ -3535,11 +3629,26 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         # ---------- STEP 3: SAVE LEASE & FAMILY ----------
         response = super().form_valid(form)  # self.object is now saved
         _save_tenant_document_uploads(self.request, self.object)
+        sync_lease_move_in_occupancy(
+            self.object,
+            form.cleaned_data.get("move_in_date"),
+        )
 
         family_fs.instance = self.object
         family_fs.save()
         renewal_fs.instance = self.object
         renewal_fs.save()
+        active_history = self.object.renewals.order_by(
+            "-renewal_number", "-id"
+        ).first()
+        if active_history:
+            sync_history_to_master_lease(
+                active_history,
+                user=self.request.user,
+            )
+            self.object.refresh_from_db()
+            changes = detect_lease_changes(old, self.object)
+            security_changed = changes["security_changed"]
         vehicle_fs.instance = self.object
         vehicle_fs.save()
         attached_vehicle_count = attach_pending_vehicle_submissions_to_lease(
@@ -4047,6 +4156,10 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "security_balance_to_collect": sec_totals["balance_to_collect"],
                 "security_currently_held": sec_totals["currently_held"],
                 "deposit_is_paid": sec_totals["balance_to_collect"] <= ZERO,
+                "total_outstanding": (
+                    (lease.get_balance or ZERO)
+                    + sec_totals["balance_to_collect"]
+                ),
             }
         )
 
@@ -6317,6 +6430,7 @@ class SecurityDepositCreateView(LeaseSecurityMixin, CreateView):
         obj = form.save(commit=False)
         obj.lease = self.lease
         obj.save()
+        sync_security_deposit_paid_flag(self.lease)
         messages.success(self.request, "Security deposit transaction added.")
         return redirect(self.get_success_url())
 
@@ -6337,8 +6451,10 @@ class SecurityDepositUpdateView(LeaseSecurityMixin, UpdateView):
         return SecurityDepositTransaction.objects.filter(lease=self.lease)
 
     def form_valid(self, form):
+        response = super().form_valid(form)
+        sync_security_deposit_paid_flag(self.lease)
         messages.success(self.request, "Security deposit transaction updated.")
-        return super().form_valid(form)
+        return response
 
 
 class SecurityDepositDeleteView(LeaseSecurityMixin, DeleteView):
@@ -6356,11 +6472,11 @@ class SecurityDepositDeleteView(LeaseSecurityMixin, DeleteView):
                 "Please confirm before deleting the security deposit transaction.",
             )
             return redirect(self.get_success_url())
-        return super().post(request, *args, **kwargs)
-
-    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        self.object.delete()
+        sync_security_deposit_paid_flag(self.lease)
         messages.success(self.request, "Security deposit transaction deleted.")
-        return super().delete(request, *args, **kwargs)
+        return redirect(self.get_success_url())
 
 
 from django.contrib.auth.decorators import login_required, permission_required

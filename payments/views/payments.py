@@ -426,11 +426,11 @@ def _attach_cached_lease_financials(leases):
             )
         )
     }
-    security_paid_or_adjusted = {
+    security_paid = {
         row["lease_id"]: row["total"] or Decimal("0.00")
         for row in SecurityDepositTransaction.objects.filter(
             lease_id__in=lease_ids,
-            type__in=("PAYMENT", "ADJUST"),
+            type="PAYMENT",
         )
         .values("lease_id")
         .annotate(total=Coalesce(Sum("amount"), zero))
@@ -443,7 +443,7 @@ def _attach_cached_lease_financials(leases):
         )
         lease._cached_security_due = max(
             (lease.security_deposit or Decimal("0.00"))
-            - security_paid_or_adjusted.get(lease.pk, Decimal("0.00")),
+            - security_paid.get(lease.pk, Decimal("0.00")),
             Decimal("0.00"),
         )
 

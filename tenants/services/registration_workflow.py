@@ -70,10 +70,58 @@ def applicant_cnic_conflict(submission):
 
 
 def registration_required_party_reviews(submission):
+    all_people = list(submission.pending_people.all())
     people = {
         person.role: person
-        for person in submission.pending_people.all()
+        for person in all_people
         if person.role in dict(REQUIRED_PARTY_ROLES)
+    }
+    applicant = applicant_cnic_conflict(submission) or submission.tenant
+    applicant_digits = normalize_cnic(
+        (submission.submitted_data or {}).get("cnic") or applicant.cnic
+    )
+    family_people = [
+        person
+        for person in all_people
+        if person.role == PendingRegistrationPerson.ROLE_FAMILY
+        and person.status != PendingRegistrationPerson.STATUS_REJECTED
+    ]
+    family_tenant_ids = {
+        tenant_id
+        for person in family_people
+        for tenant_id in (person.matched_tenant_id, person.processed_tenant_id)
+        if tenant_id
+    }
+    family_cnic_digits = {
+        digits
+        for person in family_people
+        if (digits := normalize_cnic(person.cnic))
+    }
+    current_lease = applicant.current_lease
+    if current_lease:
+        current_family = current_lease.family_members.select_related(
+            "family_member"
+        )
+        family_tenant_ids.update(
+            current_family.values_list("family_member_id", flat=True)
+        )
+        family_cnic_digits.update(
+            digits
+            for value in current_family.values_list("family_member__cnic", flat=True)
+            if (digits := normalize_cnic(value))
+        )
+
+    party_tenant_ids = {
+        role: (
+            person.matched_tenant_id or person.processed_tenant_id
+            if person
+            else None
+        )
+        for role, person in people.items()
+    }
+    party_cnic_digits = {
+        role: normalize_cnic(person.cnic) if person else ""
+        for role, person in people.items()
     }
     reviews = []
     for role, label in REQUIRED_PARTY_ROLES:
@@ -96,6 +144,33 @@ def registration_required_party_reviews(submission):
                 except ValidationError:
                     if "CNIC" not in missing:
                         missing.append("valid CNIC")
+            person_digits = normalize_cnic(person.cnic)
+            person_tenant_id = (
+                person.matched_tenant_id or person.processed_tenant_id
+            )
+            if (
+                person_tenant_id == applicant.pk
+                or (person_digits and person_digits == applicant_digits)
+            ):
+                missing.append("must be someone other than the tenant")
+            if (
+                person_tenant_id in family_tenant_ids
+                or (person_digits and person_digits in family_cnic_digits)
+            ):
+                missing.append("must not be a family member")
+            other_role = (
+                PendingRegistrationPerson.ROLE_SECONDER
+                if role == PendingRegistrationPerson.ROLE_PROPOSER
+                else PendingRegistrationPerson.ROLE_PROPOSER
+            )
+            if (
+                person_digits
+                and person_digits == party_cnic_digits.get(other_role)
+            ) or (
+                person_tenant_id
+                and person_tenant_id == party_tenant_ids.get(other_role)
+            ):
+                missing.append("must be different from the other required party")
         reviews.append(
             {
                 "role": role,

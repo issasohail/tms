@@ -15,6 +15,7 @@ from core.models import GlobalSettings
 from invoices.models import Invoice, SecurityDepositTransaction
 from invoices.services import security_deposit_totals
 from payments.models import Payment
+from payments.services.payment_detail import sync_security_deposit_paid_flag
 from utils.pdf_export import PaymentDetailReceiptPDF
 
 
@@ -144,11 +145,13 @@ class PaymentDeleteView(LoginRequiredMixin, DeleteView):
     def delete(self, request, *args, **kwargs):
         payment = self.get_object()
         payment_detail = getattr(payment, "detail", None)
+        lease = payment.lease
 
         if payment_detail:
             SecurityDepositTransaction.objects.filter(payment_detail=payment_detail).delete()
         SecurityDepositTransaction.objects.filter(payment=payment).delete()
         payment.delete()
+        sync_security_deposit_paid_flag(lease)
 
         messages.success(request, "Payment deleted. Related payment detail and security deposit movements were reversed.")
         return redirect(self.get_success_url())

@@ -483,3 +483,98 @@ class LeaseTermCalculationTests(SimpleTestCase):
             calculate_lease_end_date(date(2023, 3, 1), 11),
             date(2024, 1, 31),
         )
+
+
+class ActiveAgreementAndMoveInBillingTests(TestCase):
+    def setUp(self):
+        from datetime import date
+
+        from leases.models import Lease
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        property_obj = Property.objects.create(
+            property_name="Agreement Source Property",
+            owner_name="Test Owner",
+            owner_cnic="61101-1111111-1",
+            type="Residential",
+            property_type="Building",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="A-1")
+        tenant = Tenant.objects.create(
+            first_name="Agreement",
+            last_name="Tenant",
+            cnic="61101-2222222-2",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            agreement_date=date(2026, 7, 20),
+            start_date=date(2026, 8, 1),
+            end_date=date(2027, 6, 30),
+            lease_months=11,
+            monthly_rent=12000,
+            society_maintenance=800,
+            water_charges=2000,
+            internet_charges=500,
+            agreement_charges=1500,
+            security_deposit=18300,
+        )
+
+    def test_active_history_syncs_all_current_billing_controls(self):
+        from leases.services.lease_history import (
+            ensure_original_history,
+            sync_history_to_master_lease,
+        )
+
+        history = ensure_original_history(self.lease)
+        history.monthly_rent = 13000
+        history.bill_water_charges = False
+        history.bill_recurring_charges = False
+        history.save(
+            update_fields=[
+                "monthly_rent",
+                "bill_water_charges",
+                "bill_recurring_charges",
+            ]
+        )
+
+        sync_history_to_master_lease(history)
+        self.lease.refresh_from_db()
+
+        self.assertEqual(self.lease.monthly_rent, 13000)
+        self.assertFalse(self.lease.bill_water_charges)
+        self.assertFalse(self.lease.bill_recurring_charges)
+
+    def test_agreement_fee_is_created_once(self):
+        from invoices.models import InvoiceItem
+        from leases.utils.billing import ensure_agreement_fee_invoice
+
+        first = ensure_agreement_fee_invoice(self.lease)
+        second = ensure_agreement_fee_invoice(self.lease)
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(
+            InvoiceItem.objects.filter(
+                invoice__lease=self.lease,
+                category__name="Agreement Fee",
+            ).count(),
+            1,
+        )
+
+    def test_exact_move_in_proration_uses_partial_month_before_billing_start(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from leases.utils.billing import ensure_move_in_proration_invoice
+
+        invoice = ensure_move_in_proration_invoice(
+            self.lease,
+            move_in_date=date(2026, 7, 20),
+            mode="exact",
+        )
+
+        self.assertEqual(invoice.issue_date, date(2026, 7, 20))
+        self.assertEqual(invoice.amount, Decimal("5922.58"))
+        self.assertIn("2026-07-20 to 2026-07-31", invoice.description)

@@ -15,6 +15,22 @@ def D(v) -> Decimal:
         return Decimal("0")
 
 
+def sync_security_deposit_paid_flag(lease):
+    required = D(lease.security_deposit)
+    paid_in = sum(
+        SecurityDepositTransaction.objects.filter(
+            lease=lease,
+            type="PAYMENT",
+        ).values_list("amount", flat=True),
+        Decimal("0.00"),
+    )
+    is_paid = required > 0 and paid_in >= required
+    if lease.security_deposit_paid != is_paid:
+        lease.security_deposit_paid = is_paid
+        lease.save(update_fields=["security_deposit_paid"])
+    return is_paid
+
+
 @transaction.atomic
 def rebuild_payment_detail(*, payment, lease_amount, security_amount, security_type="PAYMENT", user=None, reason=""):
     lease_amt = D(lease_amount)
@@ -91,5 +107,7 @@ def rebuild_payment_detail(*, payment, lease_amount, security_amount, security_t
             )
     else:
         SecurityDepositTransaction.objects.filter(payment_detail=detail).delete()
+
+    sync_security_deposit_paid_flag(payment.lease)
 
     return detail

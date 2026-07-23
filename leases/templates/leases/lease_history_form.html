@@ -426,10 +426,16 @@
               <label class="form-label" for="{{ field.id_for_label }}">
                 {% if field.name == 'society_maintenance' %}<span class="lhf-desktop-label">Society Maintenance</span><span class="lhf-mobile-label">Society Maint.</span>{% else %}{{ field.label }}{% endif %}
               </label>
-              {% if field.name == 'bill_water_charges' %}
+              {% if field.name == 'bill_water_charges' or field.name == 'bill_recurring_charges' %}
                 <div class="lhf-checkbox-line">
                   {{ field }}
-                  <label class="lhf-checkbox-help" for="{{ field.id_for_label }}">Include in monthly billing.</label>
+                  <label class="lhf-checkbox-help" for="{{ field.id_for_label }}">
+                    {% if field.name == 'bill_water_charges' %}
+                      Include water in monthly billing.
+                    {% else %}
+                      Include recurring charges in monthly billing.
+                    {% endif %}
+                  </label>
                 </div>
               {% else %}
                 {{ field }}

@@ -65,6 +65,7 @@ from leases.models import (
     Lease,
     LeaseFamilyMember,
     LeaseRelationshipType,
+    LeaseUnitOccupancy,
     LeaseVehicle,
     LeaseVehicleType,
     PendingLeaseVehicleSubmission,
@@ -899,7 +900,10 @@ def tenant_public_registration_update(request, token):
     }
     if request.method == "POST":
         form = TenantPublicRegistrationForm(
-            request.POST, request.FILES, role_data=request.POST
+            request.POST,
+            request.FILES,
+            role_data=request.POST,
+            registration_tenant=tenant,
         )
         if form.is_valid():
             Tenant.objects.select_for_update().get(pk=tenant.pk)
@@ -1026,7 +1030,9 @@ def tenant_public_registration_update(request, token):
                     },
                 )
     else:
-        form = TenantPublicRegistrationForm(initial=initial)
+        form = TenantPublicRegistrationForm(
+            initial=initial, registration_tenant=tenant
+        )
     existing_family = []
     try:
         lease = tenant.current_lease
@@ -1142,6 +1148,8 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
             self.object
         )
         context["cnic_conflict"] = applicant_cnic_conflict(self.object)
+        approval_target = context["cnic_conflict"] or self.object.tenant
+        context["current_registration_lease"] = approval_target.current_lease
         context["can_edit_submission"] = (
             self.object.is_editable
             and self.request.user.has_perm("tenants.change_tenantregistrationsubmission")
@@ -1258,12 +1266,51 @@ def tenant_registration_submission_review(request, pk):
 
     property_id = request.POST.get("property")
     unit_id = request.POST.get("unit")
+    approval_target = conflict or submission.tenant
+    existing_lease = approval_target.current_lease
+    if existing_lease:
+        if property_id or unit_id:
+            messages.error(
+                request,
+                f"Tenant already has active Lease #{existing_lease.pk}. "
+                "Leave Property and Unit blank to update that lease.",
+            )
+            return redirect("tenants:registration_submission_detail", pk=submission.pk)
+        if not (
+            request.user.has_perm("leases.view_lease")
+            and request.user.has_perm("leases.change_lease")
+        ):
+            raise PermissionDenied
     if bool(property_id) != bool(unit_id):
         messages.error(request, "Select both property and unit, or leave both blank for tenant-only approval.")
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
-    create_lease = bool(property_id and unit_id)
+    create_lease = bool(property_id and unit_id) and not existing_lease
     unit = None
-    lease_start_date = timezone.localdate()
+    move_in_date = timezone.localdate()
+    lease_start_date = move_in_date
+    align_billing_to_month_start = (
+        request.POST.get("align_billing_to_month_start", "0") == "1"
+    )
+    move_in_proration_mode = (
+        request.POST.get("move_in_proration_mode") or "exact"
+    ).lower()
+    if move_in_proration_mode not in {"exact", "block", "manual", "waive"}:
+        move_in_proration_mode = "exact"
+    manual_proration_days = request.POST.get("move_in_proration_days")
+    if move_in_proration_mode == "manual":
+        try:
+            manual_proration_days = int(manual_proration_days)
+        except (TypeError, ValueError):
+            manual_proration_days = 0
+        if not 1 <= manual_proration_days <= 31:
+            messages.error(
+                request,
+                "Enter manual move-in proration days between 1 and 31.",
+            )
+            return redirect(
+                "tenants:registration_submission_detail",
+                pk=submission.pk,
+            )
     if create_lease:
         if not (
             request.user.has_perm("leases.add_lease")
@@ -1278,19 +1325,37 @@ def tenant_registration_submission_review(request, pk):
             messages.error(request, "Select a valid property and unit for the new lease.")
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
 
-        requested_start_date = (request.POST.get("lease_start_date") or "").strip()
-        if requested_start_date:
-            lease_start_date = parse_date(requested_start_date)
-            if lease_start_date is None:
+        requested_move_in_date = (
+            request.POST.get("move_in_date")
+            or request.POST.get("lease_start_date")
+            or ""
+        ).strip()
+        if requested_move_in_date:
+            move_in_date = parse_date(requested_move_in_date)
+            if move_in_date is None:
                 request.session[f"registration_approval_error_{submission.pk}"] = {
-                    "message": "Enter a valid start date for the new lease.",
+                    "message": "Enter a valid move-in date for the new lease.",
                     "property_id": unit.property_id,
                     "unit_id": unit.pk,
                     "collision_action": request.POST.get("collision_action") or "",
-                    "attempted_start_date": requested_start_date,
+                    "attempted_start_date": requested_move_in_date,
                     "suggested_start_date": timezone.localdate().isoformat(),
                 }
                 return redirect("tenants:registration_submission_detail", pk=submission.pk)
+        if align_billing_to_month_start and move_in_date.day != 1:
+            if move_in_date.month == 12:
+                lease_start_date = move_in_date.replace(
+                    year=move_in_date.year + 1,
+                    month=1,
+                    day=1,
+                )
+            else:
+                lease_start_date = move_in_date.replace(
+                    month=move_in_date.month + 1,
+                    day=1,
+                )
+        else:
+            lease_start_date = move_in_date
 
         active_lease = (
             Lease.objects.filter(unit=unit, status="active")
@@ -1298,7 +1363,7 @@ def tenant_registration_submission_review(request, pk):
             .order_by("-end_date", "-pk")
             .first()
         )
-        if active_lease and lease_start_date <= active_lease.end_date:
+        if active_lease and move_in_date <= active_lease.end_date:
             suggested_start_date = active_lease.end_date + timedelta(days=1)
             request.session[f"registration_approval_error_{submission.pk}"] = {
                 "message": (
@@ -1314,7 +1379,7 @@ def tenant_registration_submission_review(request, pk):
                 "active_lease_id": active_lease.pk,
                 "active_lease_start_date": active_lease.start_date.isoformat(),
                 "active_lease_end_date": active_lease.end_date.isoformat(),
-                "attempted_start_date": lease_start_date.isoformat(),
+                "attempted_start_date": move_in_date.isoformat(),
                 "suggested_start_date": suggested_start_date.isoformat(),
             }
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
@@ -1408,6 +1473,7 @@ def tenant_registration_submission_review(request, pk):
     submission.save(update_fields=["field_decisions", "status", "reviewed_by", "reviewed_at"])
     shell_id = submission.tenant_id
     lease = None
+    created_new_lease = False
     missing_file_warnings = []
     try:
         with transaction.atomic():
@@ -1419,13 +1485,17 @@ def tenant_registration_submission_review(request, pk):
             if create_lease:
                 from leases.lease_term import calculate_lease_end_date
                 from leases.services.lease_history import ensure_original_history
+                from leases.utils.billing import (
+                    apply_initial_billing,
+                    ensure_move_in_proration_invoice,
+                )
                 from tenants.services.registration_workflow import attach_registration_to_lease
 
                 lease_months = GlobalSettings.get_solo().default_lease_months or 11
                 lease = Lease.objects.create(
                     tenant=tenant,
                     unit=unit,
-                    agreement_date=lease_start_date,
+                    agreement_date=move_in_date,
                     start_date=lease_start_date,
                     end_date=calculate_lease_end_date(lease_start_date, lease_months),
                     lease_months=lease_months,
@@ -1437,6 +1507,33 @@ def tenant_registration_submission_review(request, pk):
                     status="active",
                     notes="Created from an approved tenant registration.",
                 )
+                if lease.security_deposit and lease.security_deposit > 0:
+                    SecurityDepositTransaction.objects.create(
+                        lease=lease,
+                        type="REQUIRED",
+                        amount=lease.security_deposit,
+                        notes="Initial required security deposit set from pending registration.",
+                    )
+                LeaseUnitOccupancy.objects.create(
+                    lease=lease,
+                    unit=unit,
+                    move_in_date=move_in_date,
+                )
+                apply_initial_billing(
+                    lease,
+                    include_backfill=False,
+                    update_existing=False,
+                )
+                if (
+                    move_in_proration_mode != "waive"
+                    and move_in_date < lease.start_date
+                ):
+                    ensure_move_in_proration_invoice(
+                        lease,
+                        move_in_date=move_in_date,
+                        mode=move_in_proration_mode,
+                        manual_days=manual_proration_days,
+                    )
                 workflow_result = attach_registration_to_lease(
                     submission,
                     lease,
@@ -1444,6 +1541,22 @@ def tenant_registration_submission_review(request, pk):
                     missing_files=missing_file_warnings,
                 )
                 ensure_original_history(lease, user=request.user)
+                created_new_lease = True
+            elif tenant.current_lease:
+                if not (
+                    request.user.has_perm("leases.view_lease")
+                    and request.user.has_perm("leases.change_lease")
+                ):
+                    raise PermissionDenied
+                from tenants.services.registration_workflow import attach_registration_to_lease
+
+                lease = tenant.current_lease
+                workflow_result = attach_registration_to_lease(
+                    submission,
+                    lease,
+                    request.user,
+                    missing_files=missing_file_warnings,
+                )
             else:
                 workflow_result = {
                     "people": process_registration_people(
@@ -1452,7 +1565,7 @@ def tenant_registration_submission_review(request, pk):
                     "vehicles": 0,
                 }
             submission.status = submission.STATUS_APPROVED
-            submission.created_lease = lease
+            submission.created_lease = lease if created_new_lease else None
             submission.save(update_fields=["status", "created_lease"])
             cache.delete("core.pending_approval_count")
     except (IntegrityError, ValidationError) as exc:
@@ -1475,7 +1588,11 @@ def tenant_registration_submission_review(request, pk):
             "approve_tenant_and_merge"
             if merged_tenant and not lease
             else "approve_and_merge"
+            if merged_tenant and created_new_lease
+            else "approve_merge_and_assign_existing_lease"
             if merged_tenant
+            else "approve_and_assign_existing_lease"
+            if lease and not created_new_lease
             else "approve_tenant"
             if not lease
             else "approve"
@@ -1492,12 +1609,20 @@ def tenant_registration_submission_review(request, pk):
     )
     for warning in missing_file_warnings:
         messages.warning(request, warning)
-    if lease:
+    if created_new_lease:
         messages.success(
             request,
             f"Registration approved and Lease #{lease.pk} created with "
             f"{len(workflow_result['people'])} people and {workflow_result['vehicles']} vehicles. "
             "Review the lease details and update rent or agreement information as needed.",
+        )
+        return redirect("leases:lease_detail", pk=lease.pk)
+    if lease:
+        messages.success(
+            request,
+            f"Registration update approved. {len(workflow_result['people'])} related "
+            f"people and {workflow_result['vehicles']} vehicles were assigned to existing "
+            f"Lease #{lease.pk}; no tenant or lease duplicate was created.",
         )
         return redirect("leases:lease_detail", pk=lease.pk)
     messages.success(
@@ -1594,7 +1719,12 @@ def tenant_registration_submission_edit(request, pk):
         selected_relationship(person)
 
     if request.method == "POST":
-        form = TenantPublicRegistrationForm(request.POST, request.FILES, role_data=request.POST)
+        form = TenantPublicRegistrationForm(
+            request.POST,
+            request.FILES,
+            role_data=request.POST,
+            registration_tenant=submission.tenant,
+        )
         if form.is_valid():
             try:
                 with transaction.atomic():
@@ -1758,7 +1888,10 @@ def tenant_registration_submission_edit(request, pk):
                 messages.success(request, "Registration submission edits saved.")
                 return redirect("tenants:registration_submission_detail", pk=submission.pk)
     else:
-        form = TenantPublicRegistrationForm(initial=submission.submitted_data)
+        form = TenantPublicRegistrationForm(
+            initial=submission.submitted_data,
+            registration_tenant=submission.tenant,
+        )
 
     return render(
         request,
@@ -2066,7 +2199,6 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             security_balance = (
                 (getattr(item, "security_deposit", None) or zero)
                 - sd.get("PAYMENT", zero)
-                - sd.get("ADJUST", zero)
             )
             if security_balance < zero:
                 security_balance = zero
@@ -3153,7 +3285,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
         security_rows = (
             SecurityDepositTransaction.objects.filter(
-                lease_id__in=lease_ids, type__in=["PAYMENT", "ADJUST"]
+                lease_id__in=lease_ids, type="PAYMENT"
             )
             .values("lease_id", "type")
             .annotate(total=Coalesce(Sum("amount"), zero_db))
@@ -3202,9 +3334,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                 lease.id, zero
             )
             paid_in = security_totals.get(lease.id, {}).get("PAYMENT", zero)
-            adjust = security_totals.get(lease.id, {}).get("ADJUST", zero)
             security_due = max(
-                (lease.security_deposit or zero) - paid_in - adjust, zero
+                (lease.security_deposit or zero) - paid_in, zero
             )
 
             recurring_total = (

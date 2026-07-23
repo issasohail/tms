@@ -40,6 +40,19 @@ class ExportableTable(tables.Table):
 
 
 class UnitTable(ExportableTable):
+    sn = tables.TemplateColumn(
+        verbose_name="S.N#",
+        template_code=(
+            '{% widthratio table.page.number|add:"-1" 1 table.paginator.per_page '
+            "as page_offset %}{{ row_counter|add:page_offset|add:1 }}"
+        ),
+        orderable=False,
+        attrs={
+            "td": {"class": "text-center unit-col sn-col"},
+            "th": {"class": "text-center rotate-col"},
+        },
+    )
+
     unit_number = tables.Column(
         verbose_name="Unit",
         linkify=lambda record: reverse("properties:unit_detail", args=[record.pk]),
@@ -58,27 +71,27 @@ class UnitTable(ExportableTable):
 
     monthly_rent = tables.Column(
         verbose_name="Monthly Rent",
-        attrs={"td": {"class": "unit-col charge-col rent-col"}, "th": {"class": "unit-col charge-col rent-col"}},
+        attrs={"td": {"class": "unit-col charge-col rent-col"}, "th": {"class": "unit-col charge-col rent-col rotate-col"}},
     )
     electric_meter_num = tables.Column(
         verbose_name="Electric Meter#",
-        attrs={"td": {"class": "unit-col meter-col"}, "th": {"class": "unit-col meter-col"}},
+        attrs={"td": {"class": "unit-col meter-col"}, "th": {"class": "unit-col meter-col rotate-col"}},
     )
     gas_meter_num = tables.Column(
         verbose_name="Gas Meter#",
-        attrs={"td": {"class": "unit-col meter-col"}, "th": {"class": "unit-col meter-col"}},
+        attrs={"td": {"class": "unit-col meter-col"}, "th": {"class": "unit-col meter-col rotate-col"}},
     )
     society_maintenance = tables.Column(
         verbose_name="Society Maintenance",
-        attrs={"td": {"class": "unit-col charge-col maintenance-col"}, "th": {"class": "unit-col charge-col maintenance-col"}},
+        attrs={"td": {"class": "unit-col charge-col maintenance-col"}, "th": {"class": "unit-col charge-col maintenance-col rotate-col"}},
     )
     water_charges = tables.Column(
         verbose_name="Water Charges",
-        attrs={"td": {"class": "unit-col charge-col water-col"}, "th": {"class": "unit-col charge-col water-col"}},
+        attrs={"td": {"class": "unit-col charge-col water-col"}, "th": {"class": "unit-col charge-col water-col rotate-col"}},
     )
     internet_charges = tables.Column(
         verbose_name="Internet Charges",
-        attrs={"td": {"class": "unit-col charge-col internet-col"}, "th": {"class": "unit-col charge-col internet-col"}},
+        attrs={"td": {"class": "unit-col charge-col internet-col"}, "th": {"class": "unit-col charge-col internet-col rotate-col"}},
     )
     security_requires = tables.Column(
         verbose_name="Security Text",
@@ -86,13 +99,25 @@ class UnitTable(ExportableTable):
     )
     security_deposit_amount = tables.Column(
         verbose_name="Security Amount",
-        attrs={"td": {"class": "unit-col charge-col security-amount-col"}, "th": {"class": "unit-col charge-col security-amount-col"}},
+        attrs={"td": {"class": "unit-col charge-col security-amount-col"}, "th": {"class": "unit-col charge-col security-amount-col rotate-col"}},
     )
-    inventory = tables.Column(
-        verbose_name="Room Amenities / Inventory",
+    room_amenities = tables.Column(
+        verbose_name="Room Amenities",
         empty_values=(),
         orderable=False,
-        attrs={"td": {"class": "unit-col inventory-col"}, "th": {"class": "unit-col inventory-col"}},
+        attrs={
+            "td": {"class": "unit-col room-amenities-col"},
+            "th": {"class": "unit-col room-amenities-col rotate-col"},
+        },
+    )
+    inventory = tables.Column(
+        verbose_name="Inventory",
+        empty_values=(),
+        orderable=False,
+        attrs={
+            "td": {"class": "unit-col inventory-col"},
+            "th": {"class": "unit-col inventory-col rotate-col"},
+        },
     )
     status = tables.Column(
         verbose_name="Status",
@@ -103,7 +128,7 @@ class UnitTable(ExportableTable):
         yesno="Yes,No",
         attrs={
             "td": {"class": "text-center unit-col public-col"},
-            "th": {"class": "text-center unit-col public-col"},
+            "th": {"class": "text-center unit-col public-col rotate-col"},
         },
     )
     is_smart_meter = tables.BooleanColumn(
@@ -111,7 +136,7 @@ class UnitTable(ExportableTable):
         yesno="Yes,No",
         attrs={
             "td": {"class": "text-center unit-col smart-col"},
-            "th": {"class": "text-center unit-col smart-col"},
+            "th": {"class": "text-center unit-col smart-col rotate-col"},
         },
     )
 
@@ -208,6 +233,42 @@ class UnitTable(ExportableTable):
 
     def value_security_deposit_amount(self, value, record):
         return self._format_decimal(value)
+
+    def _room_amenity_rows(self, record):
+        return [
+            (record.bedrooms, "Bedroom"),
+            (record.bathrooms, "Bathroom"),
+            (record.kitchens, "Kitchen"),
+            (record.hall, "Hall"),
+            (record.wardrobes, "Wardrobe"),
+        ]
+
+    def render_room_amenities(self, record):
+        rows = [
+            (quantity, label)
+            for quantity, label in self._room_amenity_rows(record)
+            if quantity
+        ]
+        if not rows:
+            return format_html('<span class="text-muted">None</span>')
+        return format_html(
+            '<div class="room-amenities-summary">{}</div>',
+            format_html_join(
+                "",
+                '<span class="room-amenity-chip">{} {}</span>',
+                (
+                    (quantity, f"{label}s" if quantity != 1 else label)
+                    for quantity, label in rows
+                ),
+            ),
+        )
+
+    def value_room_amenities(self, record):
+        return ", ".join(
+            f"{quantity} {label if quantity == 1 else label + 's'}"
+            for quantity, label in self._room_amenity_rows(record)
+            if quantity
+        )
 
     def _effective_inventory_rows(self, record):
         values = {
@@ -405,6 +466,7 @@ class UnitTable(ExportableTable):
             "internet_charges": 55,
             "security_requires": 80,
             "security_deposit_amount": 70,
+            "room_amenities": 110,
             "inventory": 140,
             "status": 50,
             # Note: 'actions' will be automatically excluded
@@ -427,6 +489,7 @@ class UnitTable(ExportableTable):
             "internet_charges",
             "security_requires",
             "security_deposit_amount",
+            "room_amenities",
             "inventory",
             "status",
             "is_smart_meter",

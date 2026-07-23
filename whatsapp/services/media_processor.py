@@ -5,9 +5,18 @@ import json
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 
 from whatsapp.models import PendingWhatsAppMedia
 from whatsapp.services.whatsapp import WhatsAppService
+
+# Video/audio downloads from the WhatsApp CDN can take real time. Doing that
+# synchronously inside the webhook holds up the reply (and, since inbound
+# processing is now serialized per conversation with select_for_update, it
+# also blocks every other message from the same sender until it finishes).
+# These types are downloaded in the background instead - see
+# whatsapp.tasks.download_pending_media_task.
+DEFERRED_DOWNLOAD_MEDIA_TYPES = {"video", "audio"}
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +79,8 @@ def create_pending_media(message_log, conversation, lease=None):
 
     content = None
     filename = media_payload.get("filename") or f"whatsapp-{media_id or message_log.pk}.{_extension(message_type)}"
-    if media_id:
+    defer_download = bool(media_id) and message_type in DEFERRED_DOWNLOAD_MEDIA_TYPES
+    if media_id and not defer_download:
         content = WhatsAppService().download_media_bytes(media_id)
     max_bytes = int(getattr(settings, "WHATSAPP_MAX_INBOUND_MEDIA_BYTES", 16 * 1024 * 1024))
     if content and len(content) > max_bytes:
@@ -90,13 +100,26 @@ def create_pending_media(message_log, conversation, lease=None):
         unit=getattr(lease, "unit", None),
         ai_confidence=confidence,
         ai_notes="Media intent detected from caption/message type.",
+        processing=defer_download,
     )
     if content:
         pending.file.save(filename, ContentFile(content), save=False)
+    elif defer_download:
+        pending.file.name = f"whatsapp/pending/processing/{filename}"
+        pending.ai_notes += " Video/audio is downloading in the background and will attach shortly."
     else:
         pending.file.name = f"whatsapp/pending/unavailable/{filename}"
         pending.ai_notes += " File download was unavailable; check WhatsApp media token/config."
     pending.save()
+
+    if defer_download:
+        from whatsapp.tasks import download_pending_media_task
+
+        # Wait for the enclosing transaction (the select_for_update lock around
+        # inbound message processing) to commit before the worker can see this
+        # row, otherwise the task could run before the row is visible.
+        transaction.on_commit(lambda: download_pending_media_task.delay(pending.pk))
+
     return pending
 
 

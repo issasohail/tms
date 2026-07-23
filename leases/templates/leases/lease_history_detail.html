@@ -573,6 +573,10 @@
                 <td class="lh-inline-cell" data-inline-field="bill_water_charges" data-display-type="checkbox"><span class="lh-inline-display" tabindex="0">{% if history.bill_water_charges %}Yes{% else %}No{% endif %}</span><div class="lh-inline-editor">{{ inline_form.bill_water_charges }}</div></td>
               </tr>
               <tr>
+                <th>Bill Recurring Charges</th>
+                <td class="lh-inline-cell" data-inline-field="bill_recurring_charges" data-display-type="checkbox"><span class="lh-inline-display" tabindex="0">{% if history.bill_recurring_charges %}Yes{% else %}No{% endif %}</span><div class="lh-inline-editor">{{ inline_form.bill_recurring_charges }}</div></td>
+              </tr>
+              <tr>
                 <th>Internet Charges</th>
                 <td class="lh-inline-cell" data-inline-field="internet_charges" data-display-type="currency"><span class="lh-inline-display" tabindex="0">{{ history.internet_charges|default:0|money:0 }}</span><div class="lh-inline-editor">{{ inline_form.internet_charges }}</div></td>
               </tr>

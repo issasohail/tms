@@ -195,11 +195,10 @@ class PaymentListView(SingleTableView):
 
             required = Decimal(lease.security_deposit or 0)
             paid = Decimal(tx.get("PAYMENT", 0) or 0)
-            adjusted = Decimal(tx.get("ADJUST", 0) or 0)
             refunded = Decimal(tx.get("REFUND", 0) or 0)
             damaged = Decimal(tx.get("DAMAGE", 0) or 0)
 
-            balance_to_collect = required - paid - adjusted
+            balance_to_collect = required - paid
             if balance_to_collect < 0:
                 balance_to_collect = Decimal("0.00")
 

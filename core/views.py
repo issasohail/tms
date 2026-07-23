@@ -1392,17 +1392,12 @@ def _annotate_dashboard_lease_financials(queryset):
                 Subquery(security_total("PAYMENT"), output_field=money_field),
                 zero,
             ),
-            security_adjust_total=Coalesce(
-                Subquery(security_total("ADJUST"), output_field=money_field),
-                zero,
-            ),
         )
         .annotate(
             list_balance=F("invoice_total") - F("payment_total"),
             list_security_due=Greatest(
                 Coalesce(F("security_deposit"), zero)
-                - F("security_paid_total")
-                - F("security_adjust_total"),
+                - F("security_paid_total"),
                 zero,
                 output_field=money_field,
             ),

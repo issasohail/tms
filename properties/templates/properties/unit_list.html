@@ -94,63 +94,87 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
-    @media (min-width: 1200px) {
-        body:has(.unit-page-header) main.container,
-        body:has(.unit-page-header) .container {
-            max-width: 1500px !important;
-        }
+
+/* ==========================================================================
+   BREAKPOINT SYSTEM
+   Desktop : >= 1000px  -> full table, rotated numeric headers
+   Tablet  : 600-999.98 -> card layout, responsive 5+ field grid
+   Mobile  : <= 599.98  -> card layout, 3 fields per row
+   ========================================================================== */
+
+@media (min-width: 1200px) {
+    body:has(.unit-page-header) main.container,
+    body:has(.unit-page-header) .container {
+        max-width: 1500px !important;
     }
-    .unit-page-header {
-        gap: 12px;
-    }
-    .unit-page-actions {
-        flex-wrap: wrap;
-        justify-content: flex-end;
-    }
-    .unit-page-actions .btn,
-    .unit-page-actions .dropdown-toggle {
-        white-space: nowrap;
-    }
-    .unit-filter-card {
-        border: 0;
-        border-radius: 8px;
-        box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
-    }
-    .unit-filter-card .form-label {
-        margin-bottom: 4px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #475569;
-    }
-    .unit-filter-row {
-        display: flex;
-        align-items: flex-end;
-        gap: 10px;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding-bottom: 2px;
-        -webkit-overflow-scrolling: touch;
-    }
-    .unit-filter-field {
-        flex: 0 0 auto;
-    }
-    .unit-filter-property {
-        width: min(430px, 42vw);
-        min-width: 260px;
-    }
-    .unit-filter-status {
-        width: min(320px, 30vw);
-        min-width: 210px;
-    }
-    .unit-filter-buttons {
-        display: flex;
-        flex: 0 0 auto;
-        gap: 8px;
-        align-items: flex-end;
-    }
-    .unit-filter-card .btn {
-        min-height: 38px;
-    }
+}
+
+/* --------------------------------------------------------------------------
+   Page header / action buttons (shared, refined per tier below)
+   -------------------------------------------------------------------------- */
+.unit-page-header {
+    gap: 12px;
+}
+.unit-page-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.unit-page-actions .btn,
+.unit-page-actions .dropdown-toggle {
+    white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Filter card (shared, refined per tier below)
+   -------------------------------------------------------------------------- */
+.unit-filter-card {
+    border: 0;
+    border-radius: 8px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+}
+.unit-filter-card .form-label {
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+}
+.unit-filter-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+}
+.unit-filter-field {
+    flex: 0 0 auto;
+}
+.unit-filter-property {
+    width: min(430px, 42vw);
+    min-width: 260px;
+}
+.unit-filter-status {
+    width: min(320px, 30vw);
+    min-width: 210px;
+}
+.unit-filter-buttons {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    align-items: flex-end;
+}
+.unit-filter-card .btn {
+    min-height: 38px;
+}
+
+/* ==========================================================================
+   DESKTOP TABLE (>= 1000px)
+   Widths are keyed to the real column classes from tables.py (UnitTable),
+   not nth-child, so they stay correct if columns are re-ordered.
+   Numeric-only columns get a rotated (-90deg) header to save width.
+   ========================================================================== */
+@media (min-width: 1000px) {
     .unit-table-wrap {
         border: 1px solid #dee2e6;
         border-radius: 6px;
@@ -160,7 +184,7 @@
     }
     .unit-table-wrap table {
         margin-bottom: 0;
-        min-width: 1280px;
+        min-width: 1580px;
         table-layout: auto;
         font-size: 14px !important;
     }
@@ -176,105 +200,146 @@
         color: #475569;
         background: #f8fafc;
     }
-    .unit-table-wrap td:nth-child(3),
-    .unit-table-wrap td:nth-child(4),
-    .unit-table-wrap td:nth-child(10) {
+
+    /* Columns that need real horizontal room for text/badges/buttons */
+    .unit-table-wrap .property-col,
+    .unit-table-wrap .building-type-col,
+    .unit-table-wrap .security-text-col,
+    .unit-table-wrap .status-col,
+    .unit-table-wrap .room-amenities-col,
+    .unit-table-wrap .inventory-col {
         white-space: normal;
     }
-    .unit-table-wrap td:nth-child(2),
-    .unit-table-wrap th:nth-child(2) {
+
+    /* SN */
+    .unit-table-wrap th:first-child,
+    .unit-table-wrap td:first-child {
+        width: 32px;
+        min-width: 32px;
+        max-width: 32px;
+        text-align: center;
+    }
+
+    /* Unit (sticky, first data column) */
+    .unit-table-wrap .unit-number-col {
+        width: 130px;
+        min-width: 130px;
+        max-width: 130px;
+    }
+    .unit-table-wrap th.unit-number-col,
+    .unit-table-wrap td.unit-number-col {
         position: sticky;
         left: 0;
         z-index: 2;
         background: inherit;
         box-shadow: 1px 0 0 #dee2e6;
     }
-    .unit-table-wrap th:nth-child(2) {
+    .unit-table-wrap th.unit-number-col {
         z-index: 3;
         background: #f8fafc;
     }
-    .unit-table-wrap th:nth-child(1),
-    .unit-table-wrap td:nth-child(1) {
-        width: 48px;
-        min-width: 48px;
-        max-width: 48px;
+
+    .unit-table-wrap .property-col {
+        width: 150px;
+        min-width: 150px;
+        max-width: 160px;
     }
-    .unit-table-wrap th:nth-child(2),
-    .unit-table-wrap td:nth-child(2) {
-        width: 112px;
-        min-width: 112px;
-        max-width: 112px;
+    .unit-table-wrap .building-type-col {
+        width: 110px;
+        min-width: 110px;
+        max-width: 120px;
     }
-    .unit-table-wrap th:nth-child(3),
-    .unit-table-wrap td:nth-child(3) {
-        width: 82px;
-        min-width: 82px;
-        max-width: 92px;
+    .unit-table-wrap .rent-col {
+        width: 70px;
+        min-width: 70px;
     }
-    .unit-table-wrap th:nth-child(4),
-    .unit-table-wrap td:nth-child(4) {
-        width: 135px;
-        min-width: 135px;
+    .unit-table-wrap .meter-col {
+        width: 60px;
+        min-width: 60px;
+    }
+    .unit-table-wrap .maintenance-col {
+        width: 65px;
+        min-width: 65px;
+    }
+    .unit-table-wrap .water-col {
+        width: 55px;
+        min-width: 55px;
+    }
+    .unit-table-wrap .internet-col {
+        width: 60px;
+        min-width: 60px;
+    }
+    .unit-table-wrap .security-text-col {
+        width: 130px;
+        min-width: 130px;
+        max-width: 140px;
+    }
+    .unit-table-wrap .security-amount-col {
+        width: 65px;
+        min-width: 65px;
+    }
+    .unit-table-wrap .room-amenities-col {
+        width: 145px;
+        min-width: 145px;
         max-width: 145px;
     }
-    .unit-table-wrap th:nth-child(5),
-    .unit-table-wrap td:nth-child(5),
-    .unit-table-wrap th:nth-child(9),
-    .unit-table-wrap td:nth-child(9) {
-        width: 74px;
-        min-width: 74px;
-        max-width: 78px;
+    .unit-table-wrap .inventory-col {
+        width: 175px;
+        min-width: 175px;
+        max-width: 175px;
     }
-    .unit-table-wrap th:nth-child(6),
-    .unit-table-wrap td:nth-child(6) {
-        width: 132px;
-        min-width: 132px;
-        max-width: 136px;
-    }
-    .unit-table-wrap th:nth-child(7),
-    .unit-table-wrap td:nth-child(7) {
-        width: 96px;
-        min-width: 96px;
-        max-width: 100px;
-    }
-    .unit-table-wrap th:nth-child(8),
-    .unit-table-wrap td:nth-child(8) {
-        width: 112px;
-        min-width: 112px;
-        max-width: 116px;
-    }
-    .unit-table-wrap th:nth-child(10),
-    .unit-table-wrap td:nth-child(10) {
-        width: 132px;
-        min-width: 132px;
-        max-width: 138px;
-    }
-    .unit-table-wrap th:nth-child(11),
-    .unit-table-wrap td:nth-child(11) {
-        width: 90px;
-        min-width: 90px;
-        max-width: 90px;
+    .unit-table-wrap .status-col {
+        width: 110px;
+        min-width: 110px;
+        max-width: 120px;
         text-align: center;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-        line-height: 1.15;
     }
-    .unit-table-wrap th:nth-child(12),
-    .unit-table-wrap td:nth-child(12) {
-        width: 72px;
-        min-width: 60px;
-        max-width: 60px;
+    .unit-table-wrap .smart-col,
+    .unit-table-wrap .public-col {
+        width: 55px;
+        min-width: 55px;
         text-align: center;
-        white-space: nowrap;
     }
 
-    .unit-table-wrap th:nth-child(13),
-    .unit-table-wrap td:nth-child(13) {
-        width: 168px;
-        min-width: 168px;
-        max-width: 168px;
+    /* Actions (sticky, last column) */
+    .table td.unit-actions-cell,
+    .table th.unit-actions-cell {
+        overflow: visible;
+        text-overflow: clip;
+        position: sticky;
+        right: 0;
+        z-index: 4;
+        width: 140px;
+        min-width: 140px;
+        max-width: 140px;
+        background: #fff;
+        box-shadow: -1px 0 0 #dee2e6;
     }
+    .table th.unit-actions-cell {
+        z-index: 5;
+        background: #f8fafc;
+    }
+
+    /* Compact vertical headings wrap multi-word labels into two vertical lines. */
+    .unit-table-wrap th.rotate-col {
+        height: 84px;
+        padding: 6px 4px 8px;
+        vertical-align: bottom;
+        white-space: normal;
+        line-height: 1.05;
+    }
+    .unit-table-wrap th.rotate-col,
+    .unit-table-wrap th.rotate-col a {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        text-align: left;
+        max-height: 72px;
+    }
+    .unit-table-wrap th.rotate-col a {
+        text-decoration: none;
+        color: inherit;
+    }
+
     .unit-inline-edit,
     .unit-building-type-edit,
     .unit-status-edit,
@@ -297,7 +362,7 @@
         box-shadow: inset 0 0 0 1px #b6d4fe;
     }
     .unit-building-type-edit {
-        min-width: 120px;
+        min-width: 90px;
     }
     .unit-status-edit {
         min-width: 78px;
@@ -317,21 +382,6 @@
         white-space: nowrap;
         justify-content: center;
     }
-    .table td.unit-actions-cell,
-    .table th.unit-actions-cell {
-        overflow: visible;
-        text-overflow: clip;
-        position: sticky;
-        right: 0;
-        z-index: 4;
-        min-width: 168px;
-        background: #fff;
-        box-shadow: -1px 0 0 #dee2e6;
-    }
-    .table th.unit-actions-cell {
-        z-index: 5;
-        background: #f8fafc;
-    }
     .unit-actions-cell .actions-wrap {
         gap: 4px !important;
     }
@@ -348,610 +398,15 @@
     .unit-actions-cell .action-btn .btn-text {
         display: none;
     }
-    .actions-wrap .btn,
-    .vacant-leads-table .btn {
-        white-space: nowrap;
-    }
-    .vacant-leads-table th,
-    .vacant-leads-table td {
-        vertical-align: middle;
-    }
-    @media (max-width: 991.98px) {
-        .unit-page-header {
-            align-items: flex-start !important;
-            flex-direction: column;
-        }
-        .unit-page-actions {
-            justify-content: flex-start;
-            width: 100%;
-        }
-        .unit-filter-card {
-            margin-bottom: 14px !important;
-        }
-        .unit-filter-card .card-body {
-            padding: 12px !important;
-        }
-        .unit-filter-property {
-            width: 320px;
-            min-width: 320px;
-        }
-        .unit-filter-status {
-            width: 230px;
-            min-width: 230px;
-        }
-        .unit-table-wrap table {
-            min-width: 980px;
-            font-size: 13px !important;
-        }
-        .unit-table-wrap th,
-        .unit-table-wrap td {
-            padding: 7px 8px;
-        }
-    }
-    @media (max-width: 575.98px) {
-        /*
-           Small-screen layout only.
-           Desktop/tablet styles and all JavaScript are unchanged.
 
-           Visible mobile table columns are:
-           1 = SN
-           2 = Unit
-           5 = Rent
-           11 = Status
-           12 = Actions
-
-           Tweak these values for 360px/iPhone only.
-        */
-        :root {
-            --unit-mobile-font-size: 0.68rem;
-
-            /* Fixed mobile column widths */
-            --unit-mobile-sn-width: 22px;
-            --unit-mobile-rent-width: 48px;
-            --unit-mobile-status-width: 58px;
-            --unit-mobile-actions-width: 96px;
-
-            /* Unit column uses the remaining space automatically */
-            --unit-mobile-cell-pad-y: 3px;
-            --unit-mobile-cell-pad-x: 2px;
-
-            /* Action button controls */
-            --unit-mobile-action-btn-size: 18px;
-            --unit-mobile-action-icon-size: 9px;
-            --unit-mobile-action-gap: 1px;
-        }
-
-        .unit-page-header {
-            gap: 7px;
-            margin-bottom: 8px !important;
-        }
-        .unit-page-header h2 {
-            font-size: 1.25rem;
-            line-height: 1.1;
-        }
-
-        /* Keep Add Unit, Vacant Summary and Export in one line */
-        .unit-page-actions {
-            display: grid !important;
-            grid-template-columns: 30fr 43fr 27fr;
-            gap: 4px !important;
-            width: 100%;
-        }
-        .unit-page-actions .btn,
-        .unit-page-actions .dropdown,
-        .unit-page-actions .dropdown-toggle {
-            width: 100%;
-            min-width: 0;
-        }
-        .unit-page-actions .btn,
-        .unit-page-actions .dropdown-toggle {
-            min-height: 29px;
-            padding: 4px 3px;
-            font-size: 0.65rem;
-            line-height: 1.1;
-        }
-        .unit-page-actions .btn i,
-        .unit-page-actions .dropdown-toggle i {
-            margin-right: 2px !important;
-            font-size: 0.68rem;
-        }
-
-        /* Keep Property, Status and Filter icon in one line */
-        .unit-filter-card {
-            margin-left: -4px;
-            margin-right: -4px;
-            margin-bottom: 9px !important;
-        }
-        .unit-filter-card .card-body {
-            padding: 7px !important;
-        }
-        .unit-filter-card .form-label {
-            display: none;
-        }
-        .unit-filter-row {
-            display: grid;
-            grid-template-columns: minmax(0, 42fr) minmax(0, 42fr) 38px;
-            gap: 5px;
-            overflow: hidden;
-            padding-bottom: 0;
-            width: 100%;
-        }
-        .unit-filter-field,
-        .unit-filter-property,
-        .unit-filter-status,
-        .unit-filter-buttons {
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-filter-buttons {
-            display: block;
-        }
-        .unit-filter-card .form-select {
-            min-height: 31px;
-            height: 31px;
-            padding: 4px 22px 4px 6px;
-            font-size: 0.66rem;
-            line-height: 1.05;
-        }
-        .unit-filter-buttons .btn[type="submit"] {
-            width: 100%;
-            min-width: 0;
-            min-height: 31px;
-            height: 31px;
-            margin-top: 0;
-            padding: 0;
-            font-size: 0;
-            line-height: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .unit-filter-buttons .btn[type="submit"]::before {
-            content: "\f0b0";
-            font-family: "Font Awesome 6 Free";
-            font-weight: 900;
-            font-size: 0.78rem;
-        }
-        .unit-filter-buttons .btn-outline-secondary {
-            display: none;
-        }
-
-        /* No horizontal scrolling on 360px */
-        .unit-table-wrap {
-            margin-left: -8px;
-            margin-right: -8px;
-            border-left: 0;
-            border-right: 0;
-            border-radius: 0;
-            overflow-x: hidden;
-        }
-        .unit-table-wrap table {
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: 100% !important;
-            table-layout: fixed !important;
-            font-size: var(--unit-mobile-font-size) !important;
-        }
-        .unit-table-wrap th,
-        .unit-table-wrap td {
-            padding: var(--unit-mobile-cell-pad-y) var(--unit-mobile-cell-pad-x) !important;
-            white-space: normal;
-            overflow-wrap: normal;
-            word-break: normal;
-            line-height: 1.1;
-            vertical-align: middle;
-        }
-        .unit-table-wrap th {
-            font-size: 0.58rem;
-            letter-spacing: 0;
-            text-transform: uppercase;
-            text-align: center;
-        }
-
-        /* Hide desktop-only columns on mobile. Keep only: SN, Unit, Rent, Status, Actions. */
-        .unit-table-wrap th:nth-child(3),
-        .unit-table-wrap td:nth-child(3),
-        .unit-table-wrap th:nth-child(4),
-        .unit-table-wrap td:nth-child(4),
-        .unit-table-wrap th:nth-child(6),
-        .unit-table-wrap td:nth-child(6),
-        .unit-table-wrap th:nth-child(7),
-        .unit-table-wrap td:nth-child(7),
-        .unit-table-wrap th:nth-child(8),
-        .unit-table-wrap td:nth-child(8),
-        .unit-table-wrap th:nth-child(9),
-        .unit-table-wrap td:nth-child(9),
-        .unit-table-wrap th:nth-child(10),
-        .unit-table-wrap td:nth-child(10) {
-            display: none !important;
-        }
-
-        /* Fixed-width mobile columns */
-        .unit-table-wrap th:nth-child(1),
-        .unit-table-wrap td:nth-child(1) {
-            width: var(--unit-mobile-sn-width) !important;
-            min-width: var(--unit-mobile-sn-width) !important;
-            max-width: var(--unit-mobile-sn-width) !important;
-            text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-        }
-
-        .unit-table-wrap th:nth-child(2),
-        .unit-table-wrap td:nth-child(2) {
-            position: static !important;
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-            box-shadow: none !important;
-            background: inherit;
-        }
-
-        .unit-table-wrap th:nth-child(5),
-        .unit-table-wrap td:nth-child(5) {
-            width: var(--unit-mobile-rent-width) !important;
-            min-width: var(--unit-mobile-rent-width) !important;
-            max-width: var(--unit-mobile-rent-width) !important;
-            text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: clip;
-        }
-
-        .unit-table-wrap th:nth-child(11),
-        .unit-table-wrap td:nth-child(11) {
-            width: var(--unit-mobile-status-width) !important;
-            min-width: var(--unit-mobile-status-width) !important;
-            max-width: var(--unit-mobile-status-width) !important;
-            text-align: center;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: clip;
-        }
-
-        /* Action column: force fixed width so Django Tables2 / Bootstrap cannot shrink it */
-        .unit-table-wrap th:nth-child(13),
-        .unit-table-wrap td:nth-child(13),
-        .table th.unit-actions-cell,
-        .table td.unit-actions-cell {
-            position: static !important;
-            width: var(--unit-mobile-actions-width) !important;
-            min-width: var(--unit-mobile-actions-width) !important;
-            max-width: var(--unit-mobile-actions-width) !important;
-            box-shadow: none !important;
-            background: inherit;
-            overflow: visible !important;
-            white-space: nowrap !important;
-            text-align: center;
-        }
-
-        /* Cleaner mobile headers */
-        .unit-table-wrap th:nth-child(1),
-        .unit-table-wrap th:nth-child(2),
-        .unit-table-wrap th:nth-child(5),
-        .unit-table-wrap th:nth-child(11),
-        .unit-table-wrap th:nth-child(12) {
-            font-size: 0 !important;
-            white-space: nowrap !important;
-        }
-        .unit-table-wrap th:nth-child(1)::after {
-            content: "SN";
-            font-size: 0.58rem;
-        }
-        .unit-table-wrap th:nth-child(2)::after {
-            content: "UNIT";
-            font-size: 0.58rem;
-        }
-        .unit-table-wrap th:nth-child(5)::after {
-            content: "RENT";
-            font-size: 0.58rem;
-        }
-        .unit-table-wrap th:nth-child(11)::after {
-            content: "STATUS";
-            font-size: 0.52rem;
-        }
-        .unit-table-wrap th:nth-child(13)::after {
-            content: "ACTION";
-            font-size: 0.52rem;
-        }
-
-        /* Unit text: compact wrapping */
-        .unit-table-wrap td:nth-child(2) {
-            font-size: 0.65rem;
-            line-height: 1.08;
-            overflow-wrap: anywhere;
-        }
-        .unit-table-wrap td:nth-child(2) a {
-            display: inline-block;
-            max-width: 100%;
-            overflow-wrap: anywhere;
-            line-height: 1.08;
-        }
-
-        /* Status stays compact */
-        .unit-table-wrap td:nth-child(11),
-        .unit-table-wrap td:nth-child(11) a,
-        .unit-table-wrap td:nth-child(11) span,
-        .unit-table-wrap td:nth-child(11) .badge {
-            font-size: 0.58rem !important;
-            line-height: 1.05;
-            white-space: nowrap !important;
-        }
-
-        /* Four filled action buttons on one line */
-        .unit-actions-cell .actions-wrap,
-        .actions-wrap {
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            justify-content: center;
-            align-items: center;
-            gap: var(--unit-mobile-action-gap) !important;
-            white-space: nowrap !important;
-        }
-        .unit-actions-cell .action-btn,
-        .actions-wrap .action-btn {
-            width: var(--unit-mobile-action-btn-size) !important;
-            min-width: var(--unit-mobile-action-btn-size) !important;
-            max-width: var(--unit-mobile-action-btn-size) !important;
-            height: var(--unit-mobile-action-btn-size) !important;
-            min-height: var(--unit-mobile-action-btn-size) !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            border-radius: 4px;
-            display: inline-flex !important;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 var(--unit-mobile-action-btn-size) !important;
-        }
-        .unit-actions-cell .action-btn i,
-        .actions-wrap .action-btn i {
-            font-size: var(--unit-mobile-action-icon-size) !important;
-            line-height: 1;
-            margin: 0 !important;
-        }
-        .unit-actions-cell .action-btn .btn-text,
-        .actions-wrap .action-btn .btn-text {
-            display: none !important;
-        }
-
-        /* Pagination also uses small-screen font size */
-        .pagination,
-        .pagination .page-link,
-        .page-link,
-        .page-item {
-            font-size: var(--unit-mobile-font-size) !important;
-        }
-        .pagination .page-link {
-            padding: 0.25rem 0.45rem !important;
-            min-height: 28px;
-        }
-    }
-    @media (max-width: 380px) {
-        :root {
-            --unit-mobile-font-size: 0.66rem;
-            --unit-mobile-sn-width: 22px;
-            --unit-mobile-rent-width: 48px;
-            --unit-mobile-status-width: 56px;
-            --unit-mobile-actions-width: 96px;
-            --unit-mobile-action-btn-size: 18px;
-            --unit-mobile-action-icon-size: 9px;
-            --unit-mobile-action-gap: 1px;
-        }
-        .unit-page-actions {
-            grid-template-columns: 30fr 43fr 27fr;
-        }
-        .unit-page-actions .btn,
-        .unit-page-actions .dropdown-toggle {
-            font-size: 0.64rem;
-        }
-    }
-    @media (max-width: 767.98px) {
-        .unit-page-header {
-            padding: 2px 0 0;
-        }
-        .unit-page-actions {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 6px !important;
-        }
-        .unit-page-actions .btn,
-        .unit-page-actions .dropdown-toggle {
-            border-radius: 7px;
-            min-height: 34px;
-            font-size: 0.7rem;
-            font-weight: 600;
-        }
-        .unit-filter-card {
-            border-radius: 8px;
-            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
-        }
-        .unit-filter-row {
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px;
-            gap: 7px;
-        }
-        .unit-table-wrap {
-            border: 0;
-            background: transparent;
-            overflow: visible;
-            margin-left: 0;
-            margin-right: 0;
-        }
-        .unit-table-wrap table,
-        .unit-table-wrap tbody,
-        .unit-table-wrap tr,
-        .unit-table-wrap td {
-            display: block;
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-table-wrap table {
-            border: 0 !important;
-            background: transparent;
-            table-layout: auto !important;
-        }
-        .unit-table-wrap thead {
-            display: none;
-        }
-        .unit-table-wrap tbody tr {
-            margin-bottom: 10px;
-            padding: 10px;
-            border: 1px solid #d8e2ee;
-            border-radius: 8px;
-            background: #fff;
-            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-        }
-        .unit-table-wrap tbody tr:nth-child(even) {
-            background: #fbfdff;
-        }
-        .unit-table-wrap th,
-        .unit-table-wrap td,
-        .table td.unit-actions-cell,
-        .table th.unit-actions-cell {
-            position: static !important;
-            box-shadow: none !important;
-            border: 0 !important;
-            background: transparent !important;
-        }
-        .unit-table-wrap td {
-            display: flex !important;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            min-height: 30px;
-            padding: 5px 0 !important;
-            font-size: 0.78rem !important;
-            line-height: 1.2;
-            white-space: normal !important;
-            overflow: visible !important;
-        }
-        .unit-table-wrap td::before {
-            flex: 0 0 78px;
-            color: #64748b;
-            content: "";
-            font-size: 0.64rem;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-        .unit-table-wrap td:nth-child(1),
-        .unit-table-wrap td:nth-child(4),
-        .unit-table-wrap td:nth-child(6),
-        .unit-table-wrap td:nth-child(7),
-        .unit-table-wrap td:nth-child(8),
-        .unit-table-wrap td:nth-child(9),
-        .unit-table-wrap td:nth-child(10) {
-            display: none !important;
-        }
-        .unit-table-wrap td:nth-child(2) {
-            padding-top: 0 !important;
-            font-size: 1rem !important;
-            font-weight: 700;
-            border-bottom: 1px solid #edf2f7 !important;
-            margin-bottom: 4px;
-        }
-        .unit-table-wrap td:nth-child(2)::before {
-            content: "Unit";
-        }
-        .unit-table-wrap td:nth-child(3)::before {
-            content: "Property";
-        }
-        .unit-table-wrap td:nth-child(5)::before {
-            content: "Rent";
-        }
-        .unit-table-wrap td:nth-child(11)::before {
-            content: "Status";
-        }
-        .unit-table-wrap td:nth-child(12)::before {
-            content: "Smart";
-        }
-        .unit-table-wrap td:nth-child(13)::before {
-            content: "Public";
-        }
-        .unit-table-wrap td.unit-actions-cell::before {
-            content: "Actions";
-        }
-        .unit-table-wrap td:nth-child(2) a {
-            color: #0f172a;
-            text-decoration: none;
-            overflow-wrap: anywhere;
-        }
-        .unit-table-wrap td:nth-child(11),
-        .unit-table-wrap td:nth-child(11) a,
-        .unit-table-wrap td:nth-child(11) span,
-        .unit-table-wrap td:nth-child(11) .badge {
-            font-size: 0.72rem !important;
-            white-space: normal !important;
-        }
-        .unit-status-edit {
-            min-width: 94px;
-            padding: 5px 8px;
-            text-align: center;
-        }
-        .unit-status-select {
-            width: 132px;
-            min-width: 132px;
-        }
-        .unit-actions-cell .actions-wrap,
-        .actions-wrap {
-            justify-content: flex-end;
-            gap: 5px !important;
-            width: 100%;
-        }
-        .unit-actions-cell .action-btn,
-        .actions-wrap .action-btn {
-            width: 30px !important;
-            min-width: 30px !important;
-            max-width: 30px !important;
-            height: 28px !important;
-            min-height: 28px !important;
-            border-radius: 7px;
-        }
-        .unit-actions-cell .action-btn i,
-        .actions-wrap .action-btn i {
-            font-size: 0.78rem !important;
-        }
-    }
-    @media (min-width: 768px) and (max-width: 991.98px) {
-        .unit-table-wrap {
-            border-radius: 8px;
-            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-        }
-        .unit-table-wrap table {
-            min-width: 1080px;
-        }
-        .unit-table-wrap th,
-        .unit-table-wrap td {
-            padding: 7px 8px;
-        }
-    }
-
-    /* Unit-list charge and inventory layout. Class selectors keep this stable
-       when columns are added or reordered. */
-    .unit-table-wrap table {
-        min-width: 1940px;
-    }
-    .unit-table-wrap .charge-col {
-        width: 112px;
-        min-width: 112px;
-        max-width: 126px;
-    }
-    .unit-table-wrap .security-text-col {
-        min-width: 118px;
-        max-width: 132px;
-        white-space: normal;
-    }
-    .unit-table-wrap .inventory-col {
-        width: 260px;
-        min-width: 260px;
-        max-width: 260px;
-        white-space: normal;
-    }
+    .room-amenities-summary,
     .inventory-summary {
         display: flex;
         flex-wrap: wrap;
         gap: 3px;
         margin-bottom: 3px;
     }
+    .room-amenity-chip,
     .inventory-chip,
     .inventory-more {
         display: inline-block;
@@ -971,208 +426,347 @@
         font-size: 0.68rem;
         white-space: nowrap;
     }
-    .unit-inline-edit {
-        font-variant-numeric: tabular-nums;
+}
+
+.actions-wrap .btn,
+.vacant-leads-table .btn {
+    white-space: nowrap;
+}
+.vacant-leads-table th,
+.vacant-leads-table td {
+    vertical-align: middle;
+}
+.unit-inline-edit {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   TABLET + MOBILE SHARED CARD LAYOUT (<= 999.98px)
+   Table becomes a stack of cards with compact label/value field tiles.
+   Selectors use the real column classes from tables.py.
+   ========================================================================== */
+@media (max-width: 999.98px) {
+    .unit-page-header {
+        align-items: flex-start !important;
+        flex-direction: column;
     }
-    .unit-inline-edit + .form-control,
-    .charge-col .form-control {
-        min-width: 96px;
+    .unit-page-actions {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px !important;
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .unit-page-actions .btn,
+    .unit-page-actions .dropdown,
+    .unit-page-actions .dropdown-toggle {
+        width: 100%;
+        min-width: 0;
+        border-radius: 7px;
+        min-height: 34px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 4px 6px;
     }
 
-    @media (max-width: 991.98px) {
-        .unit-filter-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
-            gap: 8px;
-            width: 100%;
-            overflow: visible;
-        }
-        .unit-filter-field,
-        .unit-filter-property,
-        .unit-filter-status {
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-filter-buttons {
-            display: flex;
-        }
-        .unit-filter-card .form-select {
-            width: 100%;
-        }
-        .unit-table-wrap {
-            border: 0;
-            background: transparent;
-            box-shadow: none;
-            overflow: visible;
-        }
-        .unit-table-wrap table,
-        .unit-table-wrap tbody,
-        .unit-table-wrap tr,
-        .unit-table-wrap td {
-            display: block;
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-table-wrap table {
-            min-width: 0 !important;
-            border: 0 !important;
-            background: transparent;
-        }
-        .unit-table-wrap thead {
-            display: none;
-        }
-        .unit-table-wrap tbody {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-        }
-        .unit-table-wrap tbody tr {
-            margin: 0;
-            padding: 12px;
-            border: 1px solid #d8e2ee;
-            border-radius: 9px;
-            background: #fff !important;
-            box-shadow: 0 7px 18px rgba(15, 23, 42, 0.08);
-        }
-        .unit-table-wrap td,
-        .table td.unit-actions-cell {
-            position: static !important;
-            display: flex !important;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            min-height: 30px;
-            padding: 5px 0 !important;
-            border: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            white-space: normal !important;
-            text-align: right;
-        }
-        .unit-table-wrap tbody td:first-child,
-        .unit-table-wrap td.building-type-col,
-        .unit-table-wrap td.meter-col {
-            display: none !important;
-        }
-        .unit-table-wrap td::before {
-            flex: 0 0 104px;
-            color: #64748b;
-            font-size: 0.64rem;
-            font-weight: 700;
-            text-align: left;
-            text-transform: uppercase;
-        }
-        .unit-table-wrap td.unit-number-col {
-            align-items: center;
-            padding-top: 0 !important;
-            margin-bottom: 4px;
-            border-bottom: 1px solid #edf2f7 !important;
-            font-size: 1rem !important;
-            font-weight: 700;
-        }
-        .unit-number-col::before { content: "Unit" !important; }
-        .property-col::before { content: "Property" !important; }
-        .rent-col::before { content: "Monthly rent" !important; }
-        .maintenance-col::before { content: "Maintenance" !important; }
-        .water-col::before { content: "Water" !important; }
-        .internet-col::before { content: "Internet" !important; }
-        .security-text-col::before { content: "Security text" !important; }
-        .security-amount-col::before { content: "Security amount" !important; }
-        .inventory-col::before { content: "Amenities" !important; }
-        .status-col::before { content: "Status" !important; }
-        .smart-col::before { content: "Smart meter" !important; }
-        .public-col::before { content: "Public" !important; }
-        .unit-actions-cell::before { content: "Actions" !important; }
-        .unit-table-wrap td.inventory-col {
-            align-items: flex-start;
-        }
-        .inventory-col > div,
-        .inventory-col > span,
-        .inventory-col > a {
-            max-width: calc(100% - 116px);
-        }
-        .inventory-summary {
-            justify-content: flex-end;
-        }
-        .unit-actions-cell .actions-wrap {
-            justify-content: flex-end;
-        }
+    .unit-filter-card {
+        margin-bottom: 14px !important;
+        border-radius: 8px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
+    }
+    .unit-filter-card .card-body {
+        padding: 12px !important;
+    }
+    .unit-filter-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px;
+        gap: 8px;
+        overflow: visible;
+        width: 100%;
+    }
+    .unit-filter-field,
+    .unit-filter-property,
+    .unit-filter-status {
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+    .unit-filter-buttons {
+        display: flex;
+    }
+    .unit-filter-card .form-select {
+        width: 100%;
     }
 
-    @media (max-width: 767.98px) {
-        .unit-table-wrap tbody {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 10px;
-        }
+    /* Table -> card list */
+    .unit-table-wrap {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow: visible;
+    }
+    .unit-table-wrap table,
+    .unit-table-wrap tbody {
+        display: block;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+    .unit-table-wrap table {
+        min-width: 0 !important;
+        border: 0 !important;
+        background: transparent;
+    }
+    .unit-table-wrap thead {
+        display: none;
+    }
+    .unit-table-wrap tbody {
+        display: block;
+    }
+    .unit-table-wrap tbody tr {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+        gap: 10px 8px;
+        width: 100%;
+        margin: 0 0 12px;
+        padding: 12px;
+        border: 1px solid #d8e2ee;
+        border-radius: 9px;
+        background: #fff !important;
+        box-shadow: 0 7px 18px rgba(15, 23, 42, 0.08);
+    }
+    .unit-table-wrap td,
+    .table td.unit-actions-cell {
+        position: static !important;
+        display: block !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        min-height: 30px;
+        padding: 3px !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        white-space: normal !important;
+        text-align: left;
+        overflow-wrap: anywhere;
     }
 
-    @media (max-width: 575.98px) {
-        .unit-filter-card {
-            margin-left: 0;
-            margin-right: 0;
-        }
-        .unit-filter-card .form-label {
-            display: block;
-        }
-        .unit-filter-row {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 7px;
-        }
-        .unit-filter-buttons {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 7px;
-        }
-        .unit-filter-buttons .btn[type="submit"] {
-            width: auto;
-            min-height: 34px;
-            height: auto;
-            font-size: 0.72rem;
-        }
-        .unit-filter-buttons .btn[type="submit"]::before {
-            margin-right: 5px;
-        }
-        .unit-filter-buttons .btn-outline-secondary {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .unit-filter-buttons .btn:only-child {
-            grid-column: 1 / -1;
-        }
-        .unit-table-wrap td.unit-col,
-        .unit-table-wrap td.charge-col,
-        .unit-table-wrap td.inventory-col,
-        .unit-table-wrap td.status-col,
-        .unit-table-wrap td.smart-col,
-        .unit-table-wrap td.public-col,
-        .unit-table-wrap td.unit-actions-cell {
-            display: flex !important;
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-table-wrap td.building-type-col,
-        .unit-table-wrap td.meter-col {
-            display: none !important;
-        }
-        .unit-table-wrap td::before {
-            flex-basis: 98px;
-        }
-        .inventory-col > div,
-        .inventory-col > span,
-        .inventory-col > a {
-            max-width: calc(100% - 108px);
-        }
-        .unit-table-wrap td.charge-col,
-        .unit-table-wrap td.charge-col .unit-inline-edit {
-            font-size: 0.78rem !important;
-            line-height: 1.2;
-            white-space: normal !important;
-        }
+    .unit-table-wrap td::before {
+        display: block;
+        margin-bottom: 3px;
+        color: #64748b;
+        font-size: 0.64rem;
+        font-weight: 700;
+        text-align: left;
+        text-transform: uppercase;
     }
+    .sn-col::before { content: "S.N#" !important; }
+    .unit-number-col::before { content: "Unit" !important; }
+    .property-col::before { content: "Property" !important; }
+    .building-type-col::before { content: "Building type" !important; }
+    .rent-col::before { content: "Monthly rent" !important; }
+    .meter-col:nth-of-type(6)::before { content: "Electric meter" !important; }
+    .meter-col:nth-of-type(7)::before { content: "Gas meter" !important; }
+    .maintenance-col::before { content: "Maintenance" !important; }
+    .water-col::before { content: "Water" !important; }
+    .internet-col::before { content: "Internet" !important; }
+    .security-text-col::before { content: "Security text" !important; }
+    .security-amount-col::before { content: "Security amount" !important; }
+    .room-amenities-col::before { content: "Room amenities" !important; }
+    .inventory-col::before { content: "Inventory" !important; }
+    .status-col::before { content: "Status" !important; }
+    .smart-col::before { content: "Smart meter" !important; }
+    .public-col::before { content: "Public" !important; }
+    .unit-actions-cell::before { content: "Actions" !important; }
+
+    .unit-table-wrap td.unit-number-col {
+        font-size: 0.9rem !important;
+        font-weight: 700;
+    }
+    .unit-table-wrap td.unit-number-col a {
+        color: #0f172a;
+        text-decoration: none;
+        overflow-wrap: anywhere;
+    }
+    .unit-table-wrap td.room-amenities-col,
+    .unit-table-wrap td.inventory-col {
+        grid-column: span 2;
+    }
+    .room-amenities-col > div,
+    .room-amenities-col > span,
+    .room-amenities-col > a,
+    .inventory-col > div,
+    .inventory-col > span,
+    .inventory-col > a {
+        max-width: 100%;
+    }
+    .room-amenities-summary,
+    .inventory-summary {
+        justify-content: flex-start;
+    }
+    .unit-table-wrap td.unit-actions-cell {
+        grid-column: 1 / -1;
+    }
+    .unit-actions-cell .actions-wrap,
+    .actions-wrap {
+        justify-content: flex-start;
+        gap: 5px !important;
+        width: 100%;
+    }
+    .unit-actions-cell .action-btn,
+    .actions-wrap .action-btn {
+        width: 30px !important;
+        min-width: 30px !important;
+        max-width: 30px !important;
+        height: 28px !important;
+        min-height: 28px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 7px;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+    .unit-actions-cell .action-btn i,
+    .actions-wrap .action-btn i {
+        font-size: 0.78rem !important;
+        margin: 0 !important;
+    }
+    .unit-actions-cell .action-btn .btn-text,
+    .actions-wrap .action-btn .btn-text {
+        display: none !important;
+    }
+
+    .unit-status-edit {
+        min-width: 94px;
+        padding: 5px 8px;
+        text-align: center;
+    }
+    .unit-status-select {
+        min-width: 132px;
+        width: 132px;
+    }
+    .unit-inline-edit,
+    .unit-building-type-edit,
+    .unit-public-edit,
+    .unit-smart-edit {
+        display: inline-block;
+        padding: 3px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   TABLET ONLY (600px - 999.98px): responsive 5-6+ fields per row
+   -------------------------------------------------------------------------- */
+@media (min-width: 600px) and (max-width: 999.98px) {
+    .unit-page-header {
+        padding: 2px 0 0;
+    }
+    .unit-page-actions .btn,
+    .unit-page-actions .dropdown-toggle {
+        min-height: 38px;
+        font-size: 0.78rem;
+    }
+    .unit-filter-row {
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
+    }
+    .unit-table-wrap td {
+        font-size: 0.82rem !important;
+    }
+    .unit-table-wrap td::before {
+        font-size: 0.66rem;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   MOBILE ONLY (<= 599.98px): 3 fields per row, compact sizing
+   -------------------------------------------------------------------------- */
+@media (max-width: 599.98px) {
+    .unit-page-header {
+        gap: 7px;
+        margin-bottom: 8px !important;
+    }
+    .unit-page-header h2 {
+        font-size: 1.25rem;
+        line-height: 1.1;
+    }
+    .unit-page-actions .btn,
+    .unit-page-actions .dropdown-toggle {
+        min-height: 32px;
+        font-size: 0.68rem;
+        padding: 4px 4px;
+    }
+    .unit-page-actions .btn i,
+    .unit-page-actions .dropdown-toggle i {
+        margin-right: 3px !important;
+        font-size: 0.7rem;
+    }
+
+    .unit-filter-card {
+        margin-left: 0;
+        margin-right: 0;
+        margin-bottom: 9px !important;
+    }
+    .unit-filter-card .card-body {
+        padding: 10px !important;
+    }
+    .unit-filter-card .form-label {
+        display: block;
+    }
+    .unit-filter-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 7px;
+    }
+    .unit-filter-buttons {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 7px;
+    }
+    .unit-filter-buttons .btn[type="submit"] {
+        width: auto;
+        min-height: 34px;
+        height: auto;
+        font-size: 0.72rem;
+    }
+    .unit-filter-buttons .btn-outline-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .unit-filter-buttons .btn:only-child {
+        grid-column: 1 / -1;
+    }
+
+    .unit-table-wrap tbody tr {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px 5px;
+        padding: 9px;
+    }
+    .unit-table-wrap td {
+        font-size: 0.78rem !important;
+        min-height: 26px;
+    }
+    .unit-table-wrap td::before {
+        font-size: 0.62rem;
+    }
+    .unit-table-wrap td.charge-col,
+    .unit-table-wrap td.charge-col .unit-inline-edit {
+        font-size: 0.78rem !important;
+        line-height: 1.2;
+        white-space: normal !important;
+    }
+    .room-amenities-col > div,
+    .room-amenities-col > span,
+    .room-amenities-col > a,
+    .inventory-col > div,
+    .inventory-col > span,
+    .inventory-col > a {
+        max-width: 100%;
+    }
+}
 </style>
 {% endblock %}
 {% block extra_js %}

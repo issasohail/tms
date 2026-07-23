@@ -305,7 +305,7 @@ class UnitListView(SingleTableMixin, FilterView):
     table_class = UnitTable
     template_name = "properties/unit_list.html"
     filterset_class = UnitFilter
-    table_pagination = {"per_page": 25, "paginator_class": LazyPaginator}
+    table_pagination = {"per_page": 60, "paginator_class": LazyPaginator}
 
     def _get_building_types(self):
         if not hasattr(self, "_building_types_cache"):
@@ -371,6 +371,11 @@ class UnitListView(SingleTableMixin, FilterView):
                 "is_smart_meter",
                 "security_requires",
                 "security_deposit_amount",
+                "bedrooms",
+                "bathrooms",
+                "kitchens",
+                "hall",
+                "wardrobes",
                 "show_publicly",
                 "status",
                 "property__id",

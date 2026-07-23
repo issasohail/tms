@@ -480,6 +480,10 @@ class PendingWhatsAppMedia(models.Model):
     property = models.ForeignKey("properties.Property", on_delete=models.SET_NULL, null=True, blank=True)
     unit = models.ForeignKey("properties.Unit", on_delete=models.SET_NULL, null=True, blank=True)
     ai_confidence = models.PositiveSmallIntegerField(default=0)
+    processing = models.BooleanField(
+        default=False,
+        help_text="True while a video/audio file is still downloading in the background.",
+    )
     ai_notes = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     submitted_by_staff = models.ForeignKey(

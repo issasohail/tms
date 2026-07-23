@@ -18,6 +18,8 @@ LEASE_TO_HISTORY_FIELDS = [
     "monthly_rent",
     "society_maintenance",
     "water_charges",
+    "bill_water_charges",
+    "bill_recurring_charges",
     "internet_charges",
     "agreement_charges",
     "security_deposit",

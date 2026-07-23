@@ -984,6 +984,7 @@ Thank you!`;
   function initPaymentDetailSync(){
     function n(v){ return parseFloat(String(v || '').replace(/,/g, '')) || 0; }
     function f2(v){ return (Math.round(v * 100) / 100).toFixed(2); }
+    function clamp(v, min, max){ return Math.min(max, Math.max(min, v)); }
 
     const $form = $('#paymentForm');
     const $mode = $('#id_payment_type');
@@ -998,8 +999,9 @@ Thank you!`;
     $lease.prop('readonly', false);
     $sec.prop('readonly', false);
     let totalDrivenMode = ($mode.val() || 'LEASE').toUpperCase();
+    let allocationLock = false;
 
-    function syncFromAllocations(updateTotal, updateEntryMode){
+    function syncDerivedType(){
       const leaseAmt = n($lease.val());
       const secAmt = n($sec.val());
       let mode = 'LEASE';
@@ -1026,8 +1028,7 @@ Thank you!`;
 
       $mode.val(mode);
       $securityType.val(mode === 'REFUND' ? 'REFUND' : 'PAYMENT');
-      if (updateTotal !== false) $total.val(f2(leaseAmt + secAmt));
-      if (updateEntryMode !== false) totalDrivenMode = mode;
+      totalDrivenMode = mode;
       $lease[0].setCustomValidity(invalid);
       $sec[0].setCustomValidity(invalid);
       $label
@@ -1042,31 +1043,75 @@ Thank you!`;
       if (totalDrivenMode === 'REFUND'){
         $lease.val(f2(0));
         $sec.val(f2(-Math.abs(total)));
-      } else if (totalDrivenMode === 'LEASE_REFUND'){
+        $total.val(f2(-Math.abs(total)));
+      } else if (total < 0 || totalDrivenMode === 'LEASE_REFUND'){
         $lease.val(f2(-Math.abs(total)));
         $sec.val(f2(0));
-      } else if (totalDrivenMode === 'SECURITY'){
-        $lease.val(f2(0));
-        $sec.val(f2(Math.abs(total)));
       } else {
         // A normal edited amount starts fully allocated to the lease.
         $lease.val(f2(total));
         $sec.val(f2(0));
       }
 
-      // Keep typing smooth; format the total only after change/submit.
-      syncFromAllocations(false, false);
+      // Payment Amount is the source of truth. A normal amount starts fully
+      // allocated to lease; users can then move any portion to security.
+      syncDerivedType();
     }
 
-    $lease.on('input change', syncFromAllocations);
-    $sec.on('input change', syncFromAllocations);
+    function syncFromAllocation(changed, formatChanged){
+      if (allocationLock) return;
+      allocationLock = true;
+
+      const total = n($total.val());
+
+      if (total >= 0){
+        if (changed === 'lease'){
+          const leaseAmt = clamp(n($lease.val()), 0, total);
+          if (formatChanged || leaseAmt !== n($lease.val())) $lease.val(f2(leaseAmt));
+          $sec.val(f2(total - leaseAmt));
+        } else {
+          const secAmt = clamp(n($sec.val()), 0, total);
+          if (formatChanged || secAmt !== n($sec.val())) $sec.val(f2(secAmt));
+          $lease.val(f2(total - secAmt));
+        }
+      } else {
+        // Refunds cannot be split. Keep their existing separate-entry behavior.
+        if (changed === 'lease'){
+          $sec.val(f2(0));
+          $total.val(f2(n($lease.val())));
+        } else {
+          $lease.val(f2(0));
+          $total.val(f2(n($sec.val())));
+        }
+      }
+
+      syncDerivedType();
+      allocationLock = false;
+    }
+
+    $lease.on('input', function(){ syncFromAllocation('lease', false); });
+    $lease.on('change', function(){ syncFromAllocation('lease', true); });
+    $sec.on('input', function(){ syncFromAllocation('security', false); });
+    $sec.on('change', function(){ syncFromAllocation('security', true); });
     $total.on('input', syncFromTotal);
-    $total.on('change', function(){ syncFromAllocations(); });
+    $total.on('change', function(){
+      $total.val(f2(n($total.val())));
+      syncFromTotal();
+    });
     $form.on('submit', function(){
-      syncFromAllocations();
+      if (n($total.val()) >= 0){
+        const leaseAmt = clamp(n($lease.val()), 0, n($total.val()));
+        $lease.val(f2(leaseAmt));
+        $sec.val(f2(n($total.val()) - leaseAmt));
+      }
+      syncDerivedType();
       if (!$lease[0].checkValidity()) $lease[0].reportValidity();
     });
-    syncFromAllocations();
+    // Preserve an existing saved split on page load.
+    syncDerivedType();
+    if (n($lease.val()) + n($sec.val()) < 0){
+      $total.val(f2(n($lease.val()) + n($sec.val())));
+    }
   }
 
 })(jQuery);

@@ -15,6 +15,49 @@ def process_whatsapp_ai_message_task(self, message_log_id):
     logger.info("Processed WhatsApp AI message %s through Celery", message_log_id)
 
 
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
+def download_pending_media_task(self, pending_media_id):
+    """Fetch the actual bytes for a video/audio PendingWhatsAppMedia row in the
+    background, so the webhook reply for that message never has to wait on a
+    slow WhatsApp CDN download. See media_processor.create_pending_media, which
+    creates the row immediately with processing=True and defers this call."""
+    from django.conf import settings
+    from django.core.files.base import ContentFile
+
+    from whatsapp.models import PendingWhatsAppMedia
+    from whatsapp.services.whatsapp import WhatsAppService
+
+    pending = PendingWhatsAppMedia.objects.filter(pk=pending_media_id).first()
+    if not pending:
+        logger.warning("download_pending_media_task: pending media %s no longer exists", pending_media_id)
+        return
+    if not pending.whatsapp_media_id:
+        pending.processing = False
+        pending.ai_notes = f"{pending.ai_notes} No WhatsApp media id was available to download.".strip()
+        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+        return
+
+    content = WhatsAppService().download_media_bytes(pending.whatsapp_media_id)
+    if not content:
+        pending.processing = False
+        pending.ai_notes = f"{pending.ai_notes} Background download failed; check WhatsApp media token/config.".strip()
+        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+        return
+
+    max_bytes = int(getattr(settings, "WHATSAPP_MAX_INBOUND_MEDIA_BYTES", 16 * 1024 * 1024))
+    if len(content) > max_bytes:
+        pending.processing = False
+        pending.ai_notes = f"{pending.ai_notes} File exceeded the size limit and was discarded.".strip()
+        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+        return
+
+    filename = pending.original_filename or f"whatsapp-{pending.whatsapp_media_id}.bin"
+    pending.file.save(filename, ContentFile(content), save=False)
+    pending.processing = False
+    pending.save(update_fields=["file", "processing", "updated_at"])
+    logger.info("Downloaded deferred WhatsApp media for pending media %s", pending_media_id)
+
+
 @shared_task
 def process_whatsapp_handover_reminders_task():
     from whatsapp.services.handover.reminders import send_due_handover_reminders

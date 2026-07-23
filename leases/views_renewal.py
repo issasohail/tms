@@ -36,9 +36,12 @@ HISTORY_FINANCIAL_FIELDS = [
     "monthly_rent",
     "society_maintenance",
     "water_charges",
+    "bill_water_charges",
+    "bill_recurring_charges",
     "internet_charges",
     "agreement_charges",
     "security_deposit",
+    "rent_increase_percent",
 ]
 
 
@@ -52,9 +55,12 @@ def _lease_with_history_values(lease, history):
         "monthly_rent",
         "society_maintenance",
         "water_charges",
+        "bill_water_charges",
+        "bill_recurring_charges",
         "internet_charges",
         "agreement_charges",
-        "security_deposit",        "terms",
+        "security_deposit",
+        "terms",
         "rent_increase_percent",
     ]:
         if hasattr(history, field):

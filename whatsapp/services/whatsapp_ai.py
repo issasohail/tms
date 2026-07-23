@@ -682,6 +682,25 @@ class WhatsAppAIAssistant:
             media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
             media.ai_notes = f"{media.ai_notes} Tenant selected Upload Payment Receipt.".strip()
             media.save(update_fields=["purpose", "ai_notes", "updated_at"])
+        if conversation.pending_state == "tenant_maintenance_details":
+            # Tenant picked "Maintenance request" and sent photos/videos before
+            # typing a description. Trust conversation state over the caption
+            # keyword guesser (detect_media_purpose), which otherwise misses
+            # captionless media and drops it back into the generic upload menu.
+            media.purpose = PendingWhatsAppMedia.PURPOSE_MAINTENANCE
+            media.ai_notes = f"{media.ai_notes} Routed to maintenance because the tenant was mid-flow.".strip()
+            media.save(update_fields=["purpose", "ai_notes", "updated_at"])
+            pending = create_pending_maintenance(message_log, conversation, selected_lease, media=media)
+            conversation.pending_state = "pending_maintenance"
+            conversation.context["pending_maintenance_id"] = pending.pk
+            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            notify_staff_pending_request("maintenance", pending)
+            return (
+                "Got it — I'll treat this as part of the same maintenance request. "
+                "Send more photos/videos, tell me the issue if you haven't already, or reply DONE to submit.",
+                "maintenance_media",
+                {"lease": selected_lease, "pending_maintenance_id": pending.pk},
+            )
         pending_maintenance_id = conversation.context.get("pending_maintenance_id")
         if conversation.pending_state == "pending_maintenance" and pending_maintenance_id:
             pending = PendingWhatsAppMaintenance.objects.filter(
@@ -820,6 +839,23 @@ class WhatsAppAIAssistant:
                 self._clear_context_keys(conversation, "pending_maintenance_id")
                 conversation.save(update_fields=["pending_state", "context", "updated_at"])
                 return "Please describe the new maintenance issue, then send its photos.", "maintenance_new_request", {}
+            if pending and (text or "").strip():
+                # Media-first requests start with no description at all. Treat
+                # any other text sent while the batch is open as detail to add,
+                # rather than dropping it or bouncing to an unrelated menu.
+                issue, urgency, confidence = detect_maintenance_issue(text)
+                pending.description = f"{pending.description}\n{text}".strip() if pending.description else text
+                if pending.issue_type in {"", "Other"} and issue != "Other":
+                    pending.issue_type = issue
+                if urgency == "urgent":
+                    pending.urgency = urgency
+                pending.ai_confidence = max(pending.ai_confidence or 0, confidence)
+                pending.save(update_fields=["description", "issue_type", "urgency", "ai_confidence", "updated_at"])
+                return (
+                    "Added to the request. Send more photos/videos or reply DONE to submit.",
+                    "maintenance_description_added",
+                    {"pending_maintenance_id": pending.pk},
+                )
         if conversation.pending_state == "suggestion_capture":
             if lowered in {"cancel", "back", "menu", "main menu"}:
                 conversation.pending_state = ""
@@ -1110,14 +1146,13 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "staff_menu", "allowed")
             return staff_menu_text(staff_user)
-        if lowered in {"11", "tenant testing", "test tenant"}:
+        if lowered == "tenant testing" or lowered == "test tenant" or (lowered == "11" and not conversation.pending_state):
             return self._start_staff_tenant_simulator(message_log, conversation, staff_user)
         if lowered in {
-            "12",
             "new tenant registration",
             "tenant registration link",
             "send tenant registration link",
-        }:
+        } or (lowered == "12" and not conversation.pending_state):
             return self._create_registration_link_for_staff(message_log, conversation, staff_user)
         if lowered in {"upload property photo", "upload property photos", "property photo", "property photos"}:
             return self._start_staff_upload_target_search(

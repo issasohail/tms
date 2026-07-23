@@ -197,6 +197,7 @@ class TenantPublicRegistrationForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         self.role_data = kwargs.pop("role_data", None)
+        self.registration_tenant = kwargs.pop("registration_tenant", None)
         super().__init__(*args, **kwargs)
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         for field_name in (
@@ -255,6 +256,7 @@ class TenantPublicRegistrationForm(forms.Form):
             raise ValidationError("Please correct the required applicant phone number before submitting.")
         if self.role_data is not None:
             role_errors = []
+            role_cnic_digits = {}
             for prefix, label, always_required in (
                 ("proposer", "Proposer", True),
                 ("seconder", "Seconder", True),
@@ -267,6 +269,7 @@ class TenantPublicRegistrationForm(forms.Form):
                 ]
                 has_any_data = any(values)
                 phone = normalize_phone(values[-1])
+                role_cnic_digits[prefix] = normalize_cnic(values[2])
                 if always_required:
                     for field_label, value in zip(
                         ("first name", "last name", "CNIC", "phone"), values
@@ -282,6 +285,58 @@ class TenantPublicRegistrationForm(forms.Form):
                     role_errors.append(f"{label} phone is required and must contain digits.")
                 if phone and len(phone) > 32:
                     role_errors.append(f"{label} phone is too long.")
+
+            applicant_digits = normalize_cnic(
+                cleaned.get("cnic")
+                or (
+                    self.registration_tenant.cnic
+                    if self.registration_tenant
+                    else ""
+                )
+            )
+            family_digits = {
+                digits
+                for index in range(20)
+                if (
+                    digits := normalize_cnic(
+                        self.role_data.get(f"family-{index}-cnic")
+                    )
+                )
+            }
+            if self.registration_tenant:
+                current_lease = self.registration_tenant.current_lease
+                if current_lease:
+                    family_digits.update(
+                        digits
+                        for value in current_lease.family_members.values_list(
+                            "family_member__cnic", flat=True
+                        )
+                        if (digits := normalize_cnic(value))
+                    )
+
+            for prefix, label in (
+                ("proposer", "Proposer"),
+                ("seconder", "Seconder"),
+            ):
+                party_digits = role_cnic_digits.get(prefix)
+                if not party_digits:
+                    continue
+                if party_digits == applicant_digits:
+                    role_errors.append(
+                        f"{label} cannot be the tenant. Enter an unrelated third party."
+                    )
+                if party_digits in family_digits:
+                    role_errors.append(
+                        f"{label} cannot be a family member. Enter an unrelated third party."
+                    )
+            if (
+                role_cnic_digits.get("proposer")
+                and role_cnic_digits["proposer"]
+                == role_cnic_digits.get("seconder")
+            ):
+                role_errors.append(
+                    "Proposer and seconder must be different people."
+                )
             if role_errors:
                 raise ValidationError(role_errors)
         return cleaned

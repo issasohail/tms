@@ -75,6 +75,13 @@
       </div>
 
       <div class="modal-body py-3">
+        {% if billing_plan.move_in_proration %}
+        <div class="alert alert-primary small mb-2">
+          <strong>Move-in proration:</strong>
+          {{ billing_plan.move_in_proration.description }}
+          &mdash; <strong>Rs {{ billing_plan.move_in_proration.amount|floatformat:2|intcomma }}</strong>
+        </div>
+        {% endif %}
         <div id="securityOnlyBox" class="alert alert-info small mb-2" style="display:none;">
           Only the <strong>security deposit</strong> invoice will be updated. 
           Monthly rent / maintenance invoices will not be changed.

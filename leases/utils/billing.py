@@ -172,6 +172,148 @@ def _ensure_or_update_recurring(
     return obj
 
 
+def ensure_agreement_fee_invoice(lease, *, update_existing: bool = False):
+    """
+    Idempotently ensure the lease has one Agreement Fee line.
+    Existing paid/sent billing is never rewritten unless explicitly requested.
+    """
+    amount = lease.agreement_charges or Decimal("0.00")
+    if amount <= 0:
+        return None
+
+    Invoice = _get_model("invoices", "Invoice")
+    InvoiceItem = _get_model("invoices", "InvoiceItem")
+    if Invoice is None or InvoiceItem is None:
+        return None
+
+    category = _get_or_create_category(AGREEMENT_CAT)
+    existing_item = (
+        InvoiceItem.objects.select_related("invoice")
+        .filter(invoice__lease=lease, category=category)
+        .order_by("invoice__issue_date", "id")
+        .first()
+    )
+    if existing_item:
+        if (
+            update_existing
+            and existing_item.amount != amount
+            and existing_item.invoice.status not in {"paid", "sent", "cancelled"}
+        ):
+            difference = amount - existing_item.amount
+            existing_item.amount = amount
+            existing_item.save(update_fields=["amount"])
+            existing_item.invoice.amount = (
+                existing_item.invoice.amount or Decimal("0.00")
+            ) + difference
+            existing_item.invoice.save(update_fields=["amount", "updated_at"])
+        return existing_item.invoice
+
+    issue = lease.agreement_date or lease.start_date or date.today()
+    return _create_invoice_with_items(
+        lease=lease,
+        description=f"Agreement Charges {issue:%b %Y}",
+        issue_date=issue,
+        due_date=issue,
+        items=[("Agreement Charges", amount, AGREEMENT_CAT)],
+    )
+
+
+def ensure_move_in_proration_invoice(
+    lease,
+    *,
+    move_in_date: date,
+    mode: str = "exact",
+    manual_days: Optional[int] = None,
+):
+    """
+    Create one partial-period invoice before the regular lease billing start.
+    The marker in the description makes the operation idempotent.
+    """
+    if not move_in_date or not lease.start_date or move_in_date >= lease.start_date:
+        return None
+
+    period_end = lease.start_date - timedelta(days=1)
+    if move_in_date.year != period_end.year or move_in_date.month != period_end.month:
+        raise ValueError(
+            "Move-in proration currently supports the partial month immediately "
+            "before the regular billing start."
+        )
+
+    Invoice = _get_model("invoices", "Invoice")
+    if Invoice is None:
+        return None
+    marker = "[MOVE_IN_PRORATION]"
+    existing = Invoice.objects.filter(
+        lease=lease,
+        description__startswith=marker,
+    ).first()
+    if existing:
+        return existing
+
+    occupied_days = (period_end - move_in_date).days + 1
+    days_in_month = monthrange(move_in_date.year, move_in_date.month)[1]
+    normalized_mode = (mode or "exact").lower()
+    if normalized_mode == "block":
+        interval = max(int(lease.effective_proration_interval_days or 1), 1)
+        billed_days = min(
+            ((occupied_days + interval - 1) // interval) * interval,
+            days_in_month,
+        )
+    elif normalized_mode == "manual":
+        billed_days = int(manual_days or occupied_days)
+        if billed_days < 1 or billed_days > days_in_month:
+            raise ValueError(
+                f"Manual prorated days must be between 1 and {days_in_month}."
+            )
+    else:
+        normalized_mode = "exact"
+        billed_days = occupied_days
+
+    charge_rows = (
+        (RENT, lease.monthly_rent or Decimal("0.00"), RENT),
+        (
+            MAINTENANCE,
+            lease.society_maintenance or Decimal("0.00"),
+            MAINTENANCE,
+        ),
+        ("Water", lease.water_charges or Decimal("0.00"), WATER),
+        ("Internet", lease.internet_charges or Decimal("0.00"), INTERNET),
+    )
+    items = []
+    for label, monthly_amount, category in charge_rows:
+        if monthly_amount <= 0:
+            continue
+        prorated = (
+            Decimal(monthly_amount)
+            * Decimal(billed_days)
+            / Decimal(days_in_month)
+        ).quantize(Decimal("0.01"))
+        items.append(
+            (
+                (
+                    f"{label} move-in proration {move_in_date:%b %d}"
+                    f"–{period_end:%b %d, %Y} "
+                    f"({billed_days}/{days_in_month} days; {normalized_mode})"
+                ),
+                prorated,
+                category,
+            )
+        )
+
+    if not items:
+        return None
+    return _create_invoice_with_items(
+        lease=lease,
+        description=(
+            f"{marker} Move-in proration "
+            f"{move_in_date:%Y-%m-%d} to {period_end:%Y-%m-%d}"
+        ),
+        issue_date=move_in_date,
+        due_date=move_in_date,
+        items=items,
+    )
+
+
 def apply_initial_billing(
     lease,
     *,
@@ -188,36 +330,10 @@ def apply_initial_billing(
     effective_end = min(today, lease.end_date) if lease.end_date else today
 
     # ------------- ONE-TIME AGREEMENT FEE -------------
-    agreement_amount = lease.agreement_charges or Decimal("0")
-
-    if agreement_amount > 0:
-        Invoice = _get_model("invoices", "Invoice")
-        InvoiceItem = _get_model("invoices", "InvoiceItem")
-        if Invoice is not None and InvoiceItem is not None:
-            # Use canonical "Agreement Fee" category (id 5 in your screenshot)
-            agreement_cat = _get_or_create_category("Agreement Fee")
-
-            # "Already billed" means: there is any invoice item for this lease in that category
-            already_billed = InvoiceItem.objects.filter(
-                invoice__lease=lease,
-                category=agreement_cat,
-            ).exists()
-
-            if not already_billed:
-                issue = lease.agreement_date or lease.start_date or today
-                due   = issue
-
-                # This helper will again route "Agreement Fee" / "Agreement Charges"
-                # through CATEGORY_ALIASES, so category id 5 is reused.
-                _create_invoice_with_items(
-                    lease=lease,
-                    description=f"Agreement Charges {issue:%b %Y}",
-                    issue_date=issue,
-                    due_date=due,
-                    items=[
-                        ("Agreement Charges", agreement_amount, "Agreement Fee"),
-                    ],
-                )
+    ensure_agreement_fee_invoice(
+        lease,
+        update_existing=update_existing,
+    )
 
     # ------------- MONTHLY INVOICES (BACKFILL) -------------
     if lease.start_date and lease.start_date <= effective_end:
@@ -640,6 +756,10 @@ def update_billing_on_change(
     maint_changed      = (old_maint != new_maint)
     water_changed      = (old_water != new_water)
     internet_changed   = (old_net != new_net)
+    agreement_changed = (
+        (old_lease.agreement_charges or ZERO)
+        != (lease.agreement_charges or ZERO)
+    )
     start_date_changed = (old_lease.start_date != lease.start_date)
     end_date_changed   = (old_lease.end_date != lease.end_date)
 
@@ -727,6 +847,12 @@ def update_billing_on_change(
                     start=recurring_start,
                     end=lease.end_date,
                 )
+
+    if agreement_changed or (lease.agreement_charges or ZERO) > ZERO:
+        ensure_agreement_fee_invoice(
+            lease,
+            update_existing=update_existing,
+        )
 
     # ---- 3) SECURITY ITEM CHANGE APPLY (no backfill tied to this) ----
     # The following is adding/updating secuirty deposit amount in the ledger by updating

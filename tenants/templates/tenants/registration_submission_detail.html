@@ -262,9 +262,19 @@
         <div class="card-header bg-success text-white py-2 px-3">Final Approval</div>
         <div class="card-body">
           <p class="small text-muted mb-2">
-            Leave Property and Unit blank to create the tenant and related people only. Select both to also create the lease, assign people and vehicles, and open Lease Detail.
+            {% if current_registration_lease %}
+              This is an update for a tenant with an active lease. Approval updates the existing tenant and assigns approved family members, proposer, seconder, witnesses, and vehicles to that lease. It does not create another tenant or lease.
+            {% else %}
+              Leave Property and Unit blank to create the tenant and related people only. Select both to also create the lease, assign people and vehicles, and open Lease Detail.
+            {% endif %}
           </p>
-          {% if can_create_registration_lease %}<div class="row g-2">
+          {% if current_registration_lease %}
+            <div class="alert alert-info py-2 small">
+              Existing active Lease #{{ current_registration_lease.pk }}:
+              {{ current_registration_lease.unit.property.property_name }} -
+              Unit {{ current_registration_lease.unit.unit_number }}
+            </div>
+          {% elif can_create_registration_lease %}<div class="row g-2">
             <div class="col-6">
               <label class="form-label small mb-1" for="registrationProperty">Property</label>
               <select class="form-select form-select-sm" id="registrationProperty" name="property" form="registrationApprovalForm">
@@ -279,6 +289,50 @@
                 {% for unit in units %}<option value="{{ unit.pk }}" data-property="{{ unit.property_id }}" {% if selected_registration_unit_id == unit.pk %}selected{% endif %}>{{ unit.unit_number }}</option>{% endfor %}
               </select>
             </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" for="registrationMoveInDate">Move-in Date</label>
+              <input class="form-control form-control-sm"
+                     type="date"
+                     id="registrationMoveInDate"
+                     name="move_in_date"
+                     value="{% if approval_error.suggested_start_date %}{{ approval_error.suggested_start_date }}{% else %}{% now 'Y-m-d' %}{% endif %}"
+                     form="registrationApprovalForm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" for="registrationProrationMode">Move-in Proration</label>
+              <select class="form-select form-select-sm"
+                      id="registrationProrationMode"
+                      name="move_in_proration_mode"
+                      form="registrationApprovalForm">
+                <option value="exact">Exact occupied days</option>
+                <option value="block">Configured billing-day blocks</option>
+                <option value="manual">Manual billed days</option>
+                <option value="waive">Waive proration</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <input type="hidden" name="align_billing_to_month_start" value="0" form="registrationApprovalForm">
+              <label class="form-check small mt-1">
+                <input class="form-check-input"
+                       type="checkbox"
+                       name="align_billing_to_month_start"
+                       value="1"
+                       checked
+                       form="registrationApprovalForm">
+                <span class="form-check-label">Start regular billing on the next 1st</span>
+              </label>
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" for="registrationProrationDays">Manual Days</label>
+              <input class="form-control form-control-sm"
+                     type="number"
+                     min="1"
+                     max="31"
+                     id="registrationProrationDays"
+                     name="move_in_proration_days"
+                     placeholder="Only for manual mode"
+                     form="registrationApprovalForm">
+            </div>
           </div>{% else %}<div class="alert alert-info py-2 small">You can approve and create tenant records. Lease creation controls require lease permissions.</div>{% endif %}
           {% if cnic_conflict %}
             <div class="alert alert-danger py-2 small mt-3 mb-2">Submitted CNIC belongs to Tenant #{{ cnic_conflict.pk }} — {{ cnic_conflict.get_full_name }}.</div>
@@ -291,7 +345,7 @@
               <a href="{% url 'tenants:registration_submission_edit' submission.pk %}">Complete this information</a> to enable tenant or lease approval.
             </div>
           {% endif %}
-          <button class="btn btn-success btn-sm mt-2 w-100" id="registrationApprovalButton" type="submit" form="registrationApprovalForm" data-parties-complete="{{ required_parties_complete|yesno:'true,false' }}" {% if not required_parties_complete %}disabled title="Complete proposer and seconder first."{% endif %}>Approve &amp; Create Tenant</button>
+          <button class="btn btn-success btn-sm mt-2 w-100" id="registrationApprovalButton" type="submit" form="registrationApprovalForm" data-parties-complete="{{ required_parties_complete|yesno:'true,false' }}" {% if not required_parties_complete %}disabled title="Complete proposer and seconder first."{% endif %}>{% if current_registration_lease %}Approve Update &amp; Assign to Lease #{{ current_registration_lease.pk }}{% else %}Approve &amp; Create Tenant{% endif %}</button>
         </div>
       </div>
       {% endif %}

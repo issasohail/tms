@@ -23,6 +23,61 @@ from datetime import timedelta
 
 
 class LeaseForm(forms.ModelForm):
+    ACTIVE_HISTORY_FIELDS = (
+        "start_date",
+        "end_date",
+        "lease_months",
+        "agreement_date",
+        "monthly_rent",
+        "society_maintenance",
+        "water_charges",
+        "bill_water_charges",
+        "bill_recurring_charges",
+        "internet_charges",
+        "agreement_charges",
+        "security_deposit",
+        "rent_increase_percent",
+        "terms",
+    )
+    move_in_date = forms.DateField(
+        required=False,
+        label="Move-in Date",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "form-control form-control-sm"},
+        ),
+        help_text="Physical possession date; it may be before regular billing starts.",
+    )
+    align_billing_to_month_start = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Start regular billing on the next 1st",
+    )
+    create_move_in_proration = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Create move-in prorated invoice",
+    )
+    move_in_proration_mode = forms.ChoiceField(
+        required=False,
+        initial="exact",
+        choices=(
+            ("exact", "Exact occupied days"),
+            ("block", "Configured billing-day blocks"),
+            ("manual", "Manual billed days"),
+            ("waive", "Waive move-in proration"),
+        ),
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    move_in_proration_days = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=31,
+        label="Manual Prorated Days",
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "min": 1, "max": 31}
+        ),
+    )
     pending_registration_submission = forms.ModelChoiceField(
         queryset=__import__("tenants.models", fromlist=["TenantRegistrationSubmission"]).TenantRegistrationSubmission.objects.none(),
         required=False, label="Pending Registration",
@@ -164,6 +219,30 @@ class LeaseForm(forms.ModelForm):
         self.fields["pending_registration_submission"].queryset = TenantRegistrationSubmission.objects.filter(
             status__in=["pending", "approved"], created_lease__isnull=True
         ).select_related("tenant").order_by("-submitted_at")
+        if self.instance.pk:
+            active_occupancy = self.instance.unit_occupancies.filter(
+                move_out_date__isnull=True
+            ).first()
+            self.fields["move_in_date"].initial = (
+                active_occupancy.move_in_date
+                if active_occupancy
+                else self.instance.agreement_date or self.instance.start_date
+            )
+            self.fields["align_billing_to_month_start"].initial = bool(
+                active_occupancy
+                and active_occupancy.move_in_date != self.instance.start_date
+            )
+            for field_name in self.ACTIVE_HISTORY_FIELDS:
+                if field_name in self.fields:
+                    self.fields[field_name].disabled = True
+                    self.fields[field_name].help_text = (
+                        "Managed from the active agreement/history record."
+                    )
+            if "security_deposit_paid" in self.fields:
+                self.fields["security_deposit_paid"].disabled = True
+                self.fields["security_deposit_paid"].help_text = (
+                    "Calculated automatically from security deposit payments."
+                )
         add_auto_titlecase_class(self.fields)
 
     def clean(self):
@@ -198,6 +277,46 @@ class LeaseForm(forms.ModelForm):
             self.add_error("seconder", "Primary tenant cannot be seconder on the same lease.")
         if proposer and proposer == seconder:
             self.add_error("seconder", "The same person cannot be proposer and seconder on the same lease.")
+        move_in_date = cleaned_data.get("move_in_date")
+        align_to_month = cleaned_data.get("align_billing_to_month_start")
+        if move_in_date and align_to_month and not self.instance.pk:
+            if move_in_date.day == 1:
+                billing_start = move_in_date
+            elif move_in_date.month == 12:
+                billing_start = move_in_date.replace(
+                    year=move_in_date.year + 1,
+                    month=1,
+                    day=1,
+                )
+            else:
+                billing_start = move_in_date.replace(
+                    month=move_in_date.month + 1,
+                    day=1,
+                )
+            cleaned_data["start_date"] = billing_start
+            lease_months = cleaned_data.get("lease_months")
+            if lease_months:
+                cleaned_data["end_date"] = calculate_lease_end_date(
+                    billing_start,
+                    lease_months,
+                )
+        if (
+            cleaned_data.get("create_move_in_proration")
+            and cleaned_data.get("move_in_proration_mode") == "manual"
+            and not cleaned_data.get("move_in_proration_days")
+        ):
+            self.add_error(
+                "move_in_proration_days",
+                "Enter the number of days to bill for manual proration.",
+            )
+        if self.instance.pk:
+            family_member_ids = set(
+                self.instance.family_members.values_list("family_member_id", flat=True)
+            )
+            if proposer and proposer.pk in family_member_ids:
+                self.add_error("proposer", "A family member cannot be proposer on the same lease.")
+            if seconder and seconder.pk in family_member_ids:
+                self.add_error("seconder", "A family member cannot be seconder on the same lease.")
         return cleaned_data
 
     def clean_signed_agreement(self):

@@ -674,7 +674,9 @@
           {{ lease.get_status_display }}
         </span>
       </div>
-      <div class="ld-hdr-balance">Balance Due: {{ balance_due|default:0|money:0 }}</div>
+      <div class="ld-hdr-balance">Lease Balance: {{ balance_due|default:0|money:0 }}</div>
+      <div class="small text-danger">Security Due: {{ security_balance_to_collect|default:0|money:0 }}</div>
+      <div class="small fw-bold">Total Outstanding: {{ total_outstanding|default:0|money:0 }}</div>
     </div>
 
     <!-- Section 3: actions (fills remaining space, right aligned) -->
@@ -686,7 +688,10 @@
         </form>
       {% endif %}
 
-      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm ld-action-edit"><i class="fas fa-edit"></i> Edit</a>
+      <a href="{% url 'leases:lease_update' lease.pk %}" class="btn btn-sm ld-action-edit"><i class="fas fa-edit"></i> Edit Lease</a>
+      {% if active_history %}
+      <a href="{% url 'leases:lease_history_edit' lease.pk active_history.pk %}" class="btn btn-sm btn-primary"><i class="fas fa-file-signature"></i> Edit Current Agreement</a>
+      {% endif %}
       <div class="btn-group ld-segmented-group ld-registration-group" role="group" aria-label="Registration link actions" data-registration-link="{{ registration_link }}">
         <a href="{{ registration_link }}" target="_blank" rel="noopener" class="btn btn-sm ld-registration-main"><i class="fas fa-link"></i> Registration Link</a>
         <button type="button" class="btn btn-sm ld-registration-copy" title="Copy registration link"><i class="fas fa-copy"></i></button>

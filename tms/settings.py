@@ -280,6 +280,7 @@ DEBUG_TOOLBAR_CONFIG = {
     "SHOW_TOOLBAR_CALLBACK": "core.debug_toolbar.show_toolbar",
     "DISABLE_PANELS": {
         "debug_toolbar.panels.profiling.ProfilingPanel",
+        "debug_toolbar.panels.redirects.RedirectsPanel",
     },
 }
 

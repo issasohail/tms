@@ -1017,6 +1017,58 @@
                     <span>Month</span>
                   </label>
                 </div>
+                {% if form.instance.pk and active_history %}
+                <div class="alert alert-info rounded-0 border-start-0 border-end-0 py-2 px-3 mb-0 small d-flex justify-content-between align-items-center gap-2">
+                  <span>
+                    Agreement dates, rent, recurring charges, agreement fee, terms, and required security are controlled by
+                    <strong>{{ active_history.history_label }}</strong>. The fields below are read-only here.
+                  </span>
+                  <a class="btn btn-primary btn-sm text-nowrap" href="{% url 'leases:lease_history_edit' form.instance.pk active_history.pk %}">
+                    Edit Current Agreement
+                  </a>
+                </div>
+                {% endif %}
+                <div class="lf-fg lf-fg-3 border-bottom" style="background:#f8fafc;">
+                  <div class="lf-f">
+                    <label class="form-label">{{ form.move_in_date.label }}</label>
+                    {{ form.move_in_date }}
+                    <div class="form-text">{{ form.move_in_date.help_text }}</div>
+                  </div>
+                  {% if not form.instance.pk %}
+                  <div class="lf-f">
+                    <label class="form-label d-block">Billing Alignment</label>
+                    <div class="form-check">
+                      {{ form.align_billing_to_month_start|add_class:"form-check-input" }}
+                      <label class="form-check-label small" for="{{ form.align_billing_to_month_start.id_for_label }}">
+                        {{ form.align_billing_to_month_start.label }}
+                      </label>
+                    </div>
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label d-block">Partial Move-in Month</label>
+                    <div class="form-check">
+                      {{ form.create_move_in_proration|add_class:"form-check-input" }}
+                      <label class="form-check-label small" for="{{ form.create_move_in_proration.id_for_label }}">
+                        {{ form.create_move_in_proration.label }}
+                      </label>
+                    </div>
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">Proration Method</label>
+                    {{ form.move_in_proration_mode }}
+                  </div>
+                  <div class="lf-f">
+                    <label class="form-label">{{ form.move_in_proration_days.label }}</label>
+                    {{ form.move_in_proration_days }}
+                    {% for error in form.move_in_proration_days.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                  </div>
+                  <div class="lf-f">
+                    <div class="form-text mt-4">
+                      Exact days is recommended. Block mode uses the lease/system proration interval.
+                    </div>
+                  </div>
+                  {% endif %}
+                </div>
                 <div class="lf-fg lf-fg-3 lf-period-grid">
                   <div class="lf-f">
                     <label class="form-label">Start Date</label>

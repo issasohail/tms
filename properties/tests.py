@@ -138,4 +138,25 @@ class UnitListInlineUpdateTests(TestCase):
         self.assertContains(response, "Internet Charges")
         self.assertContains(response, "Security Text")
         self.assertContains(response, "Security Amount")
+        self.assertContains(response, "Room Amenities")
+        self.assertContains(response, "2 Bedrooms")
+        self.assertContains(response, "Inventory")
         self.assertContains(response, "3 Ceiling Fan")
+
+    def test_unit_list_uses_sixty_rows_and_continuous_serial_numbers(self):
+        Unit.objects.bulk_create(
+            [
+                Unit(property=self.property, unit_number=f"extra-{number:02d}")
+                for number in range(58)
+            ]
+        )
+
+        response = self.client.get(reverse("properties:unit_list"), {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["table"].paginator.per_page, 60)
+        self.assertContains(
+            response,
+            '<td class="text-center unit-col sn-col">61</td>',
+            html=True,
+        )

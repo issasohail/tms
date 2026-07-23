@@ -3,7 +3,7 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from io import BytesIO
 from urllib.parse import quote
 
@@ -20,7 +20,6 @@ from django.db.models import (
     Exists,
     IntegerField,
     OuterRef,
-    Prefetch,
     Q,
     Subquery,
     Sum,
@@ -49,11 +48,6 @@ from reportlab.pdfgen import canvas
 from core.models import GlobalSettings
 from invoices.models import Invoice
 from leases.models import Lease, LeaseRenewal, WhatsAppTemplate
-from leases.models_parking_inventory import (
-    InventoryItemDefinition,
-    PropertyInventoryItem,
-    UnitInventoryItem,
-)
 from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
 from payments.models import Payment
 from tenants.models import Tenant, TenantInterestType
@@ -316,15 +310,6 @@ class UnitListView(SingleTableMixin, FilterView):
             )
         return self._building_types_cache
 
-    def _get_inventory_definitions(self):
-        if not hasattr(self, "_inventory_definitions_cache"):
-            self._inventory_definitions_cache = list(
-                InventoryItemDefinition.objects.filter(is_active=True).order_by(
-                    "sort_order", "name"
-                )
-            )
-        return self._inventory_definitions_cache
-
     def get_queryset(self):
         today = timezone.now().date()
         ending_date = today + timedelta(days=40)
@@ -367,11 +352,8 @@ class UnitListView(SingleTableMixin, FilterView):
                 "gas_meter_num",
                 "society_maintenance",
                 "water_charges",
-                "internet_charges",
                 "is_smart_meter",
                 "security_requires",
-                "security_deposit_amount",
-                "show_publicly",
                 "status",
                 "property__id",
                 "property__property_name",
@@ -385,18 +367,6 @@ class UnitListView(SingleTableMixin, FilterView):
                 "interest_type__code",
                 "interest_type__is_active",
                 "interest_type__sort_order",
-            )
-            .prefetch_related(
-                Prefetch(
-                    "property__inventory_items",
-                    queryset=PropertyInventoryItem.objects.select_related("item"),
-                    to_attr="unit_list_inventory",
-                ),
-                Prefetch(
-                    "inventory_items",
-                    queryset=UnitInventoryItem.objects.select_related("item"),
-                    to_attr="unit_list_inventory",
-                ),
             )
             .annotate(
                 has_active_lease=Exists(active_lease),
@@ -442,7 +412,6 @@ class UnitListView(SingleTableMixin, FilterView):
     def get_table_kwargs(self):
         kwargs = super().get_table_kwargs()
         kwargs["building_types"] = self._get_building_types()
-        kwargs["inventory_definitions"] = self._get_inventory_definitions()
         return kwargs
 
     def get_context_data(self, **kwargs):
@@ -1117,7 +1086,6 @@ class UnitDeleteView(DeleteView):
         return reverse("properties:unit_list")
 
 
-@login_required
 @require_POST
 def unit_inline_update(request):
     try:
@@ -1132,9 +1100,7 @@ def unit_inline_update(request):
             "monthly_rent",
             "society_maintenance",
             "water_charges",
-            "internet_charges",
             "security_requires",
-            "security_deposit_amount",
             "status",
             "show_publicly",
             "is_smart_meter",
@@ -1217,77 +1183,20 @@ def unit_inline_update(request):
                 }
             )
 
-        bulk_editable_fields = {
+        if field in {
             "monthly_rent",
             "society_maintenance",
             "water_charges",
-            "internet_charges",
             "security_requires",
-            "security_deposit_amount",
-        }
-
-        if field in bulk_editable_fields:
-            apply_to_property = str(data.get("apply_to_property", "")).lower() in {
-                "true", "1", "yes", "on"
-            }
-            if field == "security_requires":
-                cleaned_value = str(value or "").strip()
-                if len(cleaned_value) > 20:
-                    return JsonResponse(
-                        {
-                            "success": False,
-                            "error": "Security text cannot exceed 20 characters.",
-                        },
-                        status=400,
-                    )
-            else:
-                raw_value = str(value or "0").replace(",", "").strip()
-                try:
-                    cleaned_value = Decimal(raw_value or "0").quantize(
-                        Decimal("0.01")
-                    )
-                except (InvalidOperation, ValueError):
-                    return JsonResponse(
-                        {"success": False, "error": "Please enter a valid amount."},
-                        status=400,
-                    )
-                if cleaned_value < 0 or cleaned_value > Decimal("99999999.99"):
-                    return JsonResponse(
-                        {
-                            "success": False,
-                            "error": "Amount must be between 0 and 99,999,999.99.",
-                        },
-                        status=400,
-                    )
-
-            if apply_to_property:
-                affected_count = Unit.objects.filter(
-                    property_id=unit.property_id
-                ).update(**{field: cleaned_value})
-            else:
-                setattr(unit, field, cleaned_value)
-                unit.save(update_fields=[field])
-                affected_count = 1
-
+        }:
+            setattr(unit, field, value)
+            unit.save(update_fields=[field])
             new_value = (
-                _lead_money(cleaned_value)
+                _lead_money(getattr(unit, field))
                 if field != "security_requires"
-                else cleaned_value
+                else getattr(unit, field)
             )
-            property_unit_count = unit.property.units.count()
-            return JsonResponse(
-                {
-                    "success": True,
-                    "new_value": new_value or "",
-                    "field": field,
-                    "property_id": unit.property_id,
-                    "property_name": unit.property.property_name,
-                    "property_unit_count": property_unit_count,
-                    "affected_count": affected_count,
-                    "bulk_applied": apply_to_property,
-                    "offer_bulk": not apply_to_property and property_unit_count > 1,
-                }
-            )
+            return JsonResponse({"success": True, "new_value": new_value or ""})
 
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)

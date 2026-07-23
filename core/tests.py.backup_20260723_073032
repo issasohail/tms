@@ -29,24 +29,6 @@ from core.backup_utils import (
 from core.views import _pending_approval_filter_state
 
 
-class PendingApprovalDetailTemplateTests(SimpleTestCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.template_source = (
-            Path(__file__).resolve().parent
-            / "templates"
-            / "core"
-            / "pending_approval_detail.html"
-        ).read_text(encoding="utf-8")
-
-    def test_success_alert_has_a_safe_fallback_container(self):
-        self.assertIn('const alertHost = form.closest(".card")', self.template_source)
-        self.assertIn('|| form.closest(".container-fluid")', self.template_source)
-        self.assertIn("alertHost.prepend(alert);", self.template_source)
-        self.assertNotIn('form.closest(".card").prepend(alert);', self.template_source)
-
-
 class PendingApprovalFilterTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()

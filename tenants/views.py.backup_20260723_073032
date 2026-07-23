@@ -1432,10 +1432,8 @@ def tenant_registration_submission_review(request, pk):
                     monthly_rent=unit.monthly_rent,
                     society_maintenance=unit.society_maintenance,
                     water_charges=unit.water_charges,
-                    internet_charges=unit.internet_charges,
-                    security_deposit=unit.security_deposit_amount,
-                    status="active",
-                    notes="Created from an approved tenant registration.",
+                    status="pending_approval",
+                    notes="Created from tenant registration. Review and complete lease details.",
                 )
                 workflow_result = attach_registration_to_lease(
                     submission,

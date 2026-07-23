@@ -374,9 +374,6 @@ class RegistrationOnboardingTests(TestCase):
         data["decision_first_name"] = "update_submitted"
         data["updated_first_name"] = "Updated"
         prop, unit = self.make_unit("2")
-        unit.internet_charges = 1800
-        unit.security_deposit_amount = 50000
-        unit.save(update_fields=["internet_charges", "security_deposit_amount"])
         data.update({"property": prop.pk, "unit": unit.pk})
         merged = self.client.post(url, data)
         submission.refresh_from_db()
@@ -389,9 +386,6 @@ class RegistrationOnboardingTests(TestCase):
         real.refresh_from_db()
         self.assertEqual(real.first_name, "Updated")
         self.assertEqual(submission.created_lease.unit, unit)
-        self.assertEqual(submission.created_lease.status, "active")
-        self.assertEqual(submission.created_lease.internet_charges, 1800)
-        self.assertEqual(submission.created_lease.security_deposit, 50000)
         self.assertFalse(Tenant.objects.filter(pk=shell.pk).exists())
         self.assertEqual(Tenant.objects.filter(cnic_digits="3520212345671").count(), 1)
         repeated = self.client.post(url, data)
@@ -603,7 +597,6 @@ class RegistrationOnboardingTests(TestCase):
         submission.refresh_from_db()
         self.assertIsNotNone(submission.created_lease_id)
         self.assertEqual(submission.created_lease.start_date, suggested_start)
-        self.assertEqual(submission.created_lease.status, "active")
         self.assertRedirects(
             retried,
             reverse("leases:lease_detail", args=[submission.created_lease_id]),

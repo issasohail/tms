@@ -30,7 +30,7 @@
         <form method="get" class="unit-filter-row">
             <div class="unit-filter-field unit-filter-property">
                 <label for="id_property" class="form-label">Property</label>
-                <select name="property" id="id_property" class="form-select">
+                <select name="property" id="id_property" class="form-select" onchange="this.form.submit()">
                     <option value="">All Properties</option>
                     {% for property in all_properties %}
                         <option value="{{ property.id }}"
@@ -44,7 +44,7 @@
             </div>
             <div class="unit-filter-field unit-filter-status">
                 <label for="id_status" class="form-label">Status</label>
-                <select name="status" id="id_status" class="form-select">
+                <select name="status" id="id_status" class="form-select" onchange="this.form.submit()">
                     <option value="">All Statuses</option>
                     <option value="vacant" {% if current_status == "vacant" %}selected{% endif %}>Vacant</option>
                     <option value="occupied" {% if current_status == "occupied" %}selected{% endif %}>Occupied</option>
@@ -69,22 +69,6 @@
     {% render_table table %}
 </div>
 {{ building_type_options|json_script:"buildingTypeOptions" }}
-
-<div class="modal fade" id="unitBulkUpdateModal" tabindex="-1" aria-labelledby="unitBulkUpdateModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title fs-6" id="unitBulkUpdateModalLabel">Apply to this property?</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body small" id="unitBulkUpdateMessage"></div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">This unit only</button>
-                <button type="button" class="btn btn-primary btn-sm" id="unitBulkUpdateConfirm">Apply to all units</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 {% include "properties/includes/vacant_notice_modal.html" %}
 
@@ -924,255 +908,6 @@
             padding: 7px 8px;
         }
     }
-
-    /* Unit-list charge and inventory layout. Class selectors keep this stable
-       when columns are added or reordered. */
-    .unit-table-wrap table {
-        min-width: 1940px;
-    }
-    .unit-table-wrap .charge-col {
-        width: 112px;
-        min-width: 112px;
-        max-width: 126px;
-    }
-    .unit-table-wrap .security-text-col {
-        min-width: 118px;
-        max-width: 132px;
-        white-space: normal;
-    }
-    .unit-table-wrap .inventory-col {
-        width: 260px;
-        min-width: 260px;
-        max-width: 260px;
-        white-space: normal;
-    }
-    .inventory-summary {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 3px;
-        margin-bottom: 3px;
-    }
-    .inventory-chip,
-    .inventory-more {
-        display: inline-block;
-        padding: 2px 5px;
-        border: 1px solid #dbe4ee;
-        border-radius: 999px;
-        background: #f8fafc;
-        color: #334155;
-        font-size: 0.68rem;
-        line-height: 1.2;
-    }
-    .inventory-more {
-        background: #eef5ff;
-        color: #0d6efd;
-    }
-    .inventory-manage-link {
-        font-size: 0.68rem;
-        white-space: nowrap;
-    }
-    .unit-inline-edit {
-        font-variant-numeric: tabular-nums;
-    }
-    .unit-inline-edit + .form-control,
-    .charge-col .form-control {
-        min-width: 96px;
-    }
-
-    @media (max-width: 991.98px) {
-        .unit-filter-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
-            gap: 8px;
-            width: 100%;
-            overflow: visible;
-        }
-        .unit-filter-field,
-        .unit-filter-property,
-        .unit-filter-status {
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-filter-buttons {
-            display: flex;
-        }
-        .unit-filter-card .form-select {
-            width: 100%;
-        }
-        .unit-table-wrap {
-            border: 0;
-            background: transparent;
-            box-shadow: none;
-            overflow: visible;
-        }
-        .unit-table-wrap table,
-        .unit-table-wrap tbody,
-        .unit-table-wrap tr,
-        .unit-table-wrap td {
-            display: block;
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-table-wrap table {
-            min-width: 0 !important;
-            border: 0 !important;
-            background: transparent;
-        }
-        .unit-table-wrap thead {
-            display: none;
-        }
-        .unit-table-wrap tbody {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-        }
-        .unit-table-wrap tbody tr {
-            margin: 0;
-            padding: 12px;
-            border: 1px solid #d8e2ee;
-            border-radius: 9px;
-            background: #fff !important;
-            box-shadow: 0 7px 18px rgba(15, 23, 42, 0.08);
-        }
-        .unit-table-wrap td,
-        .table td.unit-actions-cell {
-            position: static !important;
-            display: flex !important;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            min-height: 30px;
-            padding: 5px 0 !important;
-            border: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            white-space: normal !important;
-            text-align: right;
-        }
-        .unit-table-wrap tbody td:first-child,
-        .unit-table-wrap td.building-type-col,
-        .unit-table-wrap td.meter-col {
-            display: none !important;
-        }
-        .unit-table-wrap td::before {
-            flex: 0 0 104px;
-            color: #64748b;
-            font-size: 0.64rem;
-            font-weight: 700;
-            text-align: left;
-            text-transform: uppercase;
-        }
-        .unit-table-wrap td.unit-number-col {
-            align-items: center;
-            padding-top: 0 !important;
-            margin-bottom: 4px;
-            border-bottom: 1px solid #edf2f7 !important;
-            font-size: 1rem !important;
-            font-weight: 700;
-        }
-        .unit-number-col::before { content: "Unit" !important; }
-        .property-col::before { content: "Property" !important; }
-        .rent-col::before { content: "Monthly rent" !important; }
-        .maintenance-col::before { content: "Maintenance" !important; }
-        .water-col::before { content: "Water" !important; }
-        .internet-col::before { content: "Internet" !important; }
-        .security-text-col::before { content: "Security text" !important; }
-        .security-amount-col::before { content: "Security amount" !important; }
-        .inventory-col::before { content: "Amenities" !important; }
-        .status-col::before { content: "Status" !important; }
-        .smart-col::before { content: "Smart meter" !important; }
-        .public-col::before { content: "Public" !important; }
-        .unit-actions-cell::before { content: "Actions" !important; }
-        .unit-table-wrap td.inventory-col {
-            align-items: flex-start;
-        }
-        .inventory-col > div,
-        .inventory-col > span,
-        .inventory-col > a {
-            max-width: calc(100% - 116px);
-        }
-        .inventory-summary {
-            justify-content: flex-end;
-        }
-        .unit-actions-cell .actions-wrap {
-            justify-content: flex-end;
-        }
-    }
-
-    @media (max-width: 767.98px) {
-        .unit-table-wrap tbody {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 10px;
-        }
-    }
-
-    @media (max-width: 575.98px) {
-        .unit-filter-card {
-            margin-left: 0;
-            margin-right: 0;
-        }
-        .unit-filter-card .form-label {
-            display: block;
-        }
-        .unit-filter-row {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 7px;
-        }
-        .unit-filter-buttons {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 7px;
-        }
-        .unit-filter-buttons .btn[type="submit"] {
-            width: auto;
-            min-height: 34px;
-            height: auto;
-            font-size: 0.72rem;
-        }
-        .unit-filter-buttons .btn[type="submit"]::before {
-            margin-right: 5px;
-        }
-        .unit-filter-buttons .btn-outline-secondary {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .unit-filter-buttons .btn:only-child {
-            grid-column: 1 / -1;
-        }
-        .unit-table-wrap td.unit-col,
-        .unit-table-wrap td.charge-col,
-        .unit-table-wrap td.inventory-col,
-        .unit-table-wrap td.status-col,
-        .unit-table-wrap td.smart-col,
-        .unit-table-wrap td.public-col,
-        .unit-table-wrap td.unit-actions-cell {
-            display: flex !important;
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: none !important;
-        }
-        .unit-table-wrap td.building-type-col,
-        .unit-table-wrap td.meter-col {
-            display: none !important;
-        }
-        .unit-table-wrap td::before {
-            flex-basis: 98px;
-        }
-        .inventory-col > div,
-        .inventory-col > span,
-        .inventory-col > a {
-            max-width: calc(100% - 108px);
-        }
-        .unit-table-wrap td.charge-col,
-        .unit-table-wrap td.charge-col .unit-inline-edit {
-            font-size: 0.78rem !important;
-            line-height: 1.2;
-            white-space: normal !important;
-        }
-    }
 </style>
 {% endblock %}
 {% block extra_js %}
@@ -1184,44 +919,6 @@ document.addEventListener("DOMContentLoaded", function () {
         {value: "occupied", label: "Occupied", badgeClass: "bg-success"},
         {value: "maintenance", label: "Maintenance", badgeClass: "bg-danger"}
     ];
-    const bulkFieldLabels = {
-        monthly_rent: "monthly rent",
-        society_maintenance: "society maintenance",
-        water_charges: "water charges",
-        internet_charges: "internet charges",
-        security_requires: "security text",
-        security_deposit_amount: "security deposit amount"
-    };
-    const bulkModalElement = document.getElementById("unitBulkUpdateModal");
-    const bulkMessage = document.getElementById("unitBulkUpdateMessage");
-    const bulkConfirm = document.getElementById("unitBulkUpdateConfirm");
-    let bulkUpdateContext = null;
-
-    if (bulkConfirm) {
-        bulkConfirm.addEventListener("click", function () {
-            if (!bulkUpdateContext) return;
-            const context = bulkUpdateContext;
-            bulkConfirm.disabled = true;
-            bulkConfirm.textContent = "Applying...";
-            saveUnitField(context.unitId, context.field, context.value, true)
-                .then(function (payload) {
-                    document.querySelectorAll(
-                        `.unit-inline-edit[data-field="${context.field}"][data-property-id="${context.propertyId}"]`
-                    ).forEach(function (span) {
-                        span.textContent = payload.new_value || "-";
-                    });
-                    bootstrap.Modal.getOrCreateInstance(bulkModalElement).hide();
-                })
-                .catch(function (error) {
-                    alert(error.message);
-                })
-                .finally(function () {
-                    bulkConfirm.disabled = false;
-                    bulkConfirm.textContent = "Apply to all units";
-                    bulkUpdateContext = null;
-                });
-        });
-    }
 
     const selectAll = document.getElementById('select-all');
     if (selectAll) {
@@ -1477,7 +1174,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 .then(function (payload) {
                     span.textContent = payload.new_value || "-";
                     input.replaceWith(span);
-                    showBulkUpdateOffer(span, input.value, payload);
                 })
                 .catch(function (error) {
                     alert(error.message);
@@ -1494,21 +1190,6 @@ document.addEventListener("DOMContentLoaded", function () {
             if (event.key === "Enter") finish(true);
             if (event.key === "Escape") finish(false);
         });
-    }
-
-    function showBulkUpdateOffer(span, value, payload) {
-        if (!payload.offer_bulk || !bulkModalElement || !bulkMessage) return;
-        bulkUpdateContext = {
-            unitId: span.dataset.unitId,
-            field: span.dataset.field,
-            value: value,
-            propertyId: String(payload.property_id)
-        };
-        const fieldLabel = bulkFieldLabels[span.dataset.field] || "value";
-        bulkMessage.textContent =
-            `The ${fieldLabel} was updated for this unit. Apply ${payload.new_value || "-"} ` +
-            `to all ${payload.property_unit_count} units in ${payload.property_name}?`;
-        bootstrap.Modal.getOrCreateInstance(bulkModalElement).show();
     }
 
     function toggleBooleanStatus(span, field) {
@@ -1533,7 +1214,7 @@ document.addEventListener("DOMContentLoaded", function () {
             });
     }
 
-    function saveUnitField(id, field, value, applyToProperty) {
+    function saveUnitField(id, field, value) {
         return fetch("{% url 'properties:unit_inline_update' %}", {
             method: "POST",
             headers: {
@@ -1541,12 +1222,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 "X-CSRFToken": getCookie("csrftoken"),
                 "X-Requested-With": "XMLHttpRequest"
             },
-            body: JSON.stringify({
-                id: id,
-                field: field,
-                value: value,
-                apply_to_property: Boolean(applyToProperty)
-            })
+            body: JSON.stringify({id: id, field: field, value: value})
         }).then(function (response) {
             return response.json().then(function (payload) {
                 if (!response.ok || !payload.success) {

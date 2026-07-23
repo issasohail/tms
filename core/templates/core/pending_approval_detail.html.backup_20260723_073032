@@ -305,11 +305,7 @@
       const alert = document.createElement("div");
       alert.className = "alert alert-success mt-3";
       alert.textContent = result.message || "Updated.";
-      const alertHost = form.closest(".card")
-        || form.closest(".container-fluid")
-        || document.querySelector("main")
-        || document.body;
-      alertHost.prepend(alert);
+      form.closest(".card").prepend(alert);
       document.querySelectorAll("form.pending-detail-action").forEach(function (actionForm) { actionForm.remove(); });
       if (result.redirect_url) window.open(result.redirect_url, "_blank", "noopener");
     } catch (error) {

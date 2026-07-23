@@ -91,8 +91,6 @@ class UnitForm(forms.ModelForm):
         # quick visual proof you're on the right file
         self.fields["unit_number"].label = "Unit #"
         self.fields["building_type"].label = "Building Type"
-        self.fields["security_requires"].label = "Security Requirement Text"
-        self.fields["security_deposit_amount"].label = "Security Deposit Amount"
         self.fields["building_type"].queryset = BuildingType.objects.filter(
             is_active=True
         ).order_by("sort_order", "name")
@@ -143,13 +141,8 @@ class UnitForm(forms.ModelForm):
             ),
             Div(
                 Div("water_charges", css_class=col2_4),
-                Div("internet_charges", css_class=col2_4),
                 Div("monthly_rent", css_class=col2_4),
                 Div("security_requires", css_class=col2_4),
-                css_class="row g-3",
-            ),
-            Div(
-                Div("security_deposit_amount", css_class=col2_4),
                 Div("ceiling_fan", css_class=col2_4),
                 css_class="row g-3",
             ),

@@ -136,7 +136,7 @@ class UnitListInlineUpdateTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Internet Charges")
-        self.assertContains(response, "Security")
+        self.assertContains(response, "Security Text")
         self.assertContains(response, "Security Amount")
         self.assertNotContains(response, "Room Amenities")
         self.assertContains(response, 'data-label="Ceiling Fan"')

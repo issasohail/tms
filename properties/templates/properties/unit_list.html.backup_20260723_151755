@@ -27,7 +27,7 @@
 <!-- Filter form -->
 <div class="card unit-filter-card mb-4">
     <div class="card-body p-3">
-        <form method="get" class="unit-filter-row" id="unitFilterForm">
+        <form method="get" class="unit-filter-row">
             <div class="unit-filter-field unit-filter-property">
                 <label for="id_property" class="form-label">Property</label>
                 <select name="property" id="id_property" class="form-select">
@@ -53,10 +53,10 @@
                 </select>
             </div>
             <div class="unit-filter-buttons">
+                <button type="submit" class="btn btn-primary">Filter</button>
                 {% if request.GET.property or request.GET.status %}
-                    <a href="?" class="btn btn-outline-secondary unit-filter-clear">Clear</a>
+                    <a href="?" class="btn btn-outline-secondary">Clear</a>
                 {% endif %}
-                <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
             </div>
         </form>
     </div>
@@ -105,7 +105,7 @@
 @media (min-width: 1200px) {
     body:has(.unit-page-header) main.container,
     body:has(.unit-page-header) .container {
-        max-width: 1800px !important;
+        max-width: 1500px !important;
     }
 }
 
@@ -184,7 +184,7 @@
     }
     .unit-table-wrap table {
         margin-bottom: 0;
-        min-width: 1540px;
+        min-width: 1580px;
         table-layout: auto;
         font-size: 14px !important;
     }
@@ -202,9 +202,12 @@
     }
 
     /* Columns that need real horizontal room for text/badges/buttons */
+    .unit-table-wrap .property-col,
     .unit-table-wrap .building-type-col,
     .unit-table-wrap .security-text-col,
-    .unit-table-wrap .status-col {
+    .unit-table-wrap .status-col,
+    .unit-table-wrap .room-amenities-col,
+    .unit-table-wrap .inventory-col {
         white-space: normal;
     }
 
@@ -237,19 +240,9 @@
     }
 
     .unit-table-wrap .property-col {
-        width: calc(8ch + 12px);
-        min-width: calc(8ch + 12px);
-        max-width: calc(8ch + 12px);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .unit-table-wrap .property-name-compact {
-        display: block;
-        max-width: 8ch;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        width: 150px;
+        min-width: 150px;
+        max-width: 160px;
     }
     .unit-table-wrap .building-type-col {
         width: 110px;
@@ -265,39 +258,35 @@
         min-width: 60px;
     }
     .unit-table-wrap .maintenance-col {
-        width: 58px;
-        min-width: 58px;
+        width: 65px;
+        min-width: 65px;
     }
     .unit-table-wrap .water-col {
-        width: 50px;
-        min-width: 50px;
+        width: 55px;
+        min-width: 55px;
     }
     .unit-table-wrap .internet-col {
-        width: 52px;
-        min-width: 52px;
-    }
-    .unit-table-wrap .property-col,
-    .unit-table-wrap .maintenance-col,
-    .unit-table-wrap .water-col,
-    .unit-table-wrap .internet-col {
-        padding-left: 6px;
-        padding-right: 6px;
+        width: 60px;
+        min-width: 60px;
     }
     .unit-table-wrap .security-text-col {
-        width: 95px;
-        min-width: 95px;
-        max-width: 100px;
+        width: 130px;
+        min-width: 130px;
+        max-width: 140px;
     }
     .unit-table-wrap .security-amount-col {
         width: 65px;
         min-width: 65px;
     }
-    .unit-table-wrap .inventory-item-col {
-        width: 46px;
-        min-width: 46px;
-        max-width: 52px;
-        padding-left: 5px;
-        padding-right: 5px;
+    .unit-table-wrap .room-amenities-col {
+        width: 145px;
+        min-width: 145px;
+        max-width: 145px;
+    }
+    .unit-table-wrap .inventory-col {
+        width: 175px;
+        min-width: 175px;
+        max-width: 175px;
     }
     .unit-table-wrap .status-col {
         width: 110px;
@@ -307,11 +296,8 @@
     }
     .unit-table-wrap .smart-col,
     .unit-table-wrap .public-col {
-        width: 42px;
-        min-width: 42px;
-        max-width: 46px;
-        padding-left: 4px;
-        padding-right: 4px;
+        width: 55px;
+        min-width: 55px;
         text-align: center;
     }
 
@@ -413,19 +399,32 @@
         display: none;
     }
 
-    .inventory-quantity-link {
-        display: inline-flex;
-        min-width: 26px;
-        min-height: 26px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        color: #0d6efd;
-        font-weight: 700;
-        text-decoration: none;
+    .room-amenities-summary,
+    .inventory-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        margin-bottom: 3px;
     }
-    .inventory-quantity-link:hover {
+    .room-amenity-chip,
+    .inventory-chip,
+    .inventory-more {
+        display: inline-block;
+        padding: 2px 5px;
+        border: 1px solid #dbe4ee;
+        border-radius: 999px;
+        background: #f8fafc;
+        color: #334155;
+        font-size: 0.68rem;
+        line-height: 1.2;
+    }
+    .inventory-more {
         background: #eef5ff;
+        color: #0d6efd;
+    }
+    .inventory-manage-link {
+        font-size: 0.68rem;
+        white-space: nowrap;
     }
 }
 
@@ -572,9 +571,10 @@
     .maintenance-col::before { content: "Maintenance" !important; }
     .water-col::before { content: "Water" !important; }
     .internet-col::before { content: "Internet" !important; }
-    .security-text-col::before { content: "Security" !important; }
+    .security-text-col::before { content: "Security text" !important; }
     .security-amount-col::before { content: "Security amount" !important; }
-    .inventory-item-col::before { content: attr(data-label) !important; }
+    .room-amenities-col::before { content: "Room amenities" !important; }
+    .inventory-col::before { content: "Inventory" !important; }
     .status-col::before { content: "Status" !important; }
     .smart-col::before { content: "Smart meter" !important; }
     .public-col::before { content: "Public" !important; }
@@ -588,6 +588,22 @@
         color: #0f172a;
         text-decoration: none;
         overflow-wrap: anywhere;
+    }
+    .unit-table-wrap td.room-amenities-col,
+    .unit-table-wrap td.inventory-col {
+        grid-column: span 2;
+    }
+    .room-amenities-col > div,
+    .room-amenities-col > span,
+    .room-amenities-col > a,
+    .inventory-col > div,
+    .inventory-col > span,
+    .inventory-col > a {
+        max-width: 100%;
+    }
+    .room-amenities-summary,
+    .inventory-summary {
+        justify-content: flex-start;
     }
     .unit-table-wrap td.unit-actions-cell {
         grid-column: 1 / -1;
@@ -698,31 +714,30 @@
         padding: 10px !important;
     }
     .unit-filter-card .form-label {
-        display: none;
+        display: block;
     }
     .unit-filter-row {
-        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) auto;
-        gap: 5px;
-        align-items: center;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 7px;
     }
     .unit-filter-buttons {
-        display: flex;
-        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 7px;
     }
-    .unit-filter-card .form-select,
-    .unit-filter-clear {
+    .unit-filter-buttons .btn[type="submit"] {
+        width: auto;
         min-height: 34px;
-        height: 34px;
-        font-size: 0.7rem;
-        padding-top: 4px;
-        padding-bottom: 4px;
+        height: auto;
+        font-size: 0.72rem;
     }
     .unit-filter-buttons .btn-outline-secondary {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding-left: 7px;
-        padding-right: 7px;
+    }
+    .unit-filter-buttons .btn:only-child {
+        grid-column: 1 / -1;
     }
 
     .unit-table-wrap tbody tr {
@@ -743,21 +758,20 @@
         line-height: 1.2;
         white-space: normal !important;
     }
+    .room-amenities-col > div,
+    .room-amenities-col > span,
+    .room-amenities-col > a,
+    .inventory-col > div,
+    .inventory-col > span,
+    .inventory-col > a {
+        max-width: 100%;
+    }
 }
 </style>
 {% endblock %}
 {% block extra_js %}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const unitFilterForm = document.getElementById("unitFilterForm");
-    if (unitFilterForm) {
-        unitFilterForm.querySelectorAll("select").forEach(function (select) {
-            select.addEventListener("change", function () {
-                unitFilterForm.requestSubmit();
-            });
-        });
-    }
-
     const buildingTypeOptions = JSON.parse(document.getElementById("buildingTypeOptions").textContent || "[]");
     const unitStatusOptions = [
         {value: "vacant", label: "Vacant", badgeClass: "bg-primary"},

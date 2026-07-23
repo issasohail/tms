@@ -105,7 +105,7 @@
 @media (min-width: 1200px) {
     body:has(.unit-page-header) main.container,
     body:has(.unit-page-header) .container {
-        max-width: 1800px !important;
+        max-width: 1600px !important;
     }
 }
 
@@ -202,6 +202,7 @@
     }
 
     /* Columns that need real horizontal room for text/badges/buttons */
+    .unit-table-wrap .property-col,
     .unit-table-wrap .building-type-col,
     .unit-table-wrap .security-text-col,
     .unit-table-wrap .status-col {
@@ -237,19 +238,9 @@
     }
 
     .unit-table-wrap .property-col {
-        width: calc(8ch + 12px);
-        min-width: calc(8ch + 12px);
-        max-width: calc(8ch + 12px);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .unit-table-wrap .property-name-compact {
-        display: block;
-        max-width: 8ch;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        width: 130px;
+        min-width: 130px;
+        max-width: 140px;
     }
     .unit-table-wrap .building-type-col {
         width: 110px;
@@ -284,9 +275,9 @@
         padding-right: 6px;
     }
     .unit-table-wrap .security-text-col {
-        width: 95px;
-        min-width: 95px;
-        max-width: 100px;
+        width: 130px;
+        min-width: 130px;
+        max-width: 140px;
     }
     .unit-table-wrap .security-amount-col {
         width: 65px;
@@ -572,7 +563,7 @@
     .maintenance-col::before { content: "Maintenance" !important; }
     .water-col::before { content: "Water" !important; }
     .internet-col::before { content: "Internet" !important; }
-    .security-text-col::before { content: "Security" !important; }
+    .security-text-col::before { content: "Security text" !important; }
     .security-amount-col::before { content: "Security amount" !important; }
     .inventory-item-col::before { content: attr(data-label) !important; }
     .status-col::before { content: "Status" !important; }

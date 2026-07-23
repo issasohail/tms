@@ -119,7 +119,7 @@ class UnitListInlineUpdateTests(TestCase):
         self.unit_one.refresh_from_db()
         self.assertEqual(self.unit_one.monthly_rent, Decimal("25000.00"))
 
-    def test_unit_list_shows_each_inventory_item_in_its_own_column(self):
+    def test_unit_list_shows_new_charge_columns_and_inventory(self):
         item = InventoryItemDefinition.objects.create(
             name="Ceiling Fan",
             code="test-ceiling-fan",
@@ -136,14 +136,12 @@ class UnitListInlineUpdateTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Internet Charges")
-        self.assertContains(response, "Security")
+        self.assertContains(response, "Security Text")
         self.assertContains(response, "Security Amount")
-        self.assertNotContains(response, "Room Amenities")
-        self.assertContains(response, 'data-label="Ceiling Fan"')
-        self.assertContains(response, "Manage Ceiling Fan inventory")
-        self.assertContains(response, ">3</a>", html=False)
-        self.assertContains(response, 'id="unitFilterForm"')
-        self.assertContains(response, "unitFilterForm.requestSubmit()")
+        self.assertContains(response, "Room Amenities")
+        self.assertContains(response, "2 Bedrooms")
+        self.assertContains(response, "Inventory")
+        self.assertContains(response, "3 Ceiling Fan")
 
     def test_unit_list_uses_sixty_rows_and_continuous_serial_numbers(self):
         Unit.objects.bulk_create(

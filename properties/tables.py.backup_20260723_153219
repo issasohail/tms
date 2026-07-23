@@ -144,7 +144,7 @@ class UnitTable(ExportableTable):
         attrs={"td": {"class": "unit-col charge-col internet-col"}, "th": {"class": "unit-col charge-col internet-col rotate-col"}},
     )
     security_requires = tables.Column(
-        verbose_name="Security",
+        verbose_name="Security Text",
         attrs={"td": {"class": "unit-col charge-col security-text-col"}, "th": {"class": "unit-col charge-col security-text-col"}},
     )
     security_deposit_amount = tables.Column(
@@ -269,13 +269,6 @@ class UnitTable(ExportableTable):
 
     def render_security_requires(self, value, record):
         return self._inline_text(record, "security_requires", value or "")
-
-    def render_property(self, value):
-        return format_html(
-            '<span class="property-name-compact" title="{}">{}</span>',
-            value,
-            value,
-        )
 
     def render_security_deposit_amount(self, value, record):
         return self._inline_text(

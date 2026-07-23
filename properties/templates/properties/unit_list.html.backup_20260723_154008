@@ -371,13 +371,6 @@
         border-radius: 4px;
         cursor: pointer;
     }
-    .unit-smart-edit,
-    .unit-public-edit {
-        min-width: 24px;
-        padding: 2px 3px;
-        font-size: 0.64rem;
-        line-height: 1.05;
-    }
     .unit-inline-edit:hover,
     .unit-building-type-edit:hover,
     .unit-status-edit:hover,

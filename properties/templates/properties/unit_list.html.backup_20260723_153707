@@ -228,14 +228,12 @@
         position: sticky;
         left: 0;
         z-index: 2;
+        background: inherit;
         box-shadow: 1px 0 0 #dee2e6;
-    }
-    .unit-table-wrap td.unit-number-col {
-        background-color: #fff !important;
     }
     .unit-table-wrap th.unit-number-col {
         z-index: 3;
-        background-color: #f8fafc !important;
+        background: #f8fafc;
     }
 
     .unit-table-wrap .property-col {
@@ -333,10 +331,7 @@
     }
     .table th.unit-actions-cell {
         z-index: 5;
-        background-color: #f8fafc !important;
-    }
-    .table td.unit-actions-cell {
-        background-color: #fff !important;
+        background: #f8fafc;
     }
 
     /* Compact vertical headings wrap multi-word labels into two vertical lines. */
@@ -370,13 +365,6 @@
         padding: 2px 4px;
         border-radius: 4px;
         cursor: pointer;
-    }
-    .unit-smart-edit,
-    .unit-public-edit {
-        min-width: 24px;
-        padding: 2px 3px;
-        font-size: 0.64rem;
-        line-height: 1.05;
     }
     .unit-inline-edit:hover,
     .unit-building-type-edit:hover,

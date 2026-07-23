@@ -150,14 +150,6 @@
           <input class="form-control form-control-sm" id="approvalSearch" name="q" type="search" value="{{ approval_filters.search }}" placeholder="Phone, tenant, property, unit, reference..." autocomplete="off">
         </div>
         <div class="col-6 col-sm-6 col-lg-2">
-          <label class="form-label" for="approvalType">Approval Type</label>
-          <select class="form-select form-select-sm" id="approvalType" name="approval_type">
-            {% for value, label in approval_type_choices %}
-              <option value="{{ value }}" {% if approval_filters.approval_type == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-6 col-sm-6 col-lg-2">
           <label class="form-label" for="approvalProperty">Property</label>
           <select class="form-select form-select-sm pending-select2" id="approvalProperty" name="property" data-placeholder="All Properties">
             <option value="">All Properties</option>
@@ -360,7 +352,6 @@
 (function () {
   const feedback = document.getElementById("pendingApprovalFeedback");
   const filterForm = document.getElementById("pendingApprovalFilters");
-  const typeFilter = document.getElementById("approvalType");
   const statusFilter = document.getElementById("approvalStatus");
   const propertyFilter = document.getElementById("approvalProperty");
   const unitFilter = document.getElementById("approvalUnit");
@@ -384,7 +375,6 @@
     if (filterForm) filterForm.requestSubmit();
   }
 
-  if (typeFilter) typeFilter.addEventListener("change", submitFilters);
   if (statusFilter) statusFilter.addEventListener("change", submitFilters);
   if (propertyFilter) {
     propertyFilter.addEventListener("change", function () {

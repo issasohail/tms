@@ -860,23 +860,6 @@ class RegistrationOnboardingTests(TestCase):
             tenant=primary, unit=unit, start_date=timezone.localdate(),
             end_date=timezone.localdate() + timedelta(days=330), monthly_rent=25000,
         )
-        active_history = lease.renewals.create(
-            renewal_number=1,
-            start_date=lease.start_date,
-            end_date=lease.end_date,
-            lease_months=lease.lease_months,
-            agreement_date=lease.agreement_date,
-            monthly_rent=lease.monthly_rent,
-            society_maintenance=lease.society_maintenance,
-            water_charges=lease.water_charges,
-            bill_water_charges=lease.bill_water_charges,
-            bill_recurring_charges=lease.bill_recurring_charges,
-            internet_charges=lease.internet_charges,
-            agreement_charges=lease.agreement_charges,
-            security_deposit=lease.security_deposit,
-            rent_increase_percent=lease.rent_increase_percent,
-            is_original=True,
-        )
         vehicle_type, _ = LeaseVehicleType.objects.get_or_create(
             code="registration-test-car", defaults={"name": "Registration Test Car"}
         )
@@ -901,15 +884,6 @@ class RegistrationOnboardingTests(TestCase):
         self.assertEqual(lease.seconder, roles[PendingRegistrationPerson.ROLE_SECONDER])
         self.assertEqual(lease.witness1_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_1])
         self.assertEqual(lease.witness2_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_2])
-        active_history.refresh_from_db()
-        self.assertEqual(
-            active_history.witness1_tenant,
-            roles[PendingRegistrationPerson.ROLE_WITNESS_1],
-        )
-        self.assertEqual(
-            active_history.witness2_tenant,
-            roles[PendingRegistrationPerson.ROLE_WITNESS_2],
-        )
         self.assertEqual(LeaseFamilyMember.objects.filter(lease=lease).count(), 1)
         self.assertEqual(LeaseVehicle.objects.filter(lease=lease).count(), 1)
         vehicle = LeaseVehicle.objects.get(lease=lease)

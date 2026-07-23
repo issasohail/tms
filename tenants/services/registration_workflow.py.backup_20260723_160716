@@ -386,7 +386,6 @@ def process_registration_people(submission, missing_files=None):
 @transaction.atomic
 def attach_registration_to_lease(submission, lease, user=None, missing_files=None):
     result = {"people": [], "vehicles": 0}
-    witness_update_fields = set()
     for person, tenant, created in _resolve_registration_people(
         submission, missing_files=missing_files
     ):
@@ -402,33 +401,11 @@ def attach_registration_to_lease(submission, lease, user=None, missing_files=Non
             lease.seconder = tenant
         elif person.role == PendingRegistrationPerson.ROLE_WITNESS_1:
             lease.witness1_tenant = tenant
-            witness_update_fields.add("witness1_tenant")
         elif person.role == PendingRegistrationPerson.ROLE_WITNESS_2:
             lease.witness2_tenant = tenant
-            witness_update_fields.add("witness2_tenant")
         result["people"].append({"role": person.role, "tenant_id": tenant.pk, "created": created})
     lease.full_clean()
     lease.save(update_fields=["proposer", "seconder", "witness1_tenant", "witness2_tenant", "updated_at"])
-    if witness_update_fields:
-        today = timezone.localdate()
-        current_history = (
-            lease.renewals.select_for_update()
-            .filter(start_date__lte=today, end_date__gte=today)
-            .order_by("-renewal_number", "-id")
-            .first()
-            or lease.renewals.select_for_update()
-            .order_by("-renewal_number", "-id")
-            .first()
-        )
-        if current_history:
-            for field_name in witness_update_fields:
-                setattr(current_history, field_name, getattr(lease, field_name))
-            history_update_fields = list(witness_update_fields)
-            if getattr(user, "is_authenticated", False):
-                current_history.updated_by = user
-                history_update_fields.append("updated_by")
-            current_history.save(update_fields=history_update_fields + ["updated_at"])
-            result["lease_history_id"] = current_history.pk
     pending_vehicles = PendingLeaseVehicleSubmission.objects.select_for_update().filter(pending_tenant_submission=submission, status=PendingLeaseVehicleSubmission.STATUS_PENDING)
     for item in pending_vehicles:
         vehicle_files = {}

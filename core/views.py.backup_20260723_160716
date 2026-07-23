@@ -65,32 +65,16 @@ PENDING_APPROVAL_DATE_CHOICES = (
     ("custom", "Custom dates"),
 )
 
-PENDING_APPROVAL_TYPE_CHOICES = (
-    ("all", "All approval types"),
-    ("lease", "Leases"),
-    ("agreement", "Agreement Edits"),
-    ("payment", "WhatsApp Payments"),
-    ("media", "WhatsApp Documents / Media"),
-    ("maintenance", "WhatsApp Maintenance"),
-    ("family", "Lease Family Members"),
-    ("police", "Police Verification"),
-    ("registration", "Tenant Registration Submissions"),
-)
-
 
 def _pending_approval_filter_state(request):
     valid_statuses = {value for value, _label in PENDING_APPROVAL_STATUS_CHOICES}
     valid_ranges = {value for value, _label in PENDING_APPROVAL_DATE_CHOICES}
-    valid_types = {value for value, _label in PENDING_APPROVAL_TYPE_CHOICES}
     selected_status = (request.GET.get("status") or "pending").lower()
     selected_range = (request.GET.get("date_range") or "all").lower()
-    selected_type = (request.GET.get("approval_type") or "all").lower()
     if selected_status not in valid_statuses:
         selected_status = "pending"
     if selected_range not in valid_ranges:
         selected_range = "all"
-    if selected_type not in valid_types:
-        selected_type = "all"
 
     today = timezone.localdate()
     date_from = None
@@ -126,7 +110,6 @@ def _pending_approval_filter_state(request):
 
     return {
         "status": selected_status,
-        "approval_type": selected_type,
         "date_range": selected_range,
         "date_from": date_from,
         "date_to": date_to,
@@ -534,15 +517,7 @@ def pending_approvals(request):
             }
             for item in section["items"]
         ]
-    visible_sections = [
-        section
-        for section in sections
-        if section["count"]
-        and (
-            filters["approval_type"] == "all"
-            or section["kind"] == filters["approval_type"]
-        )
-    ]
+    visible_sections = [section for section in sections if section["count"]]
     return render(
         request,
         "core/pending_approvals.html",
@@ -552,7 +527,6 @@ def pending_approvals(request):
             "visible_approval_count": sum(section["count"] for section in visible_sections),
             "approval_filters": filters,
             "status_choices": PENDING_APPROVAL_STATUS_CHOICES,
-            "approval_type_choices": PENDING_APPROVAL_TYPE_CHOICES,
             "date_range_choices": PENDING_APPROVAL_DATE_CHOICES,
             "filter_properties": Property.objects.order_by("property_name"),
             "filter_units": Unit.objects.filter(

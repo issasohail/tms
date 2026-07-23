@@ -55,7 +55,6 @@ class PendingApprovalFilterTests(SimpleTestCase):
         filters = _pending_approval_filter_state(self.factory.get("/pending-approvals/"))
 
         self.assertEqual(filters["status"], "pending")
-        self.assertEqual(filters["approval_type"], "all")
         self.assertEqual(filters["date_range"], "all")
         self.assertIsNone(filters["date_from"])
         self.assertIsNone(filters["date_to"])
@@ -91,17 +90,6 @@ class PendingApprovalFilterTests(SimpleTestCase):
         self.assertEqual(filters["property_id"], 12)
         self.assertEqual(filters["unit_id"], 34)
         self.assertEqual(filters["search"], "receipt")
-
-    def test_approval_type_is_validated(self):
-        selected = _pending_approval_filter_state(
-            self.factory.get("/pending-approvals/", {"approval_type": "family"})
-        )
-        invalid = _pending_approval_filter_state(
-            self.factory.get("/pending-approvals/", {"approval_type": "unknown"})
-        )
-
-        self.assertEqual(selected["approval_type"], "family")
-        self.assertEqual(invalid["approval_type"], "all")
 
 
 class PendingApprovalLeaseScopeTests(TestCase):

@@ -224,6 +224,71 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             follow=True,
         )
 
+    def test_missing_maintenance_media_returns_json_error_without_creating_ticket(self):
+        media = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/missing-maintenance-photo.jpg",
+            original_filename="missing-maintenance-photo.jpg",
+            media_type="image/jpeg",
+            purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+        )
+        pending = PendingWhatsAppMaintenance.objects.create(
+            phone=self.tenant.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Leak",
+            description="Pipe is leaking.",
+        )
+        pending.media.add(media)
+
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("missing from storage", response.json()["message"])
+        pending.refresh_from_db()
+        self.assertIsNone(pending.created_request)
+
+    def test_approved_maintenance_media_is_renamed_and_keeps_original_name(self):
+        media = self._pending(
+            filename="tenant-leak-photo.jpg",
+            media_type="image/jpeg",
+            purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        )
+        pending = PendingWhatsAppMaintenance.objects.create(
+            phone=self.tenant.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Leak",
+            description="Pipe is leaking.",
+        )
+        pending.media.add(media)
+
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        pending.refresh_from_db()
+        approved_media = pending.created_request.media.get()
+        self.assertEqual(approved_media.original_filename, "tenant-leak-photo.jpg")
+        self.assertIn("Media-Property_M-01_", approved_media.display_filename)
+        self.assertEqual(approved_media.file_size, len(b"%PDF-1.4 test media"))
+
     def test_missing_source_file_can_be_approved_with_warning(self):
         pending = PendingWhatsAppMedia.objects.create(
             phone=self.tenant.phone,

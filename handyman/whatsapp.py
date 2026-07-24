@@ -1,8 +1,7 @@
 from whatsapp.models import PendingWhatsAppMedia
 from whatsapp.services.media_processor import create_pending_media
 
-from .models import HandymanJobAttachment, HandymanProfile
-from .services import active_assignment_for_handyman_phone
+from .models import HandymanJobAttachment, HandymanProfile, MaintenanceHandymanAssignment
 
 
 def handle_handyman_whatsapp_message(message_log, conversation, text, message_type, identity):
@@ -17,15 +16,46 @@ def handle_handyman_whatsapp_message(message_log, conversation, text, message_ty
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return "Please send the image now.", "handyman_profile_upload_prompt", {}
     job_commands = _job_commands(config)
-    if config.handyman_enable_whatsapp_job_uploads and lowered in job_commands:
-        assignment = _active_assignment(identity.handyman) or active_assignment_for_handyman_phone(message_log.phone_number)
-        if not assignment:
+    command, requested_job_id = _parse_job_command(lowered, job_commands)
+    if config.handyman_enable_whatsapp_job_uploads and command:
+        handyman = identity.handyman or _handyman_for_phone(message_log.phone_number)
+        assignments = _active_assignments(handyman)
+        if not assignments:
             return None
+        if requested_job_id:
+            assignment = next(
+                (
+                    item
+                    for item in assignments
+                    if item.maintenance_request_id == requested_job_id
+                ),
+                None,
+            )
+            if not assignment:
+                return (
+                    f"Job #{requested_job_id} is not one of your active requests. "
+                    + _job_selection_text(assignments, command),
+                    "handyman_job_upload_invalid_job",
+                    {},
+                )
+        elif len(assignments) > 1:
+            return (
+                _job_selection_text(assignments, command),
+                "handyman_job_upload_select_job",
+                {"assignment_ids": [item.pk for item in assignments]},
+            )
+        else:
+            assignment = assignments[0]
         conversation.pending_state = "handyman_job_upload"
-        conversation.context["handyman_attachment_type"] = job_commands[lowered]
+        conversation.context["handyman_attachment_type"] = job_commands[command]
         conversation.context["handyman_assignment_id"] = assignment.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        return "Please send the file now.", "handyman_job_upload_prompt", {"assignment_id": assignment.pk}
+        return (
+            f"Please send the file now for Job #{assignment.maintenance_request_id} "
+            f"({assignment.maintenance_request.title}).",
+            "handyman_job_upload_prompt",
+            {"assignment_id": assignment.pk},
+        )
     return None
 
 
@@ -55,8 +85,20 @@ def handle_handyman_media_message(message_log, conversation, text, message_type,
             return None
         assignment_id = conversation.context.get("handyman_assignment_id")
         attachment_type = conversation.context.get("handyman_attachment_type")
-        assignment = _active_assignment(identity.handyman) or active_assignment_for_handyman_phone(message_log.phone_number)
-        if not assignment or assignment.pk != assignment_id:
+        handyman = identity.handyman or _handyman_for_phone(message_log.phone_number)
+        assignment = (
+            MaintenanceHandymanAssignment.objects.select_related(
+                "maintenance_request", "handyman"
+            )
+            .filter(
+                pk=assignment_id,
+                handyman=handyman,
+                is_current=True,
+                status__in=["assigned", "accepted", "in_progress"],
+            )
+            .first()
+        )
+        if not assignment:
             return None
         media = create_pending_media(message_log, conversation, getattr(assignment.maintenance_request, "lease", None))
         HandymanJobAttachment.objects.create(
@@ -74,7 +116,11 @@ def handle_handyman_media_message(message_log, conversation, text, message_type,
         conversation.context.pop("handyman_assignment_id", None)
         conversation.context.pop("handyman_attachment_type", None)
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        return "Attached to your active maintenance job. Thank you.", "handyman_job_upload_saved", {"assignment_id": assignment.pk}
+        return (
+            f"Attached to Job #{assignment.maintenance_request_id}. Thank you.",
+            "handyman_job_upload_saved",
+            {"assignment_id": assignment.pk},
+        )
     return None
 
 
@@ -88,14 +134,39 @@ def _handyman_for_phone(phone_number):
     return None
 
 
-def _active_assignment(handyman):
+def _active_assignments(handyman):
     if not handyman:
-        return None
-    return (
+        return []
+    return list(
         handyman.assignments.select_related("maintenance_request", "handyman")
         .filter(is_current=True, status__in=["assigned", "accepted", "in_progress"])
         .order_by("-assigned_at", "-id")
-        .first()
+    )
+
+
+def _parse_job_command(lowered, job_commands):
+    parts = (lowered or "").split()
+    if not parts or parts[0] not in job_commands:
+        return "", None
+    if len(parts) == 1:
+        return parts[0], None
+    job_value = parts[1].lstrip("#")
+    if job_value.isdigit():
+        return parts[0], int(job_value)
+    return "", None
+
+
+def _job_selection_text(assignments, command):
+    command_label = command.upper()
+    jobs = "\n".join(
+        f"- Job #{item.maintenance_request_id}: {item.maintenance_request.title}"
+        for item in assignments
+    )
+    return (
+        "You have multiple active maintenance requests. Choose the correct job:\n"
+        f"{jobs}\n"
+        f"Reply {command_label} followed by the job number, for example: "
+        f"{command_label} {assignments[0].maintenance_request_id}"
     )
 
 

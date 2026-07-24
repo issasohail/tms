@@ -10,13 +10,19 @@ from .models import Tenant
 from django.utils.text import slugify
 import os
 import re
+from datetime import date
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import F, Value
 from django.db.models.functions import Replace
 from .models import Tenant
 from core.utils.text import add_auto_titlecase_class
-from core.utils.identity import normalize_cnic, normalize_phone, validate_cnic
+from core.utils.identity import (
+    normalize_cnic,
+    normalize_phone,
+    validate_cnic,
+    validate_date_of_birth,
+)
 
 class TenantForm(forms.ModelForm):
     photo = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
@@ -40,6 +46,8 @@ class TenantForm(forms.ModelForm):
         fields = '__all__'
         widgets = {
             'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
+            'cnic_issue_date': forms.DateInput(attrs={'type': 'date'}),
+            'cnic_expiry_date': forms.DateInput(attrs={'type': 'date'}),
             'police_verification_date': forms.DateInput(attrs={'type': 'date'}),
             'police_verification_follow_up_date': forms.DateInput(attrs={'type': 'date'}),
             'notes': forms.Textarea(attrs={'rows': 4}),
@@ -95,6 +103,24 @@ class TenantForm(forms.ModelForm):
                     "A tenant with this CNIC already exists.")
 
         return digits
+
+    def clean_date_of_birth(self):
+        date_of_birth = self.cleaned_data.get("date_of_birth")
+        validate_date_of_birth(date_of_birth)
+        return date_of_birth
+
+    def clean(self):
+        cleaned_data = super().clean()
+        issue_date = cleaned_data.get("cnic_issue_date")
+        expiry_date = cleaned_data.get("cnic_expiry_date")
+        if issue_date and issue_date > date.today():
+            self.add_error("cnic_issue_date", "CNIC issue date cannot be in the future.")
+        if issue_date and expiry_date and expiry_date < issue_date:
+            self.add_error(
+                "cnic_expiry_date",
+                "CNIC expiry date cannot be before its issue date.",
+            )
+        return cleaned_data
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

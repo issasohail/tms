@@ -1,0 +1,2296 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}Update{% else %}Create{% endif %} Tenant{% endblock %}
+{% block main_container_class %}container-fluid px-0{% endblock %}
+{% block content %}
+<div class="tenant-detail-compact td-form-page" id="tenantFormTop">
+  <form method="post" enctype="multipart/form-data" id="tenantForm" class="td-form-layout" novalidate>
+    {% csrf_token %}
+  <div class="td-form-header">
+    <div>
+      <h2 class="td-title mb-1">{% if form.instance.pk %}Update Tenant{% else %}Create Tenant{% endif %}</h2>
+      <div class="small text-muted">Tenant information, documents, preferences, address, and family records.</div>
+    </div>
+
+    {% if form.interested_in %}
+      <div class="td-header-preferences">
+        <div class="td-header-pref-title"><i class="fas fa-home me-1"></i> Preferences</div>
+        <div class="td-form-interest-grid td-header-interest-grid">
+          {% for choice in form.interested_in %}<label>{{ choice.tag }} {{ choice.choice_label }}</label>{% empty %}<span class="text-muted small">No options configured.</span>{% endfor %}
+        </div>
+        <div class="td-form-errors">{{ form.interested_in.errors }}</div>
+      </div>
+    {% endif %}
+
+    <div class="td-hero-actions d-flex flex-wrap gap-2 justify-content-end">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="history.back()"><i class="fas fa-arrow-left me-1"></i> Go Back</button>
+      <button type="submit" form="tenantForm" class="btn btn-sm btn-success"><i class="fas fa-save me-1"></i> Save</button>
+      <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-times me-1"></i> Cancel</a>
+    </div>
+  </div>
+
+    <div class="d-none">
+      {% if form.photo_crop %}{{ form.photo_crop }}{% endif %}
+      {% if form.cnic_front_crop %}{{ form.cnic_front_crop }}{% endif %}
+      {% if form.cnic_back_crop %}{{ form.cnic_back_crop }}{% endif %}
+
+      {# Keep removed police fields posted so TenantForm does not fail required validation. #}
+      {% if form.police_verification_status %}
+        <input type="hidden" name="{{ form.police_verification_status.html_name }}" value="{{ form.instance.police_verification_status|default:'not_started' }}">
+      {% endif %}
+      {% if form.police_verification_date and form.instance.police_verification_date %}
+        <input type="hidden" name="{{ form.police_verification_date.html_name }}" value="{{ form.instance.police_verification_date|date:'Y-m-d' }}">
+      {% endif %}
+      {% if form.police_verification_follow_up_date and form.instance.police_verification_follow_up_date %}
+        <input type="hidden" name="{{ form.police_verification_follow_up_date.html_name }}" value="{{ form.instance.police_verification_follow_up_date|date:'Y-m-d' }}">
+      {% endif %}
+      {% if form.police_verification_remarks %}
+        <input type="hidden" name="{{ form.police_verification_remarks.html_name }}" value="{{ form.instance.police_verification_remarks|default:'' }}">
+      {% endif %}
+      {% if form.police_verified_by and form.instance.police_verified_by_id %}
+        <input type="hidden" name="{{ form.police_verified_by.html_name }}" value="{{ form.instance.police_verified_by_id }}">
+      {% endif %}
+    </div>
+
+    {% if form.errors %}
+      <div class="alert alert-danger py-2">
+        <strong>Please fix the highlighted fields.</strong>
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          {% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="td-hero td-card td-form-documents-card card border-0 shadow-sm mb-3">
+      <div class="card-header"><h6 class="mb-0"><i class="far fa-id-card text-secondary me-2"></i>Documents</h6></div>
+      <div class="card-body py-3">
+        <div class="td-form-doc-grid">
+          <div class="td-form-doc-slot">
+            <div class="td-form-doc-label">Photo</div>
+            <label class="td-form-doc-preview image-upload-container" for="{{ form.photo.id_for_label }}">
+              {% if form.instance.photo %}<img src="{{ form.instance.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x"></i>{% endif %}
+              {{ form.photo }}
+            </label>
+            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload me-1"></i> Upload</label>
+          </div>
+          <div class="td-form-doc-slot">
+            <div class="td-form-doc-label">CNIC Front</div>
+            <label class="td-form-doc-preview image-upload-container" for="{{ form.cnic_front.id_for_label }}">
+              {% if form.instance.cnic_front %}<img src="{{ form.instance.cnic_front.url }}" class="public-file-preview" alt="CNIC Front">{% else %}<i class="fas fa-id-card fa-2x"></i>{% endif %}
+              {{ form.cnic_front }}
+            </label>
+            <label class="td-form-upload-btn" for="{{ form.cnic_front.id_for_label }}"><i class="fas fa-upload me-1"></i> Upload</label>
+          </div>
+          <div class="td-form-doc-slot">
+            <div class="td-form-doc-label">CNIC Back</div>
+            <label class="td-form-doc-preview image-upload-container" for="{{ form.cnic_back.id_for_label }}">
+              {% if form.instance.cnic_back %}<img src="{{ form.instance.cnic_back.url }}" class="public-file-preview" alt="CNIC Back">{% else %}<i class="fas fa-id-card fa-2x"></i>{% endif %}
+              {{ form.cnic_back }}
+            </label>
+            <label class="td-form-upload-btn" for="{{ form.cnic_back.id_for_label }}"><i class="fas fa-upload me-1"></i> Upload</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card td-card td-form-personal-card shadow-sm mb-3">
+      <div class="card-header"><h6 class="mb-0"><i class="far fa-user text-secondary me-2"></i>Personal Information</h6></div>
+      <div class="card-body p-0">
+        <div class="td-form-grid td-form-personal-grid">
+          <div class="td-form-cell">{{ form.prefix.label_tag }}{{ form.prefix }}<div class="td-form-errors">{{ form.prefix.errors }}</div></div>
+          <div class="td-form-cell">{{ form.first_name.label_tag }}{{ form.first_name }}<div class="td-form-errors">{{ form.first_name.errors }}</div></div>
+          <div class="td-form-cell">{{ form.relation.label_tag }}{{ form.relation }}<div class="td-form-errors">{{ form.relation.errors }}</div></div>
+          <div class="td-form-cell">{{ form.last_name.label_tag }}{{ form.last_name }}<div class="td-form-errors">{{ form.last_name.errors }}</div></div>
+          <div class="td-form-cell">{{ form.number_of_family_member.label_tag }}{{ form.number_of_family_member }}<div class="td-form-errors">{{ form.number_of_family_member.errors }}</div></div>
+          <div class="td-form-cell">{{ form.is_active.label_tag }}{{ form.is_active }}<div class="td-form-errors">{{ form.is_active.errors }}</div></div>
+          <div class="td-form-cell">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
+          <div class="td-form-cell">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}<div class="td-form-errors">{{ form.date_of_birth.errors }}</div></div>
+          <div class="td-form-cell">
+            {{ form.gender.label_tag }}
+            {% with gender_value=form.gender.value|stringformat:"s" %}
+              <select name="{{ form.gender.html_name }}" id="{{ form.gender.id_for_label }}">
+                <option value="">Select</option>
+                <option value="M" {% if gender_value == "M" or gender_value == "Male" or gender_value == "male" %}selected{% endif %}>Male</option>
+                <option value="F" {% if gender_value == "F" or gender_value == "Female" or gender_value == "female" %}selected{% endif %}>Female</option>
+              </select>
+            {% endwith %}
+            <div class="td-form-errors">{{ form.gender.errors }}</div>
+          </div>
+          <div class="td-form-cell">{{ form.occupation.label_tag }}{{ form.occupation }}<div class="td-form-errors">{{ form.occupation.errors }}</div></div>
+          <div class="td-form-cell">{{ form.nationality.label_tag }}{{ form.nationality }}<div class="td-form-errors">{{ form.nationality.errors }}</div></div>
+          <div class="td-form-cell">{{ form.city.label_tag }}{{ form.city }}<div class="td-form-errors">{{ form.city.errors }}</div></div>
+          <div class="td-form-cell">{{ form.province.label_tag }}{{ form.province }}<div class="td-form-errors">{{ form.province.errors }}</div></div>
+          <div class="td-form-cell">{{ form.country.label_tag }}{{ form.country }}<div class="td-form-errors">{{ form.country.errors }}</div></div>
+          <div class="td-form-cell td-form-cell-email">{{ form.email.label_tag }}{{ form.email }}<div class="td-form-errors">{{ form.email.errors }}</div></div>
+          <div class="td-form-cell td-form-cell-notes">{{ form.notes.label_tag }}{{ form.notes }}<div class="td-form-errors">{{ form.notes.errors }}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card td-card td-form-contact-card shadow-sm mb-3">
+      <div class="card-header"><h6 class="mb-0"><i class="fas fa-phone text-secondary me-2"></i>Contact, Employer & References</h6></div>
+      <div class="card-body p-0">
+        <div class="td-form-grid td-form-contact-grid">
+          <div class="td-form-cell">{{ form.phone.label_tag }}{{ form.phone }}<div class="td-form-errors">{{ form.phone.errors }}</div></div>
+          <div class="td-form-cell">{{ form.phone2.label_tag }}{{ form.phone2 }}<div class="td-form-errors">{{ form.phone2.errors }}</div></div>
+          <div class="td-form-cell">{{ form.phone3.label_tag }}{{ form.phone3 }}<div class="td-form-errors">{{ form.phone3.errors }}</div></div>
+          <div class="td-form-cell">{{ form.employer_name.label_tag }}{{ form.employer_name }}</div>
+          <div class="td-form-cell">{{ form.employer_phone.label_tag }}{{ form.employer_phone }}</div>
+          <div class="td-form-cell">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}</div>
+          <div class="td-form-cell">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}</div>
+          <div class="td-form-cell">{{ form.emergency_contact_relation.label_tag }}{{ form.emergency_contact_relation }}</div>
+          <div class="td-form-cell">{{ form.reference_name_1.label_tag }}{{ form.reference_name_1 }}</div>
+          <div class="td-form-cell">{{ form.reference_phone_1.label_tag }}{{ form.reference_phone_1 }}</div>
+          <div class="td-form-cell">{{ form.reference_relation_1.label_tag }}{{ form.reference_relation_1 }}</div>
+          <div class="td-form-cell">{{ form.reference_name_2.label_tag }}{{ form.reference_name_2 }}</div>
+          <div class="td-form-cell">{{ form.reference_phone_2.label_tag }}{{ form.reference_phone_2 }}</div>
+          <div class="td-form-cell">{{ form.reference_relation_2.label_tag }}{{ form.reference_relation_2 }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card td-card td-form-address-card shadow-sm mb-3">
+      <div class="card-header"><h6 class="mb-0"><i class="fas fa-map-marker-alt text-secondary me-2"></i>Addresses & Notes</h6></div>
+      <div class="card-body p-0">
+        <div class="td-form-grid-4 td-form-grid td-form-address-grid">
+          <div class="td-form-cell td-address-long-field">{{ form.temporary_address.label_tag }}{{ form.temporary_address }}</div>
+          <div class="td-form-cell td-address-long-field">{{ form.permanent_address.label_tag }}{{ form.permanent_address }}</div>
+          <div class="td-form-cell td-address-long-field">{{ form.working_address.label_tag }}{{ form.working_address }}</div>
+          <div class="td-form-cell td-address-long-field">{{ form.address.label_tag }}{{ form.address }}</div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="card td-card td-form-family-card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <h6 class="mb-0"><i class="fas fa-users text-secondary me-2"></i>Family Members</h6>
+        {% if form.instance.pk %}
+          <button class="btn-add-family ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#tenantFamilyAddBox">
+            <i class="fas fa-plus"></i> Add Member
+          </button>
+        {% else %}
+          <button type="button" class="btn-add-family ms-auto" id="addFamilyMember"><i class="fas fa-plus"></i> Add Member</button>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if form.instance.pk %}
+          <div class="collapse mb-2" id="tenantFamilyAddBox">
+            <div class="border rounded bg-light p-2">
+              <div class="td-family-hidden-lease">
+                <select name="lease" form="tenantFamilyLinkForm">
+                  {% if family_target_leases %}
+                    {% for lease_option in family_target_leases %}
+                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                    {% endfor %}
+                  {% elif form.instance.leases.all %}
+                    {% for lease_option in form.instance.leases.all %}
+                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                    {% endfor %}
+                  {% elif form.instance.lease_set.all %}
+                    {% for lease_option in form.instance.lease_set.all %}
+                      <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                    {% endfor %}
+                  {% endif %}
+                </select>
+                <select name="lease" form="tenantFamilyCreateForm">
+                  {% if family_target_leases %}
+                    {% for lease_option in family_target_leases %}<option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>{% endfor %}
+                  {% elif form.instance.leases.all %}
+                    {% for lease_option in form.instance.leases.all %}<option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>{% endfor %}
+                  {% elif form.instance.lease_set.all %}
+                    {% for lease_option in form.instance.lease_set.all %}<option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>{% endfor %}
+                  {% endif %}
+                </select>
+              </div>
+              <div class="td-family-add-line td-family-link-line mb-2">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" form="tenantFamilyLinkForm">
+                <div>
+                  <label class="form-label small mb-1">Existing Tenant</label>
+                  <select name="family_member" class="form-select form-select-sm select2" form="tenantFamilyLinkForm">
+                    <option value="">Select tenant</option>
+                    {% for item in tenant_family_options %}
+                      <option value="{{ item.pk }}">{{ item.get_full_name }}{% if item.cnic %} - {{ item.cnic|format_cnic }}{% endif %}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label small mb-1">Relationship</label>
+                  <select name="relation" class="form-select form-select-sm" required form="tenantFamilyLinkForm">
+                    <option value="">Select</option>
+                    {% for item in relationship_types %}
+                      <option value="{{ item.pk }}">{{ item.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div><button type="submit" class="btn btn-sm btn-success w-100" form="tenantFamilyLinkForm">Link</button></div>
+              </div>
+              <div class="td-family-create-wrap">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" form="tenantFamilyCreateForm">
+                <div class="td-family-add-line td-family-create-line td-family-create-row-1">
+                  <div>
+                    <label class="form-label small mb-1">New Family Member Name</label>
+                    <input name="full_name" class="form-control form-control-sm" form="tenantFamilyCreateForm">
+                  </div>
+                  <div><label class="form-label small mb-1">CNIC</label><input name="cnic" class="form-control form-control-sm" form="tenantFamilyCreateForm"></div>
+                </div>
+                <div class="td-family-add-line td-family-create-line td-family-create-row-2">
+                  <div><label class="form-label small mb-1">Phone</label><input name="phone" class="form-control form-control-sm" form="tenantFamilyCreateForm"></div>
+                  <div>
+                    <label class="form-label small mb-1">Relationship</label>
+                    <select name="relation" class="form-select form-select-sm" required form="tenantFamilyCreateForm">
+                      <option value="">Select</option>
+                      {% for item in relationship_types %}
+                        <option value="{{ item.pk }}">{{ item.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div><button type="submit" class="btn btn-sm btn-primary w-100" form="tenantFamilyCreateForm">Create</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if existing_family %}
+          <div class="td-mobile-list td-mobile-people-list td-form-family-existing-list mb-2">
+            {% for member in existing_family %}
+              <div class="td-mobile-person-row">
+                <div class="td-mobile-sn">{{ forloop.counter }}</div>
+                <div class="td-mobile-photo">
+                  {% if member.family_member.photo %}
+                    <img src="{{ member.family_member.photo.url }}" alt="{{ member.family_member.get_full_name }}">
+                  {% else %}
+                    <span><i class="fas fa-user"></i></span>
+                  {% endif %}
+                </div>
+                <div class="td-mobile-person-detail">
+                  <div class="td-mobile-person-name">
+                    <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="text-decoration-none">{{ member.family_member.get_full_name|truncatechars:22 }}</a>
+                    {% if member.family_member.age %}<span>({{ member.family_member.age }})</span>{% endif %}
+                  </div>
+                  <div class="td-mobile-muted">{{ member.relation|default:"-" }}</div>
+                  <div class="td-mobile-phone">{{ member.family_member.cnic|format_cnic|default:"-" }}{% if member.family_member.phone %} | {{ member.family_member.phone|format_phone }}{% endif %}</div>
+                  <div class="td-mobile-actions">
+                    <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">Detail</a>
+                    <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif family_members %}
+          <div class="td-mobile-list td-mobile-people-list td-form-family-existing-list mb-2">
+            {% for member in family_members %}
+              <div class="td-mobile-person-row">
+                <div class="td-mobile-sn">{{ forloop.counter }}</div>
+                <div class="td-mobile-photo">
+                  {% if member.family_member.photo %}
+                    <img src="{{ member.family_member.photo.url }}" alt="{{ member.family_member.get_full_name }}">
+                  {% else %}
+                    <span><i class="fas fa-user"></i></span>
+                  {% endif %}
+                </div>
+                <div class="td-mobile-person-detail">
+                  <div class="td-mobile-person-name">
+                    <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="text-decoration-none">{{ member.family_member.get_full_name|truncatechars:22 }}</a>
+                    {% if member.family_member.age %}<span>({{ member.family_member.age }})</span>{% endif %}
+                  </div>
+                  <div class="td-mobile-muted">{{ member.relation|default:"-" }}</div>
+                  <div class="td-mobile-phone">{{ member.family_member.cnic|format_cnic|default:"-" }}{% if member.family_member.phone %} | {{ member.family_member.phone|format_phone }}{% endif %}</div>
+                  <div class="td-mobile-actions">
+                    <a href="{% url 'tenants:tenant_detail' member.family_member.pk %}" class="btn btn-sm btn-outline-dark">Detail</a>
+                    <a href="{% url 'tenants:tenant_update' member.family_member.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if not form.instance.pk %}
+          <div id="familyMemberRows" style="display:flex;flex-direction:column;gap:.6rem;"></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card td-card td-form-vehicle-card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <h6 class="mb-0"><i class="fas fa-car text-secondary me-2"></i>Vehicle Information</h6>
+        {% if form.instance.pk and family_target_leases %}
+          <button class="btn-add-family ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#tenantVehicleAddBox">
+            <i class="fas fa-plus"></i> Add Vehicle
+          </button>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if form.instance.pk and family_target_leases %}
+          <div class="collapse mb-2" id="tenantVehicleAddBox">
+            <div class="border rounded bg-light p-2">
+              <div class="td-vehicle-add-wrap">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" form="tenantVehicleAddForm">
+                <div class="td-vehicle-add-line td-vehicle-add-topline">
+                  <div>
+                    <label class="form-label small mb-1">Lease</label>
+                    <select name="lease" class="form-select form-select-sm" form="tenantVehicleAddForm">
+                      {% for lease_option in family_target_leases %}
+                        <option value="{{ lease_option.pk }}">{{ lease_option.unit.property.property_name }} / {{ lease_option.unit.unit_number }} - {{ lease_option.get_status_display }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label small mb-1">Photo</label>
+                    <input name="vehicle_photo" type="file" accept="image/*" class="form-control form-control-sm" form="tenantVehicleAddForm">
+                  </div>
+                </div>
+                <div class="td-vehicle-add-line td-vehicle-add-gridline">
+                  <div>
+                    <label class="form-label small mb-1">Vehicle Type</label>
+                    <select name="vehicle_type" class="form-select form-select-sm" required form="tenantVehicleAddForm">
+                      <option value="">Select type</option>
+                      {% for vehicle_type in vehicle_types %}
+                        <option value="{{ vehicle_type.pk }}">{{ vehicle_type.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div><label class="form-label small mb-1">Registration #</label><input name="registration_number" class="form-control form-control-sm" required form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Make</label><input name="make" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Model</label><input name="model" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Color</label><input name="color" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Year</label><input name="year" type="number" min="1900" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Owner</label><input name="owner_name" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Owner CNIC</label><input name="owner_cnic" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><label class="form-label small mb-1">Parking</label><input name="parking_slot" class="form-control form-control-sm" form="tenantVehicleAddForm"></div>
+                  <div><button type="submit" class="btn btn-sm btn-primary w-100" form="tenantVehicleAddForm">Save Vehicle</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if tenant_vehicles %}
+          <div class="td-form-vehicle-existing-list">
+            {% for vehicle in tenant_vehicles %}
+              <div class="td-vehicle-record-row">
+                <div class="td-mobile-sn">{{ forloop.counter }}</div>
+                <div class="td-mobile-photo td-vehicle-photo">
+                  {% if vehicle.vehicle_photo %}<img src="{{ vehicle.vehicle_photo.url }}" alt="{{ vehicle }}">{% else %}<span><i class="fas fa-car"></i></span>{% endif %}
+                </div>
+                <div class="td-vehicle-record-main">
+                  <div class="td-mobile-person-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span>{{ vehicle.registration_number|default:"No Reg #" }}</span></div>
+                  <div class="td-mobile-muted">{{ vehicle.color|default:"-" }}{% if vehicle.make or vehicle.model %}, {{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div>
+                  <div class="td-mobile-phone">Owner: {{ vehicle.owner_name|default:"-" }}{% if vehicle.parking_slot %} | Parking: {{ vehicle.parking_slot }}{% endif %}</div>
+                </div>
+                <div class="td-vehicle-actions">
+                  <a href="{% url 'leases:lease_vehicle_edit' vehicle.lease.pk vehicle.pk %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i> Edit</a>
+                  <button type="button" class="btn btn-sm btn-outline-danger" onclick="if(confirm('Remove this vehicle from active list? History will be preserved.')) document.getElementById('tenantVehicleDelete{{ vehicle.pk }}').submit();"><i class="fas fa-trash"></i> Remove</button>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif existing_vehicles %}
+          <div class="td-form-vehicle-existing-list">
+            {% for vehicle in existing_vehicles %}
+              <div class="td-vehicle-record-row">
+                <div class="td-mobile-sn">{{ forloop.counter }}</div>
+                <div class="td-mobile-photo td-vehicle-photo">{% if vehicle.vehicle_photo %}<img src="{{ vehicle.vehicle_photo.url }}" alt="{{ vehicle }}">{% else %}<span><i class="fas fa-car"></i></span>{% endif %}</div>
+                <div class="td-vehicle-record-main"><div class="td-mobile-person-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span>{{ vehicle.registration_number|default:"No Reg #" }}</span></div><div class="td-mobile-muted">{{ vehicle.color|default:"-" }}{% if vehicle.make or vehicle.model %}, {{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div><div class="td-mobile-phone">Owner: {{ vehicle.owner_name|default:"-" }}{% if vehicle.parking_slot %} | Parking: {{ vehicle.parking_slot }}{% endif %}</div></div>
+                <div class="td-vehicle-actions"><a href="{% url 'leases:lease_vehicle_edit' vehicle.lease.pk vehicle.pk %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i> Edit</a><button type="button" class="btn btn-sm btn-outline-danger" onclick="if(confirm('Remove this vehicle from active list? History will be preserved.')) document.getElementById('tenantVehicleDelete{{ vehicle.pk }}').submit();"><i class="fas fa-trash"></i> Remove</button></div>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif form.instance.lease_vehicles.all %}
+          <div class="td-form-vehicle-existing-list">
+            {% for vehicle in form.instance.lease_vehicles.all %}
+              <div class="td-vehicle-record-row">
+                <div class="td-mobile-sn">{{ forloop.counter }}</div>
+                <div class="td-mobile-photo td-vehicle-photo">{% if vehicle.vehicle_photo %}<img src="{{ vehicle.vehicle_photo.url }}" alt="{{ vehicle }}">{% else %}<span><i class="fas fa-car"></i></span>{% endif %}</div>
+                <div class="td-vehicle-record-main"><div class="td-mobile-person-name">{{ vehicle.vehicle_type.name|default:"Vehicle" }} <span>{{ vehicle.registration_number|default:"No Reg #" }}</span></div><div class="td-mobile-muted">{{ vehicle.color|default:"-" }}{% if vehicle.make or vehicle.model %}, {{ vehicle.make|default:"-" }}{% if vehicle.model %} / {{ vehicle.model }}{% endif %}{% endif %}</div><div class="td-mobile-phone">Owner: {{ vehicle.owner_name|default:"-" }}{% if vehicle.parking_slot %} | Parking: {{ vehicle.parking_slot }}{% endif %}</div></div>
+                <div class="td-vehicle-actions"><a href="{% url 'leases:lease_vehicle_edit' vehicle.lease.pk vehicle.pk %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i> Edit</a><button type="button" class="btn btn-sm btn-outline-danger" onclick="if(confirm('Remove this vehicle from active list? History will be preserved.')) document.getElementById('tenantVehicleDelete{{ vehicle.pk }}').submit();"><i class="fas fa-trash"></i> Remove</button></div>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif form.instance.pk %}
+          <p class="mb-0 small text-muted">No vehicle information recorded.</p>
+        {% else %}
+          <p class="mb-0 small text-muted">Save the tenant first, then add vehicle records.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="reg-footer d-flex justify-content-end gap-2 mb-4">
+      <button type="submit" {% if form.instance.pk %}form="tenantForm"{% endif %} class="btn btn-sm btn-success"><i class="fas fa-save me-1"></i> Save Tenant</button>
+      <a href="{% if form.instance.pk %}{% url 'tenants:tenant_detail' form.instance.pk %}{% else %}{% url 'tenants:tenant_list' %}{% endif %}" class="btn btn-sm btn-outline-dark"><i class="fas fa-times me-1"></i> Cancel</a>
+    </div>
+  </form>
+
+  {% if form.instance.pk %}
+    <form id="tenantFamilyLinkForm" method="post" action="{% url 'tenants:tenant_family_add' form.instance.pk %}"></form>
+    <form id="tenantFamilyCreateForm" method="post" enctype="multipart/form-data" action="{% url 'tenants:tenant_family_create_and_add' form.instance.pk %}"></form>
+    <form id="tenantVehicleAddForm" method="post" enctype="multipart/form-data" action="{% url 'tenants:tenant_vehicle_add' form.instance.pk %}"></form>
+    {% if tenant_vehicles %}
+      {% for vehicle in tenant_vehicles %}<form id="tenantVehicleDelete{{ vehicle.pk }}" method="post" action="{% url 'leases:lease_vehicle_delete' vehicle.lease.pk vehicle.pk %}"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"></form>{% endfor %}
+    {% elif existing_vehicles %}
+      {% for vehicle in existing_vehicles %}<form id="tenantVehicleDelete{{ vehicle.pk }}" method="post" action="{% url 'leases:lease_vehicle_delete' vehicle.lease.pk vehicle.pk %}"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"></form>{% endfor %}
+    {% elif form.instance.lease_vehicles.all %}
+      {% for vehicle in form.instance.lease_vehicles.all %}<form id="tenantVehicleDelete{{ vehicle.pk }}" method="post" action="{% url 'leases:lease_vehicle_delete' vehicle.lease.pk vehicle.pk %}"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"></form>{% endfor %}
+    {% endif %}
+  {% endif %}
+</div>
+
+<template id="familyMemberTemplate">
+  <div class="family-member-card">
+    <div class="family-card-header">
+      <div class="family-card-num">Member #<span class="member-num"></span></div>
+      <button type="button" class="btn-remove-family remove-family-member"><i class="fas fa-times"></i> Remove</button>
+    </div>
+    <div class="field-group family-member-grid">
+      <div class="field-wrap"><label class="field-label">Name</label><input type="text" class="field-control" data-field="name"></div>
+      <div class="field-wrap"><label class="field-label">Father / Husband Name</label><input type="text" class="field-control" data-field="father_husband_name"></div>
+      <div class="field-wrap"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
+      <div class="field-wrap"><label class="field-label">Date of Birth</label><input type="date" class="field-control" data-field="dob"></div>
+      <div class="field-wrap"><label class="field-label">Phone</label><input type="text" class="field-control" data-field="phone"></div>
+      <div class="field-wrap"><label class="field-label">Occupation</label><input type="text" class="field-control" data-field="occupation"></div>
+      <div class="field-wrap"><label class="field-label">Nationality</label><input type="text" class="field-control" data-field="nationality"></div>
+      <div class="field-wrap"><label class="field-label">Relationship</label><select class="field-control" data-field="relationship_type"><option value="">Select…</option>{% for item in relationship_types %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
+      <div class="field-wrap"><label class="field-label">Email</label><input type="email" class="field-control" data-field="email"></div>
+      <div class="field-wrap" style="grid-column: span 3;"><label class="field-label">Notes</label><input type="text" class="field-control" data-field="notes"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+(function () {
+  const rows = document.getElementById('familyMemberRows');
+  const template = document.getElementById('familyMemberTemplate');
+  const addButton = document.getElementById('addFamilyMember');
+  function renumber() {
+    rows.querySelectorAll('.family-member-card').forEach(function (card, index) {
+      const num = card.querySelector('.member-num');
+      if (num) num.textContent = index + 1;
+      card.querySelectorAll('[data-field]').forEach(function (field) {
+        field.name = 'family-' + index + '-' + field.dataset.field;
+      });
+    });
+  }
+  if (rows && template && addButton) {
+    addButton.addEventListener('click', function () { rows.appendChild(template.content.cloneNode(true)); renumber(); });
+    rows.addEventListener('click', function (event) {
+      const remove = event.target.closest('.remove-family-member');
+      if (!remove) return;
+      remove.closest('.family-member-card').remove();
+      renumber();
+    });
+  }
+  document.querySelectorAll('.image-upload-container input[type="file"]').forEach(function (input) {
+    input.addEventListener('change', function () {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const container = input.closest('.image-upload-container');
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        let preview = container.querySelector('img.public-file-preview');
+        const placeholder = container.querySelector('.placeholder-icon');
+        if (!preview) {
+          preview = document.createElement('img');
+          preview.className = 'public-file-preview';
+          preview.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
+          if (placeholder) placeholder.replaceWith(preview);
+          else container.insertBefore(preview, container.firstChild);
+        }
+        preview.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('.address-grid textarea').forEach(function(el) { el.setAttribute('rows', '4'); });
+})();
+</script>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+
+  /* PAGE BEHAVIOR: smooth anchor scrolling for section buttons. */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* PAGE SHELL: same max width, centered layout, and compact font as tenant_detail. */
+  .tenant-detail-compact {
+    max-width: 1520px;
+    margin: 0 auto;
+    font-size: .86rem;
+  }
+
+  /* TOP TOOLS: tenant search / header utility layout. */
+  .td-top-tools {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .td-tenant-jump {
+    max-width: 340px;
+  }
+
+  .td-top-tools .select2-container {
+    max-width: 340px;
+    width: 100% !important;
+  }
+
+  .td-top-tools .select2-selection--single {
+    min-height: 32px;
+    border-color: #ced4da;
+    font-size: .82rem;
+  }
+
+  .td-label-mobile,
+  .td-section-pills,
+  .td-mobile-list {
+    display: none;
+  }
+
+  .td-mobile-id-strip {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+  }
+
+  .td-mobile-id-strip .td-mobile-docs {
+    display: grid;
+    grid-template-columns: repeat(2, 190px);
+    gap: .55rem;
+  }
+
+  .td-mobile-doc-item img,
+  .td-mobile-doc-empty {
+    width: 190px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: .45rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+  }
+
+  .td-mobile-doc-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    font-size: .72rem;
+    font-weight: 700;
+    text-align: center;
+    padding: .25rem;
+  }
+
+  /* HERO CARD: top tenant photo, CNIC images, name, summary, and actions. */
+  .td-hero {
+    border-radius: .8rem;
+  }
+
+  .td-title {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1.15;
+  }
+
+  .td-avatar {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 20px;
+    border: 5px solid #f1f5f9;
+    box-shadow: 0 2px 10px rgba(15,23,42,.12);
+  }
+
+  .td-avatar-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e5e7eb;
+    color: #9ca3af;
+    font-size: 3rem;
+  }
+
+  .td-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    font-size: .9rem;
+    color: #111827;
+  }
+
+  .td-balance {
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .td-badge {
+    font-size: .78rem;
+    padding: .35rem .65rem;
+  }
+
+  .td-balance-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    align-items: center;
+  }
+
+  .td-label {
+    font-size: .82rem;
+    font-weight: 800;
+    color: #111827;
+  }
+
+  .td-interest-wrap {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    vertical-align: middle;
+  }
+
+  .td-interest-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 150px;
+    padding: .25rem .8rem;
+    border-radius: .4rem;
+    background: #dbe8ff;
+    color: #0d6efd;
+    font-size: .78rem;
+    font-weight: 800;
+  }
+
+  .td-scroll-top {
+    margin-left: auto;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    padding: .08rem .45rem;
+    font-size: .7rem;
+    font-weight: 800;
+    color: #374151;
+    text-decoration: none;
+    background: #f8fafc;
+    white-space: nowrap;
+  }
+
+  .td-section-title-link {
+    color: #111827;
+    text-decoration: none;
+  }
+
+  .td-section-title-link:hover {
+    text-decoration: underline;
+  }
+
+  /* SIDEBAR MINI CONTENT: compact vehicle/lease rows used on desktop. */
+  .td-side-subhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-bottom: .5rem;
+  }
+
+  .td-side-subhead span {
+    font-weight: 800;
+    font-size: .82rem;
+    color: #111827;
+  }
+
+  .td-side-count {
+    display: inline-block;
+    margin-left: .3rem;
+    color: #6b7280;
+    font-weight: 700;
+  }
+
+  .td-side-divider {
+    margin: .85rem 0;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .td-side-mini-list {
+    display: grid;
+    gap: .55rem;
+  }
+
+  .td-side-mini-card {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: .5rem;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .td-side-mini-list > .td-side-mini-card:last-child,
+  .td-side-mini-list > .td-side-mini-lease:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .td-side-mini-photo img,
+  .td-side-mini-photo span {
+    width: 40px;
+    height: 40px;
+    border-radius: .4rem;
+    object-fit: cover;
+    border: 1px solid #d1d5db;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+  }
+
+  .td-side-mini-detail {
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  .td-side-mini-title {
+    font-weight: 800;
+    font-size: .8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .td-side-mini-title span {
+    color: #6b7280;
+    font-weight: 600;
+  }
+
+  .td-side-mini-muted {
+    color: #6b7280;
+    font-size: .74rem;
+  }
+
+  .td-side-mini-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    margin-top: .35rem;
+  }
+
+  .td-side-mini-actions .btn {
+    padding: .16rem .42rem;
+    font-size: .7rem;
+    line-height: 1.15;
+  }
+
+  .td-side-mini-actions form {
+    margin: 0;
+  }
+
+  .td-side-mini-lease {
+    display: grid;
+    gap: .25rem;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .td-side-mini-lease-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .4rem;
+    font-weight: 800;
+    font-size: .8rem;
+  }
+
+  .td-side-mini-lease-top a {
+    overflow-wrap: anywhere;
+  }
+
+  .td-side-mini-money {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem .6rem;
+    font-size: .74rem;
+    font-weight: 700;
+  }
+
+  .td-side-total-balance {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .5rem .6rem;
+    margin-top: .6rem;
+    border-radius: .55rem;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    color: #111827;
+    font-weight: 800;
+    font-size: .82rem;
+  }
+
+  .td-hero-actions {
+    min-width: 330px;
+  }
+
+  /* CARD SYSTEM: shared tenant_detail card border, radius, header, and typography. */
+  .td-card {
+    border: 1px solid #dfe5ec;
+    border-radius: .65rem;
+    overflow: hidden;
+  }
+
+  .td-card .card-header {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: .62rem .85rem;
+  }
+
+  .td-card .card-header h6 {
+    font-size: .9rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .01rem;
+  }
+
+  .td-doc-card .card-body {
+    padding: .75rem .85rem;
+  }
+
+  .td-doc-stack {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+    align-items: center;
+  }
+
+  .td-doc-item {
+    width: 100%;
+    text-align: center;
+  }
+
+  .td-doc-title {
+    font-weight: 800;
+    margin-bottom: .25rem;
+    font-size: .78rem;
+  }
+
+  .td-doc-img {
+    width: 100%;
+    max-width: 230px;
+    max-height: 128px;
+    object-fit: contain;
+    border: 1px solid #d1d5db;
+    border-radius: .45rem;
+    background: #fff;
+    padding: .18rem;
+    box-shadow: 0 1px 4px rgba(15,23,42,.08);
+  }
+
+  .td-doc-empty {
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    border-radius: .45rem;
+    padding: .75rem;
+    font-size: .78rem;
+  }
+
+  /* INFORMATION GRIDS: read/detail style grids reused for tenant_form fields. */
+  .td-info-grid {
+    display: grid;
+  }
+
+  .td-info-grid-6 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .td-info-grid > div,
+  .td-address-grid > div {
+    padding: .7rem .85rem;
+    border-right: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    min-height: 4.25rem;
+  }
+
+  .td-info-grid > div:nth-child(6n),
+  .td-address-grid > div:last-child {
+    border-right: 0;
+  }
+
+  .td-info-grid > div:nth-last-child(-n+6),
+  .td-address-grid > div {
+    border-bottom: 0;
+  }
+
+  .td-info-grid span,
+  .td-address-grid span {
+    display: block;
+    color: #111827;
+    font-size: .76rem;
+    font-weight: 800;
+    margin-bottom: .28rem;
+  }
+
+  .td-info-grid strong,
+  .td-address-grid strong {
+    display: block;
+    font-weight: 500;
+    color: #111827;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
+  }
+
+  .td-address-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  }
+
+
+  .td-leases-card .table {
+    font-size: .76rem;
+    margin-bottom: 0;
+  }
+
+  .td-leases-card .table th,
+  .td-leases-card .table td {
+    padding: .34rem .45rem !important;
+    vertical-align: middle;
+  }
+
+  .td-leases-card .table thead th {
+    background: #fff;
+    border-bottom: 1px solid #d1d5db;
+    font-size: .72rem;
+    font-weight: 800;
+    color: #111827;
+    white-space: nowrap;
+  }
+
+  .td-leases-card .btn-sm {
+    padding: .18rem .45rem;
+    font-size: .74rem;
+  }
+
+  .td-leases-card .card-body {
+    overflow-x: auto;
+  }
+
+  /* TABLES: compact table styling for invoices/payments/leases. */
+  .td-table {
+    font-size: .78rem;
+  }
+
+  .td-table th {
+    font-size: .74rem;
+    white-space: nowrap;
+    background: #f8fafc;
+  }
+
+  .td-table td,
+  .td-table th {
+    padding: .42rem .55rem !important;
+    vertical-align: middle;
+  }
+
+  .tenant-reg-link-group {
+    flex-wrap: wrap;
+  }
+
+  .tenant-reg-link-group .form-control {
+    min-width: 280px;
+    overflow-wrap: anywhere;
+  }
+
+  .phone-wa-link {
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .phone-wa-link:hover {
+    text-decoration: underline;
+  }
+
+
+  .td-leases-card {
+    width: 100%;
+  }
+
+  #tenantFamily .td-mobile-list {
+    display: grid;
+  }
+
+  /* --------------------------------------------------------------------
+     FAMILY MEMBERS - DESKTOP COMPACT ROW
+     Purpose: make the desktop Family Members column match the mobile row
+     layout instead of showing a large full-width photo. On wider screens,
+     the action buttons sit in a right-side column; when there is not enough
+     room, they naturally wrap under the member details.
+     -------------------------------------------------------------------- */
+  @media (min-width: 769px) {
+    #tenantFamily .td-mobile-people-list {
+      gap: .45rem;
+    }
+
+    #tenantFamily .td-mobile-person-row {
+      display: grid;
+      grid-template-columns: 26px 58px minmax(0, 1fr);
+      gap: .5rem;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+      padding: .55rem 0;
+    }
+
+    #tenantFamily .td-mobile-person-row:last-child {
+      border-bottom: 0;
+    }
+
+    #tenantFamily .td-mobile-photo img,
+    #tenantFamily .td-mobile-photo span {
+      width: 58px;
+      height: 58px;
+      border-radius: .45rem;
+      object-fit: cover;
+      border: 1px solid #d1d5db;
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+    }
+
+    #tenantFamily .td-mobile-sn {
+      color: #64748b;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    #tenantFamily .td-mobile-person-detail {
+      min-width: 0;
+      line-height: 1.25;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: .55rem;
+      align-items: center;
+    }
+
+    #tenantFamily .td-mobile-person-name,
+    #tenantFamily .td-mobile-muted,
+    #tenantFamily .td-mobile-phone {
+      grid-column: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    #tenantFamily .td-mobile-person-name {
+      font-weight: 800;
+    }
+
+    #tenantFamily .td-mobile-person-name span,
+    #tenantFamily .td-mobile-muted {
+      color: #64748b;
+      font-size: .72rem;
+      font-weight: 600;
+    }
+
+    #tenantFamily .td-mobile-phone {
+      font-size: .74rem;
+    }
+
+    #tenantFamily .td-mobile-actions {
+      grid-column: 2;
+      grid-row: 1 / span 4;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: .3rem;
+      margin-top: 0;
+      align-self: center;
+    }
+
+    #tenantFamily .td-mobile-actions .btn {
+      padding: .16rem .42rem;
+      font-size: .7rem;
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+  }
+
+  /* Keep very narrow desktop/tablet cards readable: move actions below details. */
+  @media (min-width: 769px) and (max-width: 1080px) {
+    #tenantFamily .td-mobile-person-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    #tenantFamily .td-mobile-actions {
+      grid-column: 1;
+      grid-row: auto;
+      justify-content: flex-start;
+      margin-top: .25rem;
+    }
+  }
+
+  @media (min-width: 1200px) {
+    #tenantVehicles,
+    .td-leases-card {
+      display: none;
+    }
+  }
+
+  /* RESPONSIVE TABLET: match tenant_detail tablet behavior. */
+  @media (max-width: 1200px) {
+    .td-side-summary-card {
+      display: none;
+    }
+
+    .td-info-grid-6 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .td-info-grid > div:nth-child(6n) {
+      border-right: 1px solid #e5e7eb;
+    }
+
+    .td-info-grid > div:nth-child(3n) {
+      border-right: 0;
+    }
+
+    .td-info-grid > div:nth-last-child(-n+6) {
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .td-info-grid > div:nth-last-child(-n+3) {
+      border-bottom: 0;
+    }
+
+    .td-address-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .td-address-grid > div:nth-child(2n) {
+      border-right: 0;
+    }
+
+    .td-address-grid > div:nth-child(-n+2) {
+      border-bottom: 1px solid #e5e7eb;
+    }
+  }
+
+  /* RESPONSIVE MOBILE: match tenant_detail mobile stacking and small controls. */
+  @media (max-width: 768px) {
+    .tenant-detail-compact {
+      font-size: .82rem;
+    }
+
+    .td-top-tools {
+      justify-content: stretch;
+    }
+
+    .td-tenant-jump,
+    .td-top-tools .select2-container {
+      max-width: none;
+      width: 100% !important;
+    }
+
+    .td-label-desktop {
+      display: none;
+    }
+
+    .td-label-mobile {
+      display: inline;
+    }
+
+    .td-section-pills {
+      display: flex;
+      gap: .35rem;
+      overflow-x: visible;
+      flex-wrap: wrap;
+      padding: .35rem .05rem .45rem;
+      position: sticky;
+      top: .25rem;
+      z-index: 5;
+      background: rgba(255, 251, 235, .94);
+      backdrop-filter: blur(4px);
+    }
+
+    .td-section-pills a {
+      flex: 0 0 auto;
+      border: 1px solid #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+      border-radius: 999px;
+      padding: .28rem .55rem;
+      font-size: .72rem;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .td-hero .card-body {
+      padding: .75rem !important;
+    }
+
+    .td-mobile-id-strip {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: .55rem;
+      width: 100%;
+      align-items: stretch;
+    }
+
+    .td-mobile-id-strip .td-mobile-docs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .45rem;
+      min-width: 0;
+    }
+
+    .td-avatar {
+      width: 86px;
+      height: 86px;
+      border-radius: 16px;
+    }
+
+    .td-mobile-doc-item {
+      min-width: 0;
+    }
+
+    .td-mobile-doc-item img,
+    .td-mobile-doc-empty {
+      width: 100%;
+      height: 86px;
+      object-fit: cover;
+      border-radius: .4rem;
+      border: 1px solid #d1d5db;
+      background: #fff;
+    }
+
+    .td-mobile-doc-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: .68rem;
+      font-weight: 700;
+      text-align: center;
+      padding: .25rem;
+    }
+
+    .td-title {
+      font-size: 1.18rem;
+    }
+
+    .td-hero-meta {
+      gap: .35rem;
+      flex-direction: column;
+      font-size: .82rem;
+    }
+
+    .td-balance-line {
+      gap: .45rem;
+    }
+
+    .td-hero-actions {
+      min-width: 0;
+      width: 100%;
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .4rem !important;
+    }
+
+    .td-hero-actions .btn,
+    .td-hero-actions .btn-group,
+    .td-hero-actions .btn-group > .btn {
+      width: 100%;
+      min-height: 34px;
+      white-space: normal;
+      line-height: 1.05;
+      font-size: .75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .td-doc-card {
+      display: none;
+    }
+
+    .td-side-summary-card {
+      display: none;
+    }
+
+    .td-card .card-header h6,
+    .td-card .card-header h6 .text-primary,
+    .td-section-title-link {
+      color: #111827 !important;
+    }
+
+    .td-interest-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      overflow-x: visible;
+      gap: .35rem;
+      max-width: 100%;
+    }
+
+    .td-interest-pill {
+      flex: 0 0 auto;
+      min-width: auto;
+      background: #fef3c7;
+      color: #92400e;
+      padding: .22rem .6rem;
+    }
+
+    .td-info-grid-6,
+    .td-address-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .td-info-grid > div,
+    .td-address-grid > div {
+      border-right: 0 !important;
+      border-bottom: 1px solid #e5e7eb !important;
+      min-height: 0;
+      padding: .42rem .55rem;
+    }
+
+    .td-info-grid > div:last-child,
+    .td-address-grid > div:last-child {
+      border-bottom: 0 !important;
+    }
+
+    .td-info-grid span,
+    .td-address-grid span {
+      display: block;
+      margin: 0 0 .16rem 0;
+      font-size: .7rem;
+    }
+
+    .td-info-grid strong,
+    .td-address-grid strong {
+      display: block;
+      line-height: 1.3;
+    }
+
+    .td-address-grid > div {
+      grid-column: 1 / -1;
+    }
+
+    .td-info-grid > div:nth-child(7),
+    .td-info-grid > div:nth-child(8),
+    .td-info-grid > div:nth-child(9),
+    .td-info-grid > div:nth-child(10),
+    .td-info-grid > div:nth-child(11),
+    .td-info-grid > div:nth-child(12) {
+      grid-column: span 1;
+      border: 1px solid #e5e7eb !important;
+      border-radius: .55rem;
+      margin: .35rem .45rem 0;
+      background: #fafafa;
+    }
+
+    .td-address-grid > div {
+      padding-top: .55rem;
+    }
+
+    .td-mobile-list {
+      display: grid;
+      gap: .45rem;
+    }
+
+    #tenantInvoices .table-responsive,
+    #tenantPayments .table-responsive,
+    #tenantVehicles .table-responsive,
+    #tenantLeases .table-responsive {
+      display: none;
+    }
+
+    .td-mobile-money-row {
+      display: grid;
+      grid-template-columns: 24px minmax(100px, 1fr) minmax(88px, auto);
+      gap: .35rem;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+      padding: .38rem 0;
+      line-height: 1.15;
+      font-size: .74rem;
+    }
+
+    .td-payment-row {
+      grid-template-columns: 24px minmax(100px, 1fr) minmax(88px, auto);
+    }
+
+    .td-mobile-money-row.collapse.show {
+      display: grid;
+    }
+
+    tbody.collapse.show {
+      display: table-row-group;
+    }
+
+    .td-mobile-sn {
+      color: #64748b;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .td-mobile-ref {
+      overflow-wrap: anywhere;
+      font-weight: 700;
+    }
+
+    .td-mobile-date {
+      color: #111827;
+    }
+
+    .td-mobile-amount {
+      text-align: right;
+      font-weight: 800;
+      color: #111827;
+      white-space: nowrap;
+    }
+
+    .td-mobile-person-row {
+      display: grid;
+      grid-template-columns: 26px 52px minmax(0, 1fr);
+      gap: .45rem;
+      align-items: start;
+      border-bottom: 1px solid #e5e7eb;
+      padding: .5rem 0;
+    }
+
+    .td-mobile-photo img,
+    .td-mobile-photo span {
+      width: 52px;
+      height: 52px;
+      border-radius: .45rem;
+      object-fit: cover;
+      border: 1px solid #d1d5db;
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+    }
+
+    .td-mobile-person-detail {
+      min-width: 0;
+      line-height: 1.25;
+    }
+
+    .td-mobile-person-name {
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .td-mobile-person-name span,
+    .td-mobile-muted {
+      color: #64748b;
+      font-size: .72rem;
+      font-weight: 600;
+    }
+
+    .td-mobile-phone {
+      font-size: .74rem;
+      overflow-wrap: anywhere;
+    }
+
+    .td-mobile-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .3rem;
+      margin-top: .25rem;
+    }
+
+    .td-mobile-actions .btn {
+      padding: .16rem .42rem;
+      font-size: .7rem;
+      line-height: 1.15;
+    }
+
+    .td-mobile-actions form {
+      margin: 0;
+    }
+
+    .td-mobile-lease-row {
+      border-bottom: 1px solid #e5e7eb;
+      padding: .5rem 0;
+      display: grid;
+      gap: .25rem;
+      line-height: 1.25;
+    }
+
+    .td-mobile-lease-top {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      gap: .35rem;
+      align-items: center;
+      font-weight: 800;
+    }
+
+    .td-mobile-lease-money {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .35rem .75rem;
+      font-size: .74rem;
+      font-weight: 700;
+    }
+
+    .td-mobile-total-balance {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      padding: .5rem .6rem;
+      border-radius: .55rem;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      color: #111827;
+      font-weight: 800;
+    }
+
+    .td-more-btn {
+      justify-self: end;
+      border-color: #d1d5db;
+      color: #374151;
+    }
+  }
+
+  @media (max-width: 340px) {
+    .td-mobile-money-row,
+    .td-payment-row {
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+    }
+
+    .td-mobile-money-row .td-mobile-date {
+      grid-column: 2 / 3;
+    }
+  }
+
+  /* PRINT: hide action buttons and force printable text colors. */
+  @media print {
+    .text-danger,
+    .text-success {
+      color: #000 !important;
+    }
+
+    .td-hero-actions,
+    .btn {
+      display: none !important;
+    }
+  }
+
+
+
+  /* FORM MODE: these classes make tenant_form fields sit inside the tenant_detail visual system. */
+  .td-form-page {
+    background: #f0f2f5;
+  }
+
+
+  /* FORM LAYOUT: desktop/tablet grid keeps one Personal Information section only,
+     removes duplicate identity space,. */
+  .td-form-layout {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .75rem;
+    align-items: start;
+  }
+
+  .td-form-layout > .td-form-header,
+  .td-form-layout > .d-none,
+  .td-form-layout > .alert {
+    grid-column: 1 / -1;
+  }
+
+  .td-form-layout .td-form-documents-card { grid-column: span 5; }
+  .td-form-layout .td-form-personal-card { grid-column: span 7; }
+  .td-form-layout .td-form-contact-card { grid-column: 1 / -1; }
+  .td-form-layout .td-form-address-card { grid-column: span 6; }
+  .td-form-layout .td-form-family-card { grid-column: span 6; }
+  .td-form-layout .td-form-vehicle-card { grid-column: 1 / -1; }
+  .td-form-layout .reg-footer { grid-column: 1 / -1; }
+
+  .td-form-layout > .card,
+  .td-form-layout > .td-hero {
+    margin-bottom: 0 !important;
+  }
+
+  /* FORM HEADER: Save/Cancel/Back buttons align like tenant_detail hero actions. */
+  .td-form-header {
+    display: grid;
+    grid-template-columns: minmax(230px, 1fr) minmax(260px, 1.25fr) auto;
+    align-items: flex-start;
+    gap: .75rem;
+    margin-bottom: .75rem;
+  }
+
+  .td-header-preferences {
+    align-self: center;
+    min-width: 0;
+  }
+
+  .td-header-pref-title {
+    font-size: .72rem;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: .22rem;
+    text-transform: uppercase;
+  }
+
+  .td-header-interest-grid {
+    gap: .32rem;
+  }
+
+  /* FORM FIELDS: compact controls that keep the same spacing as tenant_detail info cells. */
+  .td-form-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .td-form-contact-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+
+  .td-form-personal-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .td-form-personal-grid > .td-form-cell {
+    grid-column: span 2;
+  }
+
+  .td-form-personal-grid .td-form-cell-email {
+    grid-column: span 3;
+  }
+
+  .td-form-personal-grid .td-form-cell-notes {
+    grid-column: span 5;
+  }
+
+  .td-form-personal-grid .td-form-cell-notes textarea {
+    min-height: 32px;
+    height: 32px;
+  }
+
+
+  .td-form-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .td-form-cell {
+    padding: .62rem .75rem;
+    border-right: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    min-width: 0;
+  }
+
+  .td-form-cell label,
+  .td-form-cell .field-label {
+    display: block;
+    color: #111827;
+    font-size: .72rem !important;
+    font-weight: 800 !important;
+    margin-bottom: .24rem !important;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .td-form-cell input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  .td-form-cell select,
+  .td-form-cell textarea {
+    width: 100%;
+    min-height: 32px;
+    border: 1px solid #d1d5db;
+    border-radius: .45rem;
+    padding: .3rem .5rem;
+    font-size: .8rem;
+    background: #fff;
+    color: #111827;
+  }
+
+  .td-form-cell textarea {
+    min-height: 74px;
+    resize: vertical;
+  }
+
+  .td-form-cell input:focus,
+  .td-form-cell select:focus,
+  .td-form-cell textarea:focus {
+    outline: none;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 .14rem rgba(13,110,253,.13);
+  }
+
+  .td-form-errors {
+    color: #dc2626;
+    font-size: .72rem;
+    margin-top: .2rem;
+  }
+
+  /* DOCUMENT UPLOADS: same photo/CNIC proportions as tenant_detail hero documents. */
+  .td-form-doc-grid {
+    display: grid;
+    grid-template-columns: 120px repeat(2, 190px);
+    gap: .55rem;
+    align-items: start;
+  }
+
+  .td-form-doc-slot {
+    min-width: 0;
+  }
+
+  .td-form-doc-label {
+    font-size: .72rem;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: .25rem;
+  }
+
+  .td-form-doc-preview {
+    position: relative;
+    width: 100%;
+    height: 120px;
+    border: 1px solid #d1d5db;
+    border-radius: .45rem;
+    background: #f8fafc;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .td-form-doc-slot:first-child .td-form-doc-preview {
+    width: 120px;
+    height: 120px;
+    border-radius: 20px;
+  }
+
+  .td-form-doc-preview img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .td-form-doc-preview input[type='file'] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 3;
+  }
+
+  .td-form-upload-btn {
+    margin-top: .3rem;
+    width: 100%;
+    border: 1px solid #0d6efd;
+    color: #0d6efd;
+    background: #fff;
+    border-radius: .45rem;
+    padding: .22rem .45rem;
+    font-size: .72rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  /* INTEREST CHECKBOXES: keep tenant_detail lead interest pill style inside the form. */
+  .td-form-interest-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+  }
+
+  .td-form-interest-grid label {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .25rem .7rem;
+    border-radius: .4rem;
+    background: #dbe8ff;
+    color: #0d6efd;
+    font-size: .76rem !important;
+    font-weight: 800 !important;
+    border: 1px solid #cfe0ff;
+    margin: 0 !important;
+  }
+
+
+  .td-form-address-grid .td-address-long-field textarea {
+    min-height: 112px;
+    height: 112px;
+    line-height: 1.25;
+  }
+
+  .td-family-add-line {
+    display: grid;
+    gap: .45rem;
+    align-items: end;
+  }
+
+  .td-family-hidden-lease {
+    display: none;
+  }
+
+  .td-family-link-line {
+    grid-template-columns: minmax(220px, 1.5fr) minmax(150px, .9fr) 90px;
+  }
+
+  .td-family-create-wrap {
+    display: grid;
+    gap: .45rem;
+  }
+
+  .td-family-create-row-1 {
+    grid-template-columns: minmax(220px, 1.4fr) minmax(160px, .8fr);
+  }
+
+  .td-family-create-row-2 {
+    grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) 90px;
+  }
+
+  .td-family-add-line .form-label {
+    font-size: .7rem;
+    font-weight: 800;
+    color: #334155;
+  }
+
+  .td-family-add-line .btn {
+    min-height: 32px;
+  }
+
+  .td-form-family-existing-list {
+    display: grid;
+    gap: .45rem;
+  }
+
+  .td-form-family-existing-list .td-mobile-person-row {
+    display: grid;
+    grid-template-columns: 24px 46px minmax(0, 1fr);
+    gap: .45rem;
+    align-items: center;
+    padding: .42rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .td-form-family-existing-list .td-mobile-person-row:last-child {
+    border-bottom: 0;
+  }
+
+  .td-form-family-existing-list .td-mobile-photo img,
+  .td-form-family-existing-list .td-mobile-photo span {
+    width: 46px;
+    height: 46px;
+    border-radius: .4rem;
+    object-fit: cover;
+    border: 1px solid #d1d5db;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+  }
+
+  .td-form-family-existing-list .td-mobile-person-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: .45rem;
+    align-items: center;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .td-form-family-existing-list .td-mobile-person-name,
+  .td-form-family-existing-list .td-mobile-muted,
+  .td-form-family-existing-list .td-mobile-phone {
+    grid-column: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .td-form-family-existing-list .td-mobile-person-name {
+    font-weight: 800;
+  }
+
+  .td-form-family-existing-list .td-mobile-muted,
+  .td-form-family-existing-list .td-mobile-phone {
+    color: #64748b;
+    font-size: .72rem;
+  }
+
+  .td-form-family-existing-list .td-mobile-actions {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    justify-content: flex-end;
+    align-self: center;
+  }
+
+  .td-form-family-existing-list .td-mobile-actions .btn {
+    padding: .15rem .42rem;
+    font-size: .7rem;
+    line-height: 1.15;
+  }
+
+
+  /* VEHICLE CARD: current vehicles plus compact add form. */
+  .td-form-vehicle-card .card-body {
+    padding: .6rem .75rem;
+  }
+
+  .td-vehicle-add-wrap {
+    display: grid;
+    gap: .5rem;
+  }
+
+  .td-vehicle-add-line {
+    display: grid;
+    gap: .45rem;
+    align-items: end;
+  }
+
+  .td-vehicle-add-topline {
+    grid-template-columns: minmax(260px, 1fr) minmax(220px, .8fr);
+  }
+
+  .td-vehicle-add-gridline {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .td-vehicle-add-line .form-label {
+    font-size: .7rem;
+    font-weight: 800;
+    color: #334155;
+  }
+
+  .td-vehicle-add-line .btn {
+    min-height: 32px;
+  }
+
+  .td-form-vehicle-existing-list {
+    display: grid;
+    gap: .45rem;
+  }
+
+  .td-vehicle-record-row {
+    display: grid;
+    grid-template-columns: 24px 50px minmax(0, 1fr) auto;
+    gap: .5rem;
+    align-items: center;
+    padding: .5rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .td-vehicle-record-row:last-child {
+    border-bottom: 0;
+  }
+
+  .td-vehicle-photo img,
+  .td-vehicle-photo span {
+    width: 50px;
+    height: 50px;
+    border-radius: .45rem;
+    object-fit: cover;
+    border: 1px solid #d1d5db;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+  }
+
+  .td-vehicle-record-main {
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .td-vehicle-actions {
+    display: flex;
+    gap: .35rem;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .td-vehicle-actions .btn {
+    padding: .16rem .42rem;
+    font-size: .7rem;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+
+    /* FAMILY FORM: keep the existing dynamic family-member JS and only restyle its cards. */
+  .family-member-card {
+    border: 1px solid #dfe5ec;
+    border-radius: .65rem;
+    padding: .75rem;
+    background: #fff;
+  }
+
+  .family-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .55rem;
+  }
+
+  .family-card-num {
+    font-size: .74rem;
+    font-weight: 800;
+    color: #64748b;
+  }
+
+  .field-group.family-member-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .5rem;
+  }
+
+  .field-wrap label,
+  .field-label {
+    font-size: .72rem !important;
+    font-weight: 800 !important;
+    color: #111827 !important;
+    margin-bottom: .2rem !important;
+  }
+
+  .field-control,
+  .field-wrap input,
+  .field-wrap select,
+  .field-wrap textarea {
+    width: 100%;
+    min-height: 32px;
+    border: 1px solid #d1d5db;
+    border-radius: .45rem;
+    padding: .3rem .5rem;
+    font-size: .8rem;
+  }
+
+  .btn-add-family,
+  .btn-remove-family {
+    border-radius: .45rem;
+    padding: .22rem .5rem;
+    font-size: .72rem;
+    font-weight: 800;
+  }
+
+  .btn-add-family {
+    border: 1px solid #0d6efd;
+    color: #0d6efd;
+    background: #fff;
+  }
+
+  .btn-remove-family {
+    border: 1px solid #dc3545;
+    color: #dc3545;
+    background: #fff;
+  }
+
+  @media (max-width: 1200px) {
+    .td-form-layout {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .td-form-layout .td-form-documents-card,
+    .td-form-layout .td-form-personal-card,
+    .td-form-layout .td-form-contact-card,
+    .td-form-layout .td-form-address-card,
+    .td-form-layout .td-form-family-card,
+    .td-form-layout .td-form-vehicle-card,
+    .td-form-layout .reg-footer {
+      grid-column: 1 / -1;
+    }
+    .td-form-grid,
+    .td-form-grid-4,
+    .td-form-contact-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .td-family-link-line,
+    .td-family-create-line {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .td-family-add-line .btn {
+      width: 100%;
+    }
+    .td-form-personal-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .td-form-personal-grid > .td-form-cell {
+      grid-column: span 2;
+    }
+    .td-form-personal-grid .td-form-cell-email,
+    .td-form-personal-grid .td-form-cell-notes {
+      grid-column: span 3;
+    }
+    .field-group.family-member-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 768px) {
+    .td-form-layout {
+      display: block;
+    }
+    .td-form-layout > .card,
+    .td-form-layout > .td-hero {
+      margin-bottom: .75rem !important;
+    }
+    .td-form-header {
+      grid-template-columns: 1fr;
+    }
+    .td-form-header .td-hero-actions {
+      width: 100%;
+    }
+    .td-form-grid,
+    .td-form-grid-4,
+    .td-form-contact-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .td-family-link-line {
+      grid-template-columns: 1fr;
+    }
+    .td-family-create-row-1,
+    .td-family-create-row-2 {
+      grid-template-columns: 1fr;
+    }
+    .td-form-personal-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .td-form-personal-grid > .td-form-cell,
+    .td-form-personal-grid .td-form-cell-email,
+    .td-form-personal-grid .td-form-cell-notes {
+      grid-column: span 1;
+    }
+    .td-form-address-grid .td-address-long-field textarea {
+      min-height: 92px;
+      height: 92px;
+    }
+    .td-form-doc-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .55rem;
+    }
+    .td-form-doc-slot:nth-child(3) {
+      grid-column: 1 / -1;
+    }
+    .td-form-doc-slot:first-child .td-form-doc-preview,
+    .td-form-doc-preview {
+      width: 100%;
+      height: 118px;
+      border-radius: .45rem;
+    }
+    .field-group.family-member-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .td-vehicle-add-topline,
+    .td-vehicle-add-gridline {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Mobile: keep documents in one row: square photo + rectangular CNIC front/back. */
+    .td-form-doc-grid {
+      grid-template-columns: minmax(70px, .72fr) minmax(96px, 1.14fr) minmax(96px, 1.14fr);
+      gap: .38rem;
+      align-items: start;
+    }
+    .td-form-doc-slot:nth-child(3) {
+      grid-column: auto;
+    }
+    .td-form-doc-slot:first-child .td-form-doc-preview {
+      width: 100%;
+      height: 76px;
+      border-radius: .45rem;
+    }
+    .td-form-doc-preview {
+      width: 100%;
+      height: 76px;
+      border-radius: .45rem;
+    }
+    .td-form-doc-label {
+      font-size: .64rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Mobile: push employer fields to the end of Contact/Employer/References. */
+    .td-form-contact-grid > .td-form-cell:nth-child(4),
+    .td-form-contact-grid > .td-form-cell:nth-child(5) {
+      order: 30;
+    }
+
+    .td-form-personal-grid,
+    .td-form-contact-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .td-form-personal-grid > .td-form-cell {
+      grid-column: span 1;
+    }
+    .td-form-personal-grid .td-form-cell-email {
+      grid-column: span 2;
+    }
+    .td-form-personal-grid .td-form-cell-notes {
+      grid-column: span 3;
+    }
+    .td-form-contact-grid > .td-form-cell {
+      min-width: 0;
+    }
+    .td-form-cell {
+      padding: .46rem .42rem;
+    }
+    .td-form-cell input:not([type='checkbox']):not([type='radio']):not([type='file']),
+    .td-form-cell select,
+    .td-form-cell textarea {
+      font-size: .76rem;
+      padding-left: .38rem;
+      padding-right: .38rem;
+    }
+    .td-vehicle-record-row {
+      grid-template-columns: 22px 48px minmax(0, 1fr);
+      align-items: start;
+    }
+    .td-vehicle-actions {
+      grid-column: 3;
+      justify-content: flex-start;
+      margin-top: .25rem;
+      flex-wrap: nowrap;
+    }
+    .td-vehicle-actions .btn {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .td-form-grid,
+    .td-form-grid-4,
+    .field-group.family-member-grid {
+      grid-template-columns: 1fr;
+    }
+    .td-form-personal-grid,
+    .td-form-contact-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .td-form-personal-grid > .td-form-cell,
+    .td-form-contact-grid > .td-form-cell {
+      grid-column: span 1;
+    }
+    .td-form-personal-grid .td-form-cell-email {
+      grid-column: span 2;
+    }
+    .td-form-personal-grid .td-form-cell-notes {
+      grid-column: span 3;
+    }
+    .td-vehicle-add-line {
+      grid-template-columns: 1fr;
+    }
+  }
+
+</style>
+{% endblock %}

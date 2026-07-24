@@ -422,6 +422,43 @@
     body.tms-embedded-page .tms-footer {
       display: none !important;
     }
+
+    .tms-uploaded-image-trigger {
+      cursor: zoom-in !important;
+    }
+    #tmsImageViewer .modal-content {
+      background: #111;
+      color: #fff;
+    }
+    #tmsImageViewer .modal-header,
+    #tmsImageViewer .modal-footer {
+      border-color: rgba(255,255,255,.18);
+    }
+    #tmsImageViewerMain {
+      display: block;
+      width: 100%;
+      max-height: 78vh;
+      object-fit: contain;
+      background: #111;
+    }
+    .tms-dob-guide {
+      display: block;
+      margin-top: .2rem;
+      color: #6b7280;
+      font-size: .72rem;
+      line-height: 1.25;
+    }
+    .tms-cnic-ocr-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: .35rem;
+      margin-top: .3rem;
+    }
+    .tms-cnic-ocr-status {
+      color: #6b7280;
+      font-size: .72rem;
+    }
   </style>
 
   {% block extra_css %}{% endblock %}
@@ -474,6 +511,27 @@
       <span class="viewport-bar__marker" id="viewportMarker"></span>
     </div>
     <span id="viewportSize">0 × 0</span>
+  </div>
+
+  <!-- Receipt viewer modal (reusable) -->
+  <div class="modal fade" id="tmsImageViewer" tabindex="-1" aria-hidden="true" aria-labelledby="tmsImageViewerTitle">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title" id="tmsImageViewerTitle">Image Preview</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-2">
+          <img id="tmsImageViewerMain" src="" alt="Image preview">
+        </div>
+        <div class="modal-footer py-2">
+          <a id="tmsImageViewerSave" class="btn btn-primary btn-sm" href="#" download>
+            <i class="fas fa-download me-1"></i> Save Image
+          </a>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Receipt viewer modal (reusable) -->
@@ -555,6 +613,284 @@
   {% block extra_js %}{% endblock %}
 
   <script>window.tmsInstallSelect2IdentityMatcher?.();</script>
+
+  <script>
+    window.TMS_CNIC_OCR_URL = "{% if request.user.is_authenticated and GLOBAL_SETTINGS.tenant_cnic_ocr_enabled %}{% url 'tenants:cnic_identity_ocr' %}{% endif %}";
+    (function () {
+      function isDobInput(input) {
+        if (!input || input.tagName !== 'INPUT') return false;
+        const name = String(input.name || '').toLowerCase();
+        return name.includes('date_of_birth') || /(^|[-_])dob$/.test(name);
+      }
+
+      function formatDobParts(isoDate) {
+        const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return null;
+        return {
+          input: `${match[2]}/${match[3]}/${match[1]}`,
+          cnic: `${match[3]}.${match[2]}.${match[1]}`
+        };
+      }
+
+      function updateDobGuide(input) {
+        const guide = input.parentElement?.querySelector(':scope > .tms-dob-guide');
+        if (!guide) return;
+        const formatted = formatDobParts(input.value);
+        guide.textContent = formatted
+          ? `Selected: ${formatted.input} — verify against CNIC ${formatted.cnic}`
+          : 'Enter/select MM/DD/YYYY. Pakistani CNIC cards print DOB as DD.MM.YYYY.';
+      }
+
+      function installDobGuides(root) {
+        (root || document).querySelectorAll('input').forEach(function (input) {
+          if (!isDobInput(input) || input.dataset.dobGuideInstalled === '1') return;
+          input.dataset.dobGuideInstalled = '1';
+          if (!input.getAttribute('max')) input.max = new Date().toISOString().slice(0, 10);
+          if (!input.getAttribute('min')) {
+            const oldestDob = new Date();
+            oldestDob.setFullYear(oldestDob.getFullYear() - 120);
+            input.min = oldestDob.toISOString().slice(0, 10);
+          }
+          input.title = 'Date of Birth: MM/DD/YYYY. CNIC card format: DD.MM.YYYY.';
+          const guide = document.createElement('small');
+          guide.className = 'tms-dob-guide';
+          input.insertAdjacentElement('afterend', guide);
+          input.addEventListener('input', function () { updateDobGuide(input); });
+          input.addEventListener('change', function () { updateDobGuide(input); });
+          updateDobGuide(input);
+        });
+      }
+
+      function cnicFieldContext(cnicInput) {
+        const form = cnicInput.form || cnicInput.closest('form') || document;
+        const name = String(cnicInput.name || '');
+        const suffix = 'cnic_front';
+        const prefix = name.endsWith(suffix) ? name.slice(0, -suffix.length) : '';
+        return {form, prefix};
+      }
+
+      function matchingCnicField(context, fieldName) {
+        const aliases = fieldName === 'date_of_birth'
+          ? ['date_of_birth', 'dob']
+          : [fieldName];
+        const candidates = [];
+        aliases.forEach(name => {
+          candidates.push(`${context.prefix}${name}`);
+          if (context.prefix) candidates.push(name);
+        });
+        for (const candidate of candidates) {
+          const found = context.form.querySelector(`[name="${CSS.escape(candidate)}"]`);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      function csrfToken(form) {
+        const field = form?.querySelector('[name=csrfmiddlewaretoken]');
+        if (field?.value) return field.value;
+        const match = document.cookie.match(/(^|; )csrftoken=([^;]*)/);
+        return match ? decodeURIComponent(match[2]) : '';
+      }
+
+      function installCnicDobButtons(root) {
+        if (!window.TMS_CNIC_OCR_URL) return;
+        (root || document).querySelectorAll('input[type="file"]').forEach(function (input) {
+          if (!String(input.name || '').endsWith('cnic_front') || input.dataset.cnicDobOcrInstalled === '1') return;
+          const context = cnicFieldContext(input);
+          const backInput = context.form.querySelector(
+            `[name="${CSS.escape(`${context.prefix}cnic_back`)}"]`
+          );
+          if (!backInput) return;
+          input.dataset.cnicDobOcrInstalled = '1';
+
+          const row = document.createElement('div');
+          row.className = 'tms-cnic-ocr-row';
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'btn btn-outline-primary btn-sm';
+          button.innerHTML = '<i class="fas fa-id-card me-1"></i> Read CNIC Details';
+          button.title = 'Reads both CNIC sides and shows suggestions before changing any form value.';
+          const status = document.createElement('span');
+          status.className = 'tms-cnic-ocr-status';
+          status.textContent = 'Suggestion only — confirm before saving.';
+          row.append(button, status);
+          const wrappingLabel = input.closest('label');
+          if (wrappingLabel && wrappingLabel.contains(input)) {
+            wrappingLabel.insertAdjacentElement('afterend', row);
+          } else {
+            input.insertAdjacentElement('afterend', row);
+          }
+
+          button.addEventListener('click', async function () {
+            const frontFile = input.files?.[0];
+            const backFile = backInput.files?.[0];
+            if (!frontFile || !backFile) {
+              status.textContent = 'Choose both CNIC Front and CNIC Back images first.';
+              status.classList.add('text-danger');
+              return;
+            }
+            const original = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Reading...';
+            status.classList.remove('text-danger', 'text-success');
+            status.textContent = 'Reading both CNIC sides...';
+            const body = new FormData();
+            body.append('cnic_front', frontFile);
+            body.append('cnic_back', backFile);
+            const token = csrfToken(input.form || input.closest('form'));
+            body.append('csrfmiddlewaretoken', token);
+            try {
+              const response = await fetch(window.TMS_CNIC_OCR_URL, {
+                method: 'POST',
+                headers: {'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest'},
+                body
+              });
+              const responseText = await response.text();
+              let payload;
+              try {
+                payload = JSON.parse(responseText);
+              } catch (_) {
+                throw new Error(
+                  response.redirected
+                    ? 'Your session or permission expired. Reload this page and try again.'
+                    : `CNIC OCR returned an unexpected server response (HTTP ${response.status}).`
+                );
+              }
+              if (!response.ok || !payload.ok) {
+                throw new Error(payload.message || `CNIC OCR failed (HTTP ${response.status}).`);
+              }
+
+              const suggestions = payload.fields.map(field => {
+                const target = matchingCnicField(context, field.name);
+                return {...field, target, current: String(target?.value || '').trim()};
+              }).filter(item => item.target);
+              if (!suggestions.length) throw new Error('No matching fields were found in this form.');
+
+              const review = suggestions.map(item => {
+                const cardDate = item.cnic_display ? ` [CNIC: ${item.cnic_display}]` : '';
+                const action = item.current ? 'KEEP CURRENT' : 'FILL BLANK';
+                return `${item.label}: ${item.display}${cardDate} — ${action}`;
+              }).join('\n');
+              const warnings = (payload.warnings || []).length
+                ? `\n\nWarnings:\n- ${payload.warnings.join('\n- ')}`
+                : '';
+              if (!window.confirm(
+                `Review CNIC OCR (${payload.confidence}% confidence):\n\n${review}${warnings}\n\n` +
+                'Apply suggestions to blank fields? Nothing is saved until you submit the form.'
+              )) {
+                status.textContent = 'Suggestion not applied.';
+                return;
+              }
+
+              const blankItems = suggestions.filter(item => !item.current);
+              blankItems.forEach(item => {
+                item.target.value = item.value;
+                item.target.dispatchEvent(new Event('input', {bubbles: true}));
+                item.target.dispatchEvent(new Event('change', {bubbles: true}));
+              });
+
+              const occupied = suggestions.filter(item => item.current && item.current !== String(item.value));
+              let overwritten = 0;
+              if (occupied.length && payload.can_overwrite) {
+                const overwriteReview = occupied.map(
+                  item => `${item.label}: "${item.current}" → "${item.display}"`
+                ).join('\n');
+                if (window.confirm(
+                  `You have overwrite permission. Overwrite these populated fields?\n\n${overwriteReview}`
+                )) {
+                  occupied.forEach(item => {
+                    item.target.value = item.value;
+                    item.target.dispatchEvent(new Event('input', {bubbles: true}));
+                    item.target.dispatchEvent(new Event('change', {bubbles: true}));
+                  });
+                  overwritten = occupied.length;
+                }
+              }
+              status.textContent = (
+                `Applied ${blankItems.length} blank field(s)` +
+                (overwritten ? ` and overwrote ${overwritten} approved field(s)` : '') +
+                '. Verify before saving.'
+              );
+              status.classList.add('text-success');
+            } catch (error) {
+              status.textContent = error.message;
+              status.classList.add('text-danger');
+            } finally {
+              button.disabled = false;
+              button.innerHTML = original;
+            }
+          });
+        });
+      }
+
+      function mediaImageUrl(target) {
+        const image = target.closest?.('img');
+        if (!image || image.closest('#tmsImageViewer, #receiptModal')) return null;
+        const link = image.closest('a');
+        if (link) {
+          const explicitPreview = link.matches('[data-toggle="lightbox"], [data-bs-toggle="lightbox"], [data-fancybox]');
+          const href = link.href || '';
+          const imageHref = /\/media\/|\\.(?:jpe?g|png|gif|webp|bmp|heic|heif)(?:[?#]|$)/i.test(href);
+          if (!explicitPreview && !imageHref) return null;
+          return {url: href || image.currentSrc || image.src, image, link};
+        }
+        const src = image.currentSrc || image.src || '';
+        return /\/media\//i.test(src) ? {url: src, image, link: null} : null;
+      }
+
+      function openImageViewer(item) {
+        const modalElement = document.getElementById('tmsImageViewer');
+        const main = document.getElementById('tmsImageViewerMain');
+        const save = document.getElementById('tmsImageViewerSave');
+        const title = document.getElementById('tmsImageViewerTitle');
+        if (!modalElement || !main || !save || !window.bootstrap?.Modal) {
+          window.open(item.url, '_blank', 'noopener');
+          return;
+        }
+        const caption = item.link?.dataset.caption || item.link?.title || item.image.alt || 'Image Preview';
+        main.src = item.url;
+        main.alt = caption;
+        title.textContent = caption;
+        save.href = item.url;
+        try {
+          save.download = decodeURIComponent(new URL(item.url, window.location.href).pathname.split('/').pop()) || 'image';
+        } catch (error) {
+          save.download = 'image';
+        }
+        bootstrap.Modal.getOrCreateInstance(modalElement).show();
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        installDobGuides(document);
+        installCnicDobButtons(document);
+        document.querySelectorAll('img').forEach(function (image) {
+          if (mediaImageUrl(image)) image.classList.add('tms-uploaded-image-trigger');
+        });
+      });
+
+      document.addEventListener('click', function (event) {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const item = mediaImageUrl(event.target);
+        if (!item) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openImageViewer(item);
+      }, true);
+
+      const observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          mutation.addedNodes.forEach(function (node) {
+            if (node.nodeType !== 1) return;
+            installDobGuides(node);
+            installCnicDobButtons(node);
+          });
+        });
+      });
+      document.addEventListener('DOMContentLoaded', function () {
+        observer.observe(document.body, {childList: true, subtree: true});
+      });
+    })();
+  </script>
 
   <script>
     document.addEventListener('DOMContentLoaded', function () {

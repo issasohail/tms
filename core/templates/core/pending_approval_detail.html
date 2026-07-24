@@ -50,7 +50,7 @@
                 <option value="{{ handyman.pk }}">{{ handyman.full_name }}{% if handyman.is_preferred %} ★{% endif %}</option>
               {% endfor %}
             </select>
-            <button type="submit" name="notify_mode" value="" class="btn btn-sm btn-success">Approve</button>
+            <button type="submit" name="notify_mode" value="" class="btn btn-sm btn-success">Approve &amp; Send</button>
             <button type="submit" name="notify_mode" value="api" class="btn btn-sm btn-success"><i class="bi bi-whatsapp me-1"></i>API</button>
             <button type="submit" name="notify_mode" value="manual" class="btn btn-sm btn-outline-success"><i class="bi bi-whatsapp me-1"></i>Manual</button>
           {% elif kind == "payment" %}
@@ -106,7 +106,7 @@
               <dt class="col-5">Confidence</dt><dd class="col-7">{{ item.ai_confidence }}%</dd>
             {% elif kind == "media" %}
               <dt class="col-5">Type</dt><dd class="col-7">{{ item.get_purpose_display }}</dd>
-              <dt class="col-5">Filename</dt><dd class="col-7">{{ item.original_filename|default:item.file.name }}</dd>
+              <dt class="col-5">Filename</dt><dd class="col-7">{{ item.original_filename|default:item.file.name }}{% if media_preview.file_size != None %} ({{ media_preview.file_size|filesizeformat }}){% endif %}</dd>
               <dt class="col-5">Confidence</dt><dd class="col-7">{{ item.ai_confidence }}%</dd>
             {% elif kind == "maintenance" %}
               <dt class="col-5">Issue</dt><dd class="col-7">{{ item.issue_type|default:"-" }}</dd>
@@ -223,7 +223,7 @@
                 <div class="col-12 col-md-6">
                   <div class="border rounded p-2 h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                      <strong class="small">{{ media.filename|default:media.object.original_filename }}</strong>
+                      <strong class="small">{{ media.filename|default:media.object.original_filename }}{% if media.file_size != None %} <span class="text-muted fw-normal">({{ media.file_size|filesizeformat }})</span>{% endif %}</strong>
                       {% if media.file_url %}<a href="{{ media.file_url }}" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-1">Open</a>{% endif %}
                     </div>
                     {% if media.preview_kind == "image" %}

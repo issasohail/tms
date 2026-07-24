@@ -1530,6 +1530,7 @@
 </template>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+{{ submitted_form_data|json_script:"registrationSubmittedData" }}
 <script>
 (function () {
   const rows = document.getElementById("familyMemberRows");
@@ -1537,6 +1538,7 @@
   const addButton = document.getElementById("addFamilyMember");
 
   function renumber() {
+    if (!rows) return;
     rows.querySelectorAll(".family-member-card").forEach(function (card, index) {
       const num = card.querySelector(".member-num");
       if (num) num.textContent = index + 1;
@@ -1623,13 +1625,154 @@
   document.querySelectorAll(".td-address-grid textarea").forEach(function(el) { el.setAttribute("rows", "5"); });
 
   const registrationForm = document.getElementById("tenantRegistrationForm");
+  let registrationSubmitting = false;
   if (registrationForm) {
     registrationForm.addEventListener("submit", function () {
+      registrationSubmitting = true;
+      clearRegistrationDraft();
       document.querySelectorAll('#tenantRegistrationForm button[type="submit"], #tenantRegistrationForm input[type="submit"], [form="tenantRegistrationForm"][type="submit"]').forEach(function (button) {
         button.disabled = true;
         button.setAttribute("aria-disabled", "true");
       });
     });
+  }
+
+  const registrationDraftKey = "tmsTenantRegistrationDraft:" + window.location.pathname;
+  let restoringRegistrationDraft = false;
+
+  function readSubmittedFormData() {
+    const element = document.getElementById("registrationSubmittedData");
+    if (!element) return {};
+    try {
+      return JSON.parse(element.textContent || "{}");
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function readRegistrationDraft() {
+    try {
+      return JSON.parse(window.sessionStorage.getItem(registrationDraftKey) || "{}");
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function clearRegistrationDraft() {
+    try {
+      window.sessionStorage.removeItem(registrationDraftKey);
+    } catch (error) {
+      // Some privacy modes disable browser storage; the form must still work.
+    }
+  }
+
+  function collectRegistrationValues() {
+    const values = {};
+    if (!registrationForm) return values;
+    registrationForm.querySelectorAll("input[name]:not([type='file']), select[name], textarea[name]").forEach(function (field) {
+      if (!field.name || field.name === "csrfmiddlewaretoken") return;
+      if (field.type === "checkbox" || field.type === "radio") {
+        if (!values[field.name]) values[field.name] = [];
+        if (field.checked) values[field.name].push(field.value);
+        return;
+      }
+      if (field.multiple) {
+        values[field.name] = Array.from(field.selectedOptions).map(function (option) { return option.value; });
+        return;
+      }
+      values[field.name] = [field.value];
+    });
+    return values;
+  }
+
+  function saveRegistrationDraft() {
+    if (!registrationForm || restoringRegistrationDraft || registrationSubmitting) return;
+    const draft = {
+      familyCount: rows ? rows.querySelectorAll(".family-member-card").length : 0,
+      vehicleCount: vehicleRows ? vehicleRows.querySelectorAll(".vehicle-row-card").length : 0,
+      values: collectRegistrationValues()
+    };
+    try {
+      window.sessionStorage.setItem(registrationDraftKey, JSON.stringify(draft));
+    } catch (error) {
+      // Storage can be unavailable or full; never block registration.
+    }
+  }
+
+  function dynamicRowCount(values, prefix) {
+    let highestIndex = -1;
+    Object.keys(values || {}).forEach(function (name) {
+      const match = name.match(new RegExp("^" + prefix + "-(\\d+)-"));
+      if (match) highestIndex = Math.max(highestIndex, Number(match[1]));
+    });
+    return highestIndex + 1;
+  }
+
+  function ensureDynamicRows(familyCount, vehicleCount) {
+    if (rows && template) {
+      while (rows.querySelectorAll(".family-member-card").length < familyCount) {
+        rows.appendChild(template.content.cloneNode(true));
+      }
+      renumber();
+    }
+    if (vehicleRows && vehicleTemplate) {
+      while (vehicleRows.querySelectorAll(".vehicle-row-card").length < vehicleCount) {
+        vehicleRows.appendChild(vehicleTemplate.content.cloneNode(true));
+      }
+      renumberVehicles();
+    }
+  }
+
+  function restoreRegistrationValues(values) {
+    if (!registrationForm) return;
+    Object.keys(values || {}).forEach(function (name) {
+      const savedValues = Array.isArray(values[name]) ? values[name] : [values[name]];
+      Array.from(registrationForm.elements).filter(function (field) {
+        return field.name === name;
+      }).forEach(function (field) {
+        if (field.type === "file") return;
+        if (field.type === "checkbox" || field.type === "radio") {
+          field.checked = savedValues.includes(field.value);
+        } else if (field.multiple) {
+          Array.from(field.options).forEach(function (option) {
+            option.selected = savedValues.includes(option.value);
+          });
+        } else {
+          field.value = savedValues.length ? savedValues[savedValues.length - 1] : "";
+        }
+      });
+    });
+  }
+
+  function restoreRegistrationDraft() {
+    if (!registrationForm) return;
+    const submittedValues = readSubmittedFormData();
+    const hasSubmittedValues = Object.keys(submittedValues).length > 0;
+    const draft = hasSubmittedValues ? {} : readRegistrationDraft();
+    const values = hasSubmittedValues ? submittedValues : (draft.values || {});
+    const familyCount = hasSubmittedValues
+      ? dynamicRowCount(values, "family")
+      : Number(draft.familyCount || dynamicRowCount(values, "family"));
+    const vehicleCount = hasSubmittedValues
+      ? Math.max(Number((values["vehicle-TOTAL_FORMS"] || [0])[0] || 0), dynamicRowCount(values, "vehicle"))
+      : Number(draft.vehicleCount || dynamicRowCount(values, "vehicle"));
+
+    restoringRegistrationDraft = true;
+    ensureDynamicRows(familyCount, vehicleCount);
+    restoreRegistrationValues(values);
+    restoringRegistrationDraft = false;
+
+    if (hasSubmittedValues) saveRegistrationDraft();
+  }
+
+  if (registrationForm) {
+    restoreRegistrationDraft();
+    registrationForm.addEventListener("input", saveRegistrationDraft);
+    registrationForm.addEventListener("change", saveRegistrationDraft);
+    registrationForm.addEventListener("click", function (event) {
+      if (event.target && event.target.matches("input[type='file']")) saveRegistrationDraft();
+    });
+    window.addEventListener("pagehide", saveRegistrationDraft);
   }
 
   function smartTitle(value) {
@@ -1650,5 +1793,6 @@
   }, true);
 })();
 </script>
+{% include "partials/identity_media_public.html" %}
 </body>
 </html>

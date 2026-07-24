@@ -222,6 +222,20 @@ class WhatsAppService:
             payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE, **context
         )
 
+    def send_video(self, phone_number, video_url, caption=None, **context):
+        video = {"link": video_url}
+        if caption:
+            video["caption"] = caption
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": self.normalize_phone_number(phone_number),
+            "type": "video",
+            "video": video,
+        }
+        return self._send(
+            payload, message_type=WhatsAppMessageLog.MESSAGE_TYPE_VIDEO, **context
+        )
+
     def send_image_bytes(
         self,
         phone_number,

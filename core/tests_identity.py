@@ -1,6 +1,7 @@
 from datetime import date
 from io import StringIO
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
@@ -47,8 +48,8 @@ class IdentityUtilityTests(TestCase):
 
     def test_phone_normalization(self):
         cases = {
-            "0300-1234567": "03001234567",
-            "0 300 123 4567": "03001234567",
+            "0300-1234567": "+923001234567",
+            "0 300 123 4567": "+923001234567",
             "+92 300 1234567": "+923001234567",
             "0092-300-1234567": "00923001234567",
             "(813) 403-8538": "8134038538",
@@ -60,9 +61,17 @@ class IdentityUtilityTests(TestCase):
             with self.subTest(supplied=supplied):
                 self.assertEqual(normalize_phone(supplied), expected)
 
+    def test_phone_normalization_uses_configured_default_country_code(self):
+        configured_settings = SimpleNamespace(country_code="+1")
+        with patch(
+            "core.models.GlobalSettings.get_solo",
+            return_value=configured_settings,
+        ):
+            self.assertEqual(normalize_phone("0813-403-8538"), "+18134038538")
+
     def test_phone_right_based_display_formatting(self):
         cases = {
-            "03001234567": "0-300-123-4567",
+            "03001234567": "+92-300-123-4567",
             "3001234567": "300-123-4567",
             "923001234567": "92-300-123-4567",
             "+923001234567": "+92-300-123-4567",
@@ -107,7 +116,7 @@ class IdentityIntegrationTests(TestCase):
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.cnic, "7150412345671")
         self.assertEqual(self.tenant.cnic_digits, "7150412345671")
-        self.assertEqual(self.tenant.phone, "03001234567")
+        self.assertEqual(self.tenant.phone, "+923001234567")
 
     def test_model_form_normalizes_before_save(self):
         form_class = modelform_factory(
@@ -141,7 +150,7 @@ class IdentityIntegrationTests(TestCase):
         legacy_tenant.save()
         legacy_tenant.refresh_from_db()
         self.assertEqual(legacy_tenant.cnic, "NEW5a685c9d79")
-        self.assertEqual(legacy_tenant.phone, "03112223344")
+        self.assertEqual(legacy_tenant.phone, "+923112223344")
 
     def test_quick_add_lead_is_saved_with_a_real_blank_cnic(self):
         form = SimpleNamespace(
@@ -155,7 +164,7 @@ class IdentityIntegrationTests(TestCase):
         )
         lead = _create_new_registration_shell(form)
         self.assertEqual(lead.cnic, "")
-        self.assertEqual(lead.phone, "03005556677")
+        self.assertEqual(lead.phone, "+923005556677")
         self.assertIn("quick tenant registration", lead.notes)
 
     def test_cleanup_converts_old_quick_add_placeholder_to_blank(self):
@@ -168,6 +177,18 @@ class IdentityIntegrationTests(TestCase):
         self.assertEqual(self.tenant.cnic, "")
         self.assertIsNone(self.tenant.cnic_digits)
         self.assertIn("legacy blank-CNIC placeholder(s)", output.getvalue())
+
+    def test_phone_only_cleanup_internationalizes_phone_without_changing_cnic(self):
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            cnic="NEW5a685c9d79",
+            cnic_digits="5685979",
+            phone="0300-1234567",
+        )
+        call_command("normalize_identity_data", apply=True, phones_only=True)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.phone, "+923001234567")
+        self.assertEqual(self.tenant.cnic, "NEW5a685c9d79")
+        self.assertEqual(self.tenant.cnic_digits, "5685979")
 
     def test_minor_family_member_can_have_blank_cnic(self):
         today = date.today()

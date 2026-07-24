@@ -300,7 +300,7 @@
                         <div class="pending-attachment-list">
                           {% for preview in row.media_previews %}
                             {% if preview.preview_kind == "image" %}
-                              <a href="{{ preview.file_url }}" target="_blank" rel="noopener" title="{{ preview.filename }}">
+                              <a href="{{ preview.file_url }}" target="_blank" rel="noopener" title="{{ preview.filename }}{% if preview.file_size != None %} ({{ preview.file_size|filesizeformat }}){% endif %}">
                                 <img src="{{ preview.file_url }}" class="pending-attachment-thumb" alt="{{ preview.filename }}">
                               </a>
                             {% elif preview.preview_kind == "video" %}
@@ -310,6 +310,9 @@
                             {% elif preview.file_url %}
                               <a href="{{ preview.file_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-primary py-1 px-2" title="{{ preview.filename }}">Open</a>
                             {% endif %}
+                            <span class="small text-muted d-block text-truncate" title="{{ preview.filename }}">
+                              {{ preview.filename }}{% if preview.file_size != None %} ({{ preview.file_size|filesizeformat }}){% endif %}
+                            </span>
                           {% empty %}
                             <span class="text-muted small">No file</span>
                           {% endfor %}
@@ -365,7 +368,7 @@
                           <form method="post" action="{{ row.urls.approve }}" class="d-inline pending-approval-action" data-action="approve" {% if section.kind == "maintenance" %}id="maintenance-approval-{{ item.pk }}"{% endif %}>
                             {% csrf_token %}
                             {% if section.kind == "maintenance" %}
-                              <button type="submit" name="notify_mode" value="" class="btn btn-xs btn-success py-0 px-1">Approve</button>
+                              <button type="submit" name="notify_mode" value="" class="btn btn-xs btn-success py-0 px-1">Approve{% if active_handymen %} &amp; Send{% endif %}</button>
                               <button type="submit" name="notify_mode" value="api" class="btn btn-xs btn-success py-0 px-1">API</button>
                               <button type="submit" name="notify_mode" value="manual" class="btn btn-xs btn-outline-success py-0 px-1">Manual</button>
                             {% else %}
@@ -525,7 +528,17 @@
         headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
         credentials: "same-origin"
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(
+          response.ok
+            ? "The server returned an invalid response."
+            : (responseText.trim() || "The update could not be completed.")
+        );
+      }
       if (!response.ok || !data.ok) throw new Error(data.message || "The update could not be completed.");
 
       const row = form.closest("tr[data-pending-row]");

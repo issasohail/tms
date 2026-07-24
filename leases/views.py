@@ -58,6 +58,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.text import slugify
 from django.views import View
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -126,7 +127,12 @@ from payments.services.payment_detail import sync_security_deposit_paid_flag
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant, normalize_cnic
-from core.utils.identity import format_cnic, format_phone, normalize_phone
+from core.utils.identity import (
+    format_cnic,
+    format_phone,
+    normalize_phone,
+    validate_date_of_birth,
+)
 from utils.pdf_export import handle_export
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
 from whatsapp.services.external_links import record_external_link_access
@@ -2039,17 +2045,31 @@ def lease_family_create_and_add(request, pk):
     phone = (request.POST.get("phone") or "").strip()
     gender = (request.POST.get("gender") or "").strip() or "M"
     date_of_birth = (request.POST.get("date_of_birth") or "").strip()
+    country = (request.POST.get("country") or "").strip()
+    cnic_issue_date = (request.POST.get("cnic_issue_date") or "").strip()
+    cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
+    temporary_address = (request.POST.get("temporary_address") or "").strip()
+    permanent_address = (request.POST.get("permanent_address") or "").strip()
     notes = (request.POST.get("notes") or "").strip()
 
-    if full_name and not first_name:
-        name_parts = full_name.split()
-        first_name = name_parts[0]
-        last_name = " ".join(name_parts[1:]) or "Family"
-    if not last_name:
-        last_name = "Family"
-
+    if full_name:
+        split_first_name, split_last_name = _split_name(full_name)
+        first_name = first_name or split_first_name
+        last_name = last_name or split_last_name
     if not first_name:
         return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
+    if not last_name:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "Enter a full name with at least two words, or provide "
+                    "First Name and Last Name."
+                ),
+            },
+            status=400,
+        )
+
     if not cnic:
         return JsonResponse(
             {"ok": False, "error": "CNIC / ID is required."}, status=400
@@ -2063,6 +2083,31 @@ def lease_family_create_and_add(request, pk):
     if cnic_digits and len(cnic_digits) != 13:
         return JsonResponse(
             {"ok": False, "error": "CNIC must contain exactly 13 digits."}, status=400
+        )
+
+    parsed_date_of_birth = parse_date(date_of_birth) if date_of_birth else None
+    parsed_issue_date = parse_date(cnic_issue_date) if cnic_issue_date else None
+    parsed_expiry_date = parse_date(cnic_expiry_date) if cnic_expiry_date else None
+    if date_of_birth and not parsed_date_of_birth:
+        return JsonResponse(
+            {"ok": False, "error": "Enter date of birth in MM/DD/YYYY format."},
+            status=400,
+        )
+    try:
+        validate_date_of_birth(parsed_date_of_birth)
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "error": exc.messages[0]}, status=400)
+    if (cnic_issue_date and not parsed_issue_date) or (
+        cnic_expiry_date and not parsed_expiry_date
+    ):
+        return JsonResponse(
+            {"ok": False, "error": "Enter CNIC dates in MM/DD/YYYY format."},
+            status=400,
+        )
+    if parsed_issue_date and parsed_expiry_date and parsed_expiry_date < parsed_issue_date:
+        return JsonResponse(
+            {"ok": False, "error": "CNIC expiry date cannot be before its issue date."},
+            status=400,
         )
 
     relationship_defaults = _family_relationship_defaults(relation)
@@ -2081,9 +2126,14 @@ def lease_family_create_and_add(request, pk):
                 phone=phone or None,
                 gender=gender,
                 notes=notes,
+                country=country or "Pakistan",
+                cnic_issue_date=parsed_issue_date,
+                cnic_expiry_date=parsed_expiry_date,
+                temporary_address=temporary_address,
+                permanent_address=permanent_address,
             )
-            if date_of_birth:
-                tenant.date_of_birth = date_of_birth
+            if parsed_date_of_birth:
+                tenant.date_of_birth = parsed_date_of_birth
             for field_name in ("photo", "cnic_front", "cnic_back"):
                 uploaded = request.FILES.get(field_name)
                 if uploaded:
@@ -5903,6 +5953,18 @@ def create_agreement_party_ajax(request):
     phone = (request.POST.get("phone") or "").strip()
     prefix = (request.POST.get("prefix") or "Mr.").strip() or "Mr."
     relation = (request.POST.get("relation") or "S/O.").strip() or "S/O."
+    date_of_birth = (request.POST.get("date_of_birth") or "").strip()
+    cnic_issue_date = (request.POST.get("cnic_issue_date") or "").strip()
+    cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
+    gender = (request.POST.get("gender") or "M").strip() or "M"
+    country = (request.POST.get("country") or "").strip()
+    temporary_address = (request.POST.get("temporary_address") or "").strip()
+    permanent_address = (request.POST.get("permanent_address") or "").strip()
+    uploaded_files = {
+        field_name: request.FILES.get(field_name)
+        for field_name in ("photo", "cnic_front", "cnic_back")
+        if request.FILES.get(field_name)
+    }
 
     if not first_name or not last_name or not cnic:
         return JsonResponse(
@@ -5916,6 +5978,25 @@ def create_agreement_party_ajax(request):
             {"ok": False, "message": "CNIC must contain exactly 13 digits."},
             status=400,
         )
+    parsed_dob = parse_date(date_of_birth) if date_of_birth else None
+    parsed_issue = parse_date(cnic_issue_date) if cnic_issue_date else None
+    parsed_expiry = parse_date(cnic_expiry_date) if cnic_expiry_date else None
+    if (date_of_birth and not parsed_dob) or (
+        cnic_issue_date and not parsed_issue
+    ) or (cnic_expiry_date and not parsed_expiry):
+        return JsonResponse(
+            {"ok": False, "message": "Enter identity dates in MM/DD/YYYY format."},
+            status=400,
+        )
+    try:
+        validate_date_of_birth(parsed_dob)
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "message": exc.messages[0]}, status=400)
+    if parsed_issue and parsed_expiry and parsed_expiry < parsed_issue:
+        return JsonResponse(
+            {"ok": False, "message": "CNIC expiry date cannot be before its issue date."},
+            status=400,
+        )
 
     existing = Tenant.objects.filter(cnic_digits=cnic_digits).first()
     if existing:
@@ -5926,6 +6007,21 @@ def create_agreement_party_ajax(request):
         if phone and not existing.phone:
             existing.phone = phone
             changed.append("phone")
+        blank_only_values = {
+            "date_of_birth": parsed_dob,
+            "cnic_issue_date": parsed_issue,
+            "cnic_expiry_date": parsed_expiry,
+            "country": country,
+            "temporary_address": temporary_address,
+            "permanent_address": permanent_address,
+        }
+        for field_name, value in blank_only_values.items():
+            if value and not getattr(existing, field_name):
+                setattr(existing, field_name, value)
+                changed.append(field_name)
+        for field_name, uploaded_file in uploaded_files.items():
+            setattr(existing, field_name, uploaded_file)
+            changed.append(field_name)
         if changed:
             existing.save(update_fields=changed + ["updated_at"] if "updated_at" not in changed else changed)
         return JsonResponse({
@@ -5941,6 +6037,10 @@ def create_agreement_party_ajax(request):
     tenant = Tenant(
         prefix=prefix[:10], first_name=first_name[:50], relation=relation[:10],
         last_name=last_name[:50], cnic=cnic_digits, phone=normalize_phone(phone), is_active=True,
+        date_of_birth=parsed_dob, cnic_issue_date=parsed_issue,
+        cnic_expiry_date=parsed_expiry, gender=gender, country=country or "Pakistan",
+        temporary_address=temporary_address, permanent_address=permanent_address,
+        **uploaded_files,
     )
     try:
         tenant.full_clean()

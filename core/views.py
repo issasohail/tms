@@ -257,11 +257,16 @@ def _media_preview_kind(file_name, media_type=""):
 
 def _pending_media_context(media):
     if not media or not getattr(media, "file", None):
-        return {"file_url": "", "preview_kind": "file"}
+        return {"file_url": "", "preview_kind": "file", "file_size": None}
+    try:
+        file_size = media.file.size
+    except (FileNotFoundError, OSError, ValueError):
+        file_size = None
     return {
         "file_url": media.file.url,
         "preview_kind": _media_preview_kind(media.file.name, media.media_type),
         "filename": media.original_filename or media.file.name,
+        "file_size": file_size,
     }
 
 
@@ -289,17 +294,20 @@ def _whatsapp_api_display_number():
 def _handyman_maintenance_message(request, pending, ticket, handyman):
     tenant = pending.tenant or getattr(pending.lease, "tenant", None)
     tenant_name = tenant.get_full_name() if tenant else "-"
+    tenant_phone = getattr(tenant, "phone", "") or pending.phone or "-"
     location = _property_unit_label(pending)
+    staff_name = request.user.get_full_name() or request.user.get_username()
+    settings_obj = GlobalSettings.get_solo()
+    staff_phone = (
+        getattr(request.user, "whatsapp_number", "")
+        or settings_obj.whatsapp_number
+        or "-"
+    )
     detail_url = request.build_absolute_uri(
         reverse("maintenance:request_detail", args=[ticket.pk])
     )
-    media_urls = []
-    for media in pending.media.all():
-        if getattr(media, "file", None):
-            media_urls.append(request.build_absolute_uri(media.file.url))
     api_number = _whatsapp_api_display_number()
     api_number_label = f"+{api_number}" if api_number else "this WhatsApp API number"
-    settings_obj = GlobalSettings.get_solo()
     photo_command = settings_obj.handyman_job_photo_command or "PHOTO"
     invoice_command = settings_obj.handyman_invoice_command or "INVOICE"
 
@@ -310,23 +318,64 @@ def _handyman_maintenance_message(request, pending, ticket, handyman):
         f"Job: #{ticket.pk} - {ticket.title}",
         f"Location: {location}",
         f"Tenant: {tenant_name}",
+        f"Tenant number: {tenant_phone}",
+        f"Staff contact: {staff_name} - {staff_phone}",
         f"Priority: {ticket.get_priority_display()}",
         f"Details: {pending.description or ticket.description or '-'}",
         f"TMS detail: {detail_url}",
+        "",
+        "Please inspect the job and take clear photos before starting work. "
+        "Take a video where necessary.",
+        "",
+        "IMPORTANT - After the repair, send clear pictures of the completed work "
+        "and the bill for payment:",
+        f"1. Send {photo_command} {ticket.pk}, then send the repair photos/video.",
+        f"2. Send {invoice_command} {ticket.pk}, then send the bill/invoice.",
+        f"Send them to WhatsApp API number {api_number_label}. "
+        "Always include the job number so files go to the correct request.",
     ]
-    if media_urls:
-        lines.extend(["", "Submitted photos/files:"])
-        lines.extend(f"- {url}" for url in media_urls)
-    lines.extend(
-        [
-            "",
-            "IMPORTANT - To get paid after completion:",
-            f"1. Send {photo_command}, then send the completed-work photos.",
-            f"2. Send {invoice_command}, then send the receipt/invoice.",
-            f"Send both to WhatsApp API number {api_number_label}.",
-        ]
-    )
     return "\n".join(lines)
+
+
+def _send_handyman_maintenance_media(request, service, phone_number, ticket):
+    """Send approved tenant media as native WhatsApp attachments for this job."""
+    sent_count = 0
+    failed_count = 0
+    for index, media in enumerate(ticket.media.filter(is_active=True), start=1):
+        if not media.file:
+            continue
+        file_url = request.build_absolute_uri(media.file.url)
+        caption = f"Job #{ticket.pk} submitted media {index}: {ticket.title}"
+        try:
+            if media.is_image:
+                result = service.send_image(
+                    phone_number,
+                    file_url,
+                    caption=caption,
+                    maintenance_request=ticket,
+                )
+            elif media.is_video:
+                result = service.send_video(
+                    phone_number,
+                    file_url,
+                    caption=caption,
+                    maintenance_request=ticket,
+                )
+            else:
+                result = service.send_document(
+                    phone_number,
+                    file_url,
+                    filename=media.display_filename,
+                    caption=caption,
+                    maintenance_request=ticket,
+                )
+        except Exception:
+            result = {"ok": False}
+        if result.get("ok"):
+            sent_count += 1
+        else:
+            failed_count += 1
+    return sent_count, failed_count
 
 
 @login_required
@@ -1097,6 +1146,7 @@ def _approve_pending_payment(pending, user):
     return payment
 
 
+@transaction.atomic
 def _approve_pending_maintenance(pending, user, handyman=None):
     from handyman.services import assign_handyman
     from maintenance.models import MaintenanceRequest, MaintenanceRequestMedia
@@ -1106,6 +1156,23 @@ def _approve_pending_maintenance(pending, user, handyman=None):
         raise ValueError("This maintenance submission has already been reviewed.")
     if not pending.unit_id:
         raise ValueError("Maintenance needs a unit before approval.")
+    pending_media = list(pending.media.all())
+    for media in pending_media:
+        if not media.file or not media.file.name:
+            raise ValueError(
+                "A maintenance media file is missing. Restore or re-upload it before approval."
+            )
+        try:
+            source_exists = media.file.storage.exists(media.file.name)
+        except Exception as exc:
+            raise ValueError(
+                "A maintenance media file could not be checked. Please verify media storage and try again."
+            ) from exc
+        if not source_exists:
+            raise ValueError(
+                f'Maintenance media "{media.original_filename or media.file.name}" '
+                "is missing from storage. Restore or re-upload it before approval."
+            )
     ticket = MaintenanceRequest.objects.create(
         lease=pending.lease,
         unit=pending.unit,
@@ -1117,18 +1184,25 @@ def _approve_pending_maintenance(pending, user, handyman=None):
         priority="urgent" if pending.urgency in {"urgent", "emergency"} else "normal",
         created_by=user,
     )
-    for media in pending.media.all():
-        if not media.file:
-            continue
-        media.file.open("rb")
+    for media in pending_media:
+        try:
+            with media.file.storage.open(media.file.name, "rb") as source_file:
+                content = ContentFile(
+                    source_file.read(),
+                    name=media.original_filename or media.file.name,
+                )
+        except (FileNotFoundError, OSError) as exc:
+            raise ValueError(
+                f'Maintenance media "{media.original_filename or media.file.name}" '
+                "is missing from storage. Restore or re-upload it before approval."
+            ) from exc
         MaintenanceRequestMedia.objects.create(
             request=ticket,
-            file=ContentFile(media.file.read(), name=media.original_filename or media.file.name),
+            file=content,
             description=media.ai_notes[:255],
             uploaded_by=user,
             original_filename=media.original_filename,
         )
-        media.file.close()
         media.status = PendingWhatsAppMedia.STATUS_APPROVED
         media.approved_by = user
         media.approved_at = timezone.now()
@@ -1321,6 +1395,8 @@ def pending_approval_approve(request, kind, pk):
 
             notify_mode = (request.POST.get("notify_mode") or "").strip()
             handyman_id = (request.POST.get("handyman") or "").strip()
+            if handyman_id and not notify_mode:
+                notify_mode = "api"
             if notify_mode in {"api", "manual"} and not handyman_id:
                 raise ValueError("Select a handyman before sending the assignment.")
             handyman = None
@@ -1372,13 +1448,27 @@ def pending_approval_approve(request, kind, pk):
                     except Exception as exc:
                         result = {"ok": False, "error": str(exc)}
                     if result.get("ok"):
+                        sent_count, failed_count = _send_handyman_maintenance_media(
+                            request,
+                            WhatsAppService(created_by=request.user),
+                            handyman_phone,
+                            ticket,
+                        )
                         assignment.handyman_notified_at = timezone.now()
                         assignment.save(
                             update_fields=["handyman_notified_at", "updated_at"]
                         )
                         messages.success(
-                            request, "Assignment sent to the handyman via WhatsApp API."
+                            request,
+                            "Assignment sent to the handyman via WhatsApp API. "
+                            f"{sent_count} media file(s) sent directly."
                         )
+                        if failed_count:
+                            messages.warning(
+                                request,
+                                f"{failed_count} media file(s) could not be sent directly. "
+                                "The handyman can still open them from the TMS job detail.",
+                            )
                     else:
                         messages.warning(
                             request,

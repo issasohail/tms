@@ -108,6 +108,8 @@
           <div class="td-form-cell">{{ form.is_active.label_tag }}{{ form.is_active }}<div class="td-form-errors">{{ form.is_active.errors }}</div></div>
           <div class="td-form-cell">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
           <div class="td-form-cell">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}<div class="td-form-errors">{{ form.date_of_birth.errors }}</div></div>
+          <div class="td-form-cell">{{ form.cnic_issue_date.label_tag }}{{ form.cnic_issue_date }}<div class="td-form-errors">{{ form.cnic_issue_date.errors }}</div></div>
+          <div class="td-form-cell">{{ form.cnic_expiry_date.label_tag }}{{ form.cnic_expiry_date }}<div class="td-form-errors">{{ form.cnic_expiry_date.errors }}</div></div>
           <div class="td-form-cell">
             {{ form.gender.label_tag }}
             {% with gender_value=form.gender.value|stringformat:"s" %}
@@ -402,7 +404,7 @@
               </div>
             {% endfor %}
           </div>
-        {% elif form.instance.lease_vehicles.all %}
+        {% elif form.instance.pk and form.instance.lease_vehicles.all %}
           <div class="td-form-vehicle-existing-list">
             {% for vehicle in form.instance.lease_vehicles.all %}
               <div class="td-vehicle-record-row">

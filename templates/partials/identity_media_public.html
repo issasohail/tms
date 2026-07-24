@@ -1,0 +1,195 @@
+<style>
+  .tms-public-image-viewer[hidden] { display: none !important; }
+  .tms-public-image-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0,0,0,.88);
+  }
+  .tms-public-image-panel {
+    position: relative;
+    width: min(1200px, 100%);
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 10px;
+    background: #111;
+    overflow: hidden;
+  }
+  .tms-public-image-title {
+    min-height: 42px;
+    padding: 10px 54px 8px 14px;
+    color: #fff;
+    font: 600 15px/1.4 Arial, sans-serif;
+  }
+  .tms-public-image-close {
+    position: absolute;
+    top: 7px;
+    right: 9px;
+    z-index: 2;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    color: #fff;
+    background: rgba(255,255,255,.16);
+    font-size: 24px;
+    line-height: 28px;
+    cursor: pointer;
+  }
+  .tms-public-image-main {
+    display: block;
+    width: 100%;
+    max-height: calc(94vh - 98px);
+    object-fit: contain;
+    background: #111;
+  }
+  .tms-public-image-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 9px 12px;
+    border-top: 1px solid rgba(255,255,255,.18);
+  }
+  .tms-public-image-actions a,
+  .tms-public-image-actions button {
+    padding: 7px 12px;
+    border: 0;
+    border-radius: 5px;
+    color: #fff;
+    background: #2563eb;
+    font: 600 13px/1.2 Arial, sans-serif;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .tms-public-image-actions button { background: #4b5563; }
+  .tms-public-image-trigger { cursor: zoom-in !important; }
+  .tms-public-dob-guide {
+    display: block;
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+</style>
+
+<div class="tms-public-image-viewer" id="tmsPublicImageViewer" hidden role="dialog" aria-modal="true" aria-labelledby="tmsPublicImageTitle">
+  <div class="tms-public-image-panel">
+    <div class="tms-public-image-title" id="tmsPublicImageTitle">Image Preview</div>
+    <button type="button" class="tms-public-image-close" id="tmsPublicImageClose" aria-label="Close">&times;</button>
+    <img class="tms-public-image-main" id="tmsPublicImageMain" src="" alt="Image preview">
+    <div class="tms-public-image-actions">
+      <a id="tmsPublicImageSave" href="#" download>Save Image</a>
+      <button type="button" id="tmsPublicImageCloseBottom">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const viewer = document.getElementById('tmsPublicImageViewer');
+  const main = document.getElementById('tmsPublicImageMain');
+  const title = document.getElementById('tmsPublicImageTitle');
+  const save = document.getElementById('tmsPublicImageSave');
+
+  function isDobInput(input) {
+    const name = String(input?.name || '').toLowerCase();
+    return input?.tagName === 'INPUT' && (
+      name.includes('date_of_birth') || /(^|[-_])dob$/.test(name)
+    );
+  }
+
+  function updateDobGuide(input) {
+    const guide = input.parentElement?.querySelector(':scope > .tms-public-dob-guide');
+    if (!guide) return;
+    const match = String(input.value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    guide.textContent = match
+      ? `Selected: ${match[2]}/${match[3]}/${match[1]} — verify against CNIC ${match[3]}.${match[2]}.${match[1]}`
+      : 'Enter/select MM/DD/YYYY. Pakistani CNIC cards print DOB as DD.MM.YYYY.';
+  }
+
+  function installDobGuides(root) {
+    (root || document).querySelectorAll('input').forEach(function (input) {
+      if (!isDobInput(input) || input.dataset.publicDobGuideInstalled === '1') return;
+      input.dataset.publicDobGuideInstalled = '1';
+      if (!input.max) input.max = new Date().toISOString().slice(0, 10);
+      input.title = 'Date of Birth: MM/DD/YYYY. CNIC card format: DD.MM.YYYY.';
+      const guide = document.createElement('small');
+      guide.className = 'tms-public-dob-guide';
+      input.insertAdjacentElement('afterend', guide);
+      input.addEventListener('input', function () { updateDobGuide(input); });
+      input.addEventListener('change', function () { updateDobGuide(input); });
+      updateDobGuide(input);
+    });
+  }
+
+  function imageItem(target) {
+    const image = target.closest?.('img');
+    if (!image || image.closest('#tmsPublicImageViewer')) return null;
+    const link = image.closest('a');
+    if (link) {
+      const href = link.href || '';
+      if (!/\/media\/|\.(?:jpe?g|png|gif|webp|bmp|heic|heif)(?:[?#]|$)/i.test(href)) return null;
+      return {url: href, image};
+    }
+    const src = image.currentSrc || image.src || '';
+    return /\/media\/|^blob:|^data:image\//i.test(src) ? {url: src, image} : null;
+  }
+
+  function openViewer(item) {
+    const caption = item.image.alt || 'Image Preview';
+    main.src = item.url;
+    main.alt = caption;
+    title.textContent = caption;
+    save.href = item.url;
+    try {
+      save.download = decodeURIComponent(new URL(item.url, window.location.href).pathname.split('/').pop()) || 'image';
+    } catch (error) {
+      save.download = 'image';
+    }
+    viewer.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeViewer() {
+    viewer.hidden = true;
+    main.src = '';
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    installDobGuides(document);
+    document.querySelectorAll('img').forEach(function (image) {
+      if (imageItem(image)) image.classList.add('tms-public-image-trigger');
+    });
+  });
+
+  document.addEventListener('click', function (event) {
+    const item = imageItem(event.target);
+    if (!item) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openViewer(item);
+  }, true);
+  document.getElementById('tmsPublicImageClose')?.addEventListener('click', closeViewer);
+  document.getElementById('tmsPublicImageCloseBottom')?.addEventListener('click', closeViewer);
+  viewer?.addEventListener('click', function (event) {
+    if (event.target === viewer) closeViewer();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !viewer.hidden) closeViewer();
+  });
+
+  const observer = new MutationObserver(function () {
+    installDobGuides(document);
+  });
+  document.addEventListener('DOMContentLoaded', function () {
+    observer.observe(document.body, {childList: true, subtree: true});
+  });
+})();
+</script>

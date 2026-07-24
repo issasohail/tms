@@ -59,7 +59,14 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from weasyprint import HTML
 
 from core.models import GlobalSettings
-from core.utils.identity import format_cnic, format_phone, normalize_cnic, normalize_phone, validate_cnic
+from core.utils.identity import (
+    format_cnic,
+    format_phone,
+    normalize_cnic,
+    normalize_phone,
+    validate_cnic,
+    validate_date_of_birth,
+)
 from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
 from leases.models import (
     Lease,
@@ -123,6 +130,79 @@ def _split_registration_name(name):
     if len(parts) == 1:
         return parts[0], ""
     return parts[0], " ".join(parts[1:])
+
+
+@login_required
+@require_POST
+def cnic_identity_ocr(request):
+    """Read both CNIC sides into review-only suggestions; never save here."""
+    can_add = request.user.has_perm("tenants.add_tenant")
+    can_change = request.user.has_perm("tenants.change_tenant")
+    if not (can_add or can_change or request.user.is_superuser):
+        return JsonResponse(
+            {"ok": False, "message": "You do not have permission to use tenant CNIC OCR."},
+            status=403,
+        )
+    if not GlobalSettings.get_solo().tenant_cnic_ocr_enabled:
+        return JsonResponse(
+            {"ok": False, "message": "Tenant CNIC OCR is disabled in Settings."},
+            status=403,
+        )
+
+    from tenants.services.cnic_ocr import extract_cnic_identity
+    from whatsapp.services.ai_config import get_whatsapp_ai_config
+
+    result = extract_cnic_identity(
+        request.FILES.get("cnic_front"),
+        request.FILES.get("cnic_back"),
+        get_whatsapp_ai_config().model,
+    )
+    if not result.get("fields"):
+        status = 503 if result.get("engine") == "unavailable" else 422
+        return JsonResponse(
+            {"ok": False, "message": result.get("message") or "CNIC details were not detected."},
+            status=status,
+        )
+
+    labels = {
+        "full_name": "Full name",
+        "first_name": "Name",
+        "last_name": "Father / husband name",
+        "gender": "Gender",
+        "country": "Country of stay",
+        "cnic": "CNIC",
+        "date_of_birth": "Date of birth",
+        "cnic_issue_date": "Date of issue",
+        "cnic_expiry_date": "Date of expiry",
+        "temporary_address": "Temporary address (English)",
+        "permanent_address": "Permanent address (English)",
+    }
+    date_fields = {"date_of_birth", "cnic_issue_date", "cnic_expiry_date"}
+    fields = []
+    for name, value in result["fields"].items():
+        parsed = parse_date(value) if name in date_fields else None
+        fields.append(
+            {
+                "name": name,
+                "label": labels.get(name, name.replace("_", " ").title()),
+                "value": value,
+                "display": parsed.strftime("%m/%d/%Y") if parsed else value,
+                "cnic_display": parsed.strftime("%d.%m.%Y") if parsed else "",
+            }
+        )
+    return JsonResponse(
+        {
+            "ok": True,
+            "fields": fields,
+            "confidence": result.get("confidence", 0),
+            "warnings": result.get("warnings", []),
+            "can_overwrite": bool(can_change or request.user.is_superuser),
+        }
+    )
+
+
+# Keep the old callable available for older imports and deployed links.
+cnic_date_of_birth_ocr = cnic_identity_ocr
 
 
 # ===================== TENANT DETAIL INLINE UPDATE ADDITIONS =====================
@@ -1051,6 +1131,11 @@ def tenant_public_registration_update(request, token):
         {
             "tenant": tenant,
             "form": form,
+            "submitted_form_data": (
+                {key: list(values) for key, values in request.POST.lists()}
+                if request.method == "POST"
+                else {}
+            ),
             "existing_family": existing_family,
             "relationship_types": relationship_types,
             "vehicle_types": LeaseVehicleType.objects.filter(is_active=True).order_by(
@@ -2042,15 +2127,28 @@ def tenant_family_create_and_add(request, pk):
     cnic = (request.POST.get("cnic") or "").strip()
     phone = (request.POST.get("phone") or "").strip()
     date_of_birth = (request.POST.get("date_of_birth") or "").strip()
-    if full_name and not first_name:
-        first_name, last_name = _split_registration_name(full_name)
+    country = (request.POST.get("country") or "").strip()
+    cnic_issue_date = (request.POST.get("cnic_issue_date") or "").strip()
+    cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
+    temporary_address = (request.POST.get("temporary_address") or "").strip()
+    permanent_address = (request.POST.get("permanent_address") or "").strip()
+    if full_name:
+        split_first_name, split_last_name = _split_registration_name(full_name)
+        first_name = first_name or split_first_name
+        last_name = last_name or split_last_name
     if not first_name:
         messages.error(request, "Family member name is required.")
         return redirect(
             f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
         )
     if not last_name:
-        last_name = "Family"
+        messages.error(
+            request,
+            "Enter a full name with at least two words, or provide First Name and Last Name.",
+        )
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
     if not relation:
         messages.error(request, "Relationship is required.")
         return redirect(
@@ -2058,6 +2156,34 @@ def tenant_family_create_and_add(request, pk):
         )
 
     cnic_digits = normalize_cnic(cnic)
+    parsed_date_of_birth = parse_date(date_of_birth) if date_of_birth else None
+    parsed_issue_date = parse_date(cnic_issue_date) if cnic_issue_date else None
+    parsed_expiry_date = parse_date(cnic_expiry_date) if cnic_expiry_date else None
+    if date_of_birth and not parsed_date_of_birth:
+        messages.error(request, "Enter date of birth in MM/DD/YYYY format.")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
+    try:
+        validate_date_of_birth(parsed_date_of_birth)
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0])
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
+    if (cnic_issue_date and not parsed_issue_date) or (
+        cnic_expiry_date and not parsed_expiry_date
+    ):
+        messages.error(request, "Enter CNIC dates in MM/DD/YYYY format.")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
+    if parsed_issue_date and parsed_expiry_date and parsed_expiry_date < parsed_issue_date:
+        messages.error(request, "CNIC expiry date cannot be before its issue date.")
+        return redirect(
+            f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
+        )
+
     family_member = (
         Tenant.objects.filter(cnic_digits=cnic_digits).first() if cnic_digits else None
     )
@@ -2068,9 +2194,14 @@ def tenant_family_create_and_add(request, pk):
             cnic=cnic,
             phone=phone or None,
             gender=(request.POST.get("gender") or "M"),
+            country=country or "Pakistan",
+            cnic_issue_date=parsed_issue_date,
+            cnic_expiry_date=parsed_expiry_date,
+            temporary_address=temporary_address,
+            permanent_address=permanent_address,
         )
-        if date_of_birth:
-            family_member.date_of_birth = date_of_birth
+        if parsed_date_of_birth:
+            family_member.date_of_birth = parsed_date_of_birth
         for field_name in ("photo", "cnic_front", "cnic_back"):
             uploaded = request.FILES.get(field_name)
             if uploaded:

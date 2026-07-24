@@ -252,6 +252,34 @@ class AgreementPartyAjaxTests(TestCase):
         self.assertEqual(response.json()["id"], existing.pk)
         self.assertFalse(response.json()["created"])
 
+    def test_quick_add_party_saves_photo_and_cnic_images(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.urls import reverse
+        from tenants.models import Tenant
+
+        image_bytes = (
+            b"GIF87a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00"
+            b"\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,"
+            b"\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
+        )
+        response = self.client.post(
+            reverse("leases:create_agreement_party_ajax"),
+            {
+                "first_name": "Documented",
+                "last_name": "Party",
+                "cnic": "42101-1111111-1",
+                "photo": SimpleUploadedFile("photo.gif", image_bytes, content_type="image/gif"),
+                "cnic_front": SimpleUploadedFile("front.gif", image_bytes, content_type="image/gif"),
+                "cnic_back": SimpleUploadedFile("back.gif", image_bytes, content_type="image/gif"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        tenant = Tenant.objects.get(pk=response.json()["id"])
+        self.assertTrue(tenant.photo.name)
+        self.assertTrue(tenant.cnic_front.name)
+        self.assertTrue(tenant.cnic_back.name)
+
 
 class LeaseHistoryWitnessSelectTests(TestCase):
     def test_both_witness_fields_use_quick_add_select2_class(self):
@@ -578,3 +606,86 @@ class ActiveAgreementAndMoveInBillingTests(TestCase):
         self.assertEqual(invoice.issue_date, date(2026, 7, 20))
         self.assertEqual(invoice.amount, Decimal("5922.58"))
         self.assertIn("2026-07-20 to 2026-07-31", invoice.description)
+
+
+class LeaseFamilyNameEntryTests(TestCase):
+    def setUp(self):
+        from datetime import date, timedelta
+
+        from django.contrib.auth import get_user_model
+        from leases.models import Lease, LeaseRelationshipType
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        self.user = get_user_model().objects.create_user(
+            username="family-name-user", password="x"
+        )
+        from django.contrib.auth.models import Permission
+
+        self.user.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="leases",
+                codename="add_leasefamilymember",
+            )
+        )
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="Family Name Property",
+            owner_name="Owner",
+            owner_cnic="61101-1111111-1",
+            type="Residential",
+            property_type="Building",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="FN-1")
+        primary = Tenant.objects.create(
+            first_name="Primary",
+            last_name="Tenant",
+            cnic="61101-2222222-2",
+        )
+        self.lease = Lease.objects.create(
+            tenant=primary,
+            unit=unit,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            monthly_rent=10000,
+        )
+        self.relationship = LeaseRelationshipType.objects.create(
+            name="Brother", code="brother-test", is_active=True
+        )
+
+    def test_full_name_splits_into_first_and_remaining_last_name(self):
+        from django.urls import reverse
+        from tenants.models import Tenant
+
+        response = self.client.post(
+            reverse("leases:lease_family_create_and_add", args=[self.lease.pk]),
+            {
+                "full_name": "Asif Ali Hussain",
+                "relation": self.relationship.pk,
+                "cnic": "61101-3333333-3",
+                "date_of_birth": "2000-02-25",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        family = Tenant.objects.get(cnic_digits="6110133333333")
+        self.assertEqual(family.first_name, "Asif")
+        self.assertEqual(family.last_name, "Ali Hussain")
+
+    def test_single_word_full_name_is_rejected_instead_of_using_family_surname(self):
+        from django.urls import reverse
+
+        response = self.client.post(
+            reverse("leases:lease_family_create_and_add", args=[self.lease.pk]),
+            {
+                "full_name": "Asif",
+                "relation": self.relationship.pk,
+                "cnic": "61101-4444444-4",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at least two words", response.json()["error"])

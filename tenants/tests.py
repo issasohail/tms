@@ -282,6 +282,60 @@ class RegistrationOnboardingTests(TestCase):
         self.assertFalse(started.is_valid())
         self.assertIn("Witness 1 phone is required", str(started.non_field_errors()))
 
+    def test_invalid_public_registration_exposes_dynamic_values_for_restoration(self):
+        from django.urls import reverse
+        from tenants.views import tenant_registration_token
+
+        shell = self.make_shell()
+        data = self.public_post_data(
+            **{
+                "family-0-name": "Saved Family Member",
+                "family-0-cnic": "6110112345673",
+                "witness1-first_name": "Saved Witness",
+            }
+        )
+
+        response = self.client.post(
+            reverse(
+                "tenants:tenant_public_registration",
+                args=[tenant_registration_token(shell)],
+            ),
+            data,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["submitted_form_data"]["family-0-name"],
+            ["Saved Family Member"],
+        )
+        self.assertEqual(
+            response.context["submitted_form_data"]["proposer-first_name"],
+            ["Primary"],
+        )
+        self.assertEqual(
+            response.context["submitted_form_data"]["witness1-first_name"],
+            ["Saved Witness"],
+        )
+        self.assertContains(response, 'id="registrationSubmittedData"')
+
+    def test_public_registration_uses_one_responsive_draft_recovery_handler(self):
+        from django.urls import reverse
+        from tenants.views import tenant_registration_token
+
+        shell = self.make_shell()
+        response = self.client.get(
+            reverse(
+                "tenants:tenant_public_registration",
+                args=[tenant_registration_token(shell)],
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "tmsTenantRegistrationDraft:")
+        self.assertContains(response, "sessionStorage.setItem")
+        self.assertContains(response, "restoreRegistrationDraft();")
+        self.assertContains(response, 'window.addEventListener("pagehide"')
+
     def test_unpermitted_edit_returns_403(self):
         from django.contrib.auth import get_user_model
         from django.urls import reverse
@@ -935,3 +989,76 @@ class RegistrationOnboardingTests(TestCase):
         )
 
         self.assertTrue(submission.is_editable)
+
+
+class DateOfBirthSafetyTests(SimpleTestCase):
+    def test_future_date_of_birth_is_rejected(self):
+        from datetime import date, timedelta
+
+        from django.core.exceptions import ValidationError
+
+        from core.utils.identity import validate_date_of_birth
+
+        with self.assertRaisesMessage(
+            ValidationError, "Date of birth cannot be in the future."
+        ):
+            validate_date_of_birth(date.today() + timedelta(days=1))
+
+
+class CNICIdentityOCRViewTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Permission
+
+        self.user = get_user_model().objects.create_user(
+            username="cnic-ocr-user", password="x"
+        )
+        self.user.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="tenants", codename="add_tenant"
+            ),
+            Permission.objects.get(
+                content_type__app_label="tenants", codename="change_tenant"
+            ),
+        )
+        self.client.force_login(self.user)
+
+    def test_ocr_suggestion_requires_review_and_returns_identity_fields(self):
+        from unittest.mock import patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.urls import reverse
+
+        with patch(
+            "tenants.services.cnic_ocr.extract_cnic_identity",
+            return_value={
+                "engine": "openai",
+                "fields": {
+                    "first_name": "Asif Hussain",
+                    "last_name": "Babar Khan",
+                    "cnic": "71501-1986137-7",
+                    "date_of_birth": "2000-02-25",
+                },
+                "confidence": 96,
+                "warnings": ["No personal address was found on the back."],
+            },
+        ):
+            response = self.client.post(
+                reverse("tenants:cnic_identity_ocr"),
+                {
+                    "cnic_front": SimpleUploadedFile(
+                        "front.jpg", b"front-image", content_type="image/jpeg"
+                    ),
+                    "cnic_back": SimpleUploadedFile(
+                        "back.jpg", b"back-image", content_type="image/jpeg"
+                    ),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        fields = {item["name"]: item for item in payload["fields"]}
+        self.assertEqual(fields["first_name"]["value"], "Asif Hussain")
+        self.assertEqual(fields["date_of_birth"]["display"], "02/25/2000")
+        self.assertEqual(fields["date_of_birth"]["cnic_display"], "25.02.2000")
+        self.assertTrue(payload["can_overwrite"])

@@ -1,6 +1,10 @@
 import re
+from datetime import date, datetime
 
+from django.apps import apps
+from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import OperationalError, ProgrammingError
 
 
 NON_DIGITS_RE = re.compile(r"\D+")
@@ -23,6 +27,33 @@ def validate_cnic(value):
         )
 
 
+def validate_date_of_birth(value):
+    """Allow blank DOB values and reject impossible or likely mistyped dates."""
+    if value in (None, ""):
+        return
+    dob = value.date() if isinstance(value, datetime) else value
+    if not isinstance(dob, date):
+        raise ValidationError(
+            "Enter date of birth in MM/DD/YYYY format.",
+            code="invalid_date_of_birth",
+        )
+
+    today = date.today()
+    if dob > today:
+        raise ValidationError(
+            "Date of birth cannot be in the future.",
+            code="future_date_of_birth",
+        )
+    age = today.year - dob.year - (
+        (today.month, today.day) < (dob.month, dob.day)
+    )
+    if age > 120:
+        raise ValidationError(
+            "Date of birth cannot be more than 120 years ago.",
+            code="implausible_date_of_birth",
+        )
+
+
 def format_cnic(value):
     if value in (None, ""):
         return ""
@@ -34,8 +65,22 @@ def format_cnic(value):
     return digits or original
 
 
-def normalize_phone(value):
-    """Preserve a supplied leading plus and all digits; remove every separator."""
+def default_country_code():
+    """Return the configured country code, with a safe startup fallback."""
+    fallback = getattr(settings, "WHATSAPP_DEFAULT_COUNTRY_CODE", "+92")
+    if not apps.ready:
+        return fallback
+    try:
+        from core.models import GlobalSettings
+
+        return GlobalSettings.get_solo().country_code or fallback
+    except (LookupError, OperationalError, ProgrammingError):
+        # The settings table may not exist yet while migrations are running.
+        return fallback
+
+
+def normalize_phone(value, country_code=None):
+    """Normalize separators and replace one leading local zero with the country code."""
     if value is None:
         return ""
     raw = str(value).strip()
@@ -45,11 +90,19 @@ def normalize_phone(value):
     digits = NON_DIGITS_RE.sub("", raw)
     if not digits:
         return ""
-    return ("+" if leading_plus else "") + digits
+    if leading_plus:
+        return "+" + digits
+
+    country_digits = NON_DIGITS_RE.sub(
+        "", str(default_country_code() if country_code is None else country_code)
+    )
+    if country_digits and digits.startswith("0") and not digits.startswith("00"):
+        return "+" + country_digits + digits[1:]
+    return digits
 
 
 def format_phone(value, country_code=""):
-    normalized = normalize_phone(value)
+    normalized = normalize_phone(value, country_code=country_code or None)
     if not normalized:
         return ""
     has_plus = normalized.startswith("+")
@@ -92,7 +145,7 @@ def format_phone(value, country_code=""):
 
 def whatsapp_phone_digits(value, country_code=""):
     """Return an international digits-only number suitable for a wa.me link."""
-    normalized = normalize_phone(value)
+    normalized = normalize_phone(value, country_code=country_code or None)
     if not normalized:
         return ""
     digits = NON_DIGITS_RE.sub("", normalized)

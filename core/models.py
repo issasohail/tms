@@ -173,6 +173,13 @@ class GlobalSettings(models.Model):
     whatsapp_ai_enable_roman_urdu = models.BooleanField(default=True)
     whatsapp_ai_mask_sensitive_fields = models.BooleanField(default=True)
     whatsapp_ai_store_logs = models.BooleanField(default=True)
+    tenant_cnic_ocr_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Allow authorized staff to read Pakistani CNIC front/back images into "
+            "a review screen. OCR never saves or overwrites fields automatically."
+        ),
+    )
     whatsapp_handover_reminder_interval_minutes = models.PositiveIntegerField(default=30)
     whatsapp_handover_escalation_timeout_minutes = models.PositiveIntegerField(default=60)
     whatsapp_handover_max_reminders = models.PositiveSmallIntegerField(default=3)

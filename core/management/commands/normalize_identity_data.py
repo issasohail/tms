@@ -16,15 +16,22 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", help="Persist safe normalization changes.")
+        parser.add_argument(
+            "--phones-only",
+            action="store_true",
+            help="Normalize phone fields without inspecting or changing CNIC fields.",
+        )
 
     def handle(self, *args, **options):
         apply_changes = options["apply"]
+        phones_only = options["phones_only"]
         changed = malformed_cnic = legacy_blank_cnic = unusual_phone = skipped_models = 0
         existing_tables = set(connection.introspection.table_names())
         for model in apps.get_models():
             identity_fields = [
                 field for field in model._meta.concrete_fields
                 if isinstance(field, (NormalizedCNICField, NormalizedPhoneField))
+                and (not phones_only or isinstance(field, NormalizedPhoneField))
             ]
             if not identity_fields:
                 continue

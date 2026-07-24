@@ -257,6 +257,15 @@ class MaintenanceRequestMedia(models.Model):
     def display_filename(self):
         return os.path.basename(self.file.name or self.original_filename or "file")
 
+    @property
+    def file_size(self):
+        if not self.file:
+            return None
+        try:
+            return self.file.size
+        except (FileNotFoundError, OSError, ValueError):
+            return None
+
     def save(self, *args, **kwargs):
         if self.file and not self.original_filename:
             self.original_filename = os.path.basename(self.file.name or "")

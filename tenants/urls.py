@@ -25,6 +25,16 @@ urlpatterns = [
     path("", TenantListView.as_view(), name="tenant_list"),
     path("create/", TenantCreateView.as_view(), name="tenant_create"),
     path(
+        "cnic/read-identity/",
+        views.cnic_identity_ocr,
+        name="cnic_identity_ocr",
+    ),
+    path(
+        "cnic/read-date-of-birth/",
+        views.cnic_identity_ocr,
+        name="cnic_date_of_birth_ocr",
+    ),
+    path(
         "registration/new/",
         views.tenant_public_registration_new,
         name="tenant_public_registration_new",

@@ -49,6 +49,7 @@ class GlobalSettingsForm(forms.ModelForm):
                   "whatsapp_ai_max_reply_length", "whatsapp_ai_enable_urdu",
                   "whatsapp_ai_enable_roman_urdu", "whatsapp_ai_mask_sensitive_fields",
                   "whatsapp_ai_store_logs", "whatsapp_handover_reminder_interval_minutes",
+                  "tenant_cnic_ocr_enabled",
                   "whatsapp_handover_escalation_timeout_minutes", "whatsapp_handover_max_reminders",
                   "whatsapp_handover_notify_multiple_staff",
                   "whatsapp_staff_reply_prefix", "whatsapp_allow_manual_call_action",
@@ -86,6 +87,9 @@ class GlobalSettingsForm(forms.ModelForm):
             "police_verification_document_category_code",
             "police_verification_link_valid_hours",
             "police_verification_whatsapp_command",
+        ]),
+        ("Tenant CNIC OCR", "fas fa-id-card", [
+            "tenant_cnic_ocr_enabled",
         ]),
         ("Late Fees", "fas fa-clock", [
             "late_fee_enabled", "late_fee_type", "late_fee_amount",

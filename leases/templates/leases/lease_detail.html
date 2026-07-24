@@ -2258,13 +2258,14 @@
             <div class="col-4 col-md-6">
               <label class="form-label small fw-semibold">Full Name</label>
               <input class="form-control form-control-sm" name="full_name" id="newFamilyFullName">
+              <div class="form-text">First word becomes First Name; remaining words become Last Name. You can correct either field below.</div>
             </div>
             <div class="col-4 col-md-3">
-              <label class="form-label small fw-semibold">First Name</label>
+              <label class="form-label small fw-semibold">First Name (auto-filled)</label>
               <input class="form-control form-control-sm" name="first_name" id="newFamilyFirstName">
             </div>
             <div class="col-4 col-md-3">
-              <label class="form-label small fw-semibold">Last Name</label>
+              <label class="form-label small fw-semibold">Last Name (auto-filled)</label>
               <input class="form-control form-control-sm" name="last_name" id="newFamilyLastName">
             </div>
             <div class="col-4 col-md-4">
@@ -2297,6 +2298,18 @@
               </select>
             </div>
             <div class="col-4 col-md-4">
+              <label class="form-label small fw-semibold">Country of Stay</label>
+              <input class="form-control form-control-sm" name="country">
+            </div>
+            <div class="col-4 col-md-4">
+              <label class="form-label small fw-semibold">CNIC Issue Date</label>
+              <input class="form-control form-control-sm" type="date" name="cnic_issue_date">
+            </div>
+            <div class="col-4 col-md-4">
+              <label class="form-label small fw-semibold">CNIC Expiry Date</label>
+              <input class="form-control form-control-sm" type="date" name="cnic_expiry_date">
+            </div>
+            <div class="col-4 col-md-4">
               <label class="form-label small fw-semibold">Photo</label>
               <input class="form-control form-control-sm" type="file" name="photo" accept="image/*">
             </div>
@@ -2307,6 +2320,14 @@
             <div class="col-4 col-md-6">
               <label class="form-label small fw-semibold">ID Back</label>
               <input class="form-control form-control-sm" type="file" name="cnic_back" accept="image/*">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">Temporary Address (English)</label>
+              <textarea class="form-control form-control-sm" name="temporary_address" rows="2"></textarea>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">Permanent Address (English)</label>
+              <textarea class="form-control form-control-sm" name="permanent_address" rows="2"></textarea>
             </div>
             <div class="col-12">
               <label class="form-label small fw-semibold">Notes</label>
@@ -2380,6 +2401,9 @@
   const newForm = document.getElementById('newFamilyMemberForm');
   const errorBox = document.getElementById('newFamilyError');
   const searchHelp = document.getElementById('leaseFamilySearchHelp');
+  const fullNameInput = document.getElementById('newFamilyFullName');
+  const firstNameInput = document.getElementById('newFamilyFirstName');
+  const lastNameInput = document.getElementById('newFamilyLastName');
   let lastNoResultTerm = '';
 
   function esc(value) {
@@ -2438,6 +2462,22 @@
       last: parts.join(' ') || ''
     };
   }
+
+  fullNameInput?.addEventListener('input', function () {
+    const names = splitFamilyName(this.value);
+    if (firstNameInput) firstNameInput.value = names.first;
+    if (lastNameInput) lastNameInput.value = names.last;
+  });
+
+  [firstNameInput, lastNameInput].forEach(function (input) {
+    input?.addEventListener('input', function () {
+      if (!fullNameInput) return;
+      fullNameInput.value = [firstNameInput?.value, lastNameInput?.value]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    });
+  });
 
   function openNewFamilyModalFromTerm(term, showNotFoundMessage) {
     if (!newModalEl) return;
@@ -2581,7 +2621,20 @@
       headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
       body: data
     })
-    .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+    .then(async response => {
+      const text = await response.text();
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (_) {
+        throw new Error(
+          response.redirected
+            ? 'Your session or permission expired. Reload this page and try again.'
+            : `Family save returned an unexpected server response (HTTP ${response.status}).`
+        );
+      }
+      return {ok: response.ok, payload};
+    })
     .then(({ok, payload}) => {
       if (!ok || !payload.ok) throw new Error(payload.error || 'Could not add family member.');
       addFamilyRow({
@@ -2609,7 +2662,20 @@
       headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
       body: new FormData(newForm)
     })
-    .then(response => response.json().then(payload => ({ok: response.ok, payload})))
+    .then(async response => {
+      const text = await response.text();
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (_) {
+        throw new Error(
+          response.redirected
+            ? 'Your session or permission expired. Reload this page and try again.'
+            : `Family save returned an unexpected server response (HTTP ${response.status}).`
+        );
+      }
+      return {ok: response.ok, payload};
+    })
     .then(({ok, payload}) => {
       if (!ok || !payload.ok) throw new Error(payload.error || 'Could not save family member.');
       addFamilyRow(payload);

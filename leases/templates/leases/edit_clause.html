@@ -136,7 +136,9 @@
 .party-field.is-editing .party-editor { display:block; }
 .party-save-indicator { font-size: 11px; min-height: 16px; }
 .quick-tenant-grid { display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:.65rem; }
+.quick-tenant-files { grid-column:1 / -1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; }
 @media (max-width: 767.98px) { .quick-tenant-grid { grid-template-columns:1fr; } }
+@media (max-width: 767.98px) { .quick-tenant-files { grid-template-columns:1fr; } }
 
 </style>
 {% endblock %}
@@ -252,7 +254,7 @@
     </form>
 
     <div class="modal fade" id="quickTenantModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered"><form class="modal-content" id="quickTenantForm">
+      <div class="modal-dialog modal-dialog-centered"><form class="modal-content" id="quickTenantForm" enctype="multipart/form-data">
         <div class="modal-header"><h5 class="modal-title">Quick Add Agreement Party</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body"><div id="quickTenantError" class="alert alert-danger py-2 d-none"></div><div class="quick-tenant-grid">
           <div><label class="form-label small">Prefix</label><select name="prefix" class="form-select"><option>Mr.</option><option>Mrs.</option><option>Ms.</option><option>Dr.</option></select></div>
@@ -261,8 +263,20 @@
           <div><label class="form-label small">Father/Husband Name *</label><input name="last_name" class="form-control" required></div>
           <div><label class="form-label small">CNIC *</label><input name="cnic" class="form-control" maxlength="15" required placeholder="00000-0000000-0"></div>
           <div><label class="form-label small">Phone</label><input name="phone" class="form-control" maxlength="20"></div>
+          <div><label class="form-label small">DOB</label><input type="date" name="date_of_birth" class="form-control"></div>
+          <div><label class="form-label small">Gender</label><select name="gender" class="form-select"><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select></div>
+          <div><label class="form-label small">Country of Stay</label><input name="country" class="form-control"></div>
+          <div><label class="form-label small">CNIC Issue Date</label><input type="date" name="cnic_issue_date" class="form-control"></div>
+          <div><label class="form-label small">CNIC Expiry Date</label><input type="date" name="cnic_expiry_date" class="form-control"></div>
+          <div class="quick-tenant-files">
+            <div><label class="form-label small">Photo</label><input type="file" name="photo" class="form-control" accept="image/*,.heic,.heif"></div>
+            <div><label class="form-label small">CNIC Front</label><input type="file" name="cnic_front" class="form-control" accept="image/*,.heic,.heif"></div>
+            <div><label class="form-label small">CNIC Back</label><input type="file" name="cnic_back" class="form-control" accept="image/*,.heic,.heif"></div>
+          </div>
+          <div><label class="form-label small">Temporary Address (English)</label><textarea name="temporary_address" class="form-control" rows="2"></textarea></div>
+          <div><label class="form-label small">Permanent Address (English)</label><textarea name="permanent_address" class="form-control" rows="2"></textarea></div>
         </div></div>
-        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Party</button></div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary" id="quickTenantSubmit">Save Party</button></div>
       </form></div>
     </div>
 
@@ -661,12 +675,29 @@
   document.getElementById('quickTenantForm')?.addEventListener('submit', async function (event) {
     event.preventDefault();
     const errorBox = document.getElementById('quickTenantError');
+    const submitButton = document.getElementById('quickTenantSubmit');
+    const originalButtonText = submitButton.textContent;
     errorBox.classList.add('d-none');
+    submitButton.disabled = true;
+    submitButton.textContent = 'Saving...';
     const data = new FormData(this);
     data.append('csrfmiddlewaretoken', partyForm.querySelector('[name=csrfmiddlewaretoken]').value);
     try {
-      const response = await fetch(quickTenantUrl, {method:'POST', headers:{'X-CSRFToken':data.get('csrfmiddlewaretoken')}, body:data});
-      const body = await response.json();
+      const response = await fetch(quickTenantUrl, {
+        method:'POST',
+        headers:{
+          'X-CSRFToken':data.get('csrfmiddlewaretoken'),
+          'X-Requested-With':'XMLHttpRequest'
+        },
+        body:data
+      });
+      const responseText = await response.text();
+      let body;
+      try {
+        body = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(response.ok ? 'The server returned an invalid response.' : `Could not add party (HTTP ${response.status}).`);
+      }
       if (!response.ok || !body.ok) throw new Error(body.message || 'Could not add party.');
       $('.role-select').each(function () {
         if (!$(this).find('option[value="' + body.id + '"]').length) $(this).append(new Option(body.text, body.id, false, false));
@@ -677,7 +708,14 @@
       }
       bootstrap.Modal.getInstance(document.getElementById('quickTenantModal'))?.hide();
       this.reset(); activePartySelect = null;
-    } catch (error) { errorBox.textContent = error.message; errorBox.classList.remove('d-none'); }
+    } catch (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.remove('d-none');
+      errorBox.scrollIntoView({block:'nearest'});
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = originalButtonText;
+    }
   });
 
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));

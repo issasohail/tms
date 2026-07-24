@@ -138,6 +138,8 @@ class Tenant(models.Model):
     gender = models.CharField(
         max_length=1, choices=GENDER_CHOICES, default='M', blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
+    cnic_issue_date = models.DateField(blank=True, null=True)
+    cnic_expiry_date = models.DateField(blank=True, null=True)
     emergency_contact_name = models.CharField(
         max_length=100, null=True, blank=True)
     emergency_contact_phone = NormalizedPhoneField(

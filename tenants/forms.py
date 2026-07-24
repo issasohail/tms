@@ -54,6 +54,12 @@ class TenantForm(forms.ModelForm):
             'address': forms.Textarea(attrs={'rows': 4}),
             'temporary_address': forms.Textarea(attrs={'rows': 2}),
             'permanent_address': forms.Textarea(attrs={'rows': 2}),
+            'temporary_address_urdu': forms.Textarea(
+                attrs={'rows': 2, 'dir': 'rtl', 'lang': 'ur'}
+            ),
+            'permanent_address_urdu': forms.Textarea(
+                attrs={'rows': 2, 'dir': 'rtl', 'lang': 'ur'}
+            ),
             'working_address': forms.Textarea(attrs={'rows': 2}),
             'police_verification_remarks': forms.Textarea(attrs={'rows': 2}),
             'interested_in': forms.CheckboxSelectMultiple(),
@@ -191,9 +197,23 @@ class TenantPublicRegistrationForm(forms.Form):
     country = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     gender = forms.ChoiceField(required=False, choices=Tenant.GENDER_CHOICES, widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
     date_of_birth = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}))
+    cnic_issue_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}))
+    cnic_expiry_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date", "class": "form-control form-control-sm"}))
     address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}))
     temporary_address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
     permanent_address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
+    temporary_address_urdu = forms.CharField(
+        required=False,
+        widget=forms.Textarea(
+            attrs={"class": "form-control form-control-sm", "rows": 2, "dir": "rtl", "lang": "ur"}
+        ),
+    )
+    permanent_address_urdu = forms.CharField(
+        required=False,
+        widget=forms.Textarea(
+            attrs={"class": "form-control form-control-sm", "rows": 2, "dir": "rtl", "lang": "ur"}
+        ),
+    )
     working_address = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
     emergency_contact_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     emergency_contact_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
@@ -272,6 +292,15 @@ class TenantPublicRegistrationForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+        issue_date = cleaned.get("cnic_issue_date")
+        expiry_date = cleaned.get("cnic_expiry_date")
+        if issue_date and issue_date > date.today():
+            self.add_error("cnic_issue_date", "CNIC issue date cannot be in the future.")
+        if issue_date and expiry_date and expiry_date < issue_date:
+            self.add_error(
+                "cnic_expiry_date",
+                "CNIC expiry date cannot be before its issue date.",
+            )
         cnic = normalize_cnic(cleaned.get("cnic"))
         try:
             validate_cnic(cnic)

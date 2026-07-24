@@ -709,10 +709,10 @@
           button.type = 'button';
           button.className = 'btn btn-outline-primary btn-sm';
           button.innerHTML = '<i class="fas fa-id-card me-1"></i> Read CNIC Details';
-          button.title = 'Reads both CNIC sides and shows suggestions before changing any form value.';
+          button.title = 'Re-read both CNIC sides. Automatic OCR fills blank fields only.';
           const status = document.createElement('span');
           status.className = 'tms-cnic-ocr-status';
-          status.textContent = 'Suggestion only — confirm before saving.';
+          status.textContent = 'Upload both sides; blank fields will fill automatically.';
           row.append(button, status);
           const wrappingLabel = input.closest('label');
           if (wrappingLabel && wrappingLabel.contains(input)) {
@@ -721,7 +721,8 @@
             input.insertAdjacentElement('afterend', row);
           }
 
-          button.addEventListener('click', async function () {
+          async function readCnic() {
+            if (button.dataset.reading === '1') return;
             const frontFile = input.files?.[0];
             const backFile = backInput.files?.[0];
             if (!frontFile || !backFile) {
@@ -730,6 +731,7 @@
               return;
             }
             const original = button.innerHTML;
+            button.dataset.reading = '1';
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Reading...';
             status.classList.remove('text-danger', 'text-success');
@@ -766,22 +768,6 @@
               }).filter(item => item.target);
               if (!suggestions.length) throw new Error('No matching fields were found in this form.');
 
-              const review = suggestions.map(item => {
-                const cardDate = item.cnic_display ? ` [CNIC: ${item.cnic_display}]` : '';
-                const action = item.current ? 'KEEP CURRENT' : 'FILL BLANK';
-                return `${item.label}: ${item.display}${cardDate} — ${action}`;
-              }).join('\n');
-              const warnings = (payload.warnings || []).length
-                ? `\n\nWarnings:\n- ${payload.warnings.join('\n- ')}`
-                : '';
-              if (!window.confirm(
-                `Review CNIC OCR (${payload.confidence}% confidence):\n\n${review}${warnings}\n\n` +
-                'Apply suggestions to blank fields? Nothing is saved until you submit the form.'
-              )) {
-                status.textContent = 'Suggestion not applied.';
-                return;
-              }
-
               const blankItems = suggestions.filter(item => !item.current);
               blankItems.forEach(item => {
                 item.target.value = item.value;
@@ -789,28 +775,16 @@
                 item.target.dispatchEvent(new Event('change', {bubbles: true}));
               });
 
-              const occupied = suggestions.filter(item => item.current && item.current !== String(item.value));
-              let overwritten = 0;
-              if (occupied.length && payload.can_overwrite) {
-                const overwriteReview = occupied.map(
-                  item => `${item.label}: "${item.current}" → "${item.display}"`
-                ).join('\n');
-                if (window.confirm(
-                  `You have overwrite permission. Overwrite these populated fields?\n\n${overwriteReview}`
-                )) {
-                  occupied.forEach(item => {
-                    item.target.value = item.value;
-                    item.target.dispatchEvent(new Event('input', {bubbles: true}));
-                    item.target.dispatchEvent(new Event('change', {bubbles: true}));
-                  });
-                  overwritten = occupied.length;
-                }
-              }
+              const skipped = suggestions.length - blankItems.length;
               status.textContent = (
-                `Applied ${blankItems.length} blank field(s)` +
-                (overwritten ? ` and overwrote ${overwritten} approved field(s)` : '') +
-                '. Verify before saving.'
+                `OCR filled ${blankItems.length} blank field(s)` +
+                (skipped ? `; kept ${skipped} existing value(s)` : '') +
+                '. Verify before saving.' +
+                ((payload.warnings || []).some(item => /address/i.test(item))
+                  ? ' Unclear addresses were left blank.'
+                  : '')
               );
+              status.title = (payload.warnings || []).join(' ');
               status.classList.add('text-success');
             } catch (error) {
               status.textContent = error.message;
@@ -818,7 +792,15 @@
             } finally {
               button.disabled = false;
               button.innerHTML = original;
+              delete button.dataset.reading;
             }
+          }
+          button.addEventListener('click', readCnic);
+          input.addEventListener('change', function () {
+            if (input.files?.[0] && backInput.files?.[0]) readCnic();
+          });
+          backInput.addEventListener('change', function () {
+            if (input.files?.[0] && backInput.files?.[0]) readCnic();
           });
         });
       }

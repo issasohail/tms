@@ -2255,6 +2255,18 @@
             This person is not in the tenant list. Enter their details once; TMS will create the tenant record and link it to this lease.
           </div>
           <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label small fw-semibold">CNIC / ID</label>
+              <input class="form-control form-control-sm" name="cnic" required>
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-semibold">ID Front</label>
+              <input class="form-control form-control-sm" type="file" name="cnic_front" accept="image/*">
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-semibold">ID Back</label>
+              <input class="form-control form-control-sm" type="file" name="cnic_back" accept="image/*">
+            </div>
             <div class="col-4 col-md-6">
               <label class="form-label small fw-semibold">Full Name</label>
               <input class="form-control form-control-sm" name="full_name" id="newFamilyFullName">
@@ -2278,10 +2290,6 @@
               </select>
             </div>
             <div class="col-4 col-md-4">
-              <label class="form-label small fw-semibold">CNIC / ID</label>
-              <input class="form-control form-control-sm" name="cnic" required>
-            </div>
-            <div class="col-4 col-md-4">
               <label class="form-label small fw-semibold">Phone</label>
               <input class="form-control form-control-sm" name="phone">
             </div>
@@ -2292,6 +2300,7 @@
             <div class="col-4 col-md-4">
               <label class="form-label small fw-semibold">Gender</label>
               <select class="form-select form-select-sm" name="gender">
+                <option value="">Select</option>
                 <option value="M">Male</option>
                 <option value="F">Female</option>
                 <option value="O">Other</option>
@@ -2313,14 +2322,6 @@
               <label class="form-label small fw-semibold">Photo</label>
               <input class="form-control form-control-sm" type="file" name="photo" accept="image/*">
             </div>
-            <div class="col-4 col-md-6">
-              <label class="form-label small fw-semibold">ID Front</label>
-              <input class="form-control form-control-sm" type="file" name="cnic_front" accept="image/*">
-            </div>
-            <div class="col-4 col-md-6">
-              <label class="form-label small fw-semibold">ID Back</label>
-              <input class="form-control form-control-sm" type="file" name="cnic_back" accept="image/*">
-            </div>
             <div class="col-12 col-md-6">
               <label class="form-label small fw-semibold">Temporary Address (English)</label>
               <textarea class="form-control form-control-sm" name="temporary_address" rows="2"></textarea>
@@ -2328,6 +2329,14 @@
             <div class="col-12 col-md-6">
               <label class="form-label small fw-semibold">Permanent Address (English)</label>
               <textarea class="form-control form-control-sm" name="permanent_address" rows="2"></textarea>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">Current Address (Urdu)</label>
+              <textarea class="form-control form-control-sm" name="temporary_address_urdu" rows="2" dir="rtl" lang="ur"></textarea>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small fw-semibold">Permanent Address (Urdu)</label>
+              <textarea class="form-control form-control-sm" name="permanent_address_urdu" rows="2" dir="rtl" lang="ur"></textarea>
             </div>
             <div class="col-12">
               <label class="form-label small fw-semibold">Notes</label>

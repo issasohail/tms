@@ -135,7 +135,7 @@ def _split_registration_name(name):
 @login_required
 @require_POST
 def cnic_identity_ocr(request):
-    """Read both CNIC sides into review-only suggestions; never save here."""
+    """Read both CNIC sides and return blank-field suggestions; never save here."""
     can_add = request.user.has_perm("tenants.add_tenant")
     can_change = request.user.has_perm("tenants.change_tenant")
     if not (can_add or can_change or request.user.is_superuser):
@@ -143,6 +143,13 @@ def cnic_identity_ocr(request):
             {"ok": False, "message": "You do not have permission to use tenant CNIC OCR."},
             status=403,
         )
+    return _cnic_identity_ocr_response(
+        request,
+        can_overwrite=bool(can_change or request.user.is_superuser),
+    )
+
+
+def _cnic_identity_ocr_response(request, *, can_overwrite=False):
     if not GlobalSettings.get_solo().tenant_cnic_ocr_enabled:
         return JsonResponse(
             {"ok": False, "message": "Tenant CNIC OCR is disabled in Settings."},
@@ -176,6 +183,8 @@ def cnic_identity_ocr(request):
         "cnic_expiry_date": "Date of expiry",
         "temporary_address": "Temporary address (English)",
         "permanent_address": "Permanent address (English)",
+        "temporary_address_urdu": "Current address (Urdu)",
+        "permanent_address_urdu": "Permanent address (Urdu)",
     }
     date_fields = {"date_of_birth", "cnic_issue_date", "cnic_expiry_date"}
     fields = []
@@ -196,9 +205,37 @@ def cnic_identity_ocr(request):
             "fields": fields,
             "confidence": result.get("confidence", 0),
             "warnings": result.get("warnings", []),
-            "can_overwrite": bool(can_change or request.user.is_superuser),
+            "can_overwrite": can_overwrite,
         }
     )
+
+
+@require_POST
+def public_cnic_identity_ocr(request, token):
+    """CNIC OCR for one valid signed registration link, rate limited per client."""
+    try:
+        registration_tenant = _tenant_from_registration_token(token)
+    except SignatureExpired:
+        return JsonResponse(
+            {"ok": False, "message": "This registration link has expired."},
+            status=410,
+        )
+    except BadSignature:
+        return JsonResponse(
+            {"ok": False, "message": "This registration link is invalid."},
+            status=404,
+        )
+
+    client_ip = request.META.get("REMOTE_ADDR", "unknown")
+    rate_key = f"tenant-cnic-ocr:{registration_tenant.pk}:{client_ip}"
+    request_count = int(cache.get(rate_key, 0) or 0)
+    if request_count >= 12:
+        return JsonResponse(
+            {"ok": False, "message": "OCR limit reached. Try again later or enter details manually."},
+            status=429,
+        )
+    cache.set(rate_key, request_count + 1, 60 * 60)
+    return _cnic_identity_ocr_response(request, can_overwrite=False)
 
 
 # Keep the old callable available for older imports and deployed links.
@@ -967,9 +1004,13 @@ def tenant_public_registration_update(request, token):
         "country": tenant.country,
         "gender": tenant.gender,
         "date_of_birth": tenant.date_of_birth if tenant.date_of_birth else None,
+        "cnic_issue_date": tenant.cnic_issue_date if tenant.cnic_issue_date else None,
+        "cnic_expiry_date": tenant.cnic_expiry_date if tenant.cnic_expiry_date else None,
         "address": tenant.address,
         "temporary_address": tenant.temporary_address,
         "permanent_address": tenant.permanent_address,
+        "temporary_address_urdu": tenant.temporary_address_urdu,
+        "permanent_address_urdu": tenant.permanent_address_urdu,
         "working_address": tenant.working_address,
         "emergency_contact_name": tenant.emergency_contact_name,
         "emergency_contact_phone": tenant.emergency_contact_phone,
@@ -1013,7 +1054,9 @@ def tenant_public_registration_update(request, token):
             submitted_data["interested_in"] = [
                 item.pk for item in submitted_data.get("interested_in", [])
             ]
-            for date_field in ["date_of_birth"]:
+            for date_field in [
+                "date_of_birth", "cnic_issue_date", "cnic_expiry_date"
+            ]:
                 if submitted_data.get(date_field):
                     submitted_data[date_field] = submitted_data[date_field].isoformat()
             for file_field in ["photo", "cnic_front", "cnic_back"]:
@@ -1130,6 +1173,7 @@ def tenant_public_registration_update(request, token):
         "tenants/public_registration_form.html",
         {
             "tenant": tenant,
+            "registration_token": token,
             "form": form,
             "submitted_form_data": (
                 {key: list(values) for key, values in request.POST.lists()}
@@ -2132,6 +2176,8 @@ def tenant_family_create_and_add(request, pk):
     cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
     temporary_address = (request.POST.get("temporary_address") or "").strip()
     permanent_address = (request.POST.get("permanent_address") or "").strip()
+    temporary_address_urdu = (request.POST.get("temporary_address_urdu") or "").strip()
+    permanent_address_urdu = (request.POST.get("permanent_address_urdu") or "").strip()
     if full_name:
         split_first_name, split_last_name = _split_registration_name(full_name)
         first_name = first_name or split_first_name
@@ -2199,6 +2245,8 @@ def tenant_family_create_and_add(request, pk):
             cnic_expiry_date=parsed_expiry_date,
             temporary_address=temporary_address,
             permanent_address=permanent_address,
+            temporary_address_urdu=temporary_address_urdu,
+            permanent_address_urdu=permanent_address_urdu,
         )
         if parsed_date_of_birth:
             family_member.date_of_birth = parsed_date_of_birth

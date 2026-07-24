@@ -1062,3 +1062,45 @@ class CNICIdentityOCRViewTests(TestCase):
         self.assertEqual(fields["date_of_birth"]["display"], "02/25/2000")
         self.assertEqual(fields["date_of_birth"]["cnic_display"], "25.02.2000")
         self.assertTrue(payload["can_overwrite"])
+
+    def test_signed_public_registration_ocr_fills_blanks_without_overwrite_permission(self):
+        from unittest.mock import patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.urls import reverse
+        from tenants.models import Tenant
+        from tenants.views import tenant_registration_token
+
+        tenant = Tenant.objects.create(
+            first_name="Registration",
+            last_name="Applicant",
+            cnic="71501-0000000-1",
+        )
+        self.client.logout()
+        token = tenant_registration_token(tenant)
+        with patch(
+            "tenants.services.cnic_ocr.extract_cnic_identity",
+            return_value={
+                "engine": "openai",
+                "fields": {
+                    "temporary_address": "Mohallah Noor Colony, Jutial, Gilgit",
+                    "temporary_address_urdu": "محلہ نور کالونی، جوٹیال، گلگت",
+                },
+                "confidence": 94,
+                "warnings": [],
+            },
+        ):
+            response = self.client.post(
+                reverse("tenants:public_cnic_identity_ocr", args=[token]),
+                {
+                    "cnic_front": SimpleUploadedFile(
+                        "front.jpg", b"front", content_type="image/jpeg"
+                    ),
+                    "cnic_back": SimpleUploadedFile(
+                        "back.jpg", b"back", content_type="image/jpeg"
+                    ),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["can_overwrite"])

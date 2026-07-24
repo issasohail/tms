@@ -1,9 +1,13 @@
 import logging
 import mimetypes
 import re
+import base64
 from datetime import date
+from io import BytesIO
 
 from django.conf import settings
+from django.core.files.base import ContentFile
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from whatsapp.services.openai_ocr import (
     _date_or_none,
@@ -25,13 +29,21 @@ are normally DD.MM.YYYY; return every date as YYYY-MM-DD.
 Extract name, father/husband name, gender, country of stay, identity number,
 date of birth, date of issue, and date of expiry from the front.
 
-On the back, extract temporary and permanent residential addresses only when
-the card actually labels or prints personal address text. Translate genuine Urdu
-addresses into clear English, transliterating names and localities. Do not treat
-generic instructions, government text, signatures, lost-card return instructions,
-QR content, or issuing-authority text as an address. Never invent or infer missing
-text. Use null for absent or uncertain values. Warn if the two sides appear to
-belong to different cards or are reversed.
+On the back, carefully locate the Urdu address labels and their text. "موجودہ پتہ"
+means current/temporary address and "مستقل پتہ" means permanent address. Return
+each address twice: (1) an exact Urdu-script transcription and (2) a faithful
+English transliteration/translation that preserves house, street, mohalla,
+colony, post office, village, tehsil and district names. The address may be
+printed in small Urdu text near the upper half of the card.
+
+Give a separate 0-to-1 confidence for each address. Use null and confidence 0
+unless you can clearly distinguish both the label and the text belonging to it.
+Do not treat government text, signatures, return-card instructions, QR content,
+or issuing-authority text as an address. Never invent or infer missing words.
+Compare the identity number printed on each side. If the normalized 13 digits
+match, treat the images as the same card and do not warn about different cards,
+even if portrait appearance or image quality differs. Warn about mismatch only
+when two clearly readable identity numbers differ.
 """
 
 _NULLABLE_TEXT = {"type": ["string", "null"]}
@@ -54,6 +66,12 @@ CNIC_OCR_SCHEMA = {
         "permanent_address_urdu": _NULLABLE_TEXT,
         "temporary_address_english": _NULLABLE_TEXT,
         "permanent_address_english": _NULLABLE_TEXT,
+        "temporary_address_confidence": {
+            "type": "number", "minimum": 0, "maximum": 1
+        },
+        "permanent_address_confidence": {
+            "type": "number", "minimum": 0, "maximum": 1
+        },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "warnings": {"type": "array", "items": {"type": "string"}},
     },
@@ -62,6 +80,7 @@ CNIC_OCR_SCHEMA = {
         "identity_number", "date_of_birth", "date_of_issue", "date_of_expiry",
         "temporary_address_urdu", "permanent_address_urdu",
         "temporary_address_english", "permanent_address_english", "confidence",
+        "temporary_address_confidence", "permanent_address_confidence",
         "warnings",
     ],
     "additionalProperties": False,
@@ -76,6 +95,7 @@ def extract_cnic_identity(front_file, back_file, model):
         return _unavailable("Choose both CNIC Front and CNIC Back images first.")
 
     images = []
+    address_image_sufficient = False
     for label, file_field in (("front", front_file), ("back", back_file)):
         mime_type = (
             getattr(file_field, "content_type", "")
@@ -85,7 +105,19 @@ def extract_cnic_identity(front_file, back_file, model):
         if not mime_type.startswith("image/"):
             return _unavailable(f"CNIC {label} must be an image file.")
         try:
-            encoded, normalized_mime = _normalized_image_data(file_field)
+            file_field.open("rb")
+            source = file_field.read()
+            file_field.close()
+            if label == "back":
+                with Image.open(BytesIO(source)) as dimension_image:
+                    address_image_sufficient = (
+                        dimension_image.width >= 1200
+                        and dimension_image.height >= 700
+                    )
+            normalized_file = ContentFile(
+                source, name=getattr(file_field, "name", f"cnic-{label}.jpg")
+            )
+            encoded, normalized_mime = _normalized_image_data(normalized_file)
         except Exception:
             logger.warning("CNIC OCR image normalization failed side=%s", label)
             return _unavailable(f"CNIC {label} image could not be prepared for OCR.")
@@ -96,12 +128,33 @@ def extract_cnic_identity(front_file, back_file, model):
                 "detail": "high",
             }
         )
+        if label == "back":
+            enhanced = _enhanced_back_image_data(
+                ContentFile(source, name=getattr(file_field, "name", "cnic-back.jpg"))
+            )
+            if enhanced:
+                images.extend(
+                    [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "The next image is an enlarged, high-contrast crop of "
+                                "the same CNIC back supplied only to help read small Urdu addresses."
+                            ),
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{enhanced}",
+                            "detail": "high",
+                        },
+                    ]
+                )
 
     try:
         response = _openai_client().responses.create(
             model=model,
             store=False,
-            max_output_tokens=1200,
+            max_output_tokens=1800,
             text={
                 "format": {
                     "type": "json_schema",
@@ -161,6 +214,31 @@ def extract_cnic_identity(front_file, back_file, model):
         warnings.append("Expiry date is earlier than issue date; both dates were withheld.")
         issue = expiry = None
 
+    temporary_confidence = _confidence(result.get("temporary_address_confidence"))
+    permanent_confidence = _confidence(result.get("permanent_address_confidence"))
+    temporary_urdu = _text(result.get("temporary_address_urdu"))
+    temporary_english = _text(result.get("temporary_address_english"))
+    permanent_urdu = _text(result.get("permanent_address_urdu"))
+    permanent_english = _text(result.get("permanent_address_english"))
+    if not address_image_sufficient:
+        warnings.append(
+            "The CNIC back resolution is too low for safe address entry; addresses were withheld."
+        )
+    if (
+        not address_image_sufficient
+        or temporary_confidence < 0.97
+        or not (temporary_urdu and temporary_english)
+    ):
+        temporary_urdu = temporary_english = None
+        warnings.append("Current address was not clear enough to populate safely.")
+    if (
+        not address_image_sufficient
+        or permanent_confidence < 0.97
+        or not (permanent_urdu and permanent_english)
+    ):
+        permanent_urdu = permanent_english = None
+        warnings.append("Permanent address was not clear enough to populate safely.")
+
     fields = {
         "full_name": _text(result.get("name")),
         "first_name": _text(result.get("name")),
@@ -171,8 +249,10 @@ def extract_cnic_identity(front_file, back_file, model):
         "date_of_birth": dob.isoformat() if dob else None,
         "cnic_issue_date": issue.isoformat() if issue else None,
         "cnic_expiry_date": expiry.isoformat() if expiry else None,
-        "temporary_address": _text(result.get("temporary_address_english")),
-        "permanent_address": _text(result.get("permanent_address_english")),
+        "temporary_address": temporary_english,
+        "permanent_address": permanent_english,
+        "temporary_address_urdu": temporary_urdu,
+        "permanent_address_urdu": permanent_urdu,
     }
     if not fields["temporary_address"] and not fields["permanent_address"]:
         warnings.append("No personal temporary or permanent address was found on the back.")
@@ -191,6 +271,37 @@ def _valid_dob(value):
 def _text(value):
     value = " ".join(str(value or "").split())
     return value or None
+
+
+def _confidence(value):
+    try:
+        return max(0.0, min(1.0, float(value or 0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _enhanced_back_image_data(file_field):
+    """Return a temporary enlarged upper-card crop for small Urdu address text."""
+    try:
+        file_field.open("rb")
+        source = file_field.read()
+        file_field.close()
+        with Image.open(BytesIO(source)) as opened:
+            image = ImageOps.exif_transpose(opened).convert("L")
+            width, height = image.size
+            image = image.crop((0, 0, width, max(1, int(height * 0.66))))
+            target_width = max(2200, image.width * 3)
+            target_height = round(image.height * target_width / image.width)
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            image = ImageOps.autocontrast(image, cutoff=1)
+            image = ImageEnhance.Contrast(image).enhance(1.35)
+            image = image.filter(ImageFilter.SHARPEN)
+            output = BytesIO()
+            image.save(output, format="PNG", optimize=True)
+        return base64.b64encode(output.getvalue()).decode("ascii")
+    except Exception:
+        logger.warning("CNIC OCR could not create enhanced back-image crop.")
+        return None
 
 
 def _age_on(dob, today):

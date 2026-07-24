@@ -2050,6 +2050,8 @@ def lease_family_create_and_add(request, pk):
     cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
     temporary_address = (request.POST.get("temporary_address") or "").strip()
     permanent_address = (request.POST.get("permanent_address") or "").strip()
+    temporary_address_urdu = (request.POST.get("temporary_address_urdu") or "").strip()
+    permanent_address_urdu = (request.POST.get("permanent_address_urdu") or "").strip()
     notes = (request.POST.get("notes") or "").strip()
 
     if full_name:
@@ -2131,6 +2133,8 @@ def lease_family_create_and_add(request, pk):
                 cnic_expiry_date=parsed_expiry_date,
                 temporary_address=temporary_address,
                 permanent_address=permanent_address,
+                temporary_address_urdu=temporary_address_urdu,
+                permanent_address_urdu=permanent_address_urdu,
             )
             if parsed_date_of_birth:
                 tenant.date_of_birth = parsed_date_of_birth
@@ -5960,6 +5964,8 @@ def create_agreement_party_ajax(request):
     country = (request.POST.get("country") or "").strip()
     temporary_address = (request.POST.get("temporary_address") or "").strip()
     permanent_address = (request.POST.get("permanent_address") or "").strip()
+    temporary_address_urdu = (request.POST.get("temporary_address_urdu") or "").strip()
+    permanent_address_urdu = (request.POST.get("permanent_address_urdu") or "").strip()
     uploaded_files = {
         field_name: request.FILES.get(field_name)
         for field_name in ("photo", "cnic_front", "cnic_back")
@@ -6014,6 +6020,8 @@ def create_agreement_party_ajax(request):
             "country": country,
             "temporary_address": temporary_address,
             "permanent_address": permanent_address,
+            "temporary_address_urdu": temporary_address_urdu,
+            "permanent_address_urdu": permanent_address_urdu,
         }
         for field_name, value in blank_only_values.items():
             if value and not getattr(existing, field_name):
@@ -6040,6 +6048,8 @@ def create_agreement_party_ajax(request):
         date_of_birth=parsed_dob, cnic_issue_date=parsed_issue,
         cnic_expiry_date=parsed_expiry, gender=gender, country=country or "Pakistan",
         temporary_address=temporary_address, permanent_address=permanent_address,
+        temporary_address_urdu=temporary_address_urdu,
+        permanent_address_urdu=permanent_address_urdu,
         **uploaded_files,
     )
     try:

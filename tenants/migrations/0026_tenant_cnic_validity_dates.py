@@ -17,4 +17,14 @@ class Migration(migrations.Migration):
             name="cnic_issue_date",
             field=models.DateField(blank=True, null=True),
         ),
+        migrations.AddField(
+            model_name="tenant",
+            name="temporary_address_urdu",
+            field=models.TextField(blank=True, default=""),
+        ),
+        migrations.AddField(
+            model_name="tenant",
+            name="permanent_address_urdu",
+            field=models.TextField(blank=True, default=""),
+        ),
     ]

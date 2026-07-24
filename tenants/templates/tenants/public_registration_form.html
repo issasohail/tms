@@ -1148,15 +1148,8 @@
     <div class="td-layout-top">
       <div class="td-card">
         <div class="td-card-header"><i class="fas fa-id-card text-secondary"></i><h6>Documents</h6></div>
+        <div class="td-form-cell px-3 pt-3">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
         <div class="td-form-doc-grid">
-          <div class="td-form-doc-slot">
-            <div class="td-form-doc-label">Photo</div>
-            <label class="td-form-doc-preview image-upload-container" for="{{ form.photo.id_for_label }}">
-              {% if tenant.photo %}<img src="{{ tenant.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x placeholder-icon"></i>{% endif %}
-              {{ form.photo }}
-            </label>
-            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
-          </div>
           <div class="td-form-doc-slot">
             <div class="td-form-doc-label">CNIC Front</div>
             <label class="td-form-doc-preview image-upload-container" for="{{ form.cnic_front.id_for_label }}">
@@ -1173,6 +1166,14 @@
             </label>
             <label class="td-form-upload-btn" for="{{ form.cnic_back.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
           </div>
+          <div class="td-form-doc-slot">
+            <div class="td-form-doc-label">Photo</div>
+            <label class="td-form-doc-preview image-upload-container" for="{{ form.photo.id_for_label }}">
+              {% if tenant.photo %}<img src="{{ tenant.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x placeholder-icon"></i>{% endif %}
+              {{ form.photo }}
+            </label>
+            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
+          </div>
         </div>
       </div>
 
@@ -1185,8 +1186,9 @@
             <div class="td-form-cell">{{ form.relation.label_tag }}{{ form.relation }}<div class="td-form-errors">{{ form.relation.errors }}</div></div>
             <div class="td-form-cell">{{ form.last_name.label_tag }}{{ form.last_name }}<div class="td-form-errors">{{ form.last_name.errors }}</div></div>
             <div class="td-form-cell">{{ form.number_of_family_member.label_tag }}{{ form.number_of_family_member }}<div class="td-form-errors">{{ form.number_of_family_member.errors }}</div></div>
-            <div class="td-form-cell">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
             <div class="td-form-cell">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}<div class="td-form-errors">{{ form.date_of_birth.errors }}</div></div>
+            <div class="td-form-cell">{{ form.cnic_issue_date.label_tag }}{{ form.cnic_issue_date }}<div class="td-form-errors">{{ form.cnic_issue_date.errors }}</div></div>
+            <div class="td-form-cell">{{ form.cnic_expiry_date.label_tag }}{{ form.cnic_expiry_date }}<div class="td-form-errors">{{ form.cnic_expiry_date.errors }}</div></div>
             <div class="td-form-cell">{{ form.gender.label_tag }}{{ form.gender }}<div class="td-form-errors">{{ form.gender.errors }}</div></div>
             <div class="td-form-cell">{{ form.occupation.label_tag }}{{ form.occupation }}<div class="td-form-errors">{{ form.occupation.errors }}</div></div>
             <div class="td-form-cell">{{ form.nationality.label_tag }}{{ form.nationality }}<div class="td-form-errors">{{ form.nationality.errors }}</div></div>
@@ -1232,6 +1234,8 @@
           <div class="td-address-grid">
             <div class="td-form-cell">{{ form.temporary_address.label_tag }}{{ form.temporary_address }}<div class="td-form-errors">{{ form.temporary_address.errors }}</div></div>
             <div class="td-form-cell">{{ form.permanent_address.label_tag }}{{ form.permanent_address }}<div class="td-form-errors">{{ form.permanent_address.errors }}</div></div>
+            <div class="td-form-cell">{{ form.temporary_address_urdu.label_tag }}{{ form.temporary_address_urdu }}<div class="td-form-errors">{{ form.temporary_address_urdu.errors }}</div></div>
+            <div class="td-form-cell">{{ form.permanent_address_urdu.label_tag }}{{ form.permanent_address_urdu }}<div class="td-form-errors">{{ form.permanent_address_urdu.errors }}</div></div>
             <div class="td-form-cell">{{ form.working_address.label_tag }}{{ form.working_address }}<div class="td-form-errors">{{ form.working_address.errors }}</div></div>
             <div class="td-form-cell">{{ form.address.label_tag }}{{ form.address }}<div class="td-form-errors">{{ form.address.errors }}</div></div>
           </div>
@@ -1448,29 +1452,29 @@
     <div class="td-card party-role-card">
       <div class="td-card-header"><i class="fas fa-user-check text-success"></i><h6>Proposer</h6></div>
       <div class="party-card-body">
-        <div><label class="field-label">First Name</label><input class="field-control" name="proposer-first_name" required aria-required="true"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="proposer-last_name" required aria-required="true"></div>
-        <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic" required aria-required="true" inputmode="numeric"></div><div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone" required aria-required="true"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic" required aria-required="true" inputmode="numeric"></div><div><label class="field-label">CNIC Front</label><input type="file" class="field-control" name="proposer-cnic_front" accept="image/*"></div><div><label class="field-label">CNIC Back</label><input type="file" class="field-control" name="proposer-cnic_back" accept="image/*"></div><div><label class="field-label">First Name</label><input class="field-control" name="proposer-first_name" required aria-required="true"></div>
+        <div><label class="field-label">Last / Father</label><input class="field-control" name="proposer-last_name" required aria-required="true"></div><div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="proposer-date_of_birth"></div><div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone" required aria-required="true"></div>
         <div class="wide"><label class="field-label">Address</label><input class="field-control" name="proposer-address"></div>
-        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="proposer-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="proposer-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="proposer-cnic_back" accept="image/*"></label></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="proposer-photo" accept="image/*"></label></div>
       </div>
     </div>
     <div class="td-card party-role-card">
       <div class="td-card-header"><i class="fas fa-user-check text-warning"></i><h6>Seconder</h6></div>
       <div class="party-card-body">
-        <div><label class="field-label">First Name</label><input class="field-control" name="seconder-first_name" required aria-required="true"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="seconder-last_name" required aria-required="true"></div>
-        <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic" required aria-required="true" inputmode="numeric"></div><div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone" required aria-required="true"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic" required aria-required="true" inputmode="numeric"></div><div><label class="field-label">CNIC Front</label><input type="file" class="field-control" name="seconder-cnic_front" accept="image/*"></div><div><label class="field-label">CNIC Back</label><input type="file" class="field-control" name="seconder-cnic_back" accept="image/*"></div><div><label class="field-label">First Name</label><input class="field-control" name="seconder-first_name" required aria-required="true"></div>
+        <div><label class="field-label">Last / Father</label><input class="field-control" name="seconder-last_name" required aria-required="true"></div><div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="seconder-date_of_birth"></div><div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone" required aria-required="true"></div>
         <div class="wide"><label class="field-label">Address</label><input class="field-control" name="seconder-address"></div>
-        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="seconder-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="seconder-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="seconder-cnic_back" accept="image/*"></label></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="seconder-photo" accept="image/*"></label></div>
       </div>
     </div>
     {% for number in "12" %}
     <div class="td-card party-role-card">
       <div class="td-card-header"><i class="fas fa-users text-primary"></i><h6>Witness {{ number }}</h6></div>
       <div class="party-card-body">
-        <div><label class="field-label">First Name</label><input class="field-control" name="witness{{ number }}-first_name"></div><div><label class="field-label">Last / Father</label><input class="field-control" name="witness{{ number }}-last_name"></div>
-        <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div><div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone" aria-required="false"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div><div><label class="field-label">CNIC Front</label><input type="file" class="field-control" name="witness{{ number }}-cnic_front" accept="image/*"></div><div><label class="field-label">CNIC Back</label><input type="file" class="field-control" name="witness{{ number }}-cnic_back" accept="image/*"></div><div><label class="field-label">First Name</label><input class="field-control" name="witness{{ number }}-first_name"></div>
+        <div><label class="field-label">Last / Father</label><input class="field-control" name="witness{{ number }}-last_name"></div><div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="witness{{ number }}-date_of_birth"></div><div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone" aria-required="false"></div>
         <div class="wide"><label class="field-label">Address</label><input class="field-control" name="witness{{ number }}-address"></div>
-        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="witness{{ number }}-photo" accept="image/*"></label><label>CNIC Front<input type="file" class="field-control" name="witness{{ number }}-cnic_front" accept="image/*"></label><label>CNIC Back<input type="file" class="field-control" name="witness{{ number }}-cnic_back" accept="image/*"></label></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="witness{{ number }}-photo" accept="image/*"></label></div>
       </div>
     </div>
     {% endfor %}
@@ -1489,9 +1493,10 @@
       <button type="button" class="btn-remove-family remove-family-member"><i class="fas fa-times"></i> Remove</button>
     </div>
     <div class="family-member-grid">
+      <div class="field-wrap"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
+      <div class="family-doc-row"><div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control" data-field="cnic_front"></div><div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control" data-field="cnic_back"></div><div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control" data-field="photo"></div></div>
       <div class="field-wrap"><label class="field-label">Name</label><input type="text" class="field-control" data-field="name"></div>
       <div class="field-wrap"><label class="field-label">Father / Husband Name</label><input type="text" class="field-control" data-field="father_husband_name"></div>
-      <div class="field-wrap"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
       <div class="field-wrap"><label class="field-label">Date of Birth</label><input type="date" class="field-control" data-field="dob"></div>
       <div class="field-wrap"><label class="field-label">Phone</label><input type="text" class="field-control" data-field="phone"></div>
       <div class="field-wrap"><label class="field-label">Occupation</label><input type="text" class="field-control" data-field="occupation"></div>
@@ -1499,7 +1504,6 @@
       <div class="field-wrap"><label class="field-label">Relationship</label><select class="field-control" data-field="relationship_type"><option value="">Select…</option>{% for item in relationship_types %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
       <div class="field-wrap"><label class="field-label">Email</label><input type="email" class="field-control" data-field="email"></div>
       <div class="field-wrap span-3"><label class="field-label">Notes</label><input type="text" class="field-control" data-field="notes"></div>
-      <div class="family-doc-row"><div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control" data-field="photo"></div><div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control" data-field="cnic_front"></div><div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control" data-field="cnic_back"></div></div>
     </div>
   </div>
 </template>
@@ -1792,6 +1796,9 @@
     el.value = smartTitle(el.value);
   }, true);
 })();
+</script>
+<script>
+  window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:public_cnic_identity_ocr' registration_token %}";
 </script>
 {% include "partials/identity_media_public.html" %}
 </body>

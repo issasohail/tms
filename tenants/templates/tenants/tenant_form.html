@@ -67,15 +67,8 @@
     <div class="td-hero td-card td-form-documents-card card border-0 shadow-sm mb-3">
       <div class="card-header"><h6 class="mb-0"><i class="far fa-id-card text-secondary me-2"></i>Documents</h6></div>
       <div class="card-body py-3">
+        <div class="td-form-cell mb-3">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
         <div class="td-form-doc-grid">
-          <div class="td-form-doc-slot">
-            <div class="td-form-doc-label">Photo</div>
-            <label class="td-form-doc-preview image-upload-container" for="{{ form.photo.id_for_label }}">
-              {% if form.instance.photo %}<img src="{{ form.instance.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x"></i>{% endif %}
-              {{ form.photo }}
-            </label>
-            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload me-1"></i> Upload</label>
-          </div>
           <div class="td-form-doc-slot">
             <div class="td-form-doc-label">CNIC Front</div>
             <label class="td-form-doc-preview image-upload-container" for="{{ form.cnic_front.id_for_label }}">
@@ -92,6 +85,14 @@
             </label>
             <label class="td-form-upload-btn" for="{{ form.cnic_back.id_for_label }}"><i class="fas fa-upload me-1"></i> Upload</label>
           </div>
+          <div class="td-form-doc-slot">
+            <div class="td-form-doc-label">Photo</div>
+            <label class="td-form-doc-preview image-upload-container" for="{{ form.photo.id_for_label }}">
+              {% if form.instance.photo %}<img src="{{ form.instance.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x"></i>{% endif %}
+              {{ form.photo }}
+            </label>
+            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload me-1"></i> Upload</label>
+          </div>
         </div>
       </div>
     </div>
@@ -106,7 +107,6 @@
           <div class="td-form-cell">{{ form.last_name.label_tag }}{{ form.last_name }}<div class="td-form-errors">{{ form.last_name.errors }}</div></div>
           <div class="td-form-cell">{{ form.number_of_family_member.label_tag }}{{ form.number_of_family_member }}<div class="td-form-errors">{{ form.number_of_family_member.errors }}</div></div>
           <div class="td-form-cell">{{ form.is_active.label_tag }}{{ form.is_active }}<div class="td-form-errors">{{ form.is_active.errors }}</div></div>
-          <div class="td-form-cell">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
           <div class="td-form-cell">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}<div class="td-form-errors">{{ form.date_of_birth.errors }}</div></div>
           <div class="td-form-cell">{{ form.cnic_issue_date.label_tag }}{{ form.cnic_issue_date }}<div class="td-form-errors">{{ form.cnic_issue_date.errors }}</div></div>
           <div class="td-form-cell">{{ form.cnic_expiry_date.label_tag }}{{ form.cnic_expiry_date }}<div class="td-form-errors">{{ form.cnic_expiry_date.errors }}</div></div>
@@ -160,6 +160,8 @@
         <div class="td-form-grid-4 td-form-grid td-form-address-grid">
           <div class="td-form-cell td-address-long-field">{{ form.temporary_address.label_tag }}{{ form.temporary_address }}</div>
           <div class="td-form-cell td-address-long-field">{{ form.permanent_address.label_tag }}{{ form.permanent_address }}</div>
+          <div class="td-form-cell td-address-long-field">{{ form.temporary_address_urdu.label_tag }}{{ form.temporary_address_urdu }}</div>
+          <div class="td-form-cell td-address-long-field">{{ form.permanent_address_urdu.label_tag }}{{ form.permanent_address_urdu }}</div>
           <div class="td-form-cell td-address-long-field">{{ form.working_address.label_tag }}{{ form.working_address }}</div>
           <div class="td-form-cell td-address-long-field">{{ form.address.label_tag }}{{ form.address }}</div>
         </div>

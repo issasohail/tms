@@ -134,6 +134,8 @@ class Tenant(models.Model):
         blank=True, null=True, default='Rawalpindi,Pakistan')
     temporary_address = models.TextField(blank=True, default="")
     permanent_address = models.TextField(blank=True, default="")
+    temporary_address_urdu = models.TextField(blank=True, default="")
+    permanent_address_urdu = models.TextField(blank=True, default="")
     working_address = models.TextField(blank=True, default="")
     gender = models.CharField(
         max_length=1, choices=GENDER_CHOICES, default='M', blank=True, null=True)

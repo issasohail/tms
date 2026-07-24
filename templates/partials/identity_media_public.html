@@ -76,6 +76,16 @@
     font-size: 11px;
     line-height: 1.3;
   }
+  .tms-public-cnic-status {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .tms-public-cnic-status.is-reading { color: #1d4ed8; }
+  .tms-public-cnic-status.is-success { color: #15803d; }
+  .tms-public-cnic-status.is-error { color: #b91c1c; }
 </style>
 
 <div class="tms-public-image-viewer" id="tmsPublicImageViewer" hidden role="dialog" aria-modal="true" aria-labelledby="tmsPublicImageTitle">
@@ -128,6 +138,120 @@
     });
   }
 
+  function csrfToken(form) {
+    const field = form?.querySelector('[name=csrfmiddlewaretoken]');
+    if (field?.value) return field.value;
+    const match = document.cookie.match(/(^|; )csrftoken=([^;]*)/);
+    return match ? decodeURIComponent(match[2]) : '';
+  }
+
+  function fieldContext(frontInput) {
+    const form = frontInput.form || frontInput.closest('form') || document;
+    const suffix = 'cnic_front';
+    const name = String(frontInput.name || '');
+    return {
+      form,
+      prefix: name.endsWith(suffix) ? name.slice(0, -suffix.length) : ''
+    };
+  }
+
+  function matchingField(context, fieldName) {
+    const aliases = {
+      first_name: ['first_name', 'name'],
+      last_name: ['last_name', 'father_husband_name'],
+      date_of_birth: ['date_of_birth', 'dob'],
+      temporary_address: ['temporary_address', 'address'],
+      permanent_address: ['permanent_address', 'address']
+    }[fieldName] || [fieldName];
+    for (const alias of aliases) {
+      const candidates = [`${context.prefix}${alias}`];
+      if (context.prefix) candidates.push(alias);
+      for (const candidate of candidates) {
+        const field = context.form.querySelector(`[name="${CSS.escape(candidate)}"]`);
+        if (field) return field;
+      }
+    }
+    return null;
+  }
+
+  function installCnicOcr(root) {
+    if (!window.TMS_PUBLIC_CNIC_OCR_URL) return;
+    (root || document).querySelectorAll('input[type="file"]').forEach(function (frontInput) {
+      if (!String(frontInput.name || '').endsWith('cnic_front')) return;
+      if (frontInput.dataset.publicCnicOcrInstalled === '1') return;
+      const context = fieldContext(frontInput);
+      const backInput = context.form.querySelector(
+        `[name="${CSS.escape(`${context.prefix}cnic_back`)}"]`
+      );
+      if (!backInput) return;
+      frontInput.dataset.publicCnicOcrInstalled = '1';
+
+      const status = document.createElement('small');
+      status.className = 'tms-public-cnic-status';
+      status.textContent = 'Upload front and back; blank fields will fill automatically.';
+      const host = backInput.closest('label') || backInput;
+      host.insertAdjacentElement('afterend', status);
+
+      async function readCnic() {
+        if (!frontInput.files?.[0] || !backInput.files?.[0] || status.dataset.reading === '1') return;
+        status.dataset.reading = '1';
+        status.className = 'tms-public-cnic-status is-reading';
+        status.textContent = 'Reading both CNIC sides…';
+        const token = csrfToken(context.form);
+        const body = new FormData();
+        body.append('cnic_front', frontInput.files[0]);
+        body.append('cnic_back', backInput.files[0]);
+        body.append('csrfmiddlewaretoken', token);
+        try {
+          const response = await fetch(window.TMS_PUBLIC_CNIC_OCR_URL, {
+            method: 'POST',
+            headers: {'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest'},
+            body
+          });
+          const responseText = await response.text();
+          let payload;
+          try {
+            payload = JSON.parse(responseText);
+          } catch (_) {
+            throw new Error(`CNIC OCR returned an unexpected response (HTTP ${response.status}).`);
+          }
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.message || `CNIC OCR failed (HTTP ${response.status}).`);
+          }
+          let filled = 0;
+          let kept = 0;
+          payload.fields.forEach(function (suggestion) {
+            const target = matchingField(context, suggestion.name);
+            if (!target) return;
+            if (String(target.value || '').trim()) {
+              kept += 1;
+              return;
+            }
+            target.value = suggestion.value;
+            target.dispatchEvent(new Event('input', {bubbles: true}));
+            target.dispatchEvent(new Event('change', {bubbles: true}));
+            filled += 1;
+          });
+          status.className = 'tms-public-cnic-status is-success';
+          status.textContent = `OCR filled ${filled} blank field(s)` +
+            (kept ? `; kept ${kept} existing value(s)` : '') + '.' +
+            ((payload.warnings || []).some(item => /address/i.test(item))
+              ? ' Unclear addresses were left blank.'
+              : '');
+          status.title = (payload.warnings || []).join(' ');
+        } catch (error) {
+          status.className = 'tms-public-cnic-status is-error';
+          status.textContent = error.message;
+        } finally {
+          delete status.dataset.reading;
+        }
+      }
+
+      frontInput.addEventListener('change', readCnic);
+      backInput.addEventListener('change', readCnic);
+    });
+  }
+
   function imageItem(target) {
     const image = target.closest?.('img');
     if (!image || image.closest('#tmsPublicImageViewer')) return null;
@@ -164,6 +288,7 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     installDobGuides(document);
+    installCnicOcr(document);
     document.querySelectorAll('img').forEach(function (image) {
       if (imageItem(image)) image.classList.add('tms-public-image-trigger');
     });
@@ -187,6 +312,7 @@
 
   const observer = new MutationObserver(function () {
     installDobGuides(document);
+    installCnicOcr(document);
   });
   document.addEventListener('DOMContentLoaded', function () {
     observer.observe(document.body, {childList: true, subtree: true});

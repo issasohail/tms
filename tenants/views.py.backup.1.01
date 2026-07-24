@@ -149,43 +149,6 @@ def cnic_identity_ocr(request):
     )
 
 
-def _existing_tenant_ocr_payload(cnic):
-    """Return a minimal, form-safe existing-tenant payload for a verified OCR CNIC."""
-    from tenants.models import normalize_cnic
-
-    digits = normalize_cnic(cnic)
-    if not digits:
-        return None
-    tenant = Tenant.objects.filter(cnic_digits=digits).first()
-    if not tenant:
-        return None
-
-    values = {
-        "first_name": tenant.first_name,
-        "last_name": tenant.last_name,
-        "father_husband_name": tenant.last_name,
-        "cnic": tenant.cnic,
-        "date_of_birth": tenant.date_of_birth.isoformat() if tenant.date_of_birth else "",
-        "phone": tenant.phone,
-        "gender": tenant.gender,
-        "country": tenant.country,
-        "temporary_address": tenant.temporary_address or tenant.address,
-        "permanent_address": tenant.permanent_address or tenant.address,
-        "address": tenant.address,
-    }
-    return {
-        "matched": True,
-        # Informational only. Submission processing re-matches by normalized CNIC
-        # and never trusts this browser-visible identifier.
-        "tenant_id": tenant.pk,
-        "fields": [
-            {"name": name, "value": value}
-            for name, value in values.items()
-            if value not in (None, "")
-        ],
-    }
-
-
 def _cnic_identity_ocr_response(request, *, can_overwrite=False):
     if not GlobalSettings.get_solo().tenant_cnic_ocr_enabled:
         return JsonResponse(
@@ -236,15 +199,10 @@ def _cnic_identity_ocr_response(request, *, can_overwrite=False):
                 "cnic_display": parsed.strftime("%d.%m.%Y") if parsed else "",
             }
         )
-    cnic_value = next(
-        (item["value"] for item in fields if item["name"] == "cnic"),
-        "",
-    )
     return JsonResponse(
         {
             "ok": True,
             "fields": fields,
-            "existing_tenant": _existing_tenant_ocr_payload(cnic_value),
             "confidence": result.get("confidence", 0),
             "warnings": result.get("warnings", []),
             "can_overwrite": can_overwrite,
@@ -273,7 +231,7 @@ def public_cnic_identity_ocr(request, token):
     request_count = int(cache.get(rate_key, 0) or 0)
     if request_count >= 12:
         return JsonResponse(
-            {"ok": False, "message": "OCR limit reached. Try again later or contact management for assistance."},
+            {"ok": False, "message": "OCR limit reached. Try again later or enter details manually."},
             status=429,
         )
     cache.set(rate_key, request_count + 1, 60 * 60)

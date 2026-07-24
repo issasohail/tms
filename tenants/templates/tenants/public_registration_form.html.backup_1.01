@@ -1036,65 +1036,6 @@
     .family-member-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
     .family-doc-row { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; padding:.45rem; border-top:1px solid #e5e7eb; }
     .family-doc-row .field-wrap { border:0; padding:.25rem; }
-
-    /* Compact party identity layout: documents first, photo left, fields stacked right. */
-    .party-eligibility-row { grid-column: 1 / -1; margin: 0 !important; }
-    .registration-five-grid .party-card-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .party-id-files { grid-column: 1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.35rem; }
-    .party-main-layout {
-      grid-column:1/-1;
-      display:grid;
-      grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-      grid-template-rows:repeat(3, auto) auto;
-      gap:.4rem;
-      align-items:stretch;
-    }
-    .party-photo-field {
-      grid-column:1;
-      grid-row:1 / span 3;
-      min-height:0;
-      display:flex;
-      flex-direction:column;
-    }
-    .party-photo-field .compact-file-input { flex:0 0 auto; }
-    .party-photo-field .tms-selected-preview {
-      flex:1 1 auto;
-      height:100%;
-      min-height:142px;
-      margin-top:.3rem;
-    }
-    .party-photo-field .tms-selected-preview img {
-      width:100%;
-      height:100%;
-      object-fit:contain;
-    }
-    .party-stack {
-      grid-column:2;
-      grid-row:1 / span 3;
-      display:grid;
-      grid-template-columns:1fr;
-      grid-template-rows:repeat(3, minmax(0,1fr));
-      gap:.32rem;
-    }
-    .party-id-row {
-      grid-column:1 / -1;
-      grid-row:4;
-      display:grid;
-      grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-      gap:.4rem;
-    }
-    .party-address { grid-column:1/-1; }
-
-    /* Show only the coloured chooser button; hide the browser filename text. */
-    .compact-file-input { color:transparent !important; padding:.12rem !important; overflow:hidden; }
-    .compact-file-input::file-selector-button {
-      color:#fff; background:#0d6efd; border:1px solid #0d6efd; border-radius:.38rem;
-      padding:.27rem .5rem; margin:0; font-weight:800; cursor:pointer;
-    }
-    .compact-file-input::-webkit-file-upload-button {
-      color:#fff; background:#0d6efd; border:1px solid #0d6efd; border-radius:.38rem;
-      padding:.27rem .5rem; margin:0; font-weight:800; cursor:pointer;
-    }
     @media (max-width:1199px) {
       .registration-five-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
       .registration-five-grid > .td-card:first-child { grid-column:1/-1; }
@@ -1165,151 +1106,6 @@
       }
     }
 
-
-
-  /* Final identity-document layout:
-     wide CNIC Front, wide CNIC Back, compact square Photo. */
-  .td-form-doc-grid {
-    grid-template-columns: minmax(170px, 1fr) minmax(170px, 1fr) 120px !important;
-    align-items: start;
-  }
-  .td-form-doc-slot:first-child .td-form-doc-preview,
-  .td-form-doc-slot:nth-child(2) .td-form-doc-preview {
-    width: 100% !important;
-    height: 120px !important;
-    border-radius: .45rem !important;
-  }
-  .td-form-doc-slot:nth-child(3) .td-form-doc-preview {
-    width: 120px !important;
-    height: 120px !important;
-    border-radius: 20px !important;
-  }
-  .td-form-doc-slot:nth-child(3) {
-    width: 120px;
-  }
-
-  @media (max-width: 768px) {
-    .td-form-doc-grid {
-      grid-template-columns: minmax(96px, 1.14fr) minmax(96px, 1.14fr) minmax(70px, .72fr) !important;
-      gap: .38rem !important;
-    }
-    .td-form-doc-slot:first-child .td-form-doc-preview,
-    .td-form-doc-slot:nth-child(2) .td-form-doc-preview,
-    .td-form-doc-slot:nth-child(3) .td-form-doc-preview {
-      width: 100% !important;
-      height: 76px !important;
-      border-radius: .45rem !important;
-    }
-    .td-form-doc-slot:nth-child(3) {
-      width: auto;
-    }
-  }
-
-  @media (max-width: 420px) {
-    .td-form-doc-grid {
-      grid-template-columns: minmax(82px, 1.15fr) minmax(82px, 1.15fr) minmax(58px, .7fr) !important;
-      gap: .3rem !important;
-    }
-    .td-form-doc-slot:first-child .td-form-doc-preview,
-    .td-form-doc-slot:nth-child(2) .td-form-doc-preview,
-    .td-form-doc-slot:nth-child(3) .td-form-doc-preview {
-      height: 68px !important;
-    }
-  }
-
-
-
-/* Authoritative main identity-document layout. */
-.tms-main-document-grid {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px !important;
-  grid-template-areas: "front back photo" !important;
-  gap: .55rem !important;
-  align-items: start !important;
-}
-.tms-main-document-grid > .cnic-front-slot { grid-area: front !important; }
-.tms-main-document-grid > .cnic-back-slot { grid-area: back !important; }
-.tms-main-document-grid > .tenant-photo-slot {
-  grid-area: photo !important;
-  width: 120px !important;
-}
-.tms-main-document-grid > .cnic-front-slot .td-form-doc-preview,
-.tms-main-document-grid > .cnic-back-slot .td-form-doc-preview {
-  width: 100% !important;
-  height: 120px !important;
-  border-radius: .45rem !important;
-}
-.tms-main-document-grid > .tenant-photo-slot .td-form-doc-preview {
-  width: 120px !important;
-  height: 120px !important;
-  border-radius: 18px !important;
-}
-.tms-main-document-grid .td-form-doc-preview img {
-  object-fit: contain !important;
-  background: #fff;
-}
-.tms-main-document-grid .tenant-photo-slot .td-form-doc-preview img {
-  object-fit: cover !important;
-}
-.tms-main-document-grid .td-form-doc-actions-back {
-  display: grid !important;
-  grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr) !important;
-  gap: .3rem !important;
-  width: 100% !important;
-  margin-top: .3rem !important;
-}
-.tms-main-document-grid .td-form-doc-actions-back > * {
-  margin: 0 !important;
-  min-width: 0 !important;
-  width: 100% !important;
-  min-height: 30px !important;
-}
-/* Force CNIC Front and CNIC Back to equal width */
-.tms-main-document-grid > .cnic-front-slot,
-.tms-main-document-grid > .cnic-back-slot {
-  width: 100% !important;
-  min-width: 0 !important;
-}
-
-.tms-main-document-grid > .cnic-front-slot .td-form-doc-preview,
-.tms-main-document-grid > .cnic-back-slot .td-form-doc-preview {
-  width: 100% !important;
-  max-width: none !important;
-}
-@media (max-width: 768px) {
-  .tms-main-document-grid {
-    grid-template-columns: minmax(82px, 1fr) minmax(82px, 1fr) minmax(58px, .68fr) !important;
-    gap: .35rem !important;
-  }
-  .tms-main-document-grid > .tenant-photo-slot { width: auto !important; }
-  .tms-main-document-grid > .cnic-front-slot .td-form-doc-preview,
-  .tms-main-document-grid > .cnic-back-slot .td-form-doc-preview,
-  .tms-main-document-grid > .tenant-photo-slot .td-form-doc-preview {
-    width: 100% !important;
-    height: 76px !important;
-    border-radius: .45rem !important;
-  }
-  .tms-main-document-grid .td-form-doc-actions-back {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-@media (max-width: 420px) {
-  .tms-main-document-grid {
-    grid-template-columns: minmax(76px, 1fr) minmax(76px, 1fr) minmax(52px, .66fr) !important;
-    gap: .28rem !important;
-  }
-  .tms-main-document-grid > .cnic-front-slot .td-form-doc-preview,
-  .tms-main-document-grid > .cnic-back-slot .td-form-doc-preview,
-  .tms-main-document-grid > .tenant-photo-slot .td-form-doc-preview {
-    height: 68px !important;
-  }
-  .tms-main-document-grid .td-form-read-cnic-btn {
-    font-size: .61rem !important;
-    padding: .18rem .2rem !important;
-  }
-}
-
 </style>
 </head>
 <body>
@@ -1352,8 +1148,9 @@
     <div class="td-layout-top">
       <div class="td-card">
         <div class="td-card-header"><i class="fas fa-id-card text-secondary"></i><h6>Documents</h6></div>
-        <div class="td-form-doc-grid tms-main-document-grid">
-          <div class="td-form-doc-slot cnic-front-slot">
+        <div class="td-form-cell px-3 pt-3">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
+        <div class="td-form-doc-grid">
+          <div class="td-form-doc-slot">
             <div class="td-form-doc-label">CNIC Front</div>
             <label class="td-form-doc-preview image-upload-container" for="{{ form.cnic_front.id_for_label }}">
               {% if tenant.cnic_front %}<img src="{{ tenant.cnic_front.url }}" class="public-file-preview" alt="CNIC Front">{% else %}<i class="fas fa-id-card fa-2x placeholder-icon"></i>{% endif %}
@@ -1361,22 +1158,15 @@
             </label>
             <label class="td-form-upload-btn" for="{{ form.cnic_front.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
           </div>
-
-          <div class="td-form-doc-slot cnic-back-slot">
+          <div class="td-form-doc-slot">
             <div class="td-form-doc-label">CNIC Back</div>
             <label class="td-form-doc-preview image-upload-container" for="{{ form.cnic_back.id_for_label }}">
               {% if tenant.cnic_back %}<img src="{{ tenant.cnic_back.url }}" class="public-file-preview" alt="CNIC Back">{% else %}<i class="fas fa-id-card fa-2x placeholder-icon"></i>{% endif %}
               {{ form.cnic_back }}
             </label>
-            <div class="td-form-doc-actions td-form-doc-actions-back">
-              <label class="td-form-upload-btn" for="{{ form.cnic_back.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
-              <button type="button" class="td-form-read-cnic-btn tms-read-cnic-button">
-                <i class="far fa-id-card"></i> Read CNIC Details
-              </button>
-            </div>
+            <label class="td-form-upload-btn" for="{{ form.cnic_back.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
           </div>
-
-          <div class="td-form-doc-slot tenant-photo-slot">
+          <div class="td-form-doc-slot">
             <div class="td-form-doc-label">Photo</div>
             <label class="td-form-doc-preview image-upload-container" for="{{ form.photo.id_for_label }}">
               {% if tenant.photo %}<img src="{{ tenant.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x placeholder-icon"></i>{% endif %}
@@ -1385,7 +1175,6 @@
             <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
           </div>
         </div>
-        <div class="td-form-cell px-3 pb-3">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
       </div>
 
       <div class="td-card">
@@ -1550,11 +1339,6 @@
       </div>
     </div>
 
-    <div class="reg-alert party-eligibility-row" id="partyEligibilityRule">
-      <strong>Proposer and seconder eligibility:</strong>
-      Proposer and seconder cannot be the tenant or a family member, and they must be two different people.
-    </div>
-
     <div class="registration-five-grid">
     <div class="td-card mb-3">
       <div class="td-card-header d-flex align-items-center gap-2">
@@ -1660,71 +1444,37 @@
       </div>
     </div>
 
+    {% for key,title,color in party_cards %}{% endfor %}
+    <div class="reg-alert" id="partyEligibilityRule">
+      <strong>Proposer and seconder eligibility:</strong>
+      Proposer and seconder cannot be the tenant or a family member, and they must be two different people.
+    </div>
     <div class="td-card party-role-card">
       <div class="td-card-header"><i class="fas fa-user-check text-success"></i><h6>Proposer</h6></div>
       <div class="party-card-body">
-        <div class="party-id-files">
-          <div><label class="field-label">CNIC Front</label><input type="file" class="field-control compact-file-input" name="proposer-cnic_front" accept="image/*"></div>
-          <div><label class="field-label">CNIC Back</label><input type="file" class="field-control compact-file-input" name="proposer-cnic_back" accept="image/*"></div>
-        </div>
-        <div class="party-main-layout">
-          <div class="party-photo-field"><label class="field-label">Photo</label><input type="file" class="field-control compact-file-input" name="proposer-photo" accept="image/*"></div>
-          <div class="party-stack">
-            <div><label class="field-label">First Name</label><input class="field-control" name="proposer-first_name" required aria-required="true"></div>
-            <div><label class="field-label">Last / Father</label><input class="field-control" name="proposer-last_name" required aria-required="true"></div>
-            <div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone" required aria-required="true"></div>
-          </div>
-          <div class="party-id-row">
-            <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic" required aria-required="true" inputmode="numeric"></div>
-            <div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="proposer-date_of_birth"></div>
-          </div>
-        </div>
-        <div class="party-address"><label class="field-label">Address</label><input class="field-control" name="proposer-address"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="proposer-cnic" required aria-required="true" inputmode="numeric"></div><div><label class="field-label">CNIC Front</label><input type="file" class="field-control" name="proposer-cnic_front" accept="image/*"></div><div><label class="field-label">CNIC Back</label><input type="file" class="field-control" name="proposer-cnic_back" accept="image/*"></div><div><label class="field-label">First Name</label><input class="field-control" name="proposer-first_name" required aria-required="true"></div>
+        <div><label class="field-label">Last / Father</label><input class="field-control" name="proposer-last_name" required aria-required="true"></div><div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="proposer-date_of_birth"></div><div><label class="field-label">Phone</label><input class="field-control" name="proposer-phone" required aria-required="true"></div>
+        <div class="wide"><label class="field-label">Address</label><input class="field-control" name="proposer-address"></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="proposer-photo" accept="image/*"></label></div>
       </div>
     </div>
     <div class="td-card party-role-card">
       <div class="td-card-header"><i class="fas fa-user-check text-warning"></i><h6>Seconder</h6></div>
       <div class="party-card-body">
-        <div class="party-id-files">
-          <div><label class="field-label">CNIC Front</label><input type="file" class="field-control compact-file-input" name="seconder-cnic_front" accept="image/*"></div>
-          <div><label class="field-label">CNIC Back</label><input type="file" class="field-control compact-file-input" name="seconder-cnic_back" accept="image/*"></div>
-        </div>
-        <div class="party-main-layout">
-          <div class="party-photo-field"><label class="field-label">Photo</label><input type="file" class="field-control compact-file-input" name="seconder-photo" accept="image/*"></div>
-          <div class="party-stack">
-            <div><label class="field-label">First Name</label><input class="field-control" name="seconder-first_name" required aria-required="true"></div>
-            <div><label class="field-label">Last / Father</label><input class="field-control" name="seconder-last_name" required aria-required="true"></div>
-            <div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone" required aria-required="true"></div>
-          </div>
-          <div class="party-id-row">
-            <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic" required aria-required="true" inputmode="numeric"></div>
-            <div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="seconder-date_of_birth"></div>
-          </div>
-        </div>
-        <div class="party-address"><label class="field-label">Address</label><input class="field-control" name="seconder-address"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="seconder-cnic" required aria-required="true" inputmode="numeric"></div><div><label class="field-label">CNIC Front</label><input type="file" class="field-control" name="seconder-cnic_front" accept="image/*"></div><div><label class="field-label">CNIC Back</label><input type="file" class="field-control" name="seconder-cnic_back" accept="image/*"></div><div><label class="field-label">First Name</label><input class="field-control" name="seconder-first_name" required aria-required="true"></div>
+        <div><label class="field-label">Last / Father</label><input class="field-control" name="seconder-last_name" required aria-required="true"></div><div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="seconder-date_of_birth"></div><div><label class="field-label">Phone</label><input class="field-control" name="seconder-phone" required aria-required="true"></div>
+        <div class="wide"><label class="field-label">Address</label><input class="field-control" name="seconder-address"></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="seconder-photo" accept="image/*"></label></div>
       </div>
     </div>
     {% for number in "12" %}
     <div class="td-card party-role-card">
       <div class="td-card-header"><i class="fas fa-users text-primary"></i><h6>Witness {{ number }}</h6></div>
       <div class="party-card-body">
-        <div class="party-id-files">
-          <div><label class="field-label">CNIC Front</label><input type="file" class="field-control compact-file-input" name="witness{{ number }}-cnic_front" accept="image/*"></div>
-          <div><label class="field-label">CNIC Back</label><input type="file" class="field-control compact-file-input" name="witness{{ number }}-cnic_back" accept="image/*"></div>
-        </div>
-        <div class="party-main-layout">
-          <div class="party-photo-field"><label class="field-label">Photo</label><input type="file" class="field-control compact-file-input" name="witness{{ number }}-photo" accept="image/*"></div>
-          <div class="party-stack">
-            <div><label class="field-label">First Name</label><input class="field-control" name="witness{{ number }}-first_name"></div>
-            <div><label class="field-label">Last / Father</label><input class="field-control" name="witness{{ number }}-last_name"></div>
-            <div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone" aria-required="false"></div>
-          </div>
-          <div class="party-id-row">
-            <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div>
-            <div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="witness{{ number }}-date_of_birth"></div>
-          </div>
-        </div>
-        <div class="party-address"><label class="field-label">Address</label><input class="field-control" name="witness{{ number }}-address"></div>
+        <div><label class="field-label">CNIC</label><input class="field-control" name="witness{{ number }}-cnic"></div><div><label class="field-label">CNIC Front</label><input type="file" class="field-control" name="witness{{ number }}-cnic_front" accept="image/*"></div><div><label class="field-label">CNIC Back</label><input type="file" class="field-control" name="witness{{ number }}-cnic_back" accept="image/*"></div><div><label class="field-label">First Name</label><input class="field-control" name="witness{{ number }}-first_name"></div>
+        <div><label class="field-label">Last / Father</label><input class="field-control" name="witness{{ number }}-last_name"></div><div><label class="field-label">Date of Birth</label><input type="date" class="field-control" name="witness{{ number }}-date_of_birth"></div><div><label class="field-label">Phone</label><input class="field-control" name="witness{{ number }}-phone" aria-required="false"></div>
+        <div class="wide"><label class="field-label">Address</label><input class="field-control" name="witness{{ number }}-address"></div>
+        <div class="party-docs"><label>Photo<input type="file" class="field-control" name="witness{{ number }}-photo" accept="image/*"></label></div>
       </div>
     </div>
     {% endfor %}
@@ -1744,7 +1494,7 @@
     </div>
     <div class="family-member-grid">
       <div class="field-wrap"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
-      <div class="family-doc-row"><div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="cnic_front"></div><div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="cnic_back"></div><div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="photo"></div></div>
+      <div class="family-doc-row"><div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control" data-field="cnic_front"></div><div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control" data-field="cnic_back"></div><div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control" data-field="photo"></div></div>
       <div class="field-wrap"><label class="field-label">Name</label><input type="text" class="field-control" data-field="name"></div>
       <div class="field-wrap"><label class="field-label">Father / Husband Name</label><input type="text" class="field-control" data-field="father_husband_name"></div>
       <div class="field-wrap"><label class="field-label">Date of Birth</label><input type="date" class="field-control" data-field="dob"></div>
@@ -2049,7 +1799,6 @@
 </script>
 <script>
   window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:public_cnic_identity_ocr' registration_token %}";
-  window.TMS_IDENTITY_LOCK_MAIN = true;
 </script>
 {% include "partials/identity_media_public.html" %}
 </body>

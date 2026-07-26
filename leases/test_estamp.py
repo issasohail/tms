@@ -135,3 +135,47 @@ class EStampCompositionTests(SimpleTestCase):
         self.assertEqual(stamp, source.getvalue())
         page = PdfReader(BytesIO(result)).pages[0]
         self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 792))
+
+
+class EStampPackageIntegrationTests(SimpleTestCase):
+    @patch("leases.services.agreement_package.merge_pdfs", return_value=b"package")
+    @patch("leases.services.agreement_package.signature_pdf", return_value=b"signature")
+    @patch("leases.services.agreement_package.police_pdf", return_value=b"police")
+    @patch("leases.services.agreement_package.inspection_pdf", return_value=b"inspection")
+    @patch("leases.services.estamp.compose_stamped_agreement", return_value=b"stamped-core")
+    @patch("leases.services.estamp.authorize_estamp")
+    @patch("leases.services.agreement_package.agreement_pdf", return_value=b"plain-core")
+    def test_only_core_agreement_is_stamped(
+        self,
+        agreement_mock,
+        authorize_mock,
+        compose_mock,
+        inspection_mock,
+        police_mock,
+        signature_mock,
+        merge_mock,
+    ):
+        from leases.services.agreement_package import build_package
+
+        file_handle = Mock()
+        file_handle.__enter__ = Mock(return_value=SimpleNamespace(read=Mock(return_value=b"stamp")))
+        file_handle.__exit__ = Mock(return_value=False)
+        authorize_mock.return_value = SimpleNamespace(
+            file=SimpleNamespace(open=Mock(return_value=file_handle))
+        )
+        history = SimpleNamespace(
+            print_with_estamp=True,
+            estamp_paper_size="letter",
+            allow_over_age_estamp=False,
+        )
+        request = SimpleNamespace(user=Mock())
+        lease = Mock()
+
+        payload, _, _ = build_package(request, lease, history, [])
+
+        self.assertEqual(payload, b"package")
+        compose_mock.assert_called_once_with(b"plain-core", b"stamp", "letter")
+        self.assertEqual(
+            merge_mock.call_args.args[0],
+            [b"stamped-core", b"inspection", b"police", b"signature"],
+        )

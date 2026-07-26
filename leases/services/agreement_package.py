@@ -4,6 +4,7 @@ import mimetypes
 import re
 
 from django.template.loader import render_to_string
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 from django.utils.html import conditional_escape
 from weasyprint import DEFAULT_OPTIONS, Document, HTML
@@ -397,18 +398,20 @@ def _add_first_page_qr_reserve_box(pdf_bytes, reserve_width, reserve_height):
 def agreement_pdf(request, lease, history, clauses):
     for clause in clauses:
         clause.rendered_text = do_replace_placeholders(clause.template_text, lease)
-    legal_page = bool(getattr(history, "print_on_legal_page", False))
+    stamped_layout = bool(getattr(history, "print_with_estamp", False))
+    paper_size = getattr(history, "estamp_paper_size", "legal")
+    legal_page = stamped_layout and paper_size == "legal"
     layout = _agreement_layout_settings()
     first_bottom_reserve = 0.95
     later_bottom_reserve = layout["identity_bottom"] + 0.72
     css_px_per_inch = 96.0
     legal_page_width = 8.5
-    legal_page_height = 14.0
+    legal_page_height = 14.0 if legal_page else 11.0
     qr_flow_height = max(
         0.0, layout["qr_height"] - (first_bottom_reserve - 0.55)
     )
     qr_exclusion = None
-    if legal_page and layout["qr_width"] > 0 and qr_flow_height > 0:
+    if stamped_layout and layout["qr_width"] > 0 and qr_flow_height > 0:
         qr_text_gutter = 0.12
         qr_exclusion = (
             (
@@ -429,7 +432,13 @@ def agreement_pdf(request, lease, history, clauses):
                 "agreement_date": getattr(history, "agreement_date", None)
                 or getattr(history, "start_date", lease.start_date),
                 "legal_page": legal_page,
-                "legal_first_page_top_reserve": layout["first_top"],
+                "stamped_layout": stamped_layout,
+                "agreement_paper_size": paper_size,
+                "legal_first_page_top_reserve": (
+                    max(4.80, layout["first_top"])
+                    if stamped_layout
+                    else layout["first_top"]
+                ),
                 "legal_qr_reserve_width": layout["qr_width"],
                 "legal_qr_reserve_height": layout["qr_height"],
                 "legal_identity_bottom_reserve": layout["identity_bottom"],
@@ -441,7 +450,7 @@ def agreement_pdf(request, lease, history, clauses):
         )
         return _pdf(html, request, first_page_qr_exclusion=qr_exclusion)
 
-    if legal_page:
+    if stamped_layout:
         pdf_bytes = None
         requested_spacing = max(0.0, min(12.0, layout["clause_spacing"]))
         spacing_candidates = []
@@ -458,7 +467,7 @@ def agreement_pdf(request, lease, history, clauses):
                 break
     else:
         pdf_bytes = render(0)
-    if legal_page:
+    if stamped_layout:
         pdf_bytes = _add_first_page_qr_reserve_box(
             pdf_bytes,
             layout["qr_width"],
@@ -779,7 +788,28 @@ def _package_basename(lease, history):
 def build_package(request, lease, history, clauses):
     components = []
     try:
-        components.append(agreement_pdf(request, lease, history, clauses))
+        core_agreement = agreement_pdf(request, lease, history, clauses)
+        if bool(getattr(history, "print_with_estamp", False)):
+            from leases.services.estamp import (
+                authorize_estamp,
+                compose_stamped_agreement,
+            )
+
+            document = authorize_estamp(
+                lease,
+                request.user,
+                allow_over_age=bool(getattr(history, "allow_over_age_estamp", False)),
+            )
+            with document.file.open("rb") as source:
+                stamp_bytes = source.read()
+            core_agreement = compose_stamped_agreement(
+                core_agreement,
+                stamp_bytes,
+                getattr(history, "estamp_paper_size", "legal"),
+            )
+        components.append(core_agreement)
+    except (PermissionDenied, ValidationError):
+        raise
     except Exception as exc:
         raise RuntimeError(f"Agreement PDF generation failed: {exc}") from exc
     try:

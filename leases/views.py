@@ -25,7 +25,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files import File
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage
@@ -6298,12 +6298,19 @@ def generate_agreement_pdf(request, pk):
     history_id = request.GET.get("history")
     history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
     copy_previous_history_clauses(lease, history)
-    history.print_on_legal_page = request.GET.get("legal") in ("1", "true", "on", "yes")
+    history.print_with_estamp = request.GET.get("estamp") in ("1", "true", "on", "yes")
+    history.estamp_paper_size = (request.GET.get("paper") or "legal").lower()
+    history.allow_over_age_estamp = request.GET.get("override_age") in ("1", "true", "on", "yes")
+    history.print_on_legal_page = (
+        history.print_with_estamp and history.estamp_paper_size == "legal"
+    )
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
         pdf_bytes, filename, _document = build_package(request, lease, history, clauses)
-    except RuntimeError as exc:
-        return HttpResponse(str(exc), status=500, content_type="text/plain")
+    except PermissionDenied as exc:
+        return HttpResponse(str(exc), status=403, content_type="text/plain")
+    except (RuntimeError, ValidationError) as exc:
+        return HttpResponse(str(exc), status=400, content_type="text/plain")
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

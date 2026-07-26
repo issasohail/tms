@@ -1,5 +1,6 @@
 import mimetypes
 import os
+from urllib.parse import urlencode
 from urllib.parse import quote as urlquote
 
 from django.contrib import messages
@@ -15,6 +16,16 @@ from core.models import GlobalSettings
 from leases.whatsapp import build_whatsapp_url
 from .models import Lease, LeaseDocument, LeaseDocumentCategory, LeaseFileShareLink
 from .services.estamp import ESTAMP_CATEGORY, normalize_estamp_pdf
+
+
+def _upload_redirect(request, lease):
+    if request.POST.get("redirect_to") == "clauses":
+        url = reverse("leases:edit_clauses", args=[lease.pk])
+        history_id = request.POST.get("history")
+        return redirect(f"{url}?{urlencode({'history': history_id})}" if history_id else url)
+    if request.POST.get("redirect_to") == "edit":
+        return redirect("leases:lease_update", pk=lease.pk)
+    return redirect("leases:lease_detail", pk=lease.pk)
 
 
 def _safe_extension(filename):
@@ -42,9 +53,7 @@ def lease_file_upload(request, lease_id):
     files = request.FILES.getlist("files") or request.FILES.getlist("file")
     if not files:
         messages.error(request, "Please choose at least one file.")
-        if request.POST.get("redirect_to") == "edit":
-            return redirect("leases:lease_update", pk=lease.pk)
-        return redirect("leases:lease_detail", pk=lease.pk)
+        return _upload_redirect(request, lease)
 
     uploaded = 0
     for upload in files:
@@ -82,9 +91,7 @@ def lease_file_upload(request, lease_id):
 
     if uploaded:
         messages.success(request, f"Uploaded {uploaded} lease file(s).")
-    if request.POST.get("redirect_to") == "edit":
-        return redirect("leases:lease_update", pk=lease.pk)
-    return redirect("leases:lease_detail", pk=lease.pk)
+    return _upload_redirect(request, lease)
 
 
 @login_required

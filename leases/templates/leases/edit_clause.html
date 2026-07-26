@@ -158,9 +158,21 @@
         <div class="clause-action-wrap">
         <div class="clause-action-bar">
         <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
-        <div class="d-inline-flex flex-column align-items-center me-1">
+        <div class="d-inline-flex flex-column align-items-stretch me-1 gap-1">
             <button type="button" id="btnPdf" class="btn btn-danger"><i class="fas fa-file-pdf"></i> PDF</button>
-            <label class="form-check-label small mt-1 text-nowrap" for="printOnLegalPage"><input class="form-check-input me-1" type="checkbox" id="printOnLegalPage">Print on Legal Page</label>
+            <label class="form-check-label small text-nowrap" for="printWithEstamp"><input class="form-check-input me-1" type="checkbox" id="printWithEstamp">Print with E-Stamp</label>
+            <select id="estampPaperSize" class="form-select form-select-sm" aria-label="Stamped agreement paper size">
+              <option value="legal">Legal</option>
+              <option value="letter">Letter</option>
+            </select>
+            <div class="small text-nowrap {% if estamp_status.is_over_age %}text-warning{% elif estamp_status.document %}text-success{% else %}text-muted{% endif %}">
+              {% if estamp_status.document %}
+                Current: {{ estamp_status.document.uploaded_at|date:"M d, Y" }}{% if estamp_status.is_over_age %} ({{ estamp_status.age_days }} days old){% endif %}
+              {% else %}No E-Stamp uploaded{% endif %}
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#estampUploadModal">
+              {% if estamp_status.document %}Upload New E-Stamp{% else %}Upload E-Stamp{% endif %}
+            </button>
         </div>
         <a class="btn btn-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
         <button type="button" id="btnDocx" class="btn btn-success me-1"><i class="fas fa-file-word"></i> Word</button>
@@ -280,6 +292,39 @@
         </div></div>
         <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary" id="quickTenantSubmit">Save Party</button></div>
       </form></div>
+    </div>
+
+    <div class="modal fade" id="estampUploadModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog"><div class="modal-content">
+        <form method="post" enctype="multipart/form-data" action="{% url 'leases:lease_file_upload' master_lease.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="category" value="estamp_paper">
+          <input type="hidden" name="redirect_to" value="clauses">
+          <input type="hidden" name="history" value="{{ history.pk }}">
+          <div class="modal-header"><h5 class="modal-title">{% if estamp_status.document %}Upload New E-Stamp{% else %}Upload E-Stamp{% endif %}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <label class="form-label">Punjab E-Stamp PDF</label>
+            <input class="form-control mb-3" type="file" name="file" accept="application/pdf,.pdf" required>
+            <label class="form-label">PDF password <span class="text-muted">(only if protected)</span></label>
+            <input class="form-control" type="password" name="estamp_password" autocomplete="new-password">
+            <div class="form-text">The password is used once to unlock the PDF and is never stored.</div>
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Upload E-Stamp</button></div>
+        </form>
+      </div></div>
+    </div>
+
+    <div class="modal fade" id="estampDecisionModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">E-Stamp Required</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body estamp-decision-message"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-primary estamp-upload">Upload E-Stamp</button>
+          <button type="button" class="btn btn-outline-secondary estamp-without" data-bs-dismiss="modal">Print Without E-Stamp</button>
+          <button type="button" class="btn btn-warning estamp-continue" data-bs-dismiss="modal">Continue with Existing E-Stamp</button>
+        </div>
+      </div></div>
     </div>
 
     <div class="row">
@@ -541,6 +586,11 @@
 
       const GEN_PDF_URL  = "{% url 'leases:generate_agreement_pdf' master_lease.id %}?history={{ history.pk }}";
   const GEN_DOCX_URL = "{% url 'leases:download_preview_docx' master_lease.id %}?history={{ history.pk }}";
+  const ESTAMP_STATE = {
+    exists: {% if estamp_status.document %}true{% else %}false{% endif %},
+    overAge: {% if estamp_status.is_over_age %}true{% else %}false{% endif %},
+    canOverride: {% if estamp_status.can_override %}true{% else %}false{% endif %}
+  };
 
   function setSaveStatus(message, isError) {
     const status = document.getElementById('clauseSaveStatus');
@@ -588,12 +638,39 @@
 
   window.saveClauses = saveClauses;
 
+  function downloadAgreement(url, withEstamp, overrideAge) {
+    const separator = url.includes("?") ? "&" : "?";
+    const paper = document.getElementById("estampPaperSize")?.value || "legal";
+    window.location.href = `${url}${separator}estamp=${withEstamp ? "1" : "0"}&paper=${encodeURIComponent(paper)}&override_age=${overrideAge ? "1" : "0"}`;
+  }
+
+  function openEstampUpload() {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("estampUploadModal")).show();
+  }
+
+  function chooseEstampAction() {
+    const modalElement = document.getElementById("estampDecisionModal");
+    const message = modalElement.querySelector(".estamp-decision-message");
+    const continueButton = modalElement.querySelector(".estamp-continue");
+    if (!ESTAMP_STATE.exists) {
+      message.textContent = "No E-Stamp Paper is available for this lease.";
+      continueButton.classList.add("d-none");
+    } else {
+      message.textContent = `The current E-Stamp Paper is older than the configured limit.{% if estamp_status.document %} It was uploaded {{ estamp_status.document.uploaded_at|date:"M d, Y" }}.{% endif %}`;
+      continueButton.classList.toggle("d-none", !ESTAMP_STATE.canOverride);
+    }
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+  }
+
   function saveThenDownload(url) {
     saveClausesRequest()
     .then(() => {
-      const legal = document.getElementById("printOnLegalPage")?.checked ? "1" : "0";
-      const separator = url.includes("?") ? "&" : "?";
-      window.location.href = `${url}${separator}legal=${legal}`;
+      const withEstamp = document.getElementById("printWithEstamp")?.checked;
+      if (url === GEN_PDF_URL && withEstamp && (!ESTAMP_STATE.exists || ESTAMP_STATE.overAge)) {
+        chooseEstampAction();
+        return;
+      }
+      downloadAgreement(url, Boolean(url === GEN_PDF_URL && withEstamp), false);
     })
     .catch(err => {
       alert("Error: " + err.message);
@@ -722,6 +799,12 @@
 
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
+  document.querySelector("#estampDecisionModal .estamp-upload")?.addEventListener("click", () => {
+    bootstrap.Modal.getInstance(document.getElementById("estampDecisionModal"))?.hide();
+    openEstampUpload();
+  });
+  document.querySelector("#estampDecisionModal .estamp-without")?.addEventListener("click", () => downloadAgreement(GEN_PDF_URL, false, false));
+  document.querySelector("#estampDecisionModal .estamp-continue")?.addEventListener("click", () => downloadAgreement(GEN_PDF_URL, true, true));
   document.querySelectorAll('.clause-delete-btn').forEach(button => {
     button.addEventListener('click', async () => {
       const clauseNumber = button.dataset.clauseNumber;

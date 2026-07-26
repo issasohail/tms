@@ -6262,6 +6262,9 @@ def edit_clauses(request, pk):
 
             lease.generated_agreement_pdf.save(filename, File(output), save=True)
 
+    from leases.services.estamp import estamp_status
+    current_estamp_status = estamp_status(lease, request.user)
+
     return render(
         request,
         "leases/edit_clause.html",
@@ -6275,6 +6278,7 @@ def edit_clauses(request, pk):
             "placeholders": _active_agreement_placeholders(),
             "role_tenants": Tenant.objects.filter(is_active=True).order_by("first_name", "last_name"),
             "relationship_types": LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+            "estamp_status": current_estamp_status,
             **_edit_clause_filter_context(request, lease),
         },
     )

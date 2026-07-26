@@ -258,35 +258,10 @@ def _media_preview_kind(file_name, media_type=""):
 def _pending_media_context(media):
     if not media or not getattr(media, "file", None):
         return {"file_url": "", "preview_kind": "file", "file_size": None}
-    if getattr(media, "processing", False):
-        # Video/audio downloads happen in the background (see
-        # whatsapp.tasks.download_pending_media_task). Until that task clears
-        # `processing`, media.file.name is only a placeholder path with no
-        # bytes behind it yet - returning file_url here 404s in the browser.
-        return {
-            "file_url": "",
-            "preview_kind": "processing",
-            "filename": media.original_filename or media.file.name,
-            "file_size": None,
-        }
     try:
         file_size = media.file.size
     except (FileNotFoundError, OSError, ValueError):
         file_size = None
-    if file_size is None:
-        # File is marked as downloaded but isn't actually on disk/storage
-        # (failed background download, moved/missing file, etc). Same
-        # treatment as "processing" so the UI doesn't offer a dead link.
-        # ai_notes already carries the specific reason written by
-        # whatsapp.tasks.download_pending_media_task (token issue, size
-        # limit, no media id, etc) - surface it instead of a generic message.
-        return {
-            "file_url": "",
-            "preview_kind": "unavailable",
-            "filename": media.original_filename or media.file.name,
-            "file_size": None,
-            "status_note": media.ai_notes or "The file is missing or failed to download.",
-        }
     return {
         "file_url": media.file.url,
         "preview_kind": _media_preview_kind(media.file.name, media.media_type),

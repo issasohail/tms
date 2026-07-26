@@ -307,10 +307,6 @@
                               <video src="{{ preview.file_url }}" class="pending-attachment-video" controls preload="metadata" title="{{ preview.filename }}"></video>
                             {% elif preview.preview_kind == "pdf" %}
                               <a href="{{ preview.file_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-danger py-1 px-2" title="{{ preview.filename }}">PDF</a>
-                            {% elif preview.preview_kind == "processing" %}
-                              <span class="badge bg-warning text-dark" title="Still downloading from WhatsApp">Downloading&hellip;</span>
-                            {% elif preview.preview_kind == "unavailable" %}
-                              <span class="badge bg-danger" title="{{ preview.status_note|default:'Download failed or file is missing' }}">Unavailable</span>
                             {% elif preview.file_url %}
                               <a href="{{ preview.file_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-primary py-1 px-2" title="{{ preview.filename }}">Open</a>
                             {% endif %}

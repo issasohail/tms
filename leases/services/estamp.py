@@ -89,3 +89,80 @@ def normalize_estamp_pdf(upload, password=""):
         raise ValidationError(
             "The E-Stamp file is not a readable PDF or its password is incorrect."
         ) from exc
+
+
+def _visible_box(page):
+    box = page.cropbox or page.mediabox
+    width = float(box.right) - float(box.left)
+    height = float(box.top) - float(box.bottom)
+    if width <= 0 or height <= 0:
+        box = page.mediabox
+        width = float(box.right) - float(box.left)
+        height = float(box.top) - float(box.bottom)
+    if width <= 0 or height <= 0:
+        raise ValidationError("An E-Stamp page has invalid page dimensions.")
+    return box, width, height
+
+
+def _merge_fitted_page(destination, source, *, target_width, target_height):
+    from copy import deepcopy
+    from pypdf import Transformation
+
+    page = deepcopy(source)
+    if int(page.get("/Rotate", 0) or 0) % 360:
+        page.transfer_rotation_to_content()
+    box, source_width, source_height = _visible_box(page)
+    scale = min(target_width / source_width, target_height / source_height)
+    draw_width = source_width * scale
+    draw_height = source_height * scale
+    x = (target_width - draw_width) / 2
+    y = target_height - draw_height
+    transform = (
+        Transformation()
+        .translate(tx=-float(box.left), ty=-float(box.bottom))
+        .scale(sx=scale, sy=scale)
+        .translate(tx=x, ty=y)
+    )
+    destination.merge_transformed_page(page, transform, over=True, expand=False)
+
+
+def compose_stamped_agreement(agreement_pdf, estamp_pdf, paper_size):
+    """Compose only core agreement pages onto mapped stamp pages."""
+    from pypdf import PdfReader, PdfWriter
+    from pypdf._page import PageObject
+
+    try:
+        target_width, target_height = PAPER_SIZES[paper_size]
+    except KeyError as exc:
+        raise ValidationError("Paper size must be Legal or Letter.") from exc
+
+    agreement_reader = PdfReader(BytesIO(agreement_pdf), strict=False)
+    estamp_reader = PdfReader(BytesIO(estamp_pdf), strict=False)
+    if not agreement_reader.pages:
+        raise ValidationError("The agreement PDF has no pages.")
+    if not estamp_reader.pages:
+        raise ValidationError("The E-Stamp PDF has no pages.")
+
+    writer = PdfWriter()
+    for index, agreement_page in enumerate(agreement_reader.pages):
+        destination = PageObject.create_blank_page(
+            width=target_width, height=target_height
+        )
+        if index < min(2, len(estamp_reader.pages)):
+            _merge_fitted_page(
+                destination,
+                estamp_reader.pages[index],
+                target_width=target_width,
+                target_height=target_height,
+            )
+        _merge_fitted_page(
+            destination,
+            agreement_page,
+            target_width=target_width,
+            target_height=target_height,
+        )
+        writer.add_page(destination)
+
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()

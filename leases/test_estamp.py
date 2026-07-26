@@ -15,6 +15,7 @@ from leases.services.estamp import (
     estamp_status,
     latest_estamp,
     normalize_estamp_pdf,
+    compose_stamped_agreement,
 )
 
 
@@ -80,3 +81,57 @@ class EStampUploadTests(SimpleTestCase):
         with self.assertRaises(ValidationError) as caught:
             normalize_estamp_pdf(self._pdf("secret"), "do-not-log-me")
         self.assertNotIn("do-not-log-me", str(caught.exception))
+
+
+class EStampCompositionTests(SimpleTestCase):
+    def _text_pdf(self, labels, size):
+        from io import BytesIO
+        from reportlab.pdfgen import canvas
+
+        output = BytesIO()
+        pdf = canvas.Canvas(output, pagesize=size)
+        for label in labels:
+            pdf.drawString(40, size[1] - 40, label)
+            pdf.showPage()
+        pdf.save()
+        return output.getvalue()
+
+    def test_two_stamp_pages_map_only_to_first_two_agreement_pages(self):
+        agreement = self._text_pdf(
+            ["AGREEMENT ONE", "AGREEMENT TWO", "AGREEMENT THREE"], (612, 1008)
+        )
+        stamp = self._text_pdf(["STAMP ONE", "STAMP TWO"], (595, 842))
+        from io import BytesIO
+        result = PdfReader(BytesIO(compose_stamped_agreement(agreement, stamp, "legal")))
+        self.assertEqual(len(result.pages), 3)
+        self.assertIn("STAMP ONE", result.pages[0].extract_text())
+        self.assertIn("STAMP TWO", result.pages[1].extract_text())
+        self.assertNotIn("STAMP", result.pages[2].extract_text())
+        for page in result.pages:
+            self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 1008))
+
+    def test_one_stamp_page_is_not_repeated(self):
+        agreement = self._text_pdf(["ONE", "TWO"], (612, 792))
+        stamp = self._text_pdf(["ONLY STAMP"], (595, 842))
+        from io import BytesIO
+        result = PdfReader(BytesIO(compose_stamped_agreement(agreement, stamp, "letter")))
+        self.assertIn("ONLY STAMP", result.pages[0].extract_text())
+        self.assertNotIn("ONLY STAMP", result.pages[1].extract_text())
+        self.assertEqual(float(result.pages[0].mediabox.height), 792)
+
+    def test_rotated_non_zero_cropbox_is_normalized_without_mutating_input(self):
+        from io import BytesIO
+        from pypdf.generic import RectangleObject
+
+        writer = PdfWriter()
+        page = writer.add_blank_page(width=300, height=500)
+        page.cropbox = RectangleObject((20, 30, 280, 470))
+        page.rotate(90)
+        source = BytesIO()
+        writer.write(source)
+        stamp = source.getvalue()
+        agreement = self._text_pdf(["AGREEMENT"], (612, 792))
+        result = compose_stamped_agreement(agreement, stamp, "letter")
+        self.assertEqual(stamp, source.getvalue())
+        page = PdfReader(BytesIO(result)).pages[0]
+        self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 792))

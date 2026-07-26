@@ -355,46 +355,6 @@ def _agreement_page_count(pdf_bytes):
     return len(PdfReader(BytesIO(pdf_bytes)).pages)
 
 
-def _add_first_page_qr_reserve_box(pdf_bytes, reserve_width, reserve_height):
-    from pypdf import PdfReader, PdfWriter
-    from reportlab.pdfgen import canvas
-
-    width_inches = max(0.0, float(reserve_width or 0))
-    height_inches = max(0.0, float(reserve_height or 0))
-    if not width_inches or not height_inches:
-        return pdf_bytes
-
-    reader = PdfReader(BytesIO(pdf_bytes))
-    pages = list(reader.pages)
-    if not pages:
-        return pdf_bytes
-
-    first_page = pages[0]
-    page_width = float(first_page.mediabox.width)
-    page_height = float(first_page.mediabox.height)
-    margin = 0.55 * 72
-    box_width = min(width_inches * 72, page_width - margin * 2)
-    box_height = min(height_inches * 72, page_height - margin * 2)
-    x = page_width - margin - box_width
-    y = margin
-
-    packet = BytesIO()
-    overlay_canvas = canvas.Canvas(packet, pagesize=(page_width, page_height))
-    overlay_canvas.setLineWidth(0.55)
-    overlay_canvas.rect(x, y, box_width, box_height, stroke=1, fill=0)
-    overlay_canvas.save()
-    packet.seek(0)
-    overlay = PdfReader(packet).pages[0]
-    first_page.merge_page(overlay, over=True)
-
-    writer = PdfWriter()
-    for page in pages:
-        writer.add_page(page)
-    output = BytesIO()
-    writer.write(output)
-    return output.getvalue()
-
-
 def agreement_pdf(request, lease, history, clauses):
     for clause in clauses:
         clause.rendered_text = do_replace_placeholders(clause.template_text, lease)
@@ -468,11 +428,6 @@ def agreement_pdf(request, lease, history, clauses):
     else:
         pdf_bytes = render(0)
     if stamped_layout:
-        pdf_bytes = _add_first_page_qr_reserve_box(
-            pdf_bytes,
-            layout["qr_width"],
-            layout["qr_height"],
-        )
         pdf_bytes = _pin_identity_cards_to_second_page(
             pdf_bytes, lease, history, layout["identity_bottom"]
         )

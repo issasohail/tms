@@ -140,6 +140,14 @@ def lease_file_category_update(request, document_id):
     category = request.POST.get("category") or "other"
     if not LeaseDocumentCategory.objects.filter(code=category, is_active=True).exists():
         return JsonResponse({"ok": False, "error": "Invalid category."}, status=400)
+    if category == ESTAMP_CATEGORY and document.category != ESTAMP_CATEGORY:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Upload this file through Upload E-Stamp so the PDF can be validated and unlocked.",
+            },
+            status=400,
+        )
     document.category = category
     document.save(update_fields=["category"])
     return JsonResponse({"ok": True, "category": document.category, "category_label": document.category_label})

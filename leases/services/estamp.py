@@ -130,6 +130,7 @@ def compose_stamped_agreement(agreement_pdf, estamp_pdf, paper_size):
     """Compose only core agreement pages onto mapped stamp pages."""
     from pypdf import PdfReader, PdfWriter
     from pypdf._page import PageObject
+    from pypdf.generic import RectangleObject
 
     try:
         target_width, target_height = PAPER_SIZES[paper_size]
@@ -148,6 +149,12 @@ def compose_stamped_agreement(agreement_pdf, estamp_pdf, paper_size):
         destination = PageObject.create_blank_page(
             width=target_width, height=target_height
         )
+        normalized_box = RectangleObject((0, 0, target_width, target_height))
+        destination.mediabox = RectangleObject(normalized_box)
+        destination.cropbox = RectangleObject(normalized_box)
+        destination.trimbox = RectangleObject(normalized_box)
+        destination.bleedbox = RectangleObject(normalized_box)
+        destination.artbox = RectangleObject(normalized_box)
         if index < min(2, len(estamp_reader.pages)):
             _merge_fitted_page(
                 destination,

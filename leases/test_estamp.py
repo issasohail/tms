@@ -109,6 +109,12 @@ class EStampCompositionTests(SimpleTestCase):
         self.assertNotIn("STAMP", result.pages[2].extract_text())
         for page in result.pages:
             self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 1008))
+            for box_name in ("cropbox", "trimbox", "bleedbox", "artbox"):
+                box = getattr(page, box_name)
+                self.assertEqual(
+                    (float(box.left), float(box.bottom), float(box.right), float(box.top)),
+                    (0, 0, 612, 1008),
+                )
 
     def test_one_stamp_page_is_not_repeated(self):
         agreement = self._text_pdf(["ONE", "TWO"], (612, 792))

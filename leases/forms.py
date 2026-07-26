@@ -1072,7 +1072,7 @@ class AgreementSignatureTemplateForm(forms.ModelForm):
             "footer_text", "show_phone", "show_thumb_impression",
             "legal_first_page_top_reserve", "legal_qr_reserve_width",
             "legal_qr_reserve_height", "legal_identity_bottom_reserve",
-            "legal_clause_spacing",
+            "legal_clause_spacing", "estamp_max_age_days",
         ]
         widgets = {
             "heading": forms.TextInput(attrs={"class": "form-control"}),
@@ -1085,4 +1085,5 @@ class AgreementSignatureTemplateForm(forms.ModelForm):
             "legal_qr_reserve_height": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
             "legal_identity_bottom_reserve": forms.NumberInput(attrs={"class": "form-control", "step": "0.1"}),
             "legal_clause_spacing": forms.NumberInput(attrs={"class": "form-control", "step": "0.5"}),
+            "estamp_max_age_days": forms.NumberInput(attrs={"class": "form-control", "min": "0"}),
         }

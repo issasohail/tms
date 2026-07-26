@@ -86,6 +86,12 @@
           {{ form.legal_clause_spacing }}
           {% if form.legal_clause_spacing.errors %}<div class="text-danger small">{{ form.legal_clause_spacing.errors }}</div>{% endif %}
         </div>
+        <div class="col-md-6 col-xl-3">
+          <label class="form-label">E-stamp maximum age (days)</label>
+          {{ form.estamp_max_age_days }}
+          <div class="form-text">{{ form.estamp_max_age_days.help_text }}</div>
+          {% if form.estamp_max_age_days.errors %}<div class="text-danger small">{{ form.estamp_max_age_days.errors }}</div>{% endif %}
+        </div>
       </div>
     </div>
 

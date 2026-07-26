@@ -1778,6 +1778,7 @@ class LeaseDocument(models.Model):
         ("cnic_back", "CNIC Back"),
         ("lease_agreement", "Lease Agreement"),
         ("lease_renewal_agreement", "Lease Renewal Agreement"),
+        ("estamp_paper", "E-Stamp Paper"),
         ("police_verification", "Police Verification"),
         ("property_condition_report", "Property Condition Report"),
         ("utility_bill", "Utility Bill"),
@@ -1823,6 +1824,12 @@ class LeaseDocument(models.Model):
 
     class Meta:
         ordering = ["-uploaded_at", "-id"]
+        permissions = [
+            (
+                "override_estamp_age",
+                "Can use an E-Stamp Paper older than the configured maximum age",
+            ),
+        ]
         indexes = [
             models.Index(fields=["lease", "is_active", "uploaded_at"]),
             models.Index(fields=["category"]),
@@ -2329,6 +2336,13 @@ class AgreementSignatureTemplate(models.Model):
         max_digits=4, decimal_places=2, default=Decimal("5.00"),
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("12.00"))],
         help_text="Maximum space, in points, inserted after each clause on Legal agreement pages.",
+    )
+    estamp_max_age_days = models.PositiveIntegerField(
+        default=30,
+        help_text=(
+            "Warn before using an E-Stamp Paper older than this number of days. "
+            "Set to 0 to disable the age restriction."
+        ),
     )
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)

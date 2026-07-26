@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+from io import BytesIO
 
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from leases.models import AgreementSignatureTemplate, LeaseDocument
@@ -57,3 +59,33 @@ def authorize_estamp(lease, user, *, allow_over_age=False):
             "This E-Stamp Paper is older than the configured maximum age."
         )
     return status.document
+
+
+def normalize_estamp_pdf(upload, password=""):
+    """Return an unlocked, rewritten PDF without retaining the supplied password."""
+    from pypdf import PdfReader, PdfWriter
+
+    try:
+        payload = upload.read()
+        reader = PdfReader(BytesIO(payload), strict=False)
+        if reader.is_encrypted:
+            if not password:
+                raise ValidationError(
+                    "This E-Stamp PDF is password protected. Enter its PDF password."
+                )
+            if not reader.decrypt(password):
+                raise ValidationError("The E-Stamp PDF password is incorrect.")
+        if not reader.pages:
+            raise ValidationError("The uploaded E-Stamp PDF has no pages.")
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        output = BytesIO()
+        writer.write(output)
+        return ContentFile(output.getvalue(), name=upload.name)
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise ValidationError(
+            "The E-Stamp file is not a readable PDF or its password is incorrect."
+        ) from exc

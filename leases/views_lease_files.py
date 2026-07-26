@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 from core.models import GlobalSettings
 from leases.whatsapp import build_whatsapp_url
 from .models import Lease, LeaseDocument, LeaseDocumentCategory, LeaseFileShareLink
+from .services.estamp import ESTAMP_CATEGORY, normalize_estamp_pdf
 
 
 def _safe_extension(filename):
@@ -51,6 +52,21 @@ def lease_file_upload(request, lease_id):
         if ext not in LeaseDocument.SAFE_EXTENSIONS:
             messages.error(request, f"{upload.name} was skipped: unsupported file type.")
             continue
+        if category == ESTAMP_CATEGORY:
+            if ext != "pdf":
+                messages.error(request, f"{upload.name} was skipped: an E-Stamp must be a PDF.")
+                continue
+            try:
+                upload = normalize_estamp_pdf(
+                    upload, request.POST.get("estamp_password") or ""
+                )
+            except Exception as exc:
+                message = getattr(exc, "messages", None)
+                messages.error(
+                    request,
+                    message[0] if message else "The E-Stamp PDF could not be processed.",
+                )
+                continue
         doc = LeaseDocument(
             lease=lease,
             lease_history=None,

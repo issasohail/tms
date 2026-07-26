@@ -6,7 +6,16 @@ from django.core.exceptions import PermissionDenied
 from django.test import SimpleTestCase
 from django.utils import timezone
 
-from leases.services.estamp import authorize_estamp, estamp_status, latest_estamp
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from pypdf import PdfReader, PdfWriter
+
+from leases.services.estamp import (
+    authorize_estamp,
+    estamp_status,
+    latest_estamp,
+    normalize_estamp_pdf,
+)
 
 
 class EStampPolicyTests(SimpleTestCase):
@@ -42,3 +51,32 @@ class EStampPolicyTests(SimpleTestCase):
         )
         with self.assertRaises(PermissionDenied):
             authorize_estamp(object(), Mock(), allow_over_age=True)
+
+
+class EStampUploadTests(SimpleTestCase):
+    def _pdf(self, password=None):
+        from io import BytesIO
+
+        writer = PdfWriter()
+        writer.add_blank_page(width=595, height=842)
+        writer.add_blank_page(width=612, height=792)
+        if password:
+            writer.encrypt(password)
+        output = BytesIO()
+        writer.write(output)
+        return SimpleUploadedFile("stamp.pdf", output.getvalue())
+
+    def test_encrypted_pdf_is_saved_unlocked_with_all_pages(self):
+        normalized = normalize_estamp_pdf(self._pdf("secret"), "secret")
+        reader = PdfReader(normalized)
+        self.assertFalse(reader.is_encrypted)
+        self.assertEqual(len(reader.pages), 2)
+
+    def test_encrypted_pdf_requires_password(self):
+        with self.assertRaisesMessage(ValidationError, "password protected"):
+            normalize_estamp_pdf(self._pdf("secret"))
+
+    def test_wrong_password_is_reported_without_exposing_value(self):
+        with self.assertRaises(ValidationError) as caught:
+            normalize_estamp_pdf(self._pdf("secret"), "do-not-log-me")
+        self.assertNotIn("do-not-log-me", str(caught.exception))

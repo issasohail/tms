@@ -6151,6 +6151,25 @@ def edit_clauses(request, pk):
     if selected_lease_id and str(selected_lease_id) != str(lease.pk):
         return redirect("leases:edit_clauses", pk=selected_lease_id)
 
+    is_photo_settings_ajax = (
+        request.method == "POST"
+        and request.headers.get("x-requested-with") == "XMLHttpRequest"
+        and request.POST.get("action") == "save_photo_settings"
+    )
+    if is_photo_settings_ajax and not request.user.is_authenticated:
+        return JsonResponse(
+            {"status": "error", "message": "Authentication is required."},
+            status=401,
+        )
+    if is_photo_settings_ajax and not (
+        request.user.is_superuser
+        or request.user.has_perm("leases.change_lease")
+    ):
+        return JsonResponse(
+            {"status": "error", "message": "You do not have permission to edit this lease."},
+            status=403,
+        )
+
     ensure_original_history(
         lease,
         user=request.user if request.user.is_authenticated else None,
@@ -6158,7 +6177,17 @@ def edit_clauses(request, pk):
 
     history_id = request.POST.get("history_id") or request.GET.get("history")
     if history_id:
-        history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease)
+        history = LeaseRenewal.objects.filter(pk=history_id, lease=lease).first()
+        if history is None:
+            if (
+                request.headers.get("x-requested-with") == "XMLHttpRequest"
+                and request.POST.get("action") == "save_photo_settings"
+            ):
+                return JsonResponse(
+                    {"status": "error", "message": "Agreement history was not found for this lease."},
+                    status=404,
+                )
+            raise Http404("Agreement history was not found for this lease.")
     else:
         history = latest_history(lease)
 
@@ -6211,6 +6240,90 @@ def edit_clauses(request, pk):
         request.method == "POST"
         and request.headers.get("x-requested-with") == "XMLHttpRequest"
     ):
+        if request.POST.get("action") == "save_photo_settings":
+            from leases.views_lease_photos import (
+                LEASE_PHOTO_LAYOUTS,
+                LEASE_PHOTO_SELECTION_MODES,
+                clean_agreement_photo_ids,
+                eligible_agreement_photos,
+            )
+
+            layout = str(request.POST.get("layout") or "").strip().lower()
+            selection_mode = str(
+                request.POST.get("selection_mode") or ""
+            ).strip().lower()
+            if layout not in LEASE_PHOTO_LAYOUTS:
+                return JsonResponse(
+                    {"status": "error", "message": "Choose a valid photo layout."},
+                    status=400,
+                )
+            if selection_mode not in LEASE_PHOTO_SELECTION_MODES:
+                return JsonResponse(
+                    {"status": "error", "message": "Choose a valid photo selection mode."},
+                    status=400,
+                )
+
+            submitted_ids = request.POST.getlist("photo_ids")
+            if len(submitted_ids) == 1 and submitted_ids[0].lstrip().startswith("["):
+                try:
+                    submitted_ids = json.loads(submitted_ids[0])
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    return JsonResponse(
+                        {"status": "error", "message": "Selected photo IDs are invalid."},
+                        status=400,
+                    )
+            ids_to_clean = (
+                submitted_ids
+                if "photo_ids_submitted" in request.POST
+                else history.lease_photo_ids
+            )
+            selected_ids = clean_agreement_photo_ids(
+                lease,
+                history,
+                ids_to_clean,
+            )
+            include_photos = str(
+                request.POST.get("include_photos") or ""
+            ).strip().lower() in {"1", "true", "on", "yes"}
+
+            history.include_lease_photos = include_photos
+            history.lease_photo_layout = layout
+            history.lease_photo_selection_mode = selection_mode
+            history.lease_photo_ids = selected_ids
+            history.updated_by = request.user
+            history.save(
+                update_fields=[
+                    "include_lease_photos",
+                    "lease_photo_layout",
+                    "lease_photo_selection_mode",
+                    "lease_photo_ids",
+                    "updated_by",
+                    "updated_at",
+                ]
+            )
+
+            eligible_count = eligible_agreement_photos(lease, history).count()
+            photo_count = (
+                eligible_count if selection_mode == "all" else len(selected_ids)
+            )
+            per_page = {"1up": 1, "2up": 2, "4up": 4}[layout]
+            return JsonResponse(
+                {
+                    "status": "success",
+                    "message": "Photo settings saved.",
+                    "settings": {
+                        "include_photos": include_photos,
+                        "layout": layout,
+                        "selection_mode": selection_mode,
+                        "selected_photo_ids": selected_ids,
+                        "selected_count": len(selected_ids),
+                        "eligible_count": eligible_count,
+                        "estimated_photo_pages": ceil(photo_count / per_page)
+                        if photo_count
+                        else 0,
+                    },
+                }
+            )
         if request.POST.get("action") == "delete_clause":
             clause = get_object_or_404(
                 history.clauses,
@@ -6280,7 +6393,38 @@ def edit_clauses(request, pk):
             lease.generated_agreement_pdf.save(filename, File(output), save=True)
 
     from leases.services.estamp import estamp_status
+    from leases.views_lease_photos import (
+        clean_agreement_photo_ids,
+        eligible_agreement_photos,
+    )
+
     current_estamp_status = estamp_status(lease, request.user)
+    eligible_photos = []
+    for photo in eligible_agreement_photos(lease, history):
+        thumbnail_url = photo.display_thumbnail_url
+        if not thumbnail_url:
+            continue
+        photo.agreement_thumbnail_url = thumbnail_url
+        eligible_photos.append(photo)
+    selected_photo_ids = clean_agreement_photo_ids(
+        lease,
+        history,
+        history.lease_photo_ids,
+    )
+    photo_layout = (
+        history.lease_photo_layout
+        if history.lease_photo_layout in {"1up", "2up", "4up"}
+        else "4up"
+    )
+    photo_mode = (
+        history.lease_photo_selection_mode
+        if history.lease_photo_selection_mode in {"selected", "all"}
+        else "selected"
+    )
+    photo_count = (
+        len(eligible_photos) if photo_mode == "all" else len(selected_photo_ids)
+    )
+    photo_per_page = {"1up": 1, "2up": 2, "4up": 4}[photo_layout]
 
     return render(
         request,
@@ -6296,6 +6440,25 @@ def edit_clauses(request, pk):
             "role_tenants": Tenant.objects.filter(is_active=True).order_by("first_name", "last_name"),
             "relationship_types": LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
             "estamp_status": current_estamp_status,
+            "agreement_photo_settings": {
+                "include_photos": history.include_lease_photos,
+                "layout": photo_layout,
+                "selection_mode": photo_mode,
+                "selected_photo_ids": selected_photo_ids,
+                "selected_count": len(selected_photo_ids),
+                "eligible_count": len(eligible_photos),
+                "estimated_photo_pages": ceil(photo_count / photo_per_page)
+                if photo_count
+                else 0,
+            },
+            "current_history_photos": [
+                photo for photo in eligible_photos
+                if photo.lease_history_id == history.pk
+            ],
+            "general_lease_photos": [
+                photo for photo in eligible_photos
+                if photo.lease_history_id is None
+            ],
             **_edit_clause_filter_context(request, lease),
         },
     )
@@ -6316,7 +6479,12 @@ def generate_agreement_pdf(request, pk):
     history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
     copy_previous_history_clauses(lease, history)
     history.print_with_estamp = request.GET.get("estamp") in ("1", "true", "on", "yes")
-    history.estamp_paper_size = (request.GET.get("paper") or "legal").lower()
+    requested_paper_size = (request.GET.get("paper") or "letter").strip().lower()
+    history.estamp_paper_size = (
+        requested_paper_size
+        if requested_paper_size in {"legal", "letter"}
+        else "letter"
+    )
     history.allow_over_age_estamp = request.GET.get("override_age") in ("1", "true", "on", "yes")
     history.print_on_legal_page = (
         history.print_with_estamp and history.estamp_paper_size == "legal"
@@ -6330,6 +6498,7 @@ def generate_agreement_pdf(request, pk):
         return HttpResponse(str(exc), status=400, content_type="text/plain")
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["X-Agreement-Paper-Size"] = history.estamp_paper_size.title()
     return response
 
 
@@ -6962,7 +7131,7 @@ from docx.shared import Inches
 from .models import Lease
 
 
-def set_doc_margins(doc, left=0.5, right=0.5, top=0.5, bottom=0.5, legal=False):
+def set_doc_margins(doc, left=0.35, right=0.35, top=0.5, bottom=0.5, legal=False):
     for section in doc.sections:
         section.page_width = Inches(8.5)
         section.page_height = Inches(14 if legal else 11)
@@ -6975,7 +7144,7 @@ def set_doc_margins(doc, left=0.5, right=0.5, top=0.5, bottom=0.5, legal=False):
 def _set_doc_defaults(doc: Document):
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
-    style.font.size = Pt(11)  # ✅ smaller font
+    style.font.size = Pt(12)
 
     pf = style.paragraph_format
     pf.space_before = Pt(0)
@@ -6990,11 +7159,16 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 
 def _append_inline(paragraph, node, br_as_space=False):
     if isinstance(node, NavigableString):
-        txt = str(node)
+        raw_text = str(node)
+        txt = raw_text
         if not txt or not txt.strip():
             return
-        # normalize whitespace
-        paragraph.add_run(" ".join(txt.split()))
+        normalized = " ".join(txt.split())
+        if raw_text[:1].isspace() and paragraph.text and not paragraph.text.endswith(" "):
+            normalized = " " + normalized
+        if raw_text[-1:].isspace():
+            normalized += " "
+        paragraph.add_run(normalized)
         return
 
     if not isinstance(node, Tag):
@@ -7005,7 +7179,9 @@ def _append_inline(paragraph, node, br_as_space=False):
         return
 
     if node.name in ("strong", "b"):
-        run = paragraph.add_run(node.get_text(" ", strip=True))
+        run = paragraph.add_run(
+            " ".join(node.get_text(" ", strip=True).split())
+        )
         run.bold = True
         return
 
@@ -7022,6 +7198,51 @@ def _new_p(doc, align=WD_ALIGN_PARAGRAPH.JUSTIFY):
     return p
 
 
+def _add_docx_html_table(doc, html_table):
+    """Convert an embedded agreement HTML table into a bordered Word table."""
+    rows = html_table.find_all("tr")
+    column_count = max(
+        (len(row.find_all(["td", "th"], recursive=False)) for row in rows),
+        default=0,
+    )
+    if not rows or not column_count:
+        return None
+
+    table = doc.add_table(rows=len(rows), cols=column_count)
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    column_width = Inches(7.35 / column_count)
+
+    for row_index, source_row in enumerate(rows):
+        source_cells = source_row.find_all(["td", "th"], recursive=False)
+        for column_index in range(column_count):
+            cell = table.cell(row_index, column_index)
+            cell.width = column_width
+            cell.text = ""
+            paragraph = cell.paragraphs[0]
+            paragraph.paragraph_format.space_before = Pt(1)
+            paragraph.paragraph_format.space_after = Pt(1)
+            paragraph.paragraph_format.line_spacing = 1.0
+            if column_index >= len(source_cells):
+                continue
+            source_cell = source_cells[column_index]
+            lines = list(source_cell.stripped_strings)
+            bold_text = {
+                text.strip()
+                for bold_node in source_cell.find_all(["b", "strong"])
+                for text in bold_node.stripped_strings
+            }
+            for line_index, line in enumerate(lines):
+                if line_index:
+                    paragraph.add_run().add_break()
+                run = paragraph.add_run(line)
+                run.bold = line.strip() in bold_text
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(8)
+    return table
+
+
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
@@ -7030,18 +7251,18 @@ def add_signature_block(doc, lease, history=None):
     doc.add_paragraph("")
     doc.add_paragraph("")
 
-    # 2 columns, 4 rows:
-    # Row1: signature lines
-    # Row2: Owner/Tenant
-    # Row3: CNIC
-    # Row4: blank line (small spacer)
-    t = doc.add_table(rows=4, cols=2)
+    # Keep each party's details in one cell so Owner/Tenant, CNIC, Phone and
+    # Date use the same compact line spacing as the witness details.
+    t = doc.add_table(rows=2, cols=2)
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
     t.autofit = False
 
+    signature_column_width = Inches(3.85)
+    for column in t.columns:
+        column.width = signature_column_width
     for r in t.rows:
-        r.cells[0].width = Inches(3.1)
-        r.cells[1].width = Inches(3.1)
+        r.cells[0].width = signature_column_width
+        r.cells[1].width = signature_column_width
 
     def set_cell(cell, lines, bold_prefix=False):
         # clear default paragraph
@@ -7063,55 +7284,91 @@ def add_signature_block(doc, lease, history=None):
                 p.add_run(line)
 
     # row 0: signature lines
-    set_cell(t.cell(0, 0), ["_________________________"])
-    set_cell(t.cell(0, 1), ["_________________________"])
+    agreement_signature_rule = "_" * 39
+    set_cell(t.cell(0, 0), [agreement_signature_rule])
+    set_cell(t.cell(0, 1), [agreement_signature_rule])
 
-    # row 1: Owner/Tenant labels + names
-    set_cell(
-        t.cell(1, 0), [f"Owner: {lease.unit.property.owner_name}"], bold_prefix=True
-    )
-    set_cell(
-        t.cell(1, 1), [f"Tenant: {lease.tenant.get_full_name()}"], bold_prefix=True
-    )
+    blank_party_value = "_" * 29
 
-    # row 2: CNICs
-    set_cell(
-        t.cell(2, 0), [f"CNIC: {format_cnic(lease.unit.property.owner_cnic)}"], bold_prefix=True
-    )
-    set_cell(t.cell(2, 1), [f"CNIC: {format_cnic(lease.tenant.cnic)}"], bold_prefix=True)
+    def set_party_details(cell, label, name, cnic, phone):
+        values = (name, cnic, phone, blank_party_value)
+        labels = (label, "CNIC", "Phone", "Date")
+        cell.text = ""
+        for index, (field_label, value) in enumerate(zip(labels, values)):
+            paragraph = (
+                cell.paragraphs[0] if index == 0 else cell.add_paragraph()
+            )
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 1.0
+            paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(.82))
+            label_run = paragraph.add_run(f"{field_label}:")
+            label_run.bold = True
+            paragraph.add_run("\t")
+            paragraph.add_run(value or blank_party_value)
 
-    # row 3: spacer row (optional)
-    set_cell(t.cell(3, 0), [""])
-    set_cell(t.cell(3, 1), [""])
+    set_party_details(
+        t.cell(1, 0),
+        "Owner",
+        lease.unit.property.owner_name,
+        format_cnic(lease.unit.property.owner_cnic),
+        format_phone(getattr(lease.unit.property, "owner_phone", "")),
+    )
+    set_party_details(
+        t.cell(1, 1),
+        "Tenant",
+        lease.tenant.get_full_name(),
+        format_cnic(lease.tenant.cnic),
+        format_phone(getattr(lease.tenant, "phone", "")),
+    )
 
     # Witness table (same structure)
     doc.add_paragraph("")  # small gap
 
-    tw = doc.add_table(rows=3, cols=2)
+    tw = doc.add_table(rows=4, cols=2)
     tw.alignment = WD_TABLE_ALIGNMENT.CENTER
     tw.autofit = False
+    for column in tw.columns:
+        column.width = signature_column_width
     for r in tw.rows:
-        r.cells[0].width = Inches(3.1)
-        r.cells[1].width = Inches(3.1)
+        r.cells[0].width = signature_column_width
+        r.cells[1].width = signature_column_width
 
     witness1 = getattr(history, "witness1_tenant", None) if history else None
     witness2 = getattr(history, "witness2_tenant", None) if history else None
     witness1 = witness1 or getattr(lease, "witness1_tenant", None)
     witness2 = witness2 or getattr(lease, "witness2_tenant", None)
+    def set_witness_details(cell, label, person):
+        values = (
+            person.get_full_name() if person else "",
+            format_cnic(person.cnic) if person and person.cnic else "",
+            format_phone(person.phone) if person and person.phone else "",
+        )
+        labels = (label, "CNIC", "Phone")
+        cell.text = ""
+        for index, (field_label, value) in enumerate(zip(labels, values)):
+            paragraph = (
+                cell.paragraphs[0] if index == 0 else cell.add_paragraph()
+            )
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 1.0
+            paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(.82))
+            label_run = paragraph.add_run(f"{field_label}:")
+            label_run.bold = True
+            paragraph.add_run("\t")
+            paragraph.add_run(value or blank_party_value)
 
-    def witness_lines(label, person):
-        return [
-            f"{label}: {person.get_full_name() if person else '_________________________'}",
-            f"CNIC: {format_cnic(person.cnic) if person and person.cnic else '_________________________'}",
-            f"Phone: {format_phone(person.phone) if person and person.phone else '_________________________'}",
-        ]
-
-    set_cell(tw.cell(0, 0), witness_lines("Witness 1", witness1), bold_prefix=True)
-    set_cell(tw.cell(0, 1), witness_lines("Witness 2", witness2), bold_prefix=True)
-    set_cell(tw.cell(1, 0), ["Signature: _________________________"])
-    set_cell(tw.cell(1, 1), ["Signature: _________________________"])
-    set_cell(tw.cell(2, 0), ["Date: _________________________"])
-    set_cell(tw.cell(2, 1), ["Date: _________________________"])
+    set_cell(tw.cell(0, 0), [agreement_signature_rule])
+    set_cell(tw.cell(0, 1), [agreement_signature_rule])
+    set_witness_details(tw.cell(1, 0), "Witness 1", witness1)
+    set_witness_details(tw.cell(1, 1), "Witness 2", witness2)
+    set_cell(tw.cell(2, 0), ["Signature: _________________________"])
+    set_cell(tw.cell(2, 1), ["Signature: _________________________"])
+    set_cell(tw.cell(3, 0), ["Date: _________________________"])
+    set_cell(tw.cell(3, 1), ["Date: _________________________"])
 
 
 def _add_agreement_identity_cards_docx(doc, lease, history=None):
@@ -7250,6 +7507,8 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
         r = p.add_run(title.get_text(" ", strip=True))
         r.bold = True
+        r.font.name = "Times New Roman"
+        r.font.size = Pt(18)
 
     # 2) Center line under title (the made at Islamabad line)
     # Use direct <p> children only (no nesting duplication)
@@ -7262,72 +7521,54 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
     # 3) Parties section (split at AND properly)
     party_wrap = container.select_one(".parties-section")
     if party_wrap:
-        # collect HTML inside parties-section
-        # (not text) so we keep <strong> etc.
-        party_html = str(party_wrap)
-
-        # Remove outer wrapper tags so we only split the content
-        party_soup = BeautifulSoup(party_html, "html.parser")
-        # Prefer first <p> if present, else use the whole section
-        first_p = party_soup.select_one(".parties-section p") or party_soup
-
-        # Convert to HTML string
-        html_body = "".join(str(x) for x in first_p.contents)
-
-        # Split at AND (robust: handles <strong>AND</strong>, AND, <br>AND<br>, etc.)
-        parts = re.split(
-            r"(?i)\bAND\b",
-            BeautifulSoup(html_body, "html.parser").get_text(" ", strip=False),
-            maxsplit=1,
-        )
-
-        # If split failed (no AND found), fallback to old behavior
-        if len(parts) < 2:
+        party_paragraphs = party_wrap.find_all("p", recursive=False)
+        if not party_paragraphs:
             p = _new_p(doc)
-            for child in first_p.children:
+            p.paragraph_format.space_after = Pt(8)
+            for child in party_wrap.children:
                 _append_inline(p, child, br_as_space=True)
         else:
-            left_text = parts[0].strip()
-            right_text = parts[1].strip()
-
-            # Party 1 paragraph
-            p = _new_p(doc)
-            p.add_run(" ".join(left_text.split()))
-
-            # AND centered
-            and_p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
-            r = and_p.add_run("AND")
-            r.bold = True
-
-            # Party 2 paragraph
-            p = _new_p(doc)
-            p.add_run(" ".join(right_text.split()))
-
-        # Now render any WHEREAS paragraphs that are separate <p> after the first one
-        # (if your template has them)
-        extra_ps = party_wrap.select("p")[1:]  # remaining <p> after first
-        for extra in extra_ps:
-            txt = extra.get_text(" ", strip=True)
-            if not txt:
-                continue
-            p = _new_p(doc)
-            for child in extra.children:
-                _append_inline(p, child, br_as_space=True)
+            for party_index, party_node in enumerate(party_paragraphs):
+                p = _new_p(doc)
+                p.paragraph_format.space_after = Pt(8)
+                for child in party_node.children:
+                    _append_inline(p, child, br_as_space=True)
+                if party_index < len(party_paragraphs) - 1:
+                    and_p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
+                    and_p.paragraph_format.space_before = Pt(3)
+                    and_p.paragraph_format.space_after = Pt(6)
+                    r = and_p.add_run("AND")
+                    r.bold = True
 
     # 4) Clauses (tight, number + text same line)
     doc.add_paragraph("")  # ✅ blank line like PDF
-    for clause_index, clause_div in enumerate(container.select(".clauses-section > .clause"), 1):
+    clause_spacing = float(
+        getattr(layout_config, "legal_clause_spacing", 5.0) or 0
+    )
+    for clause_div in container.select(".clauses-section > .clause"):
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.JUSTIFY)
 
-        strong = clause_div.find("strong")
+        strong = clause_div.find("strong", recursive=False)
         if strong:
             rn = p.add_run(strong.get_text(strip=True))
             rn.bold = True
             p.add_run(" ")
-            strong.extract()
 
-        for child in clause_div.children:
-            _append_inline(p, child, br_as_space=False)
+        clause_text = clause_div.select_one(".clause-text")
+        current_paragraph = p
+        if clause_text:
+            for child in list(clause_text.children):
+                if isinstance(child, Tag) and child.name == "table":
+                    current_paragraph.paragraph_format.space_after = Pt(2)
+                    _add_docx_html_table(doc, child)
+                    current_paragraph = _new_p(
+                        doc, WD_ALIGN_PARAGRAPH.JUSTIFY
+                    )
+                else:
+                    _append_inline(
+                        current_paragraph, child, br_as_space=False
+                    )
+        current_paragraph.paragraph_format.space_after = Pt(clause_spacing)
 
     # 5) Signature (table look + spacing)
     add_signature_block(doc, lease, history=history)
@@ -7485,9 +7726,9 @@ def agreement_signature_template_settings(request):
             "form": form,
             "template_config": template,
             "footer_position_fields": [
-                (form["estamp_legal_footer_bottom_points"], "Legal E-Stamp footer"),
+                (form["estamp_legal_footer_bottom_points"], "Legal E-Stamp QR/page footer"),
                 (form["agreement_legal_footer_bottom_points"], "Legal agreement footer"),
-                (form["estamp_letter_footer_bottom_points"], "Letter E-Stamp footer"),
+                (form["estamp_letter_footer_bottom_points"], "Letter E-Stamp QR/page footer"),
                 (form["agreement_letter_footer_bottom_points"], "Letter agreement footer"),
             ],
         },

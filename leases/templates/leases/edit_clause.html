@@ -105,12 +105,12 @@
   flex-wrap: nowrap;
   gap: 4px;
   justify-content: flex-end;
-  align-items: flex-start;
+  align-items: center;
   white-space: nowrap;
 }
 .clause-action-bar > .btn,
 .clause-action-bar > form > .btn,
-.clause-action-bar > .d-inline-flex > .btn {
+.agreement-export-panel > .btn {
   height: 38px;
   min-height: 38px;
   display: inline-flex;
@@ -129,8 +129,59 @@
 .party-pill { border: 1px solid #d7dde5; background: #f8f9fa; color: #212529; cursor: pointer; display: block; width: 100%; text-align: left; padding: .38rem .58rem; border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .party-pill:hover, .party-pill:focus { background: #eef4ff; border-color: #86b7fe; }
 .party-field-label { font-size: 11px; color: #212529; font-weight: 700; margin: 0 0 2px 8px; display:block; }
-.lease-context-subheading { font-size: 12px; color: #495057; line-height: 1.25; margin-top: 2px; }
-.lease-context-subheading strong { color: #212529; }
+.lease-context-subheading { font-size: 12px; color: #495057; line-height: 1.25; margin-top: 3px; }
+.lease-context-subheading .lease-tenant-name { color: #172033; font-size: 15px; font-weight: 800; letter-spacing: .01em; }
+.btn-estamp-upload { background:#7c3aed; border-color:#7c3aed; color:#fff; box-shadow:0 2px 5px rgba(124,58,237,.2); }
+.btn-estamp-upload:hover, .btn-estamp-upload:focus { background:#6d28d9; border-color:#6d28d9; color:#fff; }
+.agreement-export-panel {
+  display:grid;
+  grid-template-columns:72px minmax(150px, 1fr);
+  gap:4px 7px;
+  padding:5px 7px;
+  min-width:255px;
+  border:1px solid #e2e7ef;
+  border-radius:9px;
+  background:#fff;
+  box-shadow:0 2px 7px rgba(23,32,51,.08);
+}
+.agreement-export-panel > #btnPdf { grid-row:1 / span 2; height:52px; min-height:52px; border-radius:7px; font-weight:700; }
+.estamp-export-top, .estamp-export-bottom { display:flex; align-items:center; gap:6px; min-width:0; }
+.estamp-check-pill { display:inline-flex; align-items:center; gap:4px; margin:0; padding:2px 6px; border-radius:999px; background:#f3f6fa; color:#344054; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+.estamp-check-pill .form-check-input { margin:0; width:1.05em; height:1.05em; }
+.estamp-date-badge { display:inline-flex; align-items:center; gap:4px; min-width:0; color:#18794e; font-size:10px; white-space:nowrap; }
+.estamp-date-badge strong { overflow:hidden; text-overflow:ellipsis; }
+.estamp-page-label { color:#667085; font-size:10px; font-weight:700; white-space:nowrap; }
+.agreement-export-panel .btn-group-sm > .btn { padding:.12rem .45rem; font-size:10px; line-height:1.4; }
+.agreement-photo-panel {
+  margin-top:4px;
+  margin-left:auto;
+  max-width:640px;
+  padding:5px 7px;
+  border:1px solid #e2e7ef;
+  border-radius:9px;
+  background:#fff;
+  font-size:11px;
+}
+.agreement-photo-main, .agreement-photo-details {
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:5px 8px;
+}
+.agreement-photo-details { margin-top:5px; }
+.photo-setting-label { font-weight:700; color:#344054; white-space:nowrap; }
+.photo-setting-summary { color:#667085; white-space:nowrap; }
+.photo-save-state { min-height:15px; text-align:right; }
+.photo-choice-card { cursor:pointer; }
+.photo-choice-card img { width:88px; height:70px; object-fit:cover; border-radius:5px; background:#f3f4f6; }
+.photo-choice-meta { min-width:0; }
+.photo-choice-title, .photo-choice-description { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width: 767.98px) {
+  .agreement-photo-panel { max-width:none; width:100%; }
+  .agreement-photo-main, .agreement-photo-details { justify-content:flex-start; }
+  .photo-setting-summary { width:100%; white-space:normal; }
+}
 .party-editor { display:none; }
 .party-field.is-editing .party-pill { display:none; }
 .party-field.is-editing .party-editor { display:block; }
@@ -147,9 +198,9 @@
 <div class="container pt-2">
     <div class="clause-page-header mb-2">
         <div>
-          <h2 class="mb-0">Edit Lease Agreement Clauses</h2>
+          <h2 class="mb-0">Edit Lease Agreement</h2>
           <div class="lease-context-subheading">
-            <strong>{{ master_lease.tenant.get_full_name }}</strong> &middot;
+            <strong class="lease-tenant-name">{{ master_lease.tenant.get_full_name }}</strong> &middot;
             {{ master_lease.unit.property.property_name }} &middot;
             {{ master_lease.unit.unit_number }} &middot;
             {{ history.start_date|date:"M d, Y" }} to {{ history.end_date|date:"M d, Y" }}
@@ -158,22 +209,30 @@
         <div class="clause-action-wrap">
         <div class="clause-action-bar">
         <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
-        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#estampUploadModal">
+        <button type="button" class="btn btn-estamp-upload" data-bs-toggle="modal" data-bs-target="#estampUploadModal">
           {% if estamp_status.document %}Upload New E-Stamp{% else %}Upload E-Stamp{% endif %}
         </button>
-        <div class="d-inline-flex flex-column align-items-stretch me-1 gap-1">
+        <div class="agreement-export-panel me-1">
             <button type="button" id="btnPdf" class="btn btn-danger"><i class="fas fa-file-pdf"></i> PDF</button>
-            <label class="form-check-label small text-nowrap" for="printWithEstamp"><input class="form-check-input me-1" type="checkbox" id="printWithEstamp">Print with E-Stamp</label>
-            <div class="btn-group btn-group-sm" role="group" aria-label="Stamped agreement paper size">
-              <input type="radio" class="btn-check" name="estampPaperSize" id="estampPaperLegal" value="legal" checked>
-              <label class="btn btn-outline-primary" for="estampPaperLegal">Legal</label>
-              <input type="radio" class="btn-check" name="estampPaperSize" id="estampPaperLetter" value="letter">
-              <label class="btn btn-outline-primary" for="estampPaperLetter">Letter</label>
+            <div class="estamp-export-top">
+              <label class="estamp-check-pill" for="printWithEstamp">
+                <input class="form-check-input" type="checkbox" id="printWithEstamp">
+                <span>With E-Stamp</span>
+              </label>
+              <div class="estamp-date-badge {% if not estamp_status.document %}text-muted{% endif %}" title="Current E-Stamp upload date">
+                <i class="far fa-calendar-alt"></i>
+                {% if estamp_status.document %}
+                  <strong>{{ estamp_status.document.uploaded_at|date:"M d, Y" }}</strong>{% if estamp_status.is_over_age %}<span class="text-warning">({{ estamp_status.age_days }}d)</span>{% endif %}
+                {% else %}<strong>No stamp</strong>{% endif %}
+              </div>
             </div>
-            <div class="small text-nowrap {% if estamp_status.is_over_age %}text-warning{% elif estamp_status.document %}text-success{% else %}text-muted{% endif %}">
-              {% if estamp_status.document %}
-                Current: {{ estamp_status.document.uploaded_at|date:"M d, Y" }}{% if estamp_status.is_over_age %} ({{ estamp_status.age_days }} days old){% endif %}
-              {% else %}No E-Stamp uploaded{% endif %}
+            <div class="estamp-export-bottom">
+              <span class="estamp-page-label">Page size</span>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Stamped agreement paper size">
+                <button type="button" class="btn btn-outline-primary estamp-paper-size active" data-paper-size="legal" aria-pressed="true">Legal</button>
+                <button type="button" class="btn btn-outline-primary estamp-paper-size" data-paper-size="letter" aria-pressed="false">Letter</button>
+                <input type="hidden" id="estampPaperSize" value="legal">
+              </div>
             </div>
         </div>
         <a class="btn btn-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
@@ -185,6 +244,34 @@
         <a href="{% url 'leases:send_agreement_email' master_lease.pk %}" class="btn btn-info"><i class="fas fa-envelope"></i> Email</a>
         </div>
         <div id="clauseSaveStatus" class="clause-save-status text-muted"></div>
+        <div class="agreement-photo-panel">
+          <div class="agreement-photo-main">
+            <label class="form-check-label fw-bold" for="includeLeasePhotos">
+              <input class="form-check-input me-1" type="checkbox" id="includeLeasePhotos" {% if agreement_photo_settings.include_photos %}checked{% endif %}>
+              Include Lease Photos
+            </label>
+            <span id="photoSettingsStatus" class="photo-save-state text-muted"></span>
+          </div>
+          <div id="agreementPhotoDetails" class="agreement-photo-details {% if not agreement_photo_settings.include_photos %}d-none{% endif %}">
+            <span class="photo-setting-label">Photo selection:</span>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Photo selection mode">
+              <input type="radio" class="btn-check photo-selection-mode" name="photoSelectionMode" id="photoModeSelected" value="selected" {% if agreement_photo_settings.selection_mode == "selected" %}checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="photoModeSelected">Selected photos</label>
+              <input type="radio" class="btn-check photo-selection-mode" name="photoSelectionMode" id="photoModeAll" value="all" {% if agreement_photo_settings.selection_mode == "all" %}checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="photoModeAll">All eligible photos</label>
+            </div>
+            <span class="photo-setting-label">Layout:</span>
+            <select id="leasePhotoLayout" class="form-select form-select-sm" style="width:auto;max-width:220px">
+              <option value="4up" {% if agreement_photo_settings.layout == "4up" %}selected{% endif %}>4 per page — Compact, recommended</option>
+              <option value="2up" {% if agreement_photo_settings.layout == "2up" %}selected{% endif %}>2 per page — Larger detail</option>
+              <option value="1up" {% if agreement_photo_settings.layout == "1up" %}selected{% endif %}>1 per page — Full-page evidence</option>
+            </select>
+            <button type="button" id="selectAgreementPhotos" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#agreementPhotosModal">
+              <i class="fas fa-images"></i> Select Photos
+            </button>
+            <span id="agreementPhotoSummary" class="photo-setting-summary"></span>
+          </div>
+        </div>
         </div>
     </div>
 
@@ -313,6 +400,80 @@
           </div>
           <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Upload E-Stamp</button></div>
         </form>
+      </div></div>
+    </div>
+
+    <div class="modal fade" id="agreementPhotosModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title mb-0">Select Lease Condition Photographs</h5>
+            <div class="small text-muted"><span id="modalPhotoSelectedCount">0</span> selected</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          {% if current_history_photos %}
+            <h6>Current agreement photos</h6>
+            <div class="row g-2 mb-3">
+              {% for photo in current_history_photos %}
+                <div class="col-lg-4 col-md-6">
+                  <label class="photo-choice-card border rounded p-2 d-flex gap-2 align-items-start w-100">
+                    <input class="form-check-input agreement-photo-choice" type="checkbox" value="{{ photo.pk }}">
+                    <img src="{{ photo.agreement_thumbnail_url }}" loading="lazy" alt="{{ photo.title|default:'Lease photo' }}">
+                    <span class="photo-choice-meta flex-grow-1">
+                      <strong class="photo-choice-title d-block">{{ photo.title|default:"Untitled photo" }}</strong>
+                      {% if photo.description %}<span class="photo-choice-description d-block text-muted">{{ photo.description }}</span>{% endif %}
+                      <span class="small text-muted">{{ photo.uploaded_at|date:"M d, Y" }}</span>
+                    </span>
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if general_lease_photos %}
+            <h6>General lease photos</h6>
+            <div class="row g-2">
+              {% for photo in general_lease_photos %}
+                <div class="col-lg-4 col-md-6">
+                  <label class="photo-choice-card border rounded p-2 d-flex gap-2 align-items-start w-100">
+                    <input class="form-check-input agreement-photo-choice" type="checkbox" value="{{ photo.pk }}">
+                    <img src="{{ photo.agreement_thumbnail_url }}" loading="lazy" alt="{{ photo.title|default:'Lease photo' }}">
+                    <span class="photo-choice-meta flex-grow-1">
+                      <strong class="photo-choice-title d-block">{{ photo.title|default:"Untitled photo" }}</strong>
+                      {% if photo.description %}<span class="photo-choice-description d-block text-muted">{{ photo.description }}</span>{% endif %}
+                      <span class="small text-muted">{{ photo.uploaded_at|date:"M d, Y" }}</span>
+                    </span>
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if not current_history_photos and not general_lease_photos %}
+            <div class="alert alert-light border mb-0">No eligible image photos are available for this agreement history.</div>
+          {% endif %}
+        </div>
+        <div class="modal-footer justify-content-between flex-wrap">
+          <div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAllAgreementPhotos">Select all shown</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="clearAgreementPhotos">Clear selection</button>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="saveAgreementPhotoSelection">Save selection</button>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="modal fade" id="largePhotoPrintModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Large Photo Annexure</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body" id="largePhotoPrintMessage"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" id="reviewAgreementPhotos">Cancel and review photos</button>
+          <button type="button" class="btn btn-primary" id="continueLargePhotoPrint">Continue</button>
+        </div>
       </div></div>
     </div>
 
@@ -603,6 +764,152 @@
     overAge: {% if estamp_status.is_over_age %}true{% else %}false{% endif %},
     canOverride: {% if estamp_status.can_override %}true{% else %}false{% endif %}
   };
+  const PHOTO_ELIGIBLE_COUNT = {{ agreement_photo_settings.eligible_count|default:0 }};
+  let selectedAgreementPhotoIds = new Set({{ agreement_photo_settings.selected_photo_ids|safe }});
+  const includeLeasePhotos = document.getElementById('includeLeasePhotos');
+  const agreementPhotoDetails = document.getElementById('agreementPhotoDetails');
+  const agreementPhotoSummary = document.getElementById('agreementPhotoSummary');
+  const photoSettingsStatus = document.getElementById('photoSettingsStatus');
+  const photoChoices = Array.from(document.querySelectorAll('.agreement-photo-choice'));
+  let pendingLargePhotoPrint = null;
+
+  function currentPhotoMode() {
+    return document.querySelector('.photo-selection-mode:checked')?.value || 'selected';
+  }
+
+  function currentPhotoLayout() {
+    return document.getElementById('leasePhotoLayout')?.value || '4up';
+  }
+
+  function includedPhotoCount() {
+    return currentPhotoMode() === 'all'
+      ? PHOTO_ELIGIBLE_COUNT
+      : selectedAgreementPhotoIds.size;
+  }
+
+  function estimatedPhotoPages() {
+    const perPage = { '1up': 1, '2up': 2, '4up': 4 }[currentPhotoLayout()] || 4;
+    const count = includedPhotoCount();
+    return count ? Math.ceil(count / perPage) : 0;
+  }
+
+  function updatePhotoSummary() {
+    agreementPhotoDetails?.classList.toggle('d-none', !includeLeasePhotos?.checked);
+    const count = includedPhotoCount();
+    const noun = currentPhotoMode() === 'all' ? 'eligible photos' : 'selected';
+    if (agreementPhotoSummary) {
+      agreementPhotoSummary.textContent = `${count} ${noun} · Approximately ${estimatedPhotoPages()} photo page${estimatedPhotoPages() === 1 ? '' : 's'}`;
+    }
+    const modalCount = document.getElementById('modalPhotoSelectedCount');
+    if (modalCount) modalCount.textContent = photoChoices.filter(choice => choice.checked).length;
+  }
+
+  async function savePhotoSettings() {
+    const form = document.getElementById('clauseForm');
+    const body = new FormData();
+    body.append('action', 'save_photo_settings');
+    body.append('history_id', '{{ history.pk }}');
+    body.append('include_photos', includeLeasePhotos?.checked ? '1' : '0');
+    body.append('layout', currentPhotoLayout());
+    body.append('selection_mode', currentPhotoMode());
+    body.append('photo_ids_submitted', '1');
+    selectedAgreementPhotoIds.forEach(id => body.append('photo_ids', String(id)));
+    body.append('csrfmiddlewaretoken', form.querySelector('[name=csrfmiddlewaretoken]').value);
+    photoSettingsStatus.textContent = 'Saving…';
+    photoSettingsStatus.className = 'photo-save-state text-muted';
+    const response = await fetch(form.action, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': body.get('csrfmiddlewaretoken'),
+      },
+      body,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.status !== 'success') {
+      const message = result.message || 'Could not save photo settings.';
+      photoSettingsStatus.textContent = message;
+      photoSettingsStatus.className = 'photo-save-state text-danger';
+      throw new Error(message);
+    }
+    selectedAgreementPhotoIds = new Set(result.settings.selected_photo_ids || []);
+    photoSettingsStatus.textContent = 'Photo settings saved';
+    photoSettingsStatus.className = 'photo-save-state text-success';
+    updatePhotoSummary();
+    return result;
+  }
+
+  includeLeasePhotos?.addEventListener('change', () => {
+    updatePhotoSummary();
+    savePhotoSettings().catch(() => {});
+  });
+  document.querySelectorAll('.photo-selection-mode').forEach(control => {
+    control.addEventListener('change', () => {
+      updatePhotoSummary();
+      savePhotoSettings().catch(() => {});
+    });
+  });
+  document.getElementById('leasePhotoLayout')?.addEventListener('change', () => {
+    updatePhotoSummary();
+    savePhotoSettings().catch(() => {});
+  });
+
+  document.getElementById('agreementPhotosModal')?.addEventListener('show.bs.modal', () => {
+    photoChoices.forEach(choice => {
+      choice.checked = selectedAgreementPhotoIds.has(Number(choice.value));
+    });
+    updatePhotoSummary();
+  });
+  photoChoices.forEach(choice => choice.addEventListener('change', updatePhotoSummary));
+  document.getElementById('selectAllAgreementPhotos')?.addEventListener('click', () => {
+    photoChoices.forEach(choice => { choice.checked = true; });
+    updatePhotoSummary();
+  });
+  document.getElementById('clearAgreementPhotos')?.addEventListener('click', () => {
+    photoChoices.forEach(choice => { choice.checked = false; });
+    updatePhotoSummary();
+  });
+  document.getElementById('saveAgreementPhotoSelection')?.addEventListener('click', async () => {
+    selectedAgreementPhotoIds = new Set(
+      photoChoices.filter(choice => choice.checked).map(choice => Number(choice.value))
+    );
+    try {
+      await savePhotoSettings();
+      bootstrap.Modal.getInstance(document.getElementById('agreementPhotosModal'))?.hide();
+    } catch (error) {
+      // The inline status retains a readable error and the modal stays open.
+    }
+  });
+
+  function maybeConfirmLargePhotoPrint(continueAction) {
+    const count = includedPhotoCount();
+    const pages = estimatedPhotoPages();
+    if (includeLeasePhotos?.checked && count === 0) {
+      photoSettingsStatus.textContent =
+        'Lease photos are enabled, but no valid photos are selected. The agreement will be generated without a photo annexure.';
+      photoSettingsStatus.className = 'photo-save-state text-warning';
+    }
+    if (!includeLeasePhotos?.checked || (count <= 40 && pages <= 10)) {
+      continueAction();
+      return;
+    }
+    pendingLargePhotoPrint = continueAction;
+    document.getElementById('largePhotoPrintMessage').textContent =
+      `You are including ${count} photos, which will add approximately ${pages} photo pages. Continue generating the PDF?`;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('largePhotoPrintModal')).show();
+  }
+  document.getElementById('continueLargePhotoPrint')?.addEventListener('click', () => {
+    const action = pendingLargePhotoPrint;
+    pendingLargePhotoPrint = null;
+    bootstrap.Modal.getInstance(document.getElementById('largePhotoPrintModal'))?.hide();
+    action?.();
+  });
+  document.getElementById('reviewAgreementPhotos')?.addEventListener('click', () => {
+    pendingLargePhotoPrint = null;
+    bootstrap.Modal.getInstance(document.getElementById('largePhotoPrintModal'))?.hide();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('agreementPhotosModal')).show();
+  });
+  updatePhotoSummary();
 
   function setSaveStatus(message, isError) {
     const status = document.getElementById('clauseSaveStatus');
@@ -669,9 +976,21 @@
     bootstrap.Modal.getInstance(document.getElementById("agreementGeneratingModal"))?.hide();
   }
 
+  document.querySelectorAll(".estamp-paper-size").forEach(button => {
+    button.addEventListener("click", () => {
+      const paper = button.dataset.paperSize;
+      document.getElementById("estampPaperSize").value = paper;
+      document.querySelectorAll(".estamp-paper-size").forEach(option => {
+        const selected = option === button;
+        option.classList.toggle("active", selected);
+        option.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+    });
+  });
+
   async function downloadAgreement(url, withEstamp, overrideAge) {
     const separator = url.includes("?") ? "&" : "?";
-    const paper = document.querySelector('input[name="estampPaperSize"]:checked')?.value || "legal";
+    const paper = document.getElementById("estampPaperSize")?.value || "letter";
     const downloadUrl = `${url}${separator}estamp=${withEstamp ? "1" : "0"}&paper=${encodeURIComponent(paper)}&override_age=${overrideAge ? "1" : "0"}`;
     const showProgress = url === GEN_PDF_URL;
     if (showProgress) showAgreementGenerating();
@@ -715,13 +1034,18 @@
 
   function saveThenDownload(url) {
     saveClausesRequest()
+    .then(() => savePhotoSettings())
     .then(() => {
-      const withEstamp = document.getElementById("printWithEstamp")?.checked;
-      if (url === GEN_PDF_URL && withEstamp && (!ESTAMP_STATE.exists || ESTAMP_STATE.overAge)) {
-        chooseEstampAction();
-        return;
-      }
-      downloadAgreement(url, Boolean(url === GEN_PDF_URL && withEstamp), false);
+      const continueDownload = () => {
+        const withEstamp = document.getElementById("printWithEstamp")?.checked;
+        if (url === GEN_PDF_URL && withEstamp && (!ESTAMP_STATE.exists || ESTAMP_STATE.overAge)) {
+          chooseEstampAction();
+          return;
+        }
+        downloadAgreement(url, Boolean(url === GEN_PDF_URL && withEstamp), false);
+      };
+      if (url === GEN_PDF_URL) maybeConfirmLargePhotoPrint(continueDownload);
+      else continueDownload();
     })
     .catch(err => {
       alert("Error: " + err.message);

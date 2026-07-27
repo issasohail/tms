@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.apps import apps
 from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.utils.functional import SimpleLazyObject
 
@@ -322,7 +323,20 @@ class PermissionEnforcementMiddleware:
 
         user = request.user
         if not user.is_authenticated:
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse(
+                    {"status": "error", "message": "Authentication is required."},
+                    status=401,
+                )
             return redirect("login")
         if user.is_superuser or user.has_perm(required_perm):
             return None
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": f"You do not have permission: {required_perm}",
+                },
+                status=403,
+            )
         raise PermissionDenied(f"You do not have permission: {required_perm}")

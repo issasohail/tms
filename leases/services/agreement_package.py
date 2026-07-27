@@ -1,5 +1,6 @@
 from io import BytesIO
 import base64
+import logging
 import mimetypes
 import re
 
@@ -14,6 +15,8 @@ from leases.models import AgreementSignatureTemplate
 from tenants.models import Tenant
 from leases.utils import do_replace_placeholders
 from core.utils.identity import format_cnic, format_phone, normalize_cnic
+
+logger = logging.getLogger(__name__)
 
 
 class _QrExclusionShape:
@@ -137,9 +140,30 @@ def _agreement_layout_settings():
     config = AgreementSignatureTemplate.current()
     return {
         "config": config,
-        "first_top": float(getattr(config, "legal_first_page_top_reserve", 4.80) or 4.80),
-        "qr_width": float(getattr(config, "legal_qr_reserve_width", 4.00) or 0),
-        "qr_height": float(getattr(config, "legal_qr_reserve_height", 2.00) or 0),
+        "legal_first_top": float(
+            getattr(config, "legal_first_page_top_reserve", 5.85) or 5.85
+        ),
+        "letter_first_top": float(
+            getattr(config, "letter_first_page_top_reserve", 4.85) or 4.85
+        ),
+        "legal_qr_width": float(
+            getattr(config, "legal_qr_reserve_width", 1.00) or 0
+        ),
+        "legal_qr_height": float(
+            getattr(config, "legal_qr_reserve_height", 2.00) or 0
+        ),
+        "letter_qr_width": float(
+            getattr(config, "letter_qr_reserve_width", 1.00) or 0
+        ),
+        "letter_qr_height": float(
+            getattr(config, "letter_qr_reserve_height", 2.50) or 0
+        ),
+        "legal_stamp_footer": float(
+            getattr(config, "estamp_legal_footer_bottom_points", 4) or 0
+        ),
+        "letter_stamp_footer": float(
+            getattr(config, "estamp_letter_footer_bottom_points", 44) or 0
+        ),
         "identity_bottom": float(getattr(config, "legal_identity_bottom_reserve", 3.10) or 3.10),
         "clause_spacing": float(getattr(config, "legal_clause_spacing", 5.00) or 0),
     }
@@ -367,18 +391,33 @@ def agreement_pdf(request, lease, history, clauses):
     css_px_per_inch = 96.0
     legal_page_width = 8.5
     legal_page_height = 14.0 if legal_page else 11.0
+    qr_width = (
+        layout["legal_qr_width"] if legal_page else layout["letter_qr_width"]
+    )
+    qr_height = (
+        layout["legal_qr_height"] if legal_page else layout["letter_qr_height"]
+    )
+    stamp_footer_points = (
+        layout["legal_stamp_footer"]
+        if legal_page
+        else layout["letter_stamp_footer"]
+    )
+    footer_reference_points = 4.0 if legal_page else 28.0
+    qr_vertical_shift = (stamp_footer_points - footer_reference_points) / 72.0
     qr_flow_height = max(
-        0.0, layout["qr_height"] - (first_bottom_reserve - 0.55)
+        0.0, qr_height - (first_bottom_reserve - 0.55)
     )
     qr_exclusion = None
-    if stamped_layout and layout["qr_width"] > 0 and qr_flow_height > 0:
-        qr_text_gutter = 0.12
+    if stamped_layout and qr_width > 0 and qr_flow_height > 0:
+        qr_text_gutter = 0.18
         qr_exclusion = (
             (
-                legal_page_width - 0.55 - layout["qr_width"] - qr_text_gutter
+                legal_page_width - 0.55 - qr_width - qr_text_gutter
             ) * css_px_per_inch,
-            (legal_page_height - 0.55 - layout["qr_height"]) * css_px_per_inch,
-            (layout["qr_width"] + qr_text_gutter) * css_px_per_inch,
+            (
+                legal_page_height - 0.55 - qr_height - qr_vertical_shift
+            ) * css_px_per_inch,
+            (qr_width + qr_text_gutter) * css_px_per_inch,
             qr_flow_height * css_px_per_inch,
         )
 
@@ -395,12 +434,12 @@ def agreement_pdf(request, lease, history, clauses):
                 "stamped_layout": stamped_layout,
                 "agreement_paper_size": paper_size,
                 "legal_first_page_top_reserve": (
-                    max(4.80, layout["first_top"])
-                    if stamped_layout
-                    else layout["first_top"]
+                    layout["legal_first_top"]
+                    if legal_page
+                    else layout["letter_first_top"]
                 ),
-                "legal_qr_reserve_width": layout["qr_width"],
-                "legal_qr_reserve_height": layout["qr_height"],
+                "legal_qr_reserve_width": qr_width,
+                "legal_qr_reserve_height": qr_height,
                 "legal_identity_bottom_reserve": layout["identity_bottom"],
                 "legal_first_page_bottom_reserve": first_bottom_reserve,
                 "legal_later_page_bottom_reserve": later_bottom_reserve,
@@ -410,9 +449,9 @@ def agreement_pdf(request, lease, history, clauses):
         )
         return _pdf(html, request, first_page_qr_exclusion=qr_exclusion)
 
+    requested_spacing = max(0.0, min(12.0, layout["clause_spacing"]))
     if stamped_layout:
         pdf_bytes = None
-        requested_spacing = max(0.0, min(12.0, layout["clause_spacing"]))
         spacing_candidates = []
         current_spacing = requested_spacing
         while current_spacing >= 0:
@@ -426,7 +465,7 @@ def agreement_pdf(request, lease, history, clauses):
             if _agreement_page_count(candidate) <= 3:
                 break
     else:
-        pdf_bytes = render(0)
+        pdf_bytes = render(requested_spacing)
     if stamped_layout:
         pdf_bytes = _pin_identity_cards_to_second_page(
             pdf_bytes, lease, history, layout["identity_bottom"]
@@ -435,7 +474,7 @@ def agreement_pdf(request, lease, history, clauses):
             pdf_bytes,
             lease,
             layout["identity_bottom"],
-            layout["qr_width"],
+            qr_width,
         )
     return pdf_bytes
 
@@ -717,6 +756,9 @@ def merge_pdfs(parts, lease=None, history=None):
     title, center_text = _package_labels(lease, history) if lease else ("Lease Agreement", "")
     timestamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
     footer_config = AgreementSignatureTemplate.current()
+    show_page_numbers = bool(
+        getattr(footer_config, "show_agreement_page_numbers", True)
+    )
     writer = PdfWriter()
     for index, page in enumerate(pages, 1):
         width = page.mediabox.width
@@ -739,7 +781,7 @@ def merge_pdfs(parts, lease=None, history=None):
             height,
             timestamp,
             center_text,
-            f"Page {index} of {total}",
+            f"Page {index} of {total}" if show_page_numbers else "",
             footer_y,
         )
         page.merge_page(overlay, over=True)
@@ -753,6 +795,44 @@ def merge_pdfs(parts, lease=None, history=None):
 def _package_basename(lease, history):
     title, _ = _package_labels(lease, history)
     return title
+
+
+def photo_annexure_pdf(lease, history):
+    if not getattr(history, "include_lease_photos", False):
+        return None
+
+    from leases.views_lease_photos import (
+        _safe_export_call,
+        agreement_photo_queryset,
+        normalize_lease_photo_layout,
+    )
+
+    photos_qs = agreement_photo_queryset(lease, history)
+    if not photos_qs.exists():
+        logger.warning(
+            "Lease photos enabled but no eligible selection lease_id=%s history_id=%s",
+            lease.pk,
+            history.pk,
+        )
+        return None
+
+    _name, fileobj = _safe_export_call(
+        lease,
+        layout=normalize_lease_photo_layout(history.lease_photo_layout),
+        photos_qs=photos_qs,
+        package_mode=True,
+        history=history,
+        section_title="ANNEXURE - LEASE CONDITION PHOTOGRAPHS",
+    )
+    if not fileobj:
+        return None
+    try:
+        fileobj.seek(0)
+        payload = fileobj.read()
+        return payload or None
+    finally:
+        fileobj.close()
+
 
 def build_package(request, lease, history, clauses):
     components = []
@@ -785,7 +865,7 @@ def build_package(request, lease, history, clauses):
                 stamp_footer_bottom_points=getattr(
                     footer_config,
                     stamp_footer_field,
-                    130 if paper_size == "legal" else 28,
+                    46 if paper_size == "legal" else 28,
                 ),
             )
         components.append(core_agreement)
@@ -805,8 +885,27 @@ def build_package(request, lease, history, clauses):
         components.append(signature_pdf(request, lease, history))
     except Exception as exc:
         raise RuntimeError(f"Signature page generation failed: {exc}") from exc
+    if getattr(history, "include_lease_photos", False):
+        try:
+            annexure = photo_annexure_pdf(lease, history)
+            if annexure:
+                components.append(annexure)
+        except Exception as exc:
+            logger.warning(
+                "Optional lease photo annexure omitted lease_id=%s history_id=%s: %s",
+                lease.pk,
+                history.pk,
+                exc,
+                exc_info=True,
+            )
     merged = merge_pdfs(components, lease=lease, history=history)
-    filename = _package_basename(lease, history) + ".pdf"
+    paper_size = (
+        getattr(history, "estamp_paper_size", "letter")
+        if bool(getattr(history, "print_with_estamp", False))
+        else "letter"
+    )
+    paper_label = "Legal" if paper_size == "legal" else "Letter"
+    filename = f"{_package_basename(lease, history)}_{paper_label}.pdf"
     # Generated agreements are reproducible downloads. Do not persist them in
     # Lease Documents; only user-uploaded signed documents should be retained.
     return merged, filename, None
@@ -888,30 +987,217 @@ def _add_inspection_docx(doc, inspection):
 
 
 def _add_police_docx(doc, lease):
+    from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
+
     doc.add_page_break()
-    _add_heading(doc, "Police Verification Report")
-    table = doc.add_table(rows=0, cols=2)
-    table.style = "Table Grid"
-    rows = [
-        ("Tenant", lease.tenant.get_full_name()), ("Tenant CNIC", format_cnic(lease.tenant.cnic)),
-        ("Phone", format_phone(lease.tenant.phone)), ("Property / Unit", f"{lease.unit.property} / {lease.unit}"),
-        ("Lease Period", f"{lease.start_date} to {lease.end_date}"),
-        ("Address", lease.tenant.address or ""),
-    ]
-    for label, value in rows:
-        cells = table.add_row().cells
-        _set_cell_text(cells[0], label, True, 9)
-        _set_cell_text(cells[1], value, False, 9)
-    doc.add_paragraph("Family Members", style=None).runs[0].bold = True
-    fam = doc.add_table(rows=1, cols=4); fam.style = "Table Grid"
-    for i, text in enumerate(("SN", "Name", "CNIC", "Relationship")):
-        _set_cell_text(fam.rows[0].cells[i], text, True)
-    for idx, row in enumerate(lease.family_members.select_related("family_member", "relationship_type"), 1):
-        cells = fam.add_row().cells
-        vals = (idx, row.family_member.get_full_name(), format_cnic(row.family_member.cnic), str(row.relationship_type or row.relationship or ""))
-        for i, value in enumerate(vals): _set_cell_text(cells[i], value)
-    doc.add_paragraph("Verification Remarks: ______________________________________________________________")
-    doc.add_paragraph("Police Station / Officer: __________________________    Date: __________________________")
+    property_obj = lease.unit.property
+    tenant = lease.tenant
+    family_members = list(
+        lease.family_members.select_related("family_member", "relationship_type")
+    )
+    vehicles = list(
+        lease.vehicles.filter(is_active=True).select_related("vehicle_type")
+    )
+
+    def shade(cell, fill="F1F1F1"):
+        tc_pr = cell._tc.get_or_add_tcPr()
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:fill"), fill)
+        tc_pr.append(shd)
+
+    def set_cell(cell, value, bold=False, header=False, size=7.5):
+        cell.text = ""
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        paragraph = cell.paragraphs[0]
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.line_spacing = 1.0
+        run = paragraph.add_run(str(value if value not in (None, "") else "-"))
+        run.bold = bold or header
+        run.font.name = "Arial"
+        run.font.size = Pt(size)
+        if header:
+            shade(cell)
+
+    def set_widths(table, widths):
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
+        for index, width in enumerate(widths):
+            table.columns[index].width = Inches(width)
+            for row in table.rows:
+                row.cells[index].width = Inches(width)
+
+    def section_heading(text):
+        paragraph = doc.add_paragraph()
+        paragraph.paragraph_format.space_before = Pt(6)
+        paragraph.paragraph_format.space_after = Pt(2)
+        run = paragraph.add_run(text)
+        run.bold = True
+        run.font.name = "Arial"
+        run.font.size = Pt(9)
+        p_pr = paragraph._p.get_or_add_pPr()
+        borders = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), "4")
+        bottom.set(qn("w:color"), "999999")
+        borders.append(bottom)
+        p_pr.append(borders)
+
+    def add_four_column_table(rows):
+        table = doc.add_table(rows=0, cols=4)
+        table.style = "Table Grid"
+        for label1, value1, label2, value2 in rows:
+            cells = table.add_row().cells
+            set_cell(cells[0], label1, header=True)
+            set_cell(cells[1], value1)
+            if label2 is None:
+                merged = cells[1].merge(cells[3])
+                set_cell(merged, value1)
+            else:
+                set_cell(cells[2], label2, header=True)
+                set_cell(cells[3], value2)
+        set_widths(table, (1.10, 2.80, 1.10, 2.80))
+        return table
+
+    title = doc.add_paragraph()
+    title.paragraph_format.space_after = Pt(2)
+    title_run = title.add_run("Police Verification Summary")
+    title_run.bold = True
+    title_run.font.name = "Arial"
+    title_run.font.size = Pt(13.5)
+
+    generated = doc.add_paragraph()
+    generated.paragraph_format.space_after = Pt(5)
+    generated_run = generated.add_run(
+        f"Lease #{lease.pk} | Generated {timezone.localtime():%Y-%m-%d %H:%M}"
+    )
+    generated_run.font.name = "Arial"
+    generated_run.font.size = Pt(7)
+    generated_run.font.color.rgb = RGBColor(102, 102, 102)
+
+    owner_person = _owner_tenant(property_obj)
+    owner_photo = (
+        getattr(property_obj, "owner_photo", None)
+        or getattr(owner_person, "photo", None)
+    )
+    photo_table = doc.add_table(rows=1, cols=2)
+    set_widths(photo_table, (3.90, 3.90))
+    for cell, label, photo in (
+        (photo_table.cell(0, 0), "Owner Photo", owner_photo),
+        (photo_table.cell(0, 1), "Tenant Photo", getattr(tenant, "photo", None)),
+    ):
+        cell.text = ""
+        label_paragraph = cell.paragraphs[0]
+        label_paragraph.paragraph_format.space_after = Pt(2)
+        label_run = label_paragraph.add_run(label)
+        label_run.bold = True
+        label_run.font.name = "Arial"
+        label_run.font.size = Pt(8)
+        photo_paragraph = cell.add_paragraph()
+        photo_paragraph.paragraph_format.space_after = Pt(0)
+        try:
+            if photo and photo.path:
+                photo_paragraph.add_run().add_picture(
+                    photo.path, width=Inches(.90), height=Inches(.90)
+                )
+            else:
+                photo_paragraph.add_run("No photo")
+        except (ValueError, OSError, AttributeError):
+            photo_paragraph.add_run("No photo")
+
+    section_heading("Owner Information")
+    add_four_column_table(
+        (
+            ("Name", property_obj.owner_name, "Father Name", property_obj.owner_father_name),
+            ("CNIC", format_cnic(property_obj.owner_cnic), "Mobile", format_phone(property_obj.owner_phone)),
+            ("Address", property_obj.owner_address, None, None),
+        )
+    )
+
+    section_heading("Tenant Information")
+    add_four_column_table(
+        (
+            ("Name", tenant.get_full_name(), "Father/Husband", tenant.last_name),
+            ("CNIC", format_cnic(tenant.cnic), "Mobile", format_phone(tenant.phone)),
+            ("Occupation", tenant.occupation, "Nationality", tenant.nationality),
+            ("Address", tenant.address, None, None),
+            ("Temporary Address", tenant.temporary_address, None, None),
+            ("Permanent Address", tenant.permanent_address, None, None),
+            ("Working Address", tenant.working_address, None, None),
+        )
+    )
+
+    section_heading("Family Members")
+    family_table = doc.add_table(rows=1, cols=6)
+    family_table.style = "Table Grid"
+    for index, label in enumerate(("S.N", "Name", "Relationship", "CNIC", "DOB", "Phone")):
+        set_cell(family_table.rows[0].cells[index], label, header=True)
+    if family_members:
+        for index, member in enumerate(family_members, 1):
+            person = member.family_member
+            cells = family_table.add_row().cells
+            values = (
+                index,
+                person.get_full_name(),
+                member.relation,
+                format_cnic(person.cnic),
+                person.date_of_birth.strftime("%Y-%m-%d") if person.date_of_birth else "-",
+                format_phone(person.phone),
+            )
+            for column, value in enumerate(values):
+                set_cell(cells[column], value)
+    else:
+        cell = family_table.add_row().cells[0]
+        merged = cell.merge(family_table.rows[-1].cells[5])
+        set_cell(merged, "No family members recorded.")
+    set_widths(family_table, (.45, 1.65, 1.35, 1.55, 1.15, 1.65))
+
+    section_heading("Tenant Vehicle Information")
+    vehicle_table = doc.add_table(rows=1, cols=7)
+    vehicle_table.style = "Table Grid"
+    for index, label in enumerate(
+        ("S.N", "Type", "Registration #", "Make / Model", "Color", "Owner", "Owner CNIC")
+    ):
+        set_cell(vehicle_table.rows[0].cells[index], label, header=True)
+    if vehicles:
+        for index, vehicle in enumerate(vehicles, 1):
+            cells = vehicle_table.add_row().cells
+            make_model = vehicle.make or "-"
+            if vehicle.model:
+                make_model = f"{make_model} / {vehicle.model}"
+            values = (
+                index,
+                vehicle.vehicle_type.name,
+                vehicle.registration_number,
+                make_model,
+                vehicle.color,
+                vehicle.owner_name,
+                format_cnic(vehicle.owner_cnic),
+            )
+            for column, value in enumerate(values):
+                set_cell(cells[column], value)
+    else:
+        cell = vehicle_table.add_row().cells[0]
+        merged = cell.merge(vehicle_table.rows[-1].cells[6])
+        set_cell(merged, "No vehicle information recorded.")
+    set_widths(vehicle_table, (.40, 1.05, 1.30, 1.35, .85, 1.30, 1.55))
+
+    section_heading("Property Information")
+    add_four_column_table(
+        (
+            ("Property", property_obj.property_name, "Unit", lease.unit.unit_number),
+            ("Address", property_obj.full_address(), None, None),
+            ("House #", property_obj.house_no, "Street #", property_obj.street_no),
+            ("Colony", property_obj.colony, "Road", property_obj.road),
+            ("Covered Area Type", property_obj.covered_area_type, "Zila", property_obj.zila),
+            ("Police Station", property_obj.police_station, "Division", property_obj.police_division),
+            ("Circle", property_obj.police_circle, "District / City", property_obj.property_city),
+        )
+    )
 
 
 def _add_signature_docx(doc, context):
@@ -1015,9 +1301,9 @@ def build_docx_package(request, lease, history, clauses):
         "lease": lease, "history": history, "clauses": clauses,
         "agreement_date": getattr(history, "agreement_date", None) or getattr(history, "start_date", lease.start_date),
         "legal_page": bool(getattr(history, "print_on_legal_page", False)),
-        "legal_first_page_top_reserve": layout["first_top"],
-        "legal_qr_reserve_width": layout["qr_width"],
-        "legal_qr_reserve_height": layout["qr_height"],
+        "legal_first_page_top_reserve": layout["legal_first_top"],
+        "legal_qr_reserve_width": layout["legal_qr_width"],
+        "legal_qr_reserve_height": layout["legal_qr_height"],
         "legal_identity_bottom_reserve": layout["identity_bottom"],
     }, request=request)
     from leases.views import html_to_docx_bytes

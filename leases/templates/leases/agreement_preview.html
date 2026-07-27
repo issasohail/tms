@@ -6,8 +6,9 @@
     @page {
         size: {{ agreement_paper_size|default:"legal" }};
         margin: 0.55in;
+        {% if agreement_paper_size == "letter" %}margin-bottom: 0.95in;{% endif %}
     }
-    @page :left {
+    @page:nth(2) {
         margin-bottom: {{ legal_later_page_bottom_reserve|default:"3.82" }}in;
     }
     @page :first {
@@ -26,7 +27,9 @@
     .agreement-title { margin:0 0 0.16in 0; }
     .agreement-preview p, .agreement-preview .clause { text-align:justify; text-justify:inter-word; }
     .agreement-preview .text-center { text-align:center; }
-    .parties-section .party-detail { margin:0; }
+    .parties-section .party-detail { margin:0 0 8pt; line-height:1.14; }
+    .parties-section .and-separator { margin:9pt 0; }
+    .clauses-section .clause { margin-bottom:{{ legal_clause_spacing|default:"5" }}pt; }
     .authorized-occupants-table{width:100%;border-collapse:collapse;margin:6px 0}.authorized-occupants-table td{border:1px solid #777;padding:5px;width:25%;vertical-align:top;font-size:10px;line-height:1.25}
     .signature-section table { margin-bottom: 4px !important; }
     .signature-section td { vertical-align: top; }
@@ -38,6 +41,26 @@
         word-spacing:normal !important;
     }
     .signature-section .footer { text-align: left !important; margin-top: 4px !important; }
+    .signature-section .signature-line { padding-top:2em; }
+    .agreement-signature-rule {
+        display:inline-block;
+        width:2.93in;
+        height:.85em;
+        border-bottom:.7pt solid #000;
+        vertical-align:baseline;
+    }
+    .blank-party-field {
+        display:inline-block;
+        width:2.15in;
+        height:.85em;
+        border-bottom:.7pt solid #000;
+        vertical-align:baseline;
+    }
+    .witness-field-row { white-space:nowrap; }
+    .witness-field-label {
+        display:inline-block;
+        width:.78in;
+    }
     .last-page-qr-reserve {
         float:right;
         width:{{ legal_qr_reserve_width|default:"2" }}in;
@@ -45,11 +68,7 @@
         margin-left:.12in;
     }
     {% if stamped_layout %}
-    .parties-section .party-detail { line-height:1.14; }
-    .parties-section .and-separator { margin:9pt 0; }
     .parties-section { margin-bottom:8pt; }
-    .clauses-section .clause { margin-bottom:{{ legal_clause_spacing|default:"3" }}pt; }
-    .signature-section .signature-line { padding-top:2em; }
     .signature-section .party-detail-line {
         font-size:12pt;
         line-height:1.05 !important;
@@ -137,15 +156,18 @@
     <table style="width: 100%; border-collapse: collapse;">
         <tr>
             <td style="width: 50%; padding-right: 20px;">
-                <p class="signature-line">_________________________</p>
+                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
                 <p class="party-detail-line"><strong>Owner:</strong> {{ lease.unit.property.owner_name }}</p>
                 <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic|format_cnic }}</p>
+                <p class="party-detail-line"><strong>Phone:</strong> {{ lease.unit.property.owner_phone|format_phone|default:"_________________________" }}</p>
+                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
             </td>
             <td style="width: 50%; padding-left: 20px;">
-                <p class="signature-line">_________________________</p>
+                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
                 <p class="party-detail-line"><strong>Tenant:</strong>  {{ lease.tenant.get_full_name }}</p>
                 <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.tenant.cnic|format_cnic }}</p>
                 <p class="party-detail-line"><strong>Phone:</strong> {{ lease.tenant.phone|format_phone|default:"_________________________" }}</p>
+                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
             </td>
         </tr>
     </table>
@@ -155,17 +177,19 @@
     <table style="width: 100%; border-collapse: collapse;">
         <tr>
             <td style="width: 50%; padding-right: 20px;">
-                <p class="signature-line">_________________________</p>
-                <p class="party-detail-line"><strong>Witness 1:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}_________________________{% endif %}</p>
-                <p class="party-detail-line"><strong>CNIC:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.cnic|format_cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic|format_cnic }}{% else %}_________________________{% endif %}</p>
-                <p><strong>Phone:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|format_phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
+                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
+                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Witness 1:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">CNIC:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.cnic|format_cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="witness-field-row"><strong class="witness-field-label">Phone:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
                 <p class="generated-at"><strong>Generated at:</strong> {% now "d M Y" %}.</p>
             </td>
             <td style="width: 50%; padding-left: 20px;">
-                <p class="signature-line">_________________________</p>
-                <p class="party-detail-line"><strong>Witness 2:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}_________________________{% endif %}</p>
-                <p class="party-detail-line"><strong>CNIC:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.cnic|format_cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic|format_cnic }}{% else %}_________________________{% endif %}</p>
-                <p><strong>Phone:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|format_phone|default:"_________________________" }}{% else %}_________________________{% endif %}</p>
+                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
+                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Witness 2:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">CNIC:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.cnic|format_cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="witness-field-row"><strong class="witness-field-label">Phone:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
             </td>
         </tr>
     </table>

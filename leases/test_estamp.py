@@ -226,6 +226,7 @@ class EStampCompositionTests(SimpleTestCase):
         config_mock.return_value = SimpleNamespace(
             agreement_legal_footer_bottom_points=22,
             agreement_letter_footer_bottom_points=11,
+            show_agreement_page_numbers=True,
         )
         overlay_mock.side_effect = lambda width, height, *args: (
             PageObject.create_blank_page(width=width, height=height)
@@ -242,6 +243,28 @@ class EStampCompositionTests(SimpleTestCase):
             [call.args[-1] for call in overlay_mock.call_args_list],
             [22.0, 11.0],
         )
+        self.assertEqual(
+            [call.args[-2] for call in overlay_mock.call_args_list],
+            ["Page 1 of 2", "Page 2 of 2"],
+        )
+
+    @patch("leases.services.agreement_package._footer_overlay")
+    @patch("leases.services.agreement_package.AgreementSignatureTemplate.current")
+    def test_package_page_numbers_can_be_hidden(self, config_mock, overlay_mock):
+        from pypdf import PageObject
+        from leases.services.agreement_package import merge_pdfs
+
+        config_mock.return_value = SimpleNamespace(
+            agreement_letter_footer_bottom_points=4,
+            show_agreement_page_numbers=False,
+        )
+        overlay_mock.side_effect = lambda width, height, *args: (
+            PageObject.create_blank_page(width=width, height=height)
+        )
+
+        merge_pdfs([self._text_pdf(["LETTER"], (612, 792))])
+
+        self.assertEqual(overlay_mock.call_args.args[-2], "")
 
 
 class EStampPackageIntegrationTests(SimpleTestCase):
@@ -283,9 +306,10 @@ class EStampPackageIntegrationTests(SimpleTestCase):
         request = SimpleNamespace(user=Mock())
         lease = Mock()
 
-        payload, _, _ = build_package(request, lease, history, [])
+        payload, filename, _ = build_package(request, lease, history, [])
 
         self.assertEqual(payload, b"package")
+        self.assertTrue(filename.endswith("_Letter.pdf"))
         compose_mock.assert_called_once_with(
             b"plain-core",
             b"stamp",
@@ -296,3 +320,110 @@ class EStampPackageIntegrationTests(SimpleTestCase):
             merge_mock.call_args.args[0],
             [b"stamped-core", b"inspection", b"police", b"signature"],
         )
+
+
+class AgreementDocxFormattingTests(SimpleTestCase):
+    def test_inline_placeholder_spacing_is_preserved(self):
+        from bs4 import BeautifulSoup
+        from docx import Document
+        from leases.views import _append_inline
+
+        source = BeautifulSoup(
+            "<span>Rent is <strong>30,000</strong> per month.</span>",
+            "html.parser",
+        ).span
+        paragraph = Document().add_paragraph()
+        for child in source.children:
+            _append_inline(paragraph, child)
+
+        self.assertEqual(paragraph.text, "Rent is 30,000 per month.")
+
+    def test_authorized_occupants_html_becomes_word_grid(self):
+        from bs4 import BeautifulSoup
+        from docx import Document
+        from leases.views import _add_docx_html_table
+
+        source = BeautifulSoup(
+            """
+            <table><tr>
+              <td><b>1. Tenant One</b><br>CNIC: 1<br>Relationship: Tenant</td>
+              <td>&nbsp;<br>&nbsp;<br>&nbsp;</td>
+              <td>&nbsp;<br>&nbsp;<br>&nbsp;</td>
+              <td>&nbsp;<br>&nbsp;<br>&nbsp;</td>
+            </tr></table>
+            """,
+            "html.parser",
+        ).table
+        table = _add_docx_html_table(Document(), source)
+
+        self.assertEqual((len(table.rows), len(table.columns)), (1, 4))
+        self.assertEqual(table.style.name, "Table Grid")
+        self.assertIn("Relationship: Tenant", table.cell(0, 0).text)
+
+    def test_empty_word_witness_fields_use_matching_tabbed_lines(self):
+        from docx import Document
+        from leases.views import add_signature_block
+
+        tenant = SimpleNamespace(
+            cnic="7170203460635",
+            phone="+92-342-159-9177",
+            get_full_name=lambda: "Tenant One",
+        )
+        property_obj = SimpleNamespace(
+            owner_name="Owner One",
+            owner_cnic="4210120080103",
+            owner_phone="+92-312-255-0183",
+        )
+        lease = SimpleNamespace(
+            tenant=tenant,
+            unit=SimpleNamespace(property=property_obj),
+            witness1_tenant=None,
+            witness2_tenant=None,
+        )
+        doc = Document()
+        add_signature_block(doc, lease)
+
+        party_table = doc.tables[0]
+        witness_table = doc.tables[1]
+        signature_rule = "_" * 39
+        for table in (party_table, witness_table):
+            self.assertEqual(table.cell(0, 0).text.strip(), signature_rule)
+            self.assertEqual(table.cell(0, 1).text.strip(), signature_rule)
+            for column in (0, 1):
+                self.assertAlmostEqual(
+                    table.cell(0, column).width.inches,
+                    3.85,
+                    places=2,
+                )
+
+        owner_details = party_table.cell(1, 0).paragraphs
+        tenant_details = party_table.cell(1, 1).paragraphs
+        self.assertEqual(len(owner_details), 4)
+        self.assertEqual(len(tenant_details), 4)
+        self.assertTrue(owner_details[2].text.startswith("Phone:\t+92"))
+        self.assertTrue(tenant_details[2].text.startswith("Phone:\t+92"))
+        self.assertTrue(owner_details[3].text.startswith("Date:\t"))
+        self.assertTrue(tenant_details[3].text.startswith("Date:\t"))
+        self.assertTrue(
+            all(
+                paragraph.paragraph_format.space_after.pt == 0
+                for paragraph in owner_details + tenant_details
+            )
+        )
+
+        blank = "_" * 29
+        for column in (0, 1):
+            paragraphs = witness_table.cell(1, column).paragraphs
+            self.assertEqual(len(paragraphs), 3)
+            self.assertTrue(all(p.text.endswith(blank) for p in paragraphs))
+            self.assertTrue(all("\t" in p.text for p in paragraphs))
+
+    def test_word_page_uses_compact_side_margins(self):
+        from docx import Document
+        from leases.views import set_doc_margins
+
+        doc = Document()
+        set_doc_margins(doc)
+
+        self.assertAlmostEqual(doc.sections[0].left_margin.inches, 0.35, places=2)
+        self.assertAlmostEqual(doc.sections[0].right_margin.inches, 0.35, places=2)

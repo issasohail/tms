@@ -20,6 +20,16 @@ def renewal_file_upload_to(instance, filename):
 
 
 class LeaseRenewal(models.Model):
+    LEASE_PHOTO_LAYOUT_CHOICES = [
+        ("1up", "1 photo per page"),
+        ("2up", "2 photos per page"),
+        ("4up", "4 photos per page"),
+    ]
+    LEASE_PHOTO_SELECTION_CHOICES = [
+        ("selected", "Selected photos"),
+        ("all", "All eligible photos"),
+    ]
+
     lease = models.ForeignKey(
         "leases.Lease",
         on_delete=models.CASCADE,
@@ -94,6 +104,25 @@ class LeaseRenewal(models.Model):
         upload_to=renewal_file_upload_to,
         null=True,
         blank=True,
+    )
+    include_lease_photos = models.BooleanField(
+        default=False,
+        help_text="Include saved lease photos in this agreement package.",
+    )
+    lease_photo_layout = models.CharField(
+        max_length=10,
+        choices=LEASE_PHOTO_LAYOUT_CHOICES,
+        default="4up",
+    )
+    lease_photo_selection_mode = models.CharField(
+        max_length=20,
+        choices=LEASE_PHOTO_SELECTION_CHOICES,
+        default="selected",
+    )
+    lease_photo_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="LeaseMedia IDs selected for this agreement history.",
     )
     signed_copy = models.FileField(
         upload_to=renewal_file_upload_to,

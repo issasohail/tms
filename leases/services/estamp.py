@@ -122,7 +122,10 @@ def _merge_fitted_page(
     target_width,
     target_height,
     vertical_alignment="top",
+    horizontal_alignment="center",
     bottom_clearance=0,
+    fit_height=False,
+    stretch_to_target=False,
 ):
     from copy import deepcopy
     from pypdf import Transformation
@@ -132,10 +135,24 @@ def _merge_fitted_page(
         page.transfer_rotation_to_content()
     box, source_width, source_height = _visible_box(page)
     available_height = max(1.0, target_height - float(bottom_clearance or 0))
-    scale = min(target_width / source_width, available_height / source_height)
-    draw_width = source_width * scale
-    draw_height = source_height * scale
-    x = (target_width - draw_width) / 2
+    if stretch_to_target:
+        scale_x = target_width / source_width
+        scale_y = available_height / source_height
+    else:
+        scale_x = scale_y = (
+            available_height / source_height
+            if fit_height
+            else min(
+                target_width / source_width,
+                available_height / source_height,
+            )
+        )
+    draw_width = source_width * scale_x
+    draw_height = source_height * scale_y
+    if horizontal_alignment == "right":
+        x = target_width - draw_width
+    else:
+        x = (target_width - draw_width) / 2
     if vertical_alignment == "bottom":
         y = float(bottom_clearance or 0)
     else:
@@ -143,7 +160,7 @@ def _merge_fitted_page(
     transform = (
         Transformation()
         .translate(tx=-float(box.left), ty=-float(box.bottom))
-        .scale(sx=scale, sy=scale)
+        .scale(sx=scale_x, sy=scale_y)
         .translate(tx=x, ty=y)
     )
     destination.merge_transformed_page(page, transform, over=True, expand=False)
@@ -173,7 +190,7 @@ def compose_stamped_agreement(
     if not estamp_reader.pages:
         raise ValidationError("The E-Stamp PDF has no pages.")
     if stamp_footer_bottom_points is None:
-        stamp_footer_bottom_points = 130 if paper_size == "legal" else 28
+        stamp_footer_bottom_points = 46 if paper_size == "legal" else 44
     stamp_footer_bottom_points = max(
         0.0, min(300.0, float(stamp_footer_bottom_points))
     )
@@ -204,8 +221,9 @@ def compose_stamped_agreement(
                 estamp_reader.pages[stamp_index],
                 target_width=target_width,
                 target_height=target_height,
-                vertical_alignment="bottom" if paper_size == "legal" else "top",
+                vertical_alignment="bottom",
                 bottom_clearance=stamp_footer_bottom_points,
+                stretch_to_target=True,
             )
         _merge_fitted_page(
             destination,

@@ -2315,10 +2315,19 @@ class AgreementSignatureTemplate(models.Model):
     show_phone = models.BooleanField(default=True)
     show_address = models.BooleanField(default=True)
     show_thumb_impression = models.BooleanField(default=False)
+    show_agreement_page_numbers = models.BooleanField(
+        default=True,
+        help_text="Show the generated package page number at the bottom-right of each PDF page.",
+    )
     legal_first_page_top_reserve = models.DecimalField(
-        max_digits=4, decimal_places=2, default=Decimal("0.55"),
+        max_digits=4, decimal_places=2, default=Decimal("5.85"),
         validators=[MinValueValidator(Decimal("0.50")), MaxValueValidator(Decimal("8.00"))],
-        help_text="Top margin, in inches, on the first Legal agreement page.",
+        help_text="Top margin, in inches, on the first stamped Legal agreement page.",
+    )
+    letter_first_page_top_reserve = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("4.85"),
+        validators=[MinValueValidator(Decimal("0.50")), MaxValueValidator(Decimal("8.00"))],
+        help_text="Top margin, in inches, on the first stamped Letter agreement page.",
     )
     legal_qr_reserve_width = models.DecimalField(
         max_digits=4, decimal_places=2, default=Decimal("2.00"),
@@ -2329,6 +2338,16 @@ class AgreementSignatureTemplate(models.Model):
         max_digits=4, decimal_places=2, default=Decimal("4.00"),
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("5.00"))],
         help_text="Height, in inches, of the QR/stamp reserve on the first Legal page.",
+    )
+    letter_qr_reserve_width = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("1.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("7.50"))],
+        help_text="Width, in inches, of the QR/stamp reserve on the first Letter page.",
+    )
+    letter_qr_reserve_height = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("2.50"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("5.00"))],
+        help_text="Height, in inches, of the QR/stamp reserve on the first Letter page.",
     )
     legal_identity_bottom_reserve = models.DecimalField(
         max_digits=4, decimal_places=2, default=Decimal("3.10"),
@@ -2348,19 +2367,19 @@ class AgreementSignatureTemplate(models.Model):
         ),
     )
     estamp_legal_footer_bottom_points = models.PositiveIntegerField(
-        default=130,
+        default=46,
         validators=[MaxValueValidator(300)],
         help_text=(
             "Distance in PDF points between the bottom of a Legal page and the "
-            "saved E-Stamp footer. Increasing it moves the complete E-Stamp upward."
+            "saved E-Stamp footer. The default keeps it just above the agreement footer."
         ),
     )
     estamp_letter_footer_bottom_points = models.PositiveIntegerField(
-        default=28,
+        default=44,
         validators=[MaxValueValidator(300)],
         help_text=(
             "Distance in PDF points between the bottom of a Letter page and the "
-            "saved E-Stamp footer. Increasing it moves the complete E-Stamp upward."
+            "saved E-Stamp QR/page-number footer. Increasing it moves both upward."
         ),
     )
     agreement_legal_footer_bottom_points = models.PositiveIntegerField(

@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 import json
 import mimetypes
 import os
@@ -31,7 +31,14 @@ from django.template.loader import render_to_string
 # leases/views_lease_photos.py
 import inspect
 
-def _safe_export_call(lease, layout=None, photos_qs=None):
+def _safe_export_call(
+    lease,
+    layout=None,
+    photos_qs=None,
+    package_mode=False,
+    history=None,
+    section_title=None,
+):
     """
     Call export_lease_photos_pdf() and pass layout only if supported.
     Returns (name, fileobj) or (None, None).
@@ -48,8 +55,16 @@ def _safe_export_call(lease, layout=None, photos_qs=None):
             kwargs["layout"] = layout
         if "photos_qs" in sig.parameters:
             kwargs["photos_qs"] = photos_qs
+        if "package_mode" in sig.parameters:
+            kwargs["package_mode"] = package_mode
+        if "history" in sig.parameters:
+            kwargs["history"] = history
+        if "section_title" in sig.parameters:
+            kwargs["section_title"] = section_title
         return export_lease_photos_pdf(lease, **kwargs)
     except TypeError:
+        if package_mode:
+            raise
         # defensive: some wrappers raise TypeError differently
         try:
             if photos_qs is not None:
@@ -126,6 +141,66 @@ def _media_queryset(lease, history=None):
     else:
         qs = qs.filter(lease_history__isnull=True)
     return qs.order_by("sort_order", "created_at", "id")
+
+
+LEASE_PHOTO_LAYOUTS = {"1up", "2up", "4up"}
+LEASE_PHOTO_SELECTION_MODES = {"selected", "all"}
+
+
+def normalize_lease_photo_layout(value, default="4up"):
+    raw = str(value or "").strip().lower()
+    aliases = {
+        "1": "1up",
+        "2": "2up",
+        "4": "4up",
+        "1up": "1up",
+        "2up": "2up",
+        "4up": "4up",
+    }
+    normalized = aliases.get(raw)
+    return normalized if normalized in LEASE_PHOTO_LAYOUTS else default
+
+
+def eligible_agreement_photos(lease, history):
+    """Active image media available to this exact agreement history."""
+    return (
+        LeaseMedia.objects.filter(
+            lease=lease,
+            is_active=True,
+            media_type="image",
+        )
+        .exclude(file="")
+        .filter(Q(lease_history=history) | Q(lease_history__isnull=True))
+        .order_by("sort_order", "created_at", "id")
+    )
+
+
+def clean_agreement_photo_ids(lease, history, photo_ids):
+    requested = set()
+    for value in photo_ids or []:
+        try:
+            requested.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not requested:
+        return []
+    return list(
+        eligible_agreement_photos(lease, history)
+        .filter(pk__in=requested)
+        .values_list("pk", flat=True)
+    )
+
+
+def agreement_photo_queryset(lease, history):
+    eligible = eligible_agreement_photos(lease, history)
+    if history.lease_photo_selection_mode == "all":
+        return eligible
+    selected_ids = clean_agreement_photo_ids(
+        lease,
+        history,
+        history.lease_photo_ids,
+    )
+    return eligible.filter(pk__in=selected_ids)
 
 
 def _grid_response(request, lease, history=None):
@@ -355,12 +430,8 @@ def _normalize_layout_param(request):
     from django.conf import settings as dj_settings
 
     raw = (request.GET.get("layout") or request.GET.get("ppg") or "").strip().lower()
-    m = {"1": "1up", "2": "2up", "4": "4up",
-         "1up": "1up", "2up": "2up", "4up": "4up"}
-    layout = m.get(raw)
-    if layout not in {"1up", "2up", "4up"}:
-        layout = getattr(dj_settings, "LEASE_PHOTOS_PDF_LAYOUT", "4up")
-    return layout
+    fallback = getattr(dj_settings, "LEASE_PHOTOS_PDF_LAYOUT", "4up")
+    return normalize_lease_photo_layout(raw, default=fallback)
 
 
 @login_required

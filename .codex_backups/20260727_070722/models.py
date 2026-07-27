@@ -1731,9 +1731,6 @@ class WhatsAppTemplate(models.Model):
 
 def lease_document_upload_to(instance, filename):
     ext = os.path.splitext(filename or "")[1].lower() or ".bin"
-    if getattr(instance, "category", "") == "estamp_paper":
-        safe_filename = os.path.basename(filename or f"E-Stamp{ext}")
-        return f"leases/files/{instance.lease_id or 'new'}/{safe_filename}"
     tenant = getattr(getattr(instance, "lease", None), "tenant", None)
     unit = getattr(getattr(instance, "lease", None), "unit", None)
     prop = getattr(unit, "property", None)

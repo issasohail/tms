@@ -525,11 +525,6 @@ urlpatterns = [
         name="lease_file_deactivate",
     ),
     path(
-        "lease-file/<int:document_id>/description/",
-        views_lease_files.lease_file_description_update,
-        name="lease_file_description_update",
-    ),
-    path(
         "lease/<int:lease_id>/files/share/",
         views_lease_files.lease_files_share_all,
         name="lease_files_share_all",

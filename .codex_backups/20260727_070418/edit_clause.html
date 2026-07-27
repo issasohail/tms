@@ -158,23 +158,21 @@
         <div class="clause-action-wrap">
         <div class="clause-action-bar">
         <a href="{% url 'leases:lease_detail' master_lease.pk %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
-        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#estampUploadModal">
-          {% if estamp_status.document %}Upload New E-Stamp{% else %}Upload E-Stamp{% endif %}
-        </button>
         <div class="d-inline-flex flex-column align-items-stretch me-1 gap-1">
             <button type="button" id="btnPdf" class="btn btn-danger"><i class="fas fa-file-pdf"></i> PDF</button>
             <label class="form-check-label small text-nowrap" for="printWithEstamp"><input class="form-check-input me-1" type="checkbox" id="printWithEstamp">Print with E-Stamp</label>
-            <div class="btn-group btn-group-sm" role="group" aria-label="Stamped agreement paper size">
-              <input type="radio" class="btn-check" name="estampPaperSize" id="estampPaperLegal" value="legal" checked>
-              <label class="btn btn-outline-primary" for="estampPaperLegal">Legal</label>
-              <input type="radio" class="btn-check" name="estampPaperSize" id="estampPaperLetter" value="letter">
-              <label class="btn btn-outline-primary" for="estampPaperLetter">Letter</label>
-            </div>
+            <select id="estampPaperSize" class="form-select form-select-sm" aria-label="Stamped agreement paper size">
+              <option value="legal">Legal</option>
+              <option value="letter">Letter</option>
+            </select>
             <div class="small text-nowrap {% if estamp_status.is_over_age %}text-warning{% elif estamp_status.document %}text-success{% else %}text-muted{% endif %}">
               {% if estamp_status.document %}
                 Current: {{ estamp_status.document.uploaded_at|date:"M d, Y" }}{% if estamp_status.is_over_age %} ({{ estamp_status.age_days }} days old){% endif %}
               {% else %}No E-Stamp uploaded{% endif %}
             </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#estampUploadModal">
+              {% if estamp_status.document %}Upload New E-Stamp{% else %}Upload E-Stamp{% endif %}
+            </button>
         </div>
         <a class="btn btn-primary me-1" href="{% url 'leases:lease_inspection_list' master_lease.pk %}"><i class="fas fa-clipboard-check"></i> Inspection</a>
         <button type="button" id="btnDocx" class="btn btn-success me-1"><i class="fas fa-file-word"></i> Word</button>
@@ -325,16 +323,6 @@
           <button type="button" class="btn btn-outline-primary estamp-upload">Upload E-Stamp</button>
           <button type="button" class="btn btn-outline-secondary estamp-without" data-bs-dismiss="modal">Print Without E-Stamp</button>
           <button type="button" class="btn btn-warning estamp-continue" data-bs-dismiss="modal">Continue with Existing E-Stamp</button>
-        </div>
-      </div></div>
-    </div>
-
-    <div class="modal fade" id="agreementGeneratingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-        <div class="modal-body text-center py-5">
-          <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
-          <h5 class="mb-2">Generating Agreement. Please Wait</h5>
-          <div class="text-muted">Elapsed time: <span id="agreementGeneratingTimer">00:00</span></div>
         </div>
       </div></div>
     </div>
@@ -650,49 +638,10 @@
 
   window.saveClauses = saveClauses;
 
-  let agreementTimerInterval = null;
-  function showAgreementGenerating() {
-    const started = Date.now();
-    const timer = document.getElementById("agreementGeneratingTimer");
-    const update = () => {
-      const seconds = Math.floor((Date.now() - started) / 1000);
-      timer.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-    };
-    update();
-    agreementTimerInterval = window.setInterval(update, 1000);
-    bootstrap.Modal.getOrCreateInstance(document.getElementById("agreementGeneratingModal")).show();
-  }
-
-  function hideAgreementGenerating() {
-    if (agreementTimerInterval) window.clearInterval(agreementTimerInterval);
-    agreementTimerInterval = null;
-    bootstrap.Modal.getInstance(document.getElementById("agreementGeneratingModal"))?.hide();
-  }
-
-  async function downloadAgreement(url, withEstamp, overrideAge) {
+  function downloadAgreement(url, withEstamp, overrideAge) {
     const separator = url.includes("?") ? "&" : "?";
-    const paper = document.querySelector('input[name="estampPaperSize"]:checked')?.value || "legal";
-    const downloadUrl = `${url}${separator}estamp=${withEstamp ? "1" : "0"}&paper=${encodeURIComponent(paper)}&override_age=${overrideAge ? "1" : "0"}`;
-    const showProgress = url === GEN_PDF_URL;
-    if (showProgress) showAgreementGenerating();
-    try {
-      const response = await fetch(downloadUrl, {credentials: "same-origin"});
-      if (!response.ok) throw new Error((await response.text()) || "Agreement generation failed.");
-      const blob = await response.blob();
-      const disposition = response.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename="?([^";]+)"?/i);
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = match?.[1] || (showProgress ? "lease-agreement.pdf" : "lease-agreement.docx");
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    } catch (error) {
-      alert(error.message);
-    } finally {
-      if (showProgress) hideAgreementGenerating();
-    }
+    const paper = document.getElementById("estampPaperSize")?.value || "legal";
+    window.location.href = `${url}${separator}estamp=${withEstamp ? "1" : "0"}&paper=${encodeURIComponent(paper)}&override_age=${overrideAge ? "1" : "0"}`;
   }
 
   function openEstampUpload() {

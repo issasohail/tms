@@ -71,21 +71,10 @@ def normalize_estamp_pdf(upload, password=""):
         if reader.is_encrypted:
             if not password:
                 raise ValidationError(
-                    "The file is password protected. Please enter the password.",
-                    code="password_required",
+                    "This E-Stamp PDF is password protected. Enter its PDF password."
                 )
-            try:
-                unlocked = reader.decrypt(password)
-            except Exception as exc:
-                raise ValidationError(
-                    "The password is incorrect. Please try again.",
-                    code="wrong_password",
-                ) from exc
-            if not unlocked:
-                raise ValidationError(
-                    "The password is incorrect. Please try again.",
-                    code="wrong_password",
-                )
+            if not reader.decrypt(password):
+                raise ValidationError("The E-Stamp PDF password is incorrect.")
         if not reader.pages:
             raise ValidationError("The uploaded E-Stamp PDF has no pages.")
         writer = PdfWriter()
@@ -115,15 +104,7 @@ def _visible_box(page):
     return box, width, height
 
 
-def _merge_fitted_page(
-    destination,
-    source,
-    *,
-    target_width,
-    target_height,
-    vertical_alignment="top",
-    bottom_clearance=0,
-):
+def _merge_fitted_page(destination, source, *, target_width, target_height):
     from copy import deepcopy
     from pypdf import Transformation
 
@@ -131,15 +112,11 @@ def _merge_fitted_page(
     if int(page.get("/Rotate", 0) or 0) % 360:
         page.transfer_rotation_to_content()
     box, source_width, source_height = _visible_box(page)
-    available_height = max(1.0, target_height - float(bottom_clearance or 0))
-    scale = min(target_width / source_width, available_height / source_height)
+    scale = min(target_width / source_width, target_height / source_height)
     draw_width = source_width * scale
     draw_height = source_height * scale
     x = (target_width - draw_width) / 2
-    if vertical_alignment == "bottom":
-        y = float(bottom_clearance or 0)
-    else:
-        y = target_height - draw_height
+    y = target_height - draw_height
     transform = (
         Transformation()
         .translate(tx=-float(box.left), ty=-float(box.bottom))
@@ -168,7 +145,6 @@ def compose_stamped_agreement(agreement_pdf, estamp_pdf, paper_size):
         raise ValidationError("The E-Stamp PDF has no pages.")
 
     writer = PdfWriter()
-    agreement_page_count = len(agreement_reader.pages)
     for index, agreement_page in enumerate(agreement_reader.pages):
         destination = PageObject.create_blank_page(
             width=target_width, height=target_height
@@ -179,22 +155,12 @@ def compose_stamped_agreement(agreement_pdf, estamp_pdf, paper_size):
         destination.trimbox = RectangleObject(normalized_box)
         destination.bleedbox = RectangleObject(normalized_box)
         destination.artbox = RectangleObject(normalized_box)
-        stamp_index = None
-        if index == 0:
-            stamp_index = 0
-        elif (
-            len(estamp_reader.pages) > 1
-            and index == agreement_page_count - 1
-        ):
-            stamp_index = 1
-        if stamp_index is not None:
+        if index < min(2, len(estamp_reader.pages)):
             _merge_fitted_page(
                 destination,
-                estamp_reader.pages[stamp_index],
+                estamp_reader.pages[index],
                 target_width=target_width,
                 target_height=target_height,
-                vertical_alignment="bottom" if paper_size == "legal" else "top",
-                bottom_clearance=28,
             )
         _merge_fitted_page(
             destination,

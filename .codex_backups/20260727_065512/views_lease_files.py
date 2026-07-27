@@ -1,6 +1,5 @@
 import mimetypes
 import os
-import re
 from urllib.parse import urlencode
 from urllib.parse import quote as urlquote
 
@@ -42,35 +41,10 @@ def _active_documents(lease):
     return lease.documents.filter(is_active=True).select_related("uploaded_by", "lease_history")
 
 
-def _is_ajax(request):
-    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
-
-
-def _estamp_filename(lease):
-    def clean(value, fallback):
-        text = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value or "")).strip("_-")
-        return text or fallback
-
-    property_name = clean(
-        getattr(getattr(lease.unit, "property", None), "property_name", ""),
-        "Property",
-    )
-    unit_number = clean(getattr(lease.unit, "unit_number", ""), "Unit")
-    upload_date = timezone.localdate().strftime("%m%d%Y")
-    return f"{property_name}-{unit_number}_StampPaper_{upload_date}.pdf"
-
-
-def _validation_code(exc):
-    error_list = getattr(exc, "error_list", None) or []
-    return getattr(error_list[0], "code", "") if error_list else ""
-
-
 @login_required
 @require_POST
 def lease_file_upload(request, lease_id):
-    lease = get_object_or_404(
-        Lease.objects.select_related("unit__property"), pk=lease_id
-    )
+    lease = get_object_or_404(Lease, pk=lease_id)
     category = request.POST.get("category") or "other"
     if not LeaseDocumentCategory.objects.filter(code=category, is_active=True).exists():
         category = "other"
@@ -78,11 +52,6 @@ def lease_file_upload(request, lease_id):
 
     files = request.FILES.getlist("files") or request.FILES.getlist("file")
     if not files:
-        if _is_ajax(request):
-            return JsonResponse(
-                {"ok": False, "error": "Please choose at least one file."},
-                status=400,
-            )
         messages.error(request, "Please choose at least one file.")
         return _upload_redirect(request, lease)
 
@@ -102,25 +71,11 @@ def lease_file_upload(request, lease_id):
                 )
             except Exception as exc:
                 message = getattr(exc, "messages", None)
-                if _is_ajax(request):
-                    code = _validation_code(exc)
-                    return JsonResponse(
-                        {
-                            "ok": False,
-                            "error": message[0] if message else "The E-Stamp PDF could not be processed.",
-                            "password_required": code in {
-                                "password_required",
-                                "wrong_password",
-                            },
-                        },
-                        status=422,
-                    )
                 messages.error(
                     request,
                     message[0] if message else "The E-Stamp PDF could not be processed.",
                 )
                 continue
-            upload.name = _estamp_filename(lease)
         doc = LeaseDocument(
             lease=lease,
             lease_history=None,
@@ -136,12 +91,6 @@ def lease_file_upload(request, lease_id):
 
     if uploaded:
         messages.success(request, f"Uploaded {uploaded} lease file(s).")
-    if _is_ajax(request):
-        if uploaded:
-            return JsonResponse({"ok": True, "uploaded": uploaded})
-        return JsonResponse(
-            {"ok": False, "error": "No files were uploaded."}, status=400
-        )
     return _upload_redirect(request, lease)
 
 
@@ -180,31 +129,8 @@ def lease_file_deactivate(request, document_id):
     lease_pk = document.lease_id
     document.is_active = False
     document.save(update_fields=["is_active"])
-    if _is_ajax(request):
-        return JsonResponse({"ok": True, "document_id": document.pk})
     messages.success(request, "Lease file deleted.")
     return redirect("leases:lease_detail", pk=lease_pk)
-
-
-@login_required
-@require_POST
-def lease_file_description_update(request, document_id):
-    document = get_object_or_404(LeaseDocument, pk=document_id, is_active=True)
-    description = (request.POST.get("description") or "").strip()
-    if len(description) > 300:
-        return JsonResponse(
-            {"ok": False, "error": "Description cannot exceed 300 characters."},
-            status=400,
-        )
-    document.description = description
-    document.save(update_fields=["description"])
-    return JsonResponse(
-        {
-            "ok": True,
-            "description": description,
-            "display": description or "No description",
-        }
-    )
 
 
 @login_required

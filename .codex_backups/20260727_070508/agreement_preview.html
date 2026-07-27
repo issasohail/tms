@@ -32,18 +32,7 @@
     .signature-section td { vertical-align: top; }
     .signature-section p { margin: 0 !important; line-height: 1.05; }
     .signature-section { margin-top: 18px !important; }
-    .signature-section, .signature-section * {
-        text-align:left !important;
-        text-justify:auto !important;
-        word-spacing:normal !important;
-    }
     .signature-section .footer { text-align: left !important; margin-top: 4px !important; }
-    .last-page-qr-reserve {
-        float:right;
-        width:{{ legal_qr_reserve_width|default:"2" }}in;
-        height:{{ legal_qr_reserve_height|default:"4" }}in;
-        margin-left:.12in;
-    }
     {% if stamped_layout %}
     .parties-section .party-detail { line-height:1.14; }
     .parties-section .and-separator { margin:9pt 0; }
@@ -130,8 +119,6 @@
 
 
     </div>
-
-    {% if stamped_layout %}<div class="last-page-qr-reserve" aria-hidden="true"></div>{% endif %}
     
     <div class="signature-section" style="font-family: 'Times New Roman', Times, serif; font-size: 14px;">
     <table style="width: 100%; border-collapse: collapse;">

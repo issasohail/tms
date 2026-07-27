@@ -4066,23 +4066,6 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                         is_active=True
                     )
                 ),
-                "lease_filter_options": list(
-                    Lease.objects.select_related("tenant", "unit__property")
-                    .only(
-                        "id",
-                        "status",
-                        "tenant__first_name",
-                        "tenant__last_name",
-                        "unit__unit_number",
-                        "unit__property__property_name",
-                    )
-                    .order_by(
-                        "unit__property__property_name",
-                        "unit__unit_number",
-                        "tenant__first_name",
-                        "tenant__last_name",
-                    )
-                ),
                 "relationship_types": list(
                     LeaseRelationshipType.objects.filter(is_active=True).order_by(
                         "sort_order", "name"

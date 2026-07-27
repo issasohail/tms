@@ -281,12 +281,6 @@
   font-size:11px; font-weight:600; line-height:1.25; text-align:left; cursor:pointer;
 }
 .ld-file-category-display:hover { text-decoration:underline; }
-.ld-file-description-display {
-  border:0; background:transparent; padding:0; color:#6b7280;
-  font-size:11px; line-height:1.25; text-align:left; cursor:pointer;
-}
-.ld-file-description-display:hover { color:#111827; text-decoration:underline; }
-.ld-file-description-input { font-size:11px; min-height:28px; padding:3px 6px; }
 .ld-file-upload-actions { display:flex; align-items:center; flex-wrap:nowrap; gap:5px; }
 .ld-family-mobile-only { display:none; }
 .ld-vehicle-photo-btn {
@@ -666,25 +660,7 @@
 
     <!-- Section 2: tenant / lease identity (fixed, bigger type) -->
     <div class="ld-hdr-info">
-      <div class="d-flex flex-wrap align-items-center gap-2 mb-2 no-print">
-        <a href="{% url 'leases:lease_list' %}" class="btn btn-sm btn-secondary">
-          <i class="fas fa-arrow-left me-1"></i> Back to Leases
-        </a>
-        <select id="leaseDetailFilter" class="form-select form-select-sm" style="min-width:260px;max-width:390px;" aria-label="Choose lease">
-          {% for option_lease in lease_filter_options %}
-            <option value="{{ option_lease.pk }}"
-                    data-active="{% if option_lease.status == 'active' %}1{% else %}0{% endif %}"
-                    data-url="{% url 'leases:lease_detail' option_lease.pk %}"
-                    {% if option_lease.pk == lease.pk %}selected{% endif %}>
-              {{ option_lease.unit.property.property_name }} - {{ option_lease.unit.unit_number }} - {{ option_lease.tenant.get_full_name }}{% if option_lease.status != "active" %} ({{ option_lease.get_status_display }}){% endif %}
-            </option>
-          {% endfor %}
-        </select>
-        <label class="form-check-label small text-nowrap">
-          <input class="form-check-input me-1" type="checkbox" id="leaseFilterShowInactive" {% if lease.status != "active" %}checked{% endif %}>
-          Show inactive
-        </label>
-      </div>
+      <a href="{% url 'leases:lease_list' %}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-bottom:4px;">&#8592; Back to leases</a>
       <h1 class="ld-hdr-name">
         <a href="{% url 'tenants:tenant_detail' lease.tenant.pk %}">{{ lease.tenant.get_full_name }}</a>
       </h1>
@@ -1460,7 +1436,7 @@
         <div class="ld-inner-card">
           <div class="ld-inner-head">Lease Files</div>
           <div class="ld-inner-body">
-            <form method="post" enctype="multipart/form-data" action="{% url 'leases:lease_file_upload' lease.pk %}" class="ld-file-form no-print mb-3" id="leaseFileUploadForm">
+            <form method="post" enctype="multipart/form-data" action="{% url 'leases:lease_file_upload' lease.pk %}" class="ld-file-form no-print mb-3">
               {% csrf_token %}
               <div>
                 <label class="form-label small fw-semibold mb-1">Files</label>
@@ -1468,7 +1444,7 @@
               </div>
               <div>
                 <label class="form-label small fw-semibold mb-1">Category</label>
-                <select name="category" class="form-select form-select-sm" id="leaseFileCategory">
+                <select name="category" class="form-select form-select-sm">
                   {% for category in lease_document_categories %}
                     <option value="{{ category.code }}">{{ category.name }}</option>
                   {% endfor %}
@@ -1479,7 +1455,7 @@
                 <input type="text" name="description" class="form-control form-control-sm" maxlength="300">
               </div>
               <div class="ld-file-upload-actions">
-                <button type="submit" class="btn btn-sm btn-primary" id="leaseFileUploadButton">Upload</button>
+                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
                 <button type="submit" form="leaseFilesShareAllForm" class="btn btn-sm btn-primary" title="Share all active files on WhatsApp">
                   <i class="fab fa-whatsapp me-1"></i> Share All Files
                 </button>
@@ -1491,16 +1467,11 @@
 
             <div class="ld-file-list">
               {% for doc in lease_documents %}
-                <div class="ld-file-row" data-document-row="{{ doc.pk }}">
+                <div class="ld-file-row">
                   <div class="ld-file-serial">#{{ forloop.counter }}</div>
                   <div>
                     <div class="ld-file-name">
-                      <i class="fas fa-file me-1"></i>
-                      {% if doc.file_exists %}
-                        <a target="_blank" rel="noopener" href="{% url 'leases:lease_file_view' doc.pk %}">{{ doc.display_name|default:doc.original_filename }}</a>
-                      {% else %}
-                        {{ doc.display_name|default:doc.original_filename }}
-                      {% endif %}
+                      <i class="fas fa-file me-1"></i>{{ doc.display_name|default:doc.original_filename }}
                       {% if not doc.file_exists %}<span class="badge bg-warning text-dark ld-file-missing ms-1">file missing</span>{% endif %}
                     </div>
                     {% if doc.display_name and doc.display_name != doc.original_filename %}
@@ -1517,17 +1488,7 @@
                     <span class="ld-badge ld-badge-gray d-none d-print-inline">{{ doc.category_label }}</span>
                     {% if doc.lease_history %}<div class="ld-file-sub">{{ doc.lease_history.history_label }}</div>{% endif %}
                   </div>
-                  <div class="ld-file-description-editor">
-                    <button type="button"
-                            class="ld-file-description-display no-print"
-                            title="Click to edit description">{{ doc.description|default:"No description" }}</button>
-                    <input type="text"
-                           class="form-control form-control-sm ld-file-description-input d-none no-print"
-                           maxlength="300"
-                           value="{{ doc.description }}"
-                           data-doc-description-url="{% url 'leases:lease_file_description_update' doc.pk %}">
-                    <span class="ld-file-sub d-none d-print-block">{{ doc.description|default:"No description" }}</span>
-                  </div>
+                  <div class="ld-file-sub">{{ doc.description|default:"No description" }}</div>
                   <div class="ld-file-sub">
                     {{ doc.uploaded_at|date:"M d, Y H:i" }}<br>
                     {{ doc.uploaded_by|default:"System" }}
@@ -1551,7 +1512,7 @@
                         <i class="fab fa-whatsapp ld-file-icon-whatsapp"></i>
                       </button>
                     </form>
-                    <form method="post" action="{% url 'leases:lease_file_deactivate' doc.pk %}" class="ld-file-delete-form">
+                    <form method="post" action="{% url 'leases:lease_file_deactivate' doc.pk %}" onsubmit="return confirm('Delete this file from the active list?');">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-sm btn-danger ld-file-action-btn" title="Delete">
                         <i class="fas fa-trash-alt"></i>
@@ -1566,27 +1527,6 @@
           </div>
         </div>
 
-      </div>
-
-      <div class="modal fade" id="leaseEstampPasswordModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Password Required</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-            </div>
-            <div class="modal-body">
-              <p id="leaseEstampPasswordMessage" class="mb-2">The file is password protected. Please enter the password.</p>
-              <label class="form-label" for="leaseEstampPasswordInput">PDF password</label>
-              <input type="password" class="form-control" id="leaseEstampPasswordInput" autocomplete="new-password">
-              <div class="text-danger small mt-2 d-none" id="leaseEstampPasswordError"></div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button type="button" class="btn btn-primary" id="leaseEstampPasswordProceed">Proceed</button>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- ======== INSPECTION SHEETS ======== -->
@@ -3004,123 +2944,6 @@ document.querySelector('.ld-registration-copy')?.addEventListener('click', funct
   }
 });
 
-const leaseDetailFilter = document.getElementById('leaseDetailFilter');
-const leaseFilterShowInactive = document.getElementById('leaseFilterShowInactive');
-function applyLeaseInactiveFilter() {
-  if (!leaseDetailFilter) return;
-  const showInactive = Boolean(leaseFilterShowInactive?.checked);
-  Array.from(leaseDetailFilter.options).forEach(function (option) {
-    option.disabled = option.dataset.active !== '1' && !showInactive && !option.selected;
-  });
-  if (window.jQuery && jQuery.fn.select2) {
-    jQuery(leaseDetailFilter).trigger('change.select2');
-  }
-}
-if (leaseDetailFilter) {
-  if (window.jQuery && jQuery.fn.select2) {
-    jQuery(leaseDetailFilter).select2({
-      theme: 'bootstrap-5',
-      width: 'style',
-      placeholder: 'Choose a lease',
-      matcher: function (params, data) {
-        const option = data.element;
-        if (option && option.dataset.active !== '1' && !leaseFilterShowInactive?.checked && !option.selected) {
-          return null;
-        }
-        const term = (params.term || '').trim().toLowerCase();
-        if (!term || String(data.text || '').toLowerCase().includes(term)) return data;
-        return null;
-      }
-    }).on('select2:select', function () {
-      const option = this.selectedOptions[0];
-      if (option?.dataset.url) window.location.href = option.dataset.url;
-    });
-  } else {
-    leaseDetailFilter.addEventListener('change', function () {
-      const option = this.selectedOptions[0];
-      if (option?.dataset.url) window.location.href = option.dataset.url;
-    });
-  }
-  leaseFilterShowInactive?.addEventListener('change', applyLeaseInactiveFilter);
-  applyLeaseInactiveFilter();
-}
-
-const leaseFileUploadForm = document.getElementById('leaseFileUploadForm');
-const leaseFileUploadButton = document.getElementById('leaseFileUploadButton');
-const leaseEstampPasswordModalElement = document.getElementById('leaseEstampPasswordModal');
-const leaseEstampPasswordInput = document.getElementById('leaseEstampPasswordInput');
-const leaseEstampPasswordError = document.getElementById('leaseEstampPasswordError');
-const leaseEstampPasswordMessage = document.getElementById('leaseEstampPasswordMessage');
-let leaseUploadAwaitingPassword = false;
-
-async function submitLeaseFiles(password) {
-  const data = new FormData(leaseFileUploadForm);
-  if (password) data.set('estamp_password', password);
-  leaseFileUploadButton.disabled = true;
-  leaseFileUploadButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Uploading';
-  try {
-    const response = await fetch(leaseFileUploadForm.action, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': data.get('csrfmiddlewaretoken'),
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      body: data
-    });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      if (payload.password_required) {
-        leaseUploadAwaitingPassword = true;
-        leaseEstampPasswordMessage.textContent = payload.error || 'The file is password protected. Please enter the password.';
-        leaseEstampPasswordError.classList.add('d-none');
-        bootstrap.Modal.getOrCreateInstance(leaseEstampPasswordModalElement).show();
-        window.setTimeout(() => leaseEstampPasswordInput.focus(), 250);
-        return;
-      }
-      throw new Error(payload.error || 'The file could not be uploaded.');
-    }
-    leaseUploadAwaitingPassword = false;
-    window.location.hash = 'ld-tab-docs';
-    window.location.reload();
-  } catch (error) {
-    if (password) {
-      leaseEstampPasswordError.textContent = error.message;
-      leaseEstampPasswordError.classList.remove('d-none');
-    } else {
-      alert(error.message);
-    }
-  } finally {
-    leaseFileUploadButton.disabled = false;
-    leaseFileUploadButton.textContent = 'Upload';
-  }
-}
-
-leaseFileUploadForm?.addEventListener('submit', function (event) {
-  event.preventDefault();
-  leaseEstampPasswordInput.value = '';
-  leaseEstampPasswordError.classList.add('d-none');
-  submitLeaseFiles('');
-});
-document.getElementById('leaseEstampPasswordProceed')?.addEventListener('click', function () {
-  if (!leaseUploadAwaitingPassword) return;
-  const password = leaseEstampPasswordInput.value;
-  if (!password) {
-    leaseEstampPasswordError.textContent = 'Please enter the PDF password.';
-    leaseEstampPasswordError.classList.remove('d-none');
-    leaseEstampPasswordInput.focus();
-    return;
-  }
-  submitLeaseFiles(password).then(function () {
-    if (!leaseUploadAwaitingPassword) {
-      bootstrap.Modal.getInstance(leaseEstampPasswordModalElement)?.hide();
-    }
-  });
-});
-leaseEstampPasswordModalElement?.addEventListener('hidden.bs.modal', function () {
-  leaseUploadAwaitingPassword = false;
-  leaseEstampPasswordInput.value = '';
-});
-
 document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
   const editor = select.closest('.ld-file-category-editor');
   const display = editor?.querySelector('.ld-file-category-display');
@@ -3158,83 +2981,6 @@ document.querySelectorAll('[data-doc-category-url]').forEach(function (select) {
     }).finally(() => {
       this.disabled = false;
     });
-  });
-});
-
-document.querySelectorAll('[data-doc-description-url]').forEach(function (input) {
-  const editor = input.closest('.ld-file-description-editor');
-  const display = editor?.querySelector('.ld-file-description-display');
-  const showDisplay = function () {
-    input.classList.add('d-none');
-    display?.classList.remove('d-none');
-  };
-  display?.addEventListener('click', function () {
-    this.classList.add('d-none');
-    input.classList.remove('d-none');
-    input.focus();
-    input.select();
-  });
-  async function saveDescription() {
-    const data = new FormData();
-    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-    data.append('description', input.value);
-    input.disabled = true;
-    try {
-      const response = await fetch(input.dataset.docDescriptionUrl, {
-        method: 'POST',
-        headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
-        body: data
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || 'Description update failed.');
-      if (display) display.textContent = payload.display;
-      input.value = payload.description;
-      showDisplay();
-    } catch (error) {
-      alert(error.message);
-    } finally {
-      input.disabled = false;
-    }
-  }
-  input.addEventListener('keydown', function (event) {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      saveDescription();
-    } else if (event.key === 'Escape') {
-      showDisplay();
-    }
-  });
-  input.addEventListener('blur', function () {
-    if (!input.disabled && !input.classList.contains('d-none')) saveDescription();
-  });
-});
-
-document.querySelectorAll('.ld-file-delete-form').forEach(function (form) {
-  form.addEventListener('submit', async function (event) {
-    event.preventDefault();
-    if (!confirm('Delete this file from the active list?')) return;
-    const button = form.querySelector('button');
-    const data = new FormData(form);
-    button.disabled = true;
-    try {
-      const response = await fetch(form.action, {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': data.get('csrfmiddlewaretoken'),
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: data
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || 'Delete failed.');
-      form.closest('[data-document-row]')?.remove();
-      document.querySelectorAll('[data-document-row] .ld-file-serial').forEach(function (serial, index) {
-        serial.textContent = '#' + (index + 1);
-      });
-    } catch (error) {
-      button.disabled = false;
-      alert(error.message);
-    }
   });
 });
 </script>

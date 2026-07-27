@@ -1,13 +1,12 @@
+import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from django.core.exceptions import PermissionDenied
-from django.test import SimpleTestCase
-from django.utils import timezone
-
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import RequestFactory, SimpleTestCase
+from django.utils import timezone
 from pypdf import PdfReader, PdfWriter
 
 from leases.services.estamp import (
@@ -74,13 +73,87 @@ class EStampUploadTests(SimpleTestCase):
         self.assertEqual(len(reader.pages), 2)
 
     def test_encrypted_pdf_requires_password(self):
-        with self.assertRaisesMessage(ValidationError, "password protected"):
+        with self.assertRaisesMessage(ValidationError, "password protected") as caught:
             normalize_estamp_pdf(self._pdf("secret"))
+        self.assertEqual(caught.exception.error_list[0].code, "password_required")
 
     def test_wrong_password_is_reported_without_exposing_value(self):
         with self.assertRaises(ValidationError) as caught:
             normalize_estamp_pdf(self._pdf("secret"), "do-not-log-me")
         self.assertNotIn("do-not-log-me", str(caught.exception))
+        self.assertEqual(caught.exception.error_list[0].code, "wrong_password")
+
+    def test_estamp_filename_uses_property_unit_and_upload_date(self):
+        from unittest.mock import patch
+        from leases.views_lease_files import _estamp_filename
+
+        lease = SimpleNamespace(
+            unit=SimpleNamespace(
+                unit_number="Flat 04",
+                property=SimpleNamespace(property_name="F35 Building"),
+            )
+        )
+        with patch("leases.views_lease_files.timezone.localdate") as localdate:
+            localdate.return_value = datetime(2026, 7, 27).date()
+            self.assertEqual(
+                _estamp_filename(lease),
+                "F35_Building-Flat_04_StampPaper_07272026.pdf",
+            )
+
+    def test_estamp_storage_keeps_conventional_filename(self):
+        from leases.models import lease_document_upload_to
+
+        instance = SimpleNamespace(category="estamp_paper", lease_id=17)
+        self.assertEqual(
+            lease_document_upload_to(
+                instance, "F35_Building-Flat_04_StampPaper_07272026.pdf"
+            ),
+            "leases/files/17/F35_Building-Flat_04_StampPaper_07272026.pdf",
+        )
+
+
+class LeaseDocumentAjaxTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch("leases.views_lease_files.get_object_or_404")
+    def test_delete_returns_json_and_deactivates_document(self, get_object):
+        from leases.views_lease_files import lease_file_deactivate
+
+        document = SimpleNamespace(pk=9, lease_id=3, is_active=True, save=Mock())
+        get_object.return_value = document
+        request = self.factory.post(
+            "/delete/", HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        request.user = SimpleNamespace(is_authenticated=True)
+
+        response = lease_file_deactivate(request, 9)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(json.loads(response.content)["ok"])
+        self.assertFalse(document.is_active)
+        document.save.assert_called_once_with(update_fields=["is_active"])
+
+    @patch("leases.views_lease_files.get_object_or_404")
+    def test_description_updates_inline_without_redirect(self, get_object):
+        from leases.views_lease_files import lease_file_description_update
+
+        document = SimpleNamespace(description="", save=Mock())
+        get_object.return_value = document
+        request = self.factory.post(
+            "/description/",
+            {"description": "Current unlocked stamp"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        request.user = SimpleNamespace(is_authenticated=True)
+
+        response = lease_file_description_update(request, 9)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["display"], "Current unlocked stamp")
+        self.assertEqual(document.description, "Current unlocked stamp")
+        document.save.assert_called_once_with(update_fields=["description"])
 
 
 class EStampCompositionTests(SimpleTestCase):
@@ -96,7 +169,7 @@ class EStampCompositionTests(SimpleTestCase):
         pdf.save()
         return output.getvalue()
 
-    def test_two_stamp_pages_map_only_to_first_two_agreement_pages(self):
+    def test_second_stamp_page_maps_to_last_agreement_page(self):
         agreement = self._text_pdf(
             ["AGREEMENT ONE", "AGREEMENT TWO", "AGREEMENT THREE"], (612, 1008)
         )
@@ -105,8 +178,8 @@ class EStampCompositionTests(SimpleTestCase):
         result = PdfReader(BytesIO(compose_stamped_agreement(agreement, stamp, "legal")))
         self.assertEqual(len(result.pages), 3)
         self.assertIn("STAMP ONE", result.pages[0].extract_text())
-        self.assertIn("STAMP TWO", result.pages[1].extract_text())
-        self.assertNotIn("STAMP", result.pages[2].extract_text())
+        self.assertNotIn("STAMP", result.pages[1].extract_text())
+        self.assertIn("STAMP TWO", result.pages[2].extract_text())
         for page in result.pages:
             self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 1008))
             for box_name in ("cropbox", "trimbox", "bleedbox", "artbox"):

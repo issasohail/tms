@@ -1,0 +1,182 @@
+{% load lease_tags %}
+
+<style>
+    .and-separator { text-align:center; font-weight:bold; margin:5pt 0; }
+    {% if stamped_layout %}
+    @page {
+        size: {{ agreement_paper_size|default:"legal" }};
+        margin: 0.55in;
+        {% if agreement_paper_size == "letter" %}margin-bottom: 0.95in;{% endif %}
+    }
+    @page:nth(2) {
+        margin-bottom: {{ legal_later_page_bottom_reserve|default:"3.82" }}in;
+    }
+    @page :first {
+        size: {{ agreement_paper_size|default:"legal" }};
+        margin-top: {{ legal_first_page_top_reserve|default:"4.80" }}in;
+        margin-left: 0.55in;
+        margin-right: 0.55in;
+        margin-bottom: {{ legal_first_page_bottom_reserve|default:"0.95" }}in;
+    }
+    {% else %}
+    @page { size: letter; margin: 0.5in; }
+    {% endif %}
+
+    .agreement-preview { font-family:"Times New Roman", Times, serif; text-align:justify; text-justify:inter-word; }
+    .text-center, .agreement-title { text-align:center; }
+    .agreement-title { margin:0 0 0.16in 0; }
+    .agreement-preview p, .agreement-preview .clause { text-align:justify; text-justify:inter-word; }
+    .agreement-preview .text-center { text-align:center; }
+    .parties-section .party-detail { margin:0 0 8pt; line-height:1.14; }
+    .parties-section .and-separator { margin:9pt 0; }
+    .clauses-section .clause { margin-bottom:5pt; }
+    .authorized-occupants-table{width:100%;border-collapse:collapse;margin:6px 0}.authorized-occupants-table td{border:1px solid #777;padding:5px;width:25%;vertical-align:top;font-size:10px;line-height:1.25}
+    .signature-section table { margin-bottom: 4px !important; }
+    .signature-section td { vertical-align: top; }
+    .signature-section p { margin: 0 !important; line-height: 1.05; }
+    .signature-section { margin-top: 18px !important; }
+    .signature-section, .signature-section * {
+        text-align:left !important;
+        text-justify:auto !important;
+        word-spacing:normal !important;
+    }
+    .signature-section .footer { text-align: left !important; margin-top: 4px !important; }
+    .signature-section .signature-line { padding-top:2em; }
+    .blank-party-field {
+        display:inline-block;
+        width:2.15in;
+        height:.85em;
+        border-bottom:.7pt solid #000;
+        vertical-align:baseline;
+    }
+    .last-page-qr-reserve {
+        float:right;
+        width:{{ legal_qr_reserve_width|default:"2" }}in;
+        height:{{ legal_qr_reserve_height|default:"4" }}in;
+        margin-left:.12in;
+    }
+    {% if stamped_layout %}
+    .parties-section { margin-bottom:8pt; }
+    .clauses-section .clause { margin-bottom:{{ legal_clause_spacing|default:"3" }}pt; }
+    .signature-section .party-detail-line {
+        font-size:12pt;
+        line-height:1.05 !important;
+    }
+    {% endif %}
+    .clause-initial {
+        display:inline-block;
+        margin-left:-0.48in;
+        margin-right:0.08in;
+        width:0.40in;
+        height:0.10in;
+        border-bottom:0.7pt solid #000;
+        vertical-align:middle;
+    }
+</style>
+
+<div id="agreement-doc" class="agreement-preview">
+
+    <h2 class="text-center agreement-title">RENT AGREEMENT</h2>
+    <p class="text-center">This RENT AGREEMENT is made at Islamabad on this {{ agreement_date|date:"d-m-Y" }} BETWEEN </p>
+    
+    <div class="parties-section mt-4">
+
+        <p class="party-detail owner-detail">
+            <strong>{{ lease.unit.property.owner_prefix }} {{ lease.unit.property.owner_name }} {{lease.unit.property.relation}}
+             {{lease.unit.property.owner_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.owner_cnic|format_cnic }}</strong> R/O
+        {{ lease.unit.property.owner_address }} (Hereinafter called "Owner") of the <strong>ONE PART. through
+         {{ lease.unit.property.caretaker_prefix }} {{ lease.unit.property.caretaker_name }} {{lease.unit.property.caretaker_relation}} 
+         {{lease.unit.property.caretaker_father_name}}</strong> holding CNIC NO.<strong> {{ lease.unit.property.caretaker_cnic|format_cnic }}</strong> R/O
+        {{ lease.unit.property.caretaker_address }}.
+        </p>
+
+        <div class="and-separator">AND</div>
+
+        <p class="party-detail tenant-detail">
+        <strong>{{ lease.tenant.prefix }} {{ lease.tenant.get_full_name_agreement }}</strong> holding CNIC NO. <strong>{{ lease.tenant.cnic|format_cnic }}</strong> R/O
+        {{ lease.tenant.address }} (Hereinafter called "Tenant")
+
+        
+         <strong>WHEREAS</strong> the Owner is the lawful owner and in possession of 
+        <strong>{{ lease.unit.unit_number }}, located at {{ lease.unit.property.full_address }},</strong>
+        and has agreed to rent out {{ lease.unit.unit_number }} to the Tenant and the Tenant 
+        has also agreed to take the same on the following terms and conditions.
+    </p>
+    </div>
+    
+    <div class="clauses-section mt-4">
+        
+        
+        {% for clause in clauses %}
+        {% with clause_text=clause.template_text|replace_placeholders:lease %}
+            {% if clause.clause_number == 4 %}
+            {# ALWAYS show clause 4 #}
+            <div class="clause" data-clause-id="{{ clause.id }}">
+                {% if stamped_layout %}<span class="clause-initial"></span>{% endif %}
+                <strong>{{ clause.clause_number }}.</strong>
+                <span class="clause-text">{{ clause_text|safe }}</span>
+            </div>
+
+            {% elif "SECURITY_INSTALLMENT" in clause.template_text %}
+            {% if lease.security_installment_1_amount or lease.security_installment_2_amount %}
+                <div class="clause" data-clause-id="{{ clause.id }}">
+                {% if stamped_layout %}<span class="clause-initial"></span>{% endif %}
+                <strong>{{ clause.clause_number }}.</strong>
+                <span class="clause-text">{{ clause_text|safe }}</span>
+                </div>
+            {% endif %}
+
+            {% else %}
+            <div class="clause" data-clause-id="{{ clause.id }}">
+                {% if stamped_layout %}<span class="clause-initial"></span>{% endif %}
+                <strong>{{ clause.clause_number }}.</strong>
+                <span class="clause-text">{{ clause_text|safe }}</span>
+            </div>
+            {% endif %}
+        {% endwith %}
+        {% endfor %}
+
+
+    </div>
+
+    {% if stamped_layout %}<div class="last-page-qr-reserve" aria-hidden="true"></div>{% endif %}
+    
+    <div class="signature-section" style="font-family: 'Times New Roman', Times, serif; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="width: 50%; padding-right: 20px;">
+                <p class="signature-line">_________________________</p>
+                <p class="party-detail-line"><strong>Owner:</strong> {{ lease.unit.property.owner_name }}</p>
+                <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic|format_cnic }}</p>
+            </td>
+            <td style="width: 50%; padding-left: 20px;">
+                <p class="signature-line">_________________________</p>
+                <p class="party-detail-line"><strong>Tenant:</strong>  {{ lease.tenant.get_full_name }}</p>
+                <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.tenant.cnic|format_cnic }}</p>
+                <p class="party-detail-line"><strong>Phone:</strong> {{ lease.tenant.phone|format_phone|default:"_________________________" }}</p>
+            </td>
+        </tr>
+    </table>
+
+    
+
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="width: 50%; padding-right: 20px;">
+                <p class="signature-line">_________________________</p>
+                <p class="party-detail-line"><strong>Witness 1:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="party-detail-line"><strong>CNIC:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.cnic|format_cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p><strong>Phone:</strong> {% if history.witness1_tenant %}{{ history.witness1_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="generated-at"><strong>Generated at:</strong> {% now "d M Y" %}.</p>
+            </td>
+            <td style="width: 50%; padding-left: 20px;">
+                <p class="signature-line">_________________________</p>
+                <p class="party-detail-line"><strong>Witness 2:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p class="party-detail-line"><strong>CNIC:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.cnic|format_cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                <p><strong>Phone:</strong> {% if history.witness2_tenant %}{{ history.witness2_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+            </td>
+        </tr>
+    </table>
+
+    </div>
+</div>

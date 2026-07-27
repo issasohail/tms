@@ -7,9 +7,8 @@ from django.core.files.storage import default_storage
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
-from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
-from django.db import connection, transaction
+from django.db import transaction
 from django.db.models import Max, Q
 import json
 import mimetypes
@@ -21,14 +20,6 @@ from .models_renewal import LeaseRenewal
 from .models_lease_photos import LeaseMedia, _folder_name_for_lease
 import logging
 logger = logging.getLogger(__name__)
-
-
-def _ensure_db_connection():
-    if connection.connection is not None and not connection.is_usable():
-        connection.close()
-    connection.ensure_connection()
-
-
 # --- RENDER HELPERS -------------------------------------------------
 
 # leases/views_lease_photos.py
@@ -262,7 +253,6 @@ def photo_add(request, lease_id):
         history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
     title = (request.POST.get("title") or "").strip()[:120]
     description = (request.POST.get("description") or "").strip()[:300]
-    taken_at = parse_datetime((request.POST.get("taken_at") or "").strip()) or None
 
     # optional layout from form (see §5)
     pdf_layout = (request.POST.get("pdf_layout") or "").strip().lower()
@@ -288,23 +278,20 @@ def photo_add(request, lease_id):
             sort_order=next_order + index,
             uploaded_by=request.user if request.user.is_authenticated else None,
             original_filename=getattr(f, "name", "")[:255],
-            taken_at=taken_at,
         )
         lm.file = f
         lm.save()               # processes -> stamped /photos + /thumbs
-        _ensure_db_connection()
         lm.refresh_from_db()
 
-    # Sequential browser uploads set this to 0 until the final file so the
-    # potentially expensive PDF is still rebuilt only once per selected batch.
-    if request.POST.get("finalize_pdf", "1") != "0":
-        try:
-            _export_pdf_for_lease(lease, layout=pdf_layout, history=history)
-        except Exception as e:
-            # Swallow export errors so adding photos never 500s.
-            logger.exception("PDF export after batch add failed: %s", e)
+    # Build the PDF **once** after all files are saved
+    try:
+        _export_pdf_for_lease(lease, layout=pdf_layout)
+    except Exception as e:
+        # swallow export errors so adding photos never 500s
+        logger.exception("PDF export after batch add failed: %s", e)
 
-    _ensure_db_connection()
+        pass
+
     lease.refresh_from_db()
     return _grid_response(request, lease, history)
 

@@ -7,10 +7,9 @@ from django.core.files.storage import default_storage
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
-from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
-from django.db import connection, transaction
-from django.db.models import Max, Q
+from django.db import transaction
+from django.db.models import Max
 import json
 import mimetypes
 import os
@@ -21,14 +20,6 @@ from .models_renewal import LeaseRenewal
 from .models_lease_photos import LeaseMedia, _folder_name_for_lease
 import logging
 logger = logging.getLogger(__name__)
-
-
-def _ensure_db_connection():
-    if connection.connection is not None and not connection.is_usable():
-        connection.close()
-    connection.ensure_connection()
-
-
 # --- RENDER HELPERS -------------------------------------------------
 
 # leases/views_lease_photos.py
@@ -40,14 +31,7 @@ from django.template.loader import render_to_string
 # leases/views_lease_photos.py
 import inspect
 
-def _safe_export_call(
-    lease,
-    layout=None,
-    photos_qs=None,
-    package_mode=False,
-    history=None,
-    section_title=None,
-):
+def _safe_export_call(lease, layout=None, photos_qs=None):
     """
     Call export_lease_photos_pdf() and pass layout only if supported.
     Returns (name, fileobj) or (None, None).
@@ -64,16 +48,8 @@ def _safe_export_call(
             kwargs["layout"] = layout
         if "photos_qs" in sig.parameters:
             kwargs["photos_qs"] = photos_qs
-        if "package_mode" in sig.parameters:
-            kwargs["package_mode"] = package_mode
-        if "history" in sig.parameters:
-            kwargs["history"] = history
-        if "section_title" in sig.parameters:
-            kwargs["section_title"] = section_title
         return export_lease_photos_pdf(lease, **kwargs)
     except TypeError:
-        if package_mode:
-            raise
         # defensive: some wrappers raise TypeError differently
         try:
             if photos_qs is not None:
@@ -152,66 +128,6 @@ def _media_queryset(lease, history=None):
     return qs.order_by("sort_order", "created_at", "id")
 
 
-LEASE_PHOTO_LAYOUTS = {"1up", "2up", "4up"}
-LEASE_PHOTO_SELECTION_MODES = {"selected", "all"}
-
-
-def normalize_lease_photo_layout(value, default="4up"):
-    raw = str(value or "").strip().lower()
-    aliases = {
-        "1": "1up",
-        "2": "2up",
-        "4": "4up",
-        "1up": "1up",
-        "2up": "2up",
-        "4up": "4up",
-    }
-    normalized = aliases.get(raw)
-    return normalized if normalized in LEASE_PHOTO_LAYOUTS else default
-
-
-def eligible_agreement_photos(lease, history):
-    """Active image media available to this exact agreement history."""
-    return (
-        LeaseMedia.objects.filter(
-            lease=lease,
-            is_active=True,
-            media_type="image",
-        )
-        .exclude(file="")
-        .filter(Q(lease_history=history) | Q(lease_history__isnull=True))
-        .order_by("sort_order", "created_at", "id")
-    )
-
-
-def clean_agreement_photo_ids(lease, history, photo_ids):
-    requested = set()
-    for value in photo_ids or []:
-        try:
-            requested.add(int(value))
-        except (TypeError, ValueError):
-            continue
-    if not requested:
-        return []
-    return list(
-        eligible_agreement_photos(lease, history)
-        .filter(pk__in=requested)
-        .values_list("pk", flat=True)
-    )
-
-
-def agreement_photo_queryset(lease, history):
-    eligible = eligible_agreement_photos(lease, history)
-    if history.lease_photo_selection_mode == "all":
-        return eligible
-    selected_ids = clean_agreement_photo_ids(
-        lease,
-        history,
-        history.lease_photo_ids,
-    )
-    return eligible.filter(pk__in=selected_ids)
-
-
 def _grid_response(request, lease, history=None):
     html = render_to_string(
         "leases/_photos_grid.html",
@@ -262,7 +178,6 @@ def photo_add(request, lease_id):
         history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
     title = (request.POST.get("title") or "").strip()[:120]
     description = (request.POST.get("description") or "").strip()[:300]
-    taken_at = parse_datetime((request.POST.get("taken_at") or "").strip()) or None
 
     # optional layout from form (see §5)
     pdf_layout = (request.POST.get("pdf_layout") or "").strip().lower()
@@ -288,23 +203,20 @@ def photo_add(request, lease_id):
             sort_order=next_order + index,
             uploaded_by=request.user if request.user.is_authenticated else None,
             original_filename=getattr(f, "name", "")[:255],
-            taken_at=taken_at,
         )
         lm.file = f
         lm.save()               # processes -> stamped /photos + /thumbs
-        _ensure_db_connection()
         lm.refresh_from_db()
 
-    # Sequential browser uploads set this to 0 until the final file so the
-    # potentially expensive PDF is still rebuilt only once per selected batch.
-    if request.POST.get("finalize_pdf", "1") != "0":
-        try:
-            _export_pdf_for_lease(lease, layout=pdf_layout, history=history)
-        except Exception as e:
-            # Swallow export errors so adding photos never 500s.
-            logger.exception("PDF export after batch add failed: %s", e)
+    # Build the PDF **once** after all files are saved
+    try:
+        _export_pdf_for_lease(lease, layout=pdf_layout)
+    except Exception as e:
+        # swallow export errors so adding photos never 500s
+        logger.exception("PDF export after batch add failed: %s", e)
 
-    _ensure_db_connection()
+        pass
+
     lease.refresh_from_db()
     return _grid_response(request, lease, history)
 
@@ -443,8 +355,12 @@ def _normalize_layout_param(request):
     from django.conf import settings as dj_settings
 
     raw = (request.GET.get("layout") or request.GET.get("ppg") or "").strip().lower()
-    fallback = getattr(dj_settings, "LEASE_PHOTOS_PDF_LAYOUT", "4up")
-    return normalize_lease_photo_layout(raw, default=fallback)
+    m = {"1": "1up", "2": "2up", "4": "4up",
+         "1up": "1up", "2up": "2up", "4up": "4up"}
+    layout = m.get(raw)
+    if layout not in {"1up", "2up", "4up"}:
+        layout = getattr(dj_settings, "LEASE_PHOTOS_PDF_LAYOUT", "4up")
+    return layout
 
 
 @login_required

@@ -7,7 +7,6 @@ from django.core.files.storage import default_storage
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
-from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
 from django.db import connection, transaction
 from django.db.models import Max, Q
@@ -262,7 +261,6 @@ def photo_add(request, lease_id):
         history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
     title = (request.POST.get("title") or "").strip()[:120]
     description = (request.POST.get("description") or "").strip()[:300]
-    taken_at = parse_datetime((request.POST.get("taken_at") or "").strip()) or None
 
     # optional layout from form (see §5)
     pdf_layout = (request.POST.get("pdf_layout") or "").strip().lower()
@@ -288,7 +286,6 @@ def photo_add(request, lease_id):
             sort_order=next_order + index,
             uploaded_by=request.user if request.user.is_authenticated else None,
             original_filename=getattr(f, "name", "")[:255],
-            taken_at=taken_at,
         )
         lm.file = f
         lm.save()               # processes -> stamped /photos + /thumbs

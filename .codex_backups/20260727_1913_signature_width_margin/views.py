@@ -14,6 +14,7 @@ from decimal import Decimal
 from io import BytesIO
 from math import ceil
 from typing import Any, Dict
+from urllib.parse import urlencode
 
 import openpyxl
 from bs4 import NavigableString, Tag
@@ -24,7 +25,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files import File
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage
@@ -57,6 +58,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.text import slugify
 from django.views import View
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -81,7 +83,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from weasyprint import HTML
 
-from invoices.models import Invoice, RecurringCharge, SecurityDepositTransaction
+from invoices.models import (
+    Invoice,
+    InvoiceItem,
+    ItemCategory,
+    RecurringCharge,
+    SecurityDepositTransaction,
+)
 from invoices.public_links import make_public_invoice_token
 from invoices.services import security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
@@ -99,7 +107,10 @@ from leases.services.vehicle_submissions import (
     create_pending_vehicle_submissions_from_post,
 )
 from leases.models_renewal import LeaseRenewal
-from leases.services.lease_history import ensure_original_history
+from leases.services.lease_history import (
+    ensure_original_history,
+    sync_history_to_master_lease,
+)
 from leases.services.police_verification import (
     build_police_whatsapp_message,
     create_pending_police_submission,
@@ -112,9 +123,16 @@ from leases.services.police_verification import (
 from leases.utils import do_replace_placeholders
 from maintenance.public_links import make_public_maintenance_token
 from payments.models import Payment
+from payments.services.payment_detail import sync_security_deposit_paid_flag
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant, normalize_cnic
+from core.utils.identity import (
+    format_cnic,
+    format_phone,
+    normalize_phone,
+    validate_date_of_birth,
+)
 from utils.pdf_export import handle_export
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
 from whatsapp.services.external_links import record_external_link_access
@@ -147,6 +165,7 @@ from .utils import generate_lease_agreement
 from .utils.agreement_generator import generate_lease_agreement
 from .utils.billing import (
     apply_initial_billing,
+    ensure_move_in_proration_invoice,
     preview_billing_on_change,
     preview_initial_billing,
     update_billing_on_change,
@@ -157,11 +176,41 @@ from .utils.move_out_billing import (
     build_move_out_settlement_preview,
     move_out_billing_trigger,
 )
+from .utils.end_lease import (
+    accounts_staff_for_lease,
+    build_end_lease_preview,
+    end_lease,
+    rollback_end_lease,
+    staff_message as end_lease_staff_message,
+    tenant_message as end_lease_tenant_message,
+)
 
 # --- Security deposit helpers ------------------------------------
 
 
 ZERO = Decimal("0.00")
+
+
+def sync_lease_move_in_occupancy(lease, move_in_date):
+    if not move_in_date:
+        return None
+    occupancy = lease.unit_occupancies.filter(move_out_date__isnull=True).first()
+    if occupancy:
+        changed = []
+        if occupancy.unit_id != lease.unit_id:
+            occupancy.unit = lease.unit
+            changed.append("unit")
+        if occupancy.move_in_date != move_in_date:
+            occupancy.move_in_date = move_in_date
+            changed.append("move_in_date")
+        if changed:
+            occupancy.save(update_fields=changed + ["updated_at"])
+        return occupancy
+    return LeaseUnitOccupancy.objects.create(
+        lease=lease,
+        unit=lease.unit,
+        move_in_date=move_in_date,
+    )
 
 
 def _get_valid_whatsapp_link(token, link_type):
@@ -511,12 +560,20 @@ def create_initial_security_required(lease):
     if amount <= 0:
         return None
 
-    return SecurityDepositTransaction.objects.create(
+    required_row = SecurityDepositTransaction.objects.create(
         lease=lease,
         type="REQUIRED",
         amount=amount,
         notes="Initial required security deposit set from lease.",
     )
+    if lease.security_deposit_paid:
+        SecurityDepositTransaction.objects.create(
+            lease=lease,
+            type="PAYMENT",
+            amount=amount,
+            notes="Initial security deposit marked paid on lease form.",
+        )
+    return required_row
 
 
 def _plan_summary(plan):
@@ -574,7 +631,7 @@ def resolve_placeholders(lease, text):
     for placeholder, value in replacements.items():
         text = text.replace(placeholder, value)
 
-    return text
+    return do_replace_placeholders(text, lease)
 
 
 def _is_owner_billed_electricity_clause(text):
@@ -588,12 +645,24 @@ def _lease_clauses_for_agreement(lease):
 
 
 def _filter_electricity_clauses(clauses, lease):
+    from leases.services.inventory_parking import effective_parking_policy, policy_value
+    parking_enabled = policy_value(effective_parking_policy(lease=lease), "enabled")
+    def is_parking_clause(clause):
+        text = clause.template_text or ""
+        return "[PARKING_" in text or "[UNAUTHORIZED_PARKING_PENALTY]" in text
     if getattr(lease, "electricity_bill_by_owner", True):
-        return clauses
+        return [
+            clause for clause in clauses
+            if parking_enabled or not is_parking_clause(clause)
+        ]
     return [
         clause
         for clause in clauses
-        if not _is_owner_billed_electricity_clause(clause.template_text)
+        if (parking_enabled or not is_parking_clause(clause))
+        and (
+            clause.clause_number == 19
+            or not _is_owner_billed_electricity_clause(clause.template_text)
+        )
     ]
 
 
@@ -685,7 +754,7 @@ def _vehicle_dict(request, vehicle):
         "year": vehicle.year or "",
         "owner_name": vehicle.owner_name,
         "owner_cnic": vehicle.owner_cnic,
-        "parking_slot": vehicle.parking_slot,
+        "owner_cnic_display": format_cnic(vehicle.owner_cnic),
         "notes": vehicle.notes,
         "is_active": vehicle.is_active,
         "vehicle_photo_url": _absolute_file_url(request, vehicle.vehicle_photo),
@@ -706,7 +775,7 @@ def _pending_vehicle_dict(request, submission):
         "year": submission.year or "",
         "owner_name": submission.owner_name,
         "owner_cnic": submission.owner_cnic,
-        "parking_slot": submission.parking_slot,
+        "owner_cnic_display": format_cnic(submission.owner_cnic),
         "source": submission.source,
         "status": submission.status,
         "status_label": submission.get_status_display(),
@@ -838,7 +907,6 @@ def lease_vehicle_info_ajax(request, pk):
             year=year,
             owner_name=(request.POST.get("owner_name") or "").strip(),
             owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
-            parking_slot=(request.POST.get("parking_slot") or "").strip(),
             vehicle_photo=request.FILES.get("vehicle_photo"),
             notes=(request.POST.get("notes") or "").strip(),
         )
@@ -888,6 +956,7 @@ class LeaseListView(SingleTableView):
 
         invoice_total = (
             Invoice.objects.filter(lease_id=OuterRef("pk"))
+            .exclude(status="cancelled")
             .values("lease_id")
             .annotate(total=Coalesce(Sum("amount"), zero))
             .values("total")[:1]
@@ -938,16 +1007,11 @@ class LeaseListView(SingleTableView):
                 Subquery(security_total("PAYMENT"), output_field=money_field),
                 zero,
             ),
-            security_adjust_total=Coalesce(
-                Subquery(security_total("ADJUST"), output_field=money_field),
-                zero,
-            ),
         ).annotate(
             list_balance=F("invoice_total") - F("payment_total"),
             list_security_due=Greatest(
                 Coalesce(F("security_deposit"), zero)
-                - F("security_paid_total")
-                - F("security_adjust_total"),
+                - F("security_paid_total"),
                 zero,
                 output_field=money_field,
             ),
@@ -1112,16 +1176,9 @@ class LeaseListView(SingleTableView):
 
             sd = sd_by_lease[lease.id]
             sd_paid = sd.get("PAYMENT", Decimal("0.00"))
-            sd_refund = sd.get("REFUND", Decimal("0.00"))
-            sd_damage = sd.get("DAMAGE", Decimal("0.00"))
-            sd_adjust = sd.get("ADJUST", Decimal("0.00"))
-
             lease.list_security_deposit_due = (
                 (getattr(lease, "security_deposit", None) or Decimal("0.00"))
                 - sd_paid
-                + sd_refund
-                + sd_damage
-                + sd_adjust
             )
 
         return leases
@@ -1371,7 +1428,7 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
     template_name = "leases/lease_form.html"
 
     def get_success_url(self):
-        return reverse("leases:lease_detail", kwargs={"pk": self.object.pk})
+        return reverse("leases:lease_welcome_whatsapp", kwargs={"pk": self.object.pk})
 
     # ---------- Form setup ----------
     def get_form(self, form_class=None):
@@ -1386,6 +1443,22 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         form.fields["tenant"].queryset = Tenant.objects.annotate(
             full_name=Concat("first_name", Value(" "), "last_name")
         ).order_by(Lower("full_name"), "id")
+
+        pending_id = self.request.GET.get("pending_registration_submission")
+        if self.request.method == "GET" and pending_id:
+            from tenants.models import TenantRegistrationSubmission
+
+            pending = TenantRegistrationSubmission.objects.filter(
+                pk=pending_id,
+                status__in=[
+                    TenantRegistrationSubmission.STATUS_PENDING,
+                    TenantRegistrationSubmission.STATUS_APPROVED,
+                ],
+                created_lease__isnull=True,
+            ).first()
+            if pending:
+                form.fields["pending_registration_submission"].initial = pending.pk
+                form.fields["tenant"].initial = pending.tenant_id
 
         # property/unit prefill supports links from Unit Detail.
         prop_id = self.request.POST.get("property") or self.request.GET.get("property")
@@ -1455,9 +1528,29 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 "sort_order", "name"
             ),
         )
+        if lease_instance and lease_instance.pk:
+            ctx.setdefault(
+                "lease_documents",
+                list(
+                    lease_instance.documents.filter(is_active=True).select_related(
+                        "uploaded_by", "lease_history"
+                    )
+                ),
+            )
+        else:
+            ctx.setdefault("lease_documents", [])
+        ctx.setdefault(
+            "lease_document_categories",
+            list(
+                apps.get_model("leases", "LeaseDocumentCategory").objects.filter(
+                    is_active=True
+                )
+            ),
+        )
         return ctx
 
     # ---------- Main SAVE logic ----------
+    @transaction.atomic
     def form_valid(self, form):
         """
         CREATE logic:
@@ -1471,6 +1564,20 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         """
         confirmed = self.request.POST.get("confirm_billing") == "1"
         debug_sql = self.request.GET.get("debug_sql") == "1"
+        pending_submission = form.cleaned_data.get("pending_registration_submission")
+        if confirmed and pending_submission:
+            from tenants.models import TenantRegistrationSubmission
+
+            pending_submission = TenantRegistrationSubmission.objects.select_for_update().get(
+                pk=pending_submission.pk
+            )
+            if pending_submission.created_lease_id:
+                messages.info(
+                    self.request,
+                    f"This registration already created Lease #{pending_submission.created_lease_id}.",
+                )
+                return redirect("leases:lease_detail", pk=pending_submission.created_lease_id)
+            form.cleaned_data["pending_registration_submission"] = pending_submission
 
         # Family formset
         family_fs = LeaseFamilyFormSet(
@@ -1505,6 +1612,29 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             with transaction.atomic():
                 tmp = form.save()
                 plan = preview_initial_billing(tmp)
+                move_in_date = form.cleaned_data.get("move_in_date")
+                proration_mode = (
+                    form.cleaned_data.get("move_in_proration_mode") or "exact"
+                )
+                if (
+                    form.cleaned_data.get("create_move_in_proration")
+                    and proration_mode != "waive"
+                    and move_in_date
+                    and move_in_date < tmp.start_date
+                ):
+                    proration_invoice = ensure_move_in_proration_invoice(
+                        tmp,
+                        move_in_date=move_in_date,
+                        mode=proration_mode,
+                        manual_days=form.cleaned_data.get(
+                            "move_in_proration_days"
+                        ),
+                    )
+                    if proration_invoice:
+                        plan["move_in_proration"] = {
+                            "description": proration_invoice.description,
+                            "amount": proration_invoice.amount,
+                        }
                 transaction.set_rollback(True)
 
             # Keep in create mode (no pk) – don't show "created" yet
@@ -1526,11 +1656,12 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         # Actually save the lease
         response = super().form_valid(form)  # self.object is now saved
         _save_tenant_document_uploads(self.request, self.object)
+        move_in_date = form.cleaned_data.get("move_in_date")
+        sync_lease_move_in_occupancy(self.object, move_in_date)
         ensure_original_history(
             self.object,
             user=self.request.user if self.request.user.is_authenticated else None,
         )
-        pending_submission = form.cleaned_data.get("pending_registration_submission")
         if pending_submission:
             from tenants.services.registration_workflow import attach_registration_to_lease
             with transaction.atomic():
@@ -1538,7 +1669,8 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 pending_submission.status = "approved"
                 pending_submission.reviewed_by = self.request.user
                 pending_submission.reviewed_at = timezone.now()
-                pending_submission.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+                pending_submission.created_lease = self.object
+                pending_submission.save(update_fields=["status", "reviewed_by", "reviewed_at", "created_lease"])
             messages.success(self.request, f"Pending registration linked: {len(workflow_result['people'])} people and {workflow_result['vehicles']} vehicles.")
 
         # Family links
@@ -1591,6 +1723,23 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 include_backfill=include_backfill,
                 update_existing=update_existing,
             )
+            proration_mode = (
+                form.cleaned_data.get("move_in_proration_mode") or "exact"
+            )
+            if (
+                form.cleaned_data.get("create_move_in_proration")
+                and proration_mode != "waive"
+                and move_in_date
+                and move_in_date < self.object.start_date
+            ):
+                ensure_move_in_proration_invoice(
+                    self.object,
+                    move_in_date=move_in_date,
+                    mode=proration_mode,
+                    manual_days=form.cleaned_data.get(
+                        "move_in_proration_days"
+                    ),
+                )
             messages.success(
                 self.request, "Lease created. Billing & security initialized."
             )
@@ -1740,7 +1889,6 @@ def lease_vehicle_add(request, pk):
             year=year,
             owner_name=(request.POST.get("owner_name") or "").strip(),
             owner_cnic=(request.POST.get("owner_cnic") or "").strip(),
-            parking_slot=(request.POST.get("parking_slot") or "").strip(),
             vehicle_photo=request.FILES.get("vehicle_photo"),
             notes=(request.POST.get("notes") or "").strip(),
         )
@@ -1810,7 +1958,6 @@ def lease_vehicle_edit(request, pk, vehicle_id):
     vehicle.year = year
     vehicle.owner_name = (request.POST.get("owner_name") or "").strip()
     vehicle.owner_cnic = (request.POST.get("owner_cnic") or "").strip()
-    vehicle.parking_slot = (request.POST.get("parking_slot") or "").strip()
     vehicle.notes = (request.POST.get("notes") or "").strip()
     vehicle.is_active = request.POST.get("is_active") in ("1", "on", "true", "yes")
     if request.FILES.get("vehicle_photo"):
@@ -1898,17 +2045,33 @@ def lease_family_create_and_add(request, pk):
     phone = (request.POST.get("phone") or "").strip()
     gender = (request.POST.get("gender") or "").strip() or "M"
     date_of_birth = (request.POST.get("date_of_birth") or "").strip()
+    country = (request.POST.get("country") or "").strip()
+    cnic_issue_date = (request.POST.get("cnic_issue_date") or "").strip()
+    cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
+    temporary_address = (request.POST.get("temporary_address") or "").strip()
+    permanent_address = (request.POST.get("permanent_address") or "").strip()
+    temporary_address_urdu = (request.POST.get("temporary_address_urdu") or "").strip()
+    permanent_address_urdu = (request.POST.get("permanent_address_urdu") or "").strip()
     notes = (request.POST.get("notes") or "").strip()
 
-    if full_name and not first_name:
-        name_parts = full_name.split()
-        first_name = name_parts[0]
-        last_name = " ".join(name_parts[1:]) or "Family"
-    if not last_name:
-        last_name = "Family"
-
+    if full_name:
+        split_first_name, split_last_name = _split_name(full_name)
+        first_name = first_name or split_first_name
+        last_name = last_name or split_last_name
     if not first_name:
         return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
+    if not last_name:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "Enter a full name with at least two words, or provide "
+                    "First Name and Last Name."
+                ),
+            },
+            status=400,
+        )
+
     if not cnic:
         return JsonResponse(
             {"ok": False, "error": "CNIC / ID is required."}, status=400
@@ -1922,6 +2085,31 @@ def lease_family_create_and_add(request, pk):
     if cnic_digits and len(cnic_digits) != 13:
         return JsonResponse(
             {"ok": False, "error": "CNIC must contain exactly 13 digits."}, status=400
+        )
+
+    parsed_date_of_birth = parse_date(date_of_birth) if date_of_birth else None
+    parsed_issue_date = parse_date(cnic_issue_date) if cnic_issue_date else None
+    parsed_expiry_date = parse_date(cnic_expiry_date) if cnic_expiry_date else None
+    if date_of_birth and not parsed_date_of_birth:
+        return JsonResponse(
+            {"ok": False, "error": "Enter date of birth in MM/DD/YYYY format."},
+            status=400,
+        )
+    try:
+        validate_date_of_birth(parsed_date_of_birth)
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "error": exc.messages[0]}, status=400)
+    if (cnic_issue_date and not parsed_issue_date) or (
+        cnic_expiry_date and not parsed_expiry_date
+    ):
+        return JsonResponse(
+            {"ok": False, "error": "Enter CNIC dates in MM/DD/YYYY format."},
+            status=400,
+        )
+    if parsed_issue_date and parsed_expiry_date and parsed_expiry_date < parsed_issue_date:
+        return JsonResponse(
+            {"ok": False, "error": "CNIC expiry date cannot be before its issue date."},
+            status=400,
         )
 
     relationship_defaults = _family_relationship_defaults(relation)
@@ -1940,9 +2128,16 @@ def lease_family_create_and_add(request, pk):
                 phone=phone or None,
                 gender=gender,
                 notes=notes,
+                country=country or "Pakistan",
+                cnic_issue_date=parsed_issue_date,
+                cnic_expiry_date=parsed_expiry_date,
+                temporary_address=temporary_address,
+                permanent_address=permanent_address,
+                temporary_address_urdu=temporary_address_urdu,
+                permanent_address_urdu=permanent_address_urdu,
             )
-            if date_of_birth:
-                tenant.date_of_birth = date_of_birth
+            if parsed_date_of_birth:
+                tenant.date_of_birth = parsed_date_of_birth
             for field_name in ("photo", "cnic_front", "cnic_back"):
                 uploaded = request.FILES.get(field_name)
                 if uploaded:
@@ -2362,6 +2557,7 @@ def public_police_verification(request, token):
         "pending_police": pending_police,
         "pending_vehicle_submissions": pending_vehicle_submissions,
         "vehicle_types": vehicle_types,
+        "no_vehicle_checked": lease.has_vehicle is False,
         **police_context_sections(lease),
     }
 
@@ -2498,12 +2694,17 @@ def public_police_verification(request, token):
             f"{len(family_rows)} family member request(s) sent for staff approval."
         )
 
-    vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
-        request,
-        lease=lease,
-        tenant=lease.tenant,
-        source="police_verification",
-    )
+    no_vehicle = request.POST.get("no_vehicle") == "1"
+    context["no_vehicle_checked"] = no_vehicle
+    if no_vehicle:
+        vehicle_rows, vehicle_errors = [], []
+    else:
+        vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
+            request,
+            lease=lease,
+            tenant=lease.tenant,
+            source="police_verification",
+        )
     errors.extend(vehicle_errors)
     if errors:
         context["errors"] = errors
@@ -2514,6 +2715,11 @@ def public_police_verification(request, token):
         saved_messages.append(
             f"{len(vehicle_rows)} vehicle submission(s) sent for staff approval."
         )
+    if no_vehicle:
+        if lease.has_vehicle is not False:
+            lease.has_vehicle = False
+            lease.save(update_fields=["has_vehicle"])
+        saved_messages.append("No vehicle status saved.")
 
     record_external_link_access(
         request, link, user_type=TrustedDeviceRegistry.USER_TYPE_GUEST
@@ -2698,14 +2904,8 @@ def lease_police_verification_link(request, pk):
         html = render_to_string(
             "leases/police_verification_summary_pdf.html",
             {
-                "lease": lease,
-                "tenant": lease.tenant,
-                "property": lease.unit.property,
-                "unit": lease.unit,
-                "family_members": lease.family_members.select_related(
-                    "family_member"
-                ).all(),
-                "generated_at": timezone.localtime(),
+                **__import__("leases.services.agreement_package", fromlist=["police_context"]).police_context(lease),
+                "family_members": lease.family_members.select_related("family_member").all(),
             },
             request=request,
         )
@@ -3072,7 +3272,7 @@ from leases.utils.billing import (
 )
 
 from .forms import LeaseForm
-from .models import Lease
+from .models import AgreementSignatureTemplate, Lease
 
 
 def detect_lease_changes(old_lease, new_lease) -> Dict[str, Any]:
@@ -3086,16 +3286,38 @@ def detect_lease_changes(old_lease, new_lease) -> Dict[str, Any]:
     new_rent = new_lease.monthly_rent or ZERO
     old_maint = old_lease.society_maintenance or ZERO
     new_maint = new_lease.society_maintenance or ZERO
+    old_water = old_lease.water_charges or ZERO
+    new_water = new_lease.water_charges or ZERO
+    old_internet = old_lease.internet_charges or ZERO
+    new_internet = new_lease.internet_charges or ZERO
     old_sec = old_lease.security_deposit or ZERO
     new_sec = new_lease.security_deposit or ZERO
+
+    rent_changed = old_rent != new_rent
+    maintenance_changed = old_maint != new_maint
+    water_changed = old_water != new_water
+    internet_changed = old_internet != new_internet
+    start_date_changed = old_lease.start_date != new_lease.start_date
 
     was_ending = old_lease.status in ("ended", "terminated")
     is_ending = new_lease.status in ("ended", "terminated")
 
     return {
         "security_changed": (old_sec != new_sec),
-        "rent_changed": (old_rent != new_rent),
-        "maintenance_changed": (old_maint != new_maint),
+        "rent_changed": rent_changed,
+        "maintenance_changed": maintenance_changed,
+        "water_changed": water_changed,
+        "internet_changed": internet_changed,
+        "start_date_changed": start_date_changed,
+        "billing_changed": any(
+            (
+                rent_changed,
+                maintenance_changed,
+                water_changed,
+                internet_changed,
+                start_date_changed,
+            )
+        ),
         "end_date_changed": (old_lease.end_date != new_lease.end_date),
         "status_changed_to_ended": is_ending and not was_ending,
         "old_status": old_lease.status,
@@ -3133,6 +3355,26 @@ def create_security_required_adjustment(old_lease, new_lease):
     )
 
 
+def record_security_paid_from_lease_form(lease):
+    """
+    Convert the lease form's legacy "Security Deposit Paid" checkbox into a
+    real PAYMENT ledger row. ADJUST rows only audit required-amount changes.
+    """
+    if not lease.security_deposit_paid:
+        return None
+
+    amount = security_deposit_totals(lease)["balance_to_collect"]
+    if amount <= ZERO:
+        return None
+
+    return SecurityDepositTransaction.objects.create(
+        lease=lease,
+        type="PAYMENT",
+        amount=amount,
+        notes="Security deposit marked paid on lease form.",
+    )
+
+
 def _sync_current_renewal_end_date(lease, *, user=None):
     """
     Keep the active/current renewal history row aligned when the master lease
@@ -3153,6 +3395,9 @@ def _sync_current_renewal_end_date(lease, *, user=None):
     if renewal.end_date != lease.end_date:
         renewal.end_date = lease.end_date
         update_fields.append("end_date")
+    if renewal.lease_months != lease.lease_months:
+        renewal.lease_months = lease.lease_months
+        update_fields.append("lease_months")
     if not update_fields:
         return 0
     if user and getattr(user, "is_authenticated", False):
@@ -3236,6 +3481,39 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                 "sort_order", "name"
             ),
         )
+        ctx.setdefault(
+            "lease_documents",
+            list(
+                lease_instance.documents.filter(is_active=True).select_related(
+                    "uploaded_by", "lease_history"
+                )
+            )
+            if lease_instance and lease_instance.pk
+            else [],
+        )
+        ctx.setdefault(
+            "lease_document_categories",
+            list(
+                apps.get_model("leases", "LeaseDocumentCategory").objects.filter(
+                    is_active=True
+                )
+            ),
+        )
+        if lease_instance and lease_instance.pk:
+            sec_totals = security_deposit_totals(lease_instance)
+            active_history = lease_instance.renewals.order_by(
+                "-renewal_number", "-id"
+            ).first()
+            ctx.update(
+                {
+                    "active_history": active_history,
+                    "security_required": sec_totals["required"],
+                    "security_paid_in": sec_totals["paid_in"],
+                    "security_refunded": sec_totals["refunded"],
+                    "security_damages": sec_totals["damages"],
+                    "security_currently_held": sec_totals["currently_held"],
+                }
+            )
         return ctx
 
     # ---------- Quick-add family members (same as in LeaseCreateView) ----------
@@ -3323,8 +3601,7 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         qa_total = int(self.request.POST.get("qa-TOTAL") or 0)
         important_change = (
             security_changed
-            or rent_changed
-            or end_date_changed
+            or changes["billing_changed"]
             or bool(
                 move_out_trigger
                 and settlement_preview
@@ -3406,11 +3683,26 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
         # ---------- STEP 3: SAVE LEASE & FAMILY ----------
         response = super().form_valid(form)  # self.object is now saved
         _save_tenant_document_uploads(self.request, self.object)
+        sync_lease_move_in_occupancy(
+            self.object,
+            form.cleaned_data.get("move_in_date"),
+        )
 
         family_fs.instance = self.object
         family_fs.save()
         renewal_fs.instance = self.object
         renewal_fs.save()
+        active_history = self.object.renewals.order_by(
+            "-renewal_number", "-id"
+        ).first()
+        if active_history:
+            sync_history_to_master_lease(
+                active_history,
+                user=self.request.user,
+            )
+            self.object.refresh_from_db()
+            changes = detect_lease_changes(old, self.object)
+            security_changed = changes["security_changed"]
         vehicle_fs.instance = self.object
         vehicle_fs.save()
         attached_vehicle_count = attach_pending_vehicle_submissions_to_lease(
@@ -3627,13 +3919,9 @@ def police_verification_summary_pdf(request, pk):
     html = render_to_string(
         "leases/police_verification_summary_pdf.html",
         {
-            "lease": lease,
-            "tenant": lease.tenant,
-            "property": lease.unit.property,
-            "unit": lease.unit,
+            **__import__("leases.services.agreement_package", fromlist=["police_context"]).police_context(lease),
             "family_members": lease.family_members.all(),
             "vehicles": vehicles,
-            "generated_at": timezone.localtime(),
         },
         request=request,
     )
@@ -3778,12 +4066,53 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                         is_active=True
                     )
                 ),
+                "lease_filter_options": list(
+                    Lease.objects.select_related("tenant", "unit__property")
+                    .only(
+                        "id",
+                        "status",
+                        "tenant__first_name",
+                        "tenant__last_name",
+                        "unit__unit_number",
+                        "unit__property__property_name",
+                    )
+                    .order_by(
+                        "unit__property__property_name",
+                        "unit__unit_number",
+                        "tenant__first_name",
+                        "tenant__last_name",
+                    )
+                ),
                 "relationship_types": list(
                     LeaseRelationshipType.objects.filter(is_active=True).order_by(
                         "sort_order", "name"
                     )
                 ),
             }
+        )
+        from core.models import GlobalSettings
+        from leases.whatsapp import build_whatsapp_url
+        from tenants.views import TENANT_REGISTRATION_MAX_AGE, tenant_registration_token
+
+        ctx["registration_link"] = self.request.build_absolute_uri(
+            reverse(
+                "tenants:tenant_public_registration",
+                args=[tenant_registration_token(lease.tenant)],
+            )
+        )
+        ctx["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
+        registration_message = (
+            f"Hello {lease.tenant.get_full_name()},\n\n"
+            "Please complete or update your tenant registration using the secure link below:\n\n"
+            f"{ctx['registration_link']}\n\n"
+            f"This link will expire in {ctx['registration_link_days']} days.\n\n"
+            "Thank you."
+        )
+        settings_obj = GlobalSettings.get_solo()
+        ctx["registration_whatsapp_url"] = build_whatsapp_url(
+            lease.tenant.phone or lease.tenant.phone2 or lease.tenant.phone3 or "",
+            registration_message,
+            country_code=getattr(settings_obj, "country_code", "+92"),
         )
         public_maintenance_token = make_public_maintenance_token(lease)
         ctx["public_maintenance_url"] = self.request.build_absolute_uri(
@@ -3803,6 +4132,12 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             ensure_original_history(
                 lease,
                 user=self.request.user if self.request.user.is_authenticated else None,
+            )
+            # The prefetched list above is stale after creating the original
+            # history. Reload it so an ended lease has a usable rollback date
+            # on the same page request.
+            renewals = list(
+                lease.renewals.all().order_by("renewal_number", "id")
             )
         today = timezone.localdate()
         active_renewals = [
@@ -3826,6 +4161,14 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 if renewals
                 else None
             )
+        )
+        rollback_end_dates = [
+            renewal.end_date for renewal in renewals if renewal.end_date > lease.end_date
+        ]
+        ctx["rollback_default_end_date"] = (
+            max(rollback_end_dates)
+            if rollback_end_dates
+            else lease.end_date + timedelta(days=1)
         )
         non_original_renewals = [
             renewal for renewal in renewals if not renewal.is_original
@@ -3852,6 +4195,8 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             if tx.type == "PAYMENT":
                 dep_balance += amt
                 signed_amt = amt
+            elif tx.type == "REFUND" and tx.refund_status != "PAID":
+                signed_amt = -(amt + (tx.deduction_amount or ZERO))
             elif tx.type in ("REFUND", "DAMAGE"):
                 deduction = (
                     (tx.deduction_amount or ZERO) if tx.type == "REFUND" else ZERO
@@ -3882,10 +4227,355 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "security_balance_to_collect": sec_totals["balance_to_collect"],
                 "security_currently_held": sec_totals["currently_held"],
                 "deposit_is_paid": sec_totals["balance_to_collect"] <= ZERO,
+                "total_outstanding": (
+                    (lease.get_balance or ZERO)
+                    + sec_totals["balance_to_collect"]
+                ),
             }
         )
 
+        from leases.services.inventory_parking import (
+            effective_inventory,
+            effective_parking_policy,
+            policy_value,
+        )
+
+        parking_policy = effective_parking_policy(lease=self.object)
+        ctx["effective_inventory"] = effective_inventory(lease=self.object)
+        ctx["parking_enabled"] = bool(policy_value(parking_policy, "enabled"))
+        ctx["parking_monthly_rate"] = policy_value(parking_policy, "monthly_rate")
+        ctx["parking_penalty"] = policy_value(
+            parking_policy, "unauthorized_parking_penalty"
+        )
+        ctx["parking_allocations"] = self.object.parking_allocations.select_related(
+            "parking_space", "vehicle"
+        ).filter(is_active=True)
+
         return ctx
+
+
+@login_required
+@require_POST
+def lease_end_action(request, pk):
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit", "unit__property"),
+        pk=pk,
+    )
+    try:
+        end_date = datetime.strptime(
+            (request.POST.get("end_date") or "").strip(), "%Y-%m-%d"
+        ).date()
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "Enter a valid lease end date."}, status=400)
+
+    kwargs = {
+        "end_date": end_date,
+        "final_electric_amount": request.POST.get("final_electric_amount"),
+        "other_amount": request.POST.get("other_amount"),
+        "other_description": request.POST.get("other_description", ""),
+        "future_invoice_action": request.POST.get("future_invoice_action") or "cancel",
+        "inspection_complete": (
+            True if request.POST.get("inspection_complete") == "yes"
+            else False if request.POST.get("inspection_complete") == "no"
+            else None
+        ),
+        "keys_returned": (
+            True if request.POST.get("keys_returned") == "yes"
+            else False if request.POST.get("keys_returned") == "no"
+            else None
+        ),
+        "inspection_charge": request.POST.get("inspection_charge"),
+        "key_charge": request.POST.get("key_charge"),
+    }
+    action = request.POST.get("action") or "preview"
+    try:
+        if action in {"add_item", "edit_item", "delete_item"}:
+            result = build_end_lease_preview(lease, **kwargs)
+            if action == "add_item":
+                invoice_id = request.POST.get("invoice_id") or result["invoice"].pk
+                invoice = get_object_or_404(Invoice, pk=invoice_id, lease=lease)
+                if invoice.status == "paid":
+                    raise ValidationError("A paid invoice cannot be changed here.")
+                category_name = (request.POST.get("category") or "Other Charges").strip()
+                category = ItemCategory.objects.filter(name__iexact=category_name).first()
+                if category is None:
+                    category = ItemCategory.objects.create(name=category_name)
+                elif not category.is_active:
+                    category.is_active = True
+                    category.save(update_fields=["is_active"])
+                amount = Decimal((request.POST.get("amount") or "0").replace(",", ""))
+                if amount < ZERO:
+                    raise ValidationError("Invoice line amount cannot be negative.")
+                InvoiceItem.objects.create(
+                    invoice=invoice,
+                    category=category,
+                    description=(request.POST.get("description") or "").strip(),
+                    amount=amount,
+                    is_recurring=False,
+                )
+            else:
+                item = get_object_or_404(
+                    InvoiceItem.objects.select_related("invoice"),
+                    pk=request.POST.get("item_id"),
+                    invoice__lease=lease,
+                )
+                if item.invoice.status == "paid":
+                    raise ValidationError("A paid invoice cannot be changed here.")
+                if action == "delete_item":
+                    if item.description in {
+                        "Move-out inspection sheet not completed",
+                        "Key/key card not recorded as returned",
+                    }:
+                        suppression = f"END_LEASE_SUPPRESS:{item.description}"
+                        if suppression not in (item.invoice.notes or ""):
+                            item.invoice.notes = "\n".join(
+                                filter(None, [item.invoice.notes, suppression])
+                            )
+                            item.invoice.save(update_fields=["notes", "updated_at"])
+                    item.delete()
+                else:
+                    category_name = (request.POST.get("category") or "").strip()
+                    if not category_name:
+                        raise ValidationError("Select or enter a category.")
+                    category = ItemCategory.objects.filter(name__iexact=category_name).first()
+                    if category is None:
+                        category = ItemCategory.objects.create(name=category_name)
+                    elif not category.is_active:
+                        category.is_active = True
+                        category.save(update_fields=["is_active"])
+                    amount = Decimal((request.POST.get("amount") or "0").replace(",", ""))
+                    if amount < ZERO:
+                        raise ValidationError("Invoice line amount cannot be negative.")
+                    item.category = category
+                    item.description = (request.POST.get("description") or "").strip()
+                    item.amount = amount
+                    item.is_recurring = False
+                    item.save(update_fields=["category", "description", "amount", "is_recurring"])
+            return JsonResponse({"ok": True})
+
+        if action == "preview":
+            result = build_end_lease_preview(lease, **kwargs)
+            if request.headers.get("x-requested-with") != "XMLHttpRequest":
+                return render(
+                    request,
+                    "leases/end_lease_preview.html",
+                    {
+                        "lease": lease,
+                        "result": result,
+                        "form_values": {
+                            **kwargs,
+                            "notes": request.POST.get("notes", ""),
+                            "send_whatsapp": request.POST.get("send_whatsapp") == "1",
+                        },
+                    },
+                )
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "occupied_days": result["occupied_days"],
+                    "billable_days": result["billable_days"],
+                    "days_in_month": result["days_in_month"],
+                    "proration_interval_days": result["proration_interval_days"],
+                    "proration_interval_label": result["proration_interval_label"],
+                    "lines": [
+                        {
+                            "id": row["id"],
+                            "category_id": row["category_id"],
+                            "category": row["category"],
+                            "description": row["description"],
+                            "amount": str(row["amount"]),
+                        }
+                        for row in result["lines"]
+                    ],
+                    "invoice_total": str(result["invoice_total"]),
+                    "account_balance": str(result["gross_balance"]),
+                    "invoice": {
+                        "id": result["invoice"].pk,
+                        "number": result["invoice"].invoice_number,
+                        "issue_date": result["invoice"].issue_date.isoformat(),
+                        "status": result["invoice"].get_status_display(),
+                        "detail_url": reverse("invoices:invoice_detail", args=[result["invoice"].pk]),
+                        "pdf_url": reverse("invoices:invoice_pdf", args=[result["invoice"].pk]),
+                    },
+                    "categories": list(
+                        ItemCategory.objects.filter(is_active=True)
+                        .order_by("name")
+                        .values_list("name", flat=True)
+                    ),
+                    "inspection": {
+                        "complete": result["inspection_state"]["inspection_complete"],
+                        "keys_returned": result["inspection_state"]["keys_returned"],
+                        "outstanding_keys": result["inspection_state"]["outstanding_keys"],
+                        "inspection_charge": str(result["inspection_charge"]),
+                        "key_charge": str(result["key_charge"]),
+                        "building_type": (
+                            result["move_out_building_type"].name
+                            if result["move_out_building_type"]
+                            else "No building type assigned"
+                        ),
+                        "url": (
+                            reverse("leases:inspection_detail", args=[result["inspection_state"]["inspection"].pk])
+                            if result["inspection_state"]["inspection"]
+                            else reverse("leases:lease_inspection_create", args=[lease.pk])
+                        ),
+                    },
+                    "gross_balance": str(result["gross_balance"]),
+                    "security_held": str(result["security_held"]),
+                    "security_applied": str(result["security_applied"]),
+                    "amount_payable": str(result["amount_payable"]),
+                    "refund_due": str(result["refund_due"]),
+                    "tenant_phone": normalize_phone(lease.tenant.phone or ""),
+                    "whatsapp_message": (
+                        f"Settlement preview for {lease.tenant.get_full_name()} - lease end "
+                        f"{result['end_date']:%Y-%m-%d}. Balance before security: "
+                        f"Rs. {result['gross_balance']:,.2f}. Security applied: "
+                        f"Rs. {result['security_applied']:,.2f}. "
+                        + (
+                            f"Tenant payable: Rs. {result['amount_payable']:,.2f}."
+                            if result["amount_payable"] > ZERO
+                            else f"Refund due: Rs. {result['refund_due']:,.2f}."
+                            if result["refund_due"] > ZERO
+                            else "Account settled."
+                        )
+                    ),
+                    "future_invoice_action": result["future_invoice_action"],
+                    "future_invoice_total": str(result["future_invoice_total"]),
+                    "future_invoices": [
+                        {
+                            "id": invoice.pk,
+                            "number": invoice.invoice_number,
+                            "issue_date": invoice.issue_date.isoformat(),
+                            "description": invoice.description or "",
+                            "amount": str(invoice.amount or ZERO),
+                            "status": invoice.get_status_display(),
+                            "detail_url": reverse("invoices:invoice_detail", args=[invoice.pk])
+                            + "?"
+                            + urlencode(
+                                {
+                                    "settlement": "1",
+                                    "lease_id": lease.pk,
+                                    "end_date": end_date.isoformat(),
+                                }
+                            ),
+                            "is_current_period": invoice.pk == result["final_period_invoice"].pk,
+                            "settlement_bucket": (
+                                "Prior outstanding"
+                                if invoice.issue_date < result["billing_month_start"]
+                                else "Future"
+                                if invoice.issue_date > result["end_date"]
+                                else "Current period"
+                            ),
+                            "update_url": reverse("invoices:invoice_update", args=[invoice.pk]),
+                            "pdf_url": reverse("invoices:invoice_pdf", args=[invoice.pk]),
+                            "items": [
+                                {
+                                    "id": item.pk,
+                                    "category": item.category.name,
+                                    "description": item.description or "",
+                                    "amount": str(item.amount),
+                                }
+                                for item in invoice.items.select_related("category").order_by("id")
+                            ],
+                        }
+                        for invoice in result["review_invoices"]
+                    ],
+                }
+            )
+
+        result = end_lease(
+            lease,
+            user=request.user,
+            notes=request.POST.get("notes", ""),
+            **kwargs,
+        )
+    except (ValidationError, ArithmeticError, ValueError) as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"ok": False, "error": error}, status=400)
+        messages.error(request, error)
+        return redirect("leases:lease_detail", pk=lease.pk)
+
+    send_whatsapp = request.POST.get("send_whatsapp") == "1"
+    sent_to_tenant = False
+    staff_sent = 0
+    send_errors = []
+    if send_whatsapp:
+        service = WhatsAppService(created_by=request.user)
+        if lease.tenant.phone:
+            try:
+                response = service.send_text(
+                    lease.tenant.phone,
+                    end_lease_tenant_message(result),
+                    tenant=lease.tenant,
+                    lease=lease,
+                    invoice=result["invoice"],
+                )
+                sent_to_tenant = bool(response.get("ok"))
+                if not sent_to_tenant:
+                    send_errors.append(response.get("error") or "tenant WhatsApp failed")
+            except Exception as exc:
+                send_errors.append(f"tenant WhatsApp failed: {exc}")
+
+        for staff_user in accounts_staff_for_lease(lease):
+            if not getattr(staff_user, "whatsapp_number", ""):
+                continue
+            try:
+                response = service.send_text(
+                    staff_user.whatsapp_number,
+                    end_lease_staff_message(result),
+                    tenant=lease.tenant,
+                    lease=lease,
+                    invoice=result["invoice"],
+                )
+                if response.get("ok"):
+                    staff_sent += 1
+            except Exception as exc:
+                send_errors.append(f"staff WhatsApp failed: {exc}")
+
+    messages.success(
+        request,
+        f"Lease ended. Final bill Rs. {result['gross_balance']:,.2f}; "
+        f"security applied Rs. {result['security_applied']:,.2f}; "
+        f"payable Rs. {result['amount_payable']:,.2f}; refund due Rs. {result['refund_due']:,.2f}. "
+        f"{len(result['future_invoices'])} future invoice(s) "
+        f"{'cancelled' if result['future_invoice_action'] == 'cancel' else 'kept as approved charges'}.",
+    )
+    if send_whatsapp and not lease.tenant.phone:
+        messages.warning(request, "Lease was ended, but the tenant has no WhatsApp phone number.")
+    elif send_whatsapp and not sent_to_tenant:
+        messages.warning(request, "Lease was ended, but the tenant WhatsApp message was not sent.")
+    if send_whatsapp and result["refund_due"] > ZERO and not staff_sent:
+        messages.warning(request, "Refund is pending, but no accounts staff WhatsApp recipient was reached.")
+    if send_errors:
+        messages.warning(request, " ".join(send_errors[:2]))
+    return redirect("leases:lease_detail", pk=lease.pk)
+
+
+@login_required
+@require_POST
+def lease_end_rollback_action(request, pk):
+    lease = get_object_or_404(Lease, pk=pk)
+    try:
+        restored_end_date = datetime.strptime(
+            (request.POST.get("restored_end_date") or "").strip(), "%Y-%m-%d"
+        ).date()
+        result = rollback_end_lease(
+            lease,
+            restored_end_date=restored_end_date,
+            user=request.user,
+            notes=request.POST.get("notes", ""),
+        )
+    except (ValidationError, ValueError, ArithmeticError) as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        messages.error(request, error)
+        return redirect("leases:lease_detail", pk=lease.pk)
+    messages.success(
+        request,
+        f"Lease end rolled back. End date restored to {result['restored_end_date']:%Y-%m-%d}; "
+        f"{len(result['restored_invoices'])} invoice(s) restored and "
+        f"Rs. {result['reversed_security']:,.2f} security application reversed.",
+    )
+    return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}?open_end_lease=1")
 
 
 def lease_print(request, pk):
@@ -4370,6 +5060,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
 
             deposit_tx.append(
                 {
+                    "obj": tx,
                     "date": tx.date,
                     "type": tx.get_type_display(),
                     "description": tx.notes or "",
@@ -5207,10 +5898,202 @@ def _edit_clause_filter_context(request, current_lease):
 
 
 @login_required
+def agreement_clause_filter_options_ajax(request):
+    """Return dependent Unit and Lease options for the agreement clause filters."""
+    property_id = (request.GET.get("property") or "").strip()
+    unit_id = (request.GET.get("unit") or "").strip()
+    tenant_id = (request.GET.get("tenant") or "").strip()
+    lease_status = (request.GET.get("lease_status") or "active").strip().lower()
+    today = timezone.localdate()
+
+    units_qs = Unit.objects.select_related("property").order_by(
+        "property__property_name", "unit_number"
+    )
+    if property_id:
+        units_qs = units_qs.filter(property_id=property_id)
+
+    leases_qs = Lease.objects.select_related("tenant", "unit", "unit__property")
+    if property_id:
+        leases_qs = leases_qs.filter(unit__property_id=property_id)
+    if unit_id:
+        leases_qs = leases_qs.filter(unit_id=unit_id)
+    if tenant_id:
+        leases_qs = leases_qs.filter(tenant_id=tenant_id)
+    if lease_status != "all":
+        leases_qs = leases_qs.filter(
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+        )
+    leases_qs = leases_qs.order_by(
+        "tenant__first_name",
+        "tenant__last_name",
+        "unit__property__property_name",
+        "unit__unit_number",
+        "-start_date",
+    )[:300]
+
+    units = [
+        {
+            "id": unit.pk,
+            "text": f"{unit.property.property_name} - {unit.unit_number}",
+        }
+        for unit in units_qs
+    ]
+    leases = [
+        {
+            "id": lease.pk,
+            "text": (
+                f"{lease.tenant.get_full_name()} | "
+                f"{lease.unit.property.property_name} | {lease.unit.unit_number} | "
+                f"{lease.get_status_display()}"
+            ),
+            "url": reverse("leases:edit_clauses", kwargs={"pk": lease.pk}),
+        }
+        for lease in leases_qs
+    ]
+    return JsonResponse({"ok": True, "units": units, "leases": leases})
+
+
+@login_required
+@require_POST
+def create_agreement_party_ajax(request):
+    """Create a minimal Tenant record for proposer/seconder/witness Select2."""
+    from django.core.exceptions import ValidationError
+    from tenants.models import Tenant, normalize_cnic
+
+    if not (request.user.has_perm("tenants.add_tenant") or request.user.is_superuser):
+        return JsonResponse(
+            {"ok": False, "message": "You do not have permission to add tenants."},
+            status=403,
+        )
+
+    first_name = " ".join((request.POST.get("first_name") or "").split())
+    last_name = " ".join((request.POST.get("last_name") or "").split())
+    cnic = (request.POST.get("cnic") or "").strip()
+    phone = (request.POST.get("phone") or "").strip()
+    prefix = (request.POST.get("prefix") or "Mr.").strip() or "Mr."
+    relation = (request.POST.get("relation") or "S/O.").strip() or "S/O."
+    date_of_birth = (request.POST.get("date_of_birth") or "").strip()
+    cnic_issue_date = (request.POST.get("cnic_issue_date") or "").strip()
+    cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
+    gender = (request.POST.get("gender") or "M").strip() or "M"
+    country = (request.POST.get("country") or "").strip()
+    temporary_address = (request.POST.get("temporary_address") or "").strip()
+    permanent_address = (request.POST.get("permanent_address") or "").strip()
+    temporary_address_urdu = (request.POST.get("temporary_address_urdu") or "").strip()
+    permanent_address_urdu = (request.POST.get("permanent_address_urdu") or "").strip()
+    uploaded_files = {
+        field_name: request.FILES.get(field_name)
+        for field_name in ("photo", "cnic_front", "cnic_back")
+        if request.FILES.get(field_name)
+    }
+
+    if not first_name or not last_name or not cnic:
+        return JsonResponse(
+            {"ok": False, "message": "First name, father/husband name, and CNIC are required."},
+            status=400,
+        )
+
+    cnic_digits = normalize_cnic(cnic)
+    if len(cnic_digits) != 13:
+        return JsonResponse(
+            {"ok": False, "message": "CNIC must contain exactly 13 digits."},
+            status=400,
+        )
+    parsed_dob = parse_date(date_of_birth) if date_of_birth else None
+    parsed_issue = parse_date(cnic_issue_date) if cnic_issue_date else None
+    parsed_expiry = parse_date(cnic_expiry_date) if cnic_expiry_date else None
+    if (date_of_birth and not parsed_dob) or (
+        cnic_issue_date and not parsed_issue
+    ) or (cnic_expiry_date and not parsed_expiry):
+        return JsonResponse(
+            {"ok": False, "message": "Enter identity dates in MM/DD/YYYY format."},
+            status=400,
+        )
+    try:
+        validate_date_of_birth(parsed_dob)
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "message": exc.messages[0]}, status=400)
+    if parsed_issue and parsed_expiry and parsed_expiry < parsed_issue:
+        return JsonResponse(
+            {"ok": False, "message": "CNIC expiry date cannot be before its issue date."},
+            status=400,
+        )
+
+    existing = Tenant.objects.filter(cnic_digits=cnic_digits).first()
+    if existing:
+        changed = []
+        if not existing.is_active:
+            existing.is_active = True
+            changed.append("is_active")
+        if phone and not existing.phone:
+            existing.phone = phone
+            changed.append("phone")
+        blank_only_values = {
+            "date_of_birth": parsed_dob,
+            "cnic_issue_date": parsed_issue,
+            "cnic_expiry_date": parsed_expiry,
+            "country": country,
+            "temporary_address": temporary_address,
+            "permanent_address": permanent_address,
+            "temporary_address_urdu": temporary_address_urdu,
+            "permanent_address_urdu": permanent_address_urdu,
+        }
+        for field_name, value in blank_only_values.items():
+            if value and not getattr(existing, field_name):
+                setattr(existing, field_name, value)
+                changed.append(field_name)
+        for field_name, uploaded_file in uploaded_files.items():
+            setattr(existing, field_name, uploaded_file)
+            changed.append(field_name)
+        if changed:
+            existing.save(update_fields=changed + ["updated_at"] if "updated_at" not in changed else changed)
+        return JsonResponse({
+            "ok": True, "id": existing.pk,
+            "text": f"{existing.get_full_name()} — {format_phone(existing.phone)}",
+            "name": existing.get_full_name(),
+            "cnic_display": format_cnic(existing.cnic),
+            "phone": existing.phone or "",
+            "phone_display": format_phone(existing.phone),
+            "created": False,
+        })
+
+    tenant = Tenant(
+        prefix=prefix[:10], first_name=first_name[:50], relation=relation[:10],
+        last_name=last_name[:50], cnic=cnic_digits, phone=normalize_phone(phone), is_active=True,
+        date_of_birth=parsed_dob, cnic_issue_date=parsed_issue,
+        cnic_expiry_date=parsed_expiry, gender=gender, country=country or "Pakistan",
+        temporary_address=temporary_address, permanent_address=permanent_address,
+        temporary_address_urdu=temporary_address_urdu,
+        permanent_address_urdu=permanent_address_urdu,
+        **uploaded_files,
+    )
+    try:
+        tenant.full_clean()
+        tenant.save()
+    except ValidationError as exc:
+        message = "; ".join(
+            str(item) for values in exc.message_dict.values() for item in values
+        ) if hasattr(exc, "message_dict") else str(exc)
+        return JsonResponse({"ok": False, "message": message}, status=400)
+
+    return JsonResponse({
+        "ok": True, "id": tenant.pk,
+        "text": f"{tenant.get_full_name()} — {format_phone(tenant.phone)}",
+        "name": tenant.get_full_name(),
+        "cnic_display": format_cnic(tenant.cnic),
+        "phone": tenant.phone or "",
+        "phone_display": format_phone(tenant.phone),
+        "created": True,
+    })
+
+
+@login_required
 @require_POST
 def create_relationship_type_ajax(request):
     """Create or reactivate a shared Tenant Relationship Type from Select2."""
-    if not (request.user.has_perm("leases.add_leaserelationshiptype") or request.user.has_perm("leases.change_lease") or request.user.is_superuser):
+    if not (request.user.has_perm("leases.add_leaserelationshiptype") or request.user.is_superuser):
         return JsonResponse({"ok": False, "message": "You do not have permission to add relationship types."}, status=403)
 
     name = " ".join((request.POST.get("name") or "").split())
@@ -5236,6 +6119,19 @@ def create_relationship_type_ajax(request):
         name=name, code=code, is_active=True, sort_order=50
     )
     return JsonResponse({"ok": True, "id": relationship.pk, "text": relationship.name, "created": True})
+
+
+def _renumber_history_clauses(history):
+    clauses = list(history.clauses.order_by("clause_number", "id"))
+    if not clauses:
+        return
+    temporary_start = max(clause.clause_number for clause in clauses) + len(clauses) + 1
+    for index, clause in enumerate(clauses):
+        type(clause).objects.filter(pk=clause.pk).update(
+            clause_number=temporary_start + index
+        )
+    for index, clause in enumerate(clauses, start=1):
+        type(clause).objects.filter(pk=clause.pk).update(clause_number=index)
 
 
 @require_http_methods(["GET", "POST"])
@@ -5315,6 +6211,19 @@ def edit_clauses(request, pk):
         request.method == "POST"
         and request.headers.get("x-requested-with") == "XMLHttpRequest"
     ):
+        if request.POST.get("action") == "delete_clause":
+            clause = get_object_or_404(
+                history.clauses,
+                pk=request.POST.get("clause_id"),
+            )
+            deleted_number = clause.clause_number
+            with transaction.atomic():
+                clause.delete()
+                _renumber_history_clauses(history)
+            return JsonResponse({
+                "status": "success",
+                "message": f"Clause {deleted_number} deleted and remaining clauses renumbered.",
+            })
         for key, value in request.POST.items():
             if key.startswith("clause_"):
                 clause_id = key.split("_")[1]
@@ -5370,6 +6279,9 @@ def edit_clauses(request, pk):
 
             lease.generated_agreement_pdf.save(filename, File(output), save=True)
 
+    from leases.services.estamp import estamp_status
+    current_estamp_status = estamp_status(lease, request.user)
+
     return render(
         request,
         "leases/edit_clause.html",
@@ -5383,6 +6295,7 @@ def edit_clauses(request, pk):
             "placeholders": _active_agreement_placeholders(),
             "role_tenants": Tenant.objects.filter(is_active=True).order_by("first_name", "last_name"),
             "relationship_types": LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+            "estamp_status": current_estamp_status,
             **_edit_clause_filter_context(request, lease),
         },
     )
@@ -5402,13 +6315,27 @@ def generate_agreement_pdf(request, pk):
     history_id = request.GET.get("history")
     history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
     copy_previous_history_clauses(lease, history)
+    history.print_with_estamp = request.GET.get("estamp") in ("1", "true", "on", "yes")
+    requested_paper_size = (request.GET.get("paper") or "letter").strip().lower()
+    history.estamp_paper_size = (
+        requested_paper_size
+        if requested_paper_size in {"legal", "letter"}
+        else "letter"
+    )
+    history.allow_over_age_estamp = request.GET.get("override_age") in ("1", "true", "on", "yes")
+    history.print_on_legal_page = (
+        history.print_with_estamp and history.estamp_paper_size == "legal"
+    )
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
-        pdf_bytes, filename, document = build_package(request, lease, history, clauses)
-    except RuntimeError as exc:
-        return HttpResponse(str(exc), status=500, content_type="text/plain")
+        pdf_bytes, filename, _document = build_package(request, lease, history, clauses)
+    except PermissionDenied as exc:
+        return HttpResponse(str(exc), status=403, content_type="text/plain")
+    except (RuntimeError, ValidationError) as exc:
+        return HttpResponse(str(exc), status=400, content_type="text/plain")
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["X-Agreement-Paper-Size"] = history.estamp_paper_size.title()
     return response
 
 
@@ -5544,8 +6471,8 @@ class LeaseSecurityMixin(LoginRequiredMixin):
         return ctx
 
     def get_success_url(self):
-        # After add/edit/delete go back to the security ledger list
-        return reverse("leases:lease_security_list", kwargs={"lease_pk": self.lease.pk})
+        # The security deposit ledger now lives on the main lease ledger page.
+        return reverse("leases:lease_ledger_by_pk", kwargs={"pk": self.lease.pk})
 
 
 class SecurityDepositListView(LeaseSecurityMixin, ListView):
@@ -5647,6 +6574,7 @@ class SecurityDepositCreateView(LeaseSecurityMixin, CreateView):
         obj = form.save(commit=False)
         obj.lease = self.lease
         obj.save()
+        sync_security_deposit_paid_flag(self.lease)
         messages.success(self.request, "Security deposit transaction added.")
         return redirect(self.get_success_url())
 
@@ -5667,8 +6595,10 @@ class SecurityDepositUpdateView(LeaseSecurityMixin, UpdateView):
         return SecurityDepositTransaction.objects.filter(lease=self.lease)
 
     def form_valid(self, form):
+        response = super().form_valid(form)
+        sync_security_deposit_paid_flag(self.lease)
         messages.success(self.request, "Security deposit transaction updated.")
-        return super().form_valid(form)
+        return response
 
 
 class SecurityDepositDeleteView(LeaseSecurityMixin, DeleteView):
@@ -5686,11 +6616,11 @@ class SecurityDepositDeleteView(LeaseSecurityMixin, DeleteView):
                 "Please confirm before deleting the security deposit transaction.",
             )
             return redirect(self.get_success_url())
-        return super().post(request, *args, **kwargs)
-
-    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        self.object.delete()
+        sync_security_deposit_paid_flag(self.lease)
         messages.success(self.request, "Security deposit transaction deleted.")
-        return super().delete(request, *args, **kwargs)
+        return redirect(self.get_success_url())
 
 
 from django.contrib.auth.decorators import login_required, permission_required
@@ -6038,11 +6968,10 @@ from docx.shared import Inches
 from .models import Lease
 
 
-def set_doc_margins(doc, left=0.55, right=0.55, top=0.70, bottom=0.70):
-    # Legal portrait, matching the PDF agreement margins.
+def set_doc_margins(doc, left=0.5, right=0.5, top=0.5, bottom=0.5, legal=False):
     for section in doc.sections:
         section.page_width = Inches(8.5)
-        section.page_height = Inches(14)
+        section.page_height = Inches(14 if legal else 11)
         section.left_margin = Inches(left)
         section.right_margin = Inches(right)
         section.top_margin = Inches(top)
@@ -6052,7 +6981,7 @@ def set_doc_margins(doc, left=0.55, right=0.55, top=0.70, bottom=0.70):
 def _set_doc_defaults(doc: Document):
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
-    style.font.size = Pt(11)  # ✅ smaller font
+    style.font.size = Pt(12)
 
     pf = style.paragraph_format
     pf.space_before = Pt(0)
@@ -6067,11 +6996,16 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 
 def _append_inline(paragraph, node, br_as_space=False):
     if isinstance(node, NavigableString):
-        txt = str(node)
+        raw_text = str(node)
+        txt = raw_text
         if not txt or not txt.strip():
             return
-        # normalize whitespace
-        paragraph.add_run(" ".join(txt.split()))
+        normalized = " ".join(txt.split())
+        if raw_text[:1].isspace() and paragraph.text and not paragraph.text.endswith(" "):
+            normalized = " " + normalized
+        if raw_text[-1:].isspace():
+            normalized += " "
+        paragraph.add_run(normalized)
         return
 
     if not isinstance(node, Tag):
@@ -6082,7 +7016,9 @@ def _append_inline(paragraph, node, br_as_space=False):
         return
 
     if node.name in ("strong", "b"):
-        run = paragraph.add_run(node.get_text(" ", strip=True))
+        run = paragraph.add_run(
+            " ".join(node.get_text(" ", strip=True).split())
+        )
         run.bold = True
         return
 
@@ -6097,6 +7033,51 @@ def _new_p(doc, align=WD_ALIGN_PARAGRAPH.JUSTIFY):
     p.paragraph_format.space_after = Pt(0)
     p.paragraph_format.line_spacing = 1.0
     return p
+
+
+def _add_docx_html_table(doc, html_table):
+    """Convert an embedded agreement HTML table into a bordered Word table."""
+    rows = html_table.find_all("tr")
+    column_count = max(
+        (len(row.find_all(["td", "th"], recursive=False)) for row in rows),
+        default=0,
+    )
+    if not rows or not column_count:
+        return None
+
+    table = doc.add_table(rows=len(rows), cols=column_count)
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    column_width = Inches(7.35 / column_count)
+
+    for row_index, source_row in enumerate(rows):
+        source_cells = source_row.find_all(["td", "th"], recursive=False)
+        for column_index in range(column_count):
+            cell = table.cell(row_index, column_index)
+            cell.width = column_width
+            cell.text = ""
+            paragraph = cell.paragraphs[0]
+            paragraph.paragraph_format.space_before = Pt(1)
+            paragraph.paragraph_format.space_after = Pt(1)
+            paragraph.paragraph_format.line_spacing = 1.0
+            if column_index >= len(source_cells):
+                continue
+            source_cell = source_cells[column_index]
+            lines = list(source_cell.stripped_strings)
+            bold_text = {
+                text.strip()
+                for bold_node in source_cell.find_all(["b", "strong"])
+                for text in bold_node.stripped_strings
+            }
+            for line_index, line in enumerate(lines):
+                if line_index:
+                    paragraph.add_run().add_break()
+                run = paragraph.add_run(line)
+                run.bold = line.strip() in bold_text
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(8)
+    return table
 
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -6153,9 +7134,9 @@ def add_signature_block(doc, lease, history=None):
 
     # row 2: CNICs
     set_cell(
-        t.cell(2, 0), [f"CNIC: {lease.unit.property.owner_cnic}"], bold_prefix=True
+        t.cell(2, 0), [f"CNIC: {format_cnic(lease.unit.property.owner_cnic)}"], bold_prefix=True
     )
-    set_cell(t.cell(2, 1), [f"CNIC: {lease.tenant.cnic}"], bold_prefix=True)
+    set_cell(t.cell(2, 1), [f"CNIC: {format_cnic(lease.tenant.cnic)}"], bold_prefix=True)
 
     # row 3: spacer row (optional)
     set_cell(t.cell(3, 0), [""])
@@ -6164,7 +7145,7 @@ def add_signature_block(doc, lease, history=None):
     # Witness table (same structure)
     doc.add_paragraph("")  # small gap
 
-    tw = doc.add_table(rows=3, cols=2)
+    tw = doc.add_table(rows=4, cols=2)
     tw.alignment = WD_TABLE_ALIGNMENT.CENTER
     tw.autofit = False
     for r in tw.rows:
@@ -6175,20 +7156,154 @@ def add_signature_block(doc, lease, history=None):
     witness2 = getattr(history, "witness2_tenant", None) if history else None
     witness1 = witness1 or getattr(lease, "witness1_tenant", None)
     witness2 = witness2 or getattr(lease, "witness2_tenant", None)
+    blank_party_value = "_" * 29
 
-    def witness_lines(label, person):
-        return [
-            f"{label}: {person.get_full_name() if person else '_________________________'}",
-            f"CNIC: {(person.cnic or '_________________________') if person else '_________________________'}",
-            f"Phone: {(person.phone or '_________________________') if person else '_________________________'}",
-        ]
+    def set_witness_details(cell, label, person):
+        values = (
+            person.get_full_name() if person else "",
+            format_cnic(person.cnic) if person and person.cnic else "",
+            format_phone(person.phone) if person and person.phone else "",
+        )
+        labels = (label, "CNIC", "Phone")
+        cell.text = ""
+        for index, (field_label, value) in enumerate(zip(labels, values)):
+            paragraph = (
+                cell.paragraphs[0] if index == 0 else cell.add_paragraph()
+            )
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 1.0
+            paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(.82))
+            label_run = paragraph.add_run(f"{field_label}:")
+            label_run.bold = True
+            paragraph.add_run("\t")
+            paragraph.add_run(value or blank_party_value)
 
-    set_cell(tw.cell(0, 0), witness_lines("Witness 1", witness1), bold_prefix=True)
-    set_cell(tw.cell(0, 1), witness_lines("Witness 2", witness2), bold_prefix=True)
-    set_cell(tw.cell(1, 0), ["Signature: _________________________"])
-    set_cell(tw.cell(1, 1), ["Signature: _________________________"])
-    set_cell(tw.cell(2, 0), ["Date: _________________________"])
-    set_cell(tw.cell(2, 1), ["Date: _________________________"])
+    set_cell(tw.cell(0, 0), ["_________________________"])
+    set_cell(tw.cell(0, 1), ["_________________________"])
+    set_witness_details(tw.cell(1, 0), "Witness 1", witness1)
+    set_witness_details(tw.cell(1, 1), "Witness 2", witness2)
+    set_cell(tw.cell(2, 0), ["Signature: _________________________"])
+    set_cell(tw.cell(2, 1), ["Signature: _________________________"])
+    set_cell(tw.cell(3, 0), ["Date: _________________________"])
+    set_cell(tw.cell(3, 1), ["Date: _________________________"])
+
+
+def _add_agreement_identity_cards_docx(doc, lease, history=None):
+    """Place Owner, Tenant, Witness 1 and Witness 2 CNICs below signatures.
+
+    This is intentionally part of the legal agreement itself rather than a
+    separate package component. Each person's front and back images are
+    stacked in one of four compact columns.
+    """
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+    from docx.shared import Inches, Pt
+    from leases.services.agreement_package import identity_context
+
+    people = identity_context(lease, history).get("identity_people", [])
+    if not people:
+        return
+
+    table = doc.add_table(rows=1, cols=4)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+
+    def add_blank_box(cell, label):
+        box = cell.add_table(rows=1, cols=1)
+        box.autofit = False
+        box.columns[0].width = Inches(1.52)
+        box_cell = box.cell(0, 0)
+        box_cell.width = Inches(1.52)
+        box_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        row = box.rows[0]
+        tr_pr = row._tr.get_or_add_trPr()
+        tr_height = OxmlElement("w:trHeight")
+        tr_height.set(qn("w:val"), str(int(0.92 * 1440)))
+        tr_height.set(qn("w:hRule"), "exact")
+        tr_pr.append(tr_height)
+        p = box_cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        run = p.add_run(label)
+        run.font.size = Pt(6)
+
+    for index, person in enumerate(people[:4]):
+        cell = table.cell(0, index)
+        cell.width = Inches(1.62)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        cell.text = ""
+
+        role_p = cell.paragraphs[0]
+        role_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        role_p.paragraph_format.space_before = Pt(0)
+        role_p.paragraph_format.space_after = Pt(0)
+        role_run = role_p.add_run(person.get("role", ""))
+        role_run.bold = True
+        role_run.font.size = Pt(8)
+
+        name_p = cell.add_paragraph()
+        name_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        name_p.paragraph_format.space_before = Pt(0)
+        name_p.paragraph_format.space_after = Pt(1)
+        name_run = name_p.add_run(person.get("name") or "________________")
+        name_run.font.size = Pt(6.5)
+
+        source_person = person.get("person")
+        for label, field_name in (("CNIC Front", "cnic_front"), ("CNIC Back", "cnic_back")):
+            field = getattr(source_person, field_name, None) if source_person else None
+            try:
+                if field and field.path:
+                    picture_p = cell.add_paragraph()
+                    picture_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    picture_p.paragraph_format.space_before = Pt(1)
+                    picture_p.paragraph_format.space_after = Pt(1)
+                    picture_p.add_run().add_picture(field.path, width=Inches(1.50))
+                else:
+                    add_blank_box(cell, label)
+            except (ValueError, OSError, AttributeError):
+                add_blank_box(cell, label)
+
+
+def _add_first_page_top_reserve(doc, top_reserve=4.8):
+    """Mirror the configured PDF first-page top reserve in Word."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after = Pt(0)
+    p.paragraph_format.line_spacing = 1.0
+    p.add_run("")
+    # Word keeps a 0.5in section margin; add only the remaining reserve.
+    p.paragraph_format.space_after = Pt(max(0, float(top_reserve) - 0.5) * 72)
+
+
+def _add_floating_reserve_box(doc, width=4.0, height=2.0):
+    """Add the agreement's reserved 4 x 2 inch box, aligned to the left."""
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+    from docx.enum.text import WD_BREAK
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches
+
+    table = doc.add_table(rows=1, cols=1)
+    table.autofit = False
+    table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    table.columns[0].width = Inches(width)
+    cell = table.cell(0, 0)
+    cell.width = Inches(width)
+    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    row = table.rows[0]
+    tr_pr = row._tr.get_or_add_trPr()
+    tr_height = OxmlElement("w:trHeight")
+    tr_height.set(qn("w:val"), str(int(height * 1440)))
+    tr_height.set(qn("w:hRule"), "exact")
+    tr_pr.append(tr_height)
+    # Keep the box compact and blank.
+    cell.text = ""
+    for paragraph in cell.paragraphs:
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+    return table
 
 
 def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
@@ -6197,8 +7312,13 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
 
     doc = Document()
     _set_doc_defaults(doc)  # set font size etc
-    set_doc_margins(doc, left=0.55, right=0.55, top=0.70, bottom=0.70)
+    legal = bool(getattr(history, "print_on_legal_page", False))
+    layout_config = AgreementSignatureTemplate.current()
+    first_top = float(getattr(layout_config, "legal_first_page_top_reserve", 4.8) or 4.8)
+    set_doc_margins(doc, legal=legal)
     add_page_number_footer(doc)  # Page X of Y
+    if legal:
+        _add_first_page_top_reserve(doc, first_top)
 
     # 1) Title
     title = container.select_one("h1,h2,h3")
@@ -6206,6 +7326,8 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
         r = p.add_run(title.get_text(" ", strip=True))
         r.bold = True
+        r.font.name = "Times New Roman"
+        r.font.size = Pt(18)
 
     # 2) Center line under title (the made at Islamabad line)
     # Use direct <p> children only (no nesting duplication)
@@ -6218,72 +7340,54 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
     # 3) Parties section (split at AND properly)
     party_wrap = container.select_one(".parties-section")
     if party_wrap:
-        # collect HTML inside parties-section
-        # (not text) so we keep <strong> etc.
-        party_html = str(party_wrap)
-
-        # Remove outer wrapper tags so we only split the content
-        party_soup = BeautifulSoup(party_html, "html.parser")
-        # Prefer first <p> if present, else use the whole section
-        first_p = party_soup.select_one(".parties-section p") or party_soup
-
-        # Convert to HTML string
-        html_body = "".join(str(x) for x in first_p.contents)
-
-        # Split at AND (robust: handles <strong>AND</strong>, AND, <br>AND<br>, etc.)
-        parts = re.split(
-            r"(?i)\bAND\b",
-            BeautifulSoup(html_body, "html.parser").get_text(" ", strip=False),
-            maxsplit=1,
-        )
-
-        # If split failed (no AND found), fallback to old behavior
-        if len(parts) < 2:
+        party_paragraphs = party_wrap.find_all("p", recursive=False)
+        if not party_paragraphs:
             p = _new_p(doc)
-            for child in first_p.children:
+            p.paragraph_format.space_after = Pt(8)
+            for child in party_wrap.children:
                 _append_inline(p, child, br_as_space=True)
         else:
-            left_text = parts[0].strip()
-            right_text = parts[1].strip()
-
-            # Party 1 paragraph
-            p = _new_p(doc)
-            p.add_run(" ".join(left_text.split()))
-
-            # AND centered
-            and_p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
-            r = and_p.add_run("AND")
-            r.bold = True
-
-            # Party 2 paragraph
-            p = _new_p(doc)
-            p.add_run(" ".join(right_text.split()))
-
-        # Now render any WHEREAS paragraphs that are separate <p> after the first one
-        # (if your template has them)
-        extra_ps = party_wrap.select("p")[1:]  # remaining <p> after first
-        for extra in extra_ps:
-            txt = extra.get_text(" ", strip=True)
-            if not txt:
-                continue
-            p = _new_p(doc)
-            for child in extra.children:
-                _append_inline(p, child, br_as_space=True)
+            for party_index, party_node in enumerate(party_paragraphs):
+                p = _new_p(doc)
+                p.paragraph_format.space_after = Pt(8)
+                for child in party_node.children:
+                    _append_inline(p, child, br_as_space=True)
+                if party_index < len(party_paragraphs) - 1:
+                    and_p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
+                    and_p.paragraph_format.space_before = Pt(3)
+                    and_p.paragraph_format.space_after = Pt(6)
+                    r = and_p.add_run("AND")
+                    r.bold = True
 
     # 4) Clauses (tight, number + text same line)
     doc.add_paragraph("")  # ✅ blank line like PDF
+    clause_spacing = float(
+        getattr(layout_config, "legal_clause_spacing", 5.0) or 0
+    )
     for clause_div in container.select(".clauses-section > .clause"):
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.JUSTIFY)
 
-        strong = clause_div.find("strong")
+        strong = clause_div.find("strong", recursive=False)
         if strong:
             rn = p.add_run(strong.get_text(strip=True))
             rn.bold = True
             p.add_run(" ")
-            strong.extract()
 
-        for child in clause_div.children:
-            _append_inline(p, child, br_as_space=False)
+        clause_text = clause_div.select_one(".clause-text")
+        current_paragraph = p
+        if clause_text:
+            for child in list(clause_text.children):
+                if isinstance(child, Tag) and child.name == "table":
+                    current_paragraph.paragraph_format.space_after = Pt(2)
+                    _add_docx_html_table(doc, child)
+                    current_paragraph = _new_p(
+                        doc, WD_ALIGN_PARAGRAPH.JUSTIFY
+                    )
+                else:
+                    _append_inline(
+                        current_paragraph, child, br_as_space=False
+                    )
+        current_paragraph.paragraph_format.space_after = Pt(clause_spacing)
 
     # 5) Signature (table look + spacing)
     add_signature_block(doc, lease, history=history)
@@ -6296,6 +7400,12 @@ def html_to_docx_bytes(html: str, lease, history=None) -> bytes:
         p = _new_p(doc, WD_ALIGN_PARAGRAPH.CENTER)
         for child in ptag.children:
             _append_inline(p, child, br_as_space=True)
+
+    # 7) In Legal mode, keep all four identity cards on agreement page 2.
+    # They are appended directly below the signature/generated-at area and are
+    # no longer emitted as a separate Word package page.
+    if legal:
+        _add_agreement_identity_cards_docx(doc, lease, history=history)
 
     out = BytesIO()
     doc.save(out)
@@ -6357,9 +7467,10 @@ def download_preview_docx(request, lease_id):
     history_id = request.GET.get("history")
     history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease) if history_id else latest_history(lease)
     copy_previous_history_clauses(lease, history)
+    history.print_on_legal_page = request.GET.get("legal") in ("1", "true", "on", "yes")
     clauses = _filter_electricity_clauses(history.clauses.all().order_by("clause_number"), lease)
     try:
-        docx_bytes, filename, document = build_docx_package(request, lease, history, clauses)
+        docx_bytes, filename, _document = build_docx_package(request, lease, history, clauses)
     except RuntimeError as exc:
         return HttpResponse(str(exc), status=500, content_type="text/plain")
     return FileResponse(
@@ -6427,4 +7538,17 @@ def agreement_signature_template_settings(request):
             return redirect("leases:agreement_signature_template_settings")
     else:
         form = AgreementSignatureTemplateForm(instance=template)
-    return render(request, "leases/agreement_signature_template_settings.html", {"form": form, "template_config": template})
+    return render(
+        request,
+        "leases/agreement_signature_template_settings.html",
+        {
+            "form": form,
+            "template_config": template,
+            "footer_position_fields": [
+                (form["estamp_legal_footer_bottom_points"], "Legal E-Stamp QR/page footer"),
+                (form["agreement_legal_footer_bottom_points"], "Legal agreement footer"),
+                (form["estamp_letter_footer_bottom_points"], "Letter E-Stamp QR/page footer"),
+                (form["agreement_letter_footer_bottom_points"], "Letter agreement footer"),
+            ],
+        },
+    )

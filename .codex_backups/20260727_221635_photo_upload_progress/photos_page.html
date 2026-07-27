@@ -174,42 +174,6 @@
 }
 @keyframes pp-spin { to { transform: rotate(360deg); } }
 
-/* Batch upload progress */
-#photo-upload-modal {
-  position: fixed; inset: 0; z-index: 3100;
-  display: none; align-items: center; justify-content: center;
-  padding: 16px; background: rgba(15, 23, 42, .52);
-}
-#photo-upload-modal.is-open { display: flex; }
-.pp-upload-modal-panel {
-  width: min(440px, 100%); padding: 20px;
-  border-radius: 12px; background: #fff;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, .28);
-}
-.pp-upload-modal-title {
-  color: #1a1f35; font-size: 1rem; font-weight: 700;
-}
-.pp-upload-modal-file {
-  min-height: 1.2rem; margin-top: 4px;
-  overflow: hidden; color: #6b7280; font-size: .76rem;
-  text-overflow: ellipsis; white-space: nowrap;
-}
-.pp-upload-progress {
-  height: 10px; margin: 14px 0 8px; overflow: hidden;
-  border-radius: 999px; background: #e8eeff;
-}
-.pp-upload-progress-bar {
-  width: 0; height: 100%; border-radius: inherit;
-  background: #2856c8; transition: width .2s ease;
-}
-.pp-upload-progress-bar.has-errors { background: #dc3545; }
-.pp-upload-modal-summary { color: #5a6480; font-size: .78rem; }
-.pp-upload-errors {
-  display: none; max-height: 110px; margin-top: 10px; padding: 8px 10px;
-  overflow-y: auto; border: 1px solid #f3b8bd; border-radius: 7px;
-  background: #fff5f5; color: #a61e2b; font-size: .72rem;
-}
-
 /* Toasts */
 #photo-toast, #photo-error {
   display: none; position: fixed; bottom: 20px; left: 50%;
@@ -347,7 +311,14 @@
                        type="file"
                        name="photos"
                        accept="image/*,video/*,.pdf,.heic,.heif"
-                       multiple>
+                       multiple
+                       hx-post="{% url 'leases:photo_add' lease.pk %}{% if history %}?history={{ history.pk }}{% endif %}"
+                       hx-encoding="multipart/form-data"
+                       hx-target="#photos-grid"
+                       hx-swap="outerHTML"
+                       hx-indicator="#media-loading"
+                       hx-trigger="change"
+                       hx-include="#lease-photo-add [name=title], #lease-photo-add [name=description], #lease-photo-add [name=pdf_layout], #lease-photo-add [name=lease_history_id], #lease-photo-add [name=csrfmiddlewaretoken]">
                 <button type="button" class="btn btn-primary btn-sm" onclick="triggerUpload()" style="white-space:nowrap;">
                   <i class="ti ti-plus"></i> Add Photos
                 </button>
@@ -422,21 +393,6 @@
   </div>
 </div>
 
-<div id="photo-upload-modal" role="dialog" aria-modal="true" aria-labelledby="photo-upload-title">
-  <div class="pp-upload-modal-panel">
-    <div id="photo-upload-title" class="pp-upload-modal-title">Preparing upload…</div>
-    <div id="photo-upload-file" class="pp-upload-modal-file"></div>
-    <div class="pp-upload-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-      <div id="photo-upload-progress-bar" class="pp-upload-progress-bar"></div>
-    </div>
-    <div id="photo-upload-summary" class="pp-upload-modal-summary"></div>
-    <div id="photo-upload-errors" class="pp-upload-errors"></div>
-    <div class="text-end mt-3">
-      <button id="photo-upload-close" type="button" class="btn btn-sm btn-secondary" style="display:none;">Close</button>
-    </div>
-  </div>
-</div>
-
 <script>
 /* PDF layout links sync */
 (function(){
@@ -462,7 +418,7 @@
   }
 })();
 
-/* Sequential uploads provide reliable per-file progress and error reporting. */
+/* upload trigger (unchanged) */
 function triggerUpload(){
   document.getElementById('hidden-title').value  = document.getElementById('p-title')?.value||'';
   document.getElementById('hidden-desc').value   = document.getElementById('p-desc')?.value||'';
@@ -470,295 +426,10 @@ function triggerUpload(){
   document.getElementById('add-photos-input').click();
 }
 
-function photoUploadMessage(response, body) {
-  if (response.status === 400) return 'The server did not receive this file.';
-  const plain = (body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  return plain.slice(0, 180) || `Server error ${response.status}`;
-}
-
-function formatUploadBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function exifDateToIso(value) {
-  const match = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(value || '');
-  if (!match) return '';
-  const date = new Date(
-    Number(match[1]), Number(match[2]) - 1, Number(match[3]),
-    Number(match[4]), Number(match[5]), Number(match[6])
-  );
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
-}
-
-async function jpegTakenAt(file) {
-  try {
-    const buffer = await file.slice(0, 512 * 1024).arrayBuffer();
-    const view = new DataView(buffer);
-    if (view.byteLength < 4 || view.getUint16(0, false) !== 0xFFD8) return '';
-
-    function readAscii(start, count) {
-      if (start < 0 || start + count > view.byteLength) return '';
-      let value = '';
-      for (let i = 0; i < count; i += 1) {
-        const code = view.getUint8(start + i);
-        if (!code) break;
-        value += String.fromCharCode(code);
-      }
-      return value.trim();
-    }
-
-    let markerOffset = 2;
-    while (markerOffset + 4 < view.byteLength) {
-      if (view.getUint8(markerOffset) !== 0xFF) break;
-      const marker = view.getUint8(markerOffset + 1);
-      const segmentLength = view.getUint16(markerOffset + 2, false);
-      if (marker === 0xE1 && readAscii(markerOffset + 4, 6) === 'Exif') {
-        const tiff = markerOffset + 10;
-        const byteOrder = view.getUint16(tiff, false);
-        const little = byteOrder === 0x4949;
-        if (!little && byteOrder !== 0x4D4D) return '';
-        const u16 = (offset) => view.getUint16(offset, little);
-        const u32 = (offset) => view.getUint32(offset, little);
-        if (u16(tiff + 2) !== 42) return '';
-
-        function readIfd(ifdOffset, wantedTags) {
-          const start = tiff + ifdOffset;
-          if (start + 2 > view.byteLength) return {};
-          const result = {};
-          const count = u16(start);
-          for (let i = 0; i < count; i += 1) {
-            const entry = start + 2 + (i * 12);
-            if (entry + 12 > view.byteLength) break;
-            const tag = u16(entry);
-            if (!wantedTags.has(tag)) continue;
-            const type = u16(entry + 2);
-            const size = u32(entry + 4);
-            if (type === 2) {
-              const valueAt = size <= 4 ? entry + 8 : tiff + u32(entry + 8);
-              result[tag] = readAscii(valueAt, size);
-            } else if (type === 4 && size === 1) {
-              result[tag] = u32(entry + 8);
-            }
-          }
-          return result;
-        }
-
-        const ifd0 = readIfd(u32(tiff + 4), new Set([0x0132, 0x8769]));
-        let rawDate = ifd0[0x0132] || '';
-        if (ifd0[0x8769]) {
-          const exifIfd = readIfd(ifd0[0x8769], new Set([0x9003, 0x9004]));
-          rawDate = exifIfd[0x9003] || exifIfd[0x9004] || rawDate;
-        }
-        return exifDateToIso(rawDate);
-      }
-      if (segmentLength < 2) break;
-      markerOffset += 2 + segmentLength;
-    }
-  } catch (error) {
-    // Missing or unusual EXIF must never prevent an upload.
-  }
-  return '';
-}
-
-async function loadJpegForCompression(file) {
-  if ('createImageBitmap' in window) {
-    return createImageBitmap(file, {imageOrientation: 'from-image'});
-  }
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const url = URL.createObjectURL(file);
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Image could not be opened'));
-    };
-    image.src = url;
-  });
-}
-
-async function prepareUploadFile(file) {
-  const isJpeg = file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name);
-  if (!isJpeg) {
-    return {file, takenAt: '', savedBytes: 0, compressed: false};
-  }
-
-  const takenAt = await jpegTakenAt(file);
-  try {
-    const image = await loadJpegForCompression(file);
-    const sourceWidth = image.width || image.naturalWidth;
-    const sourceHeight = image.height || image.naturalHeight;
-    const scale = Math.min(1, 1600 / Math.max(sourceWidth, sourceHeight));
-
-    // Small JPEGs are already efficient; avoid needless quality loss.
-    if (scale === 1 && file.size <= 1024 * 1024) {
-      image.close?.();
-      return {file, takenAt, savedBytes: 0, compressed: false};
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-    const context = canvas.getContext('2d');
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    image.close?.();
-
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
-    canvas.width = 1;
-    canvas.height = 1;
-    if (!blob || blob.size >= file.size * 0.95) {
-      return {file, takenAt, savedBytes: 0, compressed: false};
-    }
-
-    const compressed = new File([blob], file.name, {
-      type: 'image/jpeg',
-      lastModified: file.lastModified
-    });
-    return {
-      file: compressed,
-      takenAt,
-      savedBytes: file.size - compressed.size,
-      compressed: true
-    };
-  } catch (error) {
-    // Fall back to the untouched original if this browser cannot compress it.
-    return {file, takenAt, savedBytes: 0, compressed: false};
-  }
-}
-
-async function uploadLeasePhotos(fileList) {
-  const files = Array.from(fileList || []);
-  if (!files.length || window.__leasePhotoUploadRunning) return;
-  window.__leasePhotoUploadRunning = true;
-
-  const form = document.getElementById('lease-photo-add');
-  const input = document.getElementById('add-photos-input');
-  const modal = document.getElementById('photo-upload-modal');
-  const titleEl = document.getElementById('photo-upload-title');
-  const fileEl = document.getElementById('photo-upload-file');
-  const summaryEl = document.getElementById('photo-upload-summary');
-  const errorsEl = document.getElementById('photo-upload-errors');
-  const bar = document.getElementById('photo-upload-progress-bar');
-  const progress = modal.querySelector('[role="progressbar"]');
-  const closeButton = document.getElementById('photo-upload-close');
-  const title = document.getElementById('p-title')?.value || '';
-  const description = document.getElementById('p-desc')?.value || '';
-  const layout = document.getElementById('p-pdf-layout')?.value || '';
-  const csrf = form.querySelector('[name="csrfmiddlewaretoken"]')?.value || '';
-  const historyId = form.querySelector('[name="lease_history_id"]')?.value || '';
-  const failures = [];
-  let uploaded = 0;
-  let originalBytes = 0;
-  let uploadBytes = 0;
-  let compressedCount = 0;
-
-  input.disabled = true;
-  closeButton.style.display = 'none';
-  errorsEl.style.display = 'none';
-  errorsEl.textContent = '';
-  bar.classList.remove('has-errors');
-  bar.style.width = '0%';
-  progress.setAttribute('aria-valuenow', '0');
-  modal.classList.add('is-open');
-
-  for (let index = 0; index < files.length; index += 1) {
-    const file = files[index];
-    titleEl.textContent = `Preparing ${index + 1} of ${files.length}`;
-    fileEl.textContent = file.name;
-    summaryEl.textContent = `${uploaded} uploaded`;
-    const prepared = await prepareUploadFile(file);
-    originalBytes += file.size;
-    uploadBytes += prepared.file.size;
-    if (prepared.compressed) compressedCount += 1;
-
-    titleEl.textContent = `Uploading ${index + 1} of ${files.length}`;
-    if (prepared.compressed) {
-      summaryEl.textContent = `${formatUploadBytes(file.size)} → ${formatUploadBytes(prepared.file.size)}`;
-    } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-      summaryEl.textContent = 'PDF kept unchanged';
-    }
-
-    const data = new FormData();
-    data.append('csrfmiddlewaretoken', csrf);
-    data.append('title', title);
-    data.append('description', description);
-    data.append('pdf_layout', layout);
-    data.append('finalize_pdf', index === files.length - 1 ? '1' : '0');
-    if (prepared.takenAt) data.append('taken_at', prepared.takenAt);
-    if (historyId) data.append('lease_history_id', historyId);
-    data.append('photos', prepared.file, file.name);
-
-    try {
-      const response = await fetch(form.action, {
-        method: 'POST',
-        body: data,
-        credentials: 'same-origin',
-        headers: {'X-CSRFToken': csrf}
-      });
-      const body = await response.text();
-      if (!response.ok) throw new Error(photoUploadMessage(response, body));
-      uploaded += 1;
-    } catch (error) {
-      failures.push(`${file.name}: ${error.message || 'Upload failed'}`);
-    }
-
-    const percent = Math.round(((index + 1) / files.length) * 100);
-    bar.style.width = `${percent}%`;
-    progress.setAttribute('aria-valuenow', String(percent));
-    summaryEl.textContent = `${uploaded} uploaded${failures.length ? `, ${failures.length} failed` : ''}`;
-  }
-
-  input.value = '';
-  input.disabled = false;
-  fileEl.textContent = '';
-  titleEl.textContent = failures.length
-    ? `Upload finished with ${failures.length} error${failures.length === 1 ? '' : 's'}`
-    : `Uploaded ${uploaded} of ${files.length}`;
-  const savedBytes = Math.max(0, originalBytes - uploadBytes);
-  summaryEl.textContent = `${uploaded} uploaded${failures.length ? `, ${failures.length} failed` : ''}`;
-  if (compressedCount && savedBytes) {
-    const savedPercent = Math.round((savedBytes / originalBytes) * 100);
-    summaryEl.textContent += ` · ${compressedCount} compressed · ${savedPercent}% smaller`;
-  }
-
-  if (failures.length) {
-    bar.classList.add('has-errors');
-    errorsEl.textContent = failures.join('\n');
-    errorsEl.style.whiteSpace = 'pre-line';
-    errorsEl.style.display = 'block';
-  }
-  closeButton.style.display = 'inline-block';
-  const grid = document.getElementById('photos-grid');
-  const gridUrl = grid?.getAttribute('hx-get');
-  if (gridUrl) {
-    htmx.ajax('GET', gridUrl, {target: '#photos-grid', swap: 'outerHTML'});
-  }
-  window.__leasePhotoUploadRunning = false;
-}
-
 document.getElementById('add-photos-input')?.addEventListener('change', function(){
-  uploadLeasePhotos(this.files);
-});
-
-const photoDropzone = document.querySelector('.pp-dropzone');
-photoDropzone?.addEventListener('dragover', function(event) {
-  event.preventDefault();
-  this.style.borderColor = '#2856c8';
-});
-photoDropzone?.addEventListener('dragleave', function() {
-  this.style.borderColor = '';
-});
-photoDropzone?.addEventListener('drop', function(event) {
-  event.preventDefault();
-  this.style.borderColor = '';
-  uploadLeasePhotos(event.dataTransfer?.files);
-});
-document.getElementById('photo-upload-close')?.addEventListener('click', function() {
-  document.getElementById('photo-upload-modal').classList.remove('is-open');
+  const form = document.getElementById('lease-photo-add');
+  form.querySelector('input[name="title"]').value       = document.getElementById('p-title')?.value||'';
+  form.querySelector('input[name="description"]').value = document.getElementById('p-desc')?.value||'';
 });
 
 /* HTMX hooks (unchanged) */

@@ -13,7 +13,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.validators import FileExtensionValidator
-from django.db import connection, models
+from django.db import models
 from django.utils import timezone
 from django.dispatch import receiver
 from django.db.models.signals import post_save
@@ -37,12 +37,6 @@ PIL_SIDE_LIMIT = 65500
 MAX_STAMP_SIDE   = getattr(settings, "LEASE_MAX_STAMP_SIDE", 1600)       # max width/height before stamping
 MAX_STAMP_PIXELS = getattr(settings, "LEASE_MAX_STAMP_PIXELS", 80_000_000)  # 80 MP guard
 MAX_THUMB_SIDE   = getattr(settings, "LEASE_MAX_THUMB_SIDE", 512)
-
-def _ensure_db_connection() -> None:
-    """Reconnect only when MySQL dropped the connection during file processing."""
-    if connection.connection is not None and not connection.is_usable():
-        connection.close()
-    connection.ensure_connection()
 
 def _prepare_base_for_stamp(raw_bytes: bytes) -> Image.Image:
     """
@@ -609,9 +603,6 @@ class LeaseMedia(models.Model):
         buf.seek(0)
         final_thumb_rel = _try_replace_canonical(self, "thumb", buf.getvalue())
         self.thumbnail.name = final_thumb_rel
-        # Pillow/storage work can outlive MySQL's persistent connection.
-        # Re-open it before writing the processed file paths.
-        _ensure_db_connection()
         super().save(update_fields=["thumbnail", "updated_at"])
 
 
@@ -688,7 +679,6 @@ class LeaseMedia(models.Model):
             base_img = _prepare_base_for_stamp(raw)
 
             # immutable footer & compose stamped bytes
-            _ensure_db_connection()
             static_line = self._compose_static_footer_text()
             stamped_bytes, footer_h = self._compose_footer(
                 base_img, static_line=static_line, desc=self.description or "")
@@ -731,7 +721,6 @@ class LeaseMedia(models.Model):
                 except Exception:
                     pass
 
-            _ensure_db_connection()
             super().save(update_fields=[
                 "file", "media_type", "taken_at", "original_filename", "updated_at"])
         else:
@@ -750,7 +739,6 @@ class LeaseMedia(models.Model):
                 except Exception:
                     pass
 
-            _ensure_db_connection()
             super().save(update_fields=[
                 "file", "media_type", "taken_at", "original_filename", "updated_at"])
 

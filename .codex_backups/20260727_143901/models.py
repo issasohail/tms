@@ -2347,32 +2347,6 @@ class AgreementSignatureTemplate(models.Model):
             "Set to 0 to disable the age restriction."
         ),
     )
-    estamp_legal_footer_bottom_points = models.PositiveIntegerField(
-        default=130,
-        validators=[MaxValueValidator(300)],
-        help_text=(
-            "Distance in PDF points between the bottom of a Legal page and the "
-            "saved E-Stamp footer. Increasing it moves the complete E-Stamp upward."
-        ),
-    )
-    estamp_letter_footer_bottom_points = models.PositiveIntegerField(
-        default=28,
-        validators=[MaxValueValidator(300)],
-        help_text=(
-            "Distance in PDF points between the bottom of a Letter page and the "
-            "saved E-Stamp footer. Increasing it moves the complete E-Stamp upward."
-        ),
-    )
-    agreement_legal_footer_bottom_points = models.PositiveIntegerField(
-        default=16,
-        validators=[MaxValueValidator(100)],
-        help_text="Legal-page baseline position for the generated agreement package footer.",
-    )
-    agreement_letter_footer_bottom_points = models.PositiveIntegerField(
-        default=16,
-        validators=[MaxValueValidator(100)],
-        help_text="Letter-page baseline position for the generated agreement package footer.",
-    )
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 

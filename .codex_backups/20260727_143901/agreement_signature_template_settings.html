@@ -95,24 +95,6 @@
       </div>
     </div>
 
-    <div class="border rounded p-3 mb-3 layout-setting-card">
-      <h5 class="mb-1">E-Stamp and Agreement Footer Positions</h5>
-      <p class="text-muted small mb-3">
-        Values are PDF points measured upward from the bottom edge (72 points = 1 inch).
-        Keep the E-Stamp footer value above the agreement footer value. Increasing an E-Stamp value moves the complete saved stamp upward.
-      </p>
-      <div class="row g-3">
-        {% for field, label in footer_position_fields %}
-        <div class="col-md-6 col-xl-3">
-          <label class="form-label">{{ label }}</label>
-          {{ field }}
-          <div class="form-text">{{ field.help_text }}</div>
-          {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-
     <div><button class="btn btn-primary"><i class="fas fa-save"></i> Save Lease Parties Template</button></div>
   </form>
 </div>

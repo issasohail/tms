@@ -7478,17 +7478,4 @@ def agreement_signature_template_settings(request):
             return redirect("leases:agreement_signature_template_settings")
     else:
         form = AgreementSignatureTemplateForm(instance=template)
-    return render(
-        request,
-        "leases/agreement_signature_template_settings.html",
-        {
-            "form": form,
-            "template_config": template,
-            "footer_position_fields": [
-                (form["estamp_legal_footer_bottom_points"], "Legal E-Stamp footer"),
-                (form["agreement_legal_footer_bottom_points"], "Legal agreement footer"),
-                (form["estamp_letter_footer_bottom_points"], "Letter E-Stamp footer"),
-                (form["agreement_letter_footer_bottom_points"], "Letter agreement footer"),
-            ],
-        },
-    )
+    return render(request, "leases/agreement_signature_template_settings.html", {"form": form, "template_config": template})

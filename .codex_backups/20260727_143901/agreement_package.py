@@ -689,11 +689,12 @@ def _package_labels(lease, history):
     return title, center
 
 
-def _footer_overlay(width, height, left_text, center_text, right_text, y):
+def _footer_overlay(width, height, left_text, center_text, right_text):
     from reportlab.pdfgen import canvas
     packet = BytesIO()
     pdf = canvas.Canvas(packet, pagesize=(float(width), float(height)))
     pdf.setFont("Helvetica", 7.5)
+    y = 16
     pdf.drawString(28, y, left_text)
     pdf.drawCentredString(float(width) / 2, y, center_text)
     pdf.drawRightString(float(width) - 28, y, right_text)
@@ -716,31 +717,16 @@ def merge_pdfs(parts, lease=None, history=None):
     total = len(pages)
     title, center_text = _package_labels(lease, history) if lease else ("Lease Agreement", "")
     timestamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
-    footer_config = AgreementSignatureTemplate.current()
     writer = PdfWriter()
     for index, page in enumerate(pages, 1):
         width = page.mediabox.width
         height = page.mediabox.height
-        is_legal = float(height) > 900
-        footer_y = float(
-            getattr(
-                footer_config,
-                (
-                    "agreement_legal_footer_bottom_points"
-                    if is_legal
-                    else "agreement_letter_footer_bottom_points"
-                ),
-                16,
-            )
-            or 0
-        )
         overlay = _footer_overlay(
             width,
             height,
             timestamp,
             center_text,
             f"Page {index} of {total}",
-            footer_y,
         )
         page.merge_page(overlay, over=True)
         writer.add_page(page)
@@ -771,22 +757,10 @@ def build_package(request, lease, history, clauses):
             )
             with document.file.open("rb") as source:
                 stamp_bytes = source.read()
-            paper_size = getattr(history, "estamp_paper_size", "legal")
-            footer_config = AgreementSignatureTemplate.current()
-            stamp_footer_field = (
-                "estamp_legal_footer_bottom_points"
-                if paper_size == "legal"
-                else "estamp_letter_footer_bottom_points"
-            )
             core_agreement = compose_stamped_agreement(
                 core_agreement,
                 stamp_bytes,
-                paper_size,
-                stamp_footer_bottom_points=getattr(
-                    footer_config,
-                    stamp_footer_field,
-                    130 if paper_size == "legal" else 28,
-                ),
+                getattr(history, "estamp_paper_size", "legal"),
             )
         components.append(core_agreement)
     except (PermissionDenied, ValidationError):

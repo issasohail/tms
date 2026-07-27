@@ -149,13 +149,7 @@ def _merge_fitted_page(
     destination.merge_transformed_page(page, transform, over=True, expand=False)
 
 
-def compose_stamped_agreement(
-    agreement_pdf,
-    estamp_pdf,
-    paper_size,
-    *,
-    stamp_footer_bottom_points=None,
-):
+def compose_stamped_agreement(agreement_pdf, estamp_pdf, paper_size):
     """Compose only core agreement pages onto mapped stamp pages."""
     from pypdf import PdfReader, PdfWriter
     from pypdf._page import PageObject
@@ -172,11 +166,6 @@ def compose_stamped_agreement(
         raise ValidationError("The agreement PDF has no pages.")
     if not estamp_reader.pages:
         raise ValidationError("The E-Stamp PDF has no pages.")
-    if stamp_footer_bottom_points is None:
-        stamp_footer_bottom_points = 130 if paper_size == "legal" else 28
-    stamp_footer_bottom_points = max(
-        0.0, min(300.0, float(stamp_footer_bottom_points))
-    )
 
     writer = PdfWriter()
     agreement_page_count = len(agreement_reader.pages)
@@ -205,7 +194,7 @@ def compose_stamped_agreement(
                 target_width=target_width,
                 target_height=target_height,
                 vertical_alignment="bottom" if paper_size == "legal" else "top",
-                bottom_clearance=stamp_footer_bottom_points,
+                bottom_clearance=28,
             )
         _merge_fitted_page(
             destination,

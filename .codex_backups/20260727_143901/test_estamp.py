@@ -215,34 +215,6 @@ class EStampCompositionTests(SimpleTestCase):
         page = PdfReader(BytesIO(result)).pages[0]
         self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 792))
 
-    @patch("leases.services.agreement_package._footer_overlay")
-    @patch("leases.services.agreement_package.AgreementSignatureTemplate.current")
-    def test_package_footer_uses_separate_legal_and_letter_positions(
-        self, config_mock, overlay_mock
-    ):
-        from pypdf import PageObject
-        from leases.services.agreement_package import merge_pdfs
-
-        config_mock.return_value = SimpleNamespace(
-            agreement_legal_footer_bottom_points=22,
-            agreement_letter_footer_bottom_points=11,
-        )
-        overlay_mock.side_effect = lambda width, height, *args: (
-            PageObject.create_blank_page(width=width, height=height)
-        )
-
-        merge_pdfs(
-            [
-                self._text_pdf(["LEGAL"], (612, 1008)),
-                self._text_pdf(["LETTER"], (612, 792)),
-            ]
-        )
-
-        self.assertEqual(
-            [call.args[-1] for call in overlay_mock.call_args_list],
-            [22.0, 11.0],
-        )
-
 
 class EStampPackageIntegrationTests(SimpleTestCase):
     @patch("leases.services.agreement_package.merge_pdfs", return_value=b"package")
@@ -251,15 +223,10 @@ class EStampPackageIntegrationTests(SimpleTestCase):
     @patch("leases.services.agreement_package.inspection_pdf", return_value=b"inspection")
     @patch("leases.services.estamp.compose_stamped_agreement", return_value=b"stamped-core")
     @patch("leases.services.estamp.authorize_estamp")
-    @patch(
-        "leases.services.agreement_package.AgreementSignatureTemplate.current",
-        return_value=SimpleNamespace(estamp_letter_footer_bottom_points=28),
-    )
     @patch("leases.services.agreement_package.agreement_pdf", return_value=b"plain-core")
     def test_only_core_agreement_is_stamped(
         self,
         agreement_mock,
-        config_mock,
         authorize_mock,
         compose_mock,
         inspection_mock,
@@ -286,12 +253,7 @@ class EStampPackageIntegrationTests(SimpleTestCase):
         payload, _, _ = build_package(request, lease, history, [])
 
         self.assertEqual(payload, b"package")
-        compose_mock.assert_called_once_with(
-            b"plain-core",
-            b"stamp",
-            "letter",
-            stamp_footer_bottom_points=28,
-        )
+        compose_mock.assert_called_once_with(b"plain-core", b"stamp", "letter")
         self.assertEqual(
             merge_mock.call_args.args[0],
             [b"stamped-core", b"inspection", b"police", b"signature"],

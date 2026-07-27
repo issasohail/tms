@@ -18,8 +18,7 @@
               <option value="payment_receipt" {% if item.purpose == "payment" %}selected{% endif %}>Payment Receipt â€” Pending Verification</option>
               {% if item.lease %}
                 <option value="lease_photo:{{ item.lease_id }}" {% if item.target_kind == "lease_photo" %}selected{% endif %}>Lease Gallery — {{ item.lease }}</option>
-                <option value="lease_document:{{ item.lease_id }}" {% if item.target_kind == "lease_document" %}selected{% elif item.purpose == "lease" and item.target_kind != "lease_photo" and item.target_kind != "lease_estamp" %}selected{% endif %}>Lease Document — {{ item.lease }}</option>
-                <option value="lease_estamp:{{ item.lease_id }}" {% if item.target_kind == "lease_estamp" %}selected{% endif %}>E-Stamp Paper — {{ item.lease }}</option>
+                <option value="lease_document:{{ item.lease_id }}" {% if item.target_kind == "lease_document" %}selected{% elif item.purpose == "lease" and item.target_kind != "lease_photo" %}selected{% endif %}>Lease Document — {{ item.lease }}</option>
               {% endif %}
               {% if item.property %}
                 <option value="property_photo:{{ item.property_id }}" {% if item.target_kind == "property_photo" or item.purpose == "property" %}selected{% endif %}>Property Photo — {{ item.property }}</option>

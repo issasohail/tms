@@ -458,13 +458,11 @@ class PendingWhatsAppMedia(models.Model):
     TARGET_UNIT_PHOTO = "unit_photo"
     TARGET_LEASE_PHOTO = "lease_photo"
     TARGET_LEASE_DOCUMENT = "lease_document"
-    TARGET_LEASE_ESTAMP = "lease_estamp"
     TARGET_CHOICES = [
         (TARGET_PROPERTY_PHOTO, "Building / Property Photo"),
         (TARGET_UNIT_PHOTO, "Unit Photo"),
         (TARGET_LEASE_PHOTO, "Lease Gallery Photo"),
         (TARGET_LEASE_DOCUMENT, "Lease Document"),
-        (TARGET_LEASE_ESTAMP, "Lease E-Stamp Paper"),
     ]
 
     conversation = models.ForeignKey(WhatsAppConversation, on_delete=models.SET_NULL, null=True, blank=True, related_name="pending_media")

@@ -826,31 +826,6 @@ def _attach_pending_media_from_core(pending, user):
             if destination.thumbnail.name == processing_thumbnail:
                 destination.thumbnail = None
                 destination.save(update_fields=["thumbnail", "updated_at"])
-        elif pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_ESTAMP:
-            if not pending.lease_id:
-                raise ValueError("E-Stamp Paper requires a confirmed lease target.")
-            from leases.services.estamp import normalize_estamp_pdf
-            from leases.views_lease_files import _estamp_filename
-
-            try:
-                normalized = normalize_estamp_pdf(content)
-            except Exception as exc:
-                messages_list = getattr(exc, "messages", None)
-                raise ValueError(
-                    messages_list[0]
-                    if messages_list
-                    else "The E-Stamp PDF could not be validated."
-                ) from exc
-            normalized.name = _estamp_filename(pending.lease)
-            destination = LeaseDocument.objects.create(
-                lease=pending.lease,
-                file=normalized,
-                original_filename=normalized.name,
-                display_name=normalized.name,
-                category="estamp_paper",
-                description=pending.ai_notes,
-                uploaded_by=pending.submitted_by_staff or user,
-            )
         elif (
             pending.target_kind == PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT
             or pending.purpose == PendingWhatsAppMedia.PURPOSE_LEASE
@@ -947,11 +922,6 @@ def _apply_pending_media_destination(pending, submitted_destination):
             "lease_id",
             PendingWhatsAppMedia.PURPOSE_LEASE,
             "The selected lease target is invalid for this pending media.",
-        ),
-        PendingWhatsAppMedia.TARGET_LEASE_ESTAMP: (
-            "lease_id",
-            PendingWhatsAppMedia.PURPOSE_LEASE,
-            "The selected lease target is invalid for this pending E-Stamp.",
         ),
         PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO: (
             "property_id",

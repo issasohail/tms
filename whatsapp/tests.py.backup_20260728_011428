@@ -6,7 +6,6 @@ import hmac
 import importlib
 import json
 import tempfile
-from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -18,9 +17,7 @@ from django.core.files.base import ContentFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from pypdf import PdfWriter
 
-from whatsapp.services.estamp_processor import match_properties, match_unit
 from whatsapp.services.payment_matching import extract_payment_text_fields
 from whatsapp.services.openai_ocr import (
     _normalize as normalize_openai_receipt,
@@ -434,40 +431,6 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
 
         pending.refresh_from_db()
         document = LeaseDocument.objects.get(lease=self.lease)
-        self.assertTrue(document.file.storage.exists(document.file.name))
-        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
-
-    def test_successful_estamp_approval_validates_and_creates_estamp_document(self):
-        from leases.models import LeaseDocument
-
-        writer = PdfWriter()
-        writer.add_blank_page(width=612, height=792)
-        payload = BytesIO()
-        writer.write(payload)
-        submitter = get_user_model().objects.create_user(
-            "estamp-submitter",
-            email="estamp-submitter@example.com",
-            is_staff=True,
-        )
-        pending = self._pending(
-            filename="received-estamp.pdf",
-            file=ContentFile(payload.getvalue(), name="received-estamp.pdf"),
-            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
-            target_kind=PendingWhatsAppMedia.TARGET_LEASE_ESTAMP,
-            submitted_by_staff=submitter,
-        )
-
-        response = self._approve(
-            pending,
-            f"{PendingWhatsAppMedia.TARGET_LEASE_ESTAMP}:{self.lease.pk}",
-        )
-
-        self.assertEqual(response.status_code, 200)
-        pending.refresh_from_db()
-        document = LeaseDocument.objects.get(lease=self.lease)
-        self.assertEqual(document.category, "estamp_paper")
-        self.assertEqual(document.uploaded_by, submitter)
-        self.assertIn("StampPaper", document.original_filename)
         self.assertTrue(document.file.storage.exists(document.file.name))
         self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
 
@@ -926,146 +889,6 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn(reverse("tenants:tenant_public_registration_new"), response)
         self.assertIn("Pending Approval", response)
         self.assertEqual(Tenant.objects.count(), tenant_count)
-
-    @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
-    @patch("whatsapp.services.whatsapp_ai.inspect_estamp_pdf")
-    def test_direct_staff_estamp_matches_property_and_waits_for_approval(
-        self, inspect_estamp, notify_pending
-    ):
-        WhatsAppStaffPropertyAccess.objects.create(
-            staff_user=self.staff1,
-            property=self.property,
-            is_active=True,
-        )
-        conversation = WhatsAppConversation.objects.create(
-            phone_number=self.staff1.whatsapp_number,
-            staff_user=self.staff1,
-            selected_mode=WhatsAppConversation.MODE_STAFF,
-            mode_expires_at=timezone.now() + timedelta(hours=1),
-        )
-        document_log = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-            phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.estamp.document",
-            message_type=WhatsAppMessageLog.MESSAGE_TYPE_DOCUMENT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={
-                "type": "document",
-                "document": {
-                    "filename": "estamp.pdf",
-                    "mime_type": "application/pdf",
-                },
-            },
-        )
-        staged = PendingWhatsAppMedia.objects.create(
-            conversation=conversation,
-            original_whatsapp_message=document_log,
-            phone=self.staff1.whatsapp_number,
-            file=ContentFile(b"%PDF-1.4 staged", name="estamp.pdf"),
-            original_filename="estamp.pdf",
-            media_type="document",
-        )
-        document_log.api_response = {"simulator_pending_media_id": staged.pk}
-        document_log.save(update_fields=["api_response"])
-        inspect_estamp.return_value = {
-            "page_count": 1,
-            "notes_text": "Notes: Property Test Residency, Unit A-04",
-            "source": "embedded_pdf_text",
-            "is_estamp": True,
-        }
-        assistant = WhatsAppAIAssistant(service=MagicMock())
-
-        response, intent, _metadata = assistant._handle_media_message(
-            document_log,
-            conversation,
-            "",
-            "document",
-            resolve_sender(
-                self.staff1.whatsapp_number,
-                conversation=conversation,
-            ),
-        )
-
-        conversation.refresh_from_db()
-        staged.refresh_from_db()
-        self.assertEqual(intent, "staff_estamp_property_confirm")
-        self.assertIn("Test Residency", response)
-        self.assertEqual(
-            conversation.pending_state, "staff_estamp_property_confirm"
-        )
-        self.assertEqual(
-            staged.target_kind, PendingWhatsAppMedia.TARGET_LEASE_ESTAMP
-        )
-        self.assertEqual(staged.status, PendingWhatsAppMedia.STATUS_PENDING)
-        self.assertIsNone(staged.lease)
-
-        property_confirm = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-            phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.estamp.property-confirm",
-            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={"type": "text", "text": {"body": "YES"}},
-        )
-        response, intent, _metadata = assistant._handle(
-            property_confirm, conversation
-        )
-        self.assertEqual(intent, "staff_estamp_lease_confirm")
-        self.assertIn("Ahmed Khan", response)
-
-        lease_confirm = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-            phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.estamp.lease-confirm",
-            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={"type": "text", "text": {"body": "YES"}},
-        )
-        response, intent, _metadata = assistant._handle(
-            lease_confirm, conversation
-        )
-
-        staged.refresh_from_db()
-        conversation.refresh_from_db()
-        self.assertEqual(intent, "staff_estamp_submitted")
-        self.assertIn("administrator approval", response)
-        self.assertEqual(staged.lease, self.lease)
-        self.assertEqual(staged.property, self.property)
-        self.assertEqual(staged.unit, self.unit)
-        self.assertEqual(staged.tenant, self.tenant)
-        self.assertEqual(staged.status, PendingWhatsAppMedia.STATUS_PENDING)
-        self.assertEqual(conversation.pending_state, "")
-        notify_pending.assert_called_once_with("upload", staged)
-
-    def test_estamp_property_and_unit_matching_are_scoped_and_label_aware(self):
-        other_property = Property.objects.create(
-            property_name="Other Residency",
-            owner_name="Other Owner",
-            owner_cnic="37405-3333333-3",
-            type="Residential",
-            property_type="apartment",
-            total_units=1,
-        )
-        other_unit = Unit.objects.create(
-            property=other_property,
-            unit_number="7",
-            status="occupied",
-        )
-
-        property_matches = match_properties(
-            "Notes: Test Residency, Room A-04",
-            [self.property, other_property],
-        )
-        unit_matches = match_unit(
-            "Notes: Test Residency, Room A-04",
-            [self.unit, other_unit],
-        )
-
-        self.assertEqual(
-            [item["property"] for item in property_matches],
-            [self.property],
-        )
-        self.assertEqual(unit_matches, [self.unit])
 
     def test_tenant_payment_receipt_is_ocr_read_and_staged_for_approval(self):
         self.conversation.pending_state = "tenant_waiting_payment_receipt"

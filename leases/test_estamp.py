@@ -19,6 +19,67 @@ from leases.services.estamp import (
 from leases.services.agreement_package import _redact_default_clause_body
 
 
+class LegalDeclarationLayoutTests(SimpleTestCase):
+    def test_both_declarations_fit_on_one_legal_page_with_thumb_boxes(self):
+        from io import BytesIO
+
+        from django.template.loader import render_to_string
+        from django.test import RequestFactory
+
+        from leases.services.agreement_package import _pdf
+
+        paragraph = (
+            "I confirm that I personally know the Tenant and voluntarily provide "
+            "this declaration based on my knowledge of the Tenant's character, "
+            "conduct, and financial responsibility."
+        )
+        party = {
+            "name": "Test Party",
+            "cnic": "61101-1234567-1",
+            "phone": "+92-300-123-4567",
+            "cnic_front_url": "",
+            "cnic_back_url": "",
+        }
+        html = render_to_string(
+            "leases/proposer_seconder_declaration.html",
+            {
+                "history": SimpleNamespace(print_on_legal_page=True),
+                "signature_config": SimpleNamespace(
+                    heading="Proposer and Seconder Declaration",
+                    show_thumb_impression=True,
+                    footer_text="",
+                ),
+                "declaration_sections": [
+                    {
+                        "heading": "Proposer Declaration",
+                        "party": party,
+                        "paragraphs": [paragraph] * 4,
+                    },
+                    {
+                        "heading": "Seconder Declaration",
+                        "party": party,
+                        "paragraphs": [paragraph] * 4,
+                    },
+                ],
+            },
+        )
+        request = RequestFactory().get("/")
+        pdf = PdfReader(BytesIO(_pdf(html, request)))
+
+        self.assertEqual(len(pdf.pages), 1)
+        self.assertEqual(
+            (
+                float(pdf.pages[0].mediabox.width),
+                float(pdf.pages[0].mediabox.height),
+            ),
+            (612, 936),
+        )
+        text = pdf.pages[0].extract_text()
+        self.assertIn("Proposer Declaration", text)
+        self.assertIn("Seconder Declaration", text)
+        self.assertEqual(text.count("Thumb Impression"), 2)
+
+
 class DefaultLeaseTemplateRedactionTests(SimpleTestCase):
     def test_redacts_both_placeholder_formats_and_keeps_occupant_grid(self):
         body = (

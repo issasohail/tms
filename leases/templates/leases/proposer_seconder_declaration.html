@@ -27,19 +27,27 @@ body {
 .footer { text-align: center; font-size: 8.5pt; color: #444; margin-top: 5pt; }
 
 {% if history.print_on_legal_page %}
+body {
+  font-size: 10pt;
+  line-height: 1.18;
+}
+.page-title {
+  margin-bottom: 7pt;
+  padding-bottom: 4pt;
+}
 .legal-party {
   border: 1px solid #555;
-  padding: 0 12pt 12pt;
-  margin-bottom: 24pt;
+  padding: 0 10pt 7pt;
+  margin-bottom: 7pt;
   page-break-inside: avoid;
 }
 .legal-party + .legal-party {
-  margin-top: 26pt;
+  margin-top: 0;
 }
 .legal-party-heading {
-  margin: 0 -12pt 10pt;
-  padding: 6pt 10pt;
-  font-size: 12pt;
+  margin: 0 -10pt 6pt;
+  padding: 4pt 8pt;
+  font-size: 11pt;
   font-weight: bold;
   background: #eee;
   border-bottom: 1px solid #777;
@@ -48,7 +56,7 @@ body {
 .legal-signatures {
   display: table;
   width: 100%;
-  margin-top: 18pt;
+  margin-top: 7pt;
 }
 .legal-signature-item {
   display: table-cell;
@@ -65,12 +73,36 @@ body {
   vertical-align: bottom;
 }
 .legal-signer-details {
-  margin: 3pt 0 0 52pt;
+  display: table-cell;
+  padding-left: 5pt;
   font-size: 9pt;
-  line-height: 1.25;
+  line-height: 1.12;
   white-space: normal;
+  vertical-align: top;
 }
-.legal-date-row { margin-top: 3pt; }
+.legal-signer-row {
+  display: table;
+  width: 100%;
+  margin-top: 3pt;
+}
+.legal-thumb-cell {
+  display: table-cell;
+  width: .68in;
+  vertical-align: top;
+}
+.legal-thumb-box {
+  width: .60in;
+  height: .64in;
+  border: 1px solid #111;
+}
+.legal-thumb-label {
+  width: .60in;
+  margin-top: 1pt;
+  font-size: 6.5pt;
+  line-height: 1;
+  text-align: center;
+}
+.legal-date-row { margin-top: 1pt; }
 .legal-date-line {
   display: inline-block;
   width: 1.25in;
@@ -94,27 +126,19 @@ body {
 .legal-cnic-photo {
   display: block;
   width: 100%;
-  height: 1.05in;
+  height: .92in;
   object-fit: contain;
   border: 1px solid #777;
 }
 .legal-cnic-placeholder {
   width: 100%;
-  height: 1.05in;
+  height: .92in;
   border: 1px solid #777;
 }
 .legal-cnic-label {
   margin-top: 2pt;
   font-size: 7.5pt;
   line-height: 1;
-}
-.legal-thumb-row { margin-top: 12pt; }
-.legal-thumb-line {
-  display: inline-block;
-  width: 2.2in;
-  height: 30pt;
-  border-bottom: 1px solid #111;
-  vertical-align: bottom;
 }
 {% else %}
 body { font-size: 9.5pt; line-height: 1.2; }
@@ -209,10 +233,18 @@ body { font-size: 9.5pt; line-height: 1.2; }
     <div class="legal-signatures">
       <div class="legal-signature-item">
         Signature: <span class="legal-signature-line"></span>
-        <div class="legal-signer-details">
-          <div><strong>Name:</strong> {{ section.party.name|default:"________________" }}</div>
-          <div><strong>CNIC:</strong> {{ section.party.cnic|default:"________________" }}</div>
-          <div class="legal-date-row"><strong>Date:</strong> <span class="legal-date-line"></span></div>
+        <div class="legal-signer-row">
+          {% if signature_config.show_thumb_impression %}
+          <div class="legal-thumb-cell">
+            <div class="legal-thumb-box"></div>
+            <div class="legal-thumb-label">Thumb Impression</div>
+          </div>
+          {% endif %}
+          <div class="legal-signer-details">
+            <div><strong>Name:</strong> {{ section.party.name|default:"________________" }}</div>
+            <div><strong>CNIC:</strong> {{ section.party.cnic|default:"________________" }}</div>
+            <div class="legal-date-row"><strong>Date:</strong> <span class="legal-date-line"></span></div>
+          </div>
         </div>
       </div>
       <div class="legal-cnic-images">
@@ -233,9 +265,6 @@ body { font-size: 9.5pt; line-height: 1.2; }
         </div>
       </div>
     </div>
-    {% if signature_config.show_thumb_impression %}
-    <div class="legal-thumb-row">Thumb Impression: <span class="legal-thumb-line"></span></div>
-    {% endif %}
   </section>
   {% else %}
   <section class="party-card">

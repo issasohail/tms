@@ -5,19 +5,15 @@
     .and-separator { text-align:center; font-weight:bold; margin:5pt 0; }
     {% if stamped_layout %}
     @page {
-        size: {% if legal_page %}8.5in 13in{% else %}letter{% endif %};
+        size: {{ agreement_paper_size|default:"legal" }};
         margin: 0.55in;
-        {% if legal_page %}
-        margin-bottom: {{ legal_page_bottom_reserve|default:"0.95" }}in;
-        {% elif agreement_paper_size == "letter" %}
-        margin-bottom: 0.95in;
-        {% endif %}
+        {% if agreement_paper_size == "letter" %}margin-bottom: 0.95in;{% endif %}
     }
     @page:nth(2) {
         margin-bottom: {{ legal_later_page_bottom_reserve|default:"3.82" }}in;
     }
     @page :first {
-        size: {% if legal_page %}8.5in 13in{% else %}letter{% endif %};
+        size: {{ agreement_paper_size|default:"legal" }};
         margin-top: {{ legal_first_page_top_reserve|default:"4.80" }}in;
         margin-left: 0.55in;
         margin-right: 0.55in;
@@ -87,26 +83,6 @@
         font-size:12pt;
         line-height:1.05 !important;
     }
-    {% if legal_page %}
-    .signature-section {
-        margin-top: 7px !important;
-    }
-    .signature-section table {
-        margin-bottom: 0 !important;
-    }
-    .signature-section .signature-line {
-        padding-top: .65em;
-    }
-    .signature-section p,
-    .signature-section .party-detail-line,
-    .signature-section .generated-at {
-        font-size: 9pt;
-        line-height: 1 !important;
-    }
-    .signature-section .thumb-party-field {
-        height: 1.15em;
-    }
-    {% endif %}
     {% endif %}
     .clause-initial {
         display:inline-block;

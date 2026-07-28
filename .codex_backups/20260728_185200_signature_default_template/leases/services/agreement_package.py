@@ -11,74 +11,12 @@ from django.utils.html import conditional_escape
 from weasyprint import DEFAULT_OPTIONS, Document, HTML
 from weasyprint.layout import LayoutContext
 
-from leases.models import AgreementSignatureTemplate, DefaultClause
+from leases.models import AgreementSignatureTemplate
 from tenants.models import Tenant
 from leases.utils import do_replace_placeholders
 from core.utils.identity import format_cnic, format_phone, normalize_cnic
 
 logger = logging.getLogger(__name__)
-
-
-_DEFAULT_TEMPLATE_REDACTION = (
-    '<span class="confidential-block">CONFIDENTIAL</span>'
-)
-_DEFAULT_TEMPLATE_OCCUPANTS = """
-<table class="sample-occupants-table">
-  <tr>
-    <th>Name</th>
-    <th>CNIC</th>
-    <th>Relationship</th>
-    <th>Phone</th>
-  </tr>
-  <tr>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-  </tr>
-</table>
-"""
-
-
-def _redact_default_clause_body(body):
-    """Render a default clause without resolving it against a real lease."""
-    rendered = str(conditional_escape(body or ""))
-    rendered = re.sub(
-        r"\{\{\s*authorized_occupants_table\s*\}\}",
-        _DEFAULT_TEMPLATE_OCCUPANTS,
-        rendered,
-        flags=re.IGNORECASE,
-    )
-    rendered = re.sub(
-        r"\{\{\s*[^{}]+\s*\}\}",
-        _DEFAULT_TEMPLATE_REDACTION,
-        rendered,
-    )
-    rendered = re.sub(
-        r"\[[A-Z][A-Z0-9_]*\]",
-        _DEFAULT_TEMPLATE_REDACTION,
-        rendered,
-    )
-    return rendered.replace("\r\n", "\n").replace("\n", "<br>")
-
-
-def default_lease_template_pdf(request):
-    """Build a shareable Letter-size agreement containing no lease data."""
-    clauses = [
-        {
-            "clause_number": clause.clause_number,
-            "body": _redact_default_clause_body(clause.body),
-        }
-        for clause in DefaultClause.objects.filter(is_active=True).order_by(
-            "clause_number"
-        )
-    ]
-    html = render_to_string(
-        "leases/default_lease_template_pdf.html",
-        {"clauses": clauses},
-        request=request,
-    )
-    return _pdf(html, request)
 
 
 class _QrExclusionShape:

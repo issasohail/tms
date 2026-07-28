@@ -16,23 +16,6 @@ from leases.services.estamp import (
     normalize_estamp_pdf,
     compose_stamped_agreement,
 )
-from leases.services.agreement_package import _redact_default_clause_body
-
-
-class DefaultLeaseTemplateRedactionTests(SimpleTestCase):
-    def test_redacts_both_placeholder_formats_and_keeps_occupant_grid(self):
-        body = (
-            "Rent [MONTHLY_RENT], owner {{ owner_name }}, "
-            "occupants {{authorized_occupants_table}}."
-        )
-
-        rendered = _redact_default_clause_body(body)
-
-        self.assertNotIn("MONTHLY_RENT", rendered)
-        self.assertNotIn("owner_name", rendered)
-        self.assertNotIn("authorized_occupants_table", rendered)
-        self.assertGreaterEqual(rendered.count("CONFIDENTIAL"), 6)
-        self.assertIn('class="sample-occupants-table"', rendered)
 
 
 class EStampPolicyTests(SimpleTestCase):
@@ -188,7 +171,7 @@ class EStampCompositionTests(SimpleTestCase):
 
     def test_second_stamp_page_maps_to_last_agreement_page(self):
         agreement = self._text_pdf(
-            ["AGREEMENT ONE", "AGREEMENT TWO", "AGREEMENT THREE"], (612, 936)
+            ["AGREEMENT ONE", "AGREEMENT TWO", "AGREEMENT THREE"], (612, 1008)
         )
         stamp = self._text_pdf(["STAMP ONE", "STAMP TWO"], (595, 842))
         from io import BytesIO
@@ -198,12 +181,12 @@ class EStampCompositionTests(SimpleTestCase):
         self.assertNotIn("STAMP", result.pages[1].extract_text())
         self.assertIn("STAMP TWO", result.pages[2].extract_text())
         for page in result.pages:
-            self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 936))
+            self.assertEqual((float(page.mediabox.width), float(page.mediabox.height)), (612, 1008))
             for box_name in ("cropbox", "trimbox", "bleedbox", "artbox"):
                 box = getattr(page, box_name)
                 self.assertEqual(
                     (float(box.left), float(box.bottom), float(box.right), float(box.top)),
-                    (0, 0, 612, 936),
+                    (0, 0, 612, 1008),
                 )
 
     def test_one_stamp_page_is_not_repeated(self):
@@ -251,7 +234,7 @@ class EStampCompositionTests(SimpleTestCase):
 
         merge_pdfs(
             [
-                self._text_pdf(["LEGAL"], (612, 936)),
+                self._text_pdf(["LEGAL"], (612, 1008)),
                 self._text_pdf(["LETTER"], (612, 792)),
             ]
         )
@@ -282,73 +265,6 @@ class EStampCompositionTests(SimpleTestCase):
         merge_pdfs([self._text_pdf(["LETTER"], (612, 792))])
 
         self.assertEqual(overlay_mock.call_args.args[-2], "")
-
-    def test_legal_identity_cards_honor_footer_clearance(self):
-        from io import BytesIO
-
-        import fitz
-        from pypdf import PdfWriter
-
-        from leases.services.agreement_package import _identity_overlay_page
-
-        people = [
-            {"role": f"Party {index}", "name": "Test Person", "person": None}
-            for index in range(1, 5)
-        ]
-        overlay = _identity_overlay_page(
-            612,
-            936,
-            people,
-            3.10,
-            footer_clearance=50,
-        )
-        writer = PdfWriter()
-        writer.add_page(overlay)
-        output = BytesIO()
-        writer.write(output)
-
-        document = fitz.open(stream=output.getvalue(), filetype="pdf")
-        try:
-            page = document[0]
-            card_bottoms = [
-                page.rect.height - drawing["rect"].y1
-                for drawing in page.get_drawings()
-                if drawing["rect"].width > 100
-                and drawing["rect"].height > 100
-            ]
-        finally:
-            document.close()
-
-        self.assertEqual(len(card_bottoms), 4)
-        self.assertTrue(all(abs(bottom - 50) < 0.1 for bottom in card_bottoms))
-
-    def test_repeated_page_signature_lines_do_not_repeat_party_details(self):
-        from leases.services.agreement_package import (
-            _agreement_signature_footer_page,
-        )
-
-        lease = SimpleNamespace(
-            tenant=SimpleNamespace(
-                cnic="71702-0346063-5",
-                get_full_name=lambda: "Tenant Full Name",
-            ),
-            unit=SimpleNamespace(
-                property=SimpleNamespace(
-                    owner_name="Owner Full Name",
-                    owner_cnic="42101-2008010-3",
-                )
-            ),
-        )
-
-        page = _agreement_signature_footer_page(612, 936, lease, 50)
-        text = page.extract_text()
-
-        self.assertIn("Owner Signature:", text)
-        self.assertIn("Tenant Signature:", text)
-        self.assertNotIn("Owner Full Name", text)
-        self.assertNotIn("Tenant Full Name", text)
-        self.assertNotIn("42101-2008010-3", text)
-        self.assertNotIn("71702-0346063-5", text)
 
 
 class EStampPackageIntegrationTests(SimpleTestCase):

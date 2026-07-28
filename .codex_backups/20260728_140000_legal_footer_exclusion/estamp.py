@@ -11,7 +11,7 @@ from leases.models import AgreementSignatureTemplate, LeaseDocument
 ESTAMP_CATEGORY = "estamp_paper"
 OVERRIDE_PERMISSION = "leases.override_estamp_age"
 PAPER_SIZES = {
-    "legal": (612.0, 936.0),
+    "legal": (612.0, 1008.0),
     "letter": (612.0, 792.0),
 }
 

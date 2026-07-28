@@ -16,23 +16,6 @@ from leases.services.estamp import (
     normalize_estamp_pdf,
     compose_stamped_agreement,
 )
-from leases.services.agreement_package import _redact_default_clause_body
-
-
-class DefaultLeaseTemplateRedactionTests(SimpleTestCase):
-    def test_redacts_both_placeholder_formats_and_keeps_occupant_grid(self):
-        body = (
-            "Rent [MONTHLY_RENT], owner {{ owner_name }}, "
-            "occupants {{authorized_occupants_table}}."
-        )
-
-        rendered = _redact_default_clause_body(body)
-
-        self.assertNotIn("MONTHLY_RENT", rendered)
-        self.assertNotIn("owner_name", rendered)
-        self.assertNotIn("authorized_occupants_table", rendered)
-        self.assertGreaterEqual(rendered.count("CONFIDENTIAL"), 6)
-        self.assertIn('class="sample-occupants-table"', rendered)
 
 
 class EStampPolicyTests(SimpleTestCase):

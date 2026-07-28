@@ -84,11 +84,6 @@ urlpatterns = [
     path("agreement-parties/create-ajax/", views.create_agreement_party_ajax, name="create_agreement_party_ajax"),
     path("agreement-clause/filter-options-ajax/", views.agreement_clause_filter_options_ajax, name="agreement_clause_filter_options_ajax"),
     path("", LeaseListView.as_view(), name="lease_list"),
-    path(
-        "print-lease-template/",
-        views.print_lease_template,
-        name="print_lease_template",
-    ),
     path("new/", LeaseCreateView.as_view(), name="lease_create"),
     path(
         "settings/vehicle-types/",

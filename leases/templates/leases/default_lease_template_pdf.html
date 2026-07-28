@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Default Lease Template</title>
+  <style>
+    @page {
+      size: Letter;
+      margin: .55in .55in .7in;
+      @bottom-left {
+        content: "DEFAULT LEASE TEMPLATE";
+        font: 7pt Arial, sans-serif;
+      }
+      @bottom-center {
+        content: "For review only — confidential details redacted";
+        font: 7pt Arial, sans-serif;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font: 7pt Arial, sans-serif;
+      }
+    }
+    body {
+      margin: 0;
+      color: #000;
+      font-family: "Times New Roman", Times, serif;
+      font-size: 11.5pt;
+      line-height: 1.16;
+    }
+    h1 {
+      margin: 0 0 5pt;
+      text-align: center;
+      font-size: 17pt;
+    }
+    .sample-note {
+      margin: 0 0 12pt;
+      text-align: center;
+      font: bold 8pt Arial, sans-serif;
+      letter-spacing: .3pt;
+    }
+    p {
+      margin: 0 0 8pt;
+      text-align: justify;
+    }
+    .and {
+      margin: 8pt 0;
+      text-align: center;
+      font-weight: bold;
+    }
+    .confidential-block {
+      display: inline-block;
+      min-width: 1.12in;
+      margin: 0 2pt;
+      padding: 1pt 4pt;
+      color: #fff;
+      background: #000;
+      font: bold 6.5pt Arial, sans-serif;
+      letter-spacing: .35pt;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .clauses {
+      margin-top: 10pt;
+    }
+    .clause {
+      margin: 0 0 6pt;
+      text-align: justify;
+    }
+    .clause-number {
+      font-weight: bold;
+    }
+    .sample-occupants-table {
+      width: 100%;
+      margin: 6pt 0;
+      border-collapse: collapse;
+      page-break-inside: avoid;
+      font-size: 8pt;
+    }
+    .sample-occupants-table th,
+    .sample-occupants-table td {
+      width: 25%;
+      padding: 4pt;
+      border: .6pt solid #555;
+      text-align: left;
+    }
+    .sample-occupants-table .confidential-block {
+      min-width: .85in;
+      margin: 0;
+    }
+    .signatures {
+      margin-top: 16pt;
+      page-break-inside: avoid;
+      font-size: 10pt;
+    }
+    .signature-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .signature-table td {
+      width: 50%;
+      padding: 20pt 16pt 0 0;
+      vertical-align: top;
+    }
+    .signature-table td + td {
+      padding-right: 0;
+      padding-left: 16pt;
+    }
+    .signature-rule {
+      display: block;
+      margin-bottom: 3pt;
+      border-bottom: .7pt solid #000;
+    }
+    .field-row {
+      margin: 0 0 2pt;
+      text-align: left;
+    }
+    .field-label {
+      display: inline-block;
+      width: .72in;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>RENT AGREEMENT</h1>
+  <div class="sample-note">DEFAULT LETTER-SIZE TEMPLATE — PERSONAL AND LEASE DETAILS REDACTED</div>
+
+  <p style="text-align:center">
+    This RENT AGREEMENT is made at Islamabad on
+    <span class="confidential-block">CONFIDENTIAL</span> BETWEEN
+  </p>
+  <p>
+    <strong><span class="confidential-block">OWNER NAME</span></strong>
+    holding CNIC No. <span class="confidential-block">OWNER CNIC</span>,
+    residing at <span class="confidential-block">OWNER ADDRESS</span>
+    (hereinafter called the “Owner”) of the ONE PART.
+  </p>
+  <div class="and">AND</div>
+  <p>
+    <strong><span class="confidential-block">TENANT NAME</span></strong>
+    holding CNIC No. <span class="confidential-block">TENANT CNIC</span>,
+    residing at <span class="confidential-block">TENANT ADDRESS</span>
+    (hereinafter called the “Tenant”).
+    WHEREAS the Owner is the lawful owner of
+    <span class="confidential-block">PROPERTY / UNIT</span>, and the parties
+    agree to the following terms and conditions.
+  </p>
+
+  <div class="clauses">
+    {% for clause in clauses %}
+      <div class="clause">
+        <span class="clause-number">{{ clause.clause_number }}.</span>
+        {{ clause.body|safe }}
+      </div>
+    {% empty %}
+      <p>No active default clauses are configured.</p>
+    {% endfor %}
+  </div>
+
+  <div class="signatures">
+    <table class="signature-table">
+      <tr>
+        <td>
+          <span class="signature-rule"></span>
+          <p class="field-row"><span class="field-label">Owner:</span><span class="confidential-block">CONFIDENTIAL</span></p>
+          <p class="field-row"><span class="field-label">CNIC:</span><span class="confidential-block">CONFIDENTIAL</span></p>
+          <p class="field-row"><span class="field-label">Phone:</span><span class="confidential-block">CONFIDENTIAL</span></p>
+          <p class="field-row"><span class="field-label">Date:</span>________________________</p>
+        </td>
+        <td>
+          <span class="signature-rule"></span>
+          <p class="field-row"><span class="field-label">Tenant:</span><span class="confidential-block">CONFIDENTIAL</span></p>
+          <p class="field-row"><span class="field-label">CNIC:</span><span class="confidential-block">CONFIDENTIAL</span></p>
+          <p class="field-row"><span class="field-label">Phone:</span><span class="confidential-block">CONFIDENTIAL</span></p>
+          <p class="field-row"><span class="field-label">Date:</span>________________________</p>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <span class="signature-rule"></span>
+          <p class="field-row"><span class="field-label">Witness 1:</span>________________________</p>
+          <p class="field-row"><span class="field-label">CNIC:</span>________________________</p>
+          <p class="field-row"><span class="field-label">Phone:</span>________________________</p>
+          <p class="field-row"><span class="field-label">Date:</span>________________________</p>
+        </td>
+        <td>
+          <span class="signature-rule"></span>
+          <p class="field-row"><span class="field-label">Witness 2:</span>________________________</p>
+          <p class="field-row"><span class="field-label">CNIC:</span>________________________</p>
+          <p class="field-row"><span class="field-label">Phone:</span>________________________</p>
+          <p class="field-row"><span class="field-label">Date:</span>________________________</p>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

@@ -6803,22 +6803,6 @@ from .models import AgreementPlaceholder, Lease, WhatsAppTemplate
 # ---- DefaultClause UI (global defaults) ----
 
 
-@login_required
-@require_GET
-def print_lease_template(request):
-    from leases.services.agreement_package import default_lease_template_pdf
-
-    response = HttpResponse(
-        default_lease_template_pdf(request),
-        content_type="application/pdf",
-    )
-    response["Content-Disposition"] = (
-        'inline; filename="Default_Lease_Template_Letter.pdf"'
-    )
-    response["Cache-Control"] = "private, no-store"
-    return response
-
-
 def _active_agreement_placeholders():
     return AgreementPlaceholder.objects.filter(is_active=True).order_by(
         "category", "sort_order", "key"

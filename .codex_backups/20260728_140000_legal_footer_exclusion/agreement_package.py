@@ -11,74 +11,12 @@ from django.utils.html import conditional_escape
 from weasyprint import DEFAULT_OPTIONS, Document, HTML
 from weasyprint.layout import LayoutContext
 
-from leases.models import AgreementSignatureTemplate, DefaultClause
+from leases.models import AgreementSignatureTemplate
 from tenants.models import Tenant
 from leases.utils import do_replace_placeholders
 from core.utils.identity import format_cnic, format_phone, normalize_cnic
 
 logger = logging.getLogger(__name__)
-
-
-_DEFAULT_TEMPLATE_REDACTION = (
-    '<span class="confidential-block">CONFIDENTIAL</span>'
-)
-_DEFAULT_TEMPLATE_OCCUPANTS = """
-<table class="sample-occupants-table">
-  <tr>
-    <th>Name</th>
-    <th>CNIC</th>
-    <th>Relationship</th>
-    <th>Phone</th>
-  </tr>
-  <tr>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-    <td><span class="confidential-block">CONFIDENTIAL</span></td>
-  </tr>
-</table>
-"""
-
-
-def _redact_default_clause_body(body):
-    """Render a default clause without resolving it against a real lease."""
-    rendered = str(conditional_escape(body or ""))
-    rendered = re.sub(
-        r"\{\{\s*authorized_occupants_table\s*\}\}",
-        _DEFAULT_TEMPLATE_OCCUPANTS,
-        rendered,
-        flags=re.IGNORECASE,
-    )
-    rendered = re.sub(
-        r"\{\{\s*[^{}]+\s*\}\}",
-        _DEFAULT_TEMPLATE_REDACTION,
-        rendered,
-    )
-    rendered = re.sub(
-        r"\[[A-Z][A-Z0-9_]*\]",
-        _DEFAULT_TEMPLATE_REDACTION,
-        rendered,
-    )
-    return rendered.replace("\r\n", "\n").replace("\n", "<br>")
-
-
-def default_lease_template_pdf(request):
-    """Build a shareable Letter-size agreement containing no lease data."""
-    clauses = [
-        {
-            "clause_number": clause.clause_number,
-            "body": _redact_default_clause_body(clause.body),
-        }
-        for clause in DefaultClause.objects.filter(is_active=True).order_by(
-            "clause_number"
-        )
-    ]
-    html = render_to_string(
-        "leases/default_lease_template_pdf.html",
-        {"clauses": clauses},
-        request=request,
-    )
-    return _pdf(html, request)
 
 
 class _QrExclusionShape:
@@ -228,9 +166,6 @@ def _agreement_layout_settings():
         "letter_stamp_footer": float(
             getattr(config, "estamp_letter_footer_bottom_points", 44) or 0
         ),
-        "legal_agreement_footer": float(
-            getattr(config, "agreement_legal_footer_bottom_points", 16) or 0
-        ),
         "identity_bottom": float(getattr(config, "legal_identity_bottom_reserve", 3.10) or 3.10),
         "clause_spacing": float(getattr(config, "legal_clause_spacing", 5.00) or 0),
     }
@@ -272,9 +207,7 @@ def _draw_fitted_image(canvas_obj, payload, x, y, width, height):
         return False
 
 
-def _identity_overlay_page(
-    width, height, people, reserve_inches, footer_clearance=28
-):
+def _identity_overlay_page(width, height, people, reserve_inches):
     from reportlab.pdfgen import canvas
     packet = BytesIO()
     pdf = canvas.Canvas(packet, pagesize=(float(width), float(height)))
@@ -282,7 +215,7 @@ def _identity_overlay_page(
     reserve_height = max(2.0, min(5.0, float(reserve_inches))) * 72
     left = 0.55 * 72
     right = 0.55 * 72
-    footer_clearance = max(28.0, float(footer_clearance or 0))
+    footer_clearance = 28
     panel_y = footer_clearance
     panel_height = max(112, reserve_height - footer_clearance - 7)
     gap = 6
@@ -327,13 +260,7 @@ def _identity_overlay_page(
     return PdfReader(packet).pages[0]
 
 
-def _pin_identity_cards_to_second_page(
-    pdf_bytes,
-    lease,
-    history,
-    reserve_inches,
-    footer_clearance=28,
-):
+def _pin_identity_cards_to_second_page(pdf_bytes, lease, history, reserve_inches):
     """Keep the four CNIC cards at the bottom of Legal agreement page 2.
 
     Agreement pages reserve the same bottom region from page 2 onward. The
@@ -362,7 +289,6 @@ def _pin_identity_cards_to_second_page(
         page.mediabox.height,
         people,
         reserve_inches,
-        footer_clearance=footer_clearance,
     )
     page.merge_page(overlay, over=True)
 
@@ -376,6 +302,7 @@ def _pin_identity_cards_to_second_page(
 
 def _agreement_signature_footer_page(width, height, lease, y, right_boundary=None):
     from reportlab.pdfgen import canvas
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
     packet = BytesIO()
     pdf = canvas.Canvas(packet, pagesize=(float(width), float(height)))
@@ -384,15 +311,28 @@ def _agreement_signature_footer_page(width, height, lease, y, right_boundary=Non
     column_gap = 12
     line_width = (boundary - left - column_gap) / 2
     right = left + line_width + column_gap
-    for x, role in (
-        (left, "Owner"),
-        (right, "Tenant"),
+    owner_name = str(getattr(lease.unit.property, "owner_name", "") or "________________")
+    tenant_name = lease.tenant.get_full_name() or "________________"
+    owner_cnic = format_cnic(getattr(lease.unit.property, "owner_cnic", "")) or "________________"
+    tenant_cnic = format_cnic(getattr(lease.tenant, "cnic", "")) or "________________"
+
+    for x, role, name, cnic in (
+        (left, "Owner", owner_name, owner_cnic),
+        (right, "Tenant", tenant_name, tenant_cnic),
     ):
         pdf.setLineWidth(0.55)
         pdf.setFont("Helvetica-Bold", 7.5)
         pdf.drawString(x, y + 16, f"{role} Signature:")
         signature_start = x + 0.78 * 72
         pdf.line(signature_start, y + 15, x + line_width, y + 15)
+        details = f"{role}: {name}    CNIC: {cnic}"
+        details_font_size = 6.5
+        while details_font_size > 4.5 and stringWidth(
+            details, "Helvetica", details_font_size
+        ) > line_width:
+            details_font_size -= 0.25
+        pdf.setFont("Helvetica", details_font_size)
+        pdf.drawString(x, y + 4, details)
 
     pdf.save()
     packet.seek(0)
@@ -401,11 +341,7 @@ def _agreement_signature_footer_page(width, height, lease, y, right_boundary=Non
 
 
 def _add_agreement_signature_footers(
-    pdf_bytes,
-    lease,
-    identity_bottom_reserve,
-    qr_reserve_width,
-    footer_clearance=28,
+    pdf_bytes, lease, identity_bottom_reserve, qr_reserve_width
 ):
     from pypdf import PdfReader, PdfWriter
 
@@ -413,17 +349,16 @@ def _add_agreement_signature_footers(
     pages = list(reader.pages)
     if len(pages) <= 1:
         return pdf_bytes
-    standard_y = max(31.0, float(footer_clearance or 0))
     for index, page in enumerate(pages[:-1]):
         if index == 0:
-            y = standard_y
+            y = 31
             qr_width = max(0.0, float(qr_reserve_width or 0)) * 72
             right_boundary = float(page.mediabox.width) - 0.55 * 72 - qr_width - 8
         elif index == 1:
             y = float(identity_bottom_reserve) * 72 + 8
             right_boundary = None
         else:
-            y = standard_y
+            y = 31
             right_boundary = None
         overlay = _agreement_signature_footer_page(
             page.mediabox.width,
@@ -453,25 +388,11 @@ def agreement_pdf(request, lease, history, clauses):
     paper_size = getattr(history, "estamp_paper_size", "legal")
     legal_page = stamped_layout and paper_size == "legal"
     layout = _agreement_layout_settings()
-    legal_footer_clearance = (
-        layout["legal_agreement_footer"] + 14.0 if legal_page else 28.0
-    )
-    signature_footer_y = (
-        max(31.0, legal_footer_clearance) if legal_page else 31.0
-    )
-    standard_bottom_reserve = (
-        max(0.55, (signature_footer_y + 28.0) / 72.0)
-        if legal_page
-        else 0.95
-    )
-    first_bottom_reserve = max(0.95, standard_bottom_reserve)
-    later_bottom_reserve = max(
-        layout["identity_bottom"] + 0.72,
-        standard_bottom_reserve,
-    )
+    first_bottom_reserve = 0.95
+    later_bottom_reserve = layout["identity_bottom"] + 0.72
     css_px_per_inch = 96.0
     legal_page_width = 8.5
-    legal_page_height = 13.0 if legal_page else 11.0
+    legal_page_height = 14.0 if legal_page else 11.0
     qr_width = (
         layout["legal_qr_width"] if legal_page else layout["letter_qr_width"]
     )
@@ -522,7 +443,6 @@ def agreement_pdf(request, lease, history, clauses):
                 "legal_qr_reserve_width": qr_width,
                 "legal_qr_reserve_height": qr_height,
                 "legal_identity_bottom_reserve": layout["identity_bottom"],
-                "legal_page_bottom_reserve": standard_bottom_reserve,
                 "legal_first_page_bottom_reserve": first_bottom_reserve,
                 "legal_later_page_bottom_reserve": later_bottom_reserve,
                 "legal_clause_spacing": spacing,
@@ -550,18 +470,13 @@ def agreement_pdf(request, lease, history, clauses):
         pdf_bytes = render(requested_spacing)
     if stamped_layout:
         pdf_bytes = _pin_identity_cards_to_second_page(
-            pdf_bytes,
-            lease,
-            history,
-            layout["identity_bottom"],
-            footer_clearance=legal_footer_clearance,
+            pdf_bytes, lease, history, layout["identity_bottom"]
         )
         pdf_bytes = _add_agreement_signature_footers(
             pdf_bytes,
             lease,
             layout["identity_bottom"],
             qr_width,
-            footer_clearance=signature_footer_y,
         )
     return pdf_bytes
 

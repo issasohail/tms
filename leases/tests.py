@@ -228,6 +228,45 @@ class LeaseInventorySynchronizationTests(TestCase):
         self.lease.refresh_from_db()
         self.assertEqual(self.lease.inventory_ceiling_lights, 9)
 
+    def test_agreement_render_reconciles_existing_migration_snapshot(self):
+        from leases.services.inventory_parking import (
+            inventory_list_html,
+            sync_lease_inventory_from_fields,
+        )
+
+        sync_lease_inventory_from_fields(self.lease)
+        light = self.lease.inventory_items.get(item__code="ceiling_light")
+        light.quantity = 16
+        light.snapshot_source = "migration"
+        light.save(update_fields=["quantity", "snapshot_source", "updated_at"])
+
+        rendered = inventory_list_html(self.lease)
+
+        light.refresh_from_db()
+        self.assertEqual(light.quantity, 11)
+        self.assertEqual(light.snapshot_source, "lease")
+        self.assertIn("<strong>11 Ceiling Light</strong>", rendered)
+        self.assertNotIn("<strong>16 Ceiling Light</strong>", rendered)
+
+    def test_agreement_render_preserves_explicit_lease_inventory_override(self):
+        from leases.services.inventory_parking import (
+            inventory_list_html,
+            sync_lease_inventory_from_fields,
+        )
+
+        sync_lease_inventory_from_fields(self.lease)
+        light = self.lease.inventory_items.get(item__code="ceiling_light")
+        light.quantity = 8
+        light.snapshot_source = "lease"
+        light.save(update_fields=["quantity", "snapshot_source", "updated_at"])
+
+        rendered = inventory_list_html(self.lease)
+
+        light.refresh_from_db()
+        self.assertEqual(light.quantity, 8)
+        self.assertIn("<strong>8 Ceiling Light</strong>", rendered)
+        self.assertNotIn("<strong>11 Ceiling Light</strong>", rendered)
+
 
 class ActiveClauseEditorDeletionTests(TestCase):
     def setUp(self):

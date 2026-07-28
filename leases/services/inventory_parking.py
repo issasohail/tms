@@ -131,7 +131,12 @@ def copy_inventory_defaults(scope_obj, item_id=None):
 
 
 @transaction.atomic
-def sync_lease_inventory_from_fields(lease, changed_fields=None):
+def sync_lease_inventory_from_fields(
+    lease,
+    changed_fields=None,
+    *,
+    only_inherited=False,
+):
     """Keep agreement inventory rows aligned with the legacy lease form fields."""
     field_filter = set(changed_fields or LEASE_INVENTORY_FIELD_BY_CODE.values())
     definitions = {
@@ -169,6 +174,8 @@ def sync_lease_inventory_from_fields(lease, changed_fields=None):
 
         row = existing.get(code)
         if row is not None:
+            if only_inherited and row.snapshot_source == "lease":
+                continue
             changed = []
             if row.quantity != quantity:
                 row.quantity = quantity
@@ -214,6 +221,11 @@ def ensure_lease_inventory_snapshot(lease):
 
 
 def inventory_list_html(lease):
+    # Older leases received inventory snapshots during migration. Lease-form
+    # edits made afterward updated only the legacy fields, leaving those
+    # inherited rows stale. Reconcile them once when the agreement resolves
+    # [INVENTORY_LIST], but preserve rows explicitly managed at lease scope.
+    sync_lease_inventory_from_fields(lease, only_inherited=True)
     ensure_lease_inventory_snapshot(lease)
     parts = []
     for row in effective_inventory(lease=lease):

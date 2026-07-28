@@ -16,8 +16,7 @@ REQUIRED_PARTY_ROLES = (
 )
 APPLICANT_FIELDS = (
     "prefix", "first_name", "relation", "last_name", "email", "phone", "phone2",
-    "phone3", "cnic", "occupation", "monthly_income_bracket",
-    "employer_name", "employer_phone",
+    "phone3", "cnic", "occupation", "employer_name", "employer_phone",
     "employer_address", "reference_name_1", "reference_phone_1",
     "reference_relation_1", "reference_name_2", "reference_phone_2",
     "reference_relation_2", "nationality", "city", "province", "country",

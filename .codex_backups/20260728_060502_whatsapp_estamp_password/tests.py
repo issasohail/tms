@@ -18,7 +18,7 @@ from django.core.files.base import ContentFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfWriter
 
 from whatsapp.services.estamp_processor import match_properties, match_unit
 from whatsapp.services.payment_matching import extract_payment_text_fields
@@ -1036,104 +1036,6 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(staged.status, PendingWhatsAppMedia.STATUS_PENDING)
         self.assertEqual(conversation.pending_state, "")
         notify_pending.assert_called_once_with("upload", staged)
-
-    def test_password_protected_estamp_prompts_then_saves_unlocked_pdf(self):
-        WhatsAppStaffPropertyAccess.objects.create(
-            staff_user=self.staff1,
-            property=self.property,
-            is_active=True,
-        )
-        conversation = WhatsAppConversation.objects.create(
-            phone_number=self.staff1.whatsapp_number,
-            staff_user=self.staff1,
-            selected_mode=WhatsAppConversation.MODE_STAFF,
-            mode_expires_at=timezone.now() + timedelta(hours=1),
-        )
-        writer = PdfWriter()
-        writer.add_blank_page(width=612, height=792)
-        writer.encrypt("correct-secret")
-        encrypted = BytesIO()
-        writer.write(encrypted)
-        document_log = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-            phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.estamp.encrypted",
-            message_type=WhatsAppMessageLog.MESSAGE_TYPE_DOCUMENT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={
-                "type": "document",
-                "document": {
-                    "filename": "protected-estamp.pdf",
-                    "mime_type": "application/pdf",
-                },
-            },
-        )
-        staged = PendingWhatsAppMedia.objects.create(
-            conversation=conversation,
-            original_whatsapp_message=document_log,
-            phone=self.staff1.whatsapp_number,
-            file=ContentFile(
-                encrypted.getvalue(), name="protected-estamp.pdf"
-            ),
-            original_filename="protected-estamp.pdf",
-            media_type="document",
-        )
-        document_log.api_response = {"simulator_pending_media_id": staged.pk}
-        document_log.save(update_fields=["api_response"])
-        assistant = WhatsAppAIAssistant(service=MagicMock())
-
-        response, intent, _metadata = assistant._handle_media_message(
-            document_log,
-            conversation,
-            "",
-            "document",
-            resolve_sender(
-                self.staff1.whatsapp_number,
-                conversation=conversation,
-            ),
-        )
-
-        conversation.refresh_from_db()
-        staged.refresh_from_db()
-        self.assertEqual(intent, "staff_estamp_password")
-        self.assertIn("enter the PDF password", response)
-        self.assertEqual(conversation.pending_state, "staff_estamp_password")
-        self.assertEqual(
-            conversation.context["staff_estamp_pending_media_id"], staged.pk
-        )
-        self.assertEqual(staged.status, PendingWhatsAppMedia.STATUS_PENDING)
-
-        password_log = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-            phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.estamp.password",
-            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={
-                "type": "text",
-                "text": {"body": "correct-secret"},
-            },
-        )
-        response, intent, _metadata = assistant._handle(
-            password_log, conversation
-        )
-
-        password_log.refresh_from_db()
-        conversation.refresh_from_db()
-        staged.refresh_from_db()
-        self.assertEqual(intent, "staff_estamp_property_lookup")
-        self.assertIn("identify the property", response)
-        self.assertEqual(
-            password_log.payload["text"]["body"], "[PDF password redacted]"
-        )
-        self.assertNotIn("correct-secret", str(conversation.context))
-        staged.file.open("rb")
-        try:
-            unlocked_reader = PdfReader(staged.file, strict=False)
-            self.assertFalse(unlocked_reader.is_encrypted)
-            self.assertEqual(len(unlocked_reader.pages), 1)
-        finally:
-            staged.file.close()
 
     def test_estamp_property_and_unit_matching_are_scoped_and_label_aware(self):
         other_property = Property.objects.create(

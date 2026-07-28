@@ -48,16 +48,15 @@ body {
 .legal-signatures {
   display: table;
   width: 100%;
-  margin-top: 30pt;
+  margin-top: 18pt;
 }
 .legal-signature-item {
   display: table-cell;
-  width: 50%;
+  width: 46%;
   padding-right: 24pt;
   white-space: nowrap;
   vertical-align: top;
 }
-.legal-signature-item:last-child { padding: 0 0 0 24pt; }
 .legal-signature-line {
   display: inline-block;
   width: 2.25in;
@@ -70,6 +69,44 @@ body {
   font-size: 9pt;
   line-height: 1.25;
   white-space: normal;
+}
+.legal-date-row { margin-top: 3pt; }
+.legal-date-line {
+  display: inline-block;
+  width: 1.25in;
+  height: .8em;
+  border-bottom: 1px solid #111;
+  vertical-align: bottom;
+}
+.legal-cnic-images {
+  display: table-cell;
+  width: 54%;
+  padding-left: 8pt;
+  vertical-align: top;
+}
+.legal-cnic-image {
+  display: inline-block;
+  width: 48%;
+  text-align: center;
+  vertical-align: top;
+}
+.legal-cnic-image + .legal-cnic-image { margin-left: 2%; }
+.legal-cnic-photo {
+  display: block;
+  width: 100%;
+  height: 1.05in;
+  object-fit: contain;
+  border: 1px solid #777;
+}
+.legal-cnic-placeholder {
+  width: 100%;
+  height: 1.05in;
+  border: 1px solid #777;
+}
+.legal-cnic-label {
+  margin-top: 2pt;
+  font-size: 7.5pt;
+  line-height: 1;
 }
 .legal-thumb-row { margin-top: 12pt; }
 .legal-thumb-line {
@@ -100,7 +137,59 @@ body { font-size: 9.5pt; line-height: 1.2; }
 }
 .details th { background: #f2f2f2; font-size: 8.5pt; }
 .details td { font-size: 9.5pt; font-weight: bold; }
-.signature-row { font-size: 10.5pt; white-space: nowrap; margin-top: 8pt; }
+.letter-signature-layout {
+  display: table;
+  width: 100%;
+  margin-top: 5pt;
+}
+.letter-signature-details {
+  display: table-cell;
+  width: 46%;
+  padding-right: 10pt;
+  vertical-align: top;
+  font-size: 9.5pt;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.letter-signature-detail { margin-bottom: 3pt; }
+.letter-signature-line {
+  display: inline-block;
+  width: 1.55in;
+  height: .8em;
+  border-bottom: 1px solid #111;
+  vertical-align: bottom;
+}
+.letter-date-line { width: 1.1in; }
+.letter-thumb-line { width: 1.05in; }
+.letter-cnic-images {
+  display: table-cell;
+  width: 54%;
+  vertical-align: top;
+}
+.letter-cnic-image {
+  display: inline-block;
+  width: 48%;
+  text-align: center;
+  vertical-align: top;
+}
+.letter-cnic-image + .letter-cnic-image { margin-left: 2%; }
+.letter-cnic-photo {
+  display: block;
+  width: 100%;
+  height: .74in;
+  object-fit: contain;
+  border: 1px solid #777;
+}
+.letter-cnic-placeholder {
+  width: 100%;
+  height: .74in;
+  border: 1px solid #777;
+}
+.letter-cnic-label {
+  margin-top: 1pt;
+  font-size: 7pt;
+  line-height: 1;
+}
 {% endif %}
 </style>
 </head>
@@ -123,9 +212,26 @@ body { font-size: 9.5pt; line-height: 1.2; }
         <div class="legal-signer-details">
           <div><strong>Name:</strong> {{ section.party.name|default:"________________" }}</div>
           <div><strong>CNIC:</strong> {{ section.party.cnic|default:"________________" }}</div>
+          <div class="legal-date-row"><strong>Date:</strong> <span class="legal-date-line"></span></div>
         </div>
       </div>
-      <div class="legal-signature-item">Date: <span class="legal-signature-line"></span></div>
+      <div class="legal-cnic-images">
+        <div class="legal-cnic-image">
+          {% if section.party.cnic_front_url %}
+            <img class="legal-cnic-photo" src="{{ section.party.cnic_front_url }}" alt="CNIC front">
+          {% else %}
+            <div class="legal-cnic-placeholder"></div>
+          {% endif %}
+          <div class="legal-cnic-label">CNIC Front</div>
+        </div><div class="legal-cnic-image">
+          {% if section.party.cnic_back_url %}
+            <img class="legal-cnic-photo" src="{{ section.party.cnic_back_url }}" alt="CNIC back">
+          {% else %}
+            <div class="legal-cnic-placeholder"></div>
+          {% endif %}
+          <div class="legal-cnic-label">CNIC Back</div>
+        </div>
+      </div>
     </div>
     {% if signature_config.show_thumb_impression %}
     <div class="legal-thumb-row">Thumb Impression: <span class="legal-thumb-line"></span></div>
@@ -144,12 +250,31 @@ body { font-size: 9.5pt; line-height: 1.2; }
         <td>{{ section.party.relationship|default:"________________" }}</td>
       </tr>
     </table>
-    <div class="signature-row">
-      {% if signature_config.show_thumb_impression %}
-        Signature: __________________ &nbsp;&nbsp; Date: ______________ &nbsp;&nbsp; Thumb Impression: ______________
-      {% else %}
-        Signature: ____________________________ &nbsp;&nbsp;&nbsp;&nbsp; Date: ____________________________
-      {% endif %}
+    <div class="letter-signature-layout">
+      <div class="letter-signature-details">
+        <div class="letter-signature-detail">Signature: <span class="letter-signature-line"></span></div>
+        <div class="letter-signature-detail">Date: <span class="letter-signature-line letter-date-line"></span></div>
+        {% if signature_config.show_thumb_impression %}
+          <div>Thumb Impression: <span class="letter-signature-line letter-thumb-line"></span></div>
+        {% endif %}
+      </div>
+      <div class="letter-cnic-images">
+        <div class="letter-cnic-image">
+          {% if section.party.cnic_front_url %}
+            <img class="letter-cnic-photo" src="{{ section.party.cnic_front_url }}" alt="CNIC front">
+          {% else %}
+            <div class="letter-cnic-placeholder"></div>
+          {% endif %}
+          <div class="letter-cnic-label">CNIC Front</div>
+        </div><div class="letter-cnic-image">
+          {% if section.party.cnic_back_url %}
+            <img class="letter-cnic-photo" src="{{ section.party.cnic_back_url }}" alt="CNIC back">
+          {% else %}
+            <div class="letter-cnic-placeholder"></div>
+          {% endif %}
+          <div class="letter-cnic-label">CNIC Back</div>
+        </div>
+      </div>
     </div>
   </section>
   {% endif %}

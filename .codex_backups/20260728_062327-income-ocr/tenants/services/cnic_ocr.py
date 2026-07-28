@@ -28,9 +28,6 @@ are normally DD.MM.YYYY; return every date as YYYY-MM-DD.
 
 Extract name, father/husband name, gender, country of stay, identity number,
 date of birth, date of issue, and date of expiry from the front.
-Return portrait_bbox as normalized 0-to-1 x, y, width and height coordinates
-covering only the printed portrait photograph on the CNIC front. Return null
-when the portrait boundary cannot be identified safely.
 
 On the back, carefully locate the Urdu address labels and their text. "موجودہ پتہ"
 means current/temporary address and "مستقل پتہ" means permanent address. Return
@@ -65,17 +62,6 @@ CNIC_OCR_SCHEMA = {
         "date_of_birth": _NULLABLE_TEXT,
         "date_of_issue": _NULLABLE_TEXT,
         "date_of_expiry": _NULLABLE_TEXT,
-        "portrait_bbox": {
-            "type": ["object", "null"],
-            "properties": {
-                "x": {"type": "number", "minimum": 0, "maximum": 1},
-                "y": {"type": "number", "minimum": 0, "maximum": 1},
-                "width": {"type": "number", "minimum": 0, "maximum": 1},
-                "height": {"type": "number", "minimum": 0, "maximum": 1},
-            },
-            "required": ["x", "y", "width", "height"],
-            "additionalProperties": False,
-        },
         "temporary_address_urdu": _NULLABLE_TEXT,
         "permanent_address_urdu": _NULLABLE_TEXT,
         "temporary_address_english": _NULLABLE_TEXT,
@@ -92,7 +78,6 @@ CNIC_OCR_SCHEMA = {
     "required": [
         "document_type", "name", "father_name", "gender", "country_of_stay",
         "identity_number", "date_of_birth", "date_of_issue", "date_of_expiry",
-        "portrait_bbox",
         "temporary_address_urdu", "permanent_address_urdu",
         "temporary_address_english", "permanent_address_english", "confidence",
         "temporary_address_confidence", "permanent_address_confidence",
@@ -110,7 +95,6 @@ def extract_cnic_identity(front_file, back_file, model):
         return _unavailable("Choose both CNIC Front and CNIC Back images first.")
 
     images = []
-    front_source = b""
     address_image_sufficient = False
     for label, file_field in (("front", front_file), ("back", back_file)):
         mime_type = (
@@ -124,8 +108,6 @@ def extract_cnic_identity(front_file, back_file, model):
             file_field.open("rb")
             source = file_field.read()
             file_field.close()
-            if label == "front":
-                front_source = source
             if label == "back":
                 with Image.open(BytesIO(source)) as dimension_image:
                     address_image_sufficient = (
@@ -275,10 +257,6 @@ def extract_cnic_identity(front_file, back_file, model):
     if not fields["temporary_address"] and not fields["permanent_address"]:
         warnings.append("No personal temporary or permanent address was found on the back.")
     result["fields"] = {key: value for key, value in fields.items() if value}
-    result["portrait_data_uri"] = _portrait_data_uri(
-        front_source,
-        result.get("portrait_bbox"),
-    )
     result["warnings"] = list(dict.fromkeys(warnings))
     return result
 
@@ -323,65 +301,6 @@ def _enhanced_back_image_data(file_field):
         return base64.b64encode(output.getvalue()).decode("ascii")
     except Exception:
         logger.warning("CNIC OCR could not create enhanced back-image crop.")
-        return None
-
-
-def _portrait_data_uri(source, bbox=None):
-    """Return a compact JPEG portrait crop from the CNIC front."""
-    if not source:
-        return ""
-    try:
-        with Image.open(BytesIO(source)) as opened:
-            image = ImageOps.exif_transpose(opened).convert("RGB")
-            width, height = image.size
-            values = bbox if isinstance(bbox, dict) else {}
-            try:
-                x = float(values.get("x"))
-                y = float(values.get("y"))
-                box_width = float(values.get("width"))
-                box_height = float(values.get("height"))
-            except (TypeError, ValueError):
-                # Standard Pakistani CNIC fronts place the portrait on the right.
-                x, y, box_width, box_height = 0.67, 0.10, 0.29, 0.80
-            if not (
-                0 <= x < 1
-                and 0 <= y < 1
-                and 0.08 <= box_width <= 0.55
-                and 0.15 <= box_height <= 0.95
-                and x + box_width <= 1.02
-                and y + box_height <= 1.02
-            ):
-                x, y, box_width, box_height = 0.67, 0.10, 0.29, 0.80
-            left = max(0, round(x * width))
-            top = max(0, round(y * height))
-            right = min(width, round((x + box_width) * width))
-            bottom = min(height, round((y + box_height) * height))
-            if right - left < 40 or bottom - top < 60:
-                return ""
-            portrait = image.crop((left, top, right, bottom))
-            portrait.thumbnail((600, 800), Image.Resampling.LANCZOS)
-            output = BytesIO()
-            portrait.save(output, format="JPEG", quality=90, optimize=True)
-        return "data:image/jpeg;base64," + base64.b64encode(
-            output.getvalue()
-        ).decode("ascii")
-    except Exception:
-        logger.warning("CNIC OCR could not create the portrait crop.")
-        return ""
-
-
-def portrait_content_file(data_uri, filename="cnic-portrait.jpg"):
-    """Validate a browser-returned CNIC portrait and convert it to an upload."""
-    if not str(data_uri or "").startswith("data:image/jpeg;base64,"):
-        return None
-    try:
-        payload = base64.b64decode(data_uri.split(",", 1)[1], validate=True)
-        if not payload or len(payload) > 2 * 1024 * 1024:
-            return None
-        with Image.open(BytesIO(payload)) as image:
-            image.verify()
-        return ContentFile(payload, name=filename)
-    except Exception:
         return None
 
 

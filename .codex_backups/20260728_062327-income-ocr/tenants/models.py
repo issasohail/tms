@@ -114,12 +114,6 @@ class Tenant(models.Model):
     phone3 = NormalizedPhoneField(max_length=32, null=True, blank=True)
     cnic = NormalizedCNICField(max_length=15)
     occupation = models.CharField(max_length=120, blank=True, default="")
-    monthly_income_bracket = models.CharField(
-        max_length=100,
-        blank=True,
-        default="",
-        verbose_name="Monthly Income/Salary",
-    )
     employer_name = models.CharField(max_length=120, blank=True, default="")
     employer_phone = NormalizedPhoneField(max_length=32, blank=True, default="")
     employer_address = models.CharField(max_length=255, blank=True, default="")

@@ -23,23 +23,8 @@ from core.utils.identity import (
     validate_cnic,
     validate_date_of_birth,
 )
-from core.models import GlobalSettings
-
-
-def _tenant_registration_options():
-    settings_obj = GlobalSettings.get_solo()
-    return settings_obj.occupation_options, settings_obj.income_bracket_options
 
 class TenantForm(forms.ModelForm):
-    occupation = forms.CharField(
-        required=False,
-        widget=forms.Select(attrs={"class": "occupation-select-tags"}),
-    )
-    monthly_income_bracket = forms.ChoiceField(
-        required=False,
-        choices=(),
-        label="Monthly Income/Salary",
-    )
     photo = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
         "class": "form-control-file",
         "accept": "image/*,.heic,.heif",
@@ -145,31 +130,6 @@ class TenantForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        occupation_options, income_options = _tenant_registration_options()
-        occupation_value = (
-            self.data.get(self.add_prefix("occupation"))
-            if self.is_bound
-            else getattr(self.instance, "occupation", "")
-        ) or ""
-        occupation_choices = list(occupation_options)
-        if occupation_value and occupation_value not in occupation_choices:
-            occupation_choices.append(occupation_value)
-        self.fields["occupation"].widget.choices = [
-            ("", "Select or add occupation"),
-            *((value, value) for value in occupation_choices),
-        ]
-        income_value = (
-            self.data.get(self.add_prefix("monthly_income_bracket"))
-            if self.is_bound
-            else getattr(self.instance, "monthly_income_bracket", "")
-        ) or ""
-        income_choices = list(income_options)
-        if income_value and income_value not in income_choices:
-            income_choices.append(income_value)
-        self.fields["monthly_income_bracket"].choices = [
-            ("", "Select income range"),
-            *((value, value) for value in income_choices),
-        ]
         # Make fields smaller by adding form-control-sm class
         for field_name, field in self.fields.items():
             if 'photo' in field_name or 'cnic' in field_name:
@@ -195,12 +155,6 @@ class TenantForm(forms.ModelForm):
         self.fields['reference_name_2'].label = "Reference Name 2"
         self.fields['reference_phone_2'].label = "Reference Phone 2"
         self.fields['reference_relation_2'].label = "Reference Relation 2"
-        self.fields["occupation"].widget.attrs["class"] = (
-            "form-select form-select-sm occupation-select-tags"
-        )
-        self.fields["monthly_income_bracket"].widget.attrs["class"] = (
-            "form-select form-select-sm"
-        )
         if "interested_in" in self.fields:
             self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         add_auto_titlecase_class(self.fields)
@@ -227,18 +181,7 @@ class TenantPublicRegistrationForm(forms.Form):
     phone2 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     phone3 = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     cnic = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
-    occupation = forms.CharField(
-        required=False,
-        widget=forms.Select(
-            attrs={"class": "form-select form-select-sm occupation-select-tags"}
-        ),
-    )
-    monthly_income_bracket = forms.ChoiceField(
-        required=False,
-        choices=(),
-        label="Monthly Income/Salary",
-        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
-    )
+    occupation = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     employer_name = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     employer_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     employer_address = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
@@ -302,31 +245,6 @@ class TenantPublicRegistrationForm(forms.Form):
         self.role_data = kwargs.pop("role_data", None)
         self.registration_tenant = kwargs.pop("registration_tenant", None)
         super().__init__(*args, **kwargs)
-        occupation_options, income_options = _tenant_registration_options()
-        occupation_value = (
-            self.data.get("occupation")
-            if self.is_bound
-            else self.initial.get("occupation", "")
-        ) or ""
-        occupation_choices = list(occupation_options)
-        if occupation_value and occupation_value not in occupation_choices:
-            occupation_choices.append(occupation_value)
-        self.fields["occupation"].widget.choices = [
-            ("", "Select or add occupation"),
-            *((value, value) for value in occupation_choices),
-        ]
-        income_value = (
-            self.data.get("monthly_income_bracket")
-            if self.is_bound
-            else self.initial.get("monthly_income_bracket", "")
-        ) or ""
-        income_choices = list(income_options)
-        if income_value and income_value not in income_choices:
-            income_choices.append(income_value)
-        self.fields["monthly_income_bracket"].choices = [
-            ("", "Select income range"),
-            *((value, value) for value in income_choices),
-        ]
         self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
         for field_name in (
             "phone", "phone2", "phone3", "employer_phone", "reference_phone_1",

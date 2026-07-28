@@ -32,8 +32,7 @@ def inspect_estamp_pdf(file_field, *, ai_config=None):
         raise ValidationError("The E-Stamp PDF is damaged or could not be opened.") from exc
     if reader.is_encrypted:
         raise ValidationError(
-            "This E-Stamp PDF is password protected. Please enter the PDF password.",
-            code="password_required",
+            "This E-Stamp PDF is password protected. Please send an unlocked PDF."
         )
     if not reader.pages:
         raise ValidationError("The E-Stamp PDF does not contain any pages.")
@@ -65,25 +64,6 @@ def inspect_estamp_pdf(file_field, *, ai_config=None):
         "source": source,
         "is_estamp": _looks_like_estamp(extracted or searchable_text),
     }
-
-
-def unlock_estamp_pdf(file_field, password):
-    """Replace a pending encrypted E-Stamp with an unlocked rewritten PDF."""
-    from leases.services.estamp import normalize_estamp_pdf
-
-    normalized = normalize_estamp_pdf(file_field, password)
-    payload = normalized.read()
-    if not payload:
-        raise ValidationError("The unlocked E-Stamp PDF is empty.")
-
-    try:
-        with file_field.storage.open(file_field.name, "wb") as destination:
-            destination.write(payload)
-    except (OSError, ValueError) as exc:
-        raise ValidationError(
-            "The unlocked E-Stamp PDF could not be saved. Please try again."
-        ) from exc
-    return payload
 
 
 def match_properties(notes_text, properties):

@@ -8,7 +8,6 @@
 <div class="tenant-detail-compact td-form-page" id="tenantFormTop">
   <form method="post" enctype="multipart/form-data" id="tenantForm" class="td-form-layout" novalidate>
     {% csrf_token %}
-    <input type="hidden" name="cnic_portrait_data" class="tms-cnic-portrait-data">
   <div class="td-form-header">
     <div>
       <h2 class="td-title mb-1">{% if form.instance.pk %}Update Tenant{% else %}Create Tenant{% endif %}</h2>
@@ -130,7 +129,6 @@
             <div class="td-form-errors">{{ form.gender.errors }}</div>
           </div>
           <div class="td-form-cell">{{ form.occupation.label_tag }}{{ form.occupation }}<div class="td-form-errors">{{ form.occupation.errors }}</div></div>
-          <div class="td-form-cell">{{ form.monthly_income_bracket.label_tag }}{{ form.monthly_income_bracket }}<div class="td-form-errors">{{ form.monthly_income_bracket.errors }}</div></div>
           <div class="td-form-cell">{{ form.nationality.label_tag }}{{ form.nationality }}<div class="td-form-errors">{{ form.nationality.errors }}</div></div>
           <div class="td-form-cell">{{ form.city.label_tag }}{{ form.city }}<div class="td-form-errors">{{ form.city.errors }}</div></div>
           <div class="td-form-cell">{{ form.province.label_tag }}{{ form.province }}<div class="td-form-errors">{{ form.province.errors }}</div></div>
@@ -532,18 +530,6 @@
   window.TMS_IDENTITY_LOCK_MAIN = {% if form.instance.pk %}false{% else %}true{% endif %};
 </script>
 {% include "partials/identity_media_public.html" %}
-<script>
-  (function () {
-    if (!window.jQuery || !jQuery.fn.select2) return;
-    jQuery(".occupation-select-tags").select2({
-      tags: true,
-      theme: "bootstrap-5",
-      width: "100%",
-      placeholder: "Select or add occupation",
-      allowClear: true
-    });
-  })();
-</script>
 
 {% endblock %}
 

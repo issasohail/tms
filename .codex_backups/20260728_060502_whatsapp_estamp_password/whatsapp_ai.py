@@ -55,7 +55,6 @@ from whatsapp.services.estamp_processor import (
     inspect_estamp_pdf,
     match_properties,
     match_unit,
-    unlock_estamp_pdf,
 )
 from whatsapp.services.payment_matching import extract_payment_text_fields, match_payment_to_active_lease
 from whatsapp.services.role_mode import (
@@ -827,26 +826,6 @@ class WhatsAppAIAssistant:
         try:
             inspection = inspect_estamp_pdf(media.file, ai_config=self.ai_config)
         except ValidationError as exc:
-            error_list = getattr(exc, "error_list", None) or []
-            error_code = getattr(error_list[0], "code", "") if error_list else ""
-            if error_code == "password_required":
-                self._clear_estamp_context(conversation)
-                conversation.context["staff_estamp_pending_media_id"] = media.pk
-                conversation.pending_state = "staff_estamp_password"
-                conversation.save(
-                    update_fields=["pending_state", "context", "updated_at"]
-                )
-                media.ai_notes = (
-                    f"{media.ai_notes} Encrypted PDF received; waiting for the "
-                    "submitting staff member to provide the password."
-                ).strip()
-                media.save(update_fields=["ai_notes", "updated_at"])
-                return (
-                    "This E-Stamp PDF is password protected. Please enter the "
-                    "PDF password, or reply CANCEL.",
-                    "staff_estamp_password",
-                    {"pending_media_id": media.pk, "staff_user": staff_user},
-                )
             media.status = PendingWhatsAppMedia.STATUS_REJECTED
             media.ai_notes = f"{media.ai_notes} PDF validation failed."
             media.save(update_fields=["status", "ai_notes", "updated_at"])
@@ -856,18 +835,6 @@ class WhatsAppAIAssistant:
                 {"pending_media_id": media.pk, "staff_user": staff_user},
             )
 
-        return self._continue_staff_estamp_inspection(
-            conversation,
-            media,
-            staff_user,
-            inspection,
-            properties,
-        )
-
-    def _continue_staff_estamp_inspection(
-        self, conversation, media, staff_user, inspection, properties=None
-    ):
-        properties = properties or self._staff_accessible_properties(staff_user)
         media.ai_notes = (
             f"{media.ai_notes} Notes inspected using {inspection['source']}; "
             f"{inspection['page_count']} PDF page(s)."
@@ -951,52 +918,6 @@ class WhatsAppAIAssistant:
                 "E-Stamp upload cancelled.",
                 "staff_estamp_cancelled",
                 {"pending_media_id": pending.pk, "staff_user": staff_user},
-            )
-
-        if state == "staff_estamp_password":
-            password = (text or "").strip()
-            if not password:
-                return (
-                    "Please enter the PDF password, or reply CANCEL.",
-                    "staff_estamp_password",
-                    {"pending_media_id": pending.pk, "staff_user": staff_user},
-                )
-            self._redact_estamp_password_message(message_log)
-            try:
-                unlock_estamp_pdf(pending.file, password)
-                inspection = inspect_estamp_pdf(
-                    pending.file, ai_config=self.ai_config
-                )
-            except ValidationError as exc:
-                error_list = getattr(exc, "error_list", None) or []
-                error_code = (
-                    getattr(error_list[0], "code", "") if error_list else ""
-                )
-                if error_code in {"password_required", "wrong_password"}:
-                    return (
-                        "The PDF password is incorrect. Please try again, or "
-                        "reply CANCEL.",
-                        "staff_estamp_password",
-                        {
-                            "pending_media_id": pending.pk,
-                            "staff_user": staff_user,
-                        },
-                    )
-                return (
-                    exc.messages[0],
-                    "staff_estamp_password_error",
-                    {"pending_media_id": pending.pk, "staff_user": staff_user},
-                )
-            pending.ai_notes = (
-                f"{pending.ai_notes} PDF unlocked and rewritten without a "
-                "password."
-            ).strip()
-            pending.save(update_fields=["ai_notes", "updated_at"])
-            return self._continue_staff_estamp_inspection(
-                conversation,
-                pending,
-                staff_user,
-                inspection,
             )
 
         if state == "staff_estamp_property_confirm":
@@ -1180,16 +1101,6 @@ class WhatsAppAIAssistant:
                 {"pending_media_id": pending.pk, "staff_user": staff_user},
             )
         return None
-
-    def _redact_estamp_password_message(self, message_log):
-        payload = dict(message_log.payload or {})
-        text_payload = payload.get("text")
-        if isinstance(text_payload, dict):
-            text_payload = dict(text_payload)
-            text_payload["body"] = "[PDF password redacted]"
-            payload["text"] = text_payload
-        message_log.payload = payload
-        message_log.save(update_fields=["payload", "updated_at"])
 
     def _set_estamp_property_confirmation(
         self, conversation, property_obj, *, candidate_unit=None, source_label

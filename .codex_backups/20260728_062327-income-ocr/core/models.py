@@ -180,29 +180,6 @@ class GlobalSettings(models.Model):
             "a review screen. OCR never saves or overwrites fields automatically."
         ),
     )
-    tenant_income_brackets = models.TextField(
-        default=(
-            "20,000 to 40,000\n"
-            "40,000 to 70,000\n"
-            "70,000 to 100,000\n"
-            "100,000 and more"
-        ),
-        help_text="One monthly income/salary bracket per line.",
-    )
-    tenant_occupation_options = models.TextField(
-        default=(
-            "Salary\n"
-            "Business\n"
-            "Freelancer\n"
-            "Student\n"
-            "Home Maker\n"
-            "Government Job"
-        ),
-        help_text=(
-            "One suggested occupation per line. Staff and tenants may still add "
-            "a value that is not listed."
-        ),
-    )
     whatsapp_handover_reminder_interval_minutes = models.PositiveIntegerField(default=30)
     whatsapp_handover_escalation_timeout_minutes = models.PositiveIntegerField(default=60)
     whatsapp_handover_max_reminders = models.PositiveSmallIntegerField(default=3)
@@ -303,24 +280,6 @@ class GlobalSettings(models.Model):
         result = super().save(*args, **kwargs)
         cache.delete("core.global_settings")
         return result
-
-    @staticmethod
-    def option_lines(value):
-        return list(
-            dict.fromkeys(
-                line.strip()
-                for line in str(value or "").splitlines()
-                if line.strip()
-            )
-        )
-
-    @property
-    def income_bracket_options(self):
-        return self.option_lines(self.tenant_income_brackets)
-
-    @property
-    def occupation_options(self):
-        return self.option_lines(self.tenant_occupation_options)
 
     def delete(self, *args, **kwargs):
         cache.delete("core.global_settings")

@@ -88,6 +88,8 @@ def party_snapshot(lease, history=None):
             "cnic": format_cnic(getattr(person, "cnic", "")) if person else "",
             "phone": format_phone(getattr(person, "phone", "")) if person else "",
             "relationship": _relationship_name(relationship),
+            "cnic_front_url": _file_data_uri(getattr(person, "cnic_front", None)) if person else "",
+            "cnic_back_url": _file_data_uri(getattr(person, "cnic_back", None)) if person else "",
         }
 
     witness1 = (getattr(history, "witness1_tenant", None) if history else None) or lease.witness1_tenant

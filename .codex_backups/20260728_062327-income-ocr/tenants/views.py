@@ -193,33 +193,21 @@ def _cnic_identity_ocr_response(request, *, can_overwrite=False):
             status=403,
         )
 
-    payload, status = _cnic_identity_payload(
-        request.FILES.get("cnic_front"),
-        request.FILES.get("cnic_back"),
-        can_overwrite=can_overwrite,
-    )
-    return JsonResponse(payload, status=status)
-
-
-def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
     from tenants.services.cnic_ocr import extract_cnic_identity
     from whatsapp.services.ai_config import get_whatsapp_ai_config
 
     result = extract_cnic_identity(
-        front_file,
-        back_file,
+        request.FILES.get("cnic_front"),
+        request.FILES.get("cnic_back"),
         get_whatsapp_ai_config().model,
     )
     if not result.get("fields"):
         status = 503 if result.get("engine") == "unavailable" else 422
-        return (
-            {
-                "ok": False,
-                "message": result.get("message")
-                or "CNIC details were not detected.",
-            },
-            status,
+        return JsonResponse(
+            {"ok": False, "message": result.get("message") or "CNIC details were not detected."},
+            status=status,
         )
+
     labels = {
         "full_name": "Full name",
         "first_name": "Name",
@@ -252,7 +240,7 @@ def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
         (item["value"] for item in fields if item["name"] == "cnic"),
         "",
     )
-    return (
+    return JsonResponse(
         {
             "ok": True,
             "fields": fields,
@@ -260,9 +248,7 @@ def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
             "confidence": result.get("confidence", 0),
             "warnings": result.get("warnings", []),
             "can_overwrite": can_overwrite,
-            "portrait_data_uri": result.get("portrait_data_uri", ""),
-        },
-        200,
+        }
     )
 
 
@@ -292,70 +278,6 @@ def public_cnic_identity_ocr(request, token):
         )
     cache.set(rate_key, request_count + 1, 60 * 60)
     return _cnic_identity_ocr_response(request, can_overwrite=False)
-
-
-@login_required
-@require_POST
-def tenant_saved_cnic_identity_ocr(request, pk):
-    """Read a tenant's stored CNIC images and return field-by-field comparisons."""
-    if not request.user.has_perm("tenants.change_tenant"):
-        return JsonResponse(
-            {"ok": False, "message": "You do not have permission to update tenants."},
-            status=403,
-        )
-    if not GlobalSettings.get_solo().tenant_cnic_ocr_enabled:
-        return JsonResponse(
-            {"ok": False, "message": "Tenant CNIC OCR is disabled in Settings."},
-            status=403,
-        )
-    tenant = get_object_or_404(Tenant, pk=pk)
-    payload, status = _cnic_identity_payload(
-        tenant.cnic_front,
-        tenant.cnic_back,
-        can_overwrite=True,
-    )
-    if not payload.get("ok"):
-        return JsonResponse(payload, status=status)
-
-    date_fields = {"date_of_birth", "cnic_issue_date", "cnic_expiry_date"}
-    for item in payload["fields"]:
-        name = item["name"]
-        if name == "full_name" or not hasattr(tenant, name):
-            item["current_value"] = ""
-            item["different"] = False
-            continue
-        current = getattr(tenant, name)
-        if name in date_fields and current:
-            current = current.isoformat()
-        current = str(current or "")
-        item["current_value"] = current
-        current_compare = (
-            normalize_cnic(current) if name == "cnic" else current.strip()
-        )
-        incoming_compare = (
-            normalize_cnic(item["value"])
-            if name == "cnic"
-            else str(item["value"] or "").strip()
-        )
-        item["different"] = bool(
-            current and current_compare != incoming_compare
-        )
-
-    payload["photo_saved"] = False
-    portrait_data = payload.get("portrait_data_uri")
-    if portrait_data and not tenant.photo:
-        from tenants.services.cnic_ocr import portrait_content_file
-
-        portrait = portrait_content_file(
-            portrait_data,
-            filename=f"tenant-{tenant.pk}-cnic-portrait.jpg",
-        )
-        if portrait:
-            tenant.photo = portrait
-            tenant.save(update_fields=["photo", "updated_at"])
-            payload["photo_saved"] = True
-            payload["photo_url"] = tenant.photo.url
-    return JsonResponse(payload, status=status)
 
 
 # Keep the old callable available for older imports and deployed links.
@@ -394,7 +316,6 @@ def tenant_inline_update(request, pk):
         "phone3",
         "cnic",
         "occupation",
-        "monthly_income_bracket",
         "employer_name",
         "employer_phone",
         "reference_name_1",
@@ -413,10 +334,6 @@ def tenant_inline_update(request, pk):
         "working_address",
         "gender",
         "date_of_birth",
-        "cnic_issue_date",
-        "cnic_expiry_date",
-        "temporary_address_urdu",
-        "permanent_address_urdu",
         "emergency_contact_name",
         "emergency_contact_phone",
         "emergency_contact_relation",
@@ -1114,7 +1031,6 @@ def tenant_public_registration_update(request, token):
         "phone3": tenant.phone3,
         "cnic": tenant.cnic,
         "occupation": tenant.occupation,
-        "monthly_income_bracket": tenant.monthly_income_bracket,
         "employer_name": tenant.employer_name,
         "employer_phone": tenant.employer_phone,
         "employer_address": tenant.employer_address,
@@ -1188,18 +1104,10 @@ def tenant_public_registration_update(request, token):
             for file_field in ["photo", "cnic_front", "cnic_back"]:
                 submitted_data.pop(file_field, None)
             submitted_data["family_members"] = _family_members_from_post(request.POST)
-            submitted_photo = request.FILES.get("photo")
-            if not submitted_photo:
-                from tenants.services.cnic_ocr import portrait_content_file
-
-                submitted_photo = portrait_content_file(
-                    request.POST.get("cnic_portrait_data", ""),
-                    filename=f"tenant-{tenant.pk}-cnic-portrait.jpg",
-                )
             submission = TenantRegistrationSubmission.objects.create(
                 tenant=tenant,
                 submitted_data=submitted_data,
-                photo=submitted_photo,
+                photo=request.FILES.get("photo"),
                 cnic_front=request.FILES.get("cnic_front"),
                 cnic_back=request.FILES.get("cnic_back"),
             )
@@ -2708,22 +2616,6 @@ class TenantRoleHistoryView(LoginRequiredMixin, DetailView):
         return context
 
 
-def _apply_cnic_portrait_fallback(tenant, request, *, form=None):
-    """Use the reviewed CNIC portrait only when no tenant photo was supplied."""
-    if tenant.photo or (form and form.cleaned_data.get("photo")):
-        return False
-    from tenants.services.cnic_ocr import portrait_content_file
-
-    portrait = portrait_content_file(
-        request.POST.get("cnic_portrait_data", ""),
-        filename=f"tenant-{tenant.pk or 'new'}-cnic-portrait.jpg",
-    )
-    if not portrait:
-        return False
-    tenant.photo = portrait
-    return True
-
-
 class TenantCreateView(LoginRequiredMixin, CreateView):
     model = Tenant
     form_class = TenantForm
@@ -2760,7 +2652,6 @@ class TenantCreateView(LoginRequiredMixin, CreateView):
         return context
 
     def form_valid(self, form):
-        _apply_cnic_portrait_fallback(form.instance, self.request, form=form)
         messages.success(self.request, "Tenant was created successfully!")
         return super().form_valid(form)
 
@@ -2772,7 +2663,6 @@ class TenantUpdateView(LoginRequiredMixin, UpdateView):
     success_url = reverse_lazy("tenants:tenant_list")
 
     def form_valid(self, form):
-        _apply_cnic_portrait_fallback(form.instance, self.request, form=form)
         messages.success(self.request, "Tenant was updated successfully!")
         return super().form_valid(form)
 

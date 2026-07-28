@@ -50,7 +50,6 @@ class GlobalSettingsForm(forms.ModelForm):
                   "whatsapp_ai_enable_roman_urdu", "whatsapp_ai_mask_sensitive_fields",
                   "whatsapp_ai_store_logs", "whatsapp_handover_reminder_interval_minutes",
                   "tenant_cnic_ocr_enabled",
-                  "tenant_income_brackets", "tenant_occupation_options",
                   "whatsapp_handover_escalation_timeout_minutes", "whatsapp_handover_max_reminders",
                   "whatsapp_handover_notify_multiple_staff",
                   "whatsapp_staff_reply_prefix", "whatsapp_allow_manual_call_action",
@@ -89,10 +88,8 @@ class GlobalSettingsForm(forms.ModelForm):
             "police_verification_link_valid_hours",
             "police_verification_whatsapp_command",
         ]),
-        ("Tenant Registration", "fas fa-user-check", [
+        ("Tenant CNIC OCR", "fas fa-id-card", [
             "tenant_cnic_ocr_enabled",
-            "tenant_income_brackets",
-            "tenant_occupation_options",
         ]),
         ("Late Fees", "fas fa-clock", [
             "late_fee_enabled", "late_fee_type", "late_fee_amount",
@@ -190,14 +187,6 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["police_verification_document_category_code"].label = "Police document category code"
         self.fields["police_verification_link_valid_hours"].label = "Police link validity hours"
         self.fields["police_verification_whatsapp_command"].label = "Police WhatsApp command"
-        self.fields["tenant_income_brackets"].label = "Monthly income/salary brackets"
-        self.fields["tenant_income_brackets"].widget.attrs.update({"rows": 5})
-        self.fields["tenant_occupation_options"].label = "Occupation suggestions"
-        self.fields["tenant_occupation_options"].widget.attrs.update({"rows": 7})
-        self.fields["tenant_cnic_ocr_enabled"].help_text = (
-            "Read CNIC details into a review flow. Blank values can be filled; "
-            "different existing values require individual confirmation."
-        )
         self.fields["whatsapp_media_retention_days"].label = "WhatsApp media retention days"
         self.fields["whatsapp_media_retention_days"].help_text = "Downloaded WhatsApp media files are kept for this many days. Raw webhook logs stay untouched."
         self.fields["whatsapp_pending_request_notifications_enabled"].label = "Enable pending request staff alerts"

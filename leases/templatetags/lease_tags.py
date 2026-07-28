@@ -7,6 +7,13 @@ from django.contrib.humanize.templatetags.humanize import intcomma
 register = template.Library()
 
 
+@register.simple_tag
+def agreement_signature_config():
+    """Return the shared agreement/declaration signature settings."""
+    from leases.models import AgreementSignatureTemplate
+    return AgreementSignatureTemplate.current()
+
+
 # leases/templatetags/lease_tags.py
 
 @register.filter

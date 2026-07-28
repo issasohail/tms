@@ -50,11 +50,6 @@ urlpatterns = [
         name="tenant_public_registration",
     ),
     path(
-        "<int:pk>/cnic/read-stored-identity/",
-        views.tenant_saved_cnic_identity_ocr,
-        name="tenant_saved_cnic_identity_ocr",
-    ),
-    path(
         "registration-link/new/",
         views.tenant_pre_registration_link_create,
         name="tenant_pre_registration_link_create",

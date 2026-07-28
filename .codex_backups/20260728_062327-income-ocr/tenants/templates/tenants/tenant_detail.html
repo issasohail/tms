@@ -58,12 +58,6 @@
               {% endif %}
             </div>
           </div>
-          {% if can_inline_update_tenant and tenant.cnic_front and tenant.cnic_back %}
-            <button type="button" class="btn btn-sm btn-outline-primary td-read-stored-cnic" id="tenantReadStoredCnic">
-              <i class="far fa-id-card me-1"></i> Read CNIC
-            </button>
-            <div class="small mt-1 td-read-stored-cnic-status" id="tenantReadStoredCnicStatus" aria-live="polite"></div>
-          {% endif %}
         </div>
 
         <div class="td-hero-main flex-grow-1 min-w-0">
@@ -383,11 +377,8 @@
               </strong>
             </div>
             <div>
-              <span>Occupation / Monthly Income</span>
-              <strong>
-                {{ tenant.occupation|default:"-" }}
-                <br><small>{{ tenant.monthly_income_bracket|default:"Income not provided" }}</small>
-              </strong>
+              <span>Occupation</span>
+              <strong>{{ tenant.occupation|default:"-" }}</strong>
             </div>
             <div>
               <span>Nationality</span>
@@ -2087,19 +2078,6 @@
     display: none;
   }
 
-  .td-read-stored-cnic {
-    width: 100%;
-    margin-top: .4rem;
-    font-size: .72rem;
-    font-weight: 800;
-  }
-
-  .td-read-stored-cnic-status {
-    max-width: 260px;
-    color: #475569;
-    line-height: 1.25;
-  }
-
   /* PRINT: hide actions and editable UI while printing. */
   @media print {
     .text-danger,
@@ -2204,73 +2182,6 @@
     }
 
     const csrftoken = getCookie('csrftoken');
-    const readStoredCnicButton = document.getElementById('tenantReadStoredCnic');
-    const readStoredCnicStatus = document.getElementById('tenantReadStoredCnicStatus');
-
-    async function updateOcrField(item) {
-      const body = new FormData();
-      body.append('field', item.name);
-      body.append('value', item.value || '');
-      const response = await fetch(inlineUrl, {
-        method: 'POST',
-        headers: {'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest'},
-        body: body
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || `Could not update ${item.label}.`);
-      }
-    }
-
-    if (readStoredCnicButton) {
-      readStoredCnicButton.addEventListener('click', async function () {
-        const original = readStoredCnicButton.innerHTML;
-        readStoredCnicButton.disabled = true;
-        readStoredCnicButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Reading...';
-        if (readStoredCnicStatus) readStoredCnicStatus.textContent = 'Reading stored CNIC front and back...';
-        try {
-          const response = await fetch("{% url 'tenants:tenant_saved_cnic_identity_ocr' tenant.pk %}", {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest'}
-          });
-          const payload = await response.json();
-          if (!response.ok || !payload.ok) throw new Error(payload.message || 'CNIC could not be read.');
-          let updated = 0;
-          let kept = 0;
-          for (const item of payload.fields || []) {
-            if (item.name === 'full_name') continue;
-            const current = String(item.current_value || '').trim();
-            const incoming = String(item.value || '').trim();
-            const sameValue = item.name === 'cnic'
-              ? current.replace(/\D/g, '') === incoming.replace(/\D/g, '')
-              : current === incoming;
-            if (!incoming || sameValue) continue;
-            if (current) {
-              const accepted = window.confirm(
-                `${item.label} is different.\n\nCurrent value:\n${current}\n\nCNIC value:\n${incoming}\n\nPress OK to update from CNIC, or Cancel to keep the current value.`
-              );
-              if (!accepted) {
-                kept++;
-                continue;
-              }
-            }
-            await updateOcrField(item);
-            updated++;
-          }
-          if (readStoredCnicStatus) {
-            readStoredCnicStatus.textContent =
-              `${updated} field(s) updated${kept ? `; ${kept} current value(s) kept` : ''}` +
-              `${payload.photo_saved ? '; tenant photo created from CNIC' : ''}.`;
-          }
-          if (updated || payload.photo_saved) window.location.reload();
-        } catch (error) {
-          if (readStoredCnicStatus) readStoredCnicStatus.textContent = error.message || 'CNIC could not be read.';
-        } finally {
-          readStoredCnicButton.disabled = false;
-          readStoredCnicButton.innerHTML = original;
-        }
-      });
-    }
 
     const labelToField = {
       "CNIC": "cnic",

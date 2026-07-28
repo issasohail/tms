@@ -17,6 +17,15 @@ from leases.models_parking_inventory import (
 
 ZERO = Decimal("0.00")
 
+LEASE_INVENTORY_FIELD_BY_CODE = {
+    "ceiling_fan": "inventory_ceiling_fans",
+    "exhaust_fan": "inventory_exhaust_fans",
+    "ceiling_light": "inventory_ceiling_lights",
+    "stove": "inventory_stove",
+    "wardrobe": "inventory_wardrobes",
+    "keys": "inventory_keys",
+}
+
 
 def effective_parking_policy(lease=None, unit=None, property_obj=None):
     if lease is not None:
@@ -119,6 +128,84 @@ def copy_inventory_defaults(scope_obj, item_id=None):
         model.objects.update_or_create(
             **{target_field: scope_obj, "item": row["item"]}, defaults=values
         )
+
+
+@transaction.atomic
+def sync_lease_inventory_from_fields(lease, changed_fields=None):
+    """Keep agreement inventory rows aligned with the legacy lease form fields."""
+    field_filter = set(changed_fields or LEASE_INVENTORY_FIELD_BY_CODE.values())
+    definitions = {
+        item.code: item
+        for item in InventoryItemDefinition.objects.filter(
+            code__in=LEASE_INVENTORY_FIELD_BY_CODE
+        )
+    }
+    existing = {
+        row.item.code: row
+        for row in lease.inventory_items.select_related("item").filter(
+            item__code__in=LEASE_INVENTORY_FIELD_BY_CODE
+        )
+    }
+    inherited = {
+        row["item"].code: row
+        for row in effective_inventory(unit=lease.unit)
+        if row["item"].code in LEASE_INVENTORY_FIELD_BY_CODE
+    }
+    updated = 0
+
+    for code, field_name in LEASE_INVENTORY_FIELD_BY_CODE.items():
+        if field_name not in field_filter:
+            continue
+        item = definitions.get(code)
+        if item is None:
+            continue
+        raw_quantity = getattr(lease, field_name, None)
+        if raw_quantity is None:
+            continue
+        try:
+            quantity = max(0, int(raw_quantity))
+        except (TypeError, ValueError):
+            quantity = 0
+
+        row = existing.get(code)
+        if row is not None:
+            changed = []
+            if row.quantity != quantity:
+                row.quantity = quantity
+                changed.append("quantity")
+            if row.snapshot_source != "lease":
+                row.snapshot_source = "lease"
+                changed.append("snapshot_source")
+            if changed:
+                row.save(update_fields=changed + ["updated_at"])
+                updated += 1
+            continue
+
+        inherited_row = inherited.get(code, {})
+        LeaseInventoryItem.objects.create(
+            lease=lease,
+            item=item,
+            quantity=quantity,
+            condition=inherited_row.get("condition") or item.default_condition,
+            is_included=inherited_row.get("is_included", item.is_active),
+            snapshot_source="lease",
+        )
+        updated += 1
+
+    return updated
+
+
+def sync_lease_field_from_inventory_item(lease, item, quantity):
+    """Keep lease-detail/form quantities aligned with Inventory Manager edits."""
+    field_name = LEASE_INVENTORY_FIELD_BY_CODE.get(item.code)
+    if not field_name:
+        return False
+    quantity = max(0, int(quantity or 0))
+    if getattr(lease, field_name, None) == quantity:
+        return False
+    setattr(lease, field_name, quantity)
+    lease.save(update_fields=[field_name, "updated_at"])
+    return True
 
 
 def ensure_lease_inventory_snapshot(lease):

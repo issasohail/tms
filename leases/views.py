@@ -1655,6 +1655,11 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
         # ---------- 2nd click: CONFIRMED ----------
         # Actually save the lease
         response = super().form_valid(form)  # self.object is now saved
+        from leases.services.inventory_parking import (
+            sync_lease_inventory_from_fields,
+        )
+
+        sync_lease_inventory_from_fields(self.object)
         _save_tenant_document_uploads(self.request, self.object)
         move_in_date = form.cleaned_data.get("move_in_date")
         sync_lease_move_in_occupancy(self.object, move_in_date)
@@ -3682,6 +3687,19 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
 
         # ---------- STEP 3: SAVE LEASE & FAMILY ----------
         response = super().form_valid(form)  # self.object is now saved
+        from leases.services.inventory_parking import (
+            LEASE_INVENTORY_FIELD_BY_CODE,
+            sync_lease_inventory_from_fields,
+        )
+
+        changed_inventory_fields = set(form.changed_data).intersection(
+            LEASE_INVENTORY_FIELD_BY_CODE.values()
+        )
+        if changed_inventory_fields:
+            sync_lease_inventory_from_fields(
+                self.object,
+                changed_fields=changed_inventory_fields,
+            )
         _save_tenant_document_uploads(self.request, self.object)
         sync_lease_move_in_occupancy(
             self.object,

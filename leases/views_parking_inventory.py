@@ -27,6 +27,7 @@ from leases.services.inventory_parking import (
     effective_inventory,
     effective_parking_policy,
     policy_value,
+    sync_lease_field_from_inventory_item,
     sync_parking_recurring_charge,
 )
 from properties.models import Property, Unit
@@ -110,6 +111,8 @@ def inventory_manage(request, scope, pk):
         if model is LeaseInventoryItem:
             defaults["snapshot_source"] = "lease"
         model.objects.update_or_create(item=item, **target, defaults=defaults)
+        if model is LeaseInventoryItem:
+            sync_lease_field_from_inventory_item(obj, item, quantity)
         messages.success(request, f"{item.name} inventory updated.")
         return redirect("leases:inventory_manage", scope=scope, pk=pk)
 

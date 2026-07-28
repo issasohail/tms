@@ -131,6 +131,104 @@ class AuthorizedOccupantsPlaceholderTests(TestCase):
         self.assertNotIn("{{authorized_occupants_table}}", rendered)
 
 
+class LeaseInventorySynchronizationTests(TestCase):
+    def setUp(self):
+        from datetime import date, timedelta
+
+        from leases.models import Lease
+        from leases.models_parking_inventory import InventoryItemDefinition
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        property_obj = Property.objects.create(
+            property_name="Inventory Sync Property",
+            owner_name="Test Owner",
+            owner_cnic="61101-1111111-1",
+            type="Residential",
+            property_type="house",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="I-1")
+        tenant = Tenant.objects.create(
+            first_name="Inventory",
+            last_name="Tenant",
+            cnic="61101-2222222-2",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            monthly_rent=10000,
+            inventory_ceiling_fans=4,
+            inventory_exhaust_fans=3,
+            inventory_ceiling_lights=11,
+            inventory_stove=1,
+            inventory_wardrobes=5,
+            inventory_keys=6,
+        )
+        self.definitions = {}
+        labels = {
+            "ceiling_fan": "Ceiling Fan",
+            "exhaust_fan": "Exhaust Fan",
+            "ceiling_light": "Ceiling Light",
+            "stove": "Stove",
+            "wardrobe": "Wardrobe",
+            "keys": "Keys",
+        }
+        for sort_order, (code, name) in enumerate(labels.items(), start=1):
+            item, _ = InventoryItemDefinition.objects.update_or_create(
+                code=code,
+                defaults={
+                    "name": name,
+                    "sort_order": sort_order,
+                    "is_active": True,
+                    "include_in_clause": True,
+                },
+            )
+            self.definitions[code] = item
+
+    def test_lease_fields_refresh_all_agreement_inventory_values(self):
+        from leases.services.inventory_parking import (
+            inventory_list_html,
+            sync_lease_inventory_from_fields,
+        )
+
+        updated = sync_lease_inventory_from_fields(self.lease)
+        quantities = dict(
+            self.lease.inventory_items.values_list("item__code", "quantity")
+        )
+
+        self.assertEqual(updated, 6)
+        self.assertEqual(
+            quantities,
+            {
+                "ceiling_fan": 4,
+                "exhaust_fan": 3,
+                "ceiling_light": 11,
+                "stove": 1,
+                "wardrobe": 5,
+                "keys": 6,
+            },
+        )
+        self.assertIn("<strong>11 Ceiling Light</strong>", inventory_list_html(self.lease))
+
+    def test_inventory_manager_value_refreshes_legacy_lease_field(self):
+        from leases.services.inventory_parking import (
+            sync_lease_field_from_inventory_item,
+        )
+
+        changed = sync_lease_field_from_inventory_item(
+            self.lease,
+            self.definitions["ceiling_light"],
+            9,
+        )
+
+        self.assertTrue(changed)
+        self.lease.refresh_from_db()
+        self.assertEqual(self.lease.inventory_ceiling_lights, 9)
+
+
 class ActiveClauseEditorDeletionTests(TestCase):
     def setUp(self):
         from datetime import date, timedelta

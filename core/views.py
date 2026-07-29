@@ -268,6 +268,10 @@ def _pending_media_context(media):
             "preview_kind": "processing",
             "filename": media.original_filename or media.file.name,
             "file_size": None,
+            "retry_available": bool(
+                media.whatsapp_media_id
+                and media.updated_at <= timezone.now() - timedelta(minutes=2)
+            ),
         }
     try:
         file_size = media.file.size
@@ -286,6 +290,7 @@ def _pending_media_context(media):
             "filename": media.original_filename or media.file.name,
             "file_size": None,
             "status_note": media.ai_notes or "The file is missing or failed to download.",
+            "retry_available": bool(media.whatsapp_media_id),
         }
     return {
         "file_url": media.file.url,
@@ -763,6 +768,42 @@ def pending_approval_detail(request, kind, pk):
             ),
         },
     )
+
+
+@login_required
+@require_POST
+def retry_pending_media_download(request, pk):
+    from whatsapp.models import PendingWhatsAppMedia
+    from whatsapp.services.queue import enqueue_pending_media_download
+
+    with transaction.atomic():
+        media = get_object_or_404(
+            PendingWhatsAppMedia.objects.select_for_update(),
+            pk=pk,
+            status=PendingWhatsAppMedia.STATUS_PENDING,
+        )
+        if not media.whatsapp_media_id:
+            messages.error(
+                request,
+                "This item has no WhatsApp media ID and cannot be downloaded again.",
+            )
+            return redirect("core:pending_approval_detail", kind="media", pk=media.pk)
+        if (
+            media.processing
+            and media.updated_at > timezone.now() - timedelta(minutes=2)
+        ):
+            messages.info(request, "The media download is already running.")
+            return redirect("core:pending_approval_detail", kind="media", pk=media.pk)
+
+        media.processing = True
+        retry_note = "Download retry requested."
+        if retry_note not in media.ai_notes:
+            media.ai_notes = f"{media.ai_notes} {retry_note}".strip()
+        media.save(update_fields=["processing", "ai_notes", "updated_at"])
+        transaction.on_commit(lambda: enqueue_pending_media_download(media.pk))
+
+    messages.success(request, "Media download restarted. Refresh this page in a moment.")
+    return redirect("core:pending_approval_detail", kind="media", pk=media.pk)
 
 
 @login_required

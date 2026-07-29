@@ -24,6 +24,7 @@ urlpatterns = [
     path("settings/test-whatsapp-pending-alert/", views.test_whatsapp_pending_request_alert, name="test_whatsapp_pending_request_alert"),
     path("pending-approvals/", views.pending_approvals, name="pending_approvals"),
     path("pending-approvals/<str:kind>/<int:pk>/", views.pending_approval_detail, name="pending_approval_detail"),
+    path("pending-approvals/media/<int:pk>/retry-download/", views.retry_pending_media_download, name="retry_pending_media_download"),
     path("pending-approvals/family/<int:pk>/file/<str:field_name>/", views.pending_family_file, name="pending_family_file"),
     path("pending-approvals/<str:kind>/<int:pk>/approve/", views.pending_approval_approve, name="pending_approval_approve"),
     path("pending-approvals/<str:kind>/<int:pk>/reject/", views.pending_approval_reject, name="pending_approval_reject"),

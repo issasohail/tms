@@ -300,6 +300,55 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertEqual(pending.status, PendingWhatsAppMaintenance.STATUS_PENDING)
         self.assertIsNone(pending.created_request)
 
+    @patch("whatsapp.services.queue.enqueue_pending_media_download")
+    def test_stale_processing_media_can_be_retried(self, enqueue_download):
+        media = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/processing/tenant-video.mp4",
+            original_filename="tenant-video.mp4",
+            media_type="video",
+            whatsapp_media_id="media-123",
+            processing=True,
+        )
+        PendingWhatsAppMedia.objects.filter(pk=media.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=5)
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("core:retry_pending_media_download", args=[media.pk])
+            )
+
+        media.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse("core:pending_approval_detail", args=["media", media.pk]),
+        )
+        self.assertTrue(media.processing)
+        self.assertIn("Download retry requested.", media.ai_notes)
+        enqueue_download.assert_called_once_with(media.pk)
+
+    @patch("whatsapp.services.queue.enqueue_pending_media_download")
+    def test_recent_processing_media_is_not_queued_twice(self, enqueue_download):
+        media = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/processing/tenant-video.mp4",
+            original_filename="tenant-video.mp4",
+            media_type="video",
+            whatsapp_media_id="media-123",
+            processing=True,
+        )
+
+        response = self.client.post(
+            reverse("core:retry_pending_media_download", args=[media.pk])
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("core:pending_approval_detail", args=["media", media.pk]),
+        )
+        enqueue_download.assert_not_called()
+
     def test_approved_maintenance_media_is_renamed_and_keeps_original_name(self):
         media = self._pending(
             filename="tenant-leak-photo.jpg",
@@ -746,7 +795,27 @@ class WhatsAppDeferredMediaQueueTests(SimpleTestCase):
 
         self.assertEqual(result, "thread")
         thread_class.assert_called_once()
-        self.assertTrue(thread_class.call_args.kwargs["daemon"])
+        self.assertFalse(thread_class.call_args.kwargs["daemon"])
+        thread_class.return_value.start.assert_called_once()
+
+    @patch("whatsapp.services.queue.threading.Thread")
+    @patch(
+        "whatsapp.tasks.download_pending_media_task.delay",
+        side_effect=RuntimeError("Redis unavailable"),
+    )
+    @patch("whatsapp.services.queue.get_whatsapp_ai_config")
+    def test_celery_queue_failure_uses_non_daemon_thread_fallback(
+        self, get_config, task_delay, thread_class
+    ):
+        from whatsapp.services.queue import enqueue_pending_media_download
+
+        get_config.return_value = SimpleNamespace(use_celery=True)
+
+        result = enqueue_pending_media_download(42)
+
+        self.assertEqual(result, "thread")
+        task_delay.assert_called_once_with(42)
+        self.assertFalse(thread_class.call_args.kwargs["daemon"])
         thread_class.return_value.start.assert_called_once()
 
 

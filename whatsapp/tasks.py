@@ -30,31 +30,43 @@ def download_pending_media(pending_media_id):
     if not pending:
         logger.warning("download_pending_media_task: pending media %s no longer exists", pending_media_id)
         return
-    if not pending.whatsapp_media_id:
-        pending.processing = False
-        pending.ai_notes = f"{pending.ai_notes} No WhatsApp media id was available to download.".strip()
-        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
-        return
+    try:
+        if not pending.whatsapp_media_id:
+            pending.processing = False
+            pending.ai_notes = f"{pending.ai_notes} No WhatsApp media id was available to download.".strip()
+            pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+            return
 
-    content = WhatsAppService().download_media_bytes(pending.whatsapp_media_id)
-    if not content:
-        pending.processing = False
-        pending.ai_notes = f"{pending.ai_notes} Background download failed; check WhatsApp media token/config.".strip()
-        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
-        return
+        content = WhatsAppService().download_media_bytes(pending.whatsapp_media_id)
+        if not content:
+            pending.processing = False
+            pending.ai_notes = f"{pending.ai_notes} Background download failed; check WhatsApp media token/config.".strip()
+            pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+            return
 
-    max_bytes = int(getattr(settings, "WHATSAPP_MAX_INBOUND_MEDIA_BYTES", 16 * 1024 * 1024))
-    if len(content) > max_bytes:
-        pending.processing = False
-        pending.ai_notes = f"{pending.ai_notes} File exceeded the size limit and was discarded.".strip()
-        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
-        return
+        max_bytes = int(getattr(settings, "WHATSAPP_MAX_INBOUND_MEDIA_BYTES", 16 * 1024 * 1024))
+        if len(content) > max_bytes:
+            pending.processing = False
+            pending.ai_notes = f"{pending.ai_notes} File exceeded the size limit and was discarded.".strip()
+            pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+            return
 
-    filename = pending.original_filename or f"whatsapp-{pending.whatsapp_media_id}.bin"
-    pending.file.save(filename, ContentFile(content), save=False)
-    pending.processing = False
-    pending.save(update_fields=["file", "processing", "updated_at"])
-    logger.info("Downloaded deferred WhatsApp media for pending media %s", pending_media_id)
+        filename = pending.original_filename or f"whatsapp-{pending.whatsapp_media_id}.bin"
+        pending.file.save(filename, ContentFile(content), save=False)
+        pending.processing = False
+        pending.save(update_fields=["file", "processing", "updated_at"])
+        logger.info("Downloaded deferred WhatsApp media for pending media %s", pending_media_id)
+    except Exception:
+        logger.exception(
+            "Unexpected deferred WhatsApp media download failure for pending media %s",
+            pending_media_id,
+        )
+        pending.processing = False
+        failure_note = "Background download stopped unexpectedly. Use Retry Download to try again."
+        if failure_note not in pending.ai_notes:
+            pending.ai_notes = f"{pending.ai_notes} {failure_note}".strip()
+        pending.save(update_fields=["processing", "ai_notes", "updated_at"])
+        raise
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})

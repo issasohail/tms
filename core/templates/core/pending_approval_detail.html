@@ -205,9 +205,25 @@
             {% elif media_preview.preview_kind == "pdf" %}
               <iframe src="{{ media_preview.file_url }}" class="w-100 rounded border" style="height:720px;"></iframe>
             {% elif media_preview.preview_kind == "processing" %}
-              <div class="text-muted"><span class="badge bg-warning text-dark">Downloading&hellip;</span> Video/audio is still downloading from WhatsApp. Refresh this page in a moment.</div>
+              <div class="text-muted">
+                <span class="badge bg-warning text-dark">Downloading&hellip;</span> Video/audio is still downloading from WhatsApp. Refresh this page in a moment.
+                {% if media_preview.retry_available %}
+                  <form method="post" action="{% url 'core:retry_pending_media_download' item.pk %}" class="mt-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Retry Download</button>
+                  </form>
+                {% endif %}
+              </div>
             {% elif media_preview.preview_kind == "unavailable" %}
-              <div class="text-muted"><span class="badge bg-danger">Unavailable</span> {{ media_preview.status_note|default:"The file download failed or is missing. Ask the tenant/staff to resend it." }}</div>
+              <div class="text-muted">
+                <span class="badge bg-danger">Unavailable</span> {{ media_preview.status_note|default:"The file download failed or is missing. Ask the tenant/staff to resend it." }}
+                {% if media_preview.retry_available %}
+                  <form method="post" action="{% url 'core:retry_pending_media_download' item.pk %}" class="mt-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Retry Download</button>
+                  </form>
+                {% endif %}
+              </div>
             {% elif media_preview.file_url %}
               <a href="{{ media_preview.file_url }}" target="_blank" class="btn btn-outline-primary">Open {{ media_preview.filename }}</a>
             {% else %}
@@ -238,9 +254,25 @@
                     {% elif media.preview_kind == "pdf" %}
                       <iframe src="{{ media.file_url }}" class="w-100 rounded border" style="height:420px;"></iframe>
                     {% elif media.preview_kind == "processing" %}
-                      <div class="text-muted small"><span class="badge bg-warning text-dark">Downloading&hellip;</span> Still downloading from WhatsApp.</div>
+                      <div class="text-muted small">
+                        <span class="badge bg-warning text-dark">Downloading&hellip;</span> Still downloading from WhatsApp.
+                        {% if media.retry_available %}
+                          <form method="post" action="{% url 'core:retry_pending_media_download' media.object.pk %}" class="mt-2">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Retry Download</button>
+                          </form>
+                        {% endif %}
+                      </div>
                     {% elif media.preview_kind == "unavailable" %}
-                      <div class="text-muted small" title="{{ media.status_note }}"><span class="badge bg-danger">Unavailable</span> Download failed or file is missing.</div>
+                      <div class="text-muted small" title="{{ media.status_note }}">
+                        <span class="badge bg-danger">Unavailable</span> Download failed or file is missing.
+                        {% if media.retry_available %}
+                          <form method="post" action="{% url 'core:retry_pending_media_download' media.object.pk %}" class="mt-2">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Retry Download</button>
+                          </form>
+                        {% endif %}
+                      </div>
                     {% else %}
                       <div class="text-muted small">Preview unavailable. Open the file to review it.</div>
                     {% endif %}

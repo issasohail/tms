@@ -60,6 +60,9 @@ def enqueue_pending_media_download(pending_media_id):
                 pending_media_id,
             )
 
-    thread = threading.Thread(target=runner, daemon=True)
+    # Keep the Gunicorn worker alive until the media file has either been
+    # stored or marked failed. A daemon thread can be terminated during a
+    # worker restart and leave PendingWhatsAppMedia.processing=True forever.
+    thread = threading.Thread(target=runner, daemon=False)
     thread.start()
     return "thread"

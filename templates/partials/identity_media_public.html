@@ -1,3 +1,4 @@
+{% load static %}
 <style>
   .tms-public-image-viewer[hidden] { display:none!important; }
   .tms-public-image-viewer{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.88)}
@@ -211,3 +212,4 @@
   },true);document.getElementById('tmsPublicImageClose')?.addEventListener('click',closeViewer);document.getElementById('tmsPublicImageCloseBottom')?.addEventListener('click',closeViewer);viewer?.addEventListener('click',e=>{if(e.target===viewer)closeViewer()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!viewer.hidden)closeViewer()})
 })();
 </script>
+<script src="{% static 'js/tms-image-editor.js' %}"></script>

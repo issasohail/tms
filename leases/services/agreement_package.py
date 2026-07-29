@@ -415,13 +415,18 @@ def _add_agreement_signature_footers(
         return pdf_bytes
     standard_y = max(31.0, float(footer_clearance or 0))
     for index, page in enumerate(pages[:-1]):
+        page_text = page.extract_text() or ""
+        if all(
+            marker in page_text
+            for marker in ("Owner:", "Tenant:", "Witness 1:", "Witness 2:")
+        ):
+            # The full agreement-party block already provides signature lines.
+            # Do not draw the compact repeating footer on the same page.
+            continue
         if index == 0:
             y = standard_y
             qr_width = max(0.0, float(qr_reserve_width or 0)) * 72
             right_boundary = float(page.mediabox.width) - 0.55 * 72 - qr_width - 8
-        elif index == 1:
-            y = float(identity_bottom_reserve) * 72 + 8
-            right_boundary = None
         else:
             y = standard_y
             right_boundary = None
@@ -465,10 +470,7 @@ def agreement_pdf(request, lease, history, clauses):
         else 0.95
     )
     first_bottom_reserve = max(0.95, standard_bottom_reserve)
-    later_bottom_reserve = max(
-        layout["identity_bottom"] + 0.72,
-        standard_bottom_reserve,
-    )
+    later_bottom_reserve = standard_bottom_reserve
     css_px_per_inch = 96.0
     legal_page_width = 8.5
     legal_page_height = 13.0 if legal_page else 11.0
@@ -549,13 +551,6 @@ def agreement_pdf(request, lease, history, clauses):
     else:
         pdf_bytes = render(requested_spacing)
     if stamped_layout:
-        pdf_bytes = _pin_identity_cards_to_second_page(
-            pdf_bytes,
-            lease,
-            history,
-            layout["identity_bottom"],
-            footer_clearance=legal_footer_clearance,
-        )
         pdf_bytes = _add_agreement_signature_footers(
             pdf_bytes,
             lease,
@@ -960,6 +955,12 @@ def build_package(request, lease, history, clauses):
         raise
     except Exception as exc:
         raise RuntimeError(f"Agreement PDF generation failed: {exc}") from exc
+    try:
+        components.append(identity_pdf(request, lease, history))
+    except Exception as exc:
+        raise RuntimeError(
+            f"Agreement generated, but identity documents PDF generation failed: {exc}"
+        ) from exc
     try:
         components.append(inspection_pdf(request, lease))
     except Exception as exc:

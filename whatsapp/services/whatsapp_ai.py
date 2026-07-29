@@ -674,7 +674,6 @@ class WhatsAppAIAssistant:
                 "purpose", "target_kind", "batch_key", "submitted_by_staff", "property", "unit", "lease", "tenant", "ai_notes", "updated_at"
             ])
             count = PendingWhatsAppMedia.objects.filter(batch_key=media.batch_key).count()
-            notify_staff_pending_request("upload", media)
             return (
                 f"Photo/file {count} added to this approval batch. Send more files or reply DONE.",
                 "staff_upload_batched",
@@ -1905,7 +1904,23 @@ class WhatsAppAIAssistant:
                 "Act as Tenant is restricted. Ask an administrator to enable it for your staff user."
             )
         conversation.pending_state = "staff_tenant_simulator_lookup"
-        self._clear_context_keys(conversation, "staff_tenant_simulator_options")
+        self._clear_context_keys(
+            conversation,
+            "staff_tenant_simulator_options",
+            "staff_upload_kind",
+            "staff_upload_batch_key",
+            "staff_upload_property_id",
+            "staff_upload_unit_id",
+            "staff_upload_lease_id",
+            "staff_upload_target_options",
+            "pending_media_id",
+            "pending_payment_id",
+            "payment_apply_lease_options",
+            "payment_apply_retry_count",
+            "payment_receipt_review",
+            "pending_maintenance_id",
+            "maintenance_draft",
+        )
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return (
             "Act as Tenant (Live)\n\n"
@@ -2008,7 +2023,23 @@ class WhatsAppAIAssistant:
             "started_by_staff_id": staff_user.pk,
             "started_at": timezone.now().isoformat(),
         }
-        self._clear_context_keys(conversation, "staff_tenant_simulator_options")
+        self._clear_context_keys(
+            conversation,
+            "staff_tenant_simulator_options",
+            "staff_upload_kind",
+            "staff_upload_batch_key",
+            "staff_upload_property_id",
+            "staff_upload_unit_id",
+            "staff_upload_lease_id",
+            "staff_upload_target_options",
+            "pending_media_id",
+            "pending_payment_id",
+            "payment_apply_lease_options",
+            "payment_apply_retry_count",
+            "payment_receipt_review",
+            "pending_maintenance_id",
+            "maintenance_draft",
+        )
         conversation.selected_mode = WhatsAppConversation.MODE_TENANT
         conversation.mode_expires_at = timezone.now() + timedelta(
             minutes=getattr(settings, "WHATSAPP_MODE_SESSION_MINUTES", 60)
@@ -2156,6 +2187,13 @@ class WhatsAppAIAssistant:
             if lowered in {"done", "submit", "finished", "finish"}:
                 batch_key = conversation.context.get("staff_upload_batch_key")
                 count = PendingWhatsAppMedia.objects.filter(batch_key=batch_key).count() if batch_key else 0
+                first_batch_item = (
+                    PendingWhatsAppMedia.objects.filter(batch_key=batch_key)
+                    .order_by("created_at", "pk")
+                    .first()
+                    if batch_key
+                    else None
+                )
                 conversation.pending_state = ""
                 self._clear_context_keys(
                     conversation,
@@ -2163,6 +2201,8 @@ class WhatsAppAIAssistant:
                     "staff_upload_unit_id", "staff_upload_lease_id", "staff_upload_target_options",
                 )
                 conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                if first_batch_item:
+                    notify_staff_pending_request("upload", first_batch_item)
                 return f"Upload batch submitted for approval with {count} file(s).", "staff_upload_submitted", {"staff_user": staff_user}
             if lowered in {"cancel", "back"}:
                 conversation.pending_state = ""
@@ -4150,7 +4190,6 @@ class WhatsAppAIAssistant:
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         return (
             "Maintenance request\n\n"
-            f"I read this as: {issue} ({urgency}).\n\n"
             "Please reply with the location and details in one message.\n"
             "Example: Bathroom pipe leaking, urgent, water is spreading.\n\n"
             "You can also send a clear photo or short video after this.",
@@ -4811,6 +4850,12 @@ def notify_staff_pending_request(request_type, pending):
             # get notified normally.
             self_number = WhatsAppService.normalize_phone_number(conversation.phone_number)
             staff_numbers = [number for number in staff_numbers if number != self_number]
+    submitted_by_staff = getattr(pending, "submitted_by_staff", None)
+    submitted_number = WhatsAppService.normalize_phone_number(
+        getattr(submitted_by_staff, "whatsapp_number", "")
+    )
+    if submitted_number:
+        staff_numbers = [number for number in staff_numbers if number != submitted_number]
     if not staff_numbers:
         return
     message = _pending_request_staff_message(request_type, pending)

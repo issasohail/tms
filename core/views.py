@@ -790,6 +790,10 @@ def _attach_pending_media_from_core(pending, user):
     missing_file_message = (
         "The source media file is missing from storage. Restore or re-upload it before approval."
     )
+    if pending.processing:
+        raise ValueError(
+            "This WhatsApp media file is still downloading. Please wait a moment and try approval again."
+        )
     if not pending.file or not pending.file.name:
         raise ValueError(missing_file_message)
     try:
@@ -916,6 +920,10 @@ def _attach_pending_media_from_core(pending, user):
 
 
 def _pending_media_source_exists(pending):
+    if pending.processing:
+        raise ValueError(
+            "This WhatsApp media file is still downloading. Please wait a moment and try approval again."
+        )
     if not pending.file or not pending.file.name:
         return False
     try:
@@ -1213,6 +1221,11 @@ def _approve_pending_maintenance(pending, user, handyman=None):
         raise ValueError("Maintenance needs a unit before approval.")
     pending_media = list(pending.media.all())
     for media in pending_media:
+        if media.processing:
+            raise ValueError(
+                f'Maintenance media "{media.original_filename or "file"}" is still downloading. '
+                "Please wait a moment and try approval again."
+            )
         if not media.file or not media.file.name:
             raise ValueError(
                 "A maintenance media file is missing. Restore or re-upload it before approval."

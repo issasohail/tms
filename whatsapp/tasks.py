@@ -15,8 +15,7 @@ def process_whatsapp_ai_message_task(self, message_log_id):
     logger.info("Processed WhatsApp AI message %s through Celery", message_log_id)
 
 
-@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
-def download_pending_media_task(self, pending_media_id):
+def download_pending_media(pending_media_id):
     """Fetch the actual bytes for a video/audio PendingWhatsAppMedia row in the
     background, so the webhook reply for that message never has to wait on a
     slow WhatsApp CDN download. See media_processor.create_pending_media, which
@@ -56,6 +55,11 @@ def download_pending_media_task(self, pending_media_id):
     pending.processing = False
     pending.save(update_fields=["file", "processing", "updated_at"])
     logger.info("Downloaded deferred WhatsApp media for pending media %s", pending_media_id)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
+def download_pending_media_task(self, pending_media_id):
+    download_pending_media(pending_media_id)
 
 
 @shared_task

@@ -68,8 +68,12 @@ def _prepare_base_for_stamp(raw_bytes: bytes) -> Image.Image:
 # -------------------------------------------------------------------
 MAX_DB_PATH = 240
 STAMP_PROP_SCALE = getattr(settings, "LEASE_STAMP_PROP_SCALE",   0.55)
-STAMP_TS_SCALE = getattr(settings, "LEASE_STAMP_TS_SCALE",     0.50)
-STAMP_DESC_SCALE = getattr(settings, "LEASE_STAMP_DESC_SCALE",   0.50)
+STAMP_TS_SCALE = max(
+    1.20, float(getattr(settings, "LEASE_STAMP_TS_SCALE", 1.20))
+)
+STAMP_DESC_SCALE = max(
+    1.20, float(getattr(settings, "LEASE_STAMP_DESC_SCALE", 1.20))
+)
 STAMP_SCALE = getattr(settings, "LEASE_STAMP_SCALE",        1.0)
 # Resolve a default font path if LEASE_STAMP_FONT isn't set.
 # 1) If settings.BASE_DIR exists, use it.
@@ -81,7 +85,7 @@ if _base_dir is None:
 _default_font = Path(_base_dir) / "core" / "static" / "fonts" / "Inter-Regular.ttf"
 STAMP_FONT = getattr(settings, "LEASE_STAMP_FONT", str(_default_font))
 
-STAMP_MIN_PX = getattr(settings, "LEASE_STAMP_MIN_PX",       12)
+STAMP_MIN_PX = max(22, int(getattr(settings, "LEASE_STAMP_MIN_PX", 22)))
 
 # -------------------------------------------------------------------
 # naming helpers

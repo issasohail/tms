@@ -633,6 +633,10 @@ async function prepareUploadFile(file) {
 async function uploadLeasePhotos(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length || window.__leasePhotoUploadRunning) return;
+  if (window.__leasePhotoUploadCloseTimer) {
+    window.clearTimeout(window.__leasePhotoUploadCloseTimer);
+    window.__leasePhotoUploadCloseTimer = null;
+  }
   window.__leasePhotoUploadRunning = true;
 
   const form = document.getElementById('lease-photo-add');
@@ -730,14 +734,24 @@ async function uploadLeasePhotos(fileList) {
     errorsEl.textContent = failures.join('\n');
     errorsEl.style.whiteSpace = 'pre-line';
     errorsEl.style.display = 'block';
+    closeButton.style.display = 'inline-block';
+  } else {
+    closeButton.style.display = 'none';
   }
-  closeButton.style.display = 'inline-block';
   const grid = document.getElementById('photos-grid');
   const gridUrl = grid?.getAttribute('hx-get');
   if (gridUrl) {
     htmx.ajax('GET', gridUrl, {target: '#photos-grid', swap: 'outerHTML'});
   }
   window.__leasePhotoUploadRunning = false;
+  if (!failures.length) {
+    window.__leasePhotoUploadCloseTimer = window.setTimeout(function() {
+      if (!window.__leasePhotoUploadRunning) {
+        modal.classList.remove('is-open');
+      }
+      window.__leasePhotoUploadCloseTimer = null;
+    }, 700);
+  }
 }
 
 document.getElementById('add-photos-input')?.addEventListener('change', function(){

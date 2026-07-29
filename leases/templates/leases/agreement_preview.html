@@ -39,21 +39,13 @@
     .signature-section table { margin-bottom: 4px !important; }
     .signature-section td { vertical-align: top; }
     .signature-section p { margin: 0 !important; line-height: 1.05; }
-    .signature-section { margin-top: 18px !important; }
+    .signature-section { margin-top: 26px !important; }
     .signature-section, .signature-section * {
         text-align:left !important;
         text-justify:auto !important;
         word-spacing:normal !important;
     }
     .signature-section .footer { text-align: left !important; margin-top: 4px !important; }
-    .signature-section .signature-line { padding-top:2em; }
-    .agreement-signature-rule {
-        display:inline-block;
-        width:2.93in;
-        height:.85em;
-        border-bottom:.7pt solid #000;
-        vertical-align:baseline;
-    }
     .blank-party-field {
         display:inline-block;
         width:2.15in;
@@ -70,32 +62,78 @@
         display:inline-block;
         width:1.25in;
     }
-    .thumb-party-field {
-        width:1.68in;
-        height:3.15em;
-        vertical-align:bottom;
+    .agreement-signer-row {
+        display:table;
+        width:2.65in;
+        table-layout:fixed;
+        margin-top:5pt;
+    }
+    .agreement-signer-details {
+        display:table-cell;
+        vertical-align:top;
+        padding-top:2pt;
+        border-top:.7pt solid #000;
+    }
+    .agreement-thumb-cell {
+        display:table-cell;
+        width:.68in;
+        padding-left:.04in;
+        vertical-align:top;
+    }
+    .agreement-thumb-box {
+        width:.60in;
+        height:.64in;
+        border:1px solid #111;
+    }
+    .agreement-thumb-label {
+        width:.60in;
+        margin-top:1pt;
+        font-size:6.5pt;
+        line-height:1;
+        text-align:center !important;
+    }
+    .agreement-signer-details .blank-party-field {
+        width:1.10in;
+    }
+    .agreement-signer-details .witness-field-row {
+        white-space:normal;
+    }
+    .agreement-signer-details .party-name-label {
+        width:auto;
+        margin-right:3pt;
+    }
+    .primary-party-table .agreement-signer-row {
+        width:2.82in;
+    }
+    .primary-party-table .agreement-thumb-cell {
+        width:.72in;
+    }
+    .primary-party-table .agreement-thumb-box {
+        width:.64in;
+        height:.70in;
+    }
+    .primary-party-table .agreement-thumb-label {
+        width:.64in;
     }
     .last-page-qr-reserve {
-        float:right;
-        width:{{ legal_qr_reserve_width|default:"2" }}in;
-        height:{{ legal_qr_reserve_height|default:"4" }}in;
-        margin-left:.12in;
+        display:none;
     }
     {% if stamped_layout %}
     .parties-section { margin-bottom:8pt; }
+    .signature-section .qr-safe-right-party .agreement-signer-row {
+        position:relative;
+        left:-1in;
+    }
     .signature-section .party-detail-line {
         font-size:12pt;
         line-height:1.05 !important;
     }
     {% if legal_page %}
     .signature-section {
-        margin-top: 7px !important;
+        margin-top: 20px !important;
     }
     .signature-section table {
         margin-bottom: 0 !important;
-    }
-    .signature-section .signature-line {
-        padding-top: .65em;
     }
     .signature-section p,
     .signature-section .party-detail-line,
@@ -103,8 +141,8 @@
         font-size: 9pt;
         line-height: 1 !important;
     }
-    .signature-section .thumb-party-field {
-        height: 1.15em;
+    .signature-section .primary-party-table .party-detail-line {
+        font-size: 9.5pt;
     }
     {% endif %}
     {% endif %}
@@ -187,27 +225,39 @@
     {% if stamped_layout %}<div class="last-page-qr-reserve" aria-hidden="true"></div>{% endif %}
     
     <div class="signature-section" style="font-family: 'Times New Roman', Times, serif; font-size: 14px;">
-    <table style="width: 100%; border-collapse: collapse;">
+    <table class="primary-party-table" style="width: 100%; border-collapse: collapse;">
         <tr>
             <td style="width: 50%; padding-right: 20px;">
-                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
-                <p class="party-detail-line"><strong>Owner:</strong> {{ lease.unit.property.owner_name }}</p>
-                <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic|format_cnic }}</p>
-                <p class="party-detail-line"><strong>Phone:</strong> {{ lease.unit.property.owner_phone|format_phone|default:"_________________________" }}</p>
-                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
-                {% if agreement_signature_settings.show_thumb_impression %}
-                <p class="party-detail-line witness-field-row"><strong class="thumb-field-label">Thumb Impression:</strong><span class="blank-party-field thumb-party-field"></span></p>
-                {% endif %}
+                <div class="agreement-signer-row">
+                    <div class="agreement-signer-details">
+                        <p class="party-detail-line"><strong>Owner:</strong> {{ lease.unit.property.owner_name }}</p>
+                        <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.unit.property.owner_cnic|format_cnic }}</p>
+                        <p class="party-detail-line"><strong>Phone:</strong> {{ lease.unit.property.owner_phone|format_phone|default:"_________________________" }}</p>
+                        <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
+                    </div>
+                    {% if agreement_signature_settings.show_thumb_impression %}
+                    <div class="agreement-thumb-cell">
+                        <div class="agreement-thumb-box"></div>
+                        <div class="agreement-thumb-label">Thumb Impression</div>
+                    </div>
+                    {% endif %}
+                </div>
             </td>
-            <td style="width: 50%; padding-left: 20px;">
-                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
-                <p class="party-detail-line"><strong>Tenant:</strong>  {{ lease.tenant.get_full_name }}</p>
-                <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.tenant.cnic|format_cnic }}</p>
-                <p class="party-detail-line"><strong>Phone:</strong> {{ lease.tenant.phone|format_phone|default:"_________________________" }}</p>
-                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
-                {% if agreement_signature_settings.show_thumb_impression %}
-                <p class="party-detail-line witness-field-row"><strong class="thumb-field-label">Thumb Impression:</strong><span class="blank-party-field thumb-party-field"></span></p>
-                {% endif %}
+            <td class="qr-safe-right-party" style="width: 50%; padding-left: 20px;">
+                <div class="agreement-signer-row">
+                    <div class="agreement-signer-details">
+                        <p class="party-detail-line"><strong>Tenant:</strong>  {{ lease.tenant.get_full_name }}</p>
+                        <p class="party-detail-line"><strong>CNIC:</strong> {{ lease.tenant.cnic|format_cnic }}</p>
+                        <p class="party-detail-line"><strong>Phone:</strong> {{ lease.tenant.phone|format_phone|default:"_________________________" }}</p>
+                        <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
+                    </div>
+                    {% if agreement_signature_settings.show_thumb_impression %}
+                    <div class="agreement-thumb-cell">
+                        <div class="agreement-thumb-box"></div>
+                        <div class="agreement-thumb-label">Thumb Impression</div>
+                    </div>
+                    {% endif %}
+                </div>
             </td>
         </tr>
     </table>
@@ -217,25 +267,37 @@
     <table style="width: 100%; border-collapse: collapse;">
         <tr>
             <td style="width: 50%; padding-right: 20px;">
-                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
-                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Witness 1:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
-                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">CNIC:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.cnic|format_cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
-                <p class="witness-field-row"><strong class="witness-field-label">Phone:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
-                <p class="witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
-                {% if agreement_signature_settings.show_thumb_impression %}
-                <p class="witness-field-row"><strong class="thumb-field-label">Thumb Impression:</strong><span class="blank-party-field thumb-party-field"></span></p>
-                {% endif %}
+                <div class="agreement-signer-row">
+                    <div class="agreement-signer-details">
+                        <p class="party-detail-line witness-field-row"><strong class="witness-field-label party-name-label">Witness 1:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.get_full_name }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                        <p class="party-detail-line witness-field-row"><strong class="witness-field-label">CNIC:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.cnic|format_cnic }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                        <p class="witness-field-row"><strong class="witness-field-label">Phone:</strong>{% if history.witness1_tenant %}{{ history.witness1_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness1_tenant %}{{ lease.witness1_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                        <p class="witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
+                    </div>
+                    {% if agreement_signature_settings.show_thumb_impression %}
+                    <div class="agreement-thumb-cell">
+                        <div class="agreement-thumb-box"></div>
+                        <div class="agreement-thumb-label">Thumb Impression</div>
+                    </div>
+                    {% endif %}
+                </div>
                 <p class="generated-at"><strong>Generated at:</strong> {% now "d M Y" %}.</p>
             </td>
-            <td style="width: 50%; padding-left: 20px;">
-                <p class="signature-line"><span class="agreement-signature-rule"></span></p>
-                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">Witness 2:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
-                <p class="party-detail-line witness-field-row"><strong class="witness-field-label">CNIC:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.cnic|format_cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
-                <p class="witness-field-row"><strong class="witness-field-label">Phone:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
-                <p class="witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
-                {% if agreement_signature_settings.show_thumb_impression %}
-                <p class="witness-field-row"><strong class="thumb-field-label">Thumb Impression:</strong><span class="blank-party-field thumb-party-field"></span></p>
-                {% endif %}
+            <td class="qr-safe-right-party" style="width: 50%; padding-left: 20px;">
+                <div class="agreement-signer-row">
+                    <div class="agreement-signer-details">
+                        <p class="party-detail-line witness-field-row"><strong class="witness-field-label party-name-label">Witness 2:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.get_full_name }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.get_full_name }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                        <p class="party-detail-line witness-field-row"><strong class="witness-field-label">CNIC:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.cnic|format_cnic }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.cnic|format_cnic }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                        <p class="witness-field-row"><strong class="witness-field-label">Phone:</strong>{% if history.witness2_tenant %}{{ history.witness2_tenant.phone|format_phone|default:"_________________________" }}{% elif lease.witness2_tenant %}{{ lease.witness2_tenant.phone|format_phone|default:"_________________________" }}{% else %}<span class="blank-party-field"></span>{% endif %}</p>
+                        <p class="witness-field-row"><strong class="witness-field-label">Date:</strong><span class="blank-party-field"></span></p>
+                    </div>
+                    {% if agreement_signature_settings.show_thumb_impression %}
+                    <div class="agreement-thumb-cell">
+                        <div class="agreement-thumb-box"></div>
+                        <div class="agreement-thumb-label">Thumb Impression</div>
+                    </div>
+                    {% endif %}
+                </div>
             </td>
         </tr>
     </table>

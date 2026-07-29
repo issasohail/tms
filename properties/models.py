@@ -539,16 +539,43 @@ class BasePropertyMedia(models.Model):
         with Image.open(self.file) as image:
             image = image.convert("RGB")
             width, height = image.size
-            footer_height = max(34, min(70, height // 6))
+            desired_font_size = max(18, min(46, int(height * 0.035)))
+            font_path = os.path.join(
+                str(settings.BASE_DIR),
+                "core",
+                "static",
+                "fonts",
+                "Inter-Regular.ttf",
+            )
+            try:
+                font = ImageFont.truetype(font_path, desired_font_size)
+            except Exception:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", desired_font_size)
+                except Exception:
+                    font = ImageFont.load_default()
+
+            text = self.footer_text[:140]
+            while desired_font_size > 18:
+                text_box = ImageDraw.Draw(image).textbbox((0, 0), text, font=font)
+                if text_box[2] - text_box[0] <= width - 20:
+                    break
+                desired_font_size -= 1
+                try:
+                    font = ImageFont.truetype(font_path, desired_font_size)
+                except Exception:
+                    try:
+                        font = ImageFont.truetype("DejaVuSans.ttf", desired_font_size)
+                    except Exception:
+                        font = ImageFont.load_default()
+
+            text_box = ImageDraw.Draw(image).textbbox((0, 0), text, font=font)
+            text_height = text_box[3] - text_box[1]
+            footer_height = max(42, text_height + 20)
             stamped = Image.new("RGB", (width, height + footer_height), "white")
             stamped.paste(image, (0, 0))
 
             draw = ImageDraw.Draw(stamped)
-            try:
-                font = ImageFont.load_default()
-            except Exception:
-                font = None
-            text = self.footer_text[:140]
             draw.text((10, height + 8), text, fill="black", font=font)
 
             stamped_buffer = ContentFile(b"")

@@ -6,6 +6,7 @@ import hmac
 import importlib
 import json
 import tempfile
+import uuid
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -260,6 +261,43 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertFalse(response.json()["ok"])
         self.assertIn("missing from storage", response.json()["message"])
         pending.refresh_from_db()
+        self.assertIsNone(pending.created_request)
+
+    def test_processing_maintenance_media_waits_instead_of_reporting_missing(self):
+        media = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/processing/tenant-video.mp4",
+            original_filename="tenant-video.mp4",
+            media_type="video",
+            purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            processing=True,
+        )
+        pending = PendingWhatsAppMaintenance.objects.create(
+            phone=self.tenant.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Other",
+            description="Video attached.",
+        )
+        pending.media.add(media)
+
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("still downloading", response.json()["message"])
+        self.assertNotIn("missing from storage", response.json()["message"])
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, PendingWhatsAppMaintenance.STATUS_PENDING)
         self.assertIsNone(pending.created_request)
 
     def test_approved_maintenance_media_is_renamed_and_keeps_original_name(self):
@@ -692,6 +730,24 @@ class WhatsAppAssistantIntentTests(SimpleTestCase):
         decision = fallback_decision("Please call me")
         self.assertTrue(decision.handover)
         self.assertNotIn("preference", decision.handover_reason.lower())
+
+
+class WhatsAppDeferredMediaQueueTests(SimpleTestCase):
+    @patch("whatsapp.services.queue.threading.Thread")
+    @patch("whatsapp.services.queue.get_whatsapp_ai_config")
+    def test_local_configuration_uses_thread_for_deferred_media_download(
+        self, get_config, thread_class
+    ):
+        from whatsapp.services.queue import enqueue_pending_media_download
+
+        get_config.return_value = SimpleNamespace(use_celery=False)
+
+        result = enqueue_pending_media_download(42)
+
+        self.assertEqual(result, "thread")
+        thread_class.assert_called_once()
+        self.assertTrue(thread_class.call_args.kwargs["daemon"])
+        thread_class.return_value.start.assert_called_once()
 
 
 @override_settings(
@@ -1642,6 +1698,55 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("ACTING AS TENANT (LIVE)", response)
         self.assertIn(self.tenant.get_full_name(), response)
 
+    def test_entering_tenant_testing_clears_previous_upload_and_receipt_state(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
+        self.staff1.groups.add(simulator_group)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            pending_state="staff_waiting_upload",
+            context={
+                "staff_upload_kind": PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
+                "staff_upload_batch_key": str(uuid.uuid4()),
+                "staff_upload_lease_id": self.lease.pk,
+                "pending_media_id": 999,
+                "pending_payment_id": 998,
+                "payment_receipt_review": {"media_id": 999},
+                "pending_maintenance_id": 997,
+                "maintenance_draft": {"issue_type": "Other"},
+            },
+        )
+        message = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.simulator.clear-stale-state",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": f"Tenant {self.tenant.phone}"}},
+        )
+
+        response, intent, _metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
+
+        self.assertEqual(intent, "staff")
+        self.assertIn("ACTING AS TENANT (LIVE)", response)
+        self.assertNotIn("payment details", response)
+        conversation.refresh_from_db()
+        for key in (
+            "staff_upload_kind",
+            "staff_upload_batch_key",
+            "staff_upload_lease_id",
+            "pending_media_id",
+            "pending_payment_id",
+            "payment_receipt_review",
+            "pending_maintenance_id",
+            "maintenance_draft",
+        ):
+            self.assertNotIn(key, conversation.context)
+
     def test_tenant_assist_replies_to_staff_number_with_selected_location(self):
         WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
@@ -2048,6 +2153,79 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(staged.target_kind, PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO)
         self.assertEqual(staged.property, self.property)
         self.assertEqual(staged.submitted_by_staff, self.staff1)
+
+    @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
+    def test_staff_upload_notifies_queue_once_on_done_not_for_each_file(self, notify_pending):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        batch_key = uuid.uuid4()
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            pending_state="staff_waiting_upload",
+            context={
+                "staff_upload_kind": PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
+                "staff_upload_batch_key": str(batch_key),
+                "staff_upload_lease_id": self.lease.pk,
+            },
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+
+        for index in range(1, 4):
+            media_log = WhatsAppMessageLog.objects.create(
+                direction="inbound",
+                phone_number=self.staff1.whatsapp_number,
+                wa_message_id=f"wamid.staff.batch.{index}",
+                message_type="document",
+                status="received",
+                payload={
+                    "type": "document",
+                    "document": {"filename": f"file-{index}.pdf"},
+                },
+            )
+            staged = PendingWhatsAppMedia.objects.create(
+                conversation=conversation,
+                phone=self.staff1.whatsapp_number,
+                file=ContentFile(b"pdf", name=f"file-{index}.pdf"),
+                original_filename=f"file-{index}.pdf",
+                media_type="document",
+            )
+            media_log.api_response = {"simulator_pending_media_id": staged.pk}
+            media_log.save(update_fields=["api_response"])
+
+            response, intent, _metadata = assistant._handle_media_message(
+                media_log,
+                conversation,
+                "",
+                "document",
+                resolve_sender(self.staff1.whatsapp_number, conversation=conversation),
+            )
+
+            self.assertEqual(intent, "staff_upload_batched")
+            self.assertIn(f"Photo/file {index} added", response)
+            notify_pending.assert_not_called()
+
+        done_response = assistant._consume_staff_menu_state(
+            self.message, conversation, "DONE", self.staff1
+        )
+
+        self.assertIn("3 file(s)", done_response[0])
+        notify_pending.assert_called_once()
+
+    def test_maintenance_menu_waits_for_details_before_showing_classification(self):
+        response, intent, _metadata = WhatsAppAIAssistant(
+            service=MagicMock()
+        )._start_guided_maintenance(
+            self.message,
+            self.conversation,
+            "3",
+            self.lease,
+        )
+
+        self.assertEqual(intent, "maintenance_details_prompt")
+        self.assertIn("location and details", response)
+        self.assertNotIn("I read this as", response)
+        self.assertNotIn("Other (normal)", response)
 
     def test_lease_photo_approval_routes_to_lease_gallery(self):
         from core.views import _attach_pending_media_from_core

@@ -113,12 +113,12 @@ def create_pending_media(message_log, conversation, lease=None):
     pending.save()
 
     if defer_download:
-        from whatsapp.tasks import download_pending_media_task
+        from whatsapp.services.queue import enqueue_pending_media_download
 
         # Wait for the enclosing transaction (the select_for_update lock around
         # inbound message processing) to commit before the worker can see this
         # row, otherwise the task could run before the row is visible.
-        transaction.on_commit(lambda: download_pending_media_task.delay(pending.pk))
+        transaction.on_commit(lambda: enqueue_pending_media_download(pending.pk))
 
     return pending
 

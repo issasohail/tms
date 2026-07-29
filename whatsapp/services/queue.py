@@ -33,3 +33,33 @@ def enqueue_whatsapp_ai_message(message_log_id):
     thread = threading.Thread(target=runner, daemon=True)
     thread.start()
     return "thread"
+
+
+def enqueue_pending_media_download(pending_media_id):
+    config = get_whatsapp_ai_config()
+    if config.use_celery:
+        try:
+            from whatsapp.tasks import download_pending_media_task
+
+            download_pending_media_task.delay(pending_media_id)
+            return "celery"
+        except Exception:
+            logger.exception(
+                "Could not queue WhatsApp media download %s with Celery; using thread fallback.",
+                pending_media_id,
+            )
+
+    def runner():
+        try:
+            from whatsapp.tasks import download_pending_media
+
+            download_pending_media(pending_media_id)
+        except Exception:
+            logger.exception(
+                "Failed to download deferred WhatsApp media %s",
+                pending_media_id,
+            )
+
+    thread = threading.Thread(target=runner, daemon=True)
+    thread.start()
+    return "thread"

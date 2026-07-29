@@ -53,6 +53,31 @@ body {
   border-bottom: 1px solid #777;
 }
 .legal-contact { margin: 0; text-align: justify; }
+.legal-cnic-float {
+  float: right;
+  width: 2.55in;
+  margin: 0 0 5pt 10pt;
+  text-align: center;
+}
+.legal-cnic-float-photo {
+  display: block;
+  width: 100%;
+  height: 1.62in;
+  object-fit: contain;
+  border: 1px solid #777;
+}
+.legal-cnic-float-placeholder {
+  width: 100%;
+  height: 1.62in;
+  border: 1px solid #777;
+  background: #fff;
+}
+.legal-cnic-float-label {
+  margin-top: 2pt;
+  font-size: 7.5pt;
+  line-height: 1;
+}
+.legal-clear { clear: both; }
 .legal-signatures {
   display: table;
   width: 100%;
@@ -60,7 +85,7 @@ body {
 }
 .legal-signature-item {
   display: table-cell;
-  width: 46%;
+  width: 100%;
   padding-right: 24pt;
   white-space: nowrap;
   vertical-align: top;
@@ -109,36 +134,6 @@ body {
   height: .8em;
   border-bottom: 1px solid #111;
   vertical-align: bottom;
-}
-.legal-cnic-images {
-  display: table-cell;
-  width: 54%;
-  padding-left: 8pt;
-  vertical-align: top;
-}
-.legal-cnic-image {
-  display: inline-block;
-  width: 48%;
-  text-align: center;
-  vertical-align: top;
-}
-.legal-cnic-image + .legal-cnic-image { margin-left: 2%; }
-.legal-cnic-photo {
-  display: block;
-  width: 100%;
-  height: .92in;
-  object-fit: contain;
-  border: 1px solid #777;
-}
-.legal-cnic-placeholder {
-  width: 100%;
-  height: .92in;
-  border: 1px solid #777;
-}
-.legal-cnic-label {
-  margin-top: 2pt;
-  font-size: 7.5pt;
-  line-height: 1;
 }
 {% else %}
 body { font-size: 9.5pt; line-height: 1.2; }
@@ -224,12 +219,21 @@ body { font-size: 9.5pt; line-height: 1.2; }
   {% if history.print_on_legal_page %}
   <section class="legal-party">
     <div class="legal-party-heading">{{ section.heading }}</div>
+    <div class="legal-cnic-float">
+      {% if section.party.cnic_front_url %}
+      <img class="legal-cnic-float-photo" src="{{ section.party.cnic_front_url }}" alt="CNIC front">
+      {% else %}
+      <div class="legal-cnic-float-placeholder"></div>
+      {% endif %}
+      <div class="legal-cnic-float-label">CNIC Front</div>
+    </div>
     {% for paragraph in section.paragraphs %}<p class="declaration">{{ paragraph|safe }}</p>{% endfor %}
 
     <p class="legal-contact">
       I may be contacted at <strong>{{ section.party.phone|default:"________________" }}</strong> regarding any dispute or question concerning the Tenant, and I will assist in good faith toward an amicable resolution between the parties.
     </p>
 
+    <div class="legal-clear"></div>
     <div class="legal-signatures">
       <div class="legal-signature-item">
         Signature: <span class="legal-signature-line"></span>
@@ -245,23 +249,6 @@ body { font-size: 9.5pt; line-height: 1.2; }
             <div><strong>CNIC:</strong> {{ section.party.cnic|default:"________________" }}</div>
             <div class="legal-date-row"><strong>Date:</strong> <span class="legal-date-line"></span></div>
           </div>
-        </div>
-      </div>
-      <div class="legal-cnic-images">
-        <div class="legal-cnic-image">
-          {% if section.party.cnic_front_url %}
-            <img class="legal-cnic-photo" src="{{ section.party.cnic_front_url }}" alt="CNIC front">
-          {% else %}
-            <div class="legal-cnic-placeholder"></div>
-          {% endif %}
-          <div class="legal-cnic-label">CNIC Front</div>
-        </div><div class="legal-cnic-image">
-          {% if section.party.cnic_back_url %}
-            <img class="legal-cnic-photo" src="{{ section.party.cnic_back_url }}" alt="CNIC back">
-          {% else %}
-            <div class="legal-cnic-placeholder"></div>
-          {% endif %}
-          <div class="legal-cnic-label">CNIC Back</div>
         </div>
       </div>
     </div>

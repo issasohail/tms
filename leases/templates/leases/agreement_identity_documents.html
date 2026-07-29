@@ -1,1 +1,143 @@
-<!doctype html><html><head><meta charset="utf-8"><style>@page{size:{% if history.print_on_legal_page %}8.5in 13in{% else %}letter{% endif %};margin:.5in}body{font-family:Arial,sans-serif;margin:0;color:#111}.title{text-align:center;font-size:17pt;font-weight:bold;margin:0 0 14pt}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12pt}.card{border:1px solid #555;padding:8pt;break-inside:avoid}.role{text-align:center;font-weight:bold;background:#eee;border-bottom:1px solid #777;margin:-8pt -8pt 7pt;padding:5pt}.meta{font-size:9.5pt;line-height:1.35;margin-bottom:6pt}.doc-label{font-size:8.5pt;font-weight:bold;margin:5pt 0 2pt}.image-box{height:1.45in;border:1px solid #888;display:flex;align-items:center;justify-content:center;overflow:hidden}.image-box img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}</style></head><body><div class="title">IDENTITY DOCUMENTS</div><div class="grid">{% for person in identity_people %}<section class="card"><div class="role">{{ person.role }}</div><div class="meta"><strong>Full Name:</strong> {{ person.name|default:"________________" }}<br><strong>CNIC:</strong> {{ person.cnic|default:"________________" }}{% if person.show_phone %}<br><strong>Phone:</strong> {{ person.phone|default:"________________" }}{% endif %}</div><div class="doc-label">CNIC Front</div><div class="image-box">{% if person.front_url %}<img src="{{ person.front_url }}" alt="CNIC Front">{% endif %}</div><div class="doc-label">CNIC Back</div><div class="image-box">{% if person.back_url %}<img src="{{ person.back_url }}" alt="CNIC Back">{% endif %}</div></section>{% endfor %}</div></body></html>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {
+      size: {% if history.print_on_legal_page %}8.5in 13in{% else %}letter{% endif %};
+      margin: 0.42in 0.48in 0.55in;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      color: #111;
+    }
+
+    .title {
+      margin: 0 0 7pt;
+      text-align: center;
+      font-size: 15pt;
+      font-weight: bold;
+    }
+
+    .identity-list {
+      display: block;
+    }
+
+    .party-row {
+      margin: 0 0 6pt;
+      border: 0.8pt solid #555;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .party-heading {
+      display: flex;
+      align-items: baseline;
+      padding: 3pt 6pt;
+      border-bottom: 0.7pt solid #777;
+      background: #eeeeee;
+      font-size: 8.5pt;
+      line-height: 1.15;
+    }
+
+    .party-role {
+      min-width: 0.82in;
+      font-size: 9.5pt;
+      font-weight: bold;
+    }
+
+    .party-name {
+      margin-right: 10pt;
+      font-weight: bold;
+    }
+
+    .party-meta {
+      margin-left: auto;
+      white-space: nowrap;
+    }
+
+    .documents {
+      display: flex;
+      gap: 7pt;
+      padding: 5pt 6pt 6pt;
+    }
+
+    .document {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .document-label {
+      margin: 0 0 2pt;
+      text-align: center;
+      font-size: 7pt;
+      font-weight: bold;
+      line-height: 1;
+    }
+
+    .image-box {
+      height: {% if history.print_on_legal_page %}1.90in{% else %}1.64in{% endif %};
+      border: 0.7pt solid #888;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      color: #777;
+      font-size: 9pt;
+    }
+
+    .party-row-primary .image-box {
+      height: {% if history.print_on_legal_page %}2.08in{% else %}1.82in{% endif %};
+    }
+
+    .image-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">AGREEMENT PARTIES CNIC</div>
+  <div class="identity-list">
+    {% for person in identity_people %}
+    <section class="party-row{% if person.role == 'Owner' or person.role == 'Tenant' %} party-row-primary{% endif %}">
+      <div class="party-heading">
+        <span class="party-role">{{ person.role }}</span>
+        <span class="party-name">{{ person.name|default:"________________" }}</span>
+        <span class="party-meta">
+          <strong>CNIC:</strong> {{ person.cnic|default:"________________" }}
+          {% if person.show_phone and person.phone %}
+          &nbsp;&nbsp;<strong>Phone:</strong> {{ person.phone }}
+          {% endif %}
+        </span>
+      </div>
+      <div class="documents">
+        <div class="document">
+          <div class="document-label">CNIC Front</div>
+          <div class="image-box">
+            {% if person.front_url %}
+            <img src="{{ person.front_url }}" alt="{{ person.role }} CNIC Front">
+            {% else %}
+            CNIC Front Not Available
+            {% endif %}
+          </div>
+        </div>
+        <div class="document">
+          <div class="document-label">CNIC Back</div>
+          <div class="image-box">
+            {% if person.back_url %}
+            <img src="{{ person.back_url }}" alt="{{ person.role }} CNIC Back">
+            {% else %}
+            CNIC Back Not Available
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</body>
+</html>

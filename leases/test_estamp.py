@@ -63,6 +63,17 @@ class LegalDeclarationLayoutTests(SimpleTestCase):
                 ],
             },
         )
+        from bs4 import BeautifulSoup
+
+        declaration = BeautifulSoup(html, "html.parser")
+        self.assertEqual(
+            len(
+                declaration.select(
+                    ".legal-cnic-float > .legal-cnic-float-placeholder"
+                )
+            ),
+            2,
+        )
         request = RequestFactory().get("/")
         pdf = PdfReader(BytesIO(_pdf(html, request)))
 
@@ -78,6 +89,72 @@ class LegalDeclarationLayoutTests(SimpleTestCase):
         self.assertIn("Proposer Declaration", text)
         self.assertIn("Seconder Declaration", text)
         self.assertEqual(text.count("Thumb Impression"), 2)
+
+
+class AgreementIdentityPageTests(SimpleTestCase):
+    def _render_identity_pdf(self, legal):
+        from io import BytesIO
+
+        from django.template.loader import render_to_string
+
+        from leases.services.agreement_package import _pdf
+
+        people = [
+            {
+                "role": role,
+                "name": f"{role} Full Name",
+                "cnic": "42101-2008010-3",
+                "phone": "+92-300-123-4567",
+                "show_phone": role.startswith("Witness"),
+                "front_url": "",
+                "back_url": "",
+            }
+            for role in ("Owner", "Tenant", "Witness 1", "Witness 2")
+        ]
+        html = render_to_string(
+            "leases/agreement_identity_documents.html",
+            {
+                "history": SimpleNamespace(print_on_legal_page=legal),
+                "identity_people": people,
+            },
+        )
+        return html, PdfReader(
+            BytesIO(_pdf(html, RequestFactory().get("/identity-documents/")))
+        )
+
+    def test_identity_page_uses_full_width_rows_and_missing_image_labels(self):
+        from bs4 import BeautifulSoup
+
+        html, pdf = self._render_identity_pdf(False)
+        identity_page = BeautifulSoup(html, "html.parser")
+
+        self.assertEqual(len(identity_page.select(".party-row")), 4)
+        self.assertEqual(len(identity_page.select(".party-row-primary")), 2)
+        self.assertEqual(html.count("CNIC Front Not Available"), 4)
+        self.assertEqual(html.count("CNIC Back Not Available"), 4)
+        self.assertEqual(len(pdf.pages), 1)
+        self.assertEqual(
+            (
+                float(pdf.pages[0].mediabox.width),
+                float(pdf.pages[0].mediabox.height),
+            ),
+            (612, 792),
+        )
+        text = pdf.pages[0].extract_text()
+        for role in ("Owner", "Tenant", "Witness 1", "Witness 2"):
+            self.assertIn(role, text)
+
+    def test_identity_page_uses_configured_legal_height(self):
+        _html, pdf = self._render_identity_pdf(True)
+
+        self.assertEqual(len(pdf.pages), 1)
+        self.assertEqual(
+            (
+                float(pdf.pages[0].mediabox.width),
+                float(pdf.pages[0].mediabox.height),
+            ),
+            (612, 936),
+        )
 
 
 class DefaultLeaseTemplateRedactionTests(SimpleTestCase):
@@ -411,12 +488,37 @@ class EStampCompositionTests(SimpleTestCase):
         self.assertNotIn("42101-2008010-3", text)
         self.assertNotIn("71702-0346063-5", text)
 
+    @patch("leases.services.agreement_package._agreement_signature_footer_page")
+    def test_full_party_signature_page_skips_repeated_signature_footer(
+        self, footer_mock
+    ):
+        from leases.services.agreement_package import (
+            _add_agreement_signature_footers,
+        )
+
+        source = self._text_pdf(
+            [
+                "Owner: Tenant: Witness 1: Witness 2:",
+                "NEXT PACKAGE SECTION",
+            ],
+            (612, 936),
+        )
+        _add_agreement_signature_footers(
+            source,
+            SimpleNamespace(),
+            identity_bottom_reserve=3.1,
+            qr_reserve_width=2,
+        )
+
+        footer_mock.assert_not_called()
+
 
 class EStampPackageIntegrationTests(SimpleTestCase):
     @patch("leases.services.agreement_package.merge_pdfs", return_value=b"package")
     @patch("leases.services.agreement_package.signature_pdf", return_value=b"signature")
     @patch("leases.services.agreement_package.police_pdf", return_value=b"police")
     @patch("leases.services.agreement_package.inspection_pdf", return_value=b"inspection")
+    @patch("leases.services.agreement_package.identity_pdf", return_value=b"identity")
     @patch("leases.services.estamp.compose_stamped_agreement", return_value=b"stamped-core")
     @patch("leases.services.estamp.authorize_estamp")
     @patch(
@@ -430,6 +532,7 @@ class EStampPackageIntegrationTests(SimpleTestCase):
         config_mock,
         authorize_mock,
         compose_mock,
+        identity_mock,
         inspection_mock,
         police_mock,
         signature_mock,
@@ -463,7 +566,7 @@ class EStampPackageIntegrationTests(SimpleTestCase):
         )
         self.assertEqual(
             merge_mock.call_args.args[0],
-            [b"stamped-core", b"inspection", b"police", b"signature"],
+            [b"stamped-core", b"identity", b"inspection", b"police", b"signature"],
         )
 
 

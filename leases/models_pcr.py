@@ -124,10 +124,14 @@ def _burn_datestamp(django_file, taken_at, room):
     w, h = img.size
     margin = int(min(w, h) * 0.02)
     text = f"{room or 'Area'} • {taken_at:%Y-%m-%d %H:%M}"
+    font_size = max(18, int(h * 0.04))
     try:
-        font = ImageFont.truetype("arial.ttf", size=int(h*0.035))
+        font = ImageFont.truetype("arial.ttf", size=font_size)
     except Exception:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", size=font_size)
+        except Exception:
+            font = ImageFont.load_default()
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
     x1, y1 = w - tw - 2*margin, h - th - 2*margin

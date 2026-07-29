@@ -247,10 +247,12 @@ class LeasePhotoPackageTests(SimpleTestCase):
     @patch("leases.services.agreement_package.signature_pdf", return_value=b"signature")
     @patch("leases.services.agreement_package.police_pdf", return_value=b"police")
     @patch("leases.services.agreement_package.inspection_pdf", return_value=b"inspection")
+    @patch("leases.services.agreement_package.identity_pdf", return_value=b"identity")
     @patch("leases.services.agreement_package.agreement_pdf", return_value=b"agreement")
     def test_photo_annexure_is_appended_last(
         self,
         _agreement,
+        _identity,
         _inspection,
         _police,
         _signature,
@@ -281,7 +283,14 @@ class LeasePhotoPackageTests(SimpleTestCase):
         self.assertEqual(payload, b"merged")
         self.assertEqual(
             merge.call_args.args[0],
-            [b"agreement", b"inspection", b"police", b"signature", b"photos"],
+            [
+                b"agreement",
+                b"identity",
+                b"inspection",
+                b"police",
+                b"signature",
+                b"photos",
+            ],
         )
 
     @patch("leases.services.agreement_package.merge_pdfs", return_value=b"merged")
@@ -292,10 +301,12 @@ class LeasePhotoPackageTests(SimpleTestCase):
     @patch("leases.services.agreement_package.signature_pdf", return_value=b"signature")
     @patch("leases.services.agreement_package.police_pdf", return_value=b"police")
     @patch("leases.services.agreement_package.inspection_pdf", return_value=b"inspection")
+    @patch("leases.services.agreement_package.identity_pdf", return_value=b"identity")
     @patch("leases.services.agreement_package.agreement_pdf", return_value=b"agreement")
     def test_optional_photo_failure_does_not_abort_package(
         self,
         _agreement,
+        _identity,
         _inspection,
         _police,
         _signature,
@@ -327,8 +338,32 @@ class LeasePhotoPackageTests(SimpleTestCase):
         self.assertEqual(payload, b"merged")
         self.assertEqual(
             merge.call_args.args[0],
-            [b"agreement", b"inspection", b"police", b"signature"],
+            [b"agreement", b"identity", b"inspection", b"police", b"signature"],
         )
+
+
+class LeasePhotoBurnTypographyTests(SimpleTestCase):
+    def test_burn_text_uses_readable_agreement_scale(self):
+        from leases.models_lease_photos import (
+            STAMP_DESC_SCALE,
+            STAMP_MIN_PX,
+            STAMP_TS_SCALE,
+        )
+
+        self.assertGreaterEqual(STAMP_TS_SCALE, 1.20)
+        self.assertGreaterEqual(STAMP_DESC_SCALE, 1.20)
+        self.assertGreaterEqual(STAMP_MIN_PX, 22)
+
+
+class LeasePhotoUploadModalTemplateTests(SimpleTestCase):
+    def test_successful_upload_schedules_modal_close(self):
+        from django.template.loader import get_template
+
+        source = get_template("leases/photos_page.html").template.source
+
+        self.assertIn("if (!failures.length)", source)
+        self.assertIn("modal.classList.remove('is-open')", source)
+        self.assertIn("}, 700);", source)
 
 
 class LeasePhotoExporterTests(SimpleTestCase):

@@ -15,8 +15,6 @@ except ImportError:  # pragma: no cover - staticfiles is installed in this proje
 
 
 class Command(StaticFilesRunserverCommand):
-    default_port = "8001"
-
     help = (
         "Starts the development server after making sure the local Docker "
         "database container is running."

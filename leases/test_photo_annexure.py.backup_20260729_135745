@@ -356,14 +356,14 @@ class LeasePhotoBurnTypographyTests(SimpleTestCase):
 
 
 class LeasePhotoUploadModalTemplateTests(SimpleTestCase):
-    def test_successful_upload_closes_modal_when_batch_finishes(self):
+    def test_successful_upload_schedules_modal_close(self):
         from django.template.loader import get_template
 
         source = get_template("leases/photos_page.html").template.source
 
         self.assertIn("if (!failures.length)", source)
         self.assertIn("modal.classList.remove('is-open')", source)
-        self.assertNotIn("__leasePhotoUploadCloseTimer", source)
+        self.assertIn("}, 700);", source)
 
 
 class LeasePhotoExporterTests(SimpleTestCase):

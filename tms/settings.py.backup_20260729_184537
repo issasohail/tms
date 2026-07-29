@@ -482,7 +482,7 @@ LOGOUT_REDIRECT_URL = "login"
 # Keep clickjacking protection for other sites while allowing our own pages.
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
-WEASYPRINT_BASEURL = "http://localhost:8001"
+WEASYPRINT_BASEURL = "http://localhost:8000"
 WEASYPRINT_DPI = 300
 
 EMAIL_DEBUG = True

@@ -35,6 +35,7 @@ def align_estamp_top(agreement_path, estamp_path, output_path):
     # Merge layers: Put agreement text onto the scaled background stamp canvas
     # This preserves the entire top header safely
     estamp_page.merge_page(agreement_page)
+    Start it with:
     writer.add_page(estamp_page)
 
     # Append subsequent document pages normally

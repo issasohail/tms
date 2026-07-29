@@ -633,6 +633,10 @@ async function prepareUploadFile(file) {
 async function uploadLeasePhotos(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length || window.__leasePhotoUploadRunning) return;
+  if (window.__leasePhotoUploadCloseTimer) {
+    window.clearTimeout(window.__leasePhotoUploadCloseTimer);
+    window.__leasePhotoUploadCloseTimer = null;
+  }
   window.__leasePhotoUploadRunning = true;
 
   const form = document.getElementById('lease-photo-add');
@@ -741,7 +745,12 @@ async function uploadLeasePhotos(fileList) {
   }
   window.__leasePhotoUploadRunning = false;
   if (!failures.length) {
-    modal.classList.remove('is-open');
+    window.__leasePhotoUploadCloseTimer = window.setTimeout(function() {
+      if (!window.__leasePhotoUploadRunning) {
+        modal.classList.remove('is-open');
+      }
+      window.__leasePhotoUploadCloseTimer = null;
+    }, 700);
   }
 }
 

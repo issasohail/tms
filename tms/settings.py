@@ -137,6 +137,29 @@ WHATSAPP_APP_SECRET = os.getenv(
 WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v23.0")
 WHATSAPP_DEFAULT_COUNTRY_CODE = os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "+92")
 WHATSAPP_REQUEST_TIMEOUT = int(os.getenv("WHATSAPP_REQUEST_TIMEOUT", "20"))
+
+
+def _whatsapp_positive_int_setting(name, default):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    if value <= 0:
+        logging.getLogger(__name__).warning(
+            "Invalid %s configured; using %s.", name, default
+        )
+        value = default
+    return value
+
+
+WHATSAPP_MAX_INBOUND_MEDIA_BYTES = _whatsapp_positive_int_setting(
+    "WHATSAPP_MAX_INBOUND_MEDIA_BYTES",
+    16 * 1024 * 1024,
+)
+WHATSAPP_MAX_INBOUND_VIDEO_BYTES = _whatsapp_positive_int_setting(
+    "WHATSAPP_MAX_INBOUND_VIDEO_BYTES",
+    250 * 1024 * 1024,
+)
 WHATSAPP_DEFAULT_TEMPLATE_NAME = os.getenv(
     "WHATSAPP_DEFAULT_TEMPLATE_NAME", "hello_world"
 )

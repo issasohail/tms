@@ -52,6 +52,7 @@
 </style>
 <div class="tms-public-image-viewer" id="tmsPublicImageViewer" hidden role="dialog" aria-modal="true" aria-labelledby="tmsPublicImageTitle"><div class="tms-public-image-panel"><div class="tms-public-image-title" id="tmsPublicImageTitle">Image Preview</div><button type="button" class="tms-public-image-close" id="tmsPublicImageClose" aria-label="Close">&times;</button><img class="tms-public-image-main" id="tmsPublicImageMain" src="" alt="Image preview"><div class="tms-public-image-actions"><a id="tmsPublicImageSave" href="#" download>Save Image</a><button type="button" id="tmsPublicImageCloseBottom">Close</button></div></div></div>
 <script>
+window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
 (function(){
   const viewer=document.getElementById('tmsPublicImageViewer'),main=document.getElementById('tmsPublicImageMain'),title=document.getElementById('tmsPublicImageTitle'),save=document.getElementById('tmsPublicImageSave');
   const states=new WeakMap(); const ocrRunners=new WeakMap(); let pendingCount=0;
@@ -147,7 +148,7 @@
             return String(target.value||'').trim()===incoming;
           };
           (p.existing_tenant?.fields||[]).forEach(s=>{if(writeVisible(s,false))loadedExisting++});
-          (p.fields||[]).forEach(s=>{if(writeVisible(s,true))written++});
+          (p.fields||[]).forEach(s=>{if(writeVisible(s,Boolean(storedUrl)))written++});
           if(context.isMain&&p.portrait_data_uri){
             const hidden=context.form.querySelector('.tms-cnic-portrait-data,[name="cnic_portrait_data"]');
             const photoInput=context.form.querySelector('input[type="file"][name="photo"]');

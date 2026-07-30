@@ -694,6 +694,7 @@
       }
 
       function installCnicDobButtons(root) {
+        if (window.TMS_USES_IDENTITY_MEDIA_PUBLIC) return;
         if (!window.TMS_CNIC_OCR_URL) return;
         (root || document).querySelectorAll('input[type="file"]').forEach(function (input) {
           if (!String(input.name || '').endsWith('cnic_front') || input.dataset.cnicDobOcrInstalled === '1') return;

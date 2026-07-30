@@ -30,6 +30,15 @@ class WhatsAppConfigurationError(RuntimeError):
     pass
 
 
+class WhatsAppMediaTooLargeError(RuntimeError):
+    def __init__(self, actual_bytes, max_bytes):
+        self.actual_bytes = int(actual_bytes or 0)
+        self.max_bytes = int(max_bytes)
+        super().__init__(
+            f"WhatsApp media is {self.actual_bytes} bytes; maximum is {self.max_bytes} bytes."
+        )
+
+
 class WhatsAppService:
     def __init__(self, created_by=None):
         self.created_by = created_by
@@ -613,20 +622,76 @@ class WhatsAppService:
             "tenant": getattr(tenant, "pk", None),
         }
 
+    def _get_media_metadata(self, media_id):
+        self._validate_config()
+        response = requests.get(
+            f"https://graph.facebook.com/{self.api_version}/{media_id}",
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            timeout=self.timeout,
+        )
+        metadata = response.json() if response.content else {}
+        if not response.ok or not metadata.get("url"):
+            logger.warning("WhatsApp media metadata failed: %s", metadata)
+            return {}
+        return metadata
+
+    def download_media_to_file(self, media_id, destination, max_bytes):
+        """Stream WhatsApp media to a writable binary file without holding it in RAM."""
+        if not media_id:
+            return {}
+        metadata = self._get_media_metadata(media_id)
+        media_url = metadata.get("url")
+        if not media_url:
+            return {}
+
+        try:
+            reported_size = int(metadata.get("file_size") or 0)
+        except (TypeError, ValueError):
+            reported_size = 0
+        if reported_size > max_bytes:
+            raise WhatsAppMediaTooLargeError(reported_size, max_bytes)
+
+        response = requests.get(
+            media_url,
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            timeout=self.timeout,
+            stream=True,
+        )
+        if not response.ok:
+            logger.warning(
+                "WhatsApp media download failed: HTTP %s", response.status_code
+            )
+            return {}
+
+        try:
+            header_size = int(response.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            header_size = 0
+        if header_size > max_bytes:
+            raise WhatsAppMediaTooLargeError(header_size, max_bytes)
+
+        downloaded_size = 0
+        try:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                downloaded_size += len(chunk)
+                if downloaded_size > max_bytes:
+                    raise WhatsAppMediaTooLargeError(downloaded_size, max_bytes)
+                destination.write(chunk)
+        finally:
+            response.close()
+        destination.flush()
+        metadata["downloaded_size"] = downloaded_size
+        return metadata
+
     def download_media_bytes(self, media_id):
         if not media_id:
             return b""
         try:
-            self._validate_config()
-            metadata_response = requests.get(
-                f"https://graph.facebook.com/{self.api_version}/{media_id}",
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                timeout=self.timeout,
-            )
-            metadata = metadata_response.json() if metadata_response.content else {}
+            metadata = self._get_media_metadata(media_id)
             media_url = metadata.get("url")
-            if not metadata_response.ok or not media_url:
-                logger.warning("WhatsApp media metadata failed: %s", metadata)
+            if not media_url:
                 return b""
 
             file_response = requests.get(

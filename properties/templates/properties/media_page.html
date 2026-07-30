@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}{{ media_page_title|default:owner_label }}{% endblock %}
 
@@ -96,6 +97,7 @@
                 <div class="photo-dropzone" id="photo-dropzone">
                     <input type="file" name="files" class="form-control" id="photo-files" accept="image/*,video/*,.pdf,.heic,.heif" multiple required>
                     <div class="small text-muted mt-2">Drag files here or choose files.</div>
+                    <div id="video-file-review" class="mt-2"></div>
                 </div>
             </div>
             <div class="col-md-5">
@@ -172,6 +174,7 @@
 </div>
 <div class="small text-muted mt-2 sort-status" id="media-sort-status"></div>
 
+<script src="{% static 'js/tms-video-frame-picker.js' %}"></script>
 <script>
 (() => {
   document.title = '{{ media_page_title|default:owner_label|escapejs }}';
@@ -339,6 +342,58 @@
   const dropzone = document.getElementById('photo-dropzone');
   const fileInput = document.getElementById('photo-files');
   const uploadForm = document.getElementById('photo-upload-form');
+  const videoReview = document.getElementById('video-file-review');
+  const largeVideoBytes = 16 * 1024 * 1024;
+
+  const replaceVideoWithFrames = (videoFile, frameFiles) => {
+    const transfer = new DataTransfer();
+    [...fileInput.files].forEach(file => {
+      if (file !== videoFile) transfer.items.add(file);
+    });
+    frameFiles.forEach(file => transfer.items.add(file));
+    fileInput.files = transfer.files;
+    uploadForm.dataset.compressed = '0';
+    renderVideoFiles(false);
+  };
+
+  const extractVideoPhotos = async videoFile => {
+    await window.TMSVideoFramePicker.open({
+      file: videoFile,
+      filename: videoFile.name,
+      size: videoFile.size,
+      onConfirm: async frameFiles => replaceVideoWithFrames(videoFile, frameFiles),
+    });
+  };
+
+  const renderVideoFiles = autoOpenLarge => {
+    if (!videoReview || !fileInput) return;
+    const videos = [...fileInput.files].filter(file => file.type.startsWith('video/'));
+    videoReview.innerHTML = '';
+    videos.forEach(videoFile => {
+      const isLarge = videoFile.size > largeVideoBytes;
+      const row = document.createElement('div');
+      row.className = `alert ${isLarge ? 'alert-warning' : 'alert-info'} py-2 px-2 mb-2 small`;
+      row.innerHTML = `
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span><strong>${videoFile.name.replace(/[<>&"']/g, '')}</strong> &mdash; ${window.TMSVideoFramePicker.formatBytes(videoFile.size)}
+            ${isLarge ? '<span class="badge bg-warning text-dark ms-1">Over 16 MiB</span>' : ''}
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-primary">Choose Photos From Video</button>
+        </div>
+        ${isLarge ? '<div class="mt-1">This video is too large for the normal WhatsApp limit. Extract and select photos before uploading.</div>' : ''}`;
+      row.querySelector('button').addEventListener('click', () => extractVideoPhotos(videoFile));
+      videoReview.appendChild(row);
+    });
+    if (autoOpenLarge) {
+      const firstLarge = videos.find(file => file.size > largeVideoBytes);
+      if (firstLarge) extractVideoPhotos(firstLarge);
+    }
+  };
+
+  fileInput?.addEventListener('change', () => {
+    uploadForm.dataset.compressed = '0';
+    renderVideoFiles(true);
+  });
 
   const compressImageFile = file => new Promise(resolve => {
     if (!file.type.startsWith('image/') || file.type === 'image/gif') {
@@ -376,6 +431,13 @@
     uploadForm.addEventListener('submit', async event => {
       if (uploadForm.dataset.compressed === '1' || !fileInput.files.length) return;
       event.preventDefault();
+      const oversizedVideo = [...fileInput.files].find(
+        file => file.type.startsWith('video/') && file.size > largeVideoBytes
+      );
+      if (oversizedVideo) {
+        await extractVideoPhotos(oversizedVideo);
+        return;
+      }
       const compressedFiles = await Promise.all([...fileInput.files].map(compressImageFile));
       const transfer = new DataTransfer();
       compressedFiles.forEach(file => transfer.items.add(file));
@@ -397,6 +459,8 @@
     dropzone.addEventListener('drop', event => {
       if (event.dataTransfer?.files?.length) {
         fileInput.files = event.dataTransfer.files;
+        uploadForm.dataset.compressed = '0';
+        renderVideoFiles(true);
       }
     });
   }

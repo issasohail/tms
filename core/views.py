@@ -1,6 +1,7 @@
 # core/views.py
 import json
 import logging
+import uuid
 
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth import logout
@@ -36,6 +37,7 @@ from django.contrib.auth.decorators import login_required
 
 METER_ONLINE_MINUTES = 3
 logger = logging.getLogger(__name__)
+VIDEO_FRAME_NOTE_PREFIX = "[Extracted video frame]"
 
 
 PENDING_KIND_LABELS = {
@@ -297,6 +299,7 @@ def _pending_media_context(media):
         "preview_kind": _media_preview_kind(media.file.name, media.media_type),
         "filename": media.original_filename or media.file.name,
         "file_size": file_size,
+        "is_extracted_frame": VIDEO_FRAME_NOTE_PREFIX in (media.ai_notes or ""),
     }
 
 
@@ -715,6 +718,7 @@ def pending_approval_detail(request, kind, pk):
     item = _pending_item_for_kind(kind, pk)
     media_items = []
     media_preview = None
+    has_extracted_video_frames = False
     if kind == "media":
         if item.batch_key:
             batch_media = item.__class__.objects.filter(
@@ -725,6 +729,9 @@ def pending_approval_detail(request, kind, pk):
                 {"object": media, **_pending_media_context(media)}
                 for media in batch_media
             ]
+            has_extracted_video_frames = any(
+                media.get("is_extracted_frame", False) for media in media_items
+            )
         else:
             media_preview = _pending_media_context(item)
     elif kind == "payment":
@@ -754,6 +761,7 @@ def pending_approval_detail(request, kind, pk):
             "item": item,
             "media_preview": media_preview,
             "media_items": media_items,
+            "has_extracted_video_frames": has_extracted_video_frames,
             "property_unit_label": _property_unit_label(item),
             "urls": _pending_item_urls(kind, item),
             "active_handymen": (
@@ -767,6 +775,121 @@ def pending_approval_detail(request, kind, pk):
                 _whatsapp_api_display_number() if kind == "maintenance" else ""
             ),
         },
+    )
+
+
+@login_required
+@require_POST
+def save_pending_video_frames(request, pk):
+    """Store browser-selected JPEG frames beside a pending WhatsApp video."""
+    from PIL import Image, UnidentifiedImageError
+    from whatsapp.models import PendingWhatsAppMedia
+
+    video = get_object_or_404(
+        PendingWhatsAppMedia.objects.select_related(
+            "conversation",
+            "original_whatsapp_message",
+            "tenant",
+            "lease",
+            "property",
+            "unit",
+        ),
+        pk=pk,
+        status=PendingWhatsAppMedia.STATUS_PENDING,
+    )
+    if video.processing:
+        return JsonResponse(
+            {"ok": False, "message": "The WhatsApp video is still downloading."},
+            status=409,
+        )
+    if (video.media_type or "").lower() != "video":
+        return JsonResponse(
+            {"ok": False, "message": "Photo frames can only be extracted from a video."},
+            status=400,
+        )
+    if not _pending_media_source_exists(video):
+        return JsonResponse(
+            {"ok": False, "message": "The source video is missing from storage."},
+            status=400,
+        )
+
+    frames = request.FILES.getlist("frames")
+    if not frames:
+        return JsonResponse(
+            {"ok": False, "message": "Choose at least one video frame."},
+            status=400,
+        )
+    if len(frames) > 24:
+        return JsonResponse(
+            {"ok": False, "message": "A maximum of 24 photos can be saved at once."},
+            status=400,
+        )
+
+    for frame in frames:
+        if frame.size > 5 * 1024 * 1024:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": f"{frame.name}: extracted photo exceeds 5 MiB.",
+                },
+                status=400,
+            )
+        try:
+            with Image.open(frame) as image:
+                image.verify()
+            frame.seek(0)
+        except (UnidentifiedImageError, OSError, ValueError):
+            return JsonResponse(
+                {"ok": False, "message": f"{frame.name}: invalid image data."},
+                status=400,
+            )
+
+    batch_key = video.batch_key or uuid.uuid4()
+    created = []
+    with transaction.atomic():
+        if not video.batch_key:
+            video.batch_key = batch_key
+            video.save(update_fields=["batch_key", "updated_at"])
+        existing_count = PendingWhatsAppMedia.objects.filter(
+            batch_key=batch_key,
+            ai_notes__contains=VIDEO_FRAME_NOTE_PREFIX,
+        ).count()
+        for offset, frame in enumerate(frames, start=1):
+            sequence = existing_count + offset
+            extracted = PendingWhatsAppMedia(
+                conversation=video.conversation,
+                original_whatsapp_message=video.original_whatsapp_message,
+                phone=video.phone,
+                original_filename=f"{video.pk}-frame-{sequence:02d}.jpg",
+                media_type="image",
+                purpose=video.purpose,
+                target_kind=video.target_kind,
+                batch_key=batch_key,
+                tenant=video.tenant,
+                lease=video.lease,
+                property=video.property,
+                unit=video.unit,
+                ai_confidence=video.ai_confidence,
+                ai_notes=(
+                    f"{VIDEO_FRAME_NOTE_PREFIX} Selected from "
+                    f"{video.original_filename or 'WhatsApp video'} during admin review."
+                ),
+                processing=False,
+            )
+            extracted.file.save(extracted.original_filename, frame, save=False)
+            extracted.full_clean()
+            extracted.save()
+            created.append(extracted.pk)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": f"Saved {len(created)} selected photo(s) from the video.",
+            "created_ids": created,
+            "redirect_url": reverse(
+                "core:pending_approval_detail", args=["media", video.pk]
+            ),
+        }
     )
 
 
@@ -1457,13 +1580,38 @@ def pending_approval_approve(request, kind, pk):
                 ).get(pk=item.pk)
                 if item.status != PendingWhatsAppMedia.STATUS_PENDING:
                     raise ValueError("This media has already been reviewed.")
-                batch_items = PendingWhatsAppMedia.objects.select_for_update().filter(
-                    status=PendingWhatsAppMedia.STATUS_PENDING,
-                    batch_key=item.batch_key,
+                batch_items = list(
+                    PendingWhatsAppMedia.objects.select_for_update().filter(
+                        status=PendingWhatsAppMedia.STATUS_PENDING,
+                        batch_key=item.batch_key,
+                    ).order_by("created_at", "pk")
                 ) if item.batch_key else [item]
+                explicit_selection = (
+                    request.POST.get("media_selection") == "explicit"
+                )
+                selected_ids = {
+                    int(media_id)
+                    for media_id in request.POST.getlist("selected_media_ids")
+                    if media_id.isdigit()
+                }
+                batch_ids = {batch_item.pk for batch_item in batch_items}
+                if explicit_selection:
+                    if not selected_ids:
+                        raise ValueError(
+                            "Select at least one extracted photo before approval."
+                        )
+                    if not selected_ids.issubset(batch_ids):
+                        raise ValueError("The selected media files are invalid.")
+                    approval_items = [
+                        batch_item
+                        for batch_item in batch_items
+                        if batch_item.pk in selected_ids
+                    ]
+                else:
+                    approval_items = batch_items
                 approved_count = 0
                 missing_count = 0
-                for batch_item in batch_items:
+                for batch_item in approval_items:
                     _apply_pending_media_destination(
                         batch_item, request.POST.get("media_destination", "")
                     )
@@ -1486,6 +1634,26 @@ def pending_approval_approve(request, kind, pk):
                         "purpose", "target_kind", "ai_notes", "status", "approved_by", "approved_at", "updated_at"
                     ])
                     approved_count += 1
+                if explicit_selection:
+                    rejected_at = timezone.now()
+                    for batch_item in batch_items:
+                        if batch_item.pk in selected_ids:
+                            continue
+                        batch_item.status = PendingWhatsAppMedia.STATUS_REJECTED
+                        batch_item.ai_notes = "\n".join(
+                            part
+                            for part in (
+                                batch_item.ai_notes.strip(),
+                                (
+                                    "Not selected during extracted-photo approval by "
+                                    f"{request.user.get_username()} at {rejected_at.isoformat()}."
+                                ),
+                            )
+                            if part
+                        )
+                        batch_item.save(
+                            update_fields=["status", "ai_notes", "updated_at"]
+                        )
             if missing_count:
                 approval_message = (
                     f"{approved_count} WhatsApp media file(s) approved. "

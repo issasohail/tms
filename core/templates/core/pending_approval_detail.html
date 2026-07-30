@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ kind_label }} Detail{% endblock %}
 {% block content %}
 <div class="container-fluid py-3" style="max-width:1200px;">
@@ -10,9 +11,10 @@
     <div class="d-flex gap-2">
       <a href="{% url 'core:pending_approvals' %}" class="btn btn-sm btn-outline-secondary">Back</a>
       {% if item.status == "pending" or item.status == "pending_approval" or item.status == "confirmed" %}
-        <form method="post" action="{{ urls.approve }}" class="d-flex align-items-center flex-wrap gap-2 pending-detail-action">
+        <form method="post" action="{{ urls.approve }}" class="d-flex align-items-center flex-wrap gap-2 pending-detail-action" {% if kind == "media" %}id="pendingMediaApproveForm"{% endif %}>
           {% csrf_token %}
           {% if kind == "media" %}
+            {% if has_extracted_video_frames %}<input type="hidden" name="media_selection" value="explicit">{% endif %}
             <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" required aria-label="Media destination">
               <option value="">Choose category / destination</option>
               <option value="payment_receipt" {% if item.purpose == "payment" %}selected{% endif %}>Payment Receipt â€” Pending Verification</option>
@@ -202,6 +204,16 @@
               <img src="{{ media_preview.file_url }}" alt="{{ media_preview.filename }}" class="img-fluid rounded border" style="max-height:720px; object-fit:contain;">
             {% elif media_preview.preview_kind == "video" %}
               <video src="{{ media_preview.file_url }}" controls class="w-100 rounded border" style="max-height:720px;"></video>
+              <div class="mt-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary js-extract-whatsapp-video"
+                        data-video-url="{{ media_preview.file_url }}"
+                        data-save-url="{% url 'core:save_pending_video_frames' item.pk %}"
+                        data-filename="{{ media_preview.filename }}"
+                        data-size="{{ media_preview.file_size|default:0 }}">
+                  Choose Photos From Video
+                </button>
+              </div>
             {% elif media_preview.preview_kind == "pdf" %}
               <iframe src="{{ media_preview.file_url }}" class="w-100 rounded border" style="height:720px;"></iframe>
             {% elif media_preview.preview_kind == "processing" %}
@@ -244,13 +256,32 @@
                 <div class="col-12 col-md-6">
                   <div class="border rounded p-2 h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                      <strong class="small">{{ media.filename|default:media.object.original_filename }}{% if media.file_size != None %} <span class="text-muted fw-normal">({{ media.file_size|filesizeformat }})</span>{% endif %}</strong>
+                      <div class="d-flex align-items-center gap-2">
+                        {% if has_extracted_video_frames %}
+                          <input class="form-check-input mt-0"
+                                 type="checkbox"
+                                 name="selected_media_ids"
+                                 value="{{ media.object.pk }}"
+                                 form="pendingMediaApproveForm"
+                                 aria-label="Upload {{ media.filename }}"
+                                 {% if media.preview_kind != "video" %}checked{% endif %}>
+                        {% endif %}
+                        <strong class="small">{{ media.filename|default:media.object.original_filename }}{% if media.file_size != None %} <span class="text-muted fw-normal">({{ media.file_size|filesizeformat }})</span>{% endif %}</strong>
+                      </div>
                       {% if media.file_url %}<a href="{{ media.file_url }}" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-1">Open</a>{% endif %}
                     </div>
                     {% if media.preview_kind == "image" %}
                       <img src="{{ media.file_url }}" alt="{{ media.filename }}" class="img-fluid rounded border">
                     {% elif media.preview_kind == "video" %}
                       <video src="{{ media.file_url }}" controls class="w-100 rounded border"></video>
+                      <button type="button"
+                              class="btn btn-sm btn-outline-primary mt-2 js-extract-whatsapp-video"
+                              data-video-url="{{ media.file_url }}"
+                              data-save-url="{% url 'core:save_pending_video_frames' media.object.pk %}"
+                              data-filename="{{ media.filename }}"
+                              data-size="{{ media.file_size|default:0 }}">
+                        Extract More Photos
+                      </button>
                     {% elif media.preview_kind == "pdf" %}
                       <iframe src="{{ media.file_url }}" class="w-100 rounded border" style="height:420px;"></iframe>
                     {% elif media.preview_kind == "processing" %}
@@ -324,8 +355,41 @@
     {% endif %}
   </div>
 </div>
+<script src="{% static 'js/tms-video-frame-picker.js' %}"></script>
 <script>
 (function () {
+  document.addEventListener("click", async function (event) {
+    const button = event.target.closest(".js-extract-whatsapp-video");
+    if (!button) return;
+    button.disabled = true;
+    try {
+      await window.TMSVideoFramePicker.open({
+        url: button.dataset.videoUrl,
+        filename: button.dataset.filename || "whatsapp-video.mp4",
+        size: Number(button.dataset.size || 0),
+        onConfirm: async function (frameFiles) {
+          const data = new FormData();
+          data.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]")?.value || "");
+          frameFiles.forEach(file => data.append("frames", file, file.name));
+          const response = await fetch(button.dataset.saveUrl, {
+            method: "POST",
+            body: data,
+            headers: {"X-Requested-With": "XMLHttpRequest"},
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.message || "Could not save video photos.");
+          }
+          window.location.href = payload.redirect_url || window.location.href;
+        },
+      });
+    } catch (error) {
+      window.alert(error.message || "Could not open the video photo picker.");
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   document.addEventListener("submit", async function (event) {
     const form = event.target.closest("form.pending-detail-action");
     if (!form) return;

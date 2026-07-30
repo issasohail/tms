@@ -16,6 +16,7 @@ from django.contrib.auth.models import Group, Permission
 from django.core.cache import cache
 from django.apps import apps as django_apps
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -348,6 +349,106 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             reverse("core:pending_approval_detail", args=["media", media.pk]),
         )
         enqueue_download.assert_not_called()
+
+    def _jpeg_upload(self, name="frame.jpg", color="blue"):
+        from PIL import Image
+
+        buffer = BytesIO()
+        Image.new("RGB", (80, 60), color).save(buffer, format="JPEG")
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/jpeg")
+
+    def test_selected_whatsapp_video_frames_are_saved_as_pending_photos(self):
+        video = self._pending(
+            filename="unit-walkthrough.mp4",
+            file=ContentFile(b"test video bytes", name="unit-walkthrough.mp4"),
+            media_type="video",
+            purpose=PendingWhatsAppMedia.PURPOSE_UNIT,
+            target_kind=PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+        )
+
+        response = self.client.post(
+            reverse("core:save_pending_video_frames", args=[video.pk]),
+            {"frames": [self._jpeg_upload("first.jpg"), self._jpeg_upload("second.jpg", "red")]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        video.refresh_from_db()
+        self.assertIsNotNone(video.batch_key)
+        frames = PendingWhatsAppMedia.objects.filter(
+            batch_key=video.batch_key,
+            media_type="image",
+        ).order_by("pk")
+        self.assertEqual(frames.count(), 2)
+        self.assertTrue(all("[Extracted video frame]" in frame.ai_notes for frame in frames))
+        self.assertTrue(all(frame.file.storage.exists(frame.file.name) for frame in frames))
+
+        detail = self.client.get(
+            reverse("core:pending_approval_detail", args=["media", video.pk])
+        )
+        self.assertContains(detail, "Extract More Photos")
+        self.assertContains(detail, 'name="selected_media_ids"', count=3)
+        self.assertContains(detail, 'name="media_selection" value="explicit"')
+
+    def test_explicit_frame_approval_attaches_only_selected_photos(self):
+        video = self._pending(
+            filename="unit-walkthrough.mp4",
+            file=ContentFile(b"test video bytes", name="unit-walkthrough.mp4"),
+            media_type="video",
+            purpose=PendingWhatsAppMedia.PURPOSE_UNIT,
+            target_kind=PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+        )
+        response = self.client.post(
+            reverse("core:save_pending_video_frames", args=[video.pk]),
+            {"frames": [self._jpeg_upload()]},
+        )
+        frame_id = response.json()["created_ids"][0]
+
+        approval = self.client.post(
+            reverse("core:pending_approval_approve", args=["media", video.pk]),
+            {
+                "media_destination": f"unit_photo:{self.unit.pk}",
+                "media_selection": "explicit",
+                "selected_media_ids": [str(frame_id)],
+            },
+        )
+
+        self.assertEqual(approval.status_code, 302)
+        video.refresh_from_db()
+        frame = PendingWhatsAppMedia.objects.get(pk=frame_id)
+        self.assertEqual(video.status, PendingWhatsAppMedia.STATUS_REJECTED)
+        self.assertEqual(frame.status, PendingWhatsAppMedia.STATUS_APPROVED)
+        self.assertEqual(self.unit.media_files.filter(file_type="image").count(), 1)
+
+    @override_settings(WHATSAPP_MAX_INBOUND_VIDEO_BYTES=32 * 1024 * 1024)
+    @patch("whatsapp.services.whatsapp.WhatsAppService.download_media_to_file")
+    def test_background_video_download_uses_large_streaming_limit(self, download_to_file):
+        from whatsapp.tasks import download_pending_media
+
+        video = PendingWhatsAppMedia.objects.create(
+            phone=self.tenant.phone,
+            file="whatsapp/pending/processing/large-video.mp4",
+            original_filename="large-video.mp4",
+            media_type="video",
+            whatsapp_media_id="video-123",
+            purpose=PendingWhatsAppMedia.PURPOSE_UNIT,
+            unit=self.unit,
+            processing=True,
+        )
+
+        def streamed_download(media_id, destination, max_bytes):
+            self.assertEqual(media_id, "video-123")
+            self.assertEqual(max_bytes, 32 * 1024 * 1024)
+            destination.write(b"streamed video")
+            return {"downloaded_size": len(b"streamed video")}
+
+        download_to_file.side_effect = streamed_download
+        download_pending_media(video.pk)
+
+        video.refresh_from_db()
+        self.assertFalse(video.processing)
+        self.assertTrue(video.file.storage.exists(video.file.name))
+        self.assertIn("Downloaded WhatsApp media size", video.ai_notes)
 
     def test_approved_maintenance_media_is_renamed_and_keeps_original_name(self):
         media = self._pending(

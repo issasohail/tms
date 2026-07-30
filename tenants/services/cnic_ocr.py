@@ -28,7 +28,11 @@ CNIC_PORTRAIT_CROP = (0.71, 0.24, 0.25, 0.55)
 CNIC_OCR_PROMPT = """
 The first image is intended to be the FRONT and the second image the BACK of the
 same Pakistani CNIC. Read only clearly printed information. Pakistani CNIC dates
-are normally DD.MM.YYYY; return every date as YYYY-MM-DD.
+are printed as DD.MM.YYYY. Read all eight date digits exactly before converting:
+the first pair is the day and the second pair is the month. Return every date as
+YYYY-MM-DD. For example, printed 05.11.2024 must become 2024-11-05, never
+2024-05-11 or 2024-05-01. Recheck the printed issue and expiry dates independently
+before returning them; do not swap or drop month digits.
 
 Extract name, father/husband name, gender, country of stay, identity number,
 date of birth, date of issue, and date of expiry from the front.

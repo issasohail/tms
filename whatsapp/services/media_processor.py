@@ -78,8 +78,13 @@ def create_pending_media(message_log, conversation, lease=None):
     purpose, confidence = detect_media_purpose(caption, message_type)
 
     content = None
-    filename = media_payload.get("filename") or f"whatsapp-{media_id or message_log.pk}.{_extension(message_type)}"
-    defer_download = bool(media_id) and message_type in DEFERRED_DOWNLOAD_MEDIA_TYPES
+    stored_media_type = message_type
+    if mime_type.startswith("video/"):
+        stored_media_type = "video"
+    elif mime_type.startswith("audio/"):
+        stored_media_type = "audio"
+    filename = media_payload.get("filename") or f"whatsapp-{media_id or message_log.pk}.{_extension(stored_media_type)}"
+    defer_download = bool(media_id) and stored_media_type in DEFERRED_DOWNLOAD_MEDIA_TYPES
     if media_id and not defer_download:
         content = WhatsAppService().download_media_bytes(media_id)
     max_bytes = int(getattr(settings, "WHATSAPP_MAX_INBOUND_MEDIA_BYTES", 16 * 1024 * 1024))
@@ -91,7 +96,7 @@ def create_pending_media(message_log, conversation, lease=None):
         original_whatsapp_message=message_log,
         phone=message_log.phone_number,
         original_filename=os.path.basename(filename),
-        media_type=message_type,
+        media_type=stored_media_type,
         whatsapp_media_id=media_id,
         purpose=purpose,
         lease=lease,

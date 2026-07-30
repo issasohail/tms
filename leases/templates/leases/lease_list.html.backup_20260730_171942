@@ -69,18 +69,6 @@
     {% if current_summary %}
       <input type="hidden" name="summary" value="{{ current_summary }}">
     {% endif %}
-    <div class="ll-filter-item ll-filter-item--tenant ll-filter-tenant">
-      <label for="id_tenant" class="ll-label">Tenant</label>
-      <select name="tenant" class="ll-select select2" id="id_tenant">
-        <option value="">All</option>
-        {% for tenant in all_tenants %}
-          <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
-            {{ tenant.get_full_name }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-
     <div class="ll-filter-item ll-filter-property">
       <label for="id_property" class="ll-label">Property</label>
       <select name="property" class="ll-select" id="id_property">
@@ -112,6 +100,18 @@
         <option value="active" {% if current_status == 'active' %}selected{% endif %}>Active</option>
         <option value="terminated" {% if current_status == 'terminated' %}selected{% endif %}>Terminated</option>
         <option value="ended" {% if current_status == 'ended' %}selected{% endif %}>Ended</option>
+      </select>
+    </div>
+
+    <div class="ll-filter-item ll-filter-item--tenant ll-filter-tenant">
+      <label for="id_tenant" class="ll-label">Tenant</label>
+      <select name="tenant" class="ll-select select2" id="id_tenant">
+        <option value="">All</option>
+        {% for tenant in all_tenants %}
+          <option value="{{ tenant.id }}" {% if current_tenant == tenant.id|stringformat:"s" %}selected{% endif %}>
+            {{ tenant.get_full_name }}
+          </option>
+        {% endfor %}
       </select>
     </div>
 
@@ -356,7 +356,7 @@
 
 .ll-filters {
   display: grid;
-  grid-template-columns: minmax(190px, 1.25fr) minmax(130px, 1fr) minmax(120px, .9fr) minmax(130px, .9fr) minmax(145px, auto) auto;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, .9fr) minmax(130px, .9fr) minmax(190px, 1.25fr) minmax(145px, auto) auto;
   gap: 8px 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -749,7 +749,7 @@
     font-size: .76rem !important;
   }
   .ll-filters {
-    grid-template-columns: minmax(180px, 1.45fr) 1fr 1fr 1fr minmax(140px, auto) auto;
+    grid-template-columns: 1fr 1fr 1fr minmax(180px, 1.45fr) minmax(140px, auto) auto;
     gap: 7px;
   }
   .ll-summary-card { min-height: 64px; padding: 10px 12px; gap: 9px; }
@@ -1091,13 +1091,12 @@
     gap: 6px;
     margin-bottom: 9px;
   }
-  .ll-filter-tenant { grid-column: 1 / span 2; grid-row: 1; }
-  .ll-filter-property { grid-column: 3; grid-row: 1; }
-  .ll-filter-unit { grid-column: 1; grid-row: 2; }
-  .ll-filter-status { grid-column: 2; grid-row: 2; }
+  .ll-filter-property { grid-column: 1; }
+  .ll-filter-unit { grid-column: 2; }
+  .ll-filter-status { grid-column: 3; }
+  .ll-filter-tenant { grid-column: 1 / span 2; }
   .ll-filter-checks {
     grid-column: 3;
-    grid-row: 2;
     align-self: end;
     justify-content: center;
     gap: 5px;

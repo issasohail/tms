@@ -21,10 +21,6 @@ from whatsapp.services.openai_ocr import (
 
 logger = logging.getLogger(__name__)
 
-# Normalized x, y, width and height for the portrait on a standard CNIC front.
-# Adjust these four values when the fallback crop needs to move or resize.
-CNIC_PORTRAIT_CROP = (0.71, 0.24, 0.25, 0.55)
-
 CNIC_OCR_PROMPT = """
 The first image is intended to be the FRONT and the second image the BACK of the
 same Pakistani CNIC. Read only clearly printed information. Pakistani CNIC dates
@@ -338,7 +334,6 @@ def _portrait_data_uri(source, bbox=None):
         with Image.open(BytesIO(source)) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGB")
             width, height = image.size
-            default_x, default_y, default_width, default_height = CNIC_PORTRAIT_CROP
             values = bbox if isinstance(bbox, dict) else {}
             try:
                 x = float(values.get("x"))
@@ -346,7 +341,8 @@ def _portrait_data_uri(source, bbox=None):
                 box_width = float(values.get("width"))
                 box_height = float(values.get("height"))
             except (TypeError, ValueError):
-                x, y, box_width, box_height = CNIC_PORTRAIT_CROP
+                # Standard Pakistani CNIC fronts place the portrait on the right.
+                x, y, box_width, box_height = 0.67, 0.10, 0.29, 0.80
             if not (
                 0 <= x < 1
                 and 0 <= y < 1
@@ -354,13 +350,8 @@ def _portrait_data_uri(source, bbox=None):
                 and 0.15 <= box_height <= 0.95
                 and x + box_width <= 1.02
                 and y + box_height <= 1.02
-                # Reject OCR boxes that drift into the CNIC text area.
-                and abs(x - default_x) <= 0.07
-                and abs(y - default_y) <= 0.12
-                and abs(box_width - default_width) <= 0.10
-                and abs(box_height - default_height) <= 0.18
             ):
-                x, y, box_width, box_height = CNIC_PORTRAIT_CROP
+                x, y, box_width, box_height = 0.67, 0.10, 0.29, 0.80
             left = max(0, round(x * width))
             top = max(0, round(y * height))
             right = min(width, round((x + box_width) * width))

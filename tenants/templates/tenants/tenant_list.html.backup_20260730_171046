@@ -425,7 +425,7 @@
                 <td class="p-2 col-lease xsmall">
                     {% with family_rel=tenant.current_family_relationship %}
                     {% if lease %}
-                    <a href="{% url 'leases:lease_detail' lease.pk %}" class="lease-link"><strong>{{ lease.unit.property.property_name|slice:":8" }}-{{ lease.unit.unit_number }}</strong></a>
+                    <a href="{% url 'leases:lease_detail' lease.pk %}" class="lease-link"><strong>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</strong></a>
                     <div class="lease-dates mt-1">
                         <span>Start: {{ lease.start_date|date:"Y-m-d" }}</span>
                         <span>
@@ -438,7 +438,7 @@
                     {% elif family_rel %}
                     <div class="family-lease-compact">
                         <span class="badge bg-purple-soft text-purple border family-member-badge">Family Member</span>
-                        <a href="{% url 'leases:lease_detail' family_rel.lease.pk %}" class="lease-link d-block family-lease-unit"><strong>{{ family_rel.lease.unit.property.property_name|slice:":8" }}-{{ family_rel.lease.unit.unit_number }}</strong></a>
+                        <a href="{% url 'leases:lease_detail' family_rel.lease.pk %}" class="lease-link d-block family-lease-unit"><strong>{{ family_rel.lease.unit.property.property_name }}-{{ family_rel.lease.unit.unit_number }}</strong></a>
                         <div class="family-primary-line" title="Primary: {{ family_rel.primary_tenant.first_name }} {{ family_rel.primary_tenant.last_name }}">Primary: {{ family_rel.primary_tenant.first_name }} {{ family_rel.primary_tenant.last_name }}</div>
                         <div class="family-relation-line">Relation: {{ family_rel.relation }} · End: {{ family_rel.lease.end_date|date:"Y-m-d" }}</div>
                     </div>

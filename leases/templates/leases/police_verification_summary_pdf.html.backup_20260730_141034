@@ -21,7 +21,6 @@
   <h1>Police Verification Summary</h1>
   <div class="muted">Lease #{{ lease.pk }} | Generated {{ generated_at|date:"Y-m-d H:i" }}</div>
   <div><a href="https://www.youtube.com/watch?v=1hmyXGRiBvc">Police Verification Video Guide</a></div>
-  <div><a href="https://www.facebook.com/watch/?v=866464315929260">Police Verification Video Guide (Facebook)</a></div>
 
   <div class="photo-row">
     <div class="photo-box">

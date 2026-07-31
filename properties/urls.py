@@ -75,6 +75,8 @@ urlpatterns = [
          views.unit_media_public_file, name='unit_media_public_file'),
     path('public/unit-media/<path:token>/',
          views.unit_media_public_share, name='unit_media_public_share'),
+    path('public/unit-photo-upload/<str:token>/',
+         views.public_unit_photo_upload, name='public_unit_photo_upload'),
     path('public/media/<path:token>/<int:media_id>/',
          views.unit_media_public_file, name='media_public_file'),
     path('public/media/<path:token>/',

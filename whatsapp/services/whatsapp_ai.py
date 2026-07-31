@@ -515,6 +515,20 @@ class WhatsAppAIAssistant:
         if isinstance(lease, str):
             return lease, "lease_lookup", {}
 
+        if lowered in {
+            "upload photo",
+            "upload photos",
+            "upload unit photo",
+            "upload unit photos",
+            "unit photo",
+            "unit photos",
+        }:
+            return (
+                self._unit_photo_upload_link_reply(lease),
+                "unit_photo_upload_link",
+                {"lease": lease, "tenant": lease.tenant},
+            )
+
         orchestration = self.orchestrator.handle(text, identity, conversation, message_log, lease=lease)
         if orchestration.handled:
             orchestration.metadata.update({"tenant": lease.tenant, "lease": lease})
@@ -2402,6 +2416,7 @@ class WhatsAppAIAssistant:
 
     def _select_staff_upload_target(self, message_log, conversation, staff_user, option):
         property_obj = None
+        target_lease = None
         if option["type"] == "property":
             property_obj = Property.objects.filter(pk=option["id"]).first()
             conversation.context["staff_upload_property_id"] = option["id"]
@@ -2409,8 +2424,15 @@ class WhatsAppAIAssistant:
             unit = Unit.objects.select_related("property").filter(pk=option["id"]).first()
             property_obj = getattr(unit, "property", None)
             conversation.context["staff_upload_unit_id"] = option["id"]
+            if unit:
+                target_lease = self._staff_current_accessible_leases(
+                    staff_user
+                ).filter(unit=unit).first()
+                if target_lease:
+                    conversation.context["staff_upload_lease_id"] = target_lease.pk
         else:
             lease = Lease.objects.select_related("unit__property").filter(pk=option["id"]).first()
+            target_lease = lease
             property_obj = getattr(getattr(lease, "unit", None), "property", None)
             conversation.context["staff_upload_lease_id"] = option["id"]
         if not property_obj or not staff_can_access_property(staff_user, property_obj):
@@ -2421,7 +2443,49 @@ class WhatsAppAIAssistant:
         conversation.pending_state = "staff_waiting_upload"
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         log_staff_action(staff_user, message_log.phone_number, "photo_upload_target_selected", "pending", property=property_obj, target=option)
-        return f"Target selected: {option['label']}\n\nSend one or more photos/files. Reply DONE when finished. Each file will wait for approval."
+        link_text = ""
+        if (
+            conversation.context.get("staff_upload_kind")
+            == PendingWhatsAppMedia.TARGET_UNIT_PHOTO
+            and target_lease
+        ):
+            upload_link = self._create_unit_photo_upload_link(target_lease)
+            link_text = (
+                "\n\nSecure gallery upload link (no login required):\n"
+                f"{upload_link}\n\n"
+                "Open it or forward it to the tenant. The lease, property, and "
+                "unit are already selected."
+            )
+        return (
+            f"Target selected: {option['label']}"
+            f"{link_text}\n\n"
+            "You can also send photos/files directly in WhatsApp. Reply DONE "
+            "when finished. Each file will wait for approval."
+        )
+
+    def _create_unit_photo_upload_link(self, lease):
+        from properties.public_upload_links import make_unit_photo_upload_token
+
+        base_url = (
+            getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "")
+            or "https://tms.sonazconsultancy.online"
+        )
+        token = make_unit_photo_upload_token(lease)
+        path = reverse("properties:public_unit_photo_upload", args=[token])
+        return f"{base_url.rstrip('/')}{path}"
+
+    def _unit_photo_upload_link_reply(self, lease):
+        link = self._create_unit_photo_upload_link(lease)
+        return (
+            "Upload Unit Photos\n\n"
+            f"Lease: #{lease.pk} - {lease.tenant}\n"
+            f"Property: {lease.unit.property.property_name}\n"
+            f"Unit: {lease.unit.unit_number}\n\n"
+            "Open this secure link and choose photos from your gallery:\n"
+            f"{link}\n\n"
+            "No login is required. The destination is already selected and "
+            "the link expires after 48 hours."
+        )
 
     def _start_staff_lease_target(self, conversation, staff_user, action):
         properties = self._staff_accessible_properties(staff_user)

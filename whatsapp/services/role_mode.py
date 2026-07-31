@@ -206,6 +206,7 @@ def tenant_menu_text():
         "10. Suggestion / advice\n\n"
         "Request Last Invoice\n"
         "View Ledger\n\n"
+        "Upload Unit Photos\n\n"
         "Reply with a number or type your request."
     )
 

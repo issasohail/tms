@@ -85,6 +85,7 @@ EXEMPT_URL_NAMES = {
     "unit_media_public_file",
     "media_public_share",
     "media_public_file",
+    "public_unit_photo_upload",
     "public_request_create",
     "public_request_confirmation",
     "public_request_confirmation_download",

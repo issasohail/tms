@@ -14,6 +14,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core import signing
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import (
     Count,
     DateField,
@@ -2083,6 +2084,181 @@ def unit_media_public_file(request, token, media_id):
         raise Http404("File not found.")
     media_file.open("rb")
     return FileResponse(media_file)
+
+
+def public_unit_photo_upload(request, token):
+    """No-login, lease-bound gallery upload staged for admin approval."""
+    import hashlib
+    import uuid
+
+    from PIL import Image, UnidentifiedImageError
+
+    from core.upload_utils import compress_uploaded_image
+    from leases.models import Lease
+    from properties.public_upload_links import read_unit_photo_upload_token
+    from whatsapp.models import PendingWhatsAppMedia
+
+    try:
+        token_data = read_unit_photo_upload_token(token)
+    except signing.SignatureExpired:
+        return render(
+            request,
+            "properties/public_unit_photo_upload.html",
+            {"link_error": "This upload link has expired. Ask TMS for a new link."},
+            status=410,
+        )
+    except signing.BadSignature:
+        raise Http404("Invalid unit photo upload link.")
+
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit__property"),
+        pk=token_data.get("lease_id"),
+        unit_id=token_data.get("unit_id"),
+    )
+    today = timezone.localdate()
+    if (
+        lease.status != "active"
+        or lease.start_date > today
+        or lease.end_date < today
+    ):
+        return render(
+            request,
+            "properties/public_unit_photo_upload.html",
+            {
+                "link_error": (
+                    "This link is no longer available because the selected lease "
+                    "is not currently active."
+                )
+            },
+            status=410,
+        )
+
+    context = {
+        "lease": lease,
+        "property_obj": lease.unit.property,
+        "unit": lease.unit,
+        "token": token,
+        "expires_hours": 48,
+    }
+    if request.method != "POST":
+        return render(request, "properties/public_unit_photo_upload.html", context)
+
+    uploads = request.FILES.getlist("photos")
+    if not uploads:
+        context["upload_error"] = "Choose at least one photo from your gallery."
+        return render(
+            request, "properties/public_unit_photo_upload.html", context, status=400
+        )
+    if len(uploads) > 24:
+        context["upload_error"] = "Upload no more than 24 photos at one time."
+        return render(
+            request, "properties/public_unit_photo_upload.html", context, status=400
+        )
+
+    token_fingerprint = hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+    upload_marker = f"[Public unit upload {token_fingerprint}]"
+    existing_count = PendingWhatsAppMedia.objects.filter(
+        lease=lease,
+        ai_notes__contains=upload_marker,
+    ).count()
+    if existing_count + len(uploads) > 100:
+        context["upload_error"] = (
+            "This link has reached its 100-photo limit. Ask TMS for a new link."
+        )
+        return render(
+            request, "properties/public_unit_photo_upload.html", context, status=400
+        )
+
+    prepared = []
+    for upload in uploads:
+        if upload.size > 20 * 1024 * 1024:
+            context["upload_error"] = (
+                f"{upload.name}: the original photo exceeds the 20 MiB safety limit."
+            )
+            return render(
+                request,
+                "properties/public_unit_photo_upload.html",
+                context,
+                status=400,
+            )
+        compressed = compress_uploaded_image(upload, max_side=1800, quality=82)
+        try:
+            compressed.seek(0)
+            with Image.open(compressed) as image:
+                if image.width * image.height > 50_000_000:
+                    raise ValueError("Image dimensions are too large.")
+                image.verify()
+            compressed.seek(0)
+        except (UnidentifiedImageError, OSError, ValueError):
+            context["upload_error"] = f"{upload.name}: this is not a valid photo."
+            return render(
+                request,
+                "properties/public_unit_photo_upload.html",
+                context,
+                status=400,
+            )
+        if compressed.size > 5 * 1024 * 1024:
+            context["upload_error"] = (
+                f"{upload.name}: the prepared photo still exceeds 5 MiB."
+            )
+            return render(
+                request,
+                "properties/public_unit_photo_upload.html",
+                context,
+                status=400,
+            )
+        prepared.append(compressed)
+
+    batch_key = uuid.uuid4()
+    created = []
+    with transaction.atomic():
+        for index, prepared_photo in enumerate(prepared, start=1):
+            original_name = (
+                getattr(prepared_photo, "name", "")
+                or f"unit-{lease.unit_id}-photo-{index:02d}.jpg"
+            )
+            pending = PendingWhatsAppMedia(
+                phone=getattr(lease.tenant, "phone", "") or "",
+                original_filename=original_name[:255],
+                media_type="image",
+                purpose=PendingWhatsAppMedia.PURPOSE_UNIT,
+                target_kind=PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+                batch_key=batch_key,
+                tenant=lease.tenant,
+                lease=lease,
+                property=lease.unit.property,
+                unit=lease.unit,
+                ai_confidence=100,
+                ai_notes=(
+                    f"{upload_marker} Submitted through the secure no-login Unit Photo upload "
+                    f"link for lease #{lease.pk}. Destination was fixed by TMS."
+                ),
+                processing=False,
+            )
+            pending.file.save(original_name, prepared_photo, save=False)
+            pending.full_clean()
+            pending.save()
+            created.append(pending)
+
+    if created:
+        try:
+            from whatsapp.services.whatsapp_ai import notify_staff_pending_request
+
+            notify_staff_pending_request("upload", created[0])
+        except Exception:
+            logger.exception(
+                "Public Unit Photo batch %s was saved, but staff notification failed.",
+                batch_key,
+            )
+    context.update(
+        {
+            "upload_success": (
+                f"{len(created)} photo(s) uploaded successfully and sent for approval."
+            ),
+            "uploaded_count": len(created),
+        }
+    )
+    return render(request, "properties/public_unit_photo_upload.html", context)
 
 
 @login_required

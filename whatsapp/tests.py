@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import importlib
 import json
+import re
 import tempfile
 import uuid
 from io import BytesIO
@@ -1124,6 +1125,72 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertTrue(sender.has_active_tenant)
         self.assertFalse(sender.has_staff)
         self.assertEqual(sender.active_leases, [self.lease])
+
+    def test_tenant_unit_photo_command_returns_fixed_no_login_link(self):
+        from properties.public_upload_links import read_unit_photo_upload_token
+
+        self.handover.status = WhatsAppHandover.STATUS_RESOLVED
+        self.handover.save(update_fields=["status", "updated_at"])
+        self.message.payload = {
+            "type": "text",
+            "text": {"body": "upload unit photos"},
+        }
+        self.message.save(update_fields=["payload", "updated_at"])
+
+        response, intent, metadata = WhatsAppAIAssistant(
+            service=MagicMock()
+        )._handle(self.message, self.conversation)
+
+        self.assertEqual(intent, "unit_photo_upload_link")
+        self.assertIn("No login is required", response)
+        self.assertIn(self.property.property_name, response)
+        self.assertIn(self.unit.unit_number, response)
+        token_match = re.search(
+            r"/properties/public/unit-photo-upload/([^/\s]+)/",
+            response,
+        )
+        self.assertIsNotNone(token_match)
+        token = token_match.group(1)
+        token_data = read_unit_photo_upload_token(token)
+        self.assertEqual(token_data["lease_id"], self.lease.pk)
+        self.assertEqual(token_data["unit_id"], self.unit.pk)
+        self.assertEqual(metadata["lease"], self.lease)
+
+    def test_staff_unit_target_returns_forwardable_lease_bound_link(self):
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1,
+            property=self.property,
+            is_active=True,
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            context={
+                "staff_upload_kind": PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+            },
+        )
+
+        response = WhatsAppAIAssistant(service=MagicMock())._select_staff_upload_target(
+            self.message,
+            conversation,
+            self.staff1,
+            {
+                "type": "unit",
+                "id": self.unit.pk,
+                "label": f"{self.property.property_name} / {self.unit.unit_number}",
+            },
+        )
+
+        conversation.refresh_from_db()
+        self.assertIn("Secure gallery upload link", response)
+        self.assertIn("no login required", response)
+        self.assertIn("forward it to the tenant", response)
+        self.assertEqual(
+            conversation.context["staff_upload_lease_id"],
+            self.lease.pk,
+        )
 
     def test_staff_menu_registration_option_sends_public_registration_link(self):
         self.assertIn("12. New Tenant Registration", staff_menu_text(self.staff1))

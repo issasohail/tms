@@ -1,10 +1,17 @@
 import json
+import tempfile
+from io import BytesIO
+from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
+from PIL import Image
 
 from leases.models_parking_inventory import (
     InventoryItemDefinition,
@@ -12,6 +19,121 @@ from leases.models_parking_inventory import (
 )
 
 from .models import Property, Unit
+
+
+class PublicUnitPhotoUploadTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._media_directory = tempfile.TemporaryDirectory()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_directory.name)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        cls._media_directory.cleanup()
+
+    def setUp(self):
+        from leases.models import Lease
+        from tenants.models import Tenant
+        from properties.public_upload_links import make_unit_photo_upload_token
+
+        self.tenant = Tenant.objects.create(
+            first_name="Public",
+            last_name="Uploader",
+            phone="+923001234567",
+            cnic="37405-1234567-1",
+        )
+        self.property = Property.objects.create(
+            property_name="Upload Property",
+            owner_name="Owner",
+            owner_cnic="37405-7654321-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(
+            property=self.property,
+            unit_number="U-01",
+            status="occupied",
+        )
+        self.lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=timezone.localdate() - timedelta(days=30),
+            end_date=timezone.localdate() + timedelta(days=335),
+            monthly_rent=Decimal("25000"),
+            status="active",
+        )
+        self.token = make_unit_photo_upload_token(self.lease)
+        self.url = reverse(
+            "properties:public_unit_photo_upload", args=[self.token]
+        )
+
+    def _photo(self, name="gallery-photo.jpg", color="blue"):
+        output = BytesIO()
+        Image.new("RGB", (120, 90), color).save(output, format="JPEG")
+        return SimpleUploadedFile(
+            name, output.getvalue(), content_type="image/jpeg"
+        )
+
+    def test_link_requires_no_login_and_has_fixed_destination(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.property.property_name)
+        self.assertContains(response, self.unit.unit_number)
+        self.assertContains(response, f"#{self.lease.pk}")
+        self.assertContains(response, "No login is required")
+
+    @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
+    def test_gallery_photos_are_staged_for_fixed_unit_approval(self, notify_pending):
+        from whatsapp.models import PendingWhatsAppMedia
+
+        response = self.client.post(
+            self.url,
+            {
+                "lease_id": "999999",
+                "unit_id": "999999",
+                "photos": [
+                    self._photo(),
+                    self._photo("second.jpg", "red"),
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "2 photo(s) uploaded successfully")
+        pending = list(PendingWhatsAppMedia.objects.order_by("pk"))
+        self.assertEqual(len(pending), 2)
+        self.assertEqual({item.lease_id for item in pending}, {self.lease.pk})
+        self.assertEqual({item.property_id for item in pending}, {self.property.pk})
+        self.assertEqual({item.unit_id for item in pending}, {self.unit.pk})
+        self.assertEqual(
+            {item.target_kind for item in pending},
+            {PendingWhatsAppMedia.TARGET_UNIT_PHOTO},
+        )
+        self.assertEqual(len({item.batch_key for item in pending}), 1)
+        notify_pending.assert_called_once_with("upload", pending[0])
+
+    def test_invalid_link_is_not_accepted(self):
+        response = self.client.get(
+            reverse("properties:public_unit_photo_upload", args=["invalid-token"])
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch(
+        "properties.public_upload_links.UNIT_PHOTO_UPLOAD_MAX_AGE",
+        -1,
+    )
+    def test_expired_link_is_rejected_without_login_redirect(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 410)
+        self.assertContains(response, "upload link has expired", status_code=410)
 
 
 class UnitListInlineUpdateTests(TestCase):

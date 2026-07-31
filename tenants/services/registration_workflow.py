@@ -7,6 +7,7 @@ from django.utils import timezone
 from tenants.models import Tenant, PendingRegistrationPerson, normalize_cnic
 from leases.models import LeaseFamilyMember, LeaseRelationshipType, LeaseVehicle, PendingLeaseVehicleSubmission
 from core.utils.identity import validate_cnic
+from tenants.services.cnic_ocr import portrait_content_file_from_cnic_front
 
 PERSON_FIELDS = ("first_name", "last_name", "phone", "date_of_birth", "address")
 FILE_FIELDS = ("photo", "cnic_front", "cnic_back")
@@ -230,6 +231,16 @@ def _apply_deferred_file_paths(tenant, deferred_file_paths):
         setattr(tenant, field_name, path)
 
 
+def _apply_front_portrait_fallback(tenant, front_file, filename):
+    if tenant.photo or not front_file:
+        return False
+    portrait = portrait_content_file_from_cnic_front(front_file, filename=filename)
+    if not portrait:
+        return False
+    tenant.photo = portrait
+    return True
+
+
 def apply_registration_applicant(submission, *, collision_action="", missing_files=None):
     """Apply reviewer-selected applicant fields, merging a shell on CNIC conflict."""
     shell = submission.tenant
@@ -259,6 +270,11 @@ def apply_registration_applicant(submission, *, collision_action="", missing_fil
             _record_missing_file(
                 missing_files, "Applicant", field, source_file.name
             )
+    _apply_front_portrait_fallback(
+        tenant,
+        tenant.cnic_front or submission.cnic_front,
+        f"tenant-{tenant.pk or shell.pk}-cnic-portrait.jpg",
+    )
     tenant.is_active = True
     tenant.save()
     # Bypass image-cropping's pre-save file read for paths whose files are absent.
@@ -330,6 +346,11 @@ def resolve_pending_person(person, missing_files=None):
                 missing_files=missing_files,
                 context=person_context,
             )
+        _apply_front_portrait_fallback(
+            tenant,
+            tenant.cnic_front or person.cnic_front,
+            f"registration-person-{person.pk}-cnic-portrait.jpg",
+        )
         tenant.full_clean(
             exclude=["cnic"] if family_member_can_have_blank_cnic(person) else None
         )
@@ -353,6 +374,12 @@ def resolve_pending_person(person, missing_files=None):
                 context=person_context,
             ):
                 update_fields.append(field)
+        if _apply_front_portrait_fallback(
+            tenant,
+            tenant.cnic_front or person.cnic_front,
+            f"registration-person-{person.pk}-cnic-portrait.jpg",
+        ):
+            update_fields.append("photo")
         if update_fields:
             tenant.save(update_fields=list(dict.fromkeys(update_fields + ["updated_at"])))
             _apply_deferred_file_paths(tenant, deferred_file_paths)

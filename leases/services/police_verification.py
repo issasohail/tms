@@ -155,9 +155,9 @@ def build_police_whatsapp_message(request, lease, url):
 
 def create_tenant_registration_submission(lease, data, files=None):
     tenant = lease.tenant
-    if not tenant or not data:
-        return None
     files = files or {}
+    if not tenant or not (data or any(files.values())):
+        return None
     return TenantRegistrationSubmission.objects.create(
         tenant=tenant,
         submitted_data=data,

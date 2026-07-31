@@ -417,6 +417,33 @@ class AgreementPartyAjaxTests(TestCase):
         self.assertTrue(tenant.cnic_front.name)
         self.assertTrue(tenant.cnic_back.name)
 
+    def test_quick_add_party_uses_cnic_front_when_photo_is_missing(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.urls import reverse
+        from PIL import Image
+        from tenants.models import Tenant
+
+        image = BytesIO()
+        Image.new("RGB", (1300, 800), "white").save(image, format="JPEG")
+        response = self.client.post(
+            reverse("leases:create_agreement_party_ajax"),
+            {
+                "first_name": "Portrait",
+                "last_name": "Fallback",
+                "cnic": "42101-2222222-1",
+                "cnic_front": SimpleUploadedFile(
+                    "front.jpg", image.getvalue(), content_type="image/jpeg"
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        tenant = Tenant.objects.get(pk=response.json()["id"])
+        self.assertTrue(tenant.photo.name)
+        self.assertTrue(tenant.cnic_front.name)
+
 
 class LeaseHistoryWitnessSelectTests(TestCase):
     def test_both_witness_fields_use_quick_add_select2_class(self):

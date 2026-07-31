@@ -36,19 +36,28 @@ before returning them; do not swap or drop month digits.
 
 Extract name, father/husband name, gender, country of stay, identity number,
 date of birth, date of issue, and date of expiry from the front.
+Return the front identity number separately as front_identity_number. On the
+back, read back_identity_number from the identity number printed in the TOP
+RIGHT corner. Never copy or infer either number from the other image. Return
+null for a side when its own printed number is not clearly readable.
 Return portrait_bbox as normalized 0-to-1 x, y, width and height coordinates
 covering only the printed portrait photograph on the CNIC front. Return null
 when the portrait boundary cannot be identified safely.
 
-On the back, carefully locate the Urdu address labels and their text. "موجودہ پتہ"
-means current/temporary address and "مستقل پتہ" means permanent address. Return
-each address twice: (1) an exact Urdu-script transcription and (2) a faithful
-English transliteration/translation that preserves house, street, mohalla,
-colony, post office, village, tehsil and district names. The address may be
-printed in small Urdu text near the upper half of the card.
+On the back, carefully locate the two Urdu address blocks immediately LEFT of
+the QR code in the upper half of the card. The UPPER block is the current address
+(موجودہ پتہ). The LOWER block is the permanent address (مستقل پتہ). In the
+annotated example these are outlined red and blue respectively, but normal
+uploads will not contain those colored outlines. Do not swap the two blocks.
 
-Give a separate 0-to-1 confidence for each address. Use null and confidence 0
-unless you can clearly distinguish both the label and the text belonging to it.
+Return each address twice: (1) the best exact Urdu-script transcription and (2)
+a faithful English transliteration/translation. Preserve every readable house,
+street, road, mohalla, colony, post office, village, tehsil and district name.
+Read across wrapped lines until the next address block or card element begins.
+
+Give a separate 0-to-1 confidence for each address. Make the best transcription
+from visible text even when the scan is imperfect; use null only when no address
+characters can be read. Never complete unreadable words by guessing.
 Do not treat government text, signatures, return-card instructions, QR content,
 or issuing-authority text as an address. Never invent or infer missing words.
 Compare the identity number printed on each side. If the normalized 13 digits
@@ -70,6 +79,8 @@ CNIC_OCR_SCHEMA = {
         "gender": {"type": ["string", "null"], "enum": ["M", "F", "O", None]},
         "country_of_stay": _NULLABLE_TEXT,
         "identity_number": _NULLABLE_TEXT,
+        "front_identity_number": _NULLABLE_TEXT,
+        "back_identity_number": _NULLABLE_TEXT,
         "date_of_birth": _NULLABLE_TEXT,
         "date_of_issue": _NULLABLE_TEXT,
         "date_of_expiry": _NULLABLE_TEXT,
@@ -99,7 +110,8 @@ CNIC_OCR_SCHEMA = {
     },
     "required": [
         "document_type", "name", "father_name", "gender", "country_of_stay",
-        "identity_number", "date_of_birth", "date_of_issue", "date_of_expiry",
+        "identity_number", "front_identity_number", "back_identity_number",
+        "date_of_birth", "date_of_issue", "date_of_expiry",
         "portrait_bbox",
         "temporary_address_urdu", "permanent_address_urdu",
         "temporary_address_english", "permanent_address_english", "confidence",
@@ -137,8 +149,8 @@ def extract_cnic_identity(front_file, back_file, model):
             if label == "back":
                 with Image.open(BytesIO(source)) as dimension_image:
                     address_image_sufficient = (
-                        dimension_image.width >= 1200
-                        and dimension_image.height >= 700
+                        dimension_image.width >= 600
+                        and dimension_image.height >= 350
                     )
             normalized_file = ContentFile(
                 source, name=getattr(file_field, "name", f"cnic-{label}.jpg")
@@ -164,8 +176,10 @@ def extract_cnic_identity(front_file, back_file, model):
                         {
                             "type": "input_text",
                             "text": (
-                                "The next image is an enlarged, high-contrast crop of "
-                                "the same CNIC back supplied only to help read small Urdu addresses."
+                                "The next image is an enlarged, high-contrast crop of the "
+                                "same CNIC back. Read the upper Urdu block as current address "
+                                "and the lower Urdu block as permanent address. It is supplied "
+                                "only to help read the small address text left of the QR code."
                             ),
                         },
                         {
@@ -224,7 +238,35 @@ def extract_cnic_identity(front_file, back_file, model):
         }
 
     warnings = [str(item).strip() for item in result.get("warnings", []) if str(item).strip()]
-    cnic_digits = re.sub(r"\D", "", result.get("identity_number") or "")
+    front_cnic_digits = re.sub(
+        r"\D", "", result.get("front_identity_number") or ""
+    )
+    back_cnic_digits = re.sub(
+        r"\D", "", result.get("back_identity_number") or ""
+    )
+    if len(front_cnic_digits) != 13:
+        return {
+            **result,
+            "fields": {},
+            "message": "The CNIC number on the front could not be read clearly. Upload a clearer front image.",
+        }
+    if len(back_cnic_digits) != 13:
+        return {
+            **result,
+            "fields": {},
+            "message": "The CNIC number at the top-right of the back could not be read clearly. Upload a clearer back image.",
+        }
+    if front_cnic_digits != back_cnic_digits:
+        return {
+            **result,
+            "fields": {},
+            "message": (
+                "CNIC verification failed: the number on the back does not match "
+                "the number on the front. Upload both sides of the same CNIC."
+            ),
+        }
+    result["cnic_verified"] = True
+    cnic_digits = front_cnic_digits
     cnic = (
         f"{cnic_digits[:5]}-{cnic_digits[5:12]}-{cnic_digits[12]}"
         if len(cnic_digits) == 13
@@ -248,22 +290,16 @@ def extract_cnic_identity(front_file, back_file, model):
     permanent_english = _text(result.get("permanent_address_english"))
     if not address_image_sufficient:
         warnings.append(
-            "The CNIC back resolution is too low for safe address entry; addresses were withheld."
+            "The CNIC back image is low resolution; verify the best-effort address transcription."
         )
-    if (
-        not address_image_sufficient
-        or temporary_confidence < 0.97
-        or not (temporary_urdu and temporary_english)
-    ):
-        temporary_urdu = temporary_english = None
-        warnings.append("Current address was not clear enough to populate safely.")
-    if (
-        not address_image_sufficient
-        or permanent_confidence < 0.97
-        or not (permanent_urdu and permanent_english)
-    ):
-        permanent_urdu = permanent_english = None
-        warnings.append("Permanent address was not clear enough to populate safely.")
+    if not (temporary_urdu or temporary_english):
+        warnings.append("Current address could not be read from the upper address block.")
+    elif temporary_confidence < 0.75 or not (temporary_urdu and temporary_english):
+        warnings.append("Verify the best-effort current address transcription.")
+    if not (permanent_urdu or permanent_english):
+        warnings.append("Permanent address could not be read from the lower address block.")
+    elif permanent_confidence < 0.75 or not (permanent_urdu and permanent_english):
+        warnings.append("Verify the best-effort permanent address transcription.")
 
     fields = {
         "full_name": _text(result.get("name")),
@@ -311,7 +347,7 @@ def _confidence(value):
 
 
 def _enhanced_back_image_data(file_field):
-    """Return a temporary enlarged upper-card crop for small Urdu address text."""
+    """Return an enlarged crop containing both Urdu blocks left of the QR code."""
     try:
         file_field.open("rb")
         source = file_field.read()
@@ -319,7 +355,14 @@ def _enhanced_back_image_data(file_field):
         with Image.open(BytesIO(source)) as opened:
             image = ImageOps.exif_transpose(opened).convert("L")
             width, height = image.size
-            image = image.crop((0, 0, width, max(1, int(height * 0.66))))
+            image = image.crop(
+                (
+                    max(0, int(width * 0.07)),
+                    max(0, int(height * 0.01)),
+                    max(1, int(width * 0.79)),
+                    max(1, int(height * 0.60)),
+                )
+            )
             target_width = max(2200, image.width * 3)
             target_height = round(image.height * target_width / image.width)
             image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
@@ -396,6 +439,27 @@ def portrait_content_file(data_uri, filename="cnic-portrait.jpg"):
         return ContentFile(payload, name=filename)
     except Exception:
         return None
+
+
+def portrait_content_file_from_cnic_front(front_file, filename="cnic-portrait.jpg"):
+    """Create the standard portrait fallback directly from a CNIC front file."""
+    if not front_file:
+        return None
+    opened_here = bool(getattr(front_file, "closed", True))
+    try:
+        if opened_here:
+            front_file.open("rb")
+        else:
+            front_file.seek(0)
+        source = front_file.read()
+        if opened_here:
+            front_file.close()
+        else:
+            front_file.seek(0)
+    except Exception:
+        logger.warning("CNIC portrait fallback could not read the front image.")
+        return None
+    return portrait_content_file(_portrait_data_uri(source), filename=filename)
 
 
 def _age_on(dob, today):

@@ -81,6 +81,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+  {% if not duplicate_submission %}
+  try {
+    window.sessionStorage.removeItem("tmsTenantRegistrationDraft:" + window.location.pathname);
+  } catch (error) {
+    // The submission is already committed; unavailable browser storage needs no action.
+  }
+  {% endif %}
   const button = document.getElementById("downloadRegistrationReceipt");
   const receipt = document.getElementById("registrationReceipt");
   if (!button || !receipt) return;

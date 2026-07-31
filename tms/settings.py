@@ -338,6 +338,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "tms.wsgi.application"
 
+CSRF_FAILURE_VIEW = "tenants.csrf.csrf_failure"
+
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -534,10 +536,16 @@ LOGGING = {
         "brief": {"format": "%(levelname)s %(message)s"},
         "audit": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
     },
+    "filters": {
+        "redact_registration_tokens": {
+            "()": "core.logging_filters.RedactRegistrationTokenFilter",
+        },
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "brief",
+            "filters": ["redact_registration_tokens"],
         },
         "meter_control_file": {
             "class": "logging.handlers.RotatingFileHandler",

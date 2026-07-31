@@ -34,7 +34,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Replace
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import (
@@ -44,7 +44,7 @@ from django.urls import (
 from django.utils.text import slugify
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import (
     CreateView,
     DeleteView,
@@ -97,6 +97,7 @@ from .forms import (
 )
 from .models import (
     PendingRegistrationPerson,
+    TemporaryRegistrationUpload,
     Tenant,
     TenantRegistrationSubmission,
     TenantRegistrationSubmissionAudit,
@@ -130,6 +131,106 @@ def _split_registration_name(name):
     if len(parts) == 1:
         return parts[0], ""
     return parts[0], " ".join(parts[1:])
+
+
+def _private_draft_response(response):
+    response["Cache-Control"] = "private, no-store, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@require_POST
+def temporary_registration_upload(request, token):
+    from tenants.services.registration_drafts import (
+        save_temporary_upload,
+        temporary_upload_rate_allowed,
+    )
+
+    try:
+        tenant = _tenant_from_registration_token(token)
+    except SignatureExpired:
+        return _private_draft_response(
+            JsonResponse({"ok": False, "message": "This registration link has expired."}, status=410)
+        )
+    except BadSignature:
+        raise Http404("Invalid registration link")
+
+    client_ip = request.META.get("REMOTE_ADDR", "unknown")
+    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "upload", 80):
+        return _private_draft_response(
+            JsonResponse(
+                {"ok": False, "message": "Temporary upload limit reached. Try again later."},
+                status=429,
+            )
+        )
+    try:
+        item = save_temporary_upload(
+            tenant=tenant,
+            draft_id=request.POST.get("draft_id"),
+            field_name=request.POST.get("field_name"),
+            upload=request.FILES.get("file"),
+            replace_public_id=request.POST.get("replace_upload_id"),
+        )
+    except ValidationError as exc:
+        return _private_draft_response(
+            JsonResponse({"ok": False, "message": exc.messages[0]}, status=400)
+        )
+
+    preview_url = reverse(
+        "tenants:temporary_registration_upload_preview",
+        args=[token, item.public_id],
+    )
+    return _private_draft_response(
+        JsonResponse(
+            {
+                "ok": True,
+                "upload_id": str(item.public_id),
+                "original_name": item.original_filename,
+                "preview_url": f"{preview_url}?draft={item.draft_id}",
+            }
+        )
+    )
+
+
+@require_GET
+def temporary_registration_upload_preview(request, token, upload_id):
+    from tenants.services.registration_drafts import (
+        parse_draft_id,
+        temporary_upload_rate_allowed,
+    )
+
+    try:
+        tenant = _tenant_from_registration_token(token)
+        draft_id = parse_draft_id(request.GET.get("draft"))
+    except SignatureExpired:
+        raise Http404
+    except (BadSignature, ValidationError):
+        raise Http404
+
+    client_ip = request.META.get("REMOTE_ADDR", "unknown")
+    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "preview", 300):
+        return _private_draft_response(HttpResponse(status=429))
+    item = get_object_or_404(
+        TemporaryRegistrationUpload,
+        tenant=tenant,
+        draft_id=draft_id,
+        public_id=upload_id,
+        expires_at__gt=timezone.now(),
+    )
+    try:
+        item.file.open("rb")
+    except (FileNotFoundError, OSError, ValueError):
+        raise Http404
+    response = FileResponse(
+        item.file,
+        content_type=item.detected_content_type,
+        as_attachment=False,
+        filename=item.original_filename,
+    )
+    return _private_draft_response(response)
 
 
 @login_required
@@ -260,6 +361,7 @@ def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
             "confidence": result.get("confidence", 0),
             "warnings": result.get("warnings", []),
             "can_overwrite": can_overwrite,
+            "cnic_verified": bool(result.get("cnic_verified")),
             "portrait_data_uri": result.get("portrait_data_uri", ""),
         },
         200,
@@ -711,7 +813,9 @@ def _family_counts(links):
     }
 
 
-def _existing_family_updates_from_post(request, submission, tenant):
+def _existing_family_updates_from_post(
+    request, submission, tenant, *, registration_file=None
+):
     """Capture edits to existing family members as reviewable pending people."""
     link_ids = {
         value
@@ -738,7 +842,11 @@ def _existing_family_updates_from_post(request, submission, tenant):
         submitted_dob = parse_date(request.POST.get(base + "dob") or "")
         submitted_gender = (request.POST.get(base + "gender") or "").strip()
         submitted_notes = (request.POST.get(base + "notes") or "").strip()
-        submitted_photo = request.FILES.get(base + "photo")
+        submitted_photo = (
+            registration_file(base + "photo")
+            if registration_file
+            else request.FILES.get(base + "photo")
+        )
 
         proposed_updates = {}
         if submitted_phone != normalize_phone(family_tenant.phone):
@@ -1152,7 +1260,46 @@ def tenant_public_registration_update(request, token):
             role_data=request.POST,
             registration_tenant=tenant,
         )
-        if form.is_valid():
+        form_is_valid = form.is_valid()
+        registration_draft_id = None
+        temporary_uploads = {}
+        if form_is_valid and (
+            request.POST.get("registration_draft_id")
+            or request.POST.get("registration_temporary_uploads")
+        ):
+            from tenants.services.registration_drafts import verified_temporary_uploads
+
+            try:
+                registration_draft_id, temporary_uploads = verified_temporary_uploads(
+                    tenant,
+                    request.POST.get("registration_draft_id"),
+                    request.POST.get("registration_temporary_uploads"),
+                )
+            except ValidationError as exc:
+                form.add_error(None, exc.messages[0])
+                form_is_valid = False
+
+        resolved_registration_files = {}
+
+        def registration_file(field_name):
+            direct = request.FILES.get(field_name)
+            if direct:
+                return direct
+            if field_name in resolved_registration_files:
+                return resolved_registration_files[field_name]
+            item = temporary_uploads.get(field_name)
+            if not item:
+                return None
+            from tenants.services.registration_drafts import (
+                content_file_from_temporary_upload,
+            )
+
+            resolved_registration_files[field_name] = (
+                content_file_from_temporary_upload(item)
+            )
+            return resolved_registration_files[field_name]
+
+        if form_is_valid:
             Tenant.objects.select_for_update().get(pk=tenant.pk)
             existing_pending = (
                 TenantRegistrationSubmission.objects.filter(
@@ -1188,20 +1335,28 @@ def tenant_public_registration_update(request, token):
             for file_field in ["photo", "cnic_front", "cnic_back"]:
                 submitted_data.pop(file_field, None)
             submitted_data["family_members"] = _family_members_from_post(request.POST)
-            submitted_photo = request.FILES.get("photo")
+            submitted_photo = registration_file("photo")
             if not submitted_photo:
-                from tenants.services.cnic_ocr import portrait_content_file
+                from tenants.services.cnic_ocr import (
+                    portrait_content_file,
+                    portrait_content_file_from_cnic_front,
+                )
 
                 submitted_photo = portrait_content_file(
                     request.POST.get("cnic_portrait_data", ""),
                     filename=f"tenant-{tenant.pk}-cnic-portrait.jpg",
                 )
+                if not submitted_photo:
+                    submitted_photo = portrait_content_file_from_cnic_front(
+                        registration_file("cnic_front"),
+                        filename=f"tenant-{tenant.pk}-cnic-portrait.jpg",
+                    )
             submission = TenantRegistrationSubmission.objects.create(
                 tenant=tenant,
                 submitted_data=submitted_data,
                 photo=submitted_photo,
-                cnic_front=request.FILES.get("cnic_front"),
-                cnic_back=request.FILES.get("cnic_back"),
+                cnic_front=registration_file("cnic_front"),
+                cnic_back=registration_file("cnic_back"),
             )
             cache.delete("core.pending_approval_count")
             role_prefixes = {
@@ -1229,6 +1384,21 @@ def tenant_public_registration_update(request, token):
                         (first_name, last_name, cnic, request.POST.get(base + "phone"))
                     ):
                         continue
+                    person_front = registration_file(base + "cnic_front")
+                    person_photo = registration_file(base + "photo")
+                    if not person_photo:
+                        from tenants.services.cnic_ocr import (
+                            portrait_content_file,
+                            portrait_content_file_from_cnic_front,
+                        )
+
+                        person_photo = portrait_content_file(
+                            request.POST.get(base + "cnic_portrait_data", ""),
+                            filename=f"registration-{submission.pk}-{role}-{index}-cnic-portrait.jpg",
+                        ) or portrait_content_file_from_cnic_front(
+                            person_front,
+                            filename=f"registration-{submission.pk}-{role}-{index}-cnic-portrait.jpg",
+                        )
                     person = PendingRegistrationPerson.objects.create(
                         submission=submission,
                         role=role,
@@ -1249,15 +1419,20 @@ def tenant_public_registration_update(request, token):
                         relationship_type_id=(
                             request.POST.get(base + "relationship_type") or None
                         ),
-                        photo=request.FILES.get(base + "photo"),
-                        cnic_front=request.FILES.get(base + "cnic_front"),
-                        cnic_back=request.FILES.get(base + "cnic_back"),
+                        photo=person_photo,
+                        cnic_front=person_front,
+                        cnic_back=registration_file(base + "cnic_back"),
                     )
                     from tenants.services.registration_workflow import proposed_changes
 
                     person.proposed_updates = proposed_changes(person)
                     person.save(update_fields=["proposed_updates", "updated_at"])
-            _existing_family_updates_from_post(request, submission, tenant)
+            _existing_family_updates_from_post(
+                request,
+                submission,
+                tenant,
+                registration_file=registration_file,
+            )
             vehicle_rows, vehicle_errors = create_pending_vehicle_submissions_from_post(
                 request,
                 tenant=tenant,
@@ -1269,6 +1444,14 @@ def tenant_public_registration_update(request, token):
                 for error in vehicle_errors:
                     form.add_error(None, error)
             else:
+                if registration_draft_id:
+                    from tenants.services.registration_drafts import delete_draft_uploads
+
+                    transaction.on_commit(
+                        lambda tenant_id=tenant.pk, draft_id=registration_draft_id: (
+                            delete_draft_uploads(tenant_id, draft_id)
+                        )
+                    )
                 vehicle_message = (
                     "Vehicle information submitted and waiting for staff approval."
                     if vehicle_rows
@@ -2712,16 +2895,41 @@ def _apply_cnic_portrait_fallback(tenant, request, *, form=None):
     """Use the reviewed CNIC portrait only when no tenant photo was supplied."""
     if tenant.photo or (form and form.cleaned_data.get("photo")):
         return False
-    from tenants.services.cnic_ocr import portrait_content_file
+    from tenants.services.cnic_ocr import (
+        portrait_content_file,
+        portrait_content_file_from_cnic_front,
+    )
 
     portrait = portrait_content_file(
         request.POST.get("cnic_portrait_data", ""),
         filename=f"tenant-{tenant.pk or 'new'}-cnic-portrait.jpg",
     )
     if not portrait:
+        portrait = portrait_content_file_from_cnic_front(
+            request.FILES.get("cnic_front")
+            or (form.cleaned_data.get("cnic_front") if form else None),
+            filename=f"tenant-{tenant.pk or 'new'}-cnic-portrait.jpg",
+        )
+    if not portrait:
         return False
     tenant.photo = portrait
     return True
+
+
+def _portrait_fallback_from_request(request, *, prefix, filename):
+    """Prefer the reviewed OCR crop, then crop the uploaded CNIC front."""
+    from tenants.services.cnic_ocr import (
+        portrait_content_file,
+        portrait_content_file_from_cnic_front,
+    )
+
+    return portrait_content_file(
+        request.POST.get(prefix + "cnic_portrait_data", ""),
+        filename=filename,
+    ) or portrait_content_file_from_cnic_front(
+        request.FILES.get(prefix + "cnic_front"),
+        filename=filename,
+    )
 
 
 class TenantCreateView(LoginRequiredMixin, CreateView):

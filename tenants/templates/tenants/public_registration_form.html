@@ -95,6 +95,10 @@
       font-weight: 700;
       margin-bottom: .75rem;
     }
+    .registration-draft-state { display:flex; align-items:center; gap:.4rem; margin:.35rem 0; font-size:.74rem; color:#475569; }
+    .registration-draft-state.is-error { color:#b91c1c; font-weight:700; }
+    .registration-draft-dot { width:.48rem; height:.48rem; border-radius:50%; background:#22c55e; flex:0 0 auto; }
+    .registration-draft-state.is-error .registration-draft-dot { background:#ef4444; }
     .reg-alert {
       background: #fef2f2;
       border: 1px solid #fca5a5;
@@ -1351,10 +1355,15 @@
   </div>
 
   <div class="public-notice"><i class="fas fa-clock me-1"></i> Submitted changes require admin approval before they are saved.</div>
+  <div class="registration-draft-state" id="registrationDraftStatus" aria-live="polite">
+    <span class="registration-draft-dot"></span><span>Preparing secure draft saving…</span>
+  </div>
 
   <form method="post" enctype="multipart/form-data" id="tenantRegistrationForm" novalidate>
     {% csrf_token %}
     <input type="hidden" name="cnic_portrait_data" class="tms-cnic-portrait-data">
+    <input type="hidden" name="registration_draft_id" id="registrationDraftId">
+    <input type="hidden" name="registration_temporary_uploads" id="registrationTemporaryUploads" value="{}">
     {% if form.police_verification_status %}
       <input type="hidden" name="{{ form.police_verification_status.html_name }}" value="{{ form.police_verification_status.value|default:'not_started' }}">
     {% endif %}
@@ -1893,20 +1902,57 @@
   document.querySelectorAll(".td-address-grid textarea").forEach(function(el) { el.setAttribute("rows", "5"); });
 
   const registrationForm = document.getElementById("tenantRegistrationForm");
+  const registrationDraftStatus = document.getElementById("registrationDraftStatus");
+  const registrationDraftIdInput = document.getElementById("registrationDraftId");
+  const registrationTemporaryUploadsInput = document.getElementById("registrationTemporaryUploads");
+  const registrationDraftKey = "tmsTenantRegistrationDraft:" + window.location.pathname;
   let registrationSubmitting = false;
-  if (registrationForm) {
-    registrationForm.addEventListener("submit", function () {
-      registrationSubmitting = true;
-      clearRegistrationDraft();
-      document.querySelectorAll('#tenantRegistrationForm button[type="submit"], #tenantRegistrationForm input[type="submit"], [form="tenantRegistrationForm"][type="submit"]').forEach(function (button) {
-        button.disabled = true;
-        button.setAttribute("aria-disabled", "true");
-      });
+  let restoringRegistrationDraft = false;
+  let pendingTemporaryUploads = 0;
+  let temporaryUploads = {};
+
+  function setDraftStatus(message, isError) {
+    if (!registrationDraftStatus) return;
+    registrationDraftStatus.classList.toggle("is-error", Boolean(isError));
+    const text = registrationDraftStatus.querySelector("span:last-child");
+    if (text) text.textContent = message;
+  }
+
+  function sessionStorageWritable() {
+    try {
+      const key = registrationDraftKey + ":readiness";
+      window.sessionStorage.setItem(key, "1");
+      window.sessionStorage.removeItem(key);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function csrfCookieAvailable() {
+    return document.cookie.split(";").some(function (part) {
+      return part.trim().startsWith("csrftoken=");
     });
   }
 
-  const registrationDraftKey = "tmsTenantRegistrationDraft:" + window.location.pathname;
-  let restoringRegistrationDraft = false;
+  function browserReady(showSuccess) {
+    if (!sessionStorageWritable() || !csrfCookieAvailable()) {
+      setDraftStatus("Draft saving or security cookies are unavailable. Open this link in Chrome or Safari and enable cookies before submitting.", true);
+      return false;
+    }
+    if (showSuccess) setDraftStatus("Secure draft saving is ready.", false);
+    return true;
+  }
+
+  function randomDraftId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    const hex = Array.from(bytes).map(function (value) { return value.toString(16).padStart(2, "0"); }).join("");
+    return hex.slice(0,8)+"-"+hex.slice(8,12)+"-"+hex.slice(12,16)+"-"+hex.slice(16,20)+"-"+hex.slice(20);
+  }
 
   function readSubmittedFormData() {
     const element = document.getElementById("registrationSubmittedData");
@@ -1926,14 +1972,6 @@
     }
   }
 
-  function clearRegistrationDraft() {
-    try {
-      window.sessionStorage.removeItem(registrationDraftKey);
-    } catch (error) {
-      // Some privacy modes disable browser storage; the form must still work.
-    }
-  }
-
   function collectRegistrationValues() {
     const values = {};
     if (!registrationForm) return values;
@@ -1942,6 +1980,8 @@
         !field.name
         || field.name === "csrfmiddlewaretoken"
         || field.name === "cnic_portrait_data"
+        || field.name === "registration_draft_id"
+        || field.name === "registration_temporary_uploads"
       ) return;
       if (field.type === "checkbox" || field.type === "radio") {
         if (!values[field.name]) values[field.name] = [];
@@ -1959,15 +1999,37 @@
 
   function saveRegistrationDraft() {
     if (!registrationForm || restoringRegistrationDraft || registrationSubmitting) return;
+    if (!sessionStorageWritable()) {
+      setDraftStatus("Draft saving is unavailable. Open this link in Chrome or Safari and enable cookies.", true);
+      return;
+    }
+    const draftId = registrationDraftIdInput.value || randomDraftId();
+    registrationDraftIdInput.value = draftId;
+    const currentUploads = {};
+    registrationForm.querySelectorAll('input[type="file"][name][data-temporary-upload-id]').forEach(function (input) {
+      currentUploads[input.name] = {
+        id: input.dataset.temporaryUploadId,
+        originalName: input.dataset.temporaryUploadName || "Saved document"
+      };
+    });
+    temporaryUploads = currentUploads;
+    registrationTemporaryUploadsInput.value = JSON.stringify(
+      Object.fromEntries(Object.entries(currentUploads).map(function (entry) { return [entry[0], entry[1].id]; }))
+    );
+    const savedAt = new Date().toISOString();
     const draft = {
+      draftId: draftId,
       familyCount: rows ? rows.querySelectorAll(".family-member-card").length : 0,
       vehicleCount: vehicleRows ? vehicleRows.querySelectorAll(".vehicle-row-card").length : 0,
-      values: collectRegistrationValues()
+      values: collectRegistrationValues(),
+      uploads: currentUploads,
+      savedAt: savedAt
     };
     try {
       window.sessionStorage.setItem(registrationDraftKey, JSON.stringify(draft));
+      setDraftStatus("Draft saved at " + new Date(savedAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + ".", false);
     } catch (error) {
-      // Storage can be unavailable or full; never block registration.
+      setDraftStatus("Draft saving is unavailable. Open this link in Chrome or Safari and enable cookies.", true);
     }
   }
 
@@ -2020,7 +2082,7 @@
     if (!registrationForm) return;
     const submittedValues = readSubmittedFormData();
     const hasSubmittedValues = Object.keys(submittedValues).length > 0;
-    const draft = hasSubmittedValues ? {} : readRegistrationDraft();
+    const draft = readRegistrationDraft();
     const values = hasSubmittedValues ? submittedValues : (draft.values || {});
     const familyCount = hasSubmittedValues
       ? dynamicRowCount(values, "family")
@@ -2032,19 +2094,133 @@
     restoringRegistrationDraft = true;
     ensureDynamicRows(familyCount, vehicleCount);
     restoreRegistrationValues(values);
+    registrationDraftIdInput.value = draft.draftId || randomDraftId();
+    restoreTemporaryUploadPreviews(draft.uploads || {});
     restoringRegistrationDraft = false;
 
-    if (hasSubmittedValues) saveRegistrationDraft();
+    if (hasSubmittedValues || !draft.draftId) saveRegistrationDraft();
+    else if (draft.savedAt) {
+      setDraftStatus("Draft saved at " + new Date(draft.savedAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + ".", false);
+    }
+  }
+
+  function supportedTemporaryField(name) {
+    return /^(photo|cnic_front|cnic_back)$/.test(name)
+      || /^family-\d{1,2}-(photo|cnic_front|cnic_back)$/.test(name)
+      || /^(proposer|seconder|witness1|witness2)-(photo|cnic_front|cnic_back)$/.test(name)
+      || /^family_update-\d+-photo$/.test(name);
+  }
+
+  function temporaryPreviewUrl(uploadId) {
+    return String(window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE || "").replace("00000000-0000-0000-0000-000000000000", uploadId)
+      + "?draft=" + encodeURIComponent(registrationDraftIdInput.value);
+  }
+
+  function showTemporaryPreview(input, url, originalName) {
+    if (!input || !url) return;
+    const mainContainer = input.closest(".image-upload-container");
+    if (mainContainer) {
+      let preview = mainContainer.querySelector("img.public-file-preview");
+      if (!preview) {
+        preview = document.createElement("img");
+        preview.className = "public-file-preview";
+        preview.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+        mainContainer.querySelector(".placeholder-icon")?.replaceWith(preview);
+        if (!preview.parentElement) mainContainer.insertBefore(preview, mainContainer.firstChild);
+      }
+      preview.src = url;
+      preview.alt = originalName || "Saved draft document";
+      return;
+    }
+    let box = input.parentElement?.querySelector(":scope > .tms-selected-preview");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "tms-selected-preview";
+      input.insertAdjacentElement("afterend", box);
+    }
+    const image = document.createElement("img");
+    image.src = url;
+    image.alt = originalName || "Saved draft document";
+    box.replaceChildren(image);
+  }
+
+  function restoreTemporaryUploadPreviews(uploads) {
+    temporaryUploads = uploads || {};
+    Object.keys(temporaryUploads).forEach(function (fieldName) {
+      const item = temporaryUploads[fieldName] || {};
+      const input = Array.from(registrationForm.elements).find(function (field) { return field.name === fieldName; });
+      if (!input || !item.id || !supportedTemporaryField(fieldName)) return;
+      input.dataset.temporaryUploadId = item.id;
+      input.dataset.temporaryUploadName = item.originalName || "Saved document";
+      showTemporaryPreview(input, temporaryPreviewUrl(item.id), item.originalName);
+    });
+    registrationTemporaryUploadsInput.value = JSON.stringify(
+      Object.fromEntries(Object.entries(temporaryUploads).map(function (entry) { return [entry[0], entry[1].id]; }))
+    );
+  }
+
+  function setTemporaryUploadPending(delta) {
+    pendingTemporaryUploads = Math.max(0, pendingTemporaryUploads + delta);
+    if (pendingTemporaryUploads) setDraftStatus("Securely saving selected document…", false);
+  }
+
+  async function uploadTemporaryDocument(input) {
+    const file = input.files && input.files[0];
+    if (!file || !supportedTemporaryField(input.name) || !browserReady(false)) return;
+    const body = new FormData();
+    body.append("csrfmiddlewaretoken", registrationForm.querySelector('[name="csrfmiddlewaretoken"]').value);
+    body.append("draft_id", registrationDraftIdInput.value || randomDraftId());
+    body.append("field_name", input.name);
+    body.append("file", file, file.name);
+    if (input.dataset.temporaryUploadId) body.append("replace_upload_id", input.dataset.temporaryUploadId);
+    registrationDraftIdInput.value = body.get("draft_id");
+    setTemporaryUploadPending(1);
+    try {
+      const response = await fetch(window.TMS_REGISTRATION_DRAFT_UPLOAD_URL, {
+        method: "POST",
+        headers: {"X-CSRFToken": body.get("csrfmiddlewaretoken"), "X-Requested-With": "XMLHttpRequest"},
+        body: body
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.message || "Document could not be saved.");
+      input.dataset.temporaryUploadId = payload.upload_id;
+      input.dataset.temporaryUploadName = payload.original_name;
+      showTemporaryPreview(input, payload.preview_url, payload.original_name);
+      saveRegistrationDraft();
+    } catch (error) {
+      setDraftStatus((error.message || "Document could not be saved.") + " Keep this page open and try selecting it again.", true);
+    } finally {
+      setTemporaryUploadPending(-1);
+    }
   }
 
   if (registrationForm) {
+    browserReady(true);
     restoreRegistrationDraft();
     registrationForm.addEventListener("input", saveRegistrationDraft);
-    registrationForm.addEventListener("change", saveRegistrationDraft);
-    registrationForm.addEventListener("click", function (event) {
-      if (event.target && event.target.matches("input[type='file']")) saveRegistrationDraft();
+    registrationForm.addEventListener("change", function (event) {
+      saveRegistrationDraft();
+      if (event.target && event.target.matches('input[type="file"][name]')) uploadTemporaryDocument(event.target);
     });
+    registrationForm.addEventListener("click", function () { window.setTimeout(saveRegistrationDraft, 0); });
     window.addEventListener("pagehide", saveRegistrationDraft);
+    registrationForm.addEventListener("submit", function (event) {
+      saveRegistrationDraft();
+      if (!browserReady(false)) {
+        event.preventDefault();
+        return;
+      }
+      if (pendingTemporaryUploads > 0) {
+        event.preventDefault();
+        setDraftStatus("Please wait for the selected documents to finish saving, then submit again.", true);
+        return;
+      }
+      registrationSubmitting = true;
+      document.querySelectorAll('#tenantRegistrationForm button[type="submit"], #tenantRegistrationForm input[type="submit"], [form="tenantRegistrationForm"][type="submit"]').forEach(function (button) {
+        button.disabled = true;
+        button.setAttribute("aria-disabled", "true");
+      });
+    });
   }
 
   function smartTitle(value) {
@@ -2067,6 +2243,8 @@
 </script>
 <script>
   window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:public_cnic_identity_ocr' registration_token %}";
+  window.TMS_REGISTRATION_DRAFT_UPLOAD_URL = "{% url 'tenants:temporary_registration_upload' registration_token %}";
+  window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE = "{% url 'tenants:temporary_registration_upload_preview' registration_token '00000000-0000-0000-0000-000000000000' %}";
   window.TMS_IDENTITY_LOCK_MAIN = true;
 </script>
 {% include "partials/identity_media_public.html" %}

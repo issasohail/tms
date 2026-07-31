@@ -2254,6 +2254,17 @@ def _family_relationship_defaults(value):
     }
 
 
+def _uploaded_photo_or_cnic_portrait(request, *, photo_name, front_name, filename):
+    photo = request.FILES.get(photo_name)
+    if photo:
+        return photo
+    from tenants.services.cnic_ocr import portrait_content_file_from_cnic_front
+
+    return portrait_content_file_from_cnic_front(
+        request.FILES.get(front_name), filename=filename
+    )
+
+
 def public_lease_family_add(request, token):
     lease, link = _public_family_link(token)
     if lease is None:
@@ -2454,7 +2465,12 @@ def public_lease_family_add(request, token):
                 "date_of_birth": parsed_dob,
                 "dob_raw": dob,
                 "notes": notes,
-                "photo": request.FILES.get(f"family-{index}-photo"),
+                "photo": _uploaded_photo_or_cnic_portrait(
+                    request,
+                    photo_name=f"family-{index}-photo",
+                    front_name=f"family-{index}-cnic_front",
+                    filename=f"family-{lease.pk}-{index}-cnic-portrait.jpg",
+                ),
                 "cnic_front": request.FILES.get(f"family-{index}-cnic_front"),
                 "cnic_back": request.FILES.get(f"family-{index}-cnic_back"),
             }
@@ -2602,7 +2618,12 @@ def public_police_verification(request, token):
             lease,
             tenant_data,
             {
-                "photo": request.FILES.get("photo"),
+                "photo": _uploaded_photo_or_cnic_portrait(
+                    request,
+                    photo_name="photo",
+                    front_name="cnic_front",
+                    filename=f"tenant-{lease.tenant_id}-cnic-portrait.jpg",
+                ),
                 "cnic_front": request.FILES.get("cnic_front"),
                 "cnic_back": request.FILES.get("cnic_back"),
             },
@@ -2662,7 +2683,12 @@ def public_police_verification(request, token):
                 "cnic_digits": normalize_cnic(cnic),
                 "phone": phone,
                 "date_of_birth": parsed_dob,
-                "photo": request.FILES.get(f"family-{index}-photo"),
+                "photo": _uploaded_photo_or_cnic_portrait(
+                    request,
+                    photo_name=f"family-{index}-photo",
+                    front_name=f"family-{index}-cnic_front",
+                    filename=f"family-{lease.pk}-{index}-cnic-portrait.jpg",
+                ),
                 "cnic_front": request.FILES.get(f"family-{index}-cnic_front"),
                 "cnic_back": request.FILES.get(f"family-{index}-cnic_back"),
             }
@@ -3129,7 +3155,12 @@ def public_lease_family_addv1(request, token):
         notes=notes,
         token=uuid.uuid4().hex,
         expires_at=link.expires_at,
-        photo=request.FILES.get("photo"),
+        photo=_uploaded_photo_or_cnic_portrait(
+            request,
+            photo_name="photo",
+            front_name="cnic_front",
+            filename=f"family-{lease.pk}-cnic-portrait.jpg",
+        ),
         cnic_front=request.FILES.get("cnic_front"),
         cnic_back=request.FILES.get("cnic_back"),
     )
@@ -3228,6 +3259,13 @@ def approve_pending_family_submission(pending, user):
                     getattr(tenant, field_name).save(original_name, content, save=False)
                 finally:
                     uploaded.close()
+        if not tenant.photo and pending.cnic_front:
+            from tenants.services.cnic_ocr import portrait_content_file_from_cnic_front
+
+            tenant.photo = portrait_content_file_from_cnic_front(
+                pending.cnic_front,
+                filename=f"family-{pending.pk}-cnic-portrait.jpg",
+            )
         tenant.save()
         link, _created = LeaseFamilyMember.objects.get_or_create(
             lease=pending.lease,
@@ -6006,6 +6044,20 @@ def create_agreement_party_ajax(request):
         for field_name in ("photo", "cnic_front", "cnic_back")
         if request.FILES.get(field_name)
     }
+    if "photo" not in uploaded_files and uploaded_files.get("cnic_front"):
+        from tenants.services.cnic_ocr import (
+            portrait_content_file,
+            portrait_content_file_from_cnic_front,
+        )
+
+        portrait = portrait_content_file(
+            request.POST.get("cnic_portrait_data", ""),
+            filename="agreement-party-cnic-portrait.jpg",
+        ) or portrait_content_file_from_cnic_front(
+            uploaded_files["cnic_front"], filename="agreement-party-cnic-portrait.jpg"
+        )
+        if portrait:
+            uploaded_files["photo"] = portrait
 
     if not first_name or not last_name or not cnic:
         return JsonResponse(
@@ -6063,6 +6115,8 @@ def create_agreement_party_ajax(request):
                 setattr(existing, field_name, value)
                 changed.append(field_name)
         for field_name, uploaded_file in uploaded_files.items():
+            if field_name == "photo" and existing.photo:
+                continue
             setattr(existing, field_name, uploaded_file)
             changed.append(field_name)
         if changed:

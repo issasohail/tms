@@ -1324,4 +1324,10 @@
     });
 </script>
 
+<script>
+  window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:cnic_identity_ocr' %}";
+  window.TMS_IDENTITY_LOCK_MAIN = false;
+</script>
+{% include "partials/identity_media_public.html" %}
+
 {% endblock %}

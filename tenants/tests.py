@@ -1044,6 +1044,347 @@ class DateOfBirthSafetyTests(SimpleTestCase):
             validate_date_of_birth(date.today() + timedelta(days=1))
 
 
+class SecureRegistrationDraftUploadTests(TestCase):
+    def setUp(self):
+        import uuid
+
+        from tenants.models import Tenant
+        from tenants.views import tenant_registration_token
+
+        self.tenant = Tenant.objects.create(
+            first_name="Draft",
+            last_name="Applicant",
+            phone="03001234567",
+            cnic="",
+            is_active=False,
+        )
+        self.other_tenant = Tenant.objects.create(
+            first_name="Other",
+            last_name="Applicant",
+            phone="03007654321",
+            cnic="",
+            is_active=False,
+        )
+        self.token = tenant_registration_token(self.tenant)
+        self.other_token = tenant_registration_token(self.other_tenant)
+        self.draft_id = uuid.uuid4()
+
+    def image_upload(self, name="document.jpg", *, content_type="image/jpeg", size=(320, 220)):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        output = BytesIO()
+        image_format = "PNG" if name.lower().endswith(".png") else "JPEG"
+        Image.new("RGB", size, "white").save(output, format=image_format)
+        return SimpleUploadedFile(name, output.getvalue(), content_type=content_type)
+
+    def upload_url(self, token=None):
+        from django.urls import reverse
+
+        return reverse(
+            "tenants:temporary_registration_upload",
+            args=[token or self.token],
+        )
+
+    def upload(self, field_name="photo", upload=None, draft_id=None, token=None):
+        return self.client.post(
+            self.upload_url(token),
+            {
+                "draft_id": str(draft_id or self.draft_id),
+                "field_name": field_name,
+                "file": upload or self.image_upload(),
+            },
+        )
+
+    def final_data(self, **overrides):
+        data = {
+            "first_name": "Draft",
+            "last_name": "Applicant",
+            "phone": "03001234567",
+            "proposer-first_name": "Primary",
+            "proposer-last_name": "Proposer",
+            "proposer-cnic": "6110112345671",
+            "proposer-phone": "03001111111",
+            "seconder-first_name": "Primary",
+            "seconder-last_name": "Seconder",
+            "seconder-cnic": "6110112345672",
+            "seconder-phone": "03002222222",
+            "vehicle-TOTAL_FORMS": "0",
+        }
+        data.update(overrides)
+        return data
+
+    def test_temporary_upload_and_private_preview_require_correct_link_and_draft(self):
+        import uuid
+
+        response = self.upload("family-0-cnic_front")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertNotIn("private_uploads", payload["preview_url"])
+
+        preview = self.client.get(payload["preview_url"])
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview["Cache-Control"], "private, no-store, max-age=0")
+        preview.close()
+
+        wrong_draft_url = payload["preview_url"].split("?", 1)[0] + f"?draft={uuid.uuid4()}"
+        self.assertEqual(self.client.get(wrong_draft_url).status_code, 404)
+        wrong_link_url = payload["preview_url"].replace(self.token, self.other_token)
+        self.assertEqual(self.client.get(wrong_link_url).status_code, 404)
+
+    def test_invalid_and_expired_registration_links_are_rejected(self):
+        from unittest.mock import patch
+
+        from django.core.signing import SignatureExpired
+        from django.urls import reverse
+
+        invalid = reverse("tenants:temporary_registration_upload", args=["invalid"])
+        self.assertEqual(
+            self.client.post(
+                invalid,
+                {"draft_id": self.draft_id, "field_name": "photo", "file": self.image_upload()},
+            ).status_code,
+            404,
+        )
+        with patch(
+            "tenants.views._tenant_from_registration_token",
+            side_effect=SignatureExpired,
+        ):
+            self.assertEqual(self.upload().status_code, 410)
+
+    def test_cross_registration_upload_cannot_be_attached(self):
+        import json
+
+        from django.urls import reverse
+        from tenants.models import TenantRegistrationSubmission
+
+        upload_id = self.upload().json()["upload_id"]
+        response = self.client.post(
+            reverse("tenants:tenant_public_registration", args=[self.other_token]),
+            self.final_data(
+                registration_draft_id=str(self.draft_id),
+                registration_temporary_uploads=json.dumps({"photo": upload_id}),
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "missing, expired, or unauthorized")
+        self.assertFalse(TenantRegistrationSubmission.objects.filter(tenant=self.other_tenant).exists())
+
+    def test_invalid_extension_content_type_content_and_size_are_rejected(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        invalid_extension = self.upload(upload=self.image_upload("document.txt"))
+        self.assertEqual(invalid_extension.status_code, 400)
+
+        invalid_content = self.upload(
+            upload=SimpleUploadedFile("document.jpg", b"not-an-image", content_type="image/jpeg")
+        )
+        self.assertEqual(invalid_content.status_code, 400)
+
+        wrong_claim = self.upload(upload=self.image_upload("document.jpg", content_type="image/png"))
+        self.assertEqual(wrong_claim.status_code, 400)
+
+        oversized = self.upload(
+            upload=SimpleUploadedFile(
+                "large.jpg",
+                b"x" * (10 * 1024 * 1024 + 1),
+                content_type="image/jpeg",
+            )
+        )
+        self.assertEqual(oversized.status_code, 400)
+
+    def test_path_traversal_filename_is_rejected_by_validator(self):
+        from io import BytesIO
+
+        from tenants.services.registration_drafts import validate_temporary_image
+
+        upload = BytesIO(self.image_upload().read())
+        upload.name = "../outside.jpg"
+        upload.size = len(upload.getvalue())
+        upload.content_type = "image/jpeg"
+        with self.assertRaisesMessage(Exception, "filename is invalid"):
+            validate_temporary_image(upload)
+
+    def test_temporary_document_survives_failed_final_submission(self):
+        import json
+
+        from django.urls import reverse
+        from tenants.models import TemporaryRegistrationUpload
+
+        upload_id = self.upload().json()["upload_id"]
+        response = self.client.post(
+            reverse("tenants:tenant_public_registration", args=[self.token]),
+            self.final_data(
+                phone="",
+                registration_draft_id=str(self.draft_id),
+                registration_temporary_uploads=json.dumps({"photo": upload_id}),
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(TemporaryRegistrationUpload.objects.filter(public_id=upload_id).exists())
+
+    def test_successful_submission_attaches_and_removes_temporary_document(self):
+        import json
+
+        from django.urls import reverse
+        from tenants.models import TemporaryRegistrationUpload, TenantRegistrationSubmission
+
+        upload_id = self.upload().json()["upload_id"]
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("tenants:tenant_public_registration", args=[self.token]),
+                self.final_data(
+                    registration_draft_id=str(self.draft_id),
+                    registration_temporary_uploads=json.dumps({"photo": upload_id}),
+                ),
+            )
+        self.assertEqual(response.status_code, 200)
+        submission = TenantRegistrationSubmission.objects.get(tenant=self.tenant)
+        self.assertTrue(submission.photo.name)
+        self.assertFalse(TemporaryRegistrationUpload.objects.filter(public_id=upload_id).exists())
+
+    def test_cleanup_removes_only_expired_files(self):
+        from tenants.models import TemporaryRegistrationUpload
+        from tenants.services.registration_drafts import cleanup_expired_temporary_uploads
+
+        expired_id = self.upload("photo").json()["upload_id"]
+        active_id = self.upload("cnic_front").json()["upload_id"]
+        TemporaryRegistrationUpload.objects.filter(public_id=expired_id).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        self.assertEqual(cleanup_expired_temporary_uploads(), 1)
+        self.assertFalse(TemporaryRegistrationUpload.objects.filter(public_id=expired_id).exists())
+        self.assertTrue(TemporaryRegistrationUpload.objects.filter(public_id=active_id).exists())
+
+    def test_csrf_is_enforced_for_upload_and_final_submission(self):
+        from django.test import Client
+        from django.urls import reverse
+        from tenants.models import TenantRegistrationSubmission
+
+        csrf_client = Client(enforce_csrf_checks=True)
+        upload_response = csrf_client.post(
+            self.upload_url(),
+            {"draft_id": self.draft_id, "field_name": "photo", "file": self.image_upload()},
+        )
+        self.assertEqual(upload_response.status_code, 403)
+        self.assertContains(upload_response, "Registration was not submitted", status_code=403)
+
+        final_response = csrf_client.post(
+            reverse("tenants:tenant_public_registration", args=[self.token]),
+            self.final_data(),
+        )
+        self.assertEqual(final_response.status_code, 403)
+        self.assertFalse(TenantRegistrationSubmission.objects.filter(tenant=self.tenant).exists())
+
+
+class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        templates = Path(__file__).resolve().parent / "templates" / "tenants"
+        cls.form_source = (templates / "public_registration_form.html").read_text(encoding="utf-8")
+        cls.success_source = (templates / "public_registration_submitted.html").read_text(encoding="utf-8")
+
+    def test_submit_saves_but_does_not_clear_browser_draft(self):
+        submit_section = self.form_source.split('registrationForm.addEventListener("submit"', 1)[1]
+        self.assertIn("saveRegistrationDraft();", submit_section)
+        self.assertNotIn("removeItem(registrationDraftKey)", self.form_source)
+
+    def test_only_genuine_confirmation_page_clears_draft(self):
+        self.assertIn("{% if not duplicate_submission %}", self.success_source)
+        self.assertIn('sessionStorage.removeItem("tmsTenantRegistrationDraft:"', self.success_source)
+
+
+class CNICSideVerificationTests(SimpleTestCase):
+    def _read(self, back_number, **address_values):
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from tenants.services.cnic_ocr import extract_cnic_identity
+
+        result = {
+            "document_type": "pakistani_cnic",
+            "name": "Verified Person",
+            "father_name": "Parent Name",
+            "gender": "M",
+            "country_of_stay": "Pakistan",
+            "identity_number": "42101-1234567-1",
+            "front_identity_number": "42101-1234567-1",
+            "back_identity_number": back_number,
+            "date_of_birth": "1990-01-01",
+            "date_of_issue": "2020-01-01",
+            "date_of_expiry": "2030-01-01",
+            "portrait_bbox": None,
+            "temporary_address_urdu": None,
+            "permanent_address_urdu": None,
+            "temporary_address_english": None,
+            "permanent_address_english": None,
+            "temporary_address_confidence": 0,
+            "permanent_address_confidence": 0,
+            "confidence": 0.99,
+            "warnings": [],
+        }
+        result.update(address_values)
+        client = MagicMock()
+        client.responses.create.return_value = SimpleNamespace(
+            output_text=json.dumps(result), usage=None
+        )
+        front = SimpleUploadedFile("front.jpg", b"front", content_type="image/jpeg")
+        back = SimpleUploadedFile("back.jpg", b"back", content_type="image/jpeg")
+        with override_settings(OPENAI_API_KEY="test"), patch(
+            "tenants.services.cnic_ocr._openai_client", return_value=client
+        ), patch(
+            "tenants.services.cnic_ocr._normalized_image_data",
+            return_value=("aW1hZ2U=", "image/jpeg"),
+        ), patch(
+            "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
+        ), patch(
+            "tenants.services.cnic_ocr.Image.open"
+        ) as image_open:
+            image_open.return_value.__enter__.return_value.width = 1300
+            image_open.return_value.__enter__.return_value.height = 800
+            return extract_cnic_identity(front, back, "test-model")
+
+    def test_matching_front_and_back_numbers_are_verified(self):
+        result = self._read("42101-1234567-1")
+        self.assertTrue(result["cnic_verified"])
+        self.assertEqual(result["fields"]["cnic"], "42101-1234567-1")
+
+    def test_mismatched_back_number_is_rejected(self):
+        result = self._read("42101-9999999-1")
+        self.assertEqual(result["fields"], {})
+        self.assertIn("does not match", result["message"])
+
+    def test_best_effort_urdu_and_english_addresses_are_not_withheld(self):
+        result = self._read(
+            "42101-1234567-1",
+            temporary_address_urdu="مکان 10، موجودہ محلہ، تحصیل گوجال",
+            temporary_address_english="House 10, Current Mohalla, Tehsil Gojal",
+            permanent_address_urdu="مکان 20، مستقل محلہ، تحصیل گوجال",
+            permanent_address_english="House 20, Permanent Mohalla, Tehsil Gojal",
+            temporary_address_confidence=0.55,
+            permanent_address_confidence=0.60,
+        )
+        self.assertEqual(
+            result["fields"]["temporary_address_urdu"],
+            "مکان 10، موجودہ محلہ، تحصیل گوجال",
+        )
+        self.assertEqual(
+            result["fields"]["permanent_address"],
+            "House 20, Permanent Mohalla, Tehsil Gojal",
+        )
+        self.assertIn(
+            "Verify the best-effort current address transcription.",
+            result["warnings"],
+        )
+
+
 class CNICIdentityOCRViewTests(TestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model

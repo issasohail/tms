@@ -74,6 +74,8 @@ EXEMPT_URL_NAMES = {
     "tenant_public_registration",
     "tenant_public_registration_new",
     "public_cnic_identity_ocr",
+    "temporary_registration_upload",
+    "temporary_registration_upload_preview",
     "public_lease_family_add",
     "public_lease_family_cnic_check",
     "public_police_verification",

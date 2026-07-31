@@ -45,6 +45,16 @@ urlpatterns = [
         name="public_cnic_identity_ocr",
     ),
     path(
+        "registration/<str:token>/draft-upload/",
+        views.temporary_registration_upload,
+        name="temporary_registration_upload",
+    ),
+    path(
+        "registration/<str:token>/draft-upload/<uuid:upload_id>/preview/",
+        views.temporary_registration_upload_preview,
+        name="temporary_registration_upload_preview",
+    ),
+    path(
         "registration/<str:token>/",
         views.tenant_public_registration_update,
         name="tenant_public_registration",

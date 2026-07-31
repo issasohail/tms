@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db.models import Sum
@@ -12,6 +14,7 @@ from django.utils import timezone
 from django.apps import apps
 import re
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -19,6 +22,7 @@ from core.upload_utils import compress_instance_file_field
 from core.utils.text import normalize_title_fields, smart_title
 from core.model_fields import NormalizedCNICField, NormalizedPhoneField
 from core.utils.identity import normalize_cnic
+from tenants.storage import tenant_registration_draft_storage
 
 class TenantInterestType(models.Model):
     building_type = models.OneToOneField(
@@ -86,6 +90,64 @@ def registration_submission_upload_to(instance, filename):
     ext = filename.split('.')[-1]
     tenant_id = instance.tenant_id or "new"
     return os.path.join("tenants/registration_submissions/", str(tenant_id), f"{slugify(filename.rsplit('.', 1)[0])}.{ext}")
+
+
+def temporary_registration_upload_to(instance, filename):
+    ext = os.path.splitext(filename or "")[1].lower()
+    return os.path.join(
+        str(instance.tenant_id),
+        instance.draft_id.hex,
+        f"{instance.public_id.hex}{ext}",
+    )
+
+
+def temporary_registration_expiry():
+    return timezone.now() + timedelta(hours=48)
+
+
+class TemporaryRegistrationUpload(models.Model):
+    DOCUMENT_PHOTO = "photo"
+    DOCUMENT_CNIC_FRONT = "cnic_front"
+    DOCUMENT_CNIC_BACK = "cnic_back"
+    DOCUMENT_CHOICES = [
+        (DOCUMENT_PHOTO, "Photo"),
+        (DOCUMENT_CNIC_FRONT, "CNIC Front"),
+        (DOCUMENT_CNIC_BACK, "CNIC Back"),
+    ]
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    tenant = models.ForeignKey(
+        "Tenant",
+        on_delete=models.CASCADE,
+        related_name="temporary_registration_uploads",
+    )
+    draft_id = models.UUIDField(db_index=True)
+    form_field_name = models.CharField(max_length=100)
+    document_kind = models.CharField(max_length=20, choices=DOCUMENT_CHOICES)
+    original_filename = models.CharField(max_length=255)
+    detected_content_type = models.CharField(max_length=80)
+    size = models.PositiveBigIntegerField()
+    file = models.FileField(
+        upload_to=temporary_registration_upload_to,
+        storage=tenant_registration_draft_storage,
+        max_length=255,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=temporary_registration_expiry)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["tenant", "draft_id", "created_at"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+
+
+@receiver(post_delete, sender=TemporaryRegistrationUpload)
+def delete_temporary_registration_file(sender, instance, **kwargs):
+    if instance.file and instance.file.name:
+        instance.file.storage.delete(instance.file.name)
 
 
 class Tenant(models.Model):

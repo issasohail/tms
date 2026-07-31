@@ -4,15 +4,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="{% block meta_description %}Kirayas property, tenant, lease, billing, and rental operations software.{% endblock %}">
-  <title>{% block title %}Kirayas{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Kirayas.com property, tenant, lease, billing, and rental operations software.{% endblock %}">
+  <title>{% block title %}Kirayas.com{% endblock %}</title>
+  <link rel="shortcut icon" href="{% static 'images/favicon.ico' %}" type="image/x-icon">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/favicon-32x32.png' %}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/apple-touch-icon.png' %}">
   <link rel="stylesheet" href="{% static 'marketing/css/site.css' %}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="site-header">
     <div class="container nav">
-      <a class="brand" href="{% url 'marketing_home' %}" aria-label="Kirayas home"><span class="brand-mark" aria-hidden="true">KR</span><span class="brand-name">Kirayas</span></a>
+      <a class="brand" href="{% url 'marketing_home' %}" aria-label="Kirayas.com home"><span class="brand-mark" aria-hidden="true">KR</span><span class="brand-copy"><span class="brand-name">Kirayas.com</span><span class="brand-tagline">Where rental meet ease</span></span></a>
       <button class="mobile-menu" type="button" aria-expanded="false" aria-controls="primary-navigation"><span aria-hidden="true">Menu</span></button>
       <nav class="nav-links" id="primary-navigation" aria-label="Primary navigation">
         <a href="{% url 'marketing_features' %}"{% if page_name == 'marketing_features' %} class="active-link" aria-current="page"{% endif %}>Features</a>
@@ -26,11 +29,11 @@
   </header>
   <main id="main-content">{% block content %}{% endblock %}</main>
   <footer><div class="container"><div class="footer-grid">
-    <div class="footer-brand"><a class="brand" href="{% url 'marketing_home' %}"><span class="brand-mark">KR</span><span class="brand-name">Kirayas</span></a><p>Kirayas — Where Rent Meets Ease. Connected property, tenant, lease, billing, document, maintenance, communication, and reporting workflows.</p></div>
+    <div class="footer-brand"><a class="brand" href="{% url 'marketing_home' %}"><span class="brand-mark" aria-hidden="true">KR</span><span class="brand-copy"><span class="brand-name">Kirayas.com</span><span class="brand-tagline">Where rental meet ease</span></span></a><p>Kirayas.com connects property, tenant, lease, billing, document, maintenance, communication, and reporting workflows.</p></div>
     <div class="footer-col"><h2>Product</h2><a href="{% url 'marketing_features' %}">Features</a><a href="{% url 'marketing_pricing' %}">Pricing</a><a href="{{ login_url }}">Login</a><a href="{{ register_url }}">Register</a></div>
     <div class="footer-col"><h2>Resources</h2><a href="{% url 'marketing_how_it_works' %}">How it works</a><a href="{% url 'marketing_faq' %}">FAQ</a><a href="{% url 'marketing_contact' %}">Contact</a><a href="{% url 'marketing_support' %}">Support</a></div>
     <div class="footer-col"><h2>Legal</h2><a href="{% url 'marketing_privacy' %}">Privacy Policy</a><a href="{% url 'marketing_terms' %}">Terms of Service</a><a href="{% url 'marketing_security' %}">Security</a></div>
-  </div><div class="footer-bottom"><span>© <span data-year></span> Kirayas. All rights reserved.</span><span>kirayas.com</span></div></div></footer>
+  </div><div class="footer-bottom"><span>© <span data-year></span> Kirayas.com. All rights reserved.</span><span>Where rental meet ease</span></div></div></footer>
   <script src="{% static 'marketing/js/site.js' %}"></script>
 </body>
 </html>

@@ -1,20 +1,50 @@
-<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Sign up</title></head>
-<body>
-  <h1>Create your account</h1>
+{% extends "accounts/base_auth.html" %}
+
+{% block title %}Create account | Kirayas.com{% endblock %}
+{% block brand_heading %}Start managing rentals with ease.{% endblock %}
+{% block brand_text %}Create your Kirayas.com account and bring your property, tenant, billing, and communication workflows together.{% endblock %}
+
+{% block content %}
+  <span class="auth-eyebrow">Create your account</span>
+  <h2>Join Kirayas.com</h2>
+  <p class="auth-intro">Enter your details to set up secure access.</p>
+
+  {% if form.non_field_errors %}<div class="auth-errors">{{ form.non_field_errors }}</div>{% endif %}
+
   <form method="post" novalidate>
     {% csrf_token %}
-    {{ form.non_field_errors }}
-    <div><label>Username</label>{{ form.username }}{{ form.username.errors }}</div>
-    <div><label>Email</label>{{ form.email }}{{ form.email.errors }}</div>
-    <div><label>First name</label>{{ form.first_name }}{{ form.first_name.errors }}</div>
-    <div><label>Last name</label>{{ form.last_name }}{{ form.last_name.errors }}</div>
-    <div><label>WhatsApp number</label>{{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}</div>
-    <div><label>Password</label>{{ form.password1 }}{{ form.password1.errors }}</div>
-    <div><label>Confirm password</label>{{ form.password2 }}{{ form.password2.errors }}</div>
-    <button type="submit">Sign up</button>
+    <div class="auth-form-grid">
+      <div class="auth-field">
+        <label for="{{ form.first_name.id_for_label }}">First name</label>
+        {{ form.first_name }}{{ form.first_name.errors }}
+      </div>
+      <div class="auth-field">
+        <label for="{{ form.last_name.id_for_label }}">Last name</label>
+        {{ form.last_name }}{{ form.last_name.errors }}
+      </div>
+      <div class="auth-field">
+        <label for="{{ form.username.id_for_label }}">Username</label>
+        {{ form.username }}{{ form.username.errors }}
+      </div>
+      <div class="auth-field">
+        <label for="{{ form.email.id_for_label }}">Email address</label>
+        {{ form.email }}{{ form.email.errors }}
+      </div>
+      <div class="auth-field full">
+        <label for="{{ form.whatsapp_number.id_for_label }}">WhatsApp number</label>
+        {{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}
+      </div>
+      <div class="auth-field">
+        <label for="{{ form.password1.id_for_label }}">Password</label>
+        {{ form.password1 }}{{ form.password1.errors }}
+      </div>
+      <div class="auth-field">
+        <label for="{{ form.password2.id_for_label }}">Confirm password</label>
+        {{ form.password2 }}{{ form.password2.errors }}
+      </div>
+    </div>
+    <button class="auth-button" type="submit">Create my account</button>
   </form>
-  <p>Already have an account? <a href="{% url 'login' %}">Log in</a></p>
-</body>
-</html>
+
+  <p class="auth-footer">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+{% endblock %}

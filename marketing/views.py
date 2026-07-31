@@ -71,7 +71,7 @@ def _whatsapp_message(cleaned_data):
     plan_label = dict(ContactForm.PLAN_CHOICES)[cleaned_data["plan"]]
     return "\n".join(
         (
-            "New Kirayas Website Inquiry",
+            "New Kirayas.com Website Inquiry",
             "",
             f"Name: {cleaned_data['full_name']}",
             f"Business: {cleaned_data['business_name']}",

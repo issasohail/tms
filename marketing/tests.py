@@ -153,7 +153,7 @@ class MarketingContactTests(SimpleTestCase):
         target = urlsplit(response["Location"])
         self.assertEqual((target.scheme, target.netloc, target.path), ("https", "wa.me", "/923007654321"))
         message = unquote(parse_qs(target.query)["text"][0])
-        self.assertIn("New Kirayas Website Inquiry", message)
+        self.assertIn("New Kirayas.com Website Inquiry", message)
         self.assertIn("Name: Ayesha Khan", message)
         self.assertIn("Interested Plan: Professional", message)
         self.assertIn("Please share onboarding details & timing.", message)

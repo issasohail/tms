@@ -1,10 +1,55 @@
 {% extends "marketing/base_marketing.html" %}
 {% load static %}
-{% block title %}Features | Kirayas{% endblock %}
-{% block meta_description %}Explore Kirayas features for agreements, WhatsApp AI, utilities, tenants, leases, payments, documents, maintenance, reports, and access control.{% endblock %}
+
+{% block title %}Features | Kirayas.com{% endblock %}
+{% block meta_description %}Explore Kirayas.com features for agreements, WhatsApp AI, utilities, tenants, leases, payments, documents, maintenance, reports, and access control.{% endblock %}
+{% block body_class %}features-page{% endblock %}
+
 {% block content %}
-<section class="page-hero"><div class="container"><span class="eyebrow">Kirayas capabilities</span><h1>All features</h1><p>Connected tools for landlords, rental businesses, and property-management teams.</p></div></section>
-<section class="section"><div class="container detail-grid">{% for anchor, name, description in features %}
-  <article class="detail-card" id="{{ anchor }}"><div class="feature-icon">{{ forloop.counter|stringformat:"02d" }}</div><h2>{{ name }}</h2><p>{{ description }}</p><a class="btn btn-secondary" href="{% url 'marketing_contact' %}?plan=not-sure">Ask about this feature</a></article>
-{% endfor %}</div></section>
+<section class="features-stage" aria-labelledby="features-title">
+  <div class="container features-stage-inner">
+    <header class="features-intro">
+      <div>
+        <span class="eyebrow">Kirayas.com capabilities</span>
+        <h1 id="features-title">Every feature, one connected platform.</h1>
+      </div>
+      <p>See how Kirayas.com supports the complete rental lifecycle. The showcase advances automatically, or you can explore at your own pace.</p>
+    </header>
+
+    <div class="feature-showcase" data-feature-carousel aria-roledescription="carousel" aria-label="Kirayas.com features">
+      <div class="feature-slides">
+        {% for anchor, name, description in features %}
+          <article class="feature-slide{% if forloop.first %} is-active{% endif %}" id="{{ anchor }}" data-feature-slide aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
+            <div class="feature-slide-copy">
+              <span class="feature-number">Feature {{ forloop.counter|stringformat:"02d" }}</span>
+              <h2>{{ name }}</h2>
+              <p>{{ description }}</p>
+              <div class="feature-slide-actions">
+                <a class="btn btn-primary" href="{% url 'marketing_contact' %}?plan=not-sure">Ask about this feature</a>
+                <a class="feature-login-link" href="{{ login_url }}">Already a customer? Log in</a>
+              </div>
+            </div>
+            <div class="feature-visual">
+              {% if anchor == "agreement-builder" or anchor == "lease-management" or anchor == "documents" %}
+                <img src="{% static 'marketing/images/features/agreements-documents.webp' %}" alt="{{ name }} feature illustration">
+              {% elif anchor == "user-management" or anchor == "property-units" or anchor == "tenant-management" or anchor == "roles-permissions" %}
+                <img src="{% static 'marketing/images/features/properties-tenants.webp' %}" alt="{{ name }} feature illustration">
+              {% else %}
+                <img src="{% static 'marketing/images/features/billing-operations.webp' %}" alt="{{ name }} feature illustration">
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+      <div class="feature-controls" aria-label="Feature carousel controls">
+        <button type="button" class="carousel-button" data-feature-prev aria-label="Show previous feature">←</button>
+        <div class="feature-progress" aria-hidden="true"><span data-feature-progress></span></div>
+        <span class="feature-count"><strong data-feature-current>01</strong> / {{ features|length|stringformat:"02d" }}</span>
+        <button type="button" class="carousel-button" data-feature-next aria-label="Show next feature">→</button>
+        <button type="button" class="carousel-pause" data-feature-pause aria-label="Pause automatic feature rotation" aria-pressed="false">Pause</button>
+      </div>
+    </div>
+  </div>
+</section>
 {% endblock %}

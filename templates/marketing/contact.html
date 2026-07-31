@@ -1,9 +1,9 @@
 {% extends "marketing/base_marketing.html" %}
 {% load static %}
-{% block title %}Contact | Kirayas{% endblock %}
-{% block meta_description %}Contact Kirayas about rental portfolio management, product features, onboarding, and pricing through WhatsApp.{% endblock %}
+{% block title %}Contact | Kirayas.com{% endblock %}
+{% block meta_description %}Contact Kirayas.com about rental portfolio management, product features, onboarding, and pricing through WhatsApp.{% endblock %}
 {% block content %}
-<section class="page-hero"><div class="container"><span class="eyebrow">Sales and product inquiries</span><h1>Contact Kirayas</h1><p>Complete the form and continue in WhatsApp with your inquiry prepared.</p></div></section>
+<section class="page-hero"><div class="container"><span class="eyebrow">Sales and product inquiries</span><h1>Contact Kirayas.com</h1><p>Complete the form and continue in WhatsApp with your inquiry prepared.</p></div></section>
 <section class="section"><div class="container"><div class="form-wrap">
   <form method="post" action="{% url 'marketing_contact' %}" novalidate>{% csrf_token %}
     {% if form.non_field_errors %}<div class="form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}

@@ -27,7 +27,7 @@ if (contactForm) {
 
     const data = new FormData(contactForm);
     const message = [
-      "New Kirayas Website Inquiry",
+      "New Kirayas.com Website Inquiry",
       "",
       `Name: ${data.get("name") || ""}`,
       `Business/Company: ${data.get("company") || ""}`,

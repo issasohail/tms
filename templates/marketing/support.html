@@ -1,11 +1,11 @@
 {% extends "marketing/base_marketing.html" %}
 {% load static %}
-{% block title %}Support | Kirayas{% endblock %}
-{% block meta_description %}Get product, onboarding, billing, and account support for Kirayas.{% endblock %}
+{% block title %}Support | Kirayas.com{% endblock %}
+{% block meta_description %}Get product, onboarding, billing, and account support for Kirayas.com.{% endblock %}
 {% block content %}
-<section class="page-hero"><div class="container"><span class="eyebrow">Help</span><h1>Kirayas support</h1><p>Find the right path for product and account assistance.</p></div></section>
+<section class="page-hero"><div class="container"><span class="eyebrow">Help</span><h1>Kirayas.com support</h1><p>Find the right path for product and account assistance.</p></div></section>
 <section class="section"><div class="container detail-grid">
-  <article class="detail-card"><h2>Considering Kirayas?</h2><p>Ask about capabilities, pricing, onboarding, and portfolio requirements through our inquiry form.</p><a class="btn btn-primary" href="{% url 'marketing_contact' %}">Contact sales</a></article>
+  <article class="detail-card"><h2>Considering Kirayas.com?</h2><p>Ask about capabilities, pricing, onboarding, and portfolio requirements through our inquiry form.</p><a class="btn btn-primary" href="{% url 'marketing_contact' %}">Contact sales</a></article>
   <article class="detail-card"><h2>Existing user?</h2><p>Sign in through the existing TMS account workflow to access your organization and support processes.</p><a class="btn btn-secondary" href="{{ login_url }}">Sign in</a></article>
 </div></section>
 {% endblock %}

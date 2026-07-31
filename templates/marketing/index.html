@@ -1,22 +1,22 @@
 {% extends "marketing/base_marketing.html" %}
 {% load static %}
-{% block title %}Kirayas | Rental operations made easier{% endblock %}
-{% block meta_description %}Manage properties, tenants, leases, rent, utilities, documents, maintenance, WhatsApp communication, and reports with Kirayas.{% endblock %}
+{% block title %}Kirayas.com | Rental operations made easier{% endblock %}
+{% block meta_description %}Manage properties, tenants, leases, rent, utilities, documents, maintenance, WhatsApp communication, and reports with Kirayas.com.{% endblock %}
 {% block content %}
 <section class="hero"><div class="container hero-grid"><div class="hero-copy">
   <span class="eyebrow">Complete rental operations platform</span>
   <h1>Run every rental from <span>one place.</span></h1>
-  <p>Kirayas helps landlords and property managers connect property, tenant, agreement, rent, utility, document, maintenance, staff, WhatsApp AI, and reporting workflows.</p>
+  <p>Kirayas.com helps landlords and property managers connect property, tenant, agreement, rent, utility, document, maintenance, staff, WhatsApp AI, and reporting workflows.</p>
   <div class="hero-actions"><a class="btn btn-primary" href="{{ register_url }}">Start your account</a><a class="btn btn-secondary" href="{% url 'marketing_features' %}">Explore all features</a></div>
   <div class="hero-notes"><span><span class="check">✓</span> Built for Pakistan</span><span><span class="check">✓</span> Mobile friendly</span><span><span class="check">✓</span> Unit-based pricing</span></div>
-</div><div class="preview" aria-label="Illustration of the Kirayas dashboard"><div class="preview-inner"><div class="preview-top"><span>Kirayas Dashboard</span><span>Portfolio Overview</span></div>
+</div><div class="preview" aria-label="Illustration of the Kirayas.com dashboard"><div class="preview-inner"><div class="preview-top"><span>Kirayas.com Dashboard</span><span>Portfolio Overview</span></div>
   <div class="preview-body"><aside class="preview-side" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></aside><div class="preview-main">
     <div class="metric-grid"><div class="metric"><small>Total Units</small><b>48</b></div><div class="metric"><small>Occupied</small><b>42</b></div><div class="metric"><small>Collected</small><b>Rs 1.2M</b></div></div>
     <div class="bars" aria-hidden="true"><i style="height:38%"></i><i style="height:55%"></i><i style="height:48%"></i><i style="height:72%"></i><i style="height:64%"></i><i style="height:85%"></i><i style="height:76%"></i></div>
     <div class="rows"><div class="row"><b>Billing</b><b>Unit</b><b>Status</b></div><div class="row"><span>Rent + Electric</span><span>A-203</span><span>Paid</span></div><div class="row"><span>Rent + Water</span><span>B-101</span><span>Due</span></div></div>
   </div></div>
 </div></div></div></section>
-<section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">Key features</span><h2>Everything needed for the complete tenancy lifecycle</h2><p>Explore each connected part of Kirayas.</p></div>
+<section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">Key features</span><h2>Everything needed for the complete tenancy lifecycle</h2><p>Explore each connected part of Kirayas.com.</p></div>
   <div class="feature-grid">{% for anchor, name, description in features %}<a class="feature-card" href="{% url 'marketing_features' %}#{{ anchor }}"><span class="feature-icon" aria-hidden="true">{{ forloop.counter|stringformat:"02d" }}</span><h3>{{ name }}</h3><p>{{ description }}</p><span class="learn">View feature →</span></a>{% endfor %}</div>
 </div></section>
 <section class="section section-alt"><div class="container callout"><h2>Replace scattered spreadsheets, folders, and chats.</h2><p>Use one connected workflow for agreements, rent, utilities, documents, communication, maintenance, staff access, and reports.</p><div class="hero-actions"><a class="btn btn-secondary" href="{% url 'marketing_how_it_works' %}">See how it works</a><a class="btn btn-secondary" href="{% url 'marketing_contact' %}">Contact us on WhatsApp</a></div></div></section>

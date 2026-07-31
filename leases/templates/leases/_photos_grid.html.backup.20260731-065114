@@ -1,6 +1,4 @@
 {# templates/leases/_photos_grid.html #}
-{% load static %}
-<link rel="stylesheet" href="{% static 'css/tms-masonry-grid.css' %}">
 
 <div id="photos-grid" class="py-2">
 
@@ -32,8 +30,9 @@
   {# ===== STYLES ===== #}
   <style>
     .photos-grid {
-      --tms-masonry-min: 220px;
-      --tms-masonry-gap: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
     }
     .photo-card {
       position: relative;
@@ -46,17 +45,14 @@
       flex-direction: column;
     }
     .photo-card.dragging { opacity: .55; }
-    .photo-thumb {
+    .photo-thumb, video.photo-thumb {
       width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
       display: block;
       background: #f6f6f6;
       flex: 0 0 auto;
     }
-    img.photo-thumb, video.photo-thumb {
-      height: auto;
-      object-fit: contain;
-    }
-    div.photo-thumb { min-height: 150px; }
     .photo-meta { padding: 8px 10px 10px 10px; font-size: 0.9rem; display:flex; flex-direction:column; flex:1 1 auto; min-height:0; position:relative; }
     .photo-title { font-weight: 600; margin-bottom: 2px; word-break: break-word; }
     .photo-desc  { color: #666; word-break: break-word; }
@@ -84,6 +80,25 @@
     details summary { cursor: pointer; list-style: none; }
     details summary::marker { display: none; }
 
+    @media (min-width: 1200px) {
+      .photos-grid {
+        grid-template-columns: repeat(auto-fill, 220px);
+        align-items: start;
+      }
+      .photo-card {
+        width: 220px;
+        height: 360px;
+      }
+      .photo-thumb, video.photo-thumb {
+        width: 220px;
+        height: 165px;
+        aspect-ratio: auto;
+      }
+      .photo-meta {
+        height: 195px;
+      }
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: scale(0.98); }
       to   { opacity: 1; transform: scale(1); }
@@ -91,10 +106,7 @@
   </style>
 
   {# ===== GRID ===== #}
-  <div id="photos-grid-inner"
-       class="photos-grid tms-masonry-grid"
-       data-masonry-grid
-       data-reorder-url="{% url 'leases:photo_reorder' lease.id %}{% if history %}?history={{ history.pk }}{% endif %}">
+  <div id="photos-grid-inner" class="photos-grid" data-reorder-url="{% url 'leases:photo_reorder' lease.id %}{% if history %}?history={{ history.pk }}{% endif %}">
     {% for p in media %}
       {% include "leases/_photo_card.html" with p=p %}
     {% empty %}
@@ -105,7 +117,6 @@
   {# (Removed duplicate #media-loading and hx-indicator) #}
 
   {# ===== CLIENT-SIDE FILTERING & SEARCH ===== #}
-<script src="{% static 'js/tms-masonry-grid.js' %}"></script>
 <script>
 (function(){
   if (window.__leaseMediaGridBound) return;
@@ -129,7 +140,6 @@
       const matchesSearch = !query || haystack.indexOf(query) !== -1;
       card.style.display = matchesType && matchesSearch ? '' : 'none';
     });
-    window.TMSMasonry?.refresh(grid);
   };
 
   function applySaved(root) {

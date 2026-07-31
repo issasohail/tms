@@ -1,9 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}{{ kind_label }} Detail{% endblock %}
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/tms-masonry-grid.css' %}">
-{% endblock %}
 {% block content %}
 <div class="container-fluid py-3" style="max-width:1200px;">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -254,12 +251,10 @@
         <div class="card shadow-sm">
           <div class="card-header py-2"><strong>{% if kind == "media" %}Linked Document / Media Batch{% else %}Maintenance Media{% endif %}</strong></div>
           <div class="card-body">
-            <div class="tms-masonry-grid"
-                 data-masonry-grid
-                 style="--tms-masonry-min:280px;--tms-masonry-gap:12px;">
+            <div class="row g-3">
               {% for media in media_items %}
-                <div data-masonry-item>
-                  <div class="border rounded p-2 bg-white">
+                <div class="col-12 col-md-6">
+                  <div class="border rounded p-2 h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                       <div class="d-flex align-items-center gap-2">
                         {% if has_extracted_video_frames %}
@@ -276,9 +271,9 @@
                       {% if media.file_url %}<a href="{{ media.file_url }}" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-1">Open</a>{% endif %}
                     </div>
                     {% if media.preview_kind == "image" %}
-                      <img src="{{ media.file_url }}" alt="{{ media.filename }}" class="tms-masonry-image rounded border">
+                      <img src="{{ media.file_url }}" alt="{{ media.filename }}" class="img-fluid rounded border">
                     {% elif media.preview_kind == "video" %}
-                      <video src="{{ media.file_url }}" controls class="tms-masonry-image rounded border"></video>
+                      <video src="{{ media.file_url }}" controls class="w-100 rounded border"></video>
                       <button type="button"
                               class="btn btn-sm btn-outline-primary mt-2 js-extract-whatsapp-video"
                               data-video-url="{{ media.file_url }}"
@@ -360,7 +355,6 @@
     {% endif %}
   </div>
 </div>
-<script src="{% static 'js/tms-masonry-grid.js' %}"></script>
 <script src="{% static 'js/tms-video-frame-picker.js' %}"></script>
 <script>
 (function () {
@@ -413,9 +407,6 @@
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.message || "The update could not be completed.");
-      if (window.updatePendingApprovalNavbarCount) {
-        window.updatePendingApprovalNavbarCount(result.pending_approval_count);
-      }
       const alert = document.createElement("div");
       alert.className = "alert alert-success mt-3";
       alert.textContent = result.message || "Updated.";

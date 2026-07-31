@@ -1,5 +1,5 @@
 {# templates/leases/_photo_card.html #}
-<div id="photo-card-{{ p.id }}" class="photo-card" data-masonry-item data-type="{{ p.media_type }}" data-photo-id="{{ p.id }}" draggable="true" style="animation:fadeIn .3s ease;">
+<div id="photo-card-{{ p.id }}" class="photo-card" data-type="{{ p.media_type }}" data-photo-id="{{ p.id }}" draggable="true" style="animation:fadeIn .3s ease;">
 
   {% if p.media_type == "video" %}
     {% if p.file_exists %}{% with ver=p.updated_at|date:'U' %}

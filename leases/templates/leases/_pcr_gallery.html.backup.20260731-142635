@@ -98,8 +98,6 @@
         script.text = oldScript.text;
         oldScript.parentNode.replaceChild(script, oldScript);
       });
-    } else {
-      window.location.reload();
     }
   }
 

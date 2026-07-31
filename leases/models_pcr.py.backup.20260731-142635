@@ -11,11 +11,11 @@ import os
 
 def _photo_upload_path(instance, filename):
     ext = (filename.rsplit('.', 1)[-1] or 'jpg').lower()
-    return f"leases/pcr/{instance.pcr.lease_id}/photos/{uuid.uuid4()}.{ext}"
+    return f"leases/pcr/{instance.lease_id}/photos/{uuid.uuid4()}.{ext}"
 
 
 def _thumb_upload_path(instance, filename):
-    return f"leases/pcr/{instance.pcr.lease_id}/photos/thumbs/{uuid.uuid4()}.jpg"
+    return f"leases/pcr/{instance.lease_id}/photos/thumbs/{uuid.uuid4()}.jpg"
 
 
 class PropertyConditionReport(models.Model):

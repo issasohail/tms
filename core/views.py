@@ -25,6 +25,12 @@ from django.db.models.functions import Coalesce, Greatest
 
 from .forms import GlobalSettingsForm
 from .models import GlobalSettings
+from .pending_approval_queue import (
+    actionable_media_count,
+    eligible_pending_media_queryset,
+    pending_approval_count,
+    pending_approval_status_filters,
+)
 from tenants.models import Tenant, TenantInterestType
 from payments.models import Payment
 from invoices.models import Invoice
@@ -204,7 +210,12 @@ def _pending_ajax_response(request, message, *, redirect_url="", status=200):
     if not _is_ajax(request):
         return None
     return JsonResponse(
-        {"ok": status < 400, "message": message, "redirect_url": redirect_url},
+        {
+            "ok": status < 400,
+            "message": message,
+            "redirect_url": redirect_url,
+            "pending_approval_count": pending_approval_count(),
+        },
         status=status,
     )
 
@@ -419,27 +430,24 @@ def pending_approvals(request):
     from tenants.models import TenantRegistrationSubmission
 
     filters = _pending_approval_filter_state(request)
+    pending_status_filters = pending_approval_status_filters()
     common_status_filters = {
-        "pending": models.Q(status="pending"),
+        "pending": pending_status_filters["common"],
         "approved": models.Q(status="approved"),
         "rejected": models.Q(status="rejected"),
     }
     lease_status_filters = {
-        "pending": models.Q(status="pending_approval"),
+        "pending": pending_status_filters["lease"],
         "approved": models.Q(status__in=["active", "ended", "terminated"]),
         "rejected": models.Q(status="rejected"),
     }
     payment_status_filters = {
-        "pending": models.Q(
-            status__in=[PendingWhatsAppPayment.STATUS_PENDING, PendingWhatsAppPayment.STATUS_CONFIRMED],
-            approved=False,
-            rejected=False,
-        ),
+        "pending": pending_status_filters["payment"],
         "approved": models.Q(status=PendingWhatsAppPayment.STATUS_APPROVED) | models.Q(approved=True),
         "rejected": models.Q(status=PendingWhatsAppPayment.STATUS_REJECTED) | models.Q(rejected=True),
     }
     registration_status_filters = {
-        "pending": models.Q(status__in=TenantRegistrationSubmission.EDITABLE_STATUSES),
+        "pending": pending_status_filters["registration"],
         "approved": models.Q(status=TenantRegistrationSubmission.STATUS_APPROVED),
         "rejected": models.Q(status=TenantRegistrationSubmission.STATUS_REJECTED),
     }
@@ -459,18 +467,9 @@ def pending_approvals(request):
             "property__property_name", "unit__unit_number", "ai_notes",
         ),
     )
-    pending_media_queryset = PendingWhatsAppMedia.objects.exclude(
-        purpose__in=[
-            PendingWhatsAppMedia.PURPOSE_PAYMENT,
-            PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
-        ]
-    ).exclude(
-        maintenance_submissions__status=PendingWhatsAppMaintenance.STATUS_PENDING,
-    ).exclude(
-        police_verification_submissions__status="pending",
-    ).select_related(
+    pending_media_queryset = eligible_pending_media_queryset().select_related(
         "tenant", "lease", "property", "unit", "submitted_by_staff"
-    ).distinct()
+    )
     pending_media_queryset = _filter_pending_approval_queryset(
         pending_media_queryset, filters, common_status_filters
     ).order_by("-created_at")
@@ -484,6 +483,7 @@ def pending_approvals(request):
             "property__property_name", "unit__unit_number", "purpose", "target_kind", "ai_notes",
         ),
     )
+    pending_media_action_count = actionable_media_count(pending_media_queryset)
     pending_media = _group_pending_media(list(pending_media_queryset[:200]))[:50]
     pending_maintenance = _filter_pending_approval_queryset(
         PendingWhatsAppMaintenance.objects.select_related("tenant", "lease", "property", "unit"),
@@ -590,10 +590,11 @@ def pending_approvals(request):
         search_fields=("tenant__first_name", "tenant__last_name", "tenant__phone", "tenant__cnic", "admin_notes"),
     )
 
-    def section(title, kind, queryset_or_items):
+    def section(title, kind, queryset_or_items, count=None):
         if isinstance(queryset_or_items, list):
             items = queryset_or_items
-            count = len(items)
+            if count is None:
+                count = len(items)
         else:
             count = queryset_or_items.count()
             items = list(queryset_or_items[:50])
@@ -603,7 +604,12 @@ def pending_approvals(request):
         section("Leases", "lease", pending_leases),
         section("Agreement Edits", "agreement", pending_agreements),
         section("WhatsApp Payments", "payment", pending_payments),
-        section("WhatsApp Documents / Media", "media", pending_media),
+        section(
+            "WhatsApp Documents / Media",
+            "media",
+            pending_media,
+            count=pending_media_action_count,
+        ),
         section("WhatsApp Maintenance", "maintenance", pending_maintenance),
         section("Lease Family Members", "family", pending_family),
         section("Police Verification", "police", pending_police),

@@ -144,18 +144,6 @@ class WhatsAppAIAssistant:
         for key in keys:
             conversation.context.pop(key, None)
 
-    def _clear_staff_upload_state(self, conversation):
-        self._clear_context_keys(
-            conversation,
-            "staff_upload_kind",
-            "staff_upload_batch_key",
-            "staff_upload_property_id",
-            "staff_upload_unit_id",
-            "staff_upload_lease_id",
-            "staff_upload_target_options",
-            "staff_upload_target_label",
-        )
-
     def handle_inbound_message(self, message_log):
         started = time.monotonic()
         conversation = self._conversation_for(message_log)
@@ -355,14 +343,7 @@ class WhatsAppAIAssistant:
             conversation.pending_state == "mode_selection"
             or (not conversation.selected_mode_is_valid and identity.has_staff and identity.has_active_tenant)
         )
-        previous_mode = conversation.selected_mode
         mode = resolve_mode(conversation, text, identity)
-
-        if previous_mode == WhatsAppConversation.MODE_STAFF and mode != WhatsAppConversation.MODE_STAFF:
-            self._clear_staff_upload_state(conversation)
-            if mode != "choose_mode" and conversation.pending_state.startswith("staff_"):
-                conversation.pending_state = ""
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
 
         if mode == "ambiguous_identity":
             return (
@@ -380,14 +361,8 @@ class WhatsAppAIAssistant:
             )
         if mode == "choose_mode":
             return mode_selection_text(), "mode_selection", {"staff_user": identity.staff_user, "tenant": identity.tenant}
-        if was_mode_selection and mode == WhatsAppConversation.MODE_GUEST:
-            return guest_menu_text(), "guest", {}
         if mode == WhatsAppConversation.MODE_GUEST:
             return self._handle_guest_message(message_log, conversation, text), "guest", {}
-        if was_mode_selection and mode == WhatsAppConversation.MODE_STAFF:
-            return staff_menu_text(identity.staff_user), "staff", {
-                "staff_user": identity.staff_user,
-            }
         if mode == WhatsAppConversation.MODE_STAFF:
             return self._handle_staff_message(message_log, conversation, text, message_type, identity), "staff", {
                 "staff_user": identity.staff_user,
@@ -674,100 +649,35 @@ class WhatsAppAIAssistant:
             return self._start_staff_estamp_media(
                 message_log, conversation, identity.staff_user
             )
-        is_staff_mode = (
-            identity.has_staff
-            and conversation.selected_mode == WhatsAppConversation.MODE_STAFF
-        )
+        selected_lease = self._selected_active_lease(conversation)
+        if not selected_lease and identity.active_leases and len(identity.active_leases) == 1:
+            selected_lease = identity.active_leases[0]
+            conversation.selected_lease = selected_lease
+            conversation.selected_property = selected_lease.unit.property
+            conversation.selected_unit = selected_lease.unit
+            conversation.tenant = selected_lease.tenant
+            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "tenant", "updated_at"])
+
         staff_upload_kind = conversation.context.get("staff_upload_kind")
-        if is_staff_mode and conversation.pending_state == "staff_upload_target_confirmation":
-            return (
-                "Confirm the exact upload target first. Reply YES to begin uploading or BACK to change it. "
-                "This file was not added.",
-                "staff_upload_confirmation_required",
-                {"staff_user": identity.staff_user},
-            )
-        if is_staff_mode and conversation.pending_state == "staff_waiting_upload":
+        if identity.has_staff and conversation.pending_state == "staff_waiting_upload" and staff_upload_kind:
+            media = create_pending_media(message_log, conversation)
+            property_obj = Property.objects.filter(pk=conversation.context.get("staff_upload_property_id")).first()
+            unit = Unit.objects.select_related("property").filter(pk=conversation.context.get("staff_upload_unit_id")).first()
+            lease = Lease.objects.select_related("tenant", "unit__property").filter(pk=conversation.context.get("staff_upload_lease_id")).first()
+            target_property = property_obj or getattr(unit, "property", None) or getattr(getattr(lease, "unit", None), "property", None)
+            if not target_property or not staff_can_access_property(identity.staff_user, target_property):
+                media.ai_notes = f"{media.ai_notes} Staff target permission failed.".strip()
+                media.save(update_fields=["ai_notes", "updated_at"])
+                return "Upload kept for review, but you no longer have access to the selected target.", "staff_upload_blocked", {"pending_media_id": media.pk}
             purpose_map = {
                 PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO: PendingWhatsAppMedia.PURPOSE_PROPERTY,
                 PendingWhatsAppMedia.TARGET_UNIT_PHOTO: PendingWhatsAppMedia.PURPOSE_UNIT,
                 PendingWhatsAppMedia.TARGET_LEASE_PHOTO: PendingWhatsAppMedia.PURPOSE_LEASE,
                 PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT: PendingWhatsAppMedia.PURPOSE_LEASE,
             }
-            batch_key_text = conversation.context.get("staff_upload_batch_key")
-            try:
-                batch_key = uuid.UUID(str(batch_key_text))
-            except (TypeError, ValueError, AttributeError):
-                batch_key = None
-            property_obj = Property.objects.filter(
-                pk=conversation.context.get("staff_upload_property_id")
-            ).first()
-            unit = Unit.objects.select_related("property").filter(
-                pk=conversation.context.get("staff_upload_unit_id")
-            ).first()
-            lease = Lease.objects.select_related("tenant", "unit__property").filter(
-                pk=conversation.context.get("staff_upload_lease_id")
-            ).first()
-            target_property = (
-                property_obj
-                or getattr(unit, "property", None)
-                or getattr(getattr(lease, "unit", None), "property", None)
-            )
-            valid_target = bool(
-                staff_upload_kind in purpose_map
-                and batch_key
-                and target_property
-                and staff_can_access_property(identity.staff_user, target_property)
-            )
-            if staff_upload_kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
-                valid_target = valid_target and property_obj == target_property
-                unit = None
-                lease = None
-            elif staff_upload_kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
-                valid_target = valid_target and unit is not None and unit.property_id == target_property.pk
-                if lease and lease.unit_id != unit.pk:
-                    valid_target = False
-            else:
-                valid_target = (
-                    valid_target
-                    and lease is not None
-                    and lease.unit.property_id == target_property.pk
-                )
-                unit = getattr(lease, "unit", None)
-
-            if not valid_target:
-                media = create_pending_media(message_log, conversation)
-                media.purpose = PendingWhatsAppMedia.PURPOSE_OTHER
-                media.target_kind = ""
-                media.batch_key = None
-                media.submitted_by_staff = identity.staff_user
-                media.tenant = None
-                media.lease = None
-                media.property = None
-                media.unit = None
-                media.ai_notes = (
-                    f"{media.ai_notes} Guided staff upload state was incomplete; "
-                    "the file was staged without a target."
-                ).strip()
-                media.save(update_fields=[
-                    "purpose", "target_kind", "batch_key", "submitted_by_staff",
-                    "tenant", "lease", "property", "unit", "ai_notes", "updated_at",
-                ])
-                conversation.pending_state = "staff_upload_type"
-                self._clear_staff_upload_state(conversation)
-                conversation.context["pending_media_id"] = media.pk
-                conversation.save(update_fields=["pending_state", "context", "updated_at"])
-                notify_staff_pending_request("upload", media)
-                return (
-                    "The previous upload target was incomplete or expired, so this file was kept "
-                    "without a property, unit, or lease. Please choose its upload type.",
-                    "staff_upload_target_invalid",
-                    {"staff_user": identity.staff_user, "pending_media_id": media.pk},
-                )
-
-            media = create_pending_media(message_log, conversation)
             media.purpose = purpose_map[staff_upload_kind]
             media.target_kind = staff_upload_kind
-            media.batch_key = batch_key
+            media.batch_key = uuid.UUID(conversation.context["staff_upload_batch_key"])
             media.submitted_by_staff = identity.staff_user
             media.property = target_property
             media.unit = unit or getattr(lease, "unit", None)
@@ -784,21 +694,6 @@ class WhatsAppAIAssistant:
                 {"staff_user": identity.staff_user, "pending_media_id": media.pk, "batch_key": str(media.batch_key)},
             )
 
-        selected_lease = self._selected_active_lease(conversation) if not is_staff_mode else None
-        if (
-            not is_staff_mode
-            and conversation.selected_mode == WhatsAppConversation.MODE_TENANT
-            and not selected_lease
-            and identity.active_leases
-            and len(identity.active_leases) == 1
-        ):
-            selected_lease = identity.active_leases[0]
-            conversation.selected_lease = selected_lease
-            conversation.selected_property = selected_lease.unit.property
-            conversation.selected_unit = selected_lease.unit
-            conversation.tenant = selected_lease.tenant
-            conversation.save(update_fields=["selected_lease", "selected_property", "selected_unit", "tenant", "updated_at"])
-
         police_response = self._consume_police_verification_media(
             message_log,
             conversation,
@@ -809,15 +704,6 @@ class WhatsAppAIAssistant:
             return police_response
 
         media = create_pending_media(message_log, conversation, selected_lease)
-        if is_staff_mode:
-            media.submitted_by_staff = identity.staff_user
-            media.tenant = None
-            media.lease = None
-            media.property = None
-            media.unit = None
-            media.save(update_fields=[
-                "submitted_by_staff", "tenant", "lease", "property", "unit", "updated_at",
-            ])
         if expects_payment_receipt:
             media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT
             media.ai_notes = f"{media.ai_notes} Tenant selected Upload Payment Receipt.".strip()
@@ -886,7 +772,7 @@ class WhatsAppAIAssistant:
                 {"lease": selected_lease, "pending_maintenance_id": pending.pk},
             )
 
-        state = "staff_upload_type" if is_staff_mode else "tenant_upload_type"
+        state = "staff_upload_type" if identity.has_staff and not identity.has_active_tenant else "tenant_upload_type"
         conversation.pending_state = state
         conversation.context["pending_media_id"] = media.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
@@ -908,7 +794,6 @@ class WhatsAppAIAssistant:
             return False
         if conversation.pending_state in {
             "staff_waiting_upload",
-            "staff_upload_target_confirmation",
             "police_verification_upload",
         }:
             return False
@@ -1825,24 +1710,8 @@ class WhatsAppAIAssistant:
         upload_response = self._consume_staff_upload_type(message_log, conversation, text, staff_user)
         if upload_response:
             return upload_response
-        if (
-            conversation.pending_state
-            in {
-                "staff_upload_target_query",
-                "staff_upload_target_selection",
-                "staff_upload_target_confirmation",
-                "staff_waiting_upload",
-            }
-            and lowered not in {"menu", "staff", "hi", "hello", "start", ""}
-        ):
-            upload_state_response = self._consume_staff_menu_state(
-                message_log, conversation, text, staff_user
-            )
-            if upload_state_response:
-                return upload_state_response
         if lowered in {"cancel", "back"}:
             conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
             self._clear_context_keys(
                 conversation,
                 "staff_add_lease",
@@ -1855,7 +1724,6 @@ class WhatsAppAIAssistant:
             return staff_menu_text(staff_user)
         if lowered in {"menu", "staff", "hi", "hello", "start", ""}:
             conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
             self._clear_context_keys(
                 conversation,
                 "staff_add_lease",
@@ -1956,7 +1824,6 @@ class WhatsAppAIAssistant:
         if lowered in {"add lease", "create lease"}:
             return self._start_staff_add_lease(message_log, conversation, staff_user)
         if lowered in {"9", "switch mode"}:
-            self._clear_staff_upload_state(conversation)
             conversation.selected_mode = ""
             conversation.mode_expires_at = None
             conversation.pending_state = "mode_selection"
@@ -2051,10 +1918,15 @@ class WhatsAppAIAssistant:
                 "Act as Tenant is restricted. Ask an administrator to enable it for your staff user."
             )
         conversation.pending_state = "staff_tenant_simulator_lookup"
-        self._clear_staff_upload_state(conversation)
         self._clear_context_keys(
             conversation,
             "staff_tenant_simulator_options",
+            "staff_upload_kind",
+            "staff_upload_batch_key",
+            "staff_upload_property_id",
+            "staff_upload_unit_id",
+            "staff_upload_lease_id",
+            "staff_upload_target_options",
             "pending_media_id",
             "pending_payment_id",
             "payment_apply_lease_options",
@@ -2165,10 +2037,15 @@ class WhatsAppAIAssistant:
             "started_by_staff_id": staff_user.pk,
             "started_at": timezone.now().isoformat(),
         }
-        self._clear_staff_upload_state(conversation)
         self._clear_context_keys(
             conversation,
             "staff_tenant_simulator_options",
+            "staff_upload_kind",
+            "staff_upload_batch_key",
+            "staff_upload_property_id",
+            "staff_upload_unit_id",
+            "staff_upload_lease_id",
+            "staff_upload_target_options",
             "pending_media_id",
             "pending_payment_id",
             "payment_apply_lease_options",
@@ -2320,30 +2197,7 @@ class WhatsAppAIAssistant:
             return self._consume_staff_upload_target_query(message_log, conversation, text, staff_user)
         if state == "staff_upload_target_selection":
             return self._consume_staff_upload_target_selection(message_log, conversation, text, staff_user)
-        if state == "staff_upload_target_confirmation":
-            if lowered in {"yes", "y", "confirm"}:
-                return self._confirm_staff_upload_target(
-                    message_log, conversation, staff_user
-                )
-            if lowered == "back":
-                kind = conversation.context.get("staff_upload_kind")
-                return self._start_staff_upload_target_search(
-                    conversation,
-                    kind,
-                    "Send the property and target again.",
-                    staff_user,
-                )
-            if lowered == "cancel":
-                conversation.pending_state = ""
-                self._clear_staff_upload_state(conversation)
-                conversation.save(update_fields=["pending_state", "context", "updated_at"])
-                return staff_menu_text(staff_user)
-            label = conversation.context.get("staff_upload_target_label") or "the selected target"
-            return (
-                f"Confirm upload target: {label}. "
-                "Reply YES to begin uploading or BACK to change it."
-            )
-        if state == "staff_waiting_upload":
+        if state == "staff_waiting_upload" and conversation.context.get("staff_upload_kind"):
             if lowered in {"done", "submit", "finished", "finish"}:
                 batch_key = conversation.context.get("staff_upload_batch_key")
                 count = PendingWhatsAppMedia.objects.filter(batch_key=batch_key).count() if batch_key else 0
@@ -2355,30 +2209,24 @@ class WhatsAppAIAssistant:
                     else None
                 )
                 conversation.pending_state = ""
-                self._clear_staff_upload_state(conversation)
-                conversation.save(update_fields=["pending_state", "context", "updated_at"])
-                if first_batch_item and count > 0:
-                    notify_staff_pending_request("upload", first_batch_item)
-                    return (
-                        f"Upload batch submitted for approval with {count} file(s).\n\n"
-                        f"{staff_menu_text(staff_user)}",
-                        "staff_upload_submitted",
-                        {"staff_user": staff_user},
-                    )
-                return (
-                    "No files were received, so nothing was submitted for approval.\n\n"
-                    f"{staff_menu_text(staff_user)}",
-                    "staff_upload_empty",
-                    {"staff_user": staff_user},
+                self._clear_context_keys(
+                    conversation,
+                    "staff_upload_kind", "staff_upload_batch_key", "staff_upload_property_id",
+                    "staff_upload_unit_id", "staff_upload_lease_id", "staff_upload_target_options",
                 )
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                if first_batch_item:
+                    notify_staff_pending_request("upload", first_batch_item)
+                return f"Upload batch submitted for approval with {count} file(s).", "staff_upload_submitted", {"staff_user": staff_user}
             if lowered in {"cancel", "back"}:
                 conversation.pending_state = ""
-                self._clear_staff_upload_state(conversation)
-                conversation.save(update_fields=["pending_state", "context", "updated_at"])
-                return (
-                    "Upload session closed. Any files already sent remain pending for approval.\n\n"
-                    f"{staff_menu_text(staff_user)}"
+                self._clear_context_keys(
+                    conversation,
+                    "staff_upload_kind", "staff_upload_batch_key", "staff_upload_property_id",
+                    "staff_upload_unit_id", "staff_upload_lease_id", "staff_upload_target_options",
                 )
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
+                return "Upload session closed. Any files already sent remain pending for approval."
             return "Please send another file, or reply DONE to submit the batch for approval."
 
         if state == "staff_search_category":
@@ -2412,26 +2260,16 @@ class WhatsAppAIAssistant:
 
     def _start_staff_upload_target_search(self, conversation, kind, prompt, staff_user=None):
         staff_user = staff_user or conversation.staff_user
-        valid_kinds = {
-            PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO,
-            PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
-            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
-            PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
-        }
-        if kind not in valid_kinds:
-            conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return "The upload type was missing or invalid. Please start again from the Staff Menu."
         properties = self._staff_accessible_properties(staff_user)
         if not properties:
-            conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return "No WhatsApp property access is assigned to your staff user."
         conversation.pending_state = "staff_upload_target_query"
-        self._clear_staff_upload_state(conversation)
         conversation.context["staff_upload_kind"] = kind
+        self._clear_context_keys(
+            conversation,
+            "staff_upload_batch_key", "staff_upload_property_id", "staff_upload_unit_id",
+            "staff_upload_lease_id", "staff_upload_target_options",
+        )
         conversation.context["staff_upload_target_options"] = [
             {"type": "property", "id": item.pk, "label": item.property_name}
             for item in properties
@@ -2454,7 +2292,6 @@ class WhatsAppAIAssistant:
             "f35-1 or f56-room7",
             "You can also send the tenant name, phone, or CNIC.",
             "",
-            "Reply with the list number shown above; this is not the flat/unit number.",
             "Type BACK to cancel.",
         ])
         return "\n".join(lines)
@@ -2462,19 +2299,12 @@ class WhatsAppAIAssistant:
     def _consume_staff_upload_target_query(self, message_log, conversation, text, staff_user):
         if (text or "").strip().lower() in {"back", "cancel"}:
             conversation.pending_state = "staff_property_media_menu"
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            conversation.save(update_fields=["pending_state", "updated_at"])
             return staff_submenu_text("5")
         kind = conversation.context.get("staff_upload_kind")
         properties = self._staff_accessible_properties(staff_user)
         if not properties:
-            conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return (
-                "No WhatsApp property access is assigned to your staff user.\n\n"
-                f"{staff_menu_text(staff_user)}"
-            )
+            return "No WhatsApp property access is assigned to your staff user."
 
         property_obj, unit_hint = self._resolve_staff_property_unit_text(text, properties)
         if property_obj is None:
@@ -2499,9 +2329,7 @@ class WhatsAppAIAssistant:
                 lines = ["Select upload target:"] + [
                     f"{index}. {item['label']}" for index, item in enumerate(options[:9], start=1)
                 ]
-                lines.append(
-                    "\nReply with the list number shown above; this is not the flat/unit number."
-                )
+                lines.append("\nReply with a number.")
                 return "\n".join(lines)
             unit_hint = unit_hint or self._unit_only_hint(text)
             return self._staff_upload_property_options_text(properties, kind, unit_hint)
@@ -2550,58 +2378,14 @@ class WhatsAppAIAssistant:
         return options
 
     def _consume_staff_upload_target_selection(self, message_log, conversation, text, staff_user):
-        lowered = (text or "").strip().lower()
-        if lowered == "back":
-            kind = conversation.context.get("staff_upload_kind")
-            return self._start_staff_upload_target_search(
-                conversation,
-                kind,
-                "Send the property and target again.",
-                staff_user,
-            )
-        if lowered == "cancel":
-            conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return staff_menu_text(staff_user)
-        options = conversation.context.get("staff_upload_target_options") or []
         try:
             index = int((text or "").strip()) - 1
         except ValueError:
-            query = self._selector_key(text)
-            matching_options = [
-                option
-                for option in options
-                if query and query == self._selector_key(option.get("label"))
-            ]
-            if len(matching_options) == 1:
-                option = matching_options[0]
-            else:
-                unit_options = [option for option in options if option.get("type") == "unit"]
-                units = list(
-                    Unit.objects.select_related("property").filter(
-                        pk__in=[option.get("id") for option in unit_options]
-                    )
-                )
-                property_obj = units[0].property if units else None
-                unit = (
-                    self._match_unit_text(text, property_obj, units)
-                    if property_obj and all(item.property_id == property_obj.pk for item in units)
-                    else None
-                )
-                option = next(
-                    (item for item in unit_options if item.get("id") == getattr(unit, "pk", None)),
-                    None,
-                )
-            if not option:
-                return (
-                    "Reply with the list number shown above; this is not the flat/unit number. "
-                    "You may also type the exact displayed target, or type BACK."
-                )
-        else:
-            if index < 0 or index >= len(options):
-                return "That target number is not in the list. Please choose again."
-            option = options[index]
+            return "Reply with one of the target numbers, or type BACK."
+        options = conversation.context.get("staff_upload_target_options") or []
+        if index < 0 or index >= len(options):
+            return "That target number is not in the list. Please choose again."
+        option = options[index]
         kind = conversation.context.get("staff_upload_kind")
         if option.get("type") == "unit" and kind != PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
             unit = Unit.objects.select_related("property").filter(pk=option.get("id")).first()
@@ -2633,16 +2417,6 @@ class WhatsAppAIAssistant:
     def _select_staff_upload_target(self, message_log, conversation, staff_user, option):
         property_obj = None
         target_lease = None
-        unit = None
-        self._clear_context_keys(
-            conversation,
-            "staff_upload_batch_key",
-            "staff_upload_property_id",
-            "staff_upload_unit_id",
-            "staff_upload_lease_id",
-            "staff_upload_target_options",
-            "staff_upload_target_label",
-        )
         if option["type"] == "property":
             property_obj = Property.objects.filter(pk=option["id"]).first()
             conversation.context["staff_upload_property_id"] = option["id"]
@@ -2663,99 +2437,16 @@ class WhatsAppAIAssistant:
             conversation.context["staff_upload_lease_id"] = option["id"]
         if not property_obj or not staff_can_access_property(staff_user, property_obj):
             log_staff_action(staff_user, message_log.phone_number, "photo_upload_target_blocked", "blocked", property=property_obj)
-            conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return "You do not have WhatsApp access to that target."
-        conversation.context["staff_upload_property_id"] = property_obj.pk
-        if target_lease:
-            conversation.context["staff_upload_unit_id"] = target_lease.unit_id
-        conversation.context["staff_upload_target_label"] = option["label"]
-        conversation.pending_state = "staff_upload_target_confirmation"
-        conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        return (
-            f"Confirm upload target: {option['label']}. "
-            "Reply YES to begin uploading or BACK to change it."
-        )
-
-    def _confirm_staff_upload_target(self, message_log, conversation, staff_user):
-        kind = conversation.context.get("staff_upload_kind")
-        property_obj = Property.objects.filter(
-            pk=conversation.context.get("staff_upload_property_id")
-        ).first()
-        unit = Unit.objects.select_related("property").filter(
-            pk=conversation.context.get("staff_upload_unit_id")
-        ).first()
-        target_lease = Lease.objects.select_related("tenant", "unit__property").filter(
-            pk=conversation.context.get("staff_upload_lease_id")
-        ).first()
-        label = conversation.context.get("staff_upload_target_label") or ""
-        valid_kinds = {
-            PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO,
-            PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
-            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
-            PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
-        }
-        valid_target = bool(
-            kind in valid_kinds
-            and property_obj
-            and staff_can_access_property(staff_user, property_obj)
-        )
-        if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO:
-            unit = None
-            target_lease = None
-        elif kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO:
-            valid_target = valid_target and unit is not None and unit.property_id == property_obj.pk
-            if target_lease and target_lease.unit_id != getattr(unit, "pk", None):
-                valid_target = False
-        else:
-            valid_target = (
-                valid_target
-                and target_lease is not None
-                and target_lease.unit.property_id == property_obj.pk
-            )
-            unit = getattr(target_lease, "unit", None)
-        if not valid_target:
-            conversation.pending_state = ""
-            self._clear_staff_upload_state(conversation)
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
-            return (
-                "The selected upload target is no longer valid or accessible. "
-                "Please start again from the Staff Menu.\n\n"
-                f"{staff_menu_text(staff_user)}"
-            )
-
         conversation.context["staff_upload_batch_key"] = str(uuid.uuid4())
+        conversation.context.pop("staff_upload_target_options", None)
         conversation.pending_state = "staff_waiting_upload"
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        option = {
-            "type": (
-                "property"
-                if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO
-                else "unit"
-                if kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO
-                else "lease"
-            ),
-            "id": (
-                property_obj.pk
-                if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO
-                else unit.pk
-                if kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO
-                else target_lease.pk
-            ),
-            "label": label,
-        }
-        log_staff_action(
-            staff_user,
-            message_log.phone_number,
-            "photo_upload_target_selected",
-            "pending",
-            property=property_obj,
-            target=option,
-        )
+        log_staff_action(staff_user, message_log.phone_number, "photo_upload_target_selected", "pending", property=property_obj, target=option)
         link_text = ""
         if (
-            kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO
+            conversation.context.get("staff_upload_kind")
+            == PendingWhatsAppMedia.TARGET_UNIT_PHOTO
             and target_lease
         ):
             upload_link = self._create_unit_photo_upload_link(target_lease)
@@ -2766,7 +2457,7 @@ class WhatsAppAIAssistant:
                 "unit are already selected."
             )
         return (
-            f"Target selected: {label}"
+            f"Target selected: {option['label']}"
             f"{link_text}\n\n"
             "You can also send photos/files directly in WhatsApp. Reply DONE "
             "when finished. Each file will wait for approval."
@@ -2905,12 +2596,7 @@ class WhatsAppAIAssistant:
             lines.append(f"{index}. {unit.unit_number}")
         if unmatched:
             lines.extend(["", f"I could not match unit '{unmatched}' exactly. Please choose from the list."])
-        lines.extend([
-            "",
-            "Reply with the list number shown above; this is not the flat/unit number.",
-            "You may also type the exact unit shown above.",
-            "Reply BACK to return to the Staff Menu.",
-        ])
+        lines.append("\nReply BACK to return to the Staff Menu.")
         return "\n".join(lines)
 
     def _resolve_staff_property_unit_text(self, text, properties):

@@ -1,16 +1,15 @@
 {# templates/leases/_pcr_gallery.html #}
 {% load static %}
-<link rel="stylesheet" href="{% static 'css/tms-masonry-grid.css' %}">
 <div class="pcr-panel" data-lease-id="{{ lease.id }}">
   <style>
     .pcr-panel { max-width: 980px; }
     .pcr-toolbar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; }
     .pcr-upload-form { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-    .pcr-grid { --tms-masonry-min:150px; --tms-masonry-gap:10px; }
+    .pcr-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
     .pcr-card { border:1px solid #e5e7eb; border-radius:7px; background:#fff; overflow:hidden; }
     .pcr-card.dragging { opacity:.55; }
-    .pcr-img-wrap { width:100%; background:#f8fafc; position:relative; }
-    .pcr-img { width:100%; height:auto; object-fit:contain; display:block; }
+    .pcr-img-wrap { width:100%; aspect-ratio:4/3; background:#f8fafc; position:relative; display:flex; align-items:center; justify-content:center; }
+    .pcr-img { width:100%; height:100%; object-fit:cover; display:block; }
     .pcr-missing { color:#6b7280; font-size:12px; text-align:center; padding:12px; }
     .pcr-missing-badge { position:absolute; top:6px; right:6px; font-size:10px; }
     .pcr-card-body { padding:7px; }
@@ -20,6 +19,7 @@
     .pcr-actions { display:flex; flex-wrap:wrap; gap:5px; padding:7px; border-top:1px solid #f1f5f9; }
     .pcr-drag-handle { cursor:grab; touch-action:none; }
     @media (max-width: 480px) {
+      .pcr-grid { grid-template-columns:repeat(auto-fill, minmax(135px, 1fr)); }
       .pcr-toolbar, .pcr-upload-form { align-items:stretch; }
       .pcr-upload-form input[type=file] { width:100%; }
     }
@@ -36,12 +36,9 @@
     <button class="btn btn-sm btn-outline-secondary" type="button" data-pcr-save>Save Sort Order</button>
   </div>
 
-  <div id="pcr-photo-grid"
-       class="pcr-grid tms-masonry-grid"
-       data-masonry-grid
-       data-reorder-url="{% url 'leases:pcr_photo_reorder' lease.id %}">
+  <div id="pcr-photo-grid" class="pcr-grid" data-reorder-url="{% url 'leases:pcr_photo_reorder' lease.id %}">
     {% for p in photos|default:pcr.photos.all %}
-      <div class="pcr-card" data-masonry-item draggable="true" data-photo-id="{{ p.id }}">
+      <div class="pcr-card" draggable="true" data-photo-id="{{ p.id }}">
         <div class="pcr-img-wrap">
           {% if p.display_image_url %}
             <img src="{{ p.display_image_url }}" class="pcr-img" alt="PCR photo" loading="lazy">
@@ -70,12 +67,11 @@
         </div>
       </div>
     {% empty %}
-      <div class="text-muted" data-masonry-item>No photos yet.</div>
+      <div class="text-muted">No photos yet.</div>
     {% endfor %}
   </div>
 </div>
 
-<script src="{% static 'js/tms-masonry-grid.js' %}"></script>
 <script>
 (function() {
   const root = document.currentScript.closest('.pcr-panel') || document.querySelector('.pcr-panel');
@@ -98,8 +94,6 @@
         script.text = oldScript.text;
         oldScript.parentNode.replaceChild(script, oldScript);
       });
-    } else {
-      window.location.reload();
     }
   }
 

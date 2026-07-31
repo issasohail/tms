@@ -3,10 +3,6 @@
 
 {% block title %}{{ media_page_title|default:owner_label }}{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/tms-masonry-grid.css' %}">
-{% endblock %}
-
 {% block content %}
 <style>
   .photo-dropzone {
@@ -114,20 +110,16 @@
     </div>
 </div>
 
-<div class="tms-masonry-grid"
-     id="media-grid"
-     data-masonry-grid
-     data-sort-url="{{ sort_url }}"
-     style="--tms-masonry-min:240px;--tms-masonry-gap:12px;">
+<div class="row g-3" id="media-grid" data-sort-url="{{ sort_url }}">
     {% for media in media_files %}
-    <div class="media-item" data-masonry-item data-media-id="{{ media.pk }}">
-        <div class="card media-card" draggable="true">
+    <div class="col-md-4 col-lg-3 media-item" data-media-id="{{ media.pk }}">
+        <div class="card h-100 media-card" draggable="true">
             {% if media.file_type == "image" %}
                 <a href="{{ media.display_url }}" target="_blank" rel="noopener">
-                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="card-img-top tms-masonry-image" alt="{{ media.description|default:media.display_filename }}">
+                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="card-img-top" alt="{{ media.description|default:media.display_filename }}" style="height:180px; object-fit:cover;">
                 </a>
             {% elif media.file_type == "video" %}
-                <video class="card-img-top tms-masonry-image" controls>
+                <video class="card-img-top" controls style="height:180px; object-fit:cover;">
                     <source src="{% url 'properties:media_public_file' public_token media.pk %}">
                 </video>
             {% else %}
@@ -175,14 +167,13 @@
         </div>
     </div>
     {% empty %}
-    <div data-masonry-item>
+    <div class="col-12">
         <div class="alert alert-light border mb-0">No photos uploaded yet.</div>
     </div>
     {% endfor %}
 </div>
 <div class="small text-muted mt-2 sort-status" id="media-sort-status"></div>
 
-<script src="{% static 'js/tms-masonry-grid.js' %}"></script>
 <script src="{% static 'js/tms-video-frame-picker.js' %}"></script>
 <script>
 (() => {

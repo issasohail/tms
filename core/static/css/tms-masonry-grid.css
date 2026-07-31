@@ -1,0 +1,33 @@
+.tms-masonry-grid {
+  --tms-masonry-gap: 12px;
+  --tms-masonry-min: 220px;
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--tms-masonry-min)), 1fr)
+  );
+  gap: var(--tms-masonry-gap);
+  align-items: start;
+}
+
+.tms-masonry-grid.tms-masonry-ready {
+  --tms-masonry-row: 8px;
+  grid-auto-rows: var(--tms-masonry-row);
+}
+
+.tms-masonry-grid > [data-masonry-item] {
+  min-width: 0;
+}
+
+.tms-masonry-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+@media (max-width: 480px) {
+  .tms-masonry-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -217,11 +217,7 @@ urlpatterns = [
         name='password_reset_complete'
     ),
 
-    # Always show the marketing website at the site root. The authenticated
-    # application remains under /tms/ below.
-    path('', include('marketing.urls')),
-
-    # Root compatibility URLs (existing)
+    # Root URLs (existing)
     *root_app_patterns,
 
     path(

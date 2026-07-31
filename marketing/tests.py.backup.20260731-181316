@@ -10,7 +10,7 @@ MARKETING_URLCONF = "tms.marketing_urls"
 PUBLIC_HOST = "kirayas.com"
 
 
-class MarketingRouteTests(TestCase):
+class MarketingRouteTests(SimpleTestCase):
     def setUp(self):
         self.client = Client(HTTP_HOST=PUBLIC_HOST)
 
@@ -41,10 +41,7 @@ class MarketingRouteTests(TestCase):
         body = unescape(response.content.decode())
         self.assertContains(response, "/static/marketing/css/site.css")
         self.assertContains(response, "/static/marketing/js/site.js")
-        self.assertIn(
-            "https://kirayas.com/tms/accounts/login/?next=/tms/",
-            body,
-        )
+        self.assertIn("https://kirayas.com/tms/accounts/login/", body)
         self.assertIn("https://kirayas.com/tms/accounts/signup/", body)
         self.assertNotIn('href="features.html"', body)
         self.assertNotIn("assets/site.", body)
@@ -53,15 +50,6 @@ class MarketingRouteTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "marketing/index.html")
-
-    def test_lan_host_root_renders_marketing_home_with_local_login_url(self):
-        response = Client(HTTP_HOST="192.168.100.28:8001").get("/")
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "marketing/index.html")
-        self.assertContains(
-            response,
-            "http://192.168.100.28:8001/tms/accounts/login/?next=/tms/",
-        )
 
     def test_public_pages_do_not_expose_authenticated_records(self):
         response = self.client.get(self.marketing_url("marketing_home"))

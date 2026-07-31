@@ -30,25 +30,17 @@ def _tms_url(route_name):
     return f"{settings.TMS_PUBLIC_BASE_URL.rstrip('/')}{path}"
 
 
-def _login_url(request):
-    login_path = f"{settings.LOGIN_URL}?next=/tms/"
-    host = request.get_host().split(":", 1)[0].lower()
-    if host == settings.MARKETING_PUBLIC_HOST:
-        return f"{settings.MARKETING_PUBLIC_BASE_URL}{login_path}"
-    return request.build_absolute_uri(login_path)
-
-
-def _base_context(request):
+def _base_context():
     return {
         "features": FEATURES,
         "pricing_plans": PRICING_PLANS,
-        "login_url": _login_url(request),
+        "login_url": _tms_url("accounts:login"),
         "register_url": _tms_url("accounts:signup"),
     }
 
 
 def page(request, page_name):
-    context = _base_context(request)
+    context = _base_context()
     context["page_name"] = page_name
     return render(request, PAGE_TEMPLATES[page_name], context)
 
@@ -96,7 +88,7 @@ def contact(request):
         request.POST if request.method == "POST" else None,
         initial=initial,
     )
-    context = _base_context(request)
+    context = _base_context()
     context["page_name"] = "marketing_contact"
     context["form"] = form
 

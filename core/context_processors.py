@@ -6,6 +6,11 @@ from .models import GlobalSettings
 
 
 def global_settings(request):
+    # Public marketing templates have their own explicit context and must not
+    # query or expose organization-level TMS settings.
+    if getattr(request, "urlconf", None) == "tms.marketing_urls":
+        return {}
+
     settings_obj = cache.get("core.global_settings")
 
     if settings_obj is None:

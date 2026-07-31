@@ -1,0 +1,13 @@
+{% extends "marketing/base_marketing.html" %}
+{% load static %}
+{% block title %}Privacy Policy | Kirayas{% endblock %}
+{% block meta_description %}How Kirayas handles website inquiries and protects rental-management information.{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="container"><span class="eyebrow">Legal</span><h1>Privacy policy</h1><p>Our approach to information shared with Kirayas.</p></div></section>
+<section class="section"><div class="container prose">
+  <h2>Website inquiries</h2><p>The contact form validates the information you provide and prepares a WhatsApp message. Kirayas does not save that inquiry in the TMS database through this website form.</p>
+  <h2>Application data</h2><p>Access to tenant, landlord, lease, payment, document, and staff information requires authentication and appropriate permissions in the TMS application.</p>
+  <h2>Security and retention</h2><p>Operational data is subject to access controls and the retention practices configured by the organization using Kirayas. Do not submit sensitive tenant records through the public inquiry form.</p>
+  <p>For a privacy question, <a class="learn" href="{% url 'marketing_contact' %}">contact Kirayas</a>.</p>
+</div></section>
+{% endblock %}

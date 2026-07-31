@@ -1,0 +1,13 @@
+{% extends "marketing/base_marketing.html" %}
+{% load static %}
+{% block title %}Terms of Service | Kirayas{% endblock %}
+{% block meta_description %}General website and service terms for Kirayas rental-management software.{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="container"><span class="eyebrow">Legal</span><h1>Terms of service</h1><p>General terms for the Kirayas website and service.</p></div></section>
+<section class="section"><div class="container prose">
+  <h2>Website information</h2><p>Product descriptions and prices on this website may be updated. A confirmed service agreement governs an active subscription.</p>
+  <h2>Authorized use</h2><p>Customers are responsible for lawful data entry, user access, and account credentials. Users must not attempt unauthorized access or misuse public endpoints.</p>
+  <h2>Availability</h2><p>Kirayas may improve features and maintenance processes while working to preserve customer data and service continuity.</p>
+  <p>For plan or contract questions, <a class="learn" href="{% url 'marketing_contact' %}">contact Kirayas</a>.</p>
+</div></section>
+{% endblock %}

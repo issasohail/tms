@@ -1,0 +1,31 @@
+from urllib.parse import urlsplit
+
+from django.conf import settings
+from django.http import HttpResponsePermanentRedirect
+
+
+class MarketingHostMiddleware:
+    """Select the public-only URLconf for Kirayas without changing request paths."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        host = request.get_host().split(":", 1)[0].lower()
+        public_host = getattr(settings, "MARKETING_PUBLIC_HOST", "kirayas.com")
+
+        if host == f"www.{public_host}":
+            canonical = urlsplit(
+                getattr(
+                    settings,
+                    "MARKETING_PUBLIC_BASE_URL",
+                    f"https://{public_host}",
+                )
+            )
+            location = f"{canonical.scheme}://{canonical.netloc}{request.get_full_path()}"
+            return HttpResponsePermanentRedirect(location)
+
+        if host == public_host:
+            request.urlconf = "tms.marketing_urls"
+
+        return self.get_response(request)

@@ -52,6 +52,8 @@ ALLOWED_HOSTS = [
     "119.156.230.185",
     "desktop-004",
     "tms.sonazconsultancy.online",
+    "kirayas.com",
+    "www.kirayas.com",
 ]
 
 
@@ -60,10 +62,12 @@ CSRF_TRUSTED_ORIGINS = [
     "http://192.168.100.39",
     "http://192.168.100.28",
     "https://tms.sonazconsultancy.online",
+    "https://kirayas.com",
 ]
 
 
 INSTALLED_APPS = [
+    "marketing.apps.MarketingConfig",
     "dashboard",
     "accounts.apps.AccountsConfig",
     "properties.apps.PropertiesConfig",
@@ -265,6 +269,7 @@ if ENABLE_LOCAL_DEBUG_TOOLBAR:
 MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "marketing.middleware.MarketingHostMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -500,6 +505,17 @@ REST_FRAMEWORK = {
 LOGIN_URL = "/tms/accounts/login/"
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "login"
+
+# Public Kirayas website. The contact destination may be set independently;
+# when empty, the existing GlobalSettings.whatsapp_number is used.
+MARKETING_PUBLIC_HOST = os.getenv("MARKETING_PUBLIC_HOST", "kirayas.com").strip().lower()
+MARKETING_PUBLIC_BASE_URL = os.getenv(
+    "MARKETING_PUBLIC_BASE_URL", "https://kirayas.com"
+).rstrip("/")
+TMS_PUBLIC_BASE_URL = os.getenv(
+    "TMS_PUBLIC_BASE_URL", "https://tms.sonazconsultancy.online"
+).rstrip("/")
+MARKETING_WHATSAPP_NUMBER = os.getenv("MARKETING_WHATSAPP_NUMBER", "").strip()
 
 # Settings embeds several same-site management pages in inline panels.
 # Keep clickjacking protection for other sites while allowing our own pages.

@@ -1,0 +1,10 @@
+{% extends "marketing/base_marketing.html" %}
+{% load static %}
+{% block title %}Features | Kirayas{% endblock %}
+{% block meta_description %}Explore Kirayas features for agreements, WhatsApp AI, utilities, tenants, leases, payments, documents, maintenance, reports, and access control.{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="container"><span class="eyebrow">Kirayas capabilities</span><h1>All features</h1><p>Connected tools for landlords, rental businesses, and property-management teams.</p></div></section>
+<section class="section"><div class="container detail-grid">{% for anchor, name, description in features %}
+  <article class="detail-card" id="{{ anchor }}"><div class="feature-icon">{{ forloop.counter|stringformat:"02d" }}</div><h2>{{ name }}</h2><p>{{ description }}</p><a class="btn btn-secondary" href="{% url 'marketing_contact' %}?plan=not-sure">Ask about this feature</a></article>
+{% endfor %}</div></section>
+{% endblock %}

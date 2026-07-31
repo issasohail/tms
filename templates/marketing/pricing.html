@@ -1,0 +1,11 @@
+{% extends "marketing/base_marketing.html" %}
+{% load static %}
+{% block title %}Pricing | Kirayas{% endblock %}
+{% block meta_description %}Review Kirayas unit-based monthly pricing for rental portfolios of every size.{% endblock %}
+{% block content %}
+<section class="page-hero"><div class="container"><span class="eyebrow">Unit-based subscriptions</span><h1>Simple portfolio pricing</h1><p>Choose a tier based on the number of rental units you manage.</p></div></section>
+<section class="section"><div class="container">
+  <div class="pricing-grid">{% for plan in pricing_plans|slice:":3" %}<article class="price-card{% if plan.featured %} featured{% endif %}">{% if plan.featured %}<span class="popular">Most popular</span>{% endif %}<h2>{{ plan.name }}</h2><div class="units">{{ plan.units }}</div><div class="price"><b>{{ plan.price }}</b> / month</div><div class="price-note">{{ plan.summary }}</div><ul class="price-features">{% for feature in plan.features %}<li><span class="check">✓</span> {{ feature }}</li>{% endfor %}</ul><a class="btn {% if plan.featured %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'marketing_contact' %}?plan={{ plan.slug }}">Choose {{ plan.name }}</a></article>{% endfor %}</div>
+  <div class="compact-grid">{% for plan in pricing_plans|slice:"3:" %}<div class="compact"><div><strong>{{ plan.units }}</strong><br><span>{{ plan.summary }}</span></div><b>{% if plan.price %}{{ plan.price }}/month{% else %}<a href="{% url 'marketing_contact' %}?plan={{ plan.slug }}">Contact us</a>{% endif %}</b></div>{% endfor %}</div>
+</div></section>
+{% endblock %}

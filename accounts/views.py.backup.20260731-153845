@@ -7,7 +7,6 @@ from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db.models import ProtectedError
 from django.http import JsonResponse
@@ -43,12 +42,12 @@ class LogoutView(auth_views.LogoutView):
     def get(self, request, *args, **kwargs):
         auth_logout(request)
         messages.success(request, "You have been logged out.")
-        return redirect(f"{settings.MARKETING_PUBLIC_BASE_URL.rstrip('/')}/")
+        return redirect("login")
 
     def post(self, request, *args, **kwargs):
         auth_logout(request)
         messages.success(request, "You have been logged out.")
-        return redirect(f"{settings.MARKETING_PUBLIC_BASE_URL.rstrip('/')}/")
+        return redirect("login")
 
 
 @require_http_methods(["GET", "POST"])

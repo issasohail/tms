@@ -686,11 +686,7 @@ class WhatsAppAIAssistant:
                 "staff_upload_confirmation_required",
                 {"staff_user": identity.staff_user},
             )
-        if (
-            is_staff_mode
-            and conversation.pending_state == "staff_waiting_upload"
-            and staff_upload_kind
-        ):
+        if is_staff_mode and conversation.pending_state == "staff_waiting_upload":
             purpose_map = {
                 PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO: PendingWhatsAppMedia.PURPOSE_PROPERTY,
                 PendingWhatsAppMedia.TARGET_UNIT_PHOTO: PendingWhatsAppMedia.PURPOSE_UNIT,
@@ -910,12 +906,8 @@ class WhatsAppAIAssistant:
             conversation.selected_mode != WhatsAppConversation.MODE_STAFF
         ):
             return False
-        if (
-            conversation.pending_state == "staff_waiting_upload"
-            and conversation.context.get("staff_upload_kind")
-        ):
-            return False
         if conversation.pending_state in {
+            "staff_waiting_upload",
             "staff_upload_target_confirmation",
             "police_verification_upload",
         }:
@@ -1947,9 +1939,8 @@ class WhatsAppAIAssistant:
         if lowered in {"6", "reports"}:
             return self._staff_reports_summary(message_log, staff_user)
         if lowered in {"7", "upload", "upload documents", "documents"}:
-            self._clear_staff_upload_state(conversation)
             conversation.pending_state = "staff_waiting_upload"
-            conversation.save(update_fields=["pending_state", "context", "updated_at"])
+            conversation.save(update_fields=["pending_state", "updated_at"])
             log_staff_action(staff_user, message_log.phone_number, "upload_documents_prompt", "pending")
             return "Please send the image or document you want to upload. I will ask what it is for after receiving it."
         if lowered in {"8", "search"}:

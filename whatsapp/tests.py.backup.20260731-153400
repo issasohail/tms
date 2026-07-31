@@ -1348,7 +1348,6 @@ class WhatsAppControlledAssistantTests(TestCase):
             staff_user=self.staff1,
             selected_mode=WhatsAppConversation.MODE_STAFF,
             mode_expires_at=timezone.now() + timedelta(hours=1),
-            pending_state="staff_waiting_upload",
         )
         writer = PdfWriter()
         writer.add_blank_page(width=612, height=792)
@@ -1435,55 +1434,6 @@ class WhatsAppControlledAssistantTests(TestCase):
             self.assertEqual(len(unlocked_reader.pages), 1)
         finally:
             staged.file.close()
-
-    def test_upload_documents_starts_fresh_and_clears_previous_batch_target(self):
-        conversation = WhatsAppConversation.objects.create(
-            phone_number=self.staff1.whatsapp_number,
-            staff_user=self.staff1,
-            selected_mode=WhatsAppConversation.MODE_STAFF,
-            mode_expires_at=timezone.now() + timedelta(hours=1),
-            context={
-                "staff_upload_kind": PendingWhatsAppMedia.TARGET_LEASE_DOCUMENT,
-                "staff_upload_batch_key": str(uuid.uuid4()),
-                "staff_upload_property_id": self.property.pk,
-                "staff_upload_unit_id": self.unit.pk,
-                "staff_upload_lease_id": self.lease.pk,
-                "staff_upload_target_label": "Old upload target",
-            },
-        )
-        message = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
-            phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.upload-documents.fresh",
-            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={"type": "text", "text": {"body": "7"}},
-        )
-        assistant = WhatsAppAIAssistant(service=MagicMock())
-
-        response = assistant._handle_staff_message(
-            message,
-            conversation,
-            "7",
-            "text",
-            resolve_sender(
-                self.staff1.whatsapp_number,
-                conversation=conversation,
-            ),
-        )
-
-        conversation.refresh_from_db()
-        self.assertIn("send the image or document", response)
-        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
-        for key in (
-            "staff_upload_kind",
-            "staff_upload_batch_key",
-            "staff_upload_property_id",
-            "staff_upload_unit_id",
-            "staff_upload_lease_id",
-            "staff_upload_target_label",
-        ):
-            self.assertNotIn(key, conversation.context)
 
     def test_estamp_property_and_unit_matching_are_scoped_and_label_aware(self):
         other_property = Property.objects.create(

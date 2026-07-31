@@ -1,8 +1,7 @@
 from html import unescape
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from django.contrib.auth import SESSION_KEY, get_user_model
-from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.test import Client, SimpleTestCase, override_settings
 from django.urls import resolve, reverse
 
 
@@ -46,11 +45,6 @@ class MarketingRouteTests(SimpleTestCase):
         self.assertNotIn('href="features.html"', body)
         self.assertNotIn("assets/site.", body)
 
-    def test_public_host_root_renders_marketing_home(self):
-        response = self.client.get("/")
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "marketing/index.html")
-
     def test_public_pages_do_not_expose_authenticated_records(self):
         response = self.client.get(self.marketing_url("marketing_home"))
         body = response.content.decode().lower()
@@ -80,37 +74,6 @@ class MarketingRouteTests(SimpleTestCase):
             response["Location"],
             "https://kirayas.com/pricing/?source=website",
         )
-
-
-@override_settings(MARKETING_PUBLIC_BASE_URL="https://kirayas.com")
-class LogoutRedirectTests(TestCase):
-    def setUp(self):
-        self.client = Client(HTTP_HOST=PUBLIC_HOST)
-        self.user = get_user_model().objects.create_user(
-            username="logout-user",
-            email="logout@example.com",
-            password="test-password",
-        )
-
-    def assert_logout_clears_session_and_redirects_home(self, method):
-        self.client.force_login(self.user)
-        session = self.client.session
-        session["logout-test-marker"] = "present"
-        session.save()
-        self.assertIn(SESSION_KEY, self.client.session)
-
-        response = getattr(self.client, method)("/tms/accounts/logout/")
-
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "https://kirayas.com/")
-        self.assertNotIn(SESSION_KEY, self.client.session)
-        self.assertNotIn("logout-test-marker", self.client.session)
-
-    def test_get_logout_clears_session_and_redirects_to_marketing_home(self):
-        self.assert_logout_clears_session_and_redirects_home("get")
-
-    def test_post_logout_clears_session_and_redirects_to_marketing_home(self):
-        self.assert_logout_clears_session_and_redirects_home("post")
 
 
 class MarketingContactTests(SimpleTestCase):

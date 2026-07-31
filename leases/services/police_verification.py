@@ -53,7 +53,7 @@ def create_police_verification_link(request, lease, created_by=None, phone_numbe
     path = reverse("leases:public_police_verification", args=[link.token])
     if request is not None:
         return link, request.build_absolute_uri(path)
-    base_url = (getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online").rstrip("/")
+    base_url = (getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com").rstrip("/")
     return link, f"{base_url}{path}"
 
 

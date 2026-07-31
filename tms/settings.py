@@ -51,7 +51,6 @@ ALLOWED_HOSTS = [
     "192.168.100.28",
     "119.156.230.185",
     "desktop-004",
-    "tms.sonazconsultancy.online",
     "kirayas.com",
     "www.kirayas.com",
 ]
@@ -61,7 +60,6 @@ CSRF_TRUSTED_ORIGINS = [
     "http://119.156.230.185",
     "http://192.168.100.39",
     "http://192.168.100.28",
-    "https://tms.sonazconsultancy.online",
     "https://kirayas.com",
 ]
 
@@ -218,7 +216,7 @@ WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in
     "on",
 }
 WHATSAPP_PUBLIC_BASE_URL = os.getenv(
-    "WHATSAPP_PUBLIC_BASE_URL", "https://tms.sonazconsultancy.online"
+    "WHATSAPP_PUBLIC_BASE_URL", "https://kirayas.com"
 )
 WHATSAPP_MODE_SESSION_MINUTES = int(os.getenv("WHATSAPP_MODE_SESSION_MINUTES", "60"))
 WHATSAPP_ROLE_GROUP_NAMES = [
@@ -513,7 +511,7 @@ MARKETING_PUBLIC_BASE_URL = os.getenv(
     "MARKETING_PUBLIC_BASE_URL", "https://kirayas.com"
 ).rstrip("/")
 TMS_PUBLIC_BASE_URL = os.getenv(
-    "TMS_PUBLIC_BASE_URL", "https://tms.sonazconsultancy.online"
+    "TMS_PUBLIC_BASE_URL", "https://kirayas.com"
 ).rstrip("/")
 MARKETING_WHATSAPP_NUMBER = os.getenv("MARKETING_WHATSAPP_NUMBER", "").strip()
 

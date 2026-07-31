@@ -25,7 +25,10 @@ class MarketingHostMiddleware:
             location = f"{canonical.scheme}://{canonical.netloc}{request.get_full_path()}"
             return HttpResponsePermanentRedirect(location)
 
-        if host == public_host:
+        # Keep the authenticated application on the same canonical domain at
+        # /tms/, while all other paths use the public marketing URLconf.
+        is_tms_path = request.path_info == "/tms" or request.path_info.startswith("/tms/")
+        if host == public_host and not is_tms_path:
             request.urlconf = "tms.marketing_urls"
 
         return self.get_response(request)

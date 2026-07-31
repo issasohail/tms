@@ -40,8 +40,8 @@ class MarketingRouteTests(SimpleTestCase):
         body = unescape(response.content.decode())
         self.assertContains(response, "/static/marketing/css/site.css")
         self.assertContains(response, "/static/marketing/js/site.js")
-        self.assertIn("https://tms.sonazconsultancy.online/tms/accounts/login/", body)
-        self.assertIn("https://tms.sonazconsultancy.online/tms/accounts/signup/", body)
+        self.assertIn("https://kirayas.com/tms/accounts/login/", body)
+        self.assertIn("https://kirayas.com/tms/accounts/signup/", body)
         self.assertNotIn('href="features.html"', body)
         self.assertNotIn("assets/site.", body)
 
@@ -56,6 +56,14 @@ class MarketingRouteTests(SimpleTestCase):
         self.assertEqual(resolve("/login/").url_name, "login")
         self.assertEqual(resolve("/tms/accounts/signup/").url_name, "signup")
         self.assertEqual(self.client.get("/login/").status_code, 404)
+
+    def test_tms_path_uses_application_routes_on_public_host(self):
+        response = self.client.get("/tms/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            "/tms/accounts/login/?next=/tms/",
+        )
 
     def test_www_redirect_is_permanent_and_preserves_path_and_query(self):
         response = Client(HTTP_HOST="www.kirayas.com").get(

@@ -2020,7 +2020,7 @@ class WhatsAppAIAssistant:
 
     def _create_registration_link_for_staff(self, message_log, conversation, staff_user):
         path = reverse("tenants:tenant_public_registration_new")
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         link = f"{base_url.rstrip('/')}{path}"
         conversation.pending_state = ""
         conversation.save(update_fields=["pending_state", "updated_at"])
@@ -2777,7 +2777,7 @@ class WhatsAppAIAssistant:
 
         base_url = (
             getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "")
-            or "https://tms.sonazconsultancy.online"
+            or "https://kirayas.com"
         )
         token = make_unit_photo_upload_token(lease)
         path = reverse("properties:public_unit_photo_upload", args=[token])
@@ -3405,7 +3405,7 @@ class WhatsAppAIAssistant:
             return f"Lease Balance\n\n{ctx.property.property_name} / {ctx.unit.unit_number}\nTenant: {ctx.tenant.get_full_name()}\nOutstanding: Rs. {ctx.balance}"
         if action == "lease_ledger":
             log_staff_action(staff_user, message_log.phone_number, "lease_ledger_viewed", "allowed", lease=lease, property=ctx.property, tenant=ctx.tenant)
-            base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+            base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
             link = create_public_ledger_link(lease, phone_number=message_log.phone_number, staff_user=staff_user)
             ledger_link = public_ledger_url(base_url, link)
             lines = [
@@ -3449,7 +3449,7 @@ class WhatsAppAIAssistant:
             log_staff_action(staff_user, message_log.phone_number, "invoice_link_blocked", "blocked", lease=lease, property=lease.unit.property, tenant=lease.tenant)
             return "You do not have WhatsApp access to that invoice's property."
         token = make_public_invoice_token(invoice.pk)
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
         log_staff_action(staff_user, message_log.phone_number, "invoice_link_created", "allowed", lease=lease, property=lease.unit.property, tenant=lease.tenant, invoice_id=invoice.pk)
         return (
@@ -3740,7 +3740,7 @@ class WhatsAppAIAssistant:
         )
 
     def _create_lease_creation_link(self, message_log, staff_user, tenant, property_obj, unit):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=WhatsAppExternalLinkToken.LINK_LEASE_CREATION,
             phone_number=message_log.phone_number,
@@ -3819,7 +3819,7 @@ class WhatsAppAIAssistant:
 
     def _create_staff_agreement_link_for_lease(self, message_log, staff_user, lease, link_type):
         property_obj = lease.unit.property
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=link_type,
             phone_number=message_log.phone_number,
@@ -4650,7 +4650,7 @@ class WhatsAppAIAssistant:
         if not invoices:
             return "No outstanding invoices are recorded for your active lease."
         lines = ["Outstanding invoices:"]
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         for invoice in invoices:
             amount = invoice.amount or Decimal("0.00")
             token = make_public_invoice_token(invoice.pk)
@@ -4669,7 +4669,7 @@ class WhatsAppAIAssistant:
         )
         if not invoice:
             return "No invoice is recorded for your active lease yet."
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = make_public_invoice_token(invoice.pk)
         link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
         return (
@@ -4702,13 +4702,13 @@ class WhatsAppAIAssistant:
         )
 
     def _ledger_link_reply(self, lease):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         link = create_public_ledger_link(lease)
         ledger_link = public_ledger_url(base_url, link)
         return f"Full ledger:\n{ledger_link}"
 
     def _family_public_link_reply_url(self, lease, phone_number=""):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         link = WhatsAppExternalLinkToken.objects.create(
             link_type=WhatsAppExternalLinkToken.LINK_LEASE_FAMILY_ADD,
             phone_number=phone_number or "",
@@ -4763,7 +4763,7 @@ class WhatsAppAIAssistant:
             document=None,
             expires_at=timezone.now() + timedelta(days=valid_days),
         )
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         share_url = f"{base_url.rstrip('/')}{reverse('leases:public_lease_files_share', args=[link.token])}"
         lines = [
             "Lease documents available:",
@@ -4777,7 +4777,7 @@ class WhatsAppAIAssistant:
         return "\n".join(lines)
 
     def _agreement_link_reply(self, message_log, lease):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW,
             phone_number=message_log.phone_number,
@@ -4863,7 +4863,7 @@ class WhatsAppAIAssistant:
                 "Please contact the office if you need a new inspection."
             )
 
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://tms.sonazconsultancy.online"
+        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         latest = inspections[0]
         lines = [
             "Inspection sheet",

@@ -16,10 +16,10 @@ class ContactForm(forms.Form):
         (plan["slug"], plan["name"]) for plan in PRICING_PLANS
     )
 
-    full_name = forms.CharField(max_length=120)
-    business_name = forms.CharField(max_length=160)
-    phone = forms.CharField(max_length=32)
-    email = forms.EmailField(max_length=254)
-    units = forms.ChoiceField(choices=UNIT_CHOICES)
-    plan = forms.ChoiceField(choices=PLAN_CHOICES)
+    full_name = forms.CharField(max_length=120, required=False)
+    business_name = forms.CharField(max_length=160, required=False)
+    phone = forms.CharField(max_length=32, required=False)
+    email = forms.EmailField(max_length=254, required=False)
+    units = forms.ChoiceField(choices=UNIT_CHOICES, required=False)
+    plan = forms.ChoiceField(choices=PLAN_CHOICES, required=False)
     message = forms.CharField(max_length=2000, widget=forms.Textarea)

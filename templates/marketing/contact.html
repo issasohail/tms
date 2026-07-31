@@ -8,13 +8,13 @@
   <form method="post" action="{% url 'marketing_contact' %}" novalidate>{% csrf_token %}
     {% if form.non_field_errors %}<div class="form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
     <div class="form-grid">
-      <div class="field"><label for="{{ form.full_name.id_for_label }}">Full name</label>{{ form.full_name }}{{ form.full_name.errors }}</div>
-      <div class="field"><label for="{{ form.business_name.id_for_label }}">Business or company name</label>{{ form.business_name }}{{ form.business_name.errors }}</div>
-      <div class="field"><label for="{{ form.phone.id_for_label }}">Phone number</label>{{ form.phone }}{{ form.phone.errors }}</div>
-      <div class="field"><label for="{{ form.email.id_for_label }}">Email address</label>{{ form.email }}{{ form.email.errors }}</div>
-      <div class="field"><label for="{{ form.units.id_for_label }}">Number of rental units</label>{{ form.units }}{{ form.units.errors }}</div>
-      <div class="field"><label for="{{ form.plan.id_for_label }}">Interested plan</label>{{ form.plan }}{{ form.plan.errors }}</div>
-      <div class="field full"><label for="{{ form.message.id_for_label }}">Message</label>{{ form.message }}{{ form.message.errors }}</div>
+      <div class="field"><label for="{{ form.full_name.id_for_label }}">Full name <span class="optional">Optional</span></label>{{ form.full_name }}{{ form.full_name.errors }}</div>
+      <div class="field"><label for="{{ form.business_name.id_for_label }}">Business or company name <span class="optional">Optional</span></label>{{ form.business_name }}{{ form.business_name.errors }}</div>
+      <div class="field"><label for="{{ form.phone.id_for_label }}">Phone number <span class="optional">Optional</span></label>{{ form.phone }}{{ form.phone.errors }}</div>
+      <div class="field"><label for="{{ form.email.id_for_label }}">Email address <span class="optional">Optional</span></label>{{ form.email }}{{ form.email.errors }}</div>
+      <div class="field"><label for="{{ form.units.id_for_label }}">Number of rental units <span class="optional">Optional</span></label>{{ form.units }}{{ form.units.errors }}</div>
+      <div class="field"><label for="{{ form.plan.id_for_label }}">Interested plan <span class="optional">Optional</span></label>{{ form.plan }}{{ form.plan.errors }}</div>
+      <div class="field full"><label for="{{ form.message.id_for_label }}">Message <span class="required-note">Required</span></label>{{ form.message }}{{ form.message.errors }}</div>
       <div class="field full"><button class="btn btn-primary" type="submit">Continue to WhatsApp</button><span class="form-note">You can review the prepared message before sending it in WhatsApp.</span></div>
     </div>
   </form>

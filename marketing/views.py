@@ -44,6 +44,8 @@ def _base_context(request):
         "pricing_plans": PRICING_PLANS,
         "login_url": _login_url(request),
         "register_url": _tms_url("accounts:signup"),
+        "marketing_whatsapp_url": reverse("marketing_whatsapp"),
+        "marketing_whatsapp_is_direct": True,
     }
 
 
@@ -57,33 +59,54 @@ def _destination_number():
     configured = getattr(settings, "MARKETING_WHATSAPP_NUMBER", "").strip()
     if not configured:
         try:
-            from core.models import GlobalSettings
+            from core.views import _whatsapp_api_display_number
 
-            configured = (GlobalSettings.get_solo().whatsapp_number or "").strip()
-        except (DatabaseError, AttributeError):
+            configured = (_whatsapp_api_display_number() or "").strip()
+        except (DatabaseError, AttributeError, ImportError):
             configured = ""
 
     digits = re.sub(r"\D", "", configured)
     return digits if 8 <= len(digits) <= 15 else ""
 
 
+def _floating_whatsapp_url():
+    destination = _destination_number()
+    if not destination:
+        return reverse("marketing_contact"), False
+
+    message = quote(
+        "Hello Kirayas.com,\n\n"
+        "I would like to learn more about your rental management platform.",
+        safe="",
+    )
+    return f"https://wa.me/{destination}?text={message}", True
+
+
 def _whatsapp_message(cleaned_data):
-    plan_label = dict(ContactForm.PLAN_CHOICES)[cleaned_data["plan"]]
+    plan_label = dict(ContactForm.PLAN_CHOICES).get(
+        cleaned_data.get("plan"),
+        "Not specified",
+    )
     return "\n".join(
         (
             "New Kirayas.com Website Inquiry",
             "",
-            f"Name: {cleaned_data['full_name']}",
-            f"Business: {cleaned_data['business_name']}",
-            f"Phone: {cleaned_data['phone']}",
-            f"Email: {cleaned_data['email']}",
-            f"Units Managed: {cleaned_data['units']}",
+            f"Name: {cleaned_data.get('full_name') or 'Not provided'}",
+            f"Business: {cleaned_data.get('business_name') or 'Not provided'}",
+            f"Phone: {cleaned_data.get('phone') or 'Not provided'}",
+            f"Email: {cleaned_data.get('email') or 'Not provided'}",
+            f"Units Managed: {cleaned_data.get('units') or 'Not specified'}",
             f"Interested Plan: {plan_label}",
             "",
             "Message:",
             cleaned_data["message"],
         )
     )
+
+
+def whatsapp(request):
+    whatsapp_url, _is_direct = _floating_whatsapp_url()
+    return HttpResponseRedirect(whatsapp_url)
 
 
 @require_http_methods(["GET", "POST"])

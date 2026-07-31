@@ -49,6 +49,38 @@ class MarketingRouteTests(TestCase):
         self.assertNotIn('href="features.html"', body)
         self.assertNotIn("assets/site.", body)
 
+    def test_all_marketing_pages_include_whatsapp_overlay(self):
+        for name in (
+            "marketing_home",
+            "marketing_features",
+            "marketing_how_it_works",
+            "marketing_pricing",
+            "marketing_faq",
+            "marketing_contact",
+            "marketing_privacy",
+            "marketing_terms",
+            "marketing_security",
+            "marketing_support",
+        ):
+            with self.subTest(name=name):
+                response = self.client.get(self.marketing_url(name))
+                body = unescape(response.content.decode())
+                self.assertIn("marketing-whatsapp", body)
+                self.assertIn('href="/whatsapp/"', body)
+
+    @override_settings(MARKETING_WHATSAPP_NUMBER="+92 (300) 7654321")
+    def test_whatsapp_overlay_route_opens_prefilled_message(self):
+        response = self.client.get(self.marketing_url("marketing_whatsapp"))
+        self.assertEqual(response.status_code, 302)
+        target = urlsplit(response["Location"])
+        self.assertEqual(
+            (target.scheme, target.netloc, target.path),
+            ("https", "wa.me", "/923007654321"),
+        )
+        message = unquote(parse_qs(target.query)["text"][0])
+        self.assertIn("Hello Kirayas.com", message)
+        self.assertIn("rental management platform", message)
+
     def test_public_host_root_renders_marketing_home(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
@@ -143,8 +175,25 @@ class MarketingContactTests(SimpleTestCase):
     def test_missing_required_fields_are_rejected(self):
         response = self.client.post(self.url, {})
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response.context["form"], "full_name", "This field is required.")
         self.assertFormError(response.context["form"], "message", "This field is required.")
+        for field_name in (
+            "full_name",
+            "business_name",
+            "phone",
+            "email",
+            "units",
+            "plan",
+        ):
+            self.assertNotIn(field_name, response.context["form"].errors)
+
+    @override_settings(MARKETING_WHATSAPP_NUMBER="+92 (300) 7654321")
+    def test_message_only_contact_opens_whatsapp(self):
+        response = self.client.post(self.url, {"message": "Please tell me more."})
+        self.assertEqual(response.status_code, 302)
+        message = unquote(parse_qs(urlsplit(response["Location"]).query)["text"][0])
+        self.assertIn("Name: Not provided", message)
+        self.assertIn("Interested Plan: Not specified", message)
+        self.assertIn("Please tell me more.", message)
 
     @override_settings(MARKETING_WHATSAPP_NUMBER="+92 (300) 7654321")
     def test_valid_contact_is_safely_encoded_to_expected_whatsapp_url(self):

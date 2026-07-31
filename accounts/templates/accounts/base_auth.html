@@ -98,16 +98,21 @@
       text-decoration: none;
     }
 
-    .brand-mark {
-      width: 54px;
-      height: 54px;
-      display: grid;
-      place-items: center;
-      border-radius: .85rem;
-      background: linear-gradient(145deg, var(--brand), var(--brand-dark));
-      box-shadow: 0 .65rem 1.5rem rgba(180, 35, 47, .28);
-      font-size: 1.05rem;
-      font-weight: 900;
+    .brand-logo-box {
+      width: 58px;
+      height: 58px;
+      display: block;
+      flex: 0 0 58px;
+      overflow: hidden;
+      border-radius: .75rem;
+      box-shadow: 0 .65rem 1.5rem rgba(180, 35, 47, .3);
+    }
+
+    .brand-logo-box .brand-logo {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
     }
 
     .brand-name {
@@ -116,6 +121,9 @@
       font-weight: 850;
       letter-spacing: -.03em;
     }
+
+    .brand-dot { color: #ff8c95; }
+    .brand-domain { font-weight: 650; }
 
     .brand-slogan {
       display: block;
@@ -282,7 +290,7 @@
       .auth-card { max-width: 520px; grid-template-columns: 1fr; }
       .brand-panel { min-height: auto; padding: 1.15rem 1.4rem; }
       .brand-message, .brand-note { display: none; }
-      .brand-mark { width: 46px; height: 46px; font-size: .9rem; }
+      .brand-logo-box { width: 50px; height: 50px; flex-basis: 50px; }
       .brand-name { font-size: 1.22rem; }
       .auth-content { padding: 1.6rem 1.4rem 1.8rem; }
     }
@@ -298,10 +306,10 @@
     <section class="auth-card">
       <aside class="brand-panel">
         <a class="brand-lockup" href="{% url 'marketing_home' %}" aria-label="Kirayas.com home">
-          <span class="brand-mark" aria-hidden="true">KR</span>
+          <span class="brand-logo-box"><img class="brand-logo" src="{% static 'images/logo.png' %}" alt="Kirayas.com logo"></span>
           <span>
-            <span class="brand-name">Kirayas.com</span>
-            <span class="brand-slogan">Where rental meet ease</span>
+            <span class="brand-name">kirayas<span class="brand-dot">.</span><span class="brand-domain">com</span></span>
+            <span class="brand-slogan">Where rent meets ease</span>
           </span>
         </a>
         <div class="brand-message">

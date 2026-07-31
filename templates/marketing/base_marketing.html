@@ -15,7 +15,7 @@
   <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="site-header">
     <div class="container nav">
-      <a class="brand" href="{% url 'marketing_home' %}" aria-label="Kirayas.com home"><span class="brand-mark" aria-hidden="true">KR</span><span class="brand-copy"><span class="brand-name">Kirayas.com</span><span class="brand-tagline">Where rental meet ease</span></span></a>
+      <a class="brand" href="{% url 'marketing_home' %}" aria-label="Kirayas.com home"><span class="brand-logo-box"><img class="brand-logo" src="{% static 'images/logo.png' %}" alt="Kirayas.com logo"></span><span class="brand-copy"><span class="brand-name">kirayas<span class="brand-dot">.</span><span class="brand-domain">com</span></span><span class="brand-tagline">Where rent meets ease</span></span></a>
       <button class="mobile-menu" type="button" aria-expanded="false" aria-controls="primary-navigation"><span aria-hidden="true">Menu</span></button>
       <nav class="nav-links" id="primary-navigation" aria-label="Primary navigation">
         <a href="{% url 'marketing_features' %}"{% if page_name == 'marketing_features' %} class="active-link" aria-current="page"{% endif %}>Features</a>
@@ -28,12 +28,18 @@
     </div>
   </header>
   <main id="main-content">{% block content %}{% endblock %}</main>
+  <a class="marketing-whatsapp" href="{{ marketing_whatsapp_url }}"{% if marketing_whatsapp_is_direct %} target="_blank" rel="noopener noreferrer"{% endif %} aria-label="Chat with Kirayas.com on WhatsApp">
+    <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M16.04 3C9.42 3 4.05 8.3 4.05 14.84c0 2.3.67 4.54 1.94 6.46L4 28.5l7.43-1.94a12.1 12.1 0 0 0 4.6.9h.01c6.62 0 12-5.3 12-11.84C28.04 9.08 22.66 3 16.04 3Zm0 22.46h-.01a10.1 10.1 0 0 1-5.14-1.39l-.37-.22-4.41 1.15 1.18-4.24-.24-.38a9.78 9.78 0 0 1-1.52-5.24C5.53 9.7 10.24 5 16.05 5c5.8 0 10.52 4.7 10.52 10.48 0 5.78-4.72 9.98-10.53 9.98Zm5.77-7.46c-.32-.16-1.87-.91-2.16-1.02-.29-.1-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.19.21-.37.24-.69.08-.32-.16-1.34-.49-2.55-1.56a9.6 9.6 0 0 1-1.76-2.16c-.18-.31-.02-.48.14-.63.14-.14.32-.37.47-.55.16-.18.21-.31.32-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.7-.97-2.33-.26-.61-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.04 1.29 3.25c.16.21 2.22 3.36 5.38 4.71.75.32 1.34.52 1.8.66.76.24 1.44.2 1.99.12.61-.09 1.87-.76 2.14-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.61-.37Z"/>
+    </svg>
+    <span>Chat on WhatsApp</span>
+  </a>
   <footer><div class="container"><div class="footer-grid">
-    <div class="footer-brand"><a class="brand" href="{% url 'marketing_home' %}"><span class="brand-mark" aria-hidden="true">KR</span><span class="brand-copy"><span class="brand-name">Kirayas.com</span><span class="brand-tagline">Where rental meet ease</span></span></a><p>Kirayas.com connects property, tenant, lease, billing, document, maintenance, communication, and reporting workflows.</p></div>
+    <div class="footer-brand"><a class="brand" href="{% url 'marketing_home' %}"><span class="brand-logo-box"><img class="brand-logo" src="{% static 'images/logo.png' %}" alt="Kirayas.com logo"></span><span class="brand-copy"><span class="brand-name">kirayas<span class="brand-dot">.</span><span class="brand-domain">com</span></span><span class="brand-tagline">Where rent meets ease</span></span></a><p>Kirayas.com connects property, tenant, lease, billing, document, maintenance, communication, and reporting workflows.</p></div>
     <div class="footer-col"><h2>Product</h2><a href="{% url 'marketing_features' %}">Features</a><a href="{% url 'marketing_pricing' %}">Pricing</a><a href="{{ login_url }}">Login</a><a href="{{ register_url }}">Register</a></div>
     <div class="footer-col"><h2>Resources</h2><a href="{% url 'marketing_how_it_works' %}">How it works</a><a href="{% url 'marketing_faq' %}">FAQ</a><a href="{% url 'marketing_contact' %}">Contact</a><a href="{% url 'marketing_support' %}">Support</a></div>
     <div class="footer-col"><h2>Legal</h2><a href="{% url 'marketing_privacy' %}">Privacy Policy</a><a href="{% url 'marketing_terms' %}">Terms of Service</a><a href="{% url 'marketing_security' %}">Security</a></div>
-  </div><div class="footer-bottom"><span>© <span data-year></span> Kirayas.com. All rights reserved.</span><span>Where rental meet ease</span></div></div></footer>
+  </div><div class="footer-bottom"><span>© <span data-year></span> Kirayas.com. All rights reserved.</span><span>Where rent meets ease</span></div></div></footer>
   <script src="{% static 'marketing/js/site.js' %}"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@ urlpatterns = [
     path("pricing/", views.page, {"page_name": "marketing_pricing"}, name="marketing_pricing"),
     path("faq/", views.page, {"page_name": "marketing_faq"}, name="marketing_faq"),
     path("contact/", views.contact, name="marketing_contact"),
+    path("whatsapp/", views.whatsapp, name="marketing_whatsapp"),
     path("privacy/", views.page, {"page_name": "marketing_privacy"}, name="marketing_privacy"),
     path("terms/", views.page, {"page_name": "marketing_terms"}, name="marketing_terms"),
     path("security/", views.page, {"page_name": "marketing_security"}, name="marketing_security"),

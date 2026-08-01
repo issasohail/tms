@@ -570,12 +570,22 @@ def build_end_lease_preview(
     lease_credit = money(max(-balance_after_security, ZERO))
     refund_due = money(security_refund + lease_credit)
     billing_month_start = end_date.replace(day=1)
+    prior_invoices = Invoice.objects.filter(
+        lease=lease,
+        issue_date__lt=billing_month_start,
+    ).exclude(status="cancelled")
+    prior_invoiced = prior_invoices.aggregate(total=Sum("amount"))["total"] or ZERO
+    lease_paid = ZERO
+    for payment in lease.payments.select_related("detail").all():
+        detail = getattr(payment, "detail", None)
+        lease_paid += detail.lease_amount if detail else payment.amount
+    prior_balance = money(prior_invoiced - lease_paid)
     outstanding_prior_invoices = list(
-        Invoice.objects.filter(lease=lease, issue_date__lt=billing_month_start)
+        prior_invoices
         .exclude(status__in=["paid", "cancelled"])
         .exclude(description__startswith="Move-out settlement charges - lease ended")
         .order_by("issue_date", "id")
-    )
+    ) if prior_balance > ZERO else []
     review_invoices = list(future_invoices) + outstanding_prior_invoices
     if occupied_days < days_in_month and all(
         row.pk != final_period_invoice.pk for row in review_invoices

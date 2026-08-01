@@ -524,6 +524,165 @@ class EndLeaseRefundAndReviewTests(TestCase):
         )
         self.assertEqual(listed_total, result["gross_balance"])
 
+    def test_stale_draft_and_overdue_invoices_covered_by_lease_payments_are_not_reviewed(self):
+        lease = self.make_lease()
+        prior_date = self.month_first - timedelta(days=2)
+        draft_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=prior_date,
+            due_date=prior_date,
+            amount=Decimal("1250.00"),
+            status="draft",
+            description="Older draft charges",
+        )
+        overdue_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=prior_date + timedelta(days=1),
+            due_date=prior_date + timedelta(days=1),
+            amount=Decimal("1750.00"),
+            status="overdue",
+            description="Older overdue charges",
+        )
+        allocated_payment = Payment.objects.create(
+            lease=lease,
+            payment_date=self.today,
+            amount=Decimal("1500.00"),
+            description="Part lease and part security",
+        )
+        rebuild_payment_detail(
+            payment=allocated_payment,
+            lease_amount=Decimal("1250.00"),
+            security_amount=Decimal("250.00"),
+            reason="Test lease allocation",
+        )
+        Payment.objects.create(
+            lease=lease,
+            payment_date=self.today,
+            amount=Decimal("1750.00"),
+            description="Legacy lease payment without detail",
+        )
+
+        result = build_end_lease_preview(
+            lease,
+            end_date=self.today,
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        self.assertNotIn(draft_invoice, result["review_invoices"])
+        self.assertNotIn(overdue_invoice, result["review_invoices"])
+        self.assertEqual(result["gross_balance"], ZERO)
+        self.assertEqual(result["amount_payable"], ZERO)
+
+    def test_zero_prior_balance_has_no_prior_outstanding_rows_despite_current_charge(self):
+        lease = self.make_lease()
+        prior_date = self.month_first - timedelta(days=1)
+        Invoice.objects.create(
+            lease=lease,
+            issue_date=prior_date,
+            due_date=prior_date,
+            amount=Decimal("1000.00"),
+            status="sent",
+            description="Stale prior charge",
+        )
+        Payment.objects.create(
+            lease=lease,
+            payment_date=self.today,
+            amount=Decimal("1000.00"),
+            description="Prior charges paid",
+        )
+
+        result = build_end_lease_preview(
+            lease,
+            end_date=self.today,
+            other_amount=Decimal("750.00"),
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        prior_review_rows = [
+            invoice
+            for invoice in result["review_invoices"]
+            if invoice.issue_date < result["billing_month_start"]
+        ]
+        self.assertEqual(prior_review_rows, [])
+        self.assertEqual(result["gross_balance"], Decimal("750.00"))
+
+    def test_paid_prior_rows_do_not_change_review_financials_or_confirmation(self):
+        lease = self.make_lease(security_deposit=Decimal("5000.00"))
+        end_date = self.month_first
+        prior_date = self.month_first - timedelta(days=1)
+        prior_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=prior_date,
+            due_date=prior_date,
+            amount=Decimal("3000.00"),
+            status="overdue",
+            description="Stale prior charges",
+        )
+        Payment.objects.create(
+            lease=lease,
+            payment_date=self.today,
+            amount=Decimal("3000.00"),
+            description="Prior charges paid",
+        )
+        future_date = (self.today.replace(day=28) + timedelta(days=4)).replace(day=1)
+        future_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=future_date,
+            due_date=future_date,
+            amount=Decimal("4000.00"),
+            status="sent",
+            description=f"Monthly charges {future_date:%b %Y}",
+        )
+        SecurityDepositTransaction.objects.create(
+            lease=lease,
+            type="PAYMENT",
+            amount=Decimal("5000.00"),
+        )
+
+        preview = build_end_lease_preview(
+            lease,
+            end_date=end_date,
+            other_amount=Decimal("1200.00"),
+            future_invoice_action="cancel",
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        self.assertNotIn(prior_invoice, preview["review_invoices"])
+        self.assertIn(future_invoice, preview["review_invoices"])
+        self.assertIn(preview["final_period_invoice"], preview["review_invoices"])
+        self.assertIn(preview["invoice"], preview["review_invoices"])
+        self.assertEqual(preview["gross_balance"], Decimal("1200.00"))
+        self.assertEqual(preview["security_held"], Decimal("5000.00"))
+        self.assertEqual(preview["security_applied"], Decimal("1200.00"))
+        self.assertEqual(preview["security_refund"], Decimal("3800.00"))
+        self.assertEqual(preview["amount_payable"], ZERO)
+
+        result = end_lease(
+            lease,
+            end_date=end_date,
+            other_amount=Decimal("1200.00"),
+            future_invoice_action="cancel",
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        lease.refresh_from_db()
+        prior_invoice.refresh_from_db()
+        future_invoice.refresh_from_db()
+        result["invoice"].refresh_from_db()
+        self.assertEqual(lease.status, "ended")
+        self.assertEqual(prior_invoice.status, "overdue")
+        self.assertEqual(future_invoice.status, "cancelled")
+        self.assertEqual(result["invoice"].status, "sent")
+        self.assertEqual(result["gross_balance"], Decimal("1200.00"))
+        self.assertEqual(result["security_applied"], Decimal("1200.00"))
+        self.assertEqual(result["security_refund"], Decimal("3800.00"))
+        self.assertEqual(result["amount_payable"], ZERO)
+        self.assertEqual(result["final_balance"], ZERO)
+
 
 class SecurityRefundLinkTests(TestCase):
     def setUp(self):

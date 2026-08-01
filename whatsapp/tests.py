@@ -2564,7 +2564,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("same maintenance request", response)
         self.assertEqual(list(pending.media.values_list("pk", flat=True)), [staged_media.pk])
 
-    def test_maintenance_media_uses_open_request_id_after_state_was_cleared(self):
+    def test_maintenance_media_recovers_from_stale_generic_upload_state(self):
         pending = PendingWhatsAppMaintenance.objects.create(
             conversation=self.conversation,
             original_whatsapp_message=self.message,
@@ -2577,48 +2577,108 @@ class WhatsAppControlledAssistantTests(TestCase):
             urgency="normal",
             description="Pipe leak",
         )
-        self.conversation.pending_state = ""
+        self.conversation.pending_state = "tenant_upload_type"
         self.conversation.context["pending_maintenance_id"] = pending.pk
+        self.conversation.context["pending_media_id"] = 999999
         self.conversation.save(update_fields=["pending_state", "context", "updated_at"])
 
+        media_log = WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=self.phone,
+            wa_message_id="wamid.maintenance.stale-upload-state",
+            message_type="image",
+            status="received",
+            payload={
+                "type": "image",
+                "image": {"filename": "maintenance-photo.jpg"},
+            },
+        )
+        staged_media = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            phone=self.phone,
+            file=ContentFile(b"image", name="maintenance-photo.jpg"),
+            original_filename="maintenance-photo.jpg",
+            media_type="image",
+        )
+        media_log.api_response = {"simulator_pending_media_id": staged_media.pk}
+        media_log.save(update_fields=["api_response"])
+
         assistant = WhatsAppAIAssistant(service=MagicMock())
-        for index, message_type in enumerate(("video", "video", "image", "image"), start=1):
-            media_log = WhatsAppMessageLog.objects.create(
-                direction="inbound",
-                phone_number=self.phone,
-                wa_message_id=f"wamid.maintenance.mixed.{index}",
-                message_type=message_type,
-                status="received",
-                payload={
-                    "type": message_type,
-                    message_type: {"filename": f"attachment-{index}"},
-                },
-            )
-            staged_media = PendingWhatsAppMedia.objects.create(
-                conversation=self.conversation,
-                phone=self.phone,
-                file=ContentFile(b"media", name=f"attachment-{index}"),
-                original_filename=f"attachment-{index}",
-                media_type=message_type,
-            )
-            media_log.api_response = {"simulator_pending_media_id": staged_media.pk}
-            media_log.save(update_fields=["api_response"])
-
-            response, intent, _metadata = assistant._handle_media_message(
-                media_log,
-                self.conversation,
-                "",
-                message_type,
-                resolve_sender(self.phone, conversation=self.conversation),
-            )
-
-            self.assertEqual(intent, "maintenance_media_attached")
-            self.assertIn(f"Photo/file {index}", response)
+        response, intent, _metadata = assistant._handle_media_message(
+            media_log,
+            self.conversation,
+            "",
+            "image",
+            resolve_sender(self.phone, conversation=self.conversation),
+        )
 
         pending.refresh_from_db()
         self.conversation.refresh_from_db()
-        self.assertEqual(pending.media.count(), 4)
+        self.assertEqual(intent, "maintenance_media_attached")
+        self.assertIn("same maintenance request", response)
+        self.assertEqual(
+            list(pending.media.values_list("pk", flat=True)),
+            [staged_media.pk],
+        )
         self.assertEqual(self.conversation.pending_state, "pending_maintenance")
+        self.assertNotIn("pending_media_id", self.conversation.context)
+
+    def test_maintenance_media_rejects_request_from_another_conversation(self):
+        other_conversation = WhatsAppConversation.objects.create(
+            phone_number="+923001110099",
+        )
+        other_pending = PendingWhatsAppMaintenance.objects.create(
+            conversation=other_conversation,
+            phone="+923001110099",
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Plumbing",
+            urgency="normal",
+            description="Another tenant's request",
+        )
+        self.conversation.pending_state = "pending_maintenance"
+        self.conversation.context["pending_maintenance_id"] = other_pending.pk
+        self.conversation.save(update_fields=["pending_state", "context", "updated_at"])
+
+        media_log = WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=self.phone,
+            wa_message_id="wamid.maintenance.cross-conversation",
+            message_type="video",
+            status="received",
+            payload={
+                "type": "video",
+                "video": {"filename": "maintenance-video.mp4"},
+            },
+        )
+        staged_media = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            phone=self.phone,
+            file=ContentFile(b"video", name="maintenance-video.mp4"),
+            original_filename="maintenance-video.mp4",
+            media_type="video",
+        )
+        media_log.api_response = {"simulator_pending_media_id": staged_media.pk}
+        media_log.save(update_fields=["api_response"])
+
+        _response, intent, _metadata = WhatsAppAIAssistant(
+            service=MagicMock()
+        )._handle_media_message(
+            media_log,
+            self.conversation,
+            "",
+            "video",
+            resolve_sender(self.phone, conversation=self.conversation),
+        )
+
+        other_pending.refresh_from_db()
+        self.conversation.refresh_from_db()
+        self.assertEqual(intent, "media_pending")
+        self.assertFalse(other_pending.media.filter(pk=staged_media.pk).exists())
+        self.assertNotIn("pending_maintenance_id", self.conversation.context)
+        self.assertEqual(self.conversation.pending_state, "tenant_upload_type")
 
     def test_done_closes_open_maintenance_batch(self):
         pending = PendingWhatsAppMaintenance.objects.create(

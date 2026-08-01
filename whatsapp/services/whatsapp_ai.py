@@ -847,19 +847,25 @@ class WhatsAppAIAssistant:
             )
         pending_maintenance_id = conversation.context.get("pending_maintenance_id")
         if pending_maintenance_id:
-            pending = PendingWhatsAppMaintenance.objects.filter(
-                pk=pending_maintenance_id,
-                status=PendingWhatsAppMaintenance.STATUS_PENDING,
-            ).first()
+            try:
+                pending = PendingWhatsAppMaintenance.objects.filter(
+                    pk=pending_maintenance_id,
+                    conversation=conversation,
+                    status=PendingWhatsAppMaintenance.STATUS_PENDING,
+                ).first()
+            except (TypeError, ValueError):
+                pending = None
             if pending:
                 # The request id is the durable marker for an open media batch.
                 # A greeting/empty event may clear pending_state, but DONE and
                 # CANCEL explicitly remove this id. Restore the state here so
                 # subsequent album items cannot fall through to receipt OCR or
                 # the generic upload menu.
-                if conversation.pending_state != "pending_maintenance":
-                    conversation.pending_state = "pending_maintenance"
-                    conversation.save(update_fields=["pending_state", "updated_at"])
+                conversation.pending_state = "pending_maintenance"
+                self._clear_context_keys(conversation, "pending_media_id")
+                conversation.save(
+                    update_fields=["pending_state", "context", "updated_at"]
+                )
                 media.purpose = PendingWhatsAppMedia.PURPOSE_MAINTENANCE
                 media.lease = selected_lease or pending.lease
                 media.tenant = pending.tenant
@@ -874,6 +880,12 @@ class WhatsAppAIAssistant:
                     "maintenance_media_attached",
                     {"lease": pending.lease, "tenant": pending.tenant, "pending_maintenance_id": pending.pk},
                 )
+            self._clear_context_keys(conversation, "pending_maintenance_id")
+            if conversation.pending_state == "pending_maintenance":
+                conversation.pending_state = ""
+            conversation.save(
+                update_fields=["pending_state", "context", "updated_at"]
+            )
         ocr_json = run_payment_ocr(media, self.ai_config) if message_type == "image" else {"engine": "skipped", "confidence": 0}
         if expects_payment_receipt or media.purpose == PendingWhatsAppMedia.PURPOSE_PAYMENT or _ocr_looks_like_payment(ocr_json):
             media.purpose = PendingWhatsAppMedia.PURPOSE_PAYMENT

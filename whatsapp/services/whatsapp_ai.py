@@ -846,12 +846,20 @@ class WhatsAppAIAssistant:
                 {"lease": selected_lease, "pending_maintenance_id": pending.pk},
             )
         pending_maintenance_id = conversation.context.get("pending_maintenance_id")
-        if conversation.pending_state == "pending_maintenance" and pending_maintenance_id:
+        if pending_maintenance_id:
             pending = PendingWhatsAppMaintenance.objects.filter(
                 pk=pending_maintenance_id,
                 status=PendingWhatsAppMaintenance.STATUS_PENDING,
             ).first()
             if pending:
+                # The request id is the durable marker for an open media batch.
+                # A greeting/empty event may clear pending_state, but DONE and
+                # CANCEL explicitly remove this id. Restore the state here so
+                # subsequent album items cannot fall through to receipt OCR or
+                # the generic upload menu.
+                if conversation.pending_state != "pending_maintenance":
+                    conversation.pending_state = "pending_maintenance"
+                    conversation.save(update_fields=["pending_state", "updated_at"])
                 media.purpose = PendingWhatsAppMedia.PURPOSE_MAINTENANCE
                 media.lease = selected_lease or pending.lease
                 media.tenant = pending.tenant
@@ -1027,6 +1035,7 @@ class WhatsAppAIAssistant:
             candidate_unit = unit_matches[0] if len(unit_matches) == 1 else None
             return self._set_estamp_property_confirmation(
                 conversation,
+                staff_user,
                 property_obj,
                 candidate_unit=candidate_unit,
                 source_label="the E-Stamp Notes",
@@ -1209,6 +1218,7 @@ class WhatsAppAIAssistant:
                 )
             return self._set_estamp_property_confirmation(
                 conversation,
+                staff_user,
                 property_obj,
                 candidate_unit=candidate_unit,
                 source_label="your entry",
@@ -1328,29 +1338,36 @@ class WhatsAppAIAssistant:
         message_log.save(update_fields=["payload", "updated_at"])
 
     def _set_estamp_property_confirmation(
-        self, conversation, property_obj, *, candidate_unit=None, source_label
+        self,
+        conversation,
+        staff_user,
+        property_obj,
+        *,
+        candidate_unit=None,
+        source_label,
     ):
-        conversation.pending_state = "staff_estamp_property_confirm"
         conversation.context["staff_estamp_property_id"] = property_obj.pk
         if candidate_unit:
             conversation.context["staff_estamp_unit_id"] = candidate_unit.pk
         else:
             conversation.context.pop("staff_estamp_unit_id", None)
-        conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        unit_line = (
-            f"\nPossible unit: {candidate_unit.unit_number}"
-            if candidate_unit else ""
-        )
-        return (
-            f"I found this property from {source_label}:\n\n"
-            f"Property: {property_obj.property_name}{unit_line}\n\n"
-            "Is this the correct property? Reply YES or NO.",
-            "staff_estamp_property_confirm",
-            {"property": property_obj},
+        conversation.save(update_fields=["context", "updated_at"])
+        return self._show_estamp_leases(
+            conversation,
+            staff_user,
+            property_obj,
+            candidate_unit=candidate_unit,
+            source_label=source_label,
         )
 
     def _show_estamp_leases(
-        self, conversation, staff_user, property_obj, *, candidate_unit=None
+        self,
+        conversation,
+        staff_user,
+        property_obj,
+        *,
+        candidate_unit=None,
+        source_label=None,
     ):
         leases = list(
             self._staff_accessible_leases(staff_user)
@@ -1366,7 +1383,9 @@ class WhatsAppAIAssistant:
             ]
             if len(candidate_leases) == 1:
                 return self._set_estamp_lease_confirmation(
-                    conversation, candidate_leases[0]
+                    conversation,
+                    candidate_leases[0],
+                    source_label=source_label,
                 )
             if candidate_leases:
                 leases = candidate_leases
@@ -1386,18 +1405,34 @@ class WhatsAppAIAssistant:
             )
         if len(leases) == 1:
             return self._set_estamp_lease_confirmation(
-                conversation, leases[0]
+                conversation,
+                leases[0],
+                source_label=source_label,
             )
         conversation.pending_state = "staff_estamp_lease_selection"
         conversation.context["staff_estamp_lease_options"] = [
             lease.pk for lease in leases[:20]
         ]
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        lines = [f"Select the unit/lease for {property_obj.property_name}:"]
+        lines = []
+        if source_label:
+            lines.extend(
+                [
+                    f"I found this property from {source_label}:",
+                    "",
+                    f"Property: {property_obj.property_name}",
+                ]
+            )
+            if candidate_unit:
+                lines.append(f"Possible unit: {candidate_unit.unit_number}")
+            lines.append("")
+        lines.append(
+            f"Select the current tenant/lease for {property_obj.property_name}:"
+        )
         for index, lease in enumerate(leases[:20], start=1):
             lines.append(
-                f"{index}. Unit {lease.unit.unit_number} - "
-                f"{lease.tenant.get_full_name()} - "
+                f"{index}. Current tenant: {lease.tenant.get_full_name()} - "
+                f"Unit {lease.unit.unit_number} - "
                 f"{lease.start_date:%d-%m-%Y} to {lease.end_date:%d-%m-%Y}"
             )
         lines.append("\nReply with a number or CANCEL.")
@@ -1405,15 +1440,21 @@ class WhatsAppAIAssistant:
             "property": property_obj
         }
 
-    def _set_estamp_lease_confirmation(self, conversation, lease):
+    def _set_estamp_lease_confirmation(
+        self, conversation, lease, *, source_label=None
+    ):
         conversation.pending_state = "staff_estamp_lease_confirm"
         conversation.context["staff_estamp_lease_id"] = lease.pk
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        found_property = (
+            f"I found this property from {source_label}:\n\n"
+            if source_label else ""
+        )
         return (
-            "Confirm E-Stamp lease:\n\n"
+            f"{found_property}Confirm E-Stamp lease:\n\n"
             f"Property: {lease.unit.property.property_name}\n"
             f"Unit: {lease.unit.unit_number}\n"
-            f"Tenant: {lease.tenant.get_full_name()}\n"
+            f"Current tenant: {lease.tenant.get_full_name()}\n"
             f"Lease: {lease.start_date:%d-%m-%Y} to "
             f"{lease.end_date:%d-%m-%Y}\n\n"
             "Attach this E-Stamp to this lease? Reply YES or NO.",

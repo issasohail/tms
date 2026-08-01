@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods, require_POST
 
 from leases.forms_parking_inventory import (
@@ -63,26 +64,69 @@ def _inventory_model_target(scope, obj):
 @require_http_methods(["GET", "POST"])
 def global_inventory_manage(request):
     if request.method == "POST":
-        item = get_object_or_404(
-            InventoryItemDefinition, pk=request.POST.get("item_id")
-        )
+        action = request.POST.get("action") or "save_definition"
+        name = (request.POST.get("name") or "").strip()
+        if not name:
+            messages.error(request, "Enter an inventory item name.")
+            return redirect("leases:global_inventory_manage")
+
         try:
             quantity = max(0, int(request.POST.get("quantity") or 0))
         except ValueError:
             quantity = 0
+        try:
+            sort_order = max(0, int(request.POST.get("sort_order") or 0))
+        except ValueError:
+            sort_order = 0
+
+        if action == "add_definition":
+            if InventoryItemDefinition.objects.filter(name__iexact=name).exists():
+                messages.error(request, f'An inventory item named "{name}" already exists.')
+                return redirect("leases:global_inventory_manage")
+            base_code = slugify(name).replace("-", "_")[:90] or "inventory_item"
+            code = base_code
+            suffix = 2
+            while InventoryItemDefinition.objects.filter(code=code).exists():
+                code = f"{base_code[:96]}_{suffix}"
+                suffix += 1
+            InventoryItemDefinition.objects.create(
+                name=name,
+                code=code,
+                unit_label=(request.POST.get("unit_label") or "item").strip() or "item",
+                default_quantity=quantity,
+                default_condition=(request.POST.get("condition") or "").strip(),
+                include_in_clause=request.POST.get("include_in_clause") in (
+                    "1", "on", "true"
+                ),
+                sort_order=sort_order,
+                is_active=True,
+            )
+            messages.success(request, f"Inventory item {name} added.")
+            return redirect("leases:global_inventory_manage")
+
+        item = get_object_or_404(
+            InventoryItemDefinition, pk=request.POST.get("item_id")
+        )
+        if InventoryItemDefinition.objects.filter(name__iexact=name).exclude(pk=item.pk).exists():
+            messages.error(request, f'An inventory item named "{name}" already exists.')
+            return redirect("leases:global_inventory_manage")
+        item.name = name
+        item.unit_label = (request.POST.get("unit_label") or "item").strip() or "item"
         item.default_quantity = quantity
         item.default_condition = (request.POST.get("condition") or "").strip()
         item.include_in_clause = request.POST.get("include_in_clause") in (
             "1", "on", "true"
         )
+        item.sort_order = sort_order
         item.is_active = request.POST.get("is_active") in ("1", "on", "true")
         item.save(update_fields=[
-            "default_quantity", "default_condition", "include_in_clause", "is_active"
+            "name", "unit_label", "default_quantity", "default_condition",
+            "include_in_clause", "sort_order", "is_active",
         ])
-        messages.success(request, f"Global default for {item.name} updated.")
+        messages.success(request, f"Inventory item {item.name} updated.")
         return redirect("leases:global_inventory_manage")
     return render(request, "leases/global_inventory_manage.html", {
-        "items": InventoryItemDefinition.objects.all(),
+        "items": InventoryItemDefinition.objects.order_by("sort_order", "name"),
     })
 
 

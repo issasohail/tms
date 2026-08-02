@@ -6,7 +6,8 @@ from django.db import OperationalError, ProgrammingError
 
 
 PRODUCTION_HOSTS = {
-    "tms.sonazconsultancy.online",
+    "kirayas.com",
+    "www.kirayas.com",
 }
 
 
@@ -49,7 +50,7 @@ def show_toolbar(request):
         return False
 
     host = _host_without_port(request)
-    if host in PRODUCTION_HOSTS or host.endswith(".sonazconsultancy.online"):
+    if host in PRODUCTION_HOSTS:
         return False
 
     if not _is_local_host(host):

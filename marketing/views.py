@@ -8,6 +8,7 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from core.public_urls import build_public_path_url
 from .config import FEATURES, PRICING_PLANS
 from .forms import ContactForm
 
@@ -27,14 +28,14 @@ PAGE_TEMPLATES = {
 
 def _tms_url(route_name):
     path = reverse(route_name, urlconf="tms.urls")
-    return f"{settings.TMS_PUBLIC_BASE_URL.rstrip('/')}{path}"
+    return build_public_path_url(path)
 
 
 def _login_url(request):
-    login_path = f"{settings.LOGIN_URL}?next=/tms/"
+    login_path = f"{settings.LOGIN_URL}?next=/"
     host = request.get_host().split(":", 1)[0].lower()
     if host == settings.MARKETING_PUBLIC_HOST:
-        return f"{settings.MARKETING_PUBLIC_BASE_URL}{login_path}"
+        return build_public_path_url(login_path)
     return request.build_absolute_uri(login_path)
 
 

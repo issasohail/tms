@@ -21,6 +21,7 @@ from django.views.decorators.http import require_GET
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
 from core.models import GlobalSettings
+from core.public_urls import build_public_url
 from core.utils.text import smart_title
 from leases.models import Lease
 from leases.whatsapp import build_whatsapp_url
@@ -153,8 +154,8 @@ def _media_json(request, media):
         "is_image": media.is_image,
         "is_video": media.is_video,
         "is_pdf": media.is_pdf,
-        "url": request.build_absolute_uri(
-            reverse("maintenance:public_media_file", args=[token, media.pk])
+        "url": build_public_url(
+            "maintenance:public_media_file", args=[token, media.pk]
         ),
         "description_url": reverse("maintenance:media_description_update", args=[media.pk]),
         "delete_url": reverse("maintenance:media_delete", args=[media.pk]),
@@ -198,8 +199,8 @@ def _request_json(request, item):
         "update_url": reverse("maintenance:request_inline_update", args=[item.pk]),
         "upload_url": reverse("maintenance:request_media_upload", args=[item.pk]),
         "whatsapp_url": reverse("maintenance:request_whatsapp", args=[item.pk]),
-        "public_media_url": request.build_absolute_uri(
-            reverse("maintenance:public_media_share", args=[token])
+        "public_media_url": build_public_url(
+            "maintenance:public_media_share", args=[token]
         ),
     }
 
@@ -412,9 +413,7 @@ def _maintenance_whatsapp_message(request, request_obj):
     ]
     if request_obj.media.filter(is_active=True).exists():
         token = _sign_media_token(request_obj.pk)
-        media_url = request.build_absolute_uri(
-            reverse("maintenance:public_media_share", args=[token])
-        )
+        media_url = build_public_url("maintenance:public_media_share", args=[token])
         lines.extend([
             f"Files / Photos: {media_url}",
             "This media link expires in 3 days.",

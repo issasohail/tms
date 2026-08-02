@@ -14,6 +14,7 @@ from leases.views import UnitAutocomplete
 from leases import views_lease_files
 from core.views import SettingsView
 from accounts.views import LogoutView as AccountsLogoutView
+from accounts.password_reset import PublicPasswordResetForm
 from whatsapp.views import webhook as whatsapp_webhook
 
 
@@ -122,8 +123,8 @@ app_patterns = [
 ]
 
 
-# Root compatibility URLs are intentionally not namespaced. Namespaced reversing
-# should use the production-compatible `/tms/` URL tree below.
+# Legacy `/tms/` compatibility URLs are intentionally not namespaced. Canonical
+# namespaced reversing uses the root application routes in `app_patterns`.
 root_app_patterns = [
     path('', plain_include('core.urls')),
     path('', plain_include('dashboard.urls')),
@@ -188,7 +189,8 @@ urlpatterns = [
     path(
         'accounts/password_reset/',
         auth_views.PasswordResetView.as_view(
-            template_name='accounts/password_reset.html'
+            template_name='accounts/password_reset.html',
+            form_class=PublicPasswordResetForm,
         ),
         name='password_reset'
     ),
@@ -217,12 +219,11 @@ urlpatterns = [
         name='password_reset_complete'
     ),
 
-    # Always show the marketing website at the site root. The authenticated
-    # application remains under /tms/ below.
+    # Always show the marketing website at the site root.
     path('', include('marketing.urls')),
 
-    # Root compatibility URLs (existing)
-    *root_app_patterns,
+    # Canonical application URLs at the Kirayas domain root.
+    *app_patterns,
 
     path(
         "public/files/<str:token>/",
@@ -245,8 +246,8 @@ urlpatterns = [
         name="public_lease_files_download_root",
     ),
 
-    # Production-compatible URLs
-    path('tms/', include(app_patterns)),
+    # Legacy unnamespaced compatibility URLs.
+    path('tms/', include(root_app_patterns)),
 ]
 
 

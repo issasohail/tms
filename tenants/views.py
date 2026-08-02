@@ -59,6 +59,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from weasyprint import HTML
 
 from core.models import GlobalSettings
+from core.public_urls import build_public_url
 from core.utils.identity import (
     format_cnic,
     format_phone,
@@ -695,7 +696,7 @@ def _tenant_list_public_registration_payload(request):
     When opened, it creates a temporary tenant shell and redirects
     to the existing secure public registration form.
     """
-    link = request.build_absolute_uri(reverse("tenants:tenant_public_registration_new"))
+    link = build_public_url("tenants:tenant_public_registration_new")
 
     message = (
         f"Please complete your tenant registration using this public link:\n\n{link}"
@@ -719,19 +720,23 @@ def tenant_public_registration_new(request):
     return redirect("tenants:tenant_public_registration", token=token)
 
 
+def tenant_registration_message(tenant, link):
+    return (
+        f"Hello {tenant.get_full_name()},\n\n"
+        "Please complete or update your tenant registration using the secure link below:\n\n"
+        f"{link}\n\n"
+        f"This link will expire in {TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)} days.\n\n"
+        "Thank you."
+    )
+
+
 def _registration_link_payload(request, tenant):
-    link = request.build_absolute_uri(
-        reverse(
-            "tenants:tenant_public_registration",
-            args=[tenant_registration_token(tenant)],
-        )
+    link = build_public_url(
+        "tenants:tenant_public_registration",
+        args=[tenant_registration_token(tenant)],
     )
     settings_obj = GlobalSettings.get_solo()
-    message = (
-        "Please complete your tenant registration using this secure link:\n\n"
-        f"{link}\n\n"
-        f"This link is valid for {TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)} days."
-    )
+    message = tenant_registration_message(tenant, link)
     user_phone = getattr(request.user, "whatsapp_number", "") or getattr(
         settings_obj, "whatsapp_number", ""
     )
@@ -2754,18 +2759,12 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
                 "current_balance": tenant.current_balance,
             }
         )
-        context["registration_link"] = self.request.build_absolute_uri(
-            reverse(
-                "tenants:tenant_public_registration",
-                args=[tenant_registration_token(tenant)],
-            )
+        context["registration_link"] = build_public_url(
+            "tenants:tenant_public_registration",
+            args=[tenant_registration_token(tenant)],
         )
-        registration_message = (
-            f"Hello {tenant.get_full_name()},\n\n"
-            "Please complete or update your tenant registration using the secure link below:\n\n"
-            f"{context['registration_link']}\n\n"
-            f"This link will expire in {TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)} days.\n\n"
-            "Thank you."
+        registration_message = tenant_registration_message(
+            tenant, context["registration_link"]
         )
         settings_obj = GlobalSettings.get_solo()
         context["registration_whatsapp_url"] = build_whatsapp_url(

@@ -127,6 +127,7 @@ from payments.services.payment_detail import sync_security_deposit_paid_flag
 from properties.models import Property, Unit
 from smart_meter.models import MeterInstallation
 from tenants.models import Tenant, normalize_cnic
+from core.public_urls import build_public_path_url, build_public_url
 from core.utils.identity import (
     format_cnic,
     format_phone,
@@ -738,7 +739,7 @@ def _absolute_file_url(request, file_field):
     if not file_field:
         return ""
     try:
-        return request.build_absolute_uri(file_field.url)
+        return build_public_path_url(file_field.url)
     except ValueError:
         return ""
 
@@ -2204,9 +2205,7 @@ def lease_family_public_link(request, pk):
         metadata={"purpose": "lease_family_member_add"},
         expires_at=timezone.now() + timedelta(hours=48),
     )
-    url = request.build_absolute_uri(
-        reverse("leases:public_lease_family_add", args=[link.token])
-    )
+    url = build_public_url("leases:public_lease_family_add", args=[link.token])
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JsonResponse(
             {"ok": True, "url": url, "expires_at": link.expires_at.isoformat()}
@@ -4148,21 +4147,19 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         )
         from core.models import GlobalSettings
         from leases.whatsapp import build_whatsapp_url
-        from tenants.views import TENANT_REGISTRATION_MAX_AGE, tenant_registration_token
+        from tenants.views import (
+            TENANT_REGISTRATION_MAX_AGE,
+            tenant_registration_message,
+            tenant_registration_token,
+        )
 
-        ctx["registration_link"] = self.request.build_absolute_uri(
-            reverse(
-                "tenants:tenant_public_registration",
-                args=[tenant_registration_token(lease.tenant)],
-            )
+        ctx["registration_link"] = build_public_url(
+            "tenants:tenant_public_registration",
+            args=[tenant_registration_token(lease.tenant)],
         )
         ctx["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (60 * 60 * 24)
-        registration_message = (
-            f"Hello {lease.tenant.get_full_name()},\n\n"
-            "Please complete or update your tenant registration using the secure link below:\n\n"
-            f"{ctx['registration_link']}\n\n"
-            f"This link will expire in {ctx['registration_link_days']} days.\n\n"
-            "Thank you."
+        registration_message = tenant_registration_message(
+            lease.tenant, ctx["registration_link"]
         )
         settings_obj = GlobalSettings.get_solo()
         ctx["registration_whatsapp_url"] = build_whatsapp_url(
@@ -4171,10 +4168,8 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             country_code=getattr(settings_obj, "country_code", "+92"),
         )
         public_maintenance_token = make_public_maintenance_token(lease)
-        ctx["public_maintenance_url"] = self.request.build_absolute_uri(
-            reverse(
-                "maintenance:public_request_create", args=[public_maintenance_token]
-            )
+        ctx["public_maintenance_url"] = build_public_url(
+            "maintenance:public_request_create", args=[public_maintenance_token]
         )
         ctx["public_maintenance_whatsapp_text"] = (
             f"Dear {lease.tenant.get_full_name()},\n\n"
@@ -5329,8 +5324,8 @@ def lease_ledger_pdf(request, lease_id):
                     "description": invoice.description,
                     "amount": -amount,
                     "balance": balance,
-                    "url": request.build_absolute_uri(
-                        reverse("invoices:public_invoice_detail", args=[public_token])
+                    "url": build_public_url(
+                        "invoices:public_invoice_detail", args=[public_token]
                     ),
                 }
             )

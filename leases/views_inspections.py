@@ -16,6 +16,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 from weasyprint import HTML
 
+from core.public_urls import build_public_url
 from invoices.models import Invoice, InvoiceItem, ItemCategory
 from leases.whatsapp import build_whatsapp_url
 from leases.models import LeaseDocument
@@ -408,6 +409,9 @@ def inspection_detail(request, inspection_id):
         "leases/inspection_detail.html",
         {
             "inspection": inspection,
+            "public_inspection_url": build_public_url(
+                "leases:public_inspection_sign", args=[inspection.public_token]
+            ),
             "summary": _summary_for(inspection),
             "photo_form": InspectionPhotoForm(),
             "statuses": InspectionStatus.objects.filter(active=True).order_by("display_order", "name"),
@@ -552,7 +556,9 @@ def inspection_send_sheet(request, inspection_id):
     inspection.public_is_active = True
     inspection.public_expires_at = timezone.now() + timezone.timedelta(days=days)
     inspection.save(update_fields=["public_is_active", "public_expires_at", "updated_at"])
-    public_url = request.build_absolute_uri(reverse("leases:public_inspection_sign", args=[inspection.public_token]))
+    public_url = build_public_url(
+        "leases:public_inspection_sign", args=[inspection.public_token]
+    )
     message = (
         f"Inspection sheet for {inspection.property.property_name} {inspection.unit.unit_number} is ready.\n\n"
         f"Please review and sign here:\n{public_url}"

@@ -5,6 +5,7 @@ from urllib.parse import quote
 from django.urls import reverse
 
 from leases.models import AgreementPlaceholder, WhatsAppTemplate
+from core.public_urls import build_public_url
 from core.utils.identity import format_phone
 
 
@@ -233,8 +234,9 @@ def lease_whatsapp_context(lease, request=None):
     }
 
     if request is not None and unit is not None:
-        token_path = reverse("properties:unit_media_share_link", args=[unit.pk])
-        context["UNIT_PHOTO_ADMIN_LINK"] = request.build_absolute_uri(token_path)
+        context["UNIT_PHOTO_ADMIN_LINK"] = build_public_url(
+            "properties:unit_media_share_link", args=[unit.pk]
+        )
 
     for placeholder in AgreementPlaceholder.objects.filter(is_active=True):
         context.setdefault(placeholder.key, placeholder.default_value or "")
@@ -264,8 +266,8 @@ def unit_whatsapp_context(unit, request=None):
     if request is not None and unit is not None:
         from properties.views import _sign_unit_media_token
         token = _sign_unit_media_token(unit.pk)
-        context["UNIT_PHOTO_LINK"] = request.build_absolute_uri(
-            reverse("properties:unit_media_public_share", args=[token])
+        context["UNIT_PHOTO_LINK"] = build_public_url(
+            "properties:unit_media_public_share", args=[token]
         )
 
     for placeholder in AgreementPlaceholder.objects.filter(is_active=True):

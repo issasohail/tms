@@ -4228,7 +4228,7 @@ function sendWhatsAppReminder(
                 : defaultCode + cleaned;
 
         if (document.getElementById("tenant-use-whatsapp-api")?.checked && leaseId) {
-            fetch(`/tms/whatsapp/send/lease/${leaseId}/text/`, {
+            fetch(`/whatsapp/send/lease/${leaseId}/text/`, {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": getTenantListCookie("csrftoken"),

@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from core.models import GlobalSettings
+from core.public_urls import build_public_url
 from leases.whatsapp import build_whatsapp_url
 from .models import Lease, LeaseDocument, LeaseDocumentCategory, LeaseFileShareLink
 from .services.estamp import ESTAMP_CATEGORY, normalize_estamp_pdf
@@ -266,7 +267,7 @@ def lease_files_share_all(request, lease_id):
         expires_at=timezone.now() + timezone.timedelta(days=_share_days()),
         created_by=request.user,
     )
-    url = request.build_absolute_uri(reverse("public_lease_files_share_root", args=[link.token]))
+    url = build_public_url("public_lease_files_share_root", args=[link.token])
     return _redirect_to_whatsapp_or_detail(request, lease, url, "files")
 
 
@@ -280,7 +281,7 @@ def lease_file_share_one(request, document_id):
         expires_at=timezone.now() + timezone.timedelta(days=_share_days()),
         created_by=request.user,
     )
-    url = request.build_absolute_uri(reverse("public_file_share_root", args=[link.token]))
+    url = build_public_url("public_file_share_root", args=[link.token])
     return _redirect_to_whatsapp_or_detail(request, document.lease, url, f"file ({document.display_name})")
 
 

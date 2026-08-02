@@ -3,11 +3,10 @@ from datetime import timedelta
 
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.conf import settings
-from django.urls import reverse
 from django.utils import timezone
 
 from core.models import GlobalSettings
+from core.public_urls import build_public_url
 from leases.models import LeaseDocument, LeaseDocumentCategory, PendingPoliceVerificationSubmission
 from tenants.models import TenantRegistrationSubmission
 from whatsapp.models import WhatsAppExternalLinkToken
@@ -50,11 +49,9 @@ def create_police_verification_link(request, lease, created_by=None, phone_numbe
         metadata={"purpose": "police_verification"},
         expires_at=expires_at,
     )
-    path = reverse("leases:public_police_verification", args=[link.token])
-    if request is not None:
-        return link, request.build_absolute_uri(path)
-    base_url = (getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com").rstrip("/")
-    return link, f"{base_url}{path}"
+    return link, build_public_url(
+        "leases:public_police_verification", args=[link.token]
+    )
 
 
 def get_valid_police_link(token):

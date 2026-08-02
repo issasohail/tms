@@ -48,6 +48,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from core.models import GlobalSettings
+from core.public_urls import build_public_url
 from invoices.models import Invoice
 from leases.models import Lease, LeaseRenewal, WhatsAppTemplate
 from leases.models_parking_inventory import (
@@ -780,8 +781,8 @@ def _default_unit_interest_type(unit):
 
 
 def _vacant_notice_message(request, unit, tenant, photos_link=""):
-    details_link = photos_link or request.build_absolute_uri(
-        reverse("properties:unit_detail", args=[unit.pk])
+    details_link = photos_link or build_public_url(
+        "properties:unit_detail", args=[unit.pk]
     )
     lines = [
         f"Dear {tenant.get_full_name()},",
@@ -850,11 +851,9 @@ def unit_vacant_notice_leads(request, pk):
     has_photos = unit.media_files.filter(is_active=True).exists()
     photos_link = ""
     if has_photos:
-        photos_link = request.build_absolute_uri(
-            reverse(
-                "properties:unit_media_public_share",
-                args=[_sign_unit_media_token(unit.pk)],
-            )
+        photos_link = build_public_url(
+            "properties:unit_media_public_share",
+            args=[_sign_unit_media_token(unit.pk)],
         )
 
     tenants = (
@@ -903,8 +902,8 @@ def unit_vacant_notice_leads(request, pk):
                     "id": unit_interest_type.pk,
                     "name": unit_interest_type.name,
                 },
-                "detail_url": request.build_absolute_uri(
-                    reverse("properties:unit_detail", args=[unit.pk])
+                "detail_url": build_public_url(
+                    "properties:unit_detail", args=[unit.pk]
                 ),
                 "photos_url": photos_link or None,
                 "has_active_lease": has_active_lease,
@@ -1357,8 +1356,8 @@ def _draw_wrapped_text(pdf, text, x, y, max_chars=95, line_height=5 * mm):
 
 def _public_media_url(request, owner_kind, owner_pk, media_id):
     token = _sign_media_token(owner_kind, owner_pk)
-    return request.build_absolute_uri(
-        reverse("properties:media_public_file", args=[token, media_id])
+    return build_public_url(
+        "properties:media_public_file", args=[token, media_id]
     )
 
 
@@ -2014,8 +2013,8 @@ def _unit_from_share_token(token):
 def unit_media_share_link(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
     token = _sign_unit_media_token(unit.pk)
-    share_url = request.build_absolute_uri(
-        reverse("properties:unit_media_public_share", args=[token])
+    share_url = build_public_url(
+        "properties:unit_media_public_share", args=[token]
     )
     return render(
         request,
@@ -2034,9 +2033,7 @@ def unit_media_share_link(request, pk):
 def property_media_share_link(request, pk):
     property_obj = get_object_or_404(Property, pk=pk)
     token = _sign_media_token("property", property_obj.pk)
-    share_url = request.build_absolute_uri(
-        reverse("properties:media_public_share", args=[token])
-    )
+    share_url = build_public_url("properties:media_public_share", args=[token])
     return render(
         request,
         "properties/unit_media_share_link.html",

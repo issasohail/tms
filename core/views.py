@@ -25,6 +25,7 @@ from django.db.models.functions import Coalesce, Greatest
 
 from .forms import GlobalSettingsForm
 from .models import GlobalSettings
+from .public_urls import build_public_path_url, build_public_url
 from .pending_approval_queue import (
     actionable_media_count,
     eligible_pending_media_queryset,
@@ -347,9 +348,7 @@ def _handyman_maintenance_message(request, pending, ticket, handyman):
         or settings_obj.whatsapp_number
         or "-"
     )
-    detail_url = request.build_absolute_uri(
-        reverse("maintenance:request_detail", args=[ticket.pk])
-    )
+    detail_url = build_public_url("maintenance:request_detail", args=[ticket.pk])
     api_number = _whatsapp_api_display_number()
     api_number_label = f"+{api_number}" if api_number else "this WhatsApp API number"
     photo_command = settings_obj.handyman_job_photo_command or "PHOTO"
@@ -388,7 +387,7 @@ def _send_handyman_maintenance_media(request, service, phone_number, ticket):
     for index, media in enumerate(ticket.media.filter(is_active=True), start=1):
         if not media.file:
             continue
-        file_url = request.build_absolute_uri(media.file.url)
+        file_url = build_public_path_url(media.file.url)
         caption = f"Job #{ticket.pk} submitted media {index}: {ticket.title}"
         try:
             if media.is_image:

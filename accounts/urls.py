@@ -9,7 +9,7 @@ urlpatterns = [
     path("profile/", views.profile,       name="profile"),
     path("password/", views.auth_views.PasswordChangeView.as_view(
         template_name="accounts/password_change.html",
-        success_url="/tms/accounts/profile/",
+        success_url="/accounts/profile/",
     ), name="password_change"),
     path("users/", views.user_access_list, name="user_access_list"),
     path("users/new/", views.user_access_create, name="user_access_create"),

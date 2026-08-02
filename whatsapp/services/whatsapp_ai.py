@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
+from core.public_urls import build_public_url
 from core.utils.identity import format_phone
 
 from invoices.models import Invoice
@@ -2081,9 +2082,7 @@ class WhatsAppAIAssistant:
         return "\n".join(lines)
 
     def _create_registration_link_for_staff(self, message_log, conversation, staff_user):
-        path = reverse("tenants:tenant_public_registration_new")
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
-        link = f"{base_url.rstrip('/')}{path}"
+        link = build_public_url("tenants:tenant_public_registration_new")
         conversation.pending_state = ""
         conversation.save(update_fields=["pending_state", "updated_at"])
         log_staff_action(
@@ -2837,13 +2836,8 @@ class WhatsAppAIAssistant:
     def _create_unit_photo_upload_link(self, lease):
         from properties.public_upload_links import make_unit_photo_upload_token
 
-        base_url = (
-            getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "")
-            or "https://kirayas.com"
-        )
         token = make_unit_photo_upload_token(lease)
-        path = reverse("properties:public_unit_photo_upload", args=[token])
-        return f"{base_url.rstrip('/')}{path}"
+        return build_public_url("properties:public_unit_photo_upload", args=[token])
 
     def _unit_photo_upload_link_reply(self, lease):
         link = self._create_unit_photo_upload_link(lease)
@@ -3467,9 +3461,8 @@ class WhatsAppAIAssistant:
             return f"Lease Balance\n\n{ctx.property.property_name} / {ctx.unit.unit_number}\nTenant: {ctx.tenant.get_full_name()}\nOutstanding: Rs. {ctx.balance}"
         if action == "lease_ledger":
             log_staff_action(staff_user, message_log.phone_number, "lease_ledger_viewed", "allowed", lease=lease, property=ctx.property, tenant=ctx.tenant)
-            base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
             link = create_public_ledger_link(lease, phone_number=message_log.phone_number, staff_user=staff_user)
-            ledger_link = public_ledger_url(base_url, link)
+            ledger_link = public_ledger_url(link)
             lines = [
                 f"Lease Ledger\n\n{ctx.property.property_name} / {ctx.unit.unit_number}",
                 f"Outstanding: Rs. {ctx.balance}",
@@ -3511,8 +3504,7 @@ class WhatsAppAIAssistant:
             log_staff_action(staff_user, message_log.phone_number, "invoice_link_blocked", "blocked", lease=lease, property=lease.unit.property, tenant=lease.tenant)
             return "You do not have WhatsApp access to that invoice's property."
         token = make_public_invoice_token(invoice.pk)
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
-        link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
+        link = build_public_url("invoices:public_invoice_detail", args=[token])
         log_staff_action(staff_user, message_log.phone_number, "invoice_link_created", "allowed", lease=lease, property=lease.unit.property, tenant=lease.tenant, invoice_id=invoice.pk)
         return (
             f"Invoice Link\n\n"
@@ -3802,7 +3794,6 @@ class WhatsAppAIAssistant:
         )
 
     def _create_lease_creation_link(self, message_log, staff_user, tenant, property_obj, unit):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=WhatsAppExternalLinkToken.LINK_LEASE_CREATION,
             phone_number=message_log.phone_number,
@@ -3817,8 +3808,7 @@ class WhatsAppAIAssistant:
             },
             expires_at=timezone.now() + timedelta(days=7),
         )
-        path = reverse("leases:public_lease_create", args=[token.token])
-        return f"{base_url.rstrip('/')}{path}"
+        return build_public_url("leases:public_lease_create", args=[token.token])
 
     def _staff_accessible_properties(self, staff_user):
         if staff_user.is_superuser:
@@ -3881,7 +3871,6 @@ class WhatsAppAIAssistant:
 
     def _create_staff_agreement_link_for_lease(self, message_log, staff_user, lease, link_type):
         property_obj = lease.unit.property
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=link_type,
             phone_number=message_log.phone_number,
@@ -3894,7 +3883,7 @@ class WhatsAppAIAssistant:
             expires_at=timezone.now() + timedelta(days=7),
         )
         url_name = "leases:public_agreement_view" if link_type == WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW else "leases:public_agreement_edit"
-        link = f"{base_url.rstrip('/')}{reverse(url_name, args=[token.token])}"
+        link = build_public_url(url_name, args=[token.token])
         log_staff_action(staff_user, message_log.phone_number, "agreement_link_created", "allowed", property=property_obj, tenant=lease.tenant, lease=lease, link_type=link_type)
         return link
 
@@ -4712,11 +4701,10 @@ class WhatsAppAIAssistant:
         if not invoices:
             return "No outstanding invoices are recorded for your active lease."
         lines = ["Outstanding invoices:"]
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         for invoice in invoices:
             amount = invoice.amount or Decimal("0.00")
             token = make_public_invoice_token(invoice.pk)
-            link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
+            link = build_public_url("invoices:public_invoice_detail", args=[token])
             lines.append(
                 f"{invoice.invoice_number}: Rs. {amount} due {invoice.due_date} ({invoice.get_status_display()})\n{link}"
             )
@@ -4731,9 +4719,8 @@ class WhatsAppAIAssistant:
         )
         if not invoice:
             return "No invoice is recorded for your active lease yet."
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = make_public_invoice_token(invoice.pk)
-        link = f"{base_url.rstrip('/')}{reverse('invoices:public_invoice_detail', args=[token])}"
+        link = build_public_url("invoices:public_invoice_detail", args=[token])
         return (
             "Latest invoice\n\n"
             f"Invoice: {invoice.invoice_number}\n"
@@ -4764,13 +4751,11 @@ class WhatsAppAIAssistant:
         )
 
     def _ledger_link_reply(self, lease):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         link = create_public_ledger_link(lease)
-        ledger_link = public_ledger_url(base_url, link)
+        ledger_link = public_ledger_url(link)
         return f"Full ledger:\n{ledger_link}"
 
     def _family_public_link_reply_url(self, lease, phone_number=""):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         link = WhatsAppExternalLinkToken.objects.create(
             link_type=WhatsAppExternalLinkToken.LINK_LEASE_FAMILY_ADD,
             phone_number=phone_number or "",
@@ -4781,7 +4766,7 @@ class WhatsAppAIAssistant:
             metadata={"purpose": "lease_family_member_add_or_remove", "source": "whatsapp"},
             expires_at=timezone.now() + timedelta(hours=48),
         )
-        return f"{base_url.rstrip('/')}{reverse('leases:public_lease_family_add', args=[link.token])}"
+        return build_public_url("leases:public_lease_family_add", args=[link.token])
 
     def _family_list_reply(self, lease, phone_number=""):
         members = list(
@@ -4825,8 +4810,9 @@ class WhatsAppAIAssistant:
             document=None,
             expires_at=timezone.now() + timedelta(days=valid_days),
         )
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
-        share_url = f"{base_url.rstrip('/')}{reverse('leases:public_lease_files_share', args=[link.token])}"
+        share_url = build_public_url(
+            "leases:public_lease_files_share", args=[link.token]
+        )
         lines = [
             "Lease documents available:",
             f"Lease: {lease.unit.property.property_name} / {lease.unit.unit_number}",
@@ -4839,7 +4825,6 @@ class WhatsAppAIAssistant:
         return "\n".join(lines)
 
     def _agreement_link_reply(self, message_log, lease):
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         token = WhatsAppExternalLinkToken.objects.create(
             link_type=WhatsAppExternalLinkToken.LINK_AGREEMENT_VIEW,
             phone_number=message_log.phone_number,
@@ -4850,7 +4835,7 @@ class WhatsAppAIAssistant:
             metadata={"lease_id": lease.pk, "source": "whatsapp_tenant"},
             expires_at=timezone.now() + timedelta(hours=48),
         )
-        link = f"{base_url.rstrip('/')}{reverse('leases:public_agreement_view', args=[token.token])}"
+        link = build_public_url("leases:public_agreement_view", args=[token.token])
         return (
             "Lease agreement\n\n"
             f"Lease: {lease.unit.property.property_name} / {lease.unit.unit_number}\n"
@@ -4925,7 +4910,6 @@ class WhatsAppAIAssistant:
                 "Please contact the office if you need a new inspection."
             )
 
-        base_url = getattr(settings, "WHATSAPP_PUBLIC_BASE_URL", "") or "https://kirayas.com"
         latest = inspections[0]
         lines = [
             "Inspection sheet",
@@ -4944,7 +4928,9 @@ class WhatsAppAIAssistant:
                 latest.public_expires_at = timezone.now() + timedelta(hours=48)
                 latest.save(update_fields=["public_is_active", "public_expires_at", "updated_at"])
                 latest.add_audit("whatsapp_tenant_public_link_generated", extra={"hours": 48})
-            public_link = f"{base_url.rstrip('/')}{reverse('leases:public_inspection_sign', args=[latest.public_token])}"
+            public_link = build_public_url(
+                "leases:public_inspection_sign", args=[latest.public_token]
+            )
             lines.extend([
                 "",
                 "Open latest inspection sheet:",

@@ -12,7 +12,7 @@ Reviewed on 2026-05-24.
 6. Open high-value pages and inspect the Debug Toolbar SQL panel.
 7. Look for duplicate, similar, and repeated per-row queries.
 
-The toolbar is fail-closed and only shows when `DEBUG=True`, the request host is local/private, the user is staff or superuser, and the settings-table toggle is enabled. It is explicitly blocked for `tms.sonazconsultancy.online` and `*.sonazconsultancy.online`.
+The toolbar is fail-closed and only shows when `DEBUG=True`, the request host is local/private, the user is staff or superuser, and the settings-table toggle is enabled. It is explicitly blocked for `kirayas.com` and `www.kirayas.com`.
 
 ## Views Reviewed
 

@@ -61,7 +61,13 @@ CSRF_TRUSTED_ORIGINS = [
     "http://192.168.100.39",
     "http://192.168.100.28",
     "https://kirayas.com",
+    "https://www.kirayas.com",
 ]
+
+PUBLIC_BASE_URL = (
+    os.getenv("PUBLIC_BASE_URL", "https://kirayas.com").strip().rstrip("/")
+    or "https://kirayas.com"
+)
 
 
 INSTALLED_APPS = [
@@ -216,8 +222,8 @@ WHATSAPP_AI_USE_CELERY = os.getenv("WHATSAPP_AI_USE_CELERY", "false").lower() in
     "on",
 }
 WHATSAPP_PUBLIC_BASE_URL = os.getenv(
-    "WHATSAPP_PUBLIC_BASE_URL", "https://kirayas.com"
-)
+    "WHATSAPP_PUBLIC_BASE_URL", PUBLIC_BASE_URL
+).rstrip("/")
 WHATSAPP_MODE_SESSION_MINUTES = int(os.getenv("WHATSAPP_MODE_SESSION_MINUTES", "60"))
 WHATSAPP_ROLE_GROUP_NAMES = [
     "Guest",
@@ -358,6 +364,16 @@ DATABASES = {
     }
 }
 
+# Local test fallback when MySQL test-database creation is unavailable.
+# Production remains on MySQL unless this explicit switch is enabled.
+if os.getenv("TMS_TEST_SQLITE", "").strip().lower() in {"1", "true", "yes", "on"}:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / ".codex_tmp" / "tms_tests.sqlite3",
+        }
+    }
+
 SOCKET_SERVER_HOST = "0.0.0.0"
 SOCKET_SERVER_PORT = 6000
 
@@ -454,10 +470,9 @@ APP_ENVIRONMENT_LABEL = os.getenv(
     "APP_ENVIRONMENT_LABEL",
     APP_ENVIRONMENT.upper(),
 ).strip()
-# Reverse proxy path support for /tms/.
-# In local DEBUG runserver, leave this off so Django's staticfiles handler
-# serves /static/... correctly on Windows.
-FORCE_SCRIPT_NAME = os.getenv("FORCE_SCRIPT_NAME") or (None if DEBUG else "/tms")
+# Optional reverse-proxy path support for legacy deployments still mounted at
+# /tms/. Kirayas is served from the domain root, so no prefix is the default.
+FORCE_SCRIPT_NAME = os.getenv("FORCE_SCRIPT_NAME") or None
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -502,7 +517,7 @@ REST_FRAMEWORK = {
     ],
 }
 
-LOGIN_URL = "/tms/accounts/login/"
+LOGIN_URL = os.getenv("LOGIN_URL", "/accounts/login/")
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "login"
 
@@ -513,7 +528,7 @@ MARKETING_PUBLIC_BASE_URL = os.getenv(
     "MARKETING_PUBLIC_BASE_URL", "https://kirayas.com"
 ).rstrip("/")
 TMS_PUBLIC_BASE_URL = os.getenv(
-    "TMS_PUBLIC_BASE_URL", "https://kirayas.com"
+    "TMS_PUBLIC_BASE_URL", PUBLIC_BASE_URL
 ).rstrip("/")
 MARKETING_WHATSAPP_NUMBER = os.getenv("MARKETING_WHATSAPP_NUMBER", "").strip()
 
@@ -581,11 +596,6 @@ LOGGING = {
     },
 }
 
-
-# Reverse proxy path support for /tms/
-FORCE_SCRIPT_NAME = os.getenv("FORCE_SCRIPT_NAME") or (None if DEBUG else "/tms")
-USE_X_FORWARDED_HOST = True
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 if os.getenv("MEDIA_URL"):
     MEDIA_URL = os.getenv("MEDIA_URL")

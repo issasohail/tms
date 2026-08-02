@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.urls import reverse
 from django.utils import timezone
 
+from core.public_urls import build_public_url
 from whatsapp.models import WhatsAppExternalLinkToken
 
 
@@ -24,5 +25,5 @@ def public_ledger_path(link):
     return reverse("leases:public_lease_ledger", args=[link.token])
 
 
-def public_ledger_url(base_url, link):
-    return f"{base_url.rstrip('/')}{public_ledger_path(link)}"
+def public_ledger_url(link):
+    return build_public_url("leases:public_lease_ledger", args=[link.token])

@@ -131,7 +131,7 @@
 
   {% if inspection.public_is_active %}
     <div class="alert alert-success py-1 small mb-2">
-      Public link: <a target="_blank" href="{{ request.scheme }}://{{ request.get_host }}{% url 'leases:public_inspection_sign' inspection.public_token %}">{{ request.scheme }}://{{ request.get_host }}{% url 'leases:public_inspection_sign' inspection.public_token %}</a>
+      Public link: <a target="_blank" href="{{ public_inspection_url }}">{{ public_inspection_url }}</a>
     </div>
   {% endif %}
 

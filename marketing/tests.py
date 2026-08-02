@@ -42,10 +42,10 @@ class MarketingRouteTests(TestCase):
         self.assertContains(response, "/static/marketing/css/site.css")
         self.assertContains(response, "/static/marketing/js/site.js")
         self.assertIn(
-            "https://kirayas.com/tms/accounts/login/?next=/tms/",
+            "https://kirayas.com/accounts/login/?next=/",
             body,
         )
-        self.assertIn("https://kirayas.com/tms/accounts/signup/", body)
+        self.assertIn("https://kirayas.com/accounts/signup/", body)
         self.assertNotIn('href="features.html"', body)
         self.assertNotIn("assets/site.", body)
 
@@ -92,7 +92,7 @@ class MarketingRouteTests(TestCase):
         self.assertTemplateUsed(response, "marketing/index.html")
         self.assertContains(
             response,
-            "http://192.168.100.28:8001/tms/accounts/login/?next=/tms/",
+            "http://192.168.100.28:8001/accounts/login/?next=/",
         )
 
     def test_public_pages_do_not_expose_authenticated_records(self):
@@ -112,7 +112,7 @@ class MarketingRouteTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response["Location"],
-            "/tms/accounts/login/?next=/tms/",
+            "/accounts/login/?next=/tms/",
         )
 
     def test_www_redirect_is_permanent_and_preserves_path_and_query(self):

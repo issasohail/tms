@@ -61,6 +61,7 @@ from django_tables2 import SingleTableView
 from weasyprint import HTML
 
 from core.models import GlobalSettings
+from core.public_urls import build_public_path_url, build_public_url
 from leases.models import Lease
 from payments.models import Payment
 from properties.models import Property, Unit  # adjust imports
@@ -3287,7 +3288,7 @@ def build_invoice_whatsapp_message(inv):
         "",
         "View details here:",
         # type: ignore[name-defined]  # request is available in view below
-        request.build_absolute_uri(detail_url),
+        build_public_path_url(detail_url),
         "",
         "Thank you!",
     ]
@@ -3364,8 +3365,8 @@ def build_invoice_whatsapp_message(request, inv):
     if not currency_symbol:
         currency_symbol = "Rs."
     public_token = make_public_invoice_token(inv.pk)
-    public_url = request.build_absolute_uri(
-        reverse("invoices:public_invoice_detail", args=[public_token])
+    public_url = build_public_url(
+        "invoices:public_invoice_detail", args=[public_token]
     )
 
     items = []

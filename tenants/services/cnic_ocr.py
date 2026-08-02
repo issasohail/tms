@@ -40,6 +40,9 @@ Return the front identity number separately as front_identity_number. On the
 back, read back_identity_number from the identity number printed in the TOP
 RIGHT corner. Never copy or infer either number from the other image. Return
 null for a side when its own printed number is not clearly readable.
+On the front, the 13-digit identity number is printed below the label
+"Identity Number" in the lower section. Ignore any faded 5-digit card serial
+printed near the bottom-left corner; that short serial is not the identity number.
 Return portrait_bbox as normalized 0-to-1 x, y, width and height coordinates
 covering only the printed portrait photograph on the CNIC front. Return null
 when the portrait boundary cannot be identified safely.
@@ -131,6 +134,7 @@ def extract_cnic_identity(front_file, back_file, model):
 
     images = []
     front_source = b""
+    auto_rotated_sides = []
     address_image_sufficient = False
     for label, file_field in (("front", front_file), ("back", back_file)):
         mime_type = (
@@ -144,6 +148,9 @@ def extract_cnic_identity(front_file, back_file, model):
             file_field.open("rb")
             source = file_field.read()
             file_field.close()
+            source, was_auto_rotated = _auto_orient_cnic_source(source)
+            if was_auto_rotated:
+                auto_rotated_sides.append(label)
             if label == "front":
                 front_source = source
             if label == "back":
@@ -167,6 +174,26 @@ def extract_cnic_identity(front_file, back_file, model):
             }
         )
         if label == "back":
+            enhanced_front = _enhanced_front_image_data(front_source)
+            if enhanced_front:
+                images.extend(
+                    [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "The next image is an enlarged, high-contrast crop of the "
+                                "lower middle of the same CNIC front. Read the 13-digit value "
+                                "directly below the Identity Number label as "
+                                "front_identity_number."
+                            ),
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{enhanced_front}",
+                            "detail": "high",
+                        },
+                    ]
+                )
             enhanced = _enhanced_back_image_data(
                 ContentFile(source, name=getattr(file_field, "name", "cnic-back.jpg"))
             )
@@ -238,6 +265,13 @@ def extract_cnic_identity(front_file, back_file, model):
         }
 
     warnings = [str(item).strip() for item in result.get("warnings", []) if str(item).strip()]
+    if auto_rotated_sides:
+        rotated_labels = " and ".join(auto_rotated_sides)
+        image_word = "image was" if len(auto_rotated_sides) == 1 else "images were"
+        warnings.append(
+            f"The CNIC {rotated_labels} {image_word} automatically rotated for reading."
+        )
+        result["auto_rotated_sides"] = auto_rotated_sides
     front_cnic_digits = re.sub(
         r"\D", "", result.get("front_identity_number") or ""
     )
@@ -346,6 +380,70 @@ def _confidence(value):
         return 0.0
 
 
+def _auto_orient_cnic_source(source):
+    """Rotate a sideways CNIC scan into its standard landscape orientation."""
+    if not source:
+        raise ValueError("empty image")
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+
+    try:
+        with Image.open(BytesIO(source)) as opened:
+            image = ImageOps.exif_transpose(opened)
+            image.load()
+            if image.height <= image.width:
+                return source, False
+            image = image.rotate(90, expand=True)
+            if image.mode in {"RGBA", "LA"} or (
+                image.mode == "P" and "transparency" in image.info
+            ):
+                rgba = image.convert("RGBA")
+                background = Image.new("RGB", rgba.size, "white")
+                background.paste(rgba, mask=rgba.getchannel("A"))
+                image = background
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
+            output = BytesIO()
+            image.save(output, format="JPEG", quality=92, optimize=True)
+        return output.getvalue(), True
+    except Exception:
+        logger.warning("CNIC OCR auto-orientation was skipped for one image.")
+        return source, False
+
+
+def _enhanced_front_image_data(source):
+    """Return an enlarged crop of the front identity-number section."""
+    if not source:
+        return None
+    try:
+        with Image.open(BytesIO(source)) as opened:
+            image = ImageOps.exif_transpose(opened).convert("L")
+            width, height = image.size
+            image = image.crop(
+                (
+                    max(0, int(width * 0.25)),
+                    max(0, int(height * 0.58)),
+                    max(1, int(width * 0.60)),
+                    max(1, int(height * 0.87)),
+                )
+            )
+            target_width = max(2200, image.width * 3)
+            target_height = round(image.height * target_width / image.width)
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            image = ImageOps.autocontrast(image, cutoff=0.5)
+            image = ImageEnhance.Contrast(image).enhance(1.2)
+            image = ImageEnhance.Sharpness(image).enhance(1.5)
+            output = BytesIO()
+            image.save(output, format="PNG", optimize=True)
+        return base64.b64encode(output.getvalue()).decode("ascii")
+    except Exception:
+        logger.warning("CNIC OCR could not create enhanced front-image copy.")
+        return None
+
+
 def _enhanced_back_image_data(file_field):
     """Return an enlarged crop containing both Urdu blocks left of the QR code."""
     try:
@@ -382,6 +480,7 @@ def _portrait_data_uri(source, bbox=None):
     if not source:
         return ""
     try:
+        source, _was_auto_rotated = _auto_orient_cnic_source(source)
         with Image.open(BytesIO(source)) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGB")
             width, height = image.size

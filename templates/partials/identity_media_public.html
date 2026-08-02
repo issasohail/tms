@@ -148,7 +148,7 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
             return String(target.value||'').trim()===incoming;
           };
           (p.existing_tenant?.fields||[]).forEach(s=>{if(writeVisible(s,false))loadedExisting++});
-          (p.fields||[]).forEach(s=>{if(writeVisible(s,Boolean(storedUrl)))written++});
+          (p.fields||[]).forEach(s=>{if(writeVisible(s,Boolean(p.can_overwrite)))written++});
           if(p.portrait_data_uri){
             let hidden=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_portrait_data')}"]`);
             if(!hidden){
@@ -189,9 +189,11 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           status.title=(p.warnings||[]).join(' ');
         }catch(e){
           if(request!==seq)return;
-          lock(context,true);
+          const allowManualEntry=context.isMain&&window.TMS_CNIC_ALLOW_MANUAL_ENTRY===true;
+          lock(context,!allowManualEntry);
+          if(allowManualEntry){const c=cnicField(context);if(c){c.disabled=false;c.readOnly=false;c.classList.remove('tms-cnic-readonly')}}
           status.className='tms-identity-status is-error';
-          status.textContent=(e.message||'CNIC could not be read.')+' Please verify both images and upload clearer copies.';
+          status.textContent=(e.message||'CNIC could not be read.')+(allowManualEntry?' You can enter or correct the details manually.':' Please verify both images and upload clearer copies.');
         }finally{
           if(request===seq){stopTimer();setSubmitPending(context.form,false)}
         }}

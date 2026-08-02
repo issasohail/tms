@@ -531,6 +531,7 @@
   window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:cnic_identity_ocr' %}";
   window.TMS_STORED_CNIC_OCR_URL = "{% if form.instance.pk and form.instance.cnic_front and form.instance.cnic_back %}{% url 'tenants:tenant_saved_cnic_identity_ocr' form.instance.pk %}{% endif %}";
   window.TMS_IDENTITY_LOCK_MAIN = {% if form.instance.pk %}false{% else %}true{% endif %};
+  window.TMS_CNIC_ALLOW_MANUAL_ENTRY = true;
 </script>
 {% include "partials/identity_media_public.html" %}
 <script>

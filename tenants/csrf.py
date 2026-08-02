@@ -5,6 +5,12 @@ from django.shortcuts import render
 
 logger = logging.getLogger(__name__)
 
+REGISTRATION_CSRF_URL_NAMES = {
+    "public_cnic_identity_ocr",
+    "temporary_registration_upload",
+    "tenant_public_registration",
+}
+
 
 def _reason_category(reason):
     value = str(reason or "").lower()
@@ -25,9 +31,19 @@ def _reason_category(reason):
 
 def csrf_failure(request, reason=""):
     logger.warning("CSRF validation rejected a request reason=%s", _reason_category(reason))
+    url_name = getattr(getattr(request, "resolver_match", None), "url_name", "")
+    if url_name in REGISTRATION_CSRF_URL_NAMES:
+        page_kind = "registration"
+    elif url_name == "login":
+        page_kind = "login"
+    else:
+        page_kind = "generic"
     return render(
         request,
         "tenants/csrf_failure.html",
-        {"reload_url": request.get_full_path()},
+        {
+            "page_kind": page_kind,
+            "reload_url": request.get_full_path(),
+        },
         status=403,
     )

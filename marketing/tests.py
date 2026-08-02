@@ -41,6 +41,8 @@ class MarketingRouteTests(TestCase):
         body = unescape(response.content.decode())
         self.assertContains(response, "/static/marketing/css/site.css")
         self.assertContains(response, "/static/marketing/js/site.js")
+        self.assertContains(response, "/static/marketing/video/kirayas-demo.mp4")
+        self.assertContains(response, 'class="home-demo-video"')
         self.assertIn(
             "https://kirayas.com/accounts/login/?next=/",
             body,

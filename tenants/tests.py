@@ -6,13 +6,38 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 from django.utils import timezone
 
 from leases.services.lease_expiry import (
     attach_lease_expiry_countdown,
     get_lease_expiry_countdown,
 )
+
+
+class CsrfFailurePageTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def csrf_response(self, url_name):
+        from tenants.csrf import csrf_failure
+        from unittest.mock import patch
+
+        request = self.factory.post("/expired-form/")
+        request.resolver_match = SimpleNamespace(url_name=url_name)
+        with patch("tenants.csrf.render") as render_mock:
+            csrf_failure(request, reason="CSRF token from POST incorrect.")
+        return render_mock.call_args.args[2]
+
+    def test_login_failure_uses_login_message(self):
+        context = self.csrf_response("login")
+
+        self.assertEqual(context["page_kind"], "login")
+
+    def test_registration_failure_keeps_draft_recovery_message(self):
+        context = self.csrf_response("tenant_public_registration")
+
+        self.assertEqual(context["page_kind"], "registration")
 
 
 class LeaseExpiryCountdownTests(SimpleTestCase):

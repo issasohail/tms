@@ -16,6 +16,16 @@
     <div class="rows"><div class="row"><b>Billing</b><b>Unit</b><b>Status</b></div><div class="row"><span>Rent + Electric</span><span>A-203</span><span>Paid</span></div><div class="row"><span>Rent + Water</span><span>B-101</span><span>Due</span></div></div>
   </div></div>
 </div></div></div></section>
+<section class="section home-demo-section" aria-labelledby="home-demo-heading"><div class="container">
+  <div class="section-heading"><span class="eyebrow">See it in action</span><h2 id="home-demo-heading">A quick look at Kirayas.com</h2><p>Watch this short demonstration of the rental management workflow.</p></div>
+  <div class="home-demo-frame">
+    <video class="home-demo-video" controls preload="metadata" playsinline poster="{% static 'marketing/video/kirayas-demo-poster.jpg' %}">
+      <source src="{% static 'marketing/video/kirayas-demo.mp4' %}" type="video/mp4">
+      <track kind="captions" src="{% static 'marketing/video/kirayas-demo-captions.vtt' %}" srclang="en" label="English" default>
+      Your browser does not support HTML video.
+    </video>
+  </div>
+</div></section>
 <section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">Key features</span><h2>Everything needed for the complete tenancy lifecycle</h2><p>Explore each connected part of Kirayas.com.</p></div>
   <div class="feature-grid">{% for anchor, name, description in features %}<a class="feature-card" href="{% url 'marketing_features' %}#{{ anchor }}"><span class="feature-icon" aria-hidden="true">{{ forloop.counter|stringformat:"02d" }}</span><h3>{{ name }}</h3><p>{{ description }}</p><span class="learn">View feature →</span></a>{% endfor %}</div>
 </div></section>

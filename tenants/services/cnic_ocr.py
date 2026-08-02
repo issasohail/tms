@@ -174,6 +174,27 @@ def extract_cnic_identity(front_file, back_file, model):
             }
         )
         if label == "back":
+            enhanced_back_identity = _enhanced_back_identity_image_data(source)
+            if enhanced_back_identity:
+                images.extend(
+                    [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "The next image is an enlarged crop of the top-right of the "
+                                "same CNIC back. Read the complete 13-digit value there, "
+                                "including its final check digit, as back_identity_number."
+                            ),
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": (
+                                f"data:image/png;base64,{enhanced_back_identity}"
+                            ),
+                            "detail": "high",
+                        },
+                    ]
+                )
             enhanced_front = _enhanced_front_image_data(front_source)
             if enhanced_front:
                 images.extend(
@@ -184,7 +205,9 @@ def extract_cnic_identity(front_file, back_file, model):
                                 "The next image is an enlarged, high-contrast crop of the "
                                 "lower middle of the same CNIC front. Read the 13-digit value "
                                 "directly below the Identity Number label as "
-                                "front_identity_number."
+                                "front_identity_number. Also recheck Date of Birth, Date of "
+                                "Issue, and Date of Expiry here. Read all four printed year "
+                                "digits exactly; do not replace or infer a year digit."
                             ),
                         },
                         {
@@ -426,8 +449,8 @@ def _enhanced_front_image_data(source):
                 (
                     max(0, int(width * 0.25)),
                     max(0, int(height * 0.58)),
-                    max(1, int(width * 0.60)),
-                    max(1, int(height * 0.87)),
+                    max(1, int(width * 0.68)),
+                    max(1, int(height * 0.96)),
                 )
             )
             target_width = max(2200, image.width * 3)
@@ -441,6 +464,36 @@ def _enhanced_front_image_data(source):
         return base64.b64encode(output.getvalue()).decode("ascii")
     except Exception:
         logger.warning("CNIC OCR could not create enhanced front-image copy.")
+        return None
+
+
+def _enhanced_back_identity_image_data(source):
+    """Return an enlarged crop of the back identity-number section."""
+    if not source:
+        return None
+    try:
+        with Image.open(BytesIO(source)) as opened:
+            image = ImageOps.exif_transpose(opened).convert("L")
+            width, height = image.size
+            image = image.crop(
+                (
+                    max(0, int(width * 0.64)),
+                    0,
+                    width,
+                    max(1, int(height * 0.20)),
+                )
+            )
+            target_width = max(2200, image.width * 3)
+            target_height = round(image.height * target_width / image.width)
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            image = ImageOps.autocontrast(image, cutoff=0.5)
+            image = ImageEnhance.Contrast(image).enhance(1.2)
+            image = ImageEnhance.Sharpness(image).enhance(1.5)
+            output = BytesIO()
+            image.save(output, format="PNG", optimize=True)
+        return base64.b64encode(output.getvalue()).decode("ascii")
+    except Exception:
+        logger.warning("CNIC OCR could not create enhanced back identity-number crop.")
         return None
 
 

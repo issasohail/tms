@@ -2,7 +2,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.test import SimpleTestCase
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from tenants.services.cnic_ocr import _auto_orient_cnic_source
 
@@ -26,6 +26,52 @@ class CNICAutoOrientationTests(SimpleTestCase):
         source = self._jpeg((650, 400))
 
         oriented, was_rotated = _auto_orient_cnic_source(source)
+
+        self.assertEqual(oriented, source)
+        self.assertFalse(was_rotated)
+
+    def _back_with_qr_pattern(self, upside_down=False):
+        image = Image.new("RGB", (800, 500), "white")
+        draw = ImageDraw.Draw(image)
+        if upside_down:
+            origin_x, origin_y = 35, 300
+        else:
+            origin_x, origin_y = 570, 30
+        cell = 14
+        for row in range(12):
+            for column in range(12):
+                if (row + column) % 2 == 0:
+                    draw.rectangle(
+                        (
+                            origin_x + column * cell,
+                            origin_y + row * cell,
+                            origin_x + (column + 1) * cell - 1,
+                            origin_y + (row + 1) * cell - 1,
+                        ),
+                        fill="black",
+                    )
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=95)
+        return output.getvalue()
+
+    def test_upside_down_back_is_rotated_by_half_turn(self):
+        source = self._back_with_qr_pattern(upside_down=True)
+
+        oriented, was_rotated = _auto_orient_cnic_source(source, side="back")
+
+        with Image.open(BytesIO(oriented)) as image:
+            top_right = image.crop((550, 0, 800, 220)).convert("L")
+            bottom_left = image.crop((0, 280, 250, 500)).convert("L")
+            self.assertLess(
+                sum(top_right.getdata()) / (top_right.width * top_right.height),
+                sum(bottom_left.getdata()) / (bottom_left.width * bottom_left.height),
+            )
+        self.assertTrue(was_rotated)
+
+    def test_upright_back_is_not_reencoded(self):
+        source = self._back_with_qr_pattern(upside_down=False)
+
+        oriented, was_rotated = _auto_orient_cnic_source(source, side="back")
 
         self.assertEqual(oriented, source)
         self.assertFalse(was_rotated)
@@ -57,3 +103,9 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
             "const allowManualEntry=window.TMS_CNIC_ALLOW_MANUAL_ENTRY===true;",
             self.identity_source,
         )
+
+    def test_quick_registration_shell_names_are_replaceable_by_ocr(self):
+        self.assertIn("TMS_CNIC_REPLACE_SHELL_NAMES", self.public_source)
+        self.assertIn("isReplaceableShellName", self.identity_source)
+        self.assertIn("value==='new'", self.identity_source)
+        self.assertIn("value==='registration'", self.identity_source)

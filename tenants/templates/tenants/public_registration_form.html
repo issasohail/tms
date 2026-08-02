@@ -2247,6 +2247,7 @@
   window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE = "{% url 'tenants:temporary_registration_upload_preview' registration_token '00000000-0000-0000-0000-000000000000' %}";
   window.TMS_IDENTITY_LOCK_MAIN = true;
   window.TMS_CNIC_ALLOW_MANUAL_ENTRY = true;
+  window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenant.last_name == "Registration" and not tenant.cnic %}true{% else %}false{% endif %};
 </script>
 {% include "partials/identity_media_public.html" %}
 <script>

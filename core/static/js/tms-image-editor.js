@@ -153,7 +153,13 @@
       render();
     }, {passive: false});
 
-    return {modal, canvas, ratio, zoom};
+    return {
+      modal,
+      canvas,
+      ratio,
+      zoom,
+      title: modal.querySelector(".tms-img-editor__title"),
+    };
   }
 
   let ui = null;
@@ -167,6 +173,87 @@
     if (/(cnic|id[_-]?(front|back)|registration_book)/.test(value)) return "1.586";
     if (/(avatar|photo|picture|image)/.test(value)) return "1.333333";
     return "free";
+  }
+
+  function identitySide(input) {
+    const value = String(input.name || input.id || "").toLowerCase();
+    if (/(cnic|id)[_-]?back|back[_-]?(cnic|id)/.test(value)) return "back";
+    if (/(cnic|id)[_-]?front|front[_-]?(cnic|id)/.test(value)) return "front";
+    return "";
+  }
+
+  function orientedPreviewCanvas(image, rotation) {
+    const sideways = rotation % 180 !== 0;
+    const rotatedWidth = sideways ? image.naturalHeight : image.naturalWidth;
+    const rotatedHeight = sideways ? image.naturalWidth : image.naturalHeight;
+    const scale = Math.min(1, 520 / Math.max(rotatedWidth, rotatedHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(rotatedWidth * scale));
+    canvas.height = Math.max(1, Math.round(rotatedHeight * scale));
+    const context = canvas.getContext("2d", {willReadFrequently: true});
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.rotate(rotation * Math.PI / 180);
+    context.drawImage(
+      image,
+      -image.naturalWidth * scale / 2,
+      -image.naturalHeight * scale / 2,
+      image.naturalWidth * scale,
+      image.naturalHeight * scale
+    );
+    return canvas;
+  }
+
+  function regionTransitionScore(canvas, box) {
+    const left = Math.max(0, Math.floor(canvas.width * box[0]));
+    const top = Math.max(0, Math.floor(canvas.height * box[1]));
+    const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(canvas.width * (box[2] - box[0]))));
+    const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(canvas.height * (box[3] - box[1]))));
+    const data = canvas.getContext("2d", {willReadFrequently: true}).getImageData(left, top, width, height).data;
+    const gray = function (x, y) {
+      const index = (y * width + x) * 4;
+      return (data[index] * 3 + data[index + 1] * 6 + data[index + 2]) / 10;
+    };
+    let transitions = 0;
+    let comparisons = 0;
+    for (let y = 0; y < height; y += 2) {
+      for (let x = 0; x < width; x += 2) {
+        const current = gray(x, y);
+        if (x + 2 < width) {
+          if (Math.abs(current - gray(x + 2, y)) >= 48) transitions += 1;
+          comparisons += 1;
+        }
+        if (y + 2 < height) {
+          if (Math.abs(current - gray(x, y + 2)) >= 48) transitions += 1;
+          comparisons += 1;
+        }
+      }
+    }
+    return comparisons ? transitions / comparisons : 0;
+  }
+
+  async function initialIdentityRotation(image, input) {
+    const side = identitySide(input);
+    if (!side) return 0;
+    let rotation = image.naturalHeight > image.naturalWidth ? 270 : 0;
+    const preview = orientedPreviewCanvas(image, rotation);
+    if (side === "back") {
+      const expected = regionTransitionScore(preview, [.64, .02, .98, .54]);
+      const inverted = regionTransitionScore(preview, [.02, .46, .36, .98]);
+      if (inverted >= .025 && inverted > expected * 1.18) {
+        rotation = (rotation + 180) % 360;
+      }
+    } else if (side === "front" && typeof window.FaceDetector === "function") {
+      try {
+        const faces = await new window.FaceDetector({fastMode: true, maxDetectedFaces: 1}).detect(preview);
+        const face = faces[0]?.boundingBox;
+        if (face && face.x + face.width / 2 < preview.width / 2) {
+          rotation = (rotation + 180) % 360;
+        }
+      } catch (_) {
+        // Keep aspect-based orientation when browser face detection is unavailable.
+      }
+    }
+    return rotation;
   }
 
   function loadImage(file) {
@@ -316,11 +403,12 @@
     const image = await loadImage(file);
     const editor = getUi();
     const ratio = defaultRatio(input);
+    const initialRotation = await initialIdentityRotation(image, input);
     state = {
       file,
       image,
       ratio,
-      rotation: 0,
+      rotation: initialRotation,
       zoom: 1,
       offsetX: 0,
       offsetY: 0,
@@ -328,6 +416,9 @@
     };
     editor.ratio.value = ratio;
     editor.zoom.value = "1";
+    editor.title.textContent = initialRotation
+      ? "Crop and rotate image — orientation corrected"
+      : "Crop and rotate image";
     editor.modal.hidden = false;
     document.body.style.overflow = "hidden";
     render();

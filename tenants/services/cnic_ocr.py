@@ -148,7 +148,7 @@ def extract_cnic_identity(front_file, back_file, model):
             file_field.open("rb")
             source = file_field.read()
             file_field.close()
-            source, was_auto_rotated = _auto_orient_cnic_source(source)
+            source, was_auto_rotated = _auto_orient_cnic_source(source, side=label)
             if was_auto_rotated:
                 auto_rotated_sides.append(label)
             if label == "front":
@@ -403,7 +403,38 @@ def _confidence(value):
         return 0.0
 
 
-def _auto_orient_cnic_source(source):
+def _cnic_region_transition_score(image, box):
+    """Measure dense dark/light transitions in a normalized image region."""
+    width, height = image.size
+    left = max(0, min(width - 1, round(box[0] * width)))
+    top = max(0, min(height - 1, round(box[1] * height)))
+    right = max(left + 1, min(width, round(box[2] * width)))
+    bottom = max(top + 1, min(height, round(box[3] * height)))
+    region = image.convert("L").crop((left, top, right, bottom))
+    region.thumbnail((180, 180), Image.Resampling.LANCZOS)
+    pixels = region.load()
+    transitions = 0
+    comparisons = 0
+    for y in range(region.height):
+        for x in range(region.width):
+            current = pixels[x, y]
+            if x + 1 < region.width:
+                transitions += abs(current - pixels[x + 1, y]) >= 48
+                comparisons += 1
+            if y + 1 < region.height:
+                transitions += abs(current - pixels[x, y + 1]) >= 48
+                comparisons += 1
+    return transitions / comparisons if comparisons else 0.0
+
+
+def _cnic_back_is_upside_down(image):
+    """Detect a half-turn by comparing the normal and inverted QR locations."""
+    expected = _cnic_region_transition_score(image, (0.64, 0.02, 0.98, 0.54))
+    inverted = _cnic_region_transition_score(image, (0.02, 0.46, 0.36, 0.98))
+    return inverted >= 0.025 and inverted > expected * 1.18
+
+
+def _auto_orient_cnic_source(source, side=None):
     """Rotate a sideways CNIC scan into its standard landscape orientation."""
     if not source:
         raise ValueError("empty image")
@@ -417,9 +448,15 @@ def _auto_orient_cnic_source(source):
         with Image.open(BytesIO(source)) as opened:
             image = ImageOps.exif_transpose(opened)
             image.load()
-            if image.height <= image.width:
+            was_rotated = False
+            if image.height > image.width:
+                image = image.rotate(90, expand=True)
+                was_rotated = True
+            if side == "back" and _cnic_back_is_upside_down(image):
+                image = image.rotate(180, expand=True)
+                was_rotated = True
+            if not was_rotated:
                 return source, False
-            image = image.rotate(90, expand=True)
             if image.mode in {"RGBA", "LA"} or (
                 image.mode == "P" and "transparency" in image.info
             ):
@@ -431,7 +468,7 @@ def _auto_orient_cnic_source(source):
                 image = image.convert("RGB")
             output = BytesIO()
             image.save(output, format="JPEG", quality=92, optimize=True)
-        return output.getvalue(), True
+        return output.getvalue(), was_rotated
     except Exception:
         logger.warning("CNIC OCR auto-orientation was skipped for one image.")
         return source, False
@@ -533,7 +570,7 @@ def _portrait_data_uri(source, bbox=None):
     if not source:
         return ""
     try:
-        source, _was_auto_rotated = _auto_orient_cnic_source(source)
+        source, _was_auto_rotated = _auto_orient_cnic_source(source, side="front")
         with Image.open(BytesIO(source)) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGB")
             width, height = image.size

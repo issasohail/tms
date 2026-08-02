@@ -120,6 +120,12 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           if(request!==seq)return;
           if(!r.ok||!p.ok)throw new Error(p.message||`CNIC OCR failed (HTTP ${r.status}).`);
           let written=0,retained=0,loadedExisting=0;
+          const isReplaceableShellName=(suggestion,current)=>{
+            if(!context.isMain||window.TMS_CNIC_REPLACE_SHELL_NAMES!==true)return false;
+            const value=String(current||'').trim().toLowerCase();
+            return ((suggestion.name==='full_name'||suggestion.name==='first_name')&&value==='new')
+              || (suggestion.name==='last_name'&&value==='registration');
+          };
           const writeVisible=(s,promptOnDifference=false)=>{
             const target=field(context,s.name);
             if(!target)return false;
@@ -128,7 +134,7 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
             const sameValue=s.name==='cnic'
               ? old.replace(/\D/g,'')===incoming.replace(/\D/g,'')
               : old===incoming;
-            if(old&&!sameValue){
+            if(old&&!sameValue&&!isReplaceableShellName(s,old)){
               if(!promptOnDifference){
                 retained++;
                 return false;

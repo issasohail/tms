@@ -124,6 +124,16 @@ CNIC_OCR_SCHEMA = {
     "additionalProperties": False,
 }
 
+CNIC_NUMBER_RECHECK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "front_identity_number": _NULLABLE_TEXT,
+        "back_identity_number": _NULLABLE_TEXT,
+    },
+    "required": ["front_identity_number", "back_identity_number"],
+    "additionalProperties": False,
+}
+
 
 def extract_cnic_identity(front_file, back_file, model):
     """Return review-only identity suggestions from both sides of a CNIC."""
@@ -134,6 +144,7 @@ def extract_cnic_identity(front_file, back_file, model):
 
     images = []
     front_source = b""
+    back_source = b""
     auto_rotated_sides = []
     address_image_sufficient = False
     for label, file_field in (("front", front_file), ("back", back_file)):
@@ -154,6 +165,7 @@ def extract_cnic_identity(front_file, back_file, model):
             if label == "front":
                 front_source = source
             if label == "back":
+                back_source = source
                 with Image.open(BytesIO(source)) as dimension_image:
                     address_image_sufficient = (
                         dimension_image.width >= 600
@@ -301,6 +313,29 @@ def extract_cnic_identity(front_file, back_file, model):
     back_cnic_digits = re.sub(
         r"\D", "", result.get("back_identity_number") or ""
     )
+    if (
+        len(front_cnic_digits) != 13
+        or len(back_cnic_digits) != 13
+        or front_cnic_digits != back_cnic_digits
+    ):
+        rechecked = _retry_identity_numbers(front_source, back_source, model)
+        rechecked_front = re.sub(
+            r"\D", "", rechecked.get("front_identity_number") or ""
+        )
+        rechecked_back = re.sub(
+            r"\D", "", rechecked.get("back_identity_number") or ""
+        )
+        if (
+            len(rechecked_front) == 13
+            and rechecked_front == rechecked_back
+        ):
+            front_cnic_digits = rechecked_front
+            back_cnic_digits = rechecked_back
+            result["front_identity_number"] = rechecked.get("front_identity_number")
+            result["back_identity_number"] = rechecked.get("back_identity_number")
+            warnings.append(
+                "The CNIC numbers were confirmed by a focused second reading."
+            )
     if len(front_cnic_digits) != 13:
         return {
             **result,
@@ -529,6 +564,62 @@ def _enhanced_front_image_data(source):
     except Exception:
         logger.warning("CNIC OCR could not create enhanced front-image copy.")
         return None
+
+
+def _retry_identity_numbers(front_source, back_source, model):
+    """Independently reread both number crops after an unclear or mismatched pass."""
+    enhanced_front = _enhanced_front_image_data(front_source)
+    enhanced_back = _enhanced_back_identity_image_data(back_source)
+    if not enhanced_front or not enhanced_back:
+        return {}
+    try:
+        response = _openai_client().responses.create(
+            model=model,
+            store=False,
+            max_output_tokens=200,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "pakistani_cnic_number_recheck",
+                    "strict": True,
+                    "schema": CNIC_NUMBER_RECHECK_SCHEMA,
+                }
+            },
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "Read the complete Pakistani CNIC identity number from "
+                                "each supplied crop independently. The first crop is the "
+                                "front Identity Number and the second crop is the back "
+                                "top-right identity number. Preserve all 13 digits, "
+                                "including the final check digit. Never copy a value from "
+                                "one crop to the other; return null when a crop is unclear."
+                            ),
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{enhanced_front}",
+                            "detail": "high",
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{enhanced_back}",
+                            "detail": "high",
+                        },
+                    ],
+                }
+            ],
+        )
+        return _parse_json(getattr(response, "output_text", "") or "")
+    except Exception as exc:
+        logger.warning(
+            "CNIC number recheck failed error=%s", _openai_error_kind(exc)
+        )
+        return {}
 
 
 def _enhanced_back_identity_image_data(source):

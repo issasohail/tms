@@ -1386,6 +1386,22 @@ class CNICSideVerificationTests(SimpleTestCase):
         self.assertEqual(result["fields"], {})
         self.assertIn("does not match", result["message"])
 
+    def test_mismatched_first_pass_is_accepted_only_after_matching_recheck(self):
+        from unittest.mock import patch
+
+        with patch(
+            "tenants.services.cnic_ocr._retry_identity_numbers",
+            return_value={
+                "front_identity_number": "42101-1234567-1",
+                "back_identity_number": "42101-1234567-1",
+            },
+        ):
+            result = self._read("42101-9999999-1")
+
+        self.assertTrue(result["cnic_verified"])
+        self.assertEqual(result["fields"]["cnic"], "42101-1234567-1")
+        self.assertIn("focused second reading", " ".join(result["warnings"]))
+
     def test_best_effort_urdu_and_english_addresses_are_not_withheld(self):
         result = self._read(
             "42101-1234567-1",

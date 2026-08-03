@@ -1287,21 +1287,26 @@ def tenant_public_registration_update(request, token):
         resolved_registration_files = {}
 
         def registration_file(field_name):
-            direct = request.FILES.get(field_name)
-            if direct:
-                return direct
             if field_name in resolved_registration_files:
                 return resolved_registration_files[field_name]
-            item = temporary_uploads.get(field_name)
-            if not item:
-                return None
-            from tenants.services.registration_drafts import (
-                content_file_from_temporary_upload,
-            )
+            candidate = request.FILES.get(field_name)
+            if not candidate:
+                item = temporary_uploads.get(field_name)
+                if not item:
+                    return None
+                from tenants.services.registration_drafts import (
+                    content_file_from_temporary_upload,
+                )
 
-            resolved_registration_files[field_name] = (
-                content_file_from_temporary_upload(item)
-            )
+                candidate = content_file_from_temporary_upload(item)
+            if field_name.endswith("cnic_front") or field_name.endswith("cnic_back"):
+                from tenants.services.cnic_ocr import oriented_cnic_content_file
+
+                candidate = oriented_cnic_content_file(
+                    candidate,
+                    side="front" if field_name.endswith("cnic_front") else "back",
+                )
+            resolved_registration_files[field_name] = candidate
             return resolved_registration_files[field_name]
 
         if form_is_valid:

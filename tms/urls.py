@@ -28,7 +28,7 @@ def plain_include(module_path):
 app_patterns = [
     path('', include('core.urls')),
 
-    path('', include(('dashboard.urls', 'dashboard'),
+    path('dashboard/', include(('dashboard.urls', 'dashboard'),
          namespace='dashboard')),
 
     path(

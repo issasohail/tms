@@ -359,7 +359,6 @@ def extract_cnic_identity(front_file, back_file, model):
         warnings.append("Verify the best-effort permanent address transcription.")
 
     fields = {
-        "full_name": _text(result.get("name")),
         "first_name": _text(result.get("name")),
         "last_name": _text(result.get("father_name")),
         "gender": result.get("gender") if result.get("gender") in {"M", "F", "O"} else None,
@@ -446,9 +445,10 @@ def _auto_orient_cnic_source(source, side=None):
 
     try:
         with Image.open(BytesIO(source)) as opened:
+            exif_orientation = opened.getexif().get(274, 1)
             image = ImageOps.exif_transpose(opened)
             image.load()
-            was_rotated = False
+            was_rotated = exif_orientation not in (None, 1)
             if image.height > image.width:
                 image = image.rotate(90, expand=True)
                 was_rotated = True
@@ -472,6 +472,33 @@ def _auto_orient_cnic_source(source, side=None):
     except Exception:
         logger.warning("CNIC OCR auto-orientation was skipped for one image.")
         return source, False
+
+
+def oriented_cnic_content_file(file_field, *, side, filename=None):
+    """Return an upload whose pixels are stored in the detected upright orientation."""
+    if not file_field:
+        return None
+    opened_here = bool(getattr(file_field, "closed", True))
+    try:
+        if opened_here:
+            file_field.open("rb")
+        else:
+            file_field.seek(0)
+        source = file_field.read()
+        if opened_here:
+            file_field.close()
+        else:
+            file_field.seek(0)
+    except Exception:
+        logger.warning("CNIC upload could not be read for orientation correction.")
+        return file_field
+
+    oriented, was_rotated = _auto_orient_cnic_source(source, side=side)
+    if not was_rotated:
+        return file_field
+    original_name = filename or getattr(file_field, "name", "") or f"cnic-{side}.jpg"
+    stem = original_name.rsplit(".", 1)[0]
+    return ContentFile(oriented, name=f"{stem}-oriented.jpg")
 
 
 def _enhanced_front_image_data(source):

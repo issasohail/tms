@@ -1,10 +1,14 @@
 from io import BytesIO
 from pathlib import Path
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 from PIL import Image, ImageDraw
 
-from tenants.services.cnic_ocr import _auto_orient_cnic_source
+from tenants.services.cnic_ocr import (
+    _auto_orient_cnic_source,
+    oriented_cnic_content_file,
+)
 
 
 class CNICAutoOrientationTests(SimpleTestCase):
@@ -75,6 +79,24 @@ class CNICAutoOrientationTests(SimpleTestCase):
 
         self.assertEqual(oriented, source)
         self.assertFalse(was_rotated)
+
+    def test_saved_upside_down_back_is_physically_reoriented(self):
+        upload = SimpleUploadedFile(
+            "cnic-back.jpg",
+            self._back_with_qr_pattern(upside_down=True),
+            content_type="image/jpeg",
+        )
+
+        oriented = oriented_cnic_content_file(upload, side="back")
+
+        self.assertTrue(oriented.name.endswith("-oriented.jpg"))
+        with Image.open(oriented) as image:
+            top_right = image.crop((550, 0, 800, 220)).convert("L")
+            bottom_left = image.crop((0, 280, 250, 500)).convert("L")
+            self.assertLess(
+                sum(top_right.getdata()) / (top_right.width * top_right.height),
+                sum(bottom_left.getdata()) / (bottom_left.width * bottom_left.height),
+            )
 
 
 class CNICRegistrationTemplateCoverageTests(SimpleTestCase):

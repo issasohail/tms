@@ -44,10 +44,10 @@ class MarketingRouteTests(TestCase):
         self.assertContains(response, "/static/marketing/video/kirayas-demo.mp4")
         self.assertContains(response, 'class="home-demo-video"')
         self.assertIn(
-            "https://kirayas.com/accounts/login/?next=/",
+            "https://kirayas.com/tms/accounts/login/?next=/tms/",
             body,
         )
-        self.assertIn("https://kirayas.com/accounts/signup/", body)
+        self.assertIn("https://kirayas.com/tms/accounts/signup/", body)
         self.assertNotIn('href="features.html"', body)
         self.assertNotIn("assets/site.", body)
 
@@ -88,13 +88,17 @@ class MarketingRouteTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "marketing/index.html")
 
-    def test_lan_host_root_renders_marketing_home_with_local_login_url(self):
+    def test_lan_host_root_uses_local_account_urls(self):
         response = Client(HTTP_HOST="192.168.100.28:8001").get("/")
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "marketing/index.html")
         self.assertContains(
             response,
             "http://192.168.100.28:8001/accounts/login/?next=/",
+        )
+        self.assertContains(
+            response,
+            "http://192.168.100.28:8001/accounts/signup/",
         )
 
     def test_public_pages_do_not_expose_authenticated_records(self):
@@ -115,6 +119,14 @@ class MarketingRouteTests(TestCase):
         self.assertEqual(
             response["Location"],
             "/accounts/login/?next=/tms/",
+        )
+
+    def test_legacy_public_account_path_redirects_under_tms_prefix(self):
+        response = self.client.get("/accounts/signup/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            "https://kirayas.com/tms/accounts/signup/",
         )
 
     def test_www_redirect_is_permanent_and_preserves_path_and_query(self):

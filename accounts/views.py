@@ -35,6 +35,11 @@ class LoginView(auth_views.LoginView):
     form_class = LoginForm
     template_name = "accounts/login.html"
 
+    def get_default_redirect_url(self):
+        if self.request.path_info.startswith("/tms/"):
+            return "/tms/"
+        return super().get_default_redirect_url()
+
 
 class LogoutView(auth_views.LogoutView):
     http_method_names = ["get", "post", "options"]
@@ -53,9 +58,6 @@ class LogoutView(auth_views.LogoutView):
 
 @require_http_methods(["GET", "POST"])
 def signup(request):
-    if request.user.is_authenticated:
-        return redirect("accounts:profile")
-
     if request.method == "POST":
         form = AccountCreationForm(request.POST)
         if form.is_valid():
@@ -67,6 +69,8 @@ def signup(request):
                 login(request, user)
             messages.success(
                 request, "Welcome! Your account has been created.")
+            if request.path_info.startswith("/tms/"):
+                return redirect("/tms/accounts/profile/")
             return redirect("accounts:profile")
     else:
         form = AccountCreationForm()

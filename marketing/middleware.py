@@ -1,7 +1,7 @@
 from urllib.parse import urlsplit
 
 from django.conf import settings
-from django.http import HttpResponsePermanentRedirect
+from django.http import HttpResponsePermanentRedirect, HttpResponseRedirect
 
 
 class MarketingHostMiddleware:
@@ -28,6 +28,19 @@ class MarketingHostMiddleware:
         # Keep the authenticated application on the same canonical domain at
         # /tms/, while all other paths use the public marketing URLconf.
         is_tms_path = request.path_info == "/tms" or request.path_info.startswith("/tms/")
+        if host == public_host and request.path_info.startswith("/accounts/"):
+            canonical = urlsplit(
+                getattr(
+                    settings,
+                    "MARKETING_PUBLIC_BASE_URL",
+                    f"https://{public_host}",
+                )
+            )
+            location = (
+                f"{canonical.scheme}://{canonical.netloc}/tms"
+                f"{request.get_full_path()}"
+            )
+            return HttpResponseRedirect(location)
         if host == public_host and not is_tms_path:
             request.urlconf = "tms.marketing_urls"
 

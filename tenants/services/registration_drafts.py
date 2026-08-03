@@ -124,6 +124,18 @@ def save_temporary_upload(
     draft_id = parse_draft_id(draft_id)
     _scope, document_kind = classify_registration_field(field_name)
     original_name, detected_type, size = validate_temporary_image(upload)
+    if document_kind in {"cnic_front", "cnic_back"}:
+        from tenants.services.cnic_ocr import oriented_cnic_content_file
+
+        upload = oriented_cnic_content_file(
+            upload,
+            side="front" if document_kind == "cnic_front" else "back",
+            filename=original_name,
+        )
+        if str(getattr(upload, "name", "")).lower().endswith("-oriented.jpg"):
+            original_name = upload.name
+            detected_type = "image/jpeg"
+            size = upload.size
     if TemporaryRegistrationUpload.objects.filter(
         tenant=tenant, draft_id=draft_id, expires_at__gt=timezone.now()
     ).count() >= MAX_TEMPORARY_UPLOADS_PER_DRAFT:

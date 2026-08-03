@@ -26,16 +26,21 @@ PAGE_TEMPLATES = {
 }
 
 
-def _tms_url(route_name):
+def _tms_url(request, route_name):
     path = reverse(route_name, urlconf="tms.urls")
-    return build_public_path_url(path)
+    host = request.get_host().split(":", 1)[0].lower()
+    if host == settings.MARKETING_PUBLIC_HOST:
+        return build_public_path_url(f"/tms{path}")
+    return request.build_absolute_uri(path)
 
 
 def _login_url(request):
-    login_path = f"{settings.LOGIN_URL}?next=/"
     host = request.get_host().split(":", 1)[0].lower()
     if host == settings.MARKETING_PUBLIC_HOST:
-        return build_public_path_url(login_path)
+        return build_public_path_url(
+            f"/tms{settings.LOGIN_URL}?next=/tms/"
+        )
+    login_path = f"{settings.LOGIN_URL}?next=/"
     return request.build_absolute_uri(login_path)
 
 
@@ -44,7 +49,7 @@ def _base_context(request):
         "features": FEATURES,
         "pricing_plans": PRICING_PLANS,
         "login_url": _login_url(request),
-        "register_url": _tms_url("accounts:signup"),
+        "register_url": _tms_url(request, "accounts:signup"),
         "marketing_whatsapp_url": reverse("marketing_whatsapp"),
         "marketing_whatsapp_is_direct": True,
     }

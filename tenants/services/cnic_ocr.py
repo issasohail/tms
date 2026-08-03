@@ -21,13 +21,18 @@ from whatsapp.services.openai_ocr import (
 
 logger = logging.getLogger(__name__)
 
-# Normalized x, y, width and height for the portrait on a standard CNIC front.
-# Adjust these four values when the fallback crop needs to move or resize.
+# Normalized x, y, width and height for portraits on the current right-photo
+# CNIC and the older left-photo card layout.
 CNIC_PORTRAIT_CROP = (0.71, 0.24, 0.25, 0.55)
+CNIC_LEFT_PORTRAIT_CROP = (0.04, 0.22, 0.27, 0.48)
+CNIC_PORTRAIT_CROPS = (CNIC_PORTRAIT_CROP, CNIC_LEFT_PORTRAIT_CROP)
 
 CNIC_OCR_PROMPT = """
 The first image is intended to be the FRONT and the second image the BACK of the
-same Pakistani CNIC. Read only clearly printed information. Pakistani CNIC dates
+same Pakistani CNIC, but users may accidentally select them in reverse. Identify
+the actual side from the visible card layout, return its supplied image position
+as front_image_index and back_image_index, and read fields from the actual side
+regardless of upload order. Read only clearly printed information. Pakistani CNIC dates
 are printed as DD.MM.YYYY. Read all eight date digits exactly before converting:
 the first pair is the day and the second pair is the month. Return every date as
 YYYY-MM-DD. For example, printed 05.11.2024 must become 2024-11-05, never
@@ -37,15 +42,21 @@ before returning them; do not swap or drop month digits.
 Extract name, father/husband name, gender, country of stay, identity number,
 date of birth, date of issue, and date of expiry from the front.
 Return the front identity number separately as front_identity_number. On the
-back, read back_identity_number from the identity number printed in the TOP
-RIGHT corner. Never copy or infer either number from the other image. Return
+back, read back_identity_number from the 13-digit identity number. Newer cards
+usually print it in the top-right; older cards may print it on the left below
+the small portrait. Ignore the QR code and any separate 12-digit card/QR serial
+printed below it. Never copy or infer either number from the other image. Return
 null for a side when its own printed number is not clearly readable.
 On the front, the 13-digit identity number is printed below the label
 "Identity Number" in the lower section. Ignore any faded 5-digit card serial
 printed near the bottom-left corner; that short serial is not the identity number.
 Return portrait_bbox as normalized 0-to-1 x, y, width and height coordinates
-covering only the printed portrait photograph on the CNIC front. Return null
-when the portrait boundary cannot be identified safely.
+covering only the printed human portrait photograph on the CNIC front. Current
+cards normally have the portrait on the RIGHT and a gold electronic chip on the
+LEFT; the gold chip is never a portrait. Older green cards have the human
+portrait on the LEFT. Return portrait_side as "right" or "left" for the actual
+human portrait, and return null only when its side cannot be identified safely.
+Return null for portrait_bbox when the exact portrait boundary cannot be identified.
 
 On the back, carefully locate the two Urdu address blocks immediately LEFT of
 the QR code in the upper half of the card. The UPPER block is the current address
@@ -77,6 +88,12 @@ CNIC_OCR_SCHEMA = {
             "type": "string",
             "enum": ["pakistani_cnic", "other", "unknown"],
         },
+        "front_image_index": {
+            "type": ["integer", "null"], "enum": [1, 2, None]
+        },
+        "back_image_index": {
+            "type": ["integer", "null"], "enum": [1, 2, None]
+        },
         "name": _NULLABLE_TEXT,
         "father_name": _NULLABLE_TEXT,
         "gender": {"type": ["string", "null"], "enum": ["M", "F", "O", None]},
@@ -98,6 +115,9 @@ CNIC_OCR_SCHEMA = {
             "required": ["x", "y", "width", "height"],
             "additionalProperties": False,
         },
+        "portrait_side": {
+            "type": ["string", "null"], "enum": ["left", "right", None]
+        },
         "temporary_address_urdu": _NULLABLE_TEXT,
         "permanent_address_urdu": _NULLABLE_TEXT,
         "temporary_address_english": _NULLABLE_TEXT,
@@ -112,10 +132,11 @@ CNIC_OCR_SCHEMA = {
         "warnings": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
-        "document_type", "name", "father_name", "gender", "country_of_stay",
+        "document_type", "front_image_index", "back_image_index",
+        "name", "father_name", "gender", "country_of_stay",
         "identity_number", "front_identity_number", "back_identity_number",
         "date_of_birth", "date_of_issue", "date_of_expiry",
-        "portrait_bbox",
+        "portrait_bbox", "portrait_side",
         "temporary_address_urdu", "permanent_address_urdu",
         "temporary_address_english", "permanent_address_english", "confidence",
         "temporary_address_confidence", "permanent_address_confidence",
@@ -186,49 +207,6 @@ def extract_cnic_identity(front_file, back_file, model):
             }
         )
         if label == "back":
-            enhanced_back_identity = _enhanced_back_identity_image_data(source)
-            if enhanced_back_identity:
-                images.extend(
-                    [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "The next image is an enlarged crop of the top-right of the "
-                                "same CNIC back. Read the complete 13-digit value there, "
-                                "including its final check digit, as back_identity_number."
-                            ),
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": (
-                                f"data:image/png;base64,{enhanced_back_identity}"
-                            ),
-                            "detail": "high",
-                        },
-                    ]
-                )
-            enhanced_front = _enhanced_front_image_data(front_source)
-            if enhanced_front:
-                images.extend(
-                    [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "The next image is an enlarged, high-contrast crop of the "
-                                "lower middle of the same CNIC front. Read the 13-digit value "
-                                "directly below the Identity Number label as "
-                                "front_identity_number. Also recheck Date of Birth, Date of "
-                                "Issue, and Date of Expiry here. Read all four printed year "
-                                "digits exactly; do not replace or infer a year digit."
-                            ),
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": f"data:image/png;base64,{enhanced_front}",
-                            "detail": "high",
-                        },
-                    ]
-                )
             enhanced = _enhanced_back_image_data(
                 ContentFile(source, name=getattr(file_field, "name", "cnic-back.jpg"))
             )
@@ -278,7 +256,12 @@ def extract_cnic_identity(front_file, back_file, model):
     except ImportError:
         return _unavailable("The openai Python package is not installed.")
     except Exception as exc:
-        logger.warning("CNIC OCR failed error=%s", _openai_error_kind(exc))
+        error_kind = _openai_error_kind(exc)
+        logger.warning("CNIC OCR failed error=%s", error_kind)
+        if error_kind == "rate_limit":
+            return _unavailable(
+                "CNIC OCR is temporarily busy. Wait one minute, then click Read CNIC Details again."
+            )
         return _unavailable("CNIC OCR could not read these images. Enter the details manually.")
 
     result = _parse_json(getattr(response, "output_text", "") or "")
@@ -300,6 +283,14 @@ def extract_cnic_identity(front_file, back_file, model):
         }
 
     warnings = [str(item).strip() for item in result.get("warnings", []) if str(item).strip()]
+    front_source, back_source, sides_were_swapped = _ordered_cnic_sources(
+        result, front_source, back_source
+    )
+    if sides_were_swapped:
+        result["sides_were_swapped"] = True
+        warnings.append(
+            "The uploaded CNIC front and back were detected in reverse order and corrected."
+        )
     if auto_rotated_sides:
         rotated_labels = " and ".join(auto_rotated_sides)
         image_word = "image was" if len(auto_rotated_sides) == 1 else "images were"
@@ -398,6 +389,7 @@ def extract_cnic_identity(front_file, back_file, model):
         "last_name": _text(result.get("father_name")),
         "gender": result.get("gender") if result.get("gender") in {"M", "F", "O"} else None,
         "country": _text(result.get("country_of_stay")),
+        "nationality": "Pakistani",
         "cnic": cnic,
         "date_of_birth": dob.isoformat() if dob else None,
         "cnic_issue_date": issue.isoformat() if issue else None,
@@ -413,6 +405,7 @@ def extract_cnic_identity(front_file, back_file, model):
     result["portrait_data_uri"] = _portrait_data_uri(
         front_source,
         result.get("portrait_bbox"),
+        result.get("portrait_side"),
     )
     result["warnings"] = list(dict.fromkeys(warnings))
     return result
@@ -423,6 +416,16 @@ def _valid_dob(value):
     if dob and dob <= date.today() and _age_on(dob, date.today()) <= 120:
         return dob
     return None
+
+
+def _ordered_cnic_sources(result, first_source, second_source):
+    """Return actual front/back bytes using the model's visual side classification."""
+    if (
+        result.get("front_image_index") == 2
+        and result.get("back_image_index") == 1
+    ):
+        return second_source, first_source, True
+    return first_source, second_source, False
 
 
 def _text(value):
@@ -444,7 +447,9 @@ def _cnic_region_transition_score(image, box):
     top = max(0, min(height - 1, round(box[1] * height)))
     right = max(left + 1, min(width, round(box[2] * width)))
     bottom = max(top + 1, min(height, round(box[3] * height)))
-    region = image.convert("L").crop((left, top, right, bottom))
+    region = ImageOps.autocontrast(
+        image.convert("L").crop((left, top, right, bottom)), cutoff=1
+    )
     region.thumbnail((180, 180), Image.Resampling.LANCZOS)
     pixels = region.load()
     transitions = 0
@@ -462,10 +467,129 @@ def _cnic_region_transition_score(image, box):
 
 
 def _cnic_back_is_upside_down(image):
-    """Detect a half-turn by comparing the normal and inverted QR locations."""
+    """Detect a half-turn from the contrast-normalized QR/layout regions."""
     expected = _cnic_region_transition_score(image, (0.64, 0.02, 0.98, 0.54))
     inverted = _cnic_region_transition_score(image, (0.02, 0.46, 0.36, 0.98))
     return inverted >= 0.025 and inverted > expected * 1.18
+
+
+def _cnic_region_portrait_color_score(image, box):
+    """Estimate portrait-like warm pixels in a normalized card region."""
+    width, height = image.size
+    left = max(0, min(width - 1, round(box[0] * width)))
+    top = max(0, min(height - 1, round(box[1] * height)))
+    right = max(left + 1, min(width, round(box[2] * width)))
+    bottom = max(top + 1, min(height, round(box[3] * height)))
+    region = image.convert("RGB").crop((left, top, right, bottom))
+    region.thumbnail((180, 180), Image.Resampling.LANCZOS)
+    portrait_pixels = 0
+    pixels = 0
+    for red, green, blue in region.getdata():
+        if (
+            45 < red < 245
+            and 30 < green < 225
+            and 20 < blue < 215
+            and red > green * 1.06
+            and red > blue * 1.08
+            and abs(green - blue) < 75
+        ):
+            portrait_pixels += 1
+        pixels += 1
+    return portrait_pixels / pixels if pixels else 0.0
+
+
+def _cnic_region_portrait_detail_score(image, box):
+    """Measure dark facial detail and contrast without mistaking the gold chip."""
+    width, height = image.size
+    left = max(0, min(width - 1, round(box[0] * width)))
+    top = max(0, min(height - 1, round(box[1] * height)))
+    right = max(left + 1, min(width, round(box[2] * width)))
+    bottom = max(top + 1, min(height, round(box[3] * height)))
+    region = image.convert("L").crop((left, top, right, bottom))
+    region.thumbnail((180, 180), Image.Resampling.LANCZOS)
+    values = list(region.getdata())
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    dark_ratio = sum(value < 105 for value in values) / len(values)
+    contrast = variance ** 0.5 / 255
+    return dark_ratio + max(0.0, contrast - 0.08) * 0.45
+
+
+def _cnic_portrait_fallback_crop(image):
+    """Choose the portrait side for current and older Pakistani CNIC layouts."""
+    left_region = (0.02, 0.12, 0.34, 0.84)
+    right_region = (0.66, 0.12, 0.99, 0.84)
+    left_score = _cnic_region_portrait_detail_score(
+        image, left_region
+    ) + _cnic_region_portrait_color_score(image, left_region) * 0.15
+    right_score = _cnic_region_portrait_detail_score(
+        image, right_region
+    ) + _cnic_region_portrait_color_score(image, right_region) * 0.15
+    # Older fronts also have a detailed coat-of-arms/security pattern on the
+    # right, so the left portrait need only be clearly (not overwhelmingly)
+    # stronger. Current cards still produce a much stronger right-side score.
+    if left_score >= 0.055 and left_score > right_score * 1.10:
+        return CNIC_LEFT_PORTRAIT_CROP
+    return CNIC_PORTRAIT_CROP
+
+
+def _cnic_gold_chip_score(image):
+    """Estimate whether the current-layout gold chip occupies the left card area."""
+    width, height = image.size
+    region = image.convert("RGB").crop(
+        (round(width * 0.06), round(height * 0.28), round(width * 0.30), round(height * 0.67))
+    )
+    region.thumbnail((100, 100), Image.Resampling.LANCZOS)
+    pixels = list(region.getdata())
+    if not pixels:
+        return 0.0
+    gold_pixels = sum(
+        red > 60
+        and red > green * 1.08
+        and green > blue * 1.05
+        and max(red, green, blue) - min(red, green, blue) > 20
+        for red, green, blue in pixels
+    )
+    return gold_pixels / len(pixels)
+
+
+def _cnic_portrait_crop(image, portrait_side=None):
+    """Choose portrait side using card layout evidence, then the OCR hint."""
+    local_crop = _cnic_portrait_fallback_crop(image)
+    chip_score = _cnic_gold_chip_score(image)
+    if local_crop == CNIC_LEFT_PORTRAIT_CROP and chip_score < 0.05:
+        return CNIC_LEFT_PORTRAIT_CROP
+    if chip_score >= 0.055:
+        return CNIC_PORTRAIT_CROP
+    if portrait_side == "left":
+        return CNIC_LEFT_PORTRAIT_CROP
+    if portrait_side == "right":
+        return CNIC_PORTRAIT_CROP
+    return local_crop
+
+
+def _cnic_portrait_bbox_is_safe(box, expected_crop=None):
+    """Accept OCR portrait boxes only near a supported left/right card layout."""
+    x, y, box_width, box_height = box
+    if not (
+        0 <= x < 1
+        and 0 <= y < 1
+        and 0.08 <= box_width <= 0.55
+        and 0.15 <= box_height <= 0.95
+        and x + box_width <= 1.02
+        and y + box_height <= 1.02
+    ):
+        return False
+    anchors = (expected_crop,) if expected_crop else CNIC_PORTRAIT_CROPS
+    return any(
+        abs(x - anchor_x) <= 0.10
+        and abs(y - anchor_y) <= 0.15
+        and abs(box_width - anchor_width) <= 0.12
+        and abs(box_height - anchor_height) <= 0.20
+        for anchor_x, anchor_y, anchor_width, anchor_height in anchors
+    )
 
 
 def _auto_orient_cnic_source(source, side=None):
@@ -595,7 +719,9 @@ def _retry_identity_numbers(front_source, back_source, model):
                                 "Read the complete Pakistani CNIC identity number from "
                                 "each supplied crop independently. The first crop is the "
                                 "front Identity Number and the second crop is the back "
-                                "top-right identity number. Preserve all 13 digits, "
+                                "identity-number area. On an older back the number may be "
+                                "left below the portrait; on a newer back it may be top-right. "
+                                "Ignore QR data and any separate 12-digit serial. Preserve all 13 digits, "
                                 "including the final check digit. Never copy a value from "
                                 "one crop to the other; return null when a crop is unclear."
                             ),
@@ -623,7 +749,7 @@ def _retry_identity_numbers(front_source, back_source, model):
 
 
 def _enhanced_back_identity_image_data(source):
-    """Return an enlarged crop of the back identity-number section."""
+    """Return the enlarged upper back, covering both old and new number layouts."""
     if not source:
         return None
     try:
@@ -632,10 +758,10 @@ def _enhanced_back_identity_image_data(source):
             width, height = image.size
             image = image.crop(
                 (
-                    max(0, int(width * 0.64)),
+                    0,
                     0,
                     width,
-                    max(1, int(height * 0.20)),
+                    max(1, int(height * 0.62)),
                 )
             )
             target_width = max(2200, image.width * 3)
@@ -683,7 +809,7 @@ def _enhanced_back_image_data(file_field):
         return None
 
 
-def _portrait_data_uri(source, bbox=None):
+def _portrait_data_uri(source, bbox=None, portrait_side=None):
     """Return a compact JPEG portrait crop from the CNIC front."""
     if not source:
         return ""
@@ -692,7 +818,7 @@ def _portrait_data_uri(source, bbox=None):
         with Image.open(BytesIO(source)) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGB")
             width, height = image.size
-            default_x, default_y, default_width, default_height = CNIC_PORTRAIT_CROP
+            fallback_crop = _cnic_portrait_crop(image, portrait_side)
             values = bbox if isinstance(bbox, dict) else {}
             try:
                 x = float(values.get("x"))
@@ -700,21 +826,11 @@ def _portrait_data_uri(source, bbox=None):
                 box_width = float(values.get("width"))
                 box_height = float(values.get("height"))
             except (TypeError, ValueError):
-                x, y, box_width, box_height = CNIC_PORTRAIT_CROP
-            if not (
-                0 <= x < 1
-                and 0 <= y < 1
-                and 0.08 <= box_width <= 0.55
-                and 0.15 <= box_height <= 0.95
-                and x + box_width <= 1.02
-                and y + box_height <= 1.02
-                # Reject OCR boxes that drift into the CNIC text area.
-                and abs(x - default_x) <= 0.07
-                and abs(y - default_y) <= 0.12
-                and abs(box_width - default_width) <= 0.10
-                and abs(box_height - default_height) <= 0.18
+                x, y, box_width, box_height = fallback_crop
+            if not _cnic_portrait_bbox_is_safe(
+                (x, y, box_width, box_height), expected_crop=fallback_crop
             ):
-                x, y, box_width, box_height = CNIC_PORTRAIT_CROP
+                x, y, box_width, box_height = fallback_crop
             left = max(0, round(x * width))
             top = max(0, round(y * height))
             right = min(width, round((x + box_width) * width))

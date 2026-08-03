@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods, require_POST
@@ -138,11 +139,125 @@ def inventory_manage(request, scope, pk):
     if request.method == "POST":
         action = request.POST.get("action")
         item_id = request.POST.get("item_id")
+        return_to_detail = scope == "lease" and request.POST.get("return_to_detail") == "1"
+        return_to_edit = scope == "lease" and request.POST.get("return_to_edit") == "1"
+        redirect_args = (
+            ("leases:lease_detail", {"pk": pk})
+            if return_to_detail
+            else ("leases:inventory_manage", {"scope": scope, "pk": pk})
+        )
+        if return_to_edit:
+            redirect_args = (
+                f'{reverse("leases:lease_update", kwargs={"pk": pk})}#pane-inventory',
+                {},
+            )
+        if action in ("import_missing", "import_replace") and scope == "lease":
+            replace = action == "import_replace"
+            copied = copy_inventory_defaults(
+                obj,
+                overwrite=replace,
+                replace=replace,
+            )
+            if replace:
+                messages.success(request, "Lease inventory replaced with the unit defaults.")
+            elif copied:
+                messages.success(request, f"{copied} missing unit inventory item(s) imported.")
+            else:
+                messages.info(request, "All unit inventory items are already on this lease.")
+            return redirect(redirect_args[0], **redirect_args[1])
+        if action == "add_lease_item" and scope == "lease":
+            try:
+                quantity = max(0, int(request.POST.get("quantity") or 0))
+            except ValueError:
+                quantity = 0
+            condition = (request.POST.get("condition") or "").strip()
+            new_item_name = (request.POST.get("new_item_name") or "").strip()
+            with transaction.atomic():
+                if item_id:
+                    item = get_object_or_404(
+                        InventoryItemDefinition, pk=item_id, is_active=True
+                    )
+                elif new_item_name:
+                    item = InventoryItemDefinition.objects.filter(
+                        name__iexact=new_item_name
+                    ).first()
+                    if item is None:
+                        base_code = (
+                            slugify(new_item_name).replace("-", "_")[:90]
+                            or "inventory_item"
+                        )
+                        code = base_code
+                        suffix = 2
+                        while InventoryItemDefinition.objects.filter(code=code).exists():
+                            code = f"{base_code[:96]}_{suffix}"
+                            suffix += 1
+                        item = InventoryItemDefinition.objects.create(
+                            name=new_item_name,
+                            code=code,
+                            unit_label="item",
+                            default_quantity=0,
+                            default_condition=condition or "Working order",
+                            include_in_clause=request.POST.get("is_included")
+                            in ("1", "on", "true"),
+                            sort_order=50,
+                            is_active=True,
+                        )
+                    elif not item.is_active:
+                        item.is_active = True
+                        item.save(update_fields=["is_active"])
+                else:
+                    messages.error(request, "Select an item or enter a new item name.")
+                    return redirect(redirect_args[0], **redirect_args[1])
+
+                values = {
+                    "quantity": quantity,
+                    "condition": condition,
+                    "is_included": True,
+                }
+                UnitInventoryItem.objects.update_or_create(
+                    unit=obj.unit, item=item, defaults=values
+                )
+                LeaseInventoryItem.objects.update_or_create(
+                    lease=obj,
+                    item=item,
+                    defaults={**values, "snapshot_source": "lease"},
+                )
+                sync_lease_field_from_inventory_item(obj, item, quantity)
+            messages.success(
+                request,
+                f"{item.name} added to this lease and the unit defaults.",
+            )
+            return redirect(redirect_args[0], **redirect_args[1])
+        if action == "delete" and scope == "lease":
+            item = get_object_or_404(InventoryItemDefinition, pk=item_id)
+            existing = LeaseInventoryItem.objects.filter(lease=obj, item=item).first()
+            LeaseInventoryItem.objects.update_or_create(
+                lease=obj,
+                item=item,
+                defaults={
+                    "quantity": 0,
+                    "condition": existing.condition if existing else "",
+                    "is_included": False,
+                    "snapshot_source": "lease",
+                },
+            )
+            sync_lease_field_from_inventory_item(obj, item, 0)
+            messages.success(request, f"{item.name} removed from this lease.")
+            return redirect(redirect_args[0], **redirect_args[1])
         if action in ("copy_item", "copy_all"):
             copy_inventory_defaults(obj, item_id=item_id if action == "copy_item" else None)
             messages.success(request, "Default inventory copied successfully.")
-            return redirect("leases:inventory_manage", scope=scope, pk=pk)
+            return redirect(redirect_args[0], **redirect_args[1])
         item = get_object_or_404(InventoryItemDefinition, pk=item_id)
+        item_name = (request.POST.get("item_name") or "").strip()
+        if item_name and item_name.casefold() != item.name.casefold():
+            if InventoryItemDefinition.objects.filter(name__iexact=item_name).exclude(
+                pk=item.pk
+            ).exists():
+                messages.error(request, f'An inventory item named "{item_name}" already exists.')
+                return redirect(redirect_args[0], **redirect_args[1])
+            item.name = item_name
+            item.save(update_fields=["name"])
         try:
             quantity = max(0, int(request.POST.get("quantity") or 0))
         except ValueError:
@@ -158,7 +273,7 @@ def inventory_manage(request, scope, pk):
         if model is LeaseInventoryItem:
             sync_lease_field_from_inventory_item(obj, item, quantity)
         messages.success(request, f"{item.name} inventory updated.")
-        return redirect("leases:inventory_manage", scope=scope, pk=pk)
+        return redirect(redirect_args[0], **redirect_args[1])
 
     if scope == "property":
         rows = effective_inventory(property_obj=obj)

@@ -103,7 +103,7 @@ def effective_inventory(property_obj=None, unit=None, lease=None):
 
 
 @transaction.atomic
-def copy_inventory_defaults(scope_obj, item_id=None):
+def copy_inventory_defaults(scope_obj, item_id=None, *, overwrite=True, replace=False):
     if hasattr(scope_obj, "tenant_id") and hasattr(scope_obj, "unit_id"):
         model, target_field = LeaseInventoryItem, "lease"
         defaults = effective_inventory(unit=scope_obj.unit)
@@ -118,6 +118,11 @@ def copy_inventory_defaults(scope_obj, item_id=None):
         source = None
     if item_id:
         defaults = [row for row in defaults if row["item"].id == int(item_id)]
+    if replace:
+        model.objects.filter(**{target_field: scope_obj}).exclude(
+            item_id__in=[row["item"].id for row in defaults]
+        ).delete()
+    copied = 0
     for row in defaults:
         values = {
             "quantity": row["quantity"], "condition": row["condition"],
@@ -125,9 +130,19 @@ def copy_inventory_defaults(scope_obj, item_id=None):
         }
         if model is LeaseInventoryItem:
             values["snapshot_source"] = source
-        model.objects.update_or_create(
-            **{target_field: scope_obj, "item": row["item"]}, defaults=values
-        )
+        lookup = {target_field: scope_obj, "item": row["item"]}
+        created = False
+        if overwrite:
+            model.objects.update_or_create(**lookup, defaults=values)
+            copied += 1
+        else:
+            _, created = model.objects.get_or_create(**lookup, defaults=values)
+            copied += int(created)
+        if model is LeaseInventoryItem and (overwrite or created):
+            sync_lease_field_from_inventory_item(
+                scope_obj, row["item"], values["quantity"]
+            )
+    return copied
 
 
 @transaction.atomic

@@ -160,7 +160,7 @@ def temporary_registration_upload(request, token):
         raise Http404("Invalid registration link")
 
     client_ip = request.META.get("REMOTE_ADDR", "unknown")
-    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "upload", 80):
+    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "upload", 240):
         return _private_draft_response(
             JsonResponse(
                 {"ok": False, "message": "Temporary upload limit reached. Try again later."},
@@ -212,7 +212,7 @@ def temporary_registration_upload_preview(request, token, upload_id):
         raise Http404
 
     client_ip = request.META.get("REMOTE_ADDR", "unknown")
-    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "preview", 300):
+    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "preview", 2000):
         return _private_draft_response(HttpResponse(status=429))
     item = get_object_or_404(
         TemporaryRegistrationUpload,
@@ -232,6 +232,44 @@ def temporary_registration_upload_preview(request, token, upload_id):
         filename=item.original_filename,
     )
     return _private_draft_response(response)
+
+
+@require_GET
+def temporary_registration_upload_list(request, token):
+    """Return the latest unexpired document for every field in one browser draft."""
+    from tenants.services.registration_drafts import (
+        parse_draft_id,
+        temporary_upload_rate_allowed,
+    )
+
+    try:
+        tenant = _tenant_from_registration_token(token)
+        draft_id = parse_draft_id(request.GET.get("draft"))
+    except SignatureExpired:
+        raise Http404
+    except (BadSignature, ValidationError):
+        raise Http404
+
+    client_ip = request.META.get("REMOTE_ADDR", "unknown")
+    if not temporary_upload_rate_allowed(tenant.pk, client_ip, "list", 240):
+        return _private_draft_response(
+            JsonResponse({"ok": False, "message": "Draft previews are temporarily busy."}, status=429)
+        )
+
+    uploads = {}
+    items = TemporaryRegistrationUpload.objects.filter(
+        tenant=tenant,
+        draft_id=draft_id,
+        expires_at__gt=timezone.now(),
+    ).order_by("form_field_name", "-created_at", "-pk")
+    for item in items:
+        if item.form_field_name in uploads:
+            continue
+        uploads[item.form_field_name] = {
+            "id": str(item.public_id),
+            "originalName": item.original_filename,
+        }
+    return _private_draft_response(JsonResponse({"ok": True, "uploads": uploads}))
 
 
 @login_required
@@ -319,6 +357,7 @@ def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
                 "ok": False,
                 "message": result.get("message")
                 or "CNIC details were not detected.",
+                "sides_were_swapped": bool(result.get("sides_were_swapped")),
             },
             status,
         )
@@ -363,6 +402,7 @@ def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
             "warnings": result.get("warnings", []),
             "can_overwrite": can_overwrite,
             "cnic_verified": bool(result.get("cnic_verified")),
+            "sides_were_swapped": bool(result.get("sides_were_swapped")),
             "portrait_data_uri": result.get("portrait_data_uri", ""),
         },
         200,
@@ -762,6 +802,27 @@ def _family_members_from_post(post):
             continue
         rows.setdefault(parts[1], {})[parts[2]] = (value or "").strip()
     return [row for row in rows.values() if row.get("name") or row.get("cnic")]
+
+
+_PERSON_OCR_POST_FIELDS = (
+    "gender",
+    "country",
+    "nationality",
+    "cnic_issue_date",
+    "cnic_expiry_date",
+    "temporary_address",
+    "permanent_address",
+    "temporary_address_urdu",
+    "permanent_address_urdu",
+)
+
+
+def _person_ocr_fields_from_post(post, base):
+    return {
+        field_name: value
+        for field_name in _PERSON_OCR_POST_FIELDS
+        if (value := (post.get(base + field_name) or "").strip())
+    }
 
 
 def _relationship_type_from_value(value):
@@ -1409,6 +1470,7 @@ def tenant_public_registration_update(request, token):
                             person_front,
                             filename=f"registration-{submission.pk}-{role}-{index}-cnic-portrait.jpg",
                         )
+                    ocr_fields = _person_ocr_fields_from_post(request.POST, base)
                     person = PendingRegistrationPerson.objects.create(
                         submission=submission,
                         role=role,
@@ -1432,11 +1494,26 @@ def tenant_public_registration_update(request, token):
                         photo=person_photo,
                         cnic_front=person_front,
                         cnic_back=registration_file(base + "cnic_back"),
+                        processing_result={"ocr_fields": ocr_fields} if ocr_fields else {},
                     )
                     from tenants.services.registration_workflow import proposed_changes
 
-                    person.proposed_updates = proposed_changes(person)
-                    person.save(update_fields=["proposed_updates", "updated_at"])
+                    person_changes = proposed_changes(person)
+                    for field_name, submitted_value in ocr_fields.items():
+                        existing_value = (
+                            getattr(person.matched_tenant, field_name, "")
+                            if person.matched_tenant_id
+                            else ""
+                        )
+                        if hasattr(existing_value, "isoformat"):
+                            existing_value = existing_value.isoformat()
+                        if str(existing_value or "") != submitted_value:
+                            person_changes[field_name] = {
+                                "existing": existing_value,
+                                "submitted": submitted_value,
+                            }
+                    person.proposed_updates = person_changes
+                    person.save(update_fields=["proposed_updates", "processing_result", "updated_at"])
             _existing_family_updates_from_post(
                 request,
                 submission,

@@ -109,6 +109,22 @@
       margin-bottom: .75rem;
       font-weight: 700;
     }
+    .registration-validation-summary {
+      margin:.55rem 0 .8rem;
+      padding:.75rem .9rem;
+      border:2px solid #ef4444;
+      border-radius:.65rem;
+      background:#fff1f2;
+      color:#991b1b;
+      box-shadow:0 4px 14px rgba(185,28,28,.12);
+    }
+    .registration-validation-summary[hidden] { display:none !important; }
+    .registration-validation-title { font-size:.9rem; font-weight:900; margin-bottom:.3rem; }
+    .registration-validation-summary ul { margin:0; padding-left:1.2rem; }
+    .registration-validation-summary li { margin:.18rem 0; font-size:.78rem; font-weight:700; }
+    .registration-validation-link { border:0; padding:0; color:#991b1b; background:transparent; font:inherit; text-align:left; text-decoration:underline; cursor:pointer; }
+    .registration-field-invalid { border-color:#dc2626 !important; box-shadow:0 0 0 .13rem rgba(220,38,38,.14) !important; }
+    .registration-client-error { margin-top:.22rem; color:#b91c1c; font-size:.68rem; font-weight:800; line-height:1.25; }
     .td-layout-top {
       display: grid;
       grid-template-columns: minmax(430px, 42%) minmax(0, 58%);
@@ -1048,8 +1064,42 @@
     .personal-compact textarea { min-height:32px !important; height:32px; resize:vertical; }
     .contact-compact .employer-address-cell { grid-column:span 2; }
     .family-member-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
-    .family-doc-row { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; padding:.45rem; border-top:1px solid #e5e7eb; }
-    .family-doc-row .field-wrap { border:0; padding:.25rem; }
+    .family-identity-row {
+      grid-column:1/-1;
+      display:grid;
+      grid-template-columns:minmax(145px,1.5fr) repeat(3,minmax(95px,1fr)) minmax(110px,1.15fr);
+      gap:.4rem;
+      padding:.45rem;
+      border-top:1px solid #e5e7eb;
+      align-items:start;
+    }
+    .family-identity-row .field-wrap { border:0; padding:.25rem; min-width:0; }
+    .family-doc-preview-row {
+      grid-column:1/-1;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) minmax(0,1fr) 120px;
+      gap:.4rem;
+      padding:0 .7rem .45rem;
+    }
+    .family-doc-preview-row:not(:has(.tms-selected-preview)) { display:none; }
+    .family-doc-preview-slot { min-width:0; }
+    .family-doc-preview-row .tms-selected-preview {
+      height: 128px;
+      margin-top:0;
+    }
+    .family-read-cnic-btn {
+      width:100%;
+      min-height:31px;
+      border:1px solid #0d6efd;
+      border-radius:.38rem;
+      color:#0d6efd;
+      background:#fff;
+      font-size:.68rem;
+      font-weight:800;
+      line-height:1.1;
+      cursor:pointer;
+    }
+    .family-read-cnic-btn:disabled { opacity:.55; cursor:not-allowed; }
 
     /* Compact party identity layout: documents first, photo left, fields stacked right. */
     .party-eligibility-row { grid-column: 1 / -1; margin: 0 !important; }
@@ -1072,9 +1122,10 @@
     }
     .party-photo-field .compact-file-input { flex:0 0 auto; }
     .party-photo-field .tms-selected-preview {
-      flex:1 1 auto;
-      height:100%;
+      flex:0 0 142px;
+      height:142px;
       min-height:142px;
+      max-height:142px;
       margin-top:.3rem;
     }
     .party-photo-field .tms-selected-preview img {
@@ -1122,11 +1173,14 @@
       .registration-five-grid .party-card-body .wide { grid-column:span 2; }
       .registration-five-grid .party-docs { grid-template-columns:repeat(3,minmax(0,1fr)); }
       .family-member-grid { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
-      .family-doc-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .family-identity-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .family-cnic-field { grid-column:span 2; }
       .personal-compact .notes-cell { grid-column:span 3; }
     }
     @media (max-width:420px) {
       .registration-five-grid .vehicle-grid, .registration-five-grid .party-card-body, .family-member-grid { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
+      .family-identity-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .family-cnic-field { grid-column:1/-1; }
       .field-wrap, .td-form-cell { padding:.38rem .34rem; }
       .field-label, .td-form-cell label { font-size:.61rem !important; }
       .field-control, .td-form-cell input, .td-form-cell select { font-size:.69rem !important; padding:.24rem .3rem !important; }
@@ -1250,12 +1304,12 @@
 .tms-main-document-grid > .cnic-front-slot .td-form-doc-preview,
 .tms-main-document-grid > .cnic-back-slot .td-form-doc-preview {
   width: 100% !important;
-  height: 120px !important;
+  height: 150px !important;
   border-radius: .45rem !important;
 }
 .tms-main-document-grid > .tenant-photo-slot .td-form-doc-preview {
   width: 120px !important;
-  height: 120px !important;
+  height: 150px !important;
   border-radius: 18px !important;
 }
 .tms-main-document-grid .td-form-doc-preview img {
@@ -1359,6 +1413,16 @@
     <span class="registration-draft-dot"></span><span>Preparing secure draft saving…</span>
   </div>
 
+  <div class="registration-validation-summary" id="registrationValidationSummary" role="alert" tabindex="-1"{% if not form.errors %} hidden{% endif %} data-server-errors="{% if form.errors %}true{% else %}false{% endif %}">
+    <div class="registration-validation-title"><i class="fas fa-exclamation-triangle me-1"></i> Please correct the following before submitting:</div>
+    <ul id="registrationValidationList">
+      {% for field in form %}
+        {% for error in field.errors %}<li><button type="button" class="registration-validation-link" data-validation-field="{{ field.html_name }}">{{ field.label }}: {{ error }}</button></li>{% endfor %}
+      {% endfor %}
+      {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+
   <form method="post" enctype="multipart/form-data" id="tenantRegistrationForm" novalidate>
     {% csrf_token %}
     <input type="hidden" name="cnic_portrait_data" class="tms-cnic-portrait-data">
@@ -1367,8 +1431,6 @@
     {% if form.police_verification_status %}
       <input type="hidden" name="{{ form.police_verification_status.html_name }}" value="{{ form.police_verification_status.value|default:'not_started' }}">
     {% endif %}
-    {% if form.non_field_errors %}<div class="reg-alert">{{ form.non_field_errors }}</div>{% endif %}
-
     <div class="td-layout-top">
       <div class="td-card">
         <div class="td-card-header"><i class="fas fa-id-card text-secondary"></i><h6>Documents</h6></div>
@@ -1764,8 +1826,18 @@
       <button type="button" class="btn-remove-family remove-family-member"><i class="fas fa-times"></i> Remove</button>
     </div>
     <div class="family-member-grid">
-      <div class="field-wrap"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
-      <div class="family-doc-row"><div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="cnic_front"></div><div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="cnic_back"></div><div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="photo"></div></div>
+      <div class="family-identity-row">
+        <div class="field-wrap family-cnic-field"><label class="field-label">CNIC</label><input type="text" class="field-control" data-field="cnic"></div>
+        <div class="field-wrap"><label class="field-label">CNIC Front</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="cnic_front"></div>
+        <div class="field-wrap"><label class="field-label">CNIC Back</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="cnic_back"></div>
+        <div class="field-wrap"><label class="field-label">Photo</label><input type="file" accept="image/*" class="field-control compact-file-input" data-field="photo"></div>
+        <div class="field-wrap family-read-action"><label class="field-label">Read CNIC</label><button type="button" class="family-read-cnic-btn tms-read-cnic-button"><i class="far fa-id-card"></i> Read CNIC Card</button></div>
+      </div>
+      <div class="family-doc-preview-row" aria-label="Family member document previews">
+        <div class="family-doc-preview-slot" data-family-preview-for="cnic_front"></div>
+        <div class="family-doc-preview-slot" data-family-preview-for="cnic_back"></div>
+        <div class="family-doc-preview-slot" data-family-preview-for="photo"></div>
+      </div>
       <div class="field-wrap"><label class="field-label">Name</label><input type="text" class="field-control" data-field="name"></div>
       <div class="field-wrap"><label class="field-label">Father / Husband Name</label><input type="text" class="field-control" data-field="father_husband_name"></div>
       <div class="field-wrap"><label class="field-label">Date of Birth</label><input type="date" class="field-control" data-field="dob"></div>
@@ -1774,7 +1846,7 @@
       <div class="field-wrap"><label class="field-label">Nationality</label><input type="text" class="field-control" data-field="nationality"></div>
       <div class="field-wrap"><label class="field-label">Relationship</label><select class="field-control" data-field="relationship_type"><option value="">Select…</option>{% for item in relationship_types %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
       <div class="field-wrap"><label class="field-label">Email</label><input type="email" class="field-control" data-field="email"></div>
-      <div class="field-wrap span-3"><label class="field-label">Notes</label><input type="text" class="field-control" data-field="notes"></div>
+      <div class="field-wrap span-2"><label class="field-label">Notes</label><input type="text" class="field-control" data-field="notes"></div>
     </div>
   </div>
 </template>
@@ -1809,6 +1881,13 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 {{ submitted_form_data|json_script:"registrationSubmittedData" }}
 <script>
+window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:public_cnic_identity_ocr' registration_token %}";
+window.TMS_REGISTRATION_DRAFT_UPLOAD_URL = "{% url 'tenants:temporary_registration_upload' registration_token %}";
+window.TMS_REGISTRATION_DRAFT_UPLOAD_LIST_URL = "{% url 'tenants:temporary_registration_upload_list' registration_token %}";
+window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE = "{% url 'tenants:temporary_registration_upload_preview' registration_token '00000000-0000-0000-0000-000000000000' %}";
+window.TMS_IDENTITY_LOCK_MAIN = true;
+window.TMS_CNIC_ALLOW_MANUAL_ENTRY = true;
+window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenant.last_name == "Registration" and not tenant.cnic %}true{% else %}false{% endif %};
 (function () {
   const rows = document.getElementById("familyMemberRows");
   const template = document.getElementById("familyMemberTemplate");
@@ -1906,6 +1985,7 @@
   const registrationDraftIdInput = document.getElementById("registrationDraftId");
   const registrationTemporaryUploadsInput = document.getElementById("registrationTemporaryUploads");
   const registrationDraftKey = "tmsTenantRegistrationDraft:" + window.location.pathname;
+  const registrationDraftUploadsKey = registrationDraftKey + ":uploads";
   let registrationSubmitting = false;
   let restoringRegistrationDraft = false;
   let pendingTemporaryUploads = 0;
@@ -1917,6 +1997,137 @@
     const text = registrationDraftStatus.querySelector("span:last-child");
     if (text) text.textContent = message;
   }
+
+  const registrationValidationSummary = document.getElementById("registrationValidationSummary");
+  const registrationValidationList = document.getElementById("registrationValidationList");
+
+  function registrationSectionLabel(field) {
+    const name = String(field?.name || "");
+    const familyMatch = name.match(/^family-(\d+)-/);
+    if (familyMatch) return "Family Member #" + (Number(familyMatch[1]) + 1);
+    const partyMatch = name.match(/^(proposer|seconder|witness1|witness2)-/);
+    if (partyMatch) {
+      return {
+        proposer: "Proposer",
+        seconder: "Seconder",
+        witness1: "Witness 1",
+        witness2: "Witness 2"
+      }[partyMatch[1]];
+    }
+    return field?.closest(".td-card")?.querySelector(":scope > .td-card-header h6")?.textContent?.trim() || "Tenant";
+  }
+
+  function registrationFieldLabel(field) {
+    const sectionTitle = registrationSectionLabel(field);
+    const explicitLabel = field.id ? document.querySelector('label[for="' + CSS.escape(field.id) + '"]') : null;
+    const nearbyLabel = explicitLabel || field.parentElement?.querySelector(":scope > label");
+    const label = nearbyLabel?.textContent?.replace(/\s+/g, " ")?.trim() || field.name || "Field";
+    return sectionTitle && !label.toLowerCase().startsWith(sectionTitle.toLowerCase()) ? sectionTitle + " — " + label : label;
+  }
+
+  function clearRegistrationValidation() {
+    registrationForm?.querySelectorAll(".registration-field-invalid").forEach(function (field) {
+      field.classList.remove("registration-field-invalid");
+      field.removeAttribute("aria-invalid");
+    });
+    registrationForm?.querySelectorAll(".registration-client-error").forEach(function (error) { error.remove(); });
+  }
+
+  function showRegistrationProblems(problems) {
+    if (!registrationValidationSummary || !registrationValidationList) return;
+    registrationValidationList.replaceChildren();
+    problems.forEach(function (problem) {
+      const item = document.createElement("li");
+      if (problem.field) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "registration-validation-link";
+        button.dataset.validationField = problem.field.name;
+        button.textContent = registrationFieldLabel(problem.field) + ": " + problem.message;
+        item.appendChild(button);
+      } else {
+        item.textContent = problem.message;
+      }
+      registrationValidationList.appendChild(item);
+    });
+    registrationValidationSummary.hidden = false;
+    registrationValidationSummary.scrollIntoView({behavior:"smooth", block:"start"});
+    registrationValidationSummary.focus({preventScroll:true});
+  }
+
+  function addRegistrationProblem(problems, seen, field, message) {
+    const key = (field?.name || "form") + "|" + message;
+    if (seen.has(key)) return;
+    seen.add(key);
+    problems.push({field:field || null, message:message});
+    if (!field) return;
+    field.classList.add("registration-field-invalid");
+    field.setAttribute("aria-invalid", "true");
+    const error = document.createElement("div");
+    error.className = "registration-client-error";
+    error.textContent = message;
+    field.insertAdjacentElement("afterend", error);
+  }
+
+  function registrationField(name) {
+    return Array.from(registrationForm?.elements || []).find(function (field) { return field.name === name; }) || null;
+  }
+
+  function validateRegistrationForSubmit() {
+    clearRegistrationValidation();
+    const problems = [];
+    const seen = new Set();
+    Array.from(registrationForm?.elements || []).forEach(function (field) {
+      if (!field.name || !field.required) return;
+      if (!String(field.value || "").trim()) addRegistrationProblem(problems, seen, field, "This field is required.");
+      else if (field.validity && !field.validity.valid) addRegistrationProblem(problems, seen, field, field.type === "email" ? "Enter a valid email address." : "Enter a valid value.");
+    });
+
+    Array.from(registrationForm?.elements || []).forEach(function (field) {
+      if (!field.name || field.required || field.disabled || !String(field.value || "").trim()) return;
+      if (field.validity && !field.validity.valid) addRegistrationProblem(problems, seen, field, field.type === "email" ? "Enter a valid email address." : "Enter a valid value.");
+    });
+
+    Array.from(registrationForm?.elements || []).forEach(function (field) {
+      if (!field.name || !field.name.endsWith("cnic") || !String(field.value || "").trim()) return;
+      if (String(field.value).replace(/\D/g, "").length !== 13) addRegistrationProblem(problems, seen, field, "CNIC must contain exactly 13 digits.");
+    });
+
+    ["witness1", "witness2"].forEach(function (prefix) {
+      const fields = ["first_name", "last_name", "cnic", "phone"].map(function (name) { return registrationField(prefix + "-" + name); });
+      const hasDetails = fields.some(function (field) { return String(field?.value || "").trim(); });
+      if (hasDetails && !String(fields[3]?.value || "").replace(/\D/g, "")) addRegistrationProblem(problems, seen, fields[3], "Phone is required when witness details are entered.");
+    });
+
+    const tenantCnic = String(registrationField("cnic")?.value || "").replace(/\D/g, "");
+    const familyCnics = new Set(Array.from(registrationForm?.elements || []).filter(function (field) { return /^family-\d+-cnic$/.test(field.name); }).map(function (field) { return String(field.value || "").replace(/\D/g, ""); }).filter(Boolean));
+    const proposerCnicField = registrationField("proposer-cnic");
+    const seconderCnicField = registrationField("seconder-cnic");
+    const proposerCnic = String(proposerCnicField?.value || "").replace(/\D/g, "");
+    const seconderCnic = String(seconderCnicField?.value || "").replace(/\D/g, "");
+    [[proposerCnicField, proposerCnic, "Proposer"], [seconderCnicField, seconderCnic, "Seconder"]].forEach(function (item) {
+      if (item[1] && item[1] === tenantCnic) addRegistrationProblem(problems, seen, item[0], item[2] + " cannot be the tenant.");
+      if (item[1] && familyCnics.has(item[1])) addRegistrationProblem(problems, seen, item[0], item[2] + " cannot be a family member.");
+    });
+    if (proposerCnic && proposerCnic === seconderCnic) addRegistrationProblem(problems, seen, seconderCnicField, "Proposer and seconder must be different people.");
+
+    if (problems.length) {
+      showRegistrationProblems(problems);
+      return false;
+    }
+    if (registrationValidationSummary) registrationValidationSummary.hidden = true;
+    return true;
+  }
+
+  registrationValidationSummary?.addEventListener("click", function (event) {
+    const link = event.target.closest("[data-validation-field]");
+    if (!link) return;
+    const field = registrationField(link.dataset.validationField);
+    if (field) {
+      field.scrollIntoView({behavior:"smooth", block:"center"});
+      window.setTimeout(function () { if (!field.disabled) field.focus({preventScroll:true}); }, 350);
+    }
+  });
 
   function sessionStorageWritable() {
     try {
@@ -1972,6 +2183,15 @@
     }
   }
 
+  function readRegistrationDraftUploads() {
+    try {
+      const uploads = JSON.parse(window.sessionStorage.getItem(registrationDraftUploadsKey) || "{}");
+      return uploads && typeof uploads === "object" && !Array.isArray(uploads) ? uploads : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
   function collectRegistrationValues() {
     const values = {};
     if (!registrationForm) return values;
@@ -1979,7 +2199,6 @@
       if (
         !field.name
         || field.name === "csrfmiddlewaretoken"
-        || field.name === "cnic_portrait_data"
         || field.name === "registration_draft_id"
         || field.name === "registration_temporary_uploads"
       ) return;
@@ -2013,6 +2232,11 @@
       };
     });
     temporaryUploads = currentUploads;
+    try {
+      window.sessionStorage.setItem(registrationDraftUploadsKey, JSON.stringify(currentUploads));
+    } catch (error) {
+      setDraftStatus("Document preview saving is unavailable. Keep this page open and try again.", true);
+    }
     registrationTemporaryUploadsInput.value = JSON.stringify(
       Object.fromEntries(Object.entries(currentUploads).map(function (entry) { return [entry[0], entry[1].id]; }))
     );
@@ -2078,6 +2302,58 @@
     });
   }
 
+  function restoreCnicPortraitPreviews(values) {
+    if (!registrationForm) return;
+    Object.keys(values || {}).filter(function (name) {
+      return name.endsWith("cnic_portrait_data");
+    }).forEach(function (name) {
+      const savedValues = Array.isArray(values[name]) ? values[name] : [values[name]];
+      const dataUri = String(savedValues[savedValues.length - 1] || "");
+      if (!dataUri.startsWith("data:image/jpeg;base64,")) return;
+
+      const prefix = name.slice(0, -"cnic_portrait_data".length);
+      const frontInput = registrationForm.querySelector('[name="' + CSS.escape(prefix + "cnic_front") + '"]');
+      const photoInput = registrationForm.querySelector('[name="' + CSS.escape(prefix + "photo") + '"]');
+      const context = frontInput?.closest(".family-member-card,.party-role-card") || registrationForm;
+      let hidden = registrationForm.querySelector('[name="' + CSS.escape(name) + '"]');
+      if (!hidden) {
+        hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = name;
+        hidden.className = "tms-cnic-portrait-data";
+        context.appendChild(hidden);
+      }
+      hidden.value = dataUri;
+
+      const familyHost = frontInput?.closest(".family-member-card")?.querySelector('[data-family-preview-for="photo"]');
+      const host = familyHost
+        || photoInput?.closest(".party-photo-field")
+        || registrationForm.querySelector(".tenant-photo-slot .td-form-doc-preview");
+      if (!host) return;
+      let preview = host.querySelector('[data-tms-cnic-portrait-preview]');
+      if (!preview) {
+        preview = document.createElement("img");
+        preview.className = context === registrationForm ? "public-file-preview" : "preview-img";
+        preview.alt = "Photo extracted from CNIC";
+        if (context === registrationForm) {
+          host.querySelector(".placeholder-icon")?.remove();
+          host.prepend(preview);
+        } else {
+          let box = host.querySelector(":scope > .tms-selected-preview");
+          if (!box) {
+            box = document.createElement("div");
+            box.className = "tms-selected-preview";
+            host.appendChild(box);
+          }
+          box.replaceChildren(preview);
+        }
+      }
+      preview.dataset.tmsCnicPortraitPreview = "1";
+      preview.src = dataUri;
+      preview.style.display = "block";
+    });
+  }
+
   function restoreRegistrationDraft() {
     if (!registrationForm) return;
     const submittedValues = readSubmittedFormData();
@@ -2093,10 +2369,13 @@
 
     restoringRegistrationDraft = true;
     ensureDynamicRows(familyCount, vehicleCount);
+    restoreCnicPortraitPreviews(values);
     restoreRegistrationValues(values);
     registrationDraftIdInput.value = draft.draftId || randomDraftId();
-    restoreTemporaryUploadPreviews(draft.uploads || {});
+    restoreTemporaryUploadPreviews(Object.assign({}, draft.uploads || {}, readRegistrationDraftUploads()));
     restoringRegistrationDraft = false;
+
+    window.setTimeout(recoverTemporaryUploadsFromServer, 0);
 
     if (hasSubmittedValues || !draft.draftId) saveRegistrationDraft();
     else if (draft.savedAt) {
@@ -2118,30 +2397,33 @@
 
   function showTemporaryPreview(input, url, originalName) {
     if (!input || !url) return;
-    const mainContainer = input.closest(".image-upload-container");
-    if (mainContainer) {
-      let preview = mainContainer.querySelector("img.public-file-preview");
-      if (!preview) {
-        preview = document.createElement("img");
-        preview.className = "public-file-preview";
-        preview.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
-        mainContainer.querySelector(".placeholder-icon")?.replaceWith(preview);
-        if (!preview.parentElement) mainContainer.insertBefore(preview, mainContainer.firstChild);
-      }
-      preview.src = url;
-      preview.alt = originalName || "Saved draft document";
-      return;
-    }
-    let box = input.parentElement?.querySelector(":scope > .tms-selected-preview");
-    if (!box) {
-      box = document.createElement("div");
-      box.className = "tms-selected-preview";
-      input.insertAdjacentElement("afterend", box);
-    }
     const image = document.createElement("img");
-    image.src = url;
     image.alt = originalName || "Saved draft document";
-    box.replaceChildren(image);
+    image.addEventListener("load", function () {
+      const mainContainer = input.closest(".image-upload-container");
+      if (mainContainer) {
+        image.className = "public-file-preview";
+        image.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+        mainContainer.querySelector(".placeholder-icon")?.remove();
+        const current = mainContainer.querySelector("img.public-file-preview");
+        if (current) current.replaceWith(image);
+        else mainContainer.insertBefore(image, mainContainer.firstChild);
+        return;
+      }
+      const familyPreviewHost = input.closest(".family-member-card")?.querySelector('[data-family-preview-for="' + CSS.escape(input.dataset.field || "") + '"]');
+      const previewHost = familyPreviewHost || input.parentElement;
+      let box = previewHost?.querySelector(":scope > .tms-selected-preview");
+      if (!box) {
+        box = document.createElement("div");
+        box.className = "tms-selected-preview";
+        previewHost?.appendChild(box);
+      }
+      box?.replaceChildren(image);
+    }, {once:true});
+    image.addEventListener("error", function () {
+      input.dataset.temporaryPreviewUnavailable = "1";
+    }, {once:true});
+    image.src = url;
   }
 
   function restoreTemporaryUploadPreviews(uploads) {
@@ -2157,6 +2439,27 @@
     registrationTemporaryUploadsInput.value = JSON.stringify(
       Object.fromEntries(Object.entries(temporaryUploads).map(function (entry) { return [entry[0], entry[1].id]; }))
     );
+  }
+
+  async function recoverTemporaryUploadsFromServer() {
+    const draftId = registrationDraftIdInput?.value;
+    const listUrl = window.TMS_REGISTRATION_DRAFT_UPLOAD_LIST_URL;
+    if (!draftId || !listUrl) return;
+    try {
+      const response = await fetch(listUrl + "?draft=" + encodeURIComponent(draftId), {
+        method: "GET",
+        headers: {"X-Requested-With": "XMLHttpRequest"},
+        credentials: "same-origin"
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (!payload.ok || !payload.uploads || typeof payload.uploads !== "object") return;
+      const recovered = Object.assign({}, temporaryUploads, payload.uploads);
+      restoreTemporaryUploadPreviews(recovered);
+      saveRegistrationDraft();
+    } catch (error) {
+      // Keep browser references intact; a later refresh can retry the private previews.
+    }
   }
 
   function setTemporaryUploadPending(delta) {
@@ -2206,13 +2509,19 @@
     window.addEventListener("pagehide", saveRegistrationDraft);
     registrationForm.addEventListener("submit", function (event) {
       saveRegistrationDraft();
+      if (!validateRegistrationForSubmit()) {
+        event.preventDefault();
+        return;
+      }
       if (!browserReady(false)) {
         event.preventDefault();
+        showRegistrationProblems([{field:null, message:"Draft saving or security cookies are unavailable. Enable cookies, then try again."}]);
         return;
       }
       if (pendingTemporaryUploads > 0) {
         event.preventDefault();
         setDraftStatus("Please wait for the selected documents to finish saving, then submit again.", true);
+        showRegistrationProblems([{field:null, message:"Selected documents are still saving. Please wait a moment, then submit again."}]);
         return;
       }
       registrationSubmitting = true;
@@ -2221,6 +2530,12 @@
         button.setAttribute("aria-disabled", "true");
       });
     });
+    if (registrationValidationSummary?.dataset.serverErrors === "true") {
+      window.setTimeout(function () {
+        registrationValidationSummary.scrollIntoView({behavior:"smooth", block:"start"});
+        registrationValidationSummary.focus({preventScroll:true});
+      }, 120);
+    }
   }
 
   function smartTitle(value) {
@@ -2240,14 +2555,6 @@
     el.value = smartTitle(el.value);
   }, true);
 })();
-</script>
-<script>
-  window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:public_cnic_identity_ocr' registration_token %}";
-  window.TMS_REGISTRATION_DRAFT_UPLOAD_URL = "{% url 'tenants:temporary_registration_upload' registration_token %}";
-  window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE = "{% url 'tenants:temporary_registration_upload_preview' registration_token '00000000-0000-0000-0000-000000000000' %}";
-  window.TMS_IDENTITY_LOCK_MAIN = true;
-  window.TMS_CNIC_ALLOW_MANUAL_ENTRY = true;
-  window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenant.last_name == "Registration" and not tenant.cnic %}true{% else %}false{% endif %};
 </script>
 {% include "partials/identity_media_public.html" %}
 <script>

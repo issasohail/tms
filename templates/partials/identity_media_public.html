@@ -55,20 +55,28 @@
 window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
 (function(){
   const viewer=document.getElementById('tmsPublicImageViewer'),main=document.getElementById('tmsPublicImageMain'),title=document.getElementById('tmsPublicImageTitle'),save=document.getElementById('tmsPublicImageSave');
-  const states=new WeakMap(); const ocrRunners=new WeakMap(); let pendingCount=0;
+  const states=new WeakMap(); const ocrRunners=new WeakMap(); let pendingCount=0; let ocrQueue=Promise.resolve();
+  function enqueueOcr(task){const queued=ocrQueue.then(task,task);ocrQueue=queued.catch(()=>{});return queued}
+  function wait(ms){return new Promise(resolve=>window.setTimeout(resolve,ms))}
+  async function fetchOcr(url,options){let lastError;for(let attempt=0;attempt<3;attempt++){try{const response=await fetch(url,options);if([429,502,503,504].includes(response.status)&&attempt<2){await wait(1200*(attempt+1));continue}return response}catch(error){lastError=error;if(attempt<2)await wait(1200*(attempt+1))}}throw lastError}
   function csrfToken(form){const f=form?.querySelector('[name=csrfmiddlewaretoken]');if(f?.value)return f.value;const m=document.cookie.match(/(^|; )csrftoken=([^;]*)/);return m?decodeURIComponent(m[2]):''}
   function prefixOf(input){const n=String(input.name||''),s='cnic_front';return n.endsWith(s)?n.slice(0,-s.length):''}
   function contextFor(front){const form=front.form||front.closest('form')||document,prefix=prefixOf(front);let container=front.closest('.family-member-card,.party-role-card');if(!container)container=form;return{form,prefix,container,isMain:!prefix}}
   function field(context,name){const aliases={full_name:['full_name','name','first_name'],first_name:['first_name','name'],last_name:['last_name','father_husband_name'],date_of_birth:['date_of_birth','dob'],temporary_address:['temporary_address','address'],permanent_address:['permanent_address','address']}[name]||[name];for(const a of aliases){for(const n of [`${context.prefix}${a}`,a]){const el=context.container.querySelector(`[name="${CSS.escape(n)}"]`);if(el)return el}}return null}
+  const hiddenOcrFieldNames=new Set(['gender','country','nationality','cnic_issue_date','cnic_expiry_date','temporary_address','permanent_address','temporary_address_urdu','permanent_address_urdu']);
+  function saveHiddenOcrFields(context,suggestions){if(context.isMain)return 0;let saved=0;(suggestions||[]).forEach(s=>{if(!hiddenOcrFieldNames.has(s.name)||s.value===null||s.value===undefined||String(s.value).trim()==='')return;const name=context.prefix+s.name,existing=context.container.querySelector(`[name="${CSS.escape(name)}"]`);if(existing&&!existing.classList.contains('tms-cnic-hidden-ocr-field'))return;const hidden=existing||document.createElement('input');if(!existing){hidden.type='hidden';hidden.name=name;hidden.className='tms-cnic-hidden-ocr-field';context.container.appendChild(hidden)}hidden.value=String(s.value);hidden.dispatchEvent(new Event('input',{bubbles:true}));saved++});return saved}
   function cnicField(context){return field(context,'cnic')}
-  function setSubmitPending(form,on){pendingCount=Math.max(0,pendingCount+(on?1:-1));document.querySelectorAll('button[type="submit"],input[type="submit"]').forEach(b=>{if(b.form===form||b.getAttribute('form')===form.id){if(on)b.dataset.ocrDisabled=b.disabled?'was-disabled':'enabled';if(pendingCount)b.disabled=true;else if(b.dataset.ocrDisabled==='enabled')b.disabled=false}})}
+  function assignFiles(input,files){const transfer=new DataTransfer();Array.from(files||[]).forEach(file=>transfer.items.add(file));input.files=transfer.files}
+  function swapCnicSideInputs(front,back){const frontFiles=Array.from(front.files||[]),backFiles=Array.from(back.files||[]);if(!frontFiles.length||!backFiles.length)return false;assignFiles(front,backFiles);assignFiles(back,frontFiles);[front,back].forEach(input=>{delete input.dataset.temporaryUploadId;delete input.dataset.temporaryUploadName;input.dataset.tmsOcrSideSwap='1';input.dataset.tmsImageEditorApplying='1';input.dispatchEvent(new Event('change',{bubbles:true}));delete input.dataset.tmsImageEditorApplying});return true}
+  function setSubmitPending(form,on){pendingCount=Math.max(0,pendingCount+(on?1:-1));document.querySelectorAll('button[type="submit"],input[type="submit"]').forEach(b=>{if(b.form===form||b.getAttribute('form')===form.id){if(on&&!('ocrDisabled' in b.dataset))b.dataset.ocrDisabled=b.disabled?'was-disabled':'enabled';if(pendingCount)b.disabled=true;else{if(b.dataset.ocrDisabled==='enabled')b.disabled=false;delete b.dataset.ocrDisabled}}})}
   function statusHost(context,back){if(context.isMain){const docs=back.closest('.td-card');return docs?.querySelector('.td-form-doc-grid')||docs||back.parentElement}return context.container.querySelector('.party-card-body,.family-member-grid')||context.container}
   function ensureStatus(context,back){let s=context.container.querySelector(':scope > .tms-identity-status,.party-card-body > .tms-identity-status,.family-member-grid > .tms-identity-status,.td-form-doc-grid > .tms-identity-status');if(!s){s=document.createElement('div');s.className='tms-identity-status';statusHost(context,back).prepend(s)}return s}
   function shouldLockMain(){return window.TMS_IDENTITY_LOCK_MAIN!==false}
   function controls(context){if(context.isMain)return Array.from(context.form.elements);return Array.from(context.container.querySelectorAll('input,select,textarea,button'))}
   function isIdentityControl(el,context){if(el.type==='file')return true;if(el.name==='csrfmiddlewaretoken')return true;if(el.type==='hidden')return true;if(el.classList?.contains('remove-family-member'))return true;return false}
   function lock(context,on){if(context.isMain&&!shouldLockMain())return;controls(context).forEach(el=>{if(isIdentityControl(el,context))return;if(el.type==='submit'||el.getAttribute('form')===context.form.id)return;if(on){if(!('ocrWasDisabled'in el.dataset))el.dataset.ocrWasDisabled=el.disabled?'1':'0';el.disabled=true;el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.add('tms-identity-locked')}else{if(el.dataset.ocrWasDisabled==='0')el.disabled=false;el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.remove('tms-identity-locked')}});const c=cnicField(context);if(c){c.disabled=false;c.readOnly=true;c.classList.add('tms-cnic-readonly')}}
-  function previewInput(input){if(input.dataset.tmsPreview==='1')return;input.dataset.tmsPreview='1';input.addEventListener('change',()=>{const f=input.files?.[0];let box=input.parentElement?.querySelector(':scope > .tms-selected-preview');if(!f){box?.remove();return}if(!f.type.startsWith('image/')){input.value='';alert('Please select an image file.');box?.remove();return}if(!box){box=document.createElement('div');box.className='tms-selected-preview';input.insertAdjacentElement('afterend',box)}const img=document.createElement('img');img.alt='Selected image preview';img.src=URL.createObjectURL(f);img.onload=()=>URL.revokeObjectURL(img.src);box.replaceChildren(img)})}
+  function familyPreviewHost(input){const card=input?.closest('.family-member-card'),key=input?.dataset?.field;if(!card||!key)return null;return card.querySelector(`[data-family-preview-for="${CSS.escape(key)}"]`)}
+  function previewInput(input){if(input.dataset.tmsPreview==='1')return;input.dataset.tmsPreview='1';input.addEventListener('change',()=>{const f=input.files?.[0],host=familyPreviewHost(input)||input.parentElement;let box=host?.querySelector(':scope > .tms-selected-preview');if(!f){box?.remove();return}if(!f.type.startsWith('image/')){input.value='';alert('Please select an image file.');box?.remove();return}if(!box){box=document.createElement('div');box.className='tms-selected-preview';host?.appendChild(box)}const img=document.createElement('img');img.alt='Selected image preview';img.src=URL.createObjectURL(f);img.onload=()=>URL.revokeObjectURL(img.src);box.replaceChildren(img)})}
   function arrangeMainDocumentActions(root){
     const grids=Array.from(document.querySelectorAll('.tms-main-document-grid,.td-form-doc-grid'));
     grids.forEach(grid=>{
@@ -109,17 +117,18 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
     });
   }
   function installPreviews(root){(root||document).querySelectorAll('input[type="file"][accept*="image"],input[type="file"][name*="photo"],input[type="file"][name*="cnic_"]').forEach(previewInput)}
-  function installOcr(root){if(!window.TMS_PUBLIC_CNIC_OCR_URL)return;(root||document).querySelectorAll('input[type="file"]').forEach(front=>{if(!String(front.name||'').endsWith('cnic_front')||front.dataset.tmsOcr==='1')return;const context=contextFor(front),back=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_back')}"]`);if(!back)return;front.dataset.tmsOcr='1';const storedUrl=context.isMain?window.TMS_STORED_CNIC_OCR_URL:'';const status=ensureStatus(context,back);status.textContent=storedUrl?'Click Read CNIC Details to read the saved CNIC images.':(context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.');lock(context,true);let seq=0,timer=null,start=0;
+  function installOcr(root){if(!window.TMS_PUBLIC_CNIC_OCR_URL)return;(root||document).querySelectorAll('input[type="file"]').forEach(front=>{if(!String(front.name||'').endsWith('cnic_front')||front.dataset.tmsOcr==='1')return;const context=contextFor(front),back=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_back')}"]`);if(!back)return;front.dataset.tmsOcr='1';const storedUrl=context.isMain?window.TMS_STORED_CNIC_OCR_URL:'',manualMain=context.isMain&&!shouldLockMain();const status=ensureStatus(context,back);status.textContent=storedUrl?'Click Read CNIC Details to read the saved CNIC images.':(manualMain?'CNIC images are optional. Upload both sides to use OCR, or enter the details manually.':(context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.'));lock(context,true);let seq=0,timer=null,start=0;
       function stopTimer(){if(timer)clearInterval(timer);timer=null}
-      async function run(){const frontFile=front.files?.[0],backFile=back.files?.[0],useStored=Boolean(storedUrl&&!frontFile&&!backFile);if((!frontFile||!backFile)&&!useStored){lock(context,true);status.className='tms-identity-status is-error';status.textContent=context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.';return}const request=++seq;start=Date.now();status.className='tms-identity-status is-reading';const tick=()=>{const sec=Math.max(0,Math.floor((Date.now()-start)/1000));status.innerHTML='<span class="spinner-border" aria-hidden="true"></span>Please wait while your CNIC scan is being read to fetch data — '+sec+' second'+(sec===1?'':'s')};tick();timer=setInterval(tick,1000);setSubmitPending(context.form,true);const body=new FormData(),token=csrfToken(context.form);if(!useStored){body.append('cnic_front',frontFile);body.append('cnic_back',backFile)}body.append('csrfmiddlewaretoken',token);
+      async function run(){const frontFile=front.files?.[0],backFile=back.files?.[0],useStored=Boolean(storedUrl&&!frontFile&&!backFile);if((!frontFile||!backFile)&&!useStored){lock(context,true);status.className='tms-identity-status is-error';status.textContent=manualMain?'Upload both CNIC sides to use OCR, or continue entering the details manually.':(context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.');return}const request=++seq;start=Date.now();status.className='tms-identity-status is-reading';const tick=()=>{const sec=Math.max(0,Math.floor((Date.now()-start)/1000));status.innerHTML='<span class="spinner-border" aria-hidden="true"></span>Please wait while your CNIC scan is being read to fetch data — '+sec+' second'+(sec===1?'':'s')};tick();timer=setInterval(tick,1000);setSubmitPending(context.form,true);const body=new FormData(),token=csrfToken(context.form);if(!useStored){body.append('cnic_front',frontFile);body.append('cnic_back',backFile)}body.append('csrfmiddlewaretoken',token);
         try {
-          const r=await fetch(useStored?storedUrl:window.TMS_PUBLIC_CNIC_OCR_URL,{method:'POST',headers:{'X-CSRFToken':token,'X-Requested-With':'XMLHttpRequest'},body});
+          const r=await enqueueOcr(()=>fetchOcr(useStored?storedUrl:window.TMS_PUBLIC_CNIC_OCR_URL,{method:'POST',headers:{'X-CSRFToken':token,'X-Requested-With':'XMLHttpRequest'},body}));
           const text=await r.text();
           let p;
           try{p=JSON.parse(text)}catch(_){throw new Error(`CNIC OCR returned an unexpected response (HTTP ${r.status}).`)}
           if(request!==seq)return;
+          const sidesMoved=Boolean(p.sides_were_swapped&&!useStored&&swapCnicSideInputs(front,back));
           if(!r.ok||!p.ok)throw new Error(p.message||`CNIC OCR failed (HTTP ${r.status}).`);
-          let written=0,retained=0,loadedExisting=0;
+          let written=0,retained=0,loadedExisting=0,hiddenSaved=0;
           const isReplaceableShellName=(suggestion,current)=>{
             if(!context.isMain)return false;
             const value=String(current||'').trim().toLowerCase();
@@ -155,6 +164,7 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           };
           (p.existing_tenant?.fields||[]).forEach(s=>{if(writeVisible(s,false))loadedExisting++});
           (p.fields||[]).forEach(s=>{if(writeVisible(s,Boolean(p.can_overwrite)))written++});
+          hiddenSaved=saveHiddenOcrFields(context,p.fields);
           if(p.portrait_data_uri){
             let hidden=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_portrait_data')}"]`);
             if(!hidden){
@@ -165,16 +175,18 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
               context.container.appendChild(hidden);
             }
             const photoInput=field(context,'photo');
-            const photoSlot=context.isMain?context.form.querySelector('.tenant-photo-slot'):photoInput?.closest('.field-wrap,.file-box,.form-group');
-            const existingPreview=Array.from(photoSlot?.querySelectorAll('img:not([data-tms-cnic-portrait-preview])')||[]).find(img=>img.getAttribute('src'));
+            const photoSlot=context.isMain?context.form.querySelector('.tenant-photo-slot'):(familyPreviewHost(photoInput)||photoInput?.closest('.party-photo-field,.field-wrap,.file-box,.form-group'));
+            const existingPreview=Array.from(photoSlot?.querySelectorAll('img:not([data-tms-cnic-portrait-preview])')||[]).find(img=>img.getAttribute('src')&&(!img.complete||img.naturalWidth>0));
             if(!photoInput?.files?.length&&!existingPreview){
               hidden.value=p.portrait_data_uri;
+              hidden.dispatchEvent(new Event('input',{bubbles:true}));
               let preview=photoSlot?.querySelector('[data-tms-cnic-portrait-preview]')||(!context.isMain?photoSlot?.querySelector('.preview-img'):null);
               if(!preview){
                 preview=document.createElement('img');
                 preview.className=context.isMain?'public-file-preview':'preview-img';
                 preview.alt='Photo extracted from CNIC';
-                const host=context.isMain?photoSlot?.querySelector('.td-form-doc-preview'):photoSlot?.querySelector('.preview-row');
+                let host=context.isMain?photoSlot?.querySelector('.td-form-doc-preview'):photoSlot?.querySelector('.tms-selected-preview,.preview-row');
+                if(!context.isMain&&!host&&photoInput){host=document.createElement('div');host.className='tms-selected-preview';photoSlot?.appendChild(host)}
                 if(host){host.querySelector('i')?.remove();host.prepend(preview)}
                 else if(photoInput)photoInput.insertAdjacentElement('afterend',preview);
               }
@@ -188,9 +200,9 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           if(c){c.readOnly=true;c.classList.add('tms-cnic-readonly')}
           status.className='tms-identity-status is-success';
           if(p.existing_tenant?.matched){
-            status.textContent=`CNIC front and back numbers verified. An existing tenant record was found and ${loadedExisting} saved visible field(s) were loaded. ${written} OCR field(s) were accepted. This submission will reuse the existing record after staff approval.`;
+            status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. An existing tenant record was found and ${loadedExisting} saved visible field(s) were loaded. ${written} visible OCR field(s) were accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}. This submission will reuse the existing record after staff approval.`;
           }else{
-            status.textContent=`CNIC front and back numbers verified. ${written} visible field(s) accepted${retained?`; ${retained} current value(s) kept`:''}. Please complete the remaining information.`;
+            status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. ${written} visible field(s) accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}${retained?`; ${retained} current value(s) kept`:''}. Please complete the remaining information.`;
           }
           status.title=(p.warnings||[]).join(' ');
         }catch(e){
@@ -201,10 +213,11 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           status.className='tms-identity-status is-error';
           status.textContent=(e.message||'CNIC could not be read.')+(allowManualEntry?' You can enter or correct the details manually.':' Please verify both images and upload clearer copies.');
         }finally{
-          if(request===seq){stopTimer();setSubmitPending(context.form,false)}
+          if(request===seq)stopTimer();
+          setSubmitPending(context.form,false);
         }}
       ocrRunners.set(context.container,run); ocrRunners.set(context.form,run);
-      function changed(){const hidden=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_portrait_data')}"]`);if(hidden)hidden.value='';const preview=context.container.querySelector('[data-tms-cnic-portrait-preview]');if(preview?.closest('.preview-row')){preview.removeAttribute('src');preview.style.display='none';delete preview.dataset.tmsCnicPortraitPreview}else preview?.remove();seq++;stopTimer();run()}front.addEventListener('change',changed);back.addEventListener('change',changed)
+      function changed(event){if(event?.target?.dataset?.tmsOcrSideSwap==='1'){delete event.target.dataset.tmsOcrSideSwap;return}const hidden=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_portrait_data')}"]`);if(hidden)hidden.value='';const preview=context.container.querySelector('[data-tms-cnic-portrait-preview]');if(preview?.closest('.preview-row')){preview.removeAttribute('src');preview.style.display='none';delete preview.dataset.tmsCnicPortraitPreview}else preview?.remove();seq++;stopTimer();run()}front.addEventListener('change',changed);back.addEventListener('change',changed)
     })}
   function imageItem(target){const image=target.closest?.('img');if(!image||image.closest('#tmsPublicImageViewer'))return null;const link=image.closest('a'),url=link?.href||image.currentSrc||image.src||'';return /\/media\/|^blob:|^data:image\//i.test(url)?{url,image}:null}
   function openViewer(item){const caption=item.image.alt||'Image Preview';main.src=item.url;main.alt=caption;title.textContent=caption;save.href=item.url;viewer.hidden=false;document.body.style.overflow='hidden'}function closeViewer(){viewer.hidden=true;main.src='';document.body.style.overflow=''}
@@ -220,8 +233,8 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
     const readButton=e.target.closest?.('.tms-read-cnic-button');
     if(readButton){
       e.preventDefault();
-      const grid=readButton.closest('.tms-main-document-grid,.td-form-doc-grid');
-      const front=grid?.querySelector('input[type="file"][name$="cnic_front"]');
+      const identityHost=readButton.closest('.family-member-card,.party-role-card,.tms-main-document-grid,.td-form-doc-grid');
+      const front=identityHost?.querySelector('input[type="file"][name$="cnic_front"]');
       const context=front?contextFor(front):null;
       const runner=context?(ocrRunners.get(context.container)||ocrRunners.get(context.form)):null;
       if(runner)runner();

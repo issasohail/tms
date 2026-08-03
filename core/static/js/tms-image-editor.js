@@ -159,6 +159,7 @@
       ratio,
       zoom,
       title: modal.querySelector(".tms-img-editor__title"),
+      hint: modal.querySelector(".tms-img-editor__hint"),
     };
   }
 
@@ -209,9 +210,22 @@
     const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(canvas.width * (box[2] - box[0]))));
     const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(canvas.height * (box[3] - box[1]))));
     const data = canvas.getContext("2d", {willReadFrequently: true}).getImageData(left, top, width, height).data;
-    const gray = function (x, y) {
+    const rawGray = function (x, y) {
       const index = (y * width + x) * 4;
       return (data[index] * 3 + data[index + 1] * 6 + data[index + 2]) / 10;
+    };
+    const histogram = new Array(256).fill(0);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) histogram[Math.round(rawGray(x, y))] += 1;
+    }
+    const cutoff = width * height * .01;
+    let low = 0, high = 255, seen = 0;
+    while (low < 255 && seen + histogram[low] <= cutoff) seen += histogram[low++];
+    seen = 0;
+    while (high > 0 && seen + histogram[high] <= cutoff) seen += histogram[high--];
+    const scale = high > low ? 255 / (high - low) : 1;
+    const gray = function (x, y) {
+      return Math.max(0, Math.min(255, (rawGray(x, y) - low) * scale));
     };
     let transitions = 0;
     let comparisons = 0;
@@ -229,6 +243,27 @@
       }
     }
     return comparisons ? transitions / comparisons : 0;
+  }
+
+  function regionPortraitColorScore(canvas, box) {
+    const left = Math.max(0, Math.floor(canvas.width * box[0]));
+    const top = Math.max(0, Math.floor(canvas.height * box[1]));
+    const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(canvas.width * (box[2] - box[0]))));
+    const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(canvas.height * (box[3] - box[1]))));
+    const data = canvas.getContext("2d", {willReadFrequently: true}).getImageData(left, top, width, height).data;
+    let portraitPixels = 0;
+    let pixels = 0;
+    for (let index = 0; index < data.length; index += 16) {
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      if (
+        red > 45 && red < 245 && green > 30 && green < 225 && blue > 20 && blue < 215 &&
+        red > green * 1.06 && red > blue * 1.08 && Math.abs(green - blue) < 75
+      ) portraitPixels += 1;
+      pixels += 1;
+    }
+    return pixels ? portraitPixels / pixels : 0;
   }
 
   async function initialIdentityRotation(image, input) {
@@ -417,8 +452,11 @@
     editor.ratio.value = ratio;
     editor.zoom.value = "1";
     editor.title.textContent = initialRotation
-      ? "Crop and rotate image — orientation corrected"
+      ? "Crop and rotate image - orientation corrected"
       : "Crop and rotate image";
+    editor.hint.textContent = initialRotation
+      ? "Auto-rotation is already shown in this preview and is the orientation that will be saved. Rotate again only if it still looks wrong."
+      : "This preview is the orientation that will be saved. Drag the image to position it inside the crop frame.";
     editor.modal.hidden = false;
     document.body.style.overflow = "hidden";
     render();

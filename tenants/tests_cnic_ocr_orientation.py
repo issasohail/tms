@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 from pathlib import Path
 
@@ -6,7 +7,15 @@ from django.test import SimpleTestCase
 from PIL import Image, ImageDraw
 
 from tenants.services.cnic_ocr import (
+    CNIC_LEFT_PORTRAIT_CROP,
+    CNIC_PORTRAIT_CROP,
     _auto_orient_cnic_source,
+    _cnic_back_is_upside_down,
+    _cnic_portrait_bbox_is_safe,
+    _cnic_portrait_crop,
+    _cnic_portrait_fallback_crop,
+    _ordered_cnic_sources,
+    _portrait_data_uri,
     oriented_cnic_content_file,
 )
 
@@ -58,6 +67,19 @@ class CNICAutoOrientationTests(SimpleTestCase):
         image.save(output, format="JPEG", quality=95)
         return output.getvalue()
 
+    def _older_back_with_portrait(self, upside_down=False):
+        image = Image.new("RGB", (800, 500), "white")
+        draw = ImageDraw.Draw(image)
+        box = (40, 35, 260, 185) if not upside_down else (540, 315, 760, 465)
+        draw.rectangle(box, fill=(190, 125, 105))
+        qr_box = (555, 25, 755, 225) if not upside_down else (45, 275, 245, 475)
+        for offset in range(0, 190, 14):
+            draw.line((qr_box[0] + offset, qr_box[1], qr_box[0] + offset, qr_box[3]), fill="black", width=4)
+            draw.line((qr_box[0], qr_box[1] + offset, qr_box[2], qr_box[1] + offset), fill="black", width=4)
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=95)
+        return output.getvalue()
+
     def test_upside_down_back_is_rotated_by_half_turn(self):
         source = self._back_with_qr_pattern(upside_down=True)
 
@@ -74,6 +96,23 @@ class CNICAutoOrientationTests(SimpleTestCase):
 
     def test_upright_back_is_not_reencoded(self):
         source = self._back_with_qr_pattern(upside_down=False)
+
+        oriented, was_rotated = _auto_orient_cnic_source(source, side="back")
+
+        self.assertEqual(oriented, source)
+        self.assertFalse(was_rotated)
+
+    def test_upside_down_older_back_is_rotated_by_portrait_position(self):
+        source = self._older_back_with_portrait(upside_down=True)
+
+        oriented, was_rotated = _auto_orient_cnic_source(source, side="back")
+
+        with Image.open(BytesIO(oriented)) as image:
+            self.assertFalse(_cnic_back_is_upside_down(image.convert("RGB")))
+        self.assertTrue(was_rotated)
+
+    def test_upright_older_back_is_not_reencoded(self):
+        source = self._older_back_with_portrait(upside_down=False)
 
         oriented, was_rotated = _auto_orient_cnic_source(source, side="back")
 
@@ -98,6 +137,100 @@ class CNICAutoOrientationTests(SimpleTestCase):
                 sum(bottom_left.getdata()) / (bottom_left.width * bottom_left.height),
             )
 
+    def test_visually_reversed_uploads_are_reordered(self):
+        front, back, was_swapped = _ordered_cnic_sources(
+            {"front_image_index": 2, "back_image_index": 1},
+            b"uploaded-first",
+            b"uploaded-second",
+        )
+
+        self.assertEqual(front, b"uploaded-second")
+        self.assertEqual(back, b"uploaded-first")
+        self.assertTrue(was_swapped)
+
+    def test_portrait_fallback_detects_older_left_photo_layout(self):
+        image = Image.new("RGB", (800, 500), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((35, 105, 245, 405), fill=(205, 205, 205))
+        draw.ellipse((70, 130, 210, 285), fill=(105, 105, 105))
+        draw.rectangle((65, 270, 215, 400), fill=(65, 65, 65))
+        draw.rectangle((545, 70, 775, 405), fill=(190, 230, 200))
+        for offset in range(0, 210, 18):
+            draw.line((550 + offset, 85, 550 + offset, 385), fill=(45, 95, 60), width=4)
+            draw.line((550, 90 + offset, 765, 90 + offset), fill=(65, 105, 75), width=3)
+
+        self.assertEqual(_cnic_portrait_fallback_crop(image), CNIC_LEFT_PORTRAIT_CROP)
+
+    def test_portrait_fallback_keeps_current_right_photo_layout(self):
+        image = Image.new("RGB", (800, 500), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((55, 170, 220, 300), fill=(190, 145, 70))
+        draw.rectangle((570, 105, 770, 430), fill=(205, 205, 205))
+        draw.ellipse((600, 135, 740, 290), fill=(95, 85, 80))
+        draw.rectangle((595, 280, 745, 420), fill=(45, 45, 45))
+
+        self.assertEqual(_cnic_portrait_fallback_crop(image), CNIC_PORTRAIT_CROP)
+
+    def test_current_card_gold_chip_is_not_accepted_as_portrait(self):
+        image = Image.new("RGB", (800, 500), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((55, 170, 220, 300), fill=(190, 145, 70))
+        draw.rectangle((570, 105, 770, 430), fill=(65, 65, 65))
+        expected = _cnic_portrait_fallback_crop(image)
+
+        self.assertEqual(expected, CNIC_PORTRAIT_CROP)
+        self.assertFalse(
+            _cnic_portrait_bbox_is_safe(
+                CNIC_LEFT_PORTRAIT_CROP, expected_crop=expected
+            )
+        )
+        self.assertTrue(
+            _cnic_portrait_bbox_is_safe(CNIC_PORTRAIT_CROP, expected_crop=expected)
+        )
+
+    def test_portrait_bbox_accepts_both_supported_card_layouts(self):
+        self.assertTrue(_cnic_portrait_bbox_is_safe(CNIC_PORTRAIT_CROP))
+        self.assertTrue(_cnic_portrait_bbox_is_safe(CNIC_LEFT_PORTRAIT_CROP))
+        self.assertFalse(_cnic_portrait_bbox_is_safe((0.37, 0.12, 0.30, 0.70)))
+
+    def test_clear_older_layout_overrides_an_incorrect_right_side_hint(self):
+        image = Image.new("RGB", (800, 500), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((35, 105, 245, 405), fill=(205, 205, 205))
+        draw.ellipse((70, 130, 210, 285), fill=(105, 105, 105))
+        draw.rectangle((65, 270, 215, 400), fill=(65, 65, 65))
+        draw.rectangle((545, 70, 775, 405), fill=(190, 230, 200))
+        for offset in range(0, 210, 18):
+            draw.line((550 + offset, 85, 550 + offset, 385), fill=(45, 95, 60), width=4)
+
+        self.assertEqual(
+            _cnic_portrait_crop(image, portrait_side="right"),
+            CNIC_LEFT_PORTRAIT_CROP,
+        )
+
+    def test_dark_upright_back_is_not_mistaken_for_an_inverted_portrait_card(self):
+        image = Image.new("RGB", (800, 500), (45, 43, 38))
+        draw = ImageDraw.Draw(image)
+        for offset in range(0, 185, 14):
+            draw.line((555 + offset, 25, 555 + offset, 225), fill=(110, 105, 95), width=4)
+            draw.line((555, 25 + offset, 755, 25 + offset), fill=(110, 105, 95), width=4)
+        draw.rectangle((545, 315, 795, 495), fill=(120, 105, 90))
+
+        self.assertFalse(_cnic_back_is_upside_down(image))
+
+    def test_explicit_portrait_side_overrides_ambiguous_local_layout_score(self):
+        output = BytesIO()
+        Image.new("RGB", (800, 500), "white").save(output, format="JPEG")
+
+        left_portrait = _portrait_data_uri(output.getvalue(), portrait_side="left")
+        right_portrait = _portrait_data_uri(output.getvalue(), portrait_side="right")
+
+        with Image.open(BytesIO(base64.b64decode(left_portrait.split(",", 1)[1]))) as image:
+            left_size = image.size
+        with Image.open(BytesIO(base64.b64decode(right_portrait.split(",", 1)[1]))) as image:
+            right_size = image.size
+        self.assertNotEqual(left_size, right_size)
+
 
 class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
     @classmethod
@@ -114,10 +247,24 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
             / "tenants"
             / "public_registration_form.html"
         ).read_text(encoding="utf-8")
+        cls.service_source = (
+            project_root / "tenants" / "services" / "cnic_ocr.py"
+        ).read_text(encoding="utf-8")
+        cls.workflow_source = (
+            project_root / "tenants" / "services" / "registration_workflow.py"
+        ).read_text(encoding="utf-8")
+        cls.views_source = (
+            project_root / "tenants" / "views.py"
+        ).read_text(encoding="utf-8")
 
     def test_ocr_installs_for_party_roles_and_family_members(self):
         self.assertIn(".family-member-card,.party-role-card", self.identity_source)
         self.assertIn("endsWith('cnic_front')", self.identity_source)
+
+    def test_reversed_sides_are_moved_without_restarting_ocr(self):
+        self.assertIn("swapCnicSideInputs", self.identity_source)
+        self.assertIn("tmsOcrSideSwap", self.identity_source)
+        self.assertIn("moved into the correct Front/Back boxes", self.identity_source)
 
     def test_public_registration_allows_manual_correction_after_ocr_error(self):
         self.assertIn("TMS_CNIC_ALLOW_MANUAL_ENTRY = true", self.public_source)
@@ -125,6 +272,76 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
             "const allowManualEntry=window.TMS_CNIC_ALLOW_MANUAL_ENTRY===true;",
             self.identity_source,
         )
+
+    def test_family_member_has_a_persistent_read_cnic_button(self):
+        self.assertIn('class="family-identity-row"', self.public_source)
+        self.assertIn('class="family-doc-preview-row"', self.public_source)
+        self.assertIn('data-family-preview-for="cnic_front"', self.public_source)
+        self.assertIn("family-read-cnic-btn tms-read-cnic-button", self.public_source)
+        self.assertIn("Read CNIC Card", self.public_source)
+        self.assertIn(".family-member-card,.party-role-card,.tms-main-document-grid", self.identity_source)
+        self.assertIn("function familyPreviewHost", self.identity_source)
+
+    def test_ocr_portraits_are_saved_and_restored_with_the_browser_draft(self):
+        self.assertIn("function restoreCnicPortraitPreviews", self.public_source)
+        self.assertIn("hidden.dispatchEvent(new Event('input',{bubbles:true}))", self.identity_source)
+
+    def test_party_portrait_preview_uses_the_party_photo_container(self):
+        self.assertIn(".party-photo-field,.field-wrap", self.identity_source)
+
+    def test_verified_pakistani_cnic_defaults_nationality(self):
+        self.assertIn('"nationality": "Pakistani"', self.service_source)
+
+    def test_non_visible_person_ocr_fields_are_preserved_for_review(self):
+        self.assertIn("hiddenOcrFieldNames", self.identity_source)
+        self.assertIn("additional CNIC field(s) saved for review", self.identity_source)
+        self.assertIn("_person_ocr_fields_from_post", self.views_source)
+        self.assertIn('processing_result={"ocr_fields": ocr_fields}', self.views_source)
+        self.assertIn("OCR_PERSON_FIELDS", self.workflow_source)
+        self.assertIn("_pending_person_ocr_values(person)", self.workflow_source)
+
+    def test_superseded_ocr_request_always_releases_pending_count(self):
+        self.assertIn(
+            "if(request===seq)stopTimer();\n          setSubmitPending(context.form,false);",
+            self.identity_source,
+        )
+
+    def test_multiple_ocr_jobs_restore_the_original_submit_button_state(self):
+        self.assertIn("if(on&&!('ocrDisabled' in b.dataset))", self.identity_source)
+        self.assertIn("delete b.dataset.ocrDisabled", self.identity_source)
+
+    def test_temporary_ocr_service_errors_are_retried(self):
+        self.assertIn("[429,502,503,504].includes(response.status)", self.identity_source)
+
+    def test_hidden_ocr_fields_are_optional(self):
+        self.assertIn("hidden.type='hidden'", self.identity_source)
+        hidden_field_code = self.identity_source.split("function saveHiddenOcrFields", 1)[1].split("function setSubmitPending", 1)[0]
+        self.assertNotIn("required", hidden_field_code)
+
+    def test_registration_submit_displays_a_friendly_validation_summary(self):
+        self.assertIn('id="registrationValidationSummary"', self.public_source)
+        self.assertIn("validateRegistrationForSubmit", self.public_source)
+        self.assertIn("This field is required.", self.public_source)
+        self.assertIn("scrollIntoView", self.public_source)
+        self.assertIn("registration-field-invalid", self.public_source)
+
+    def test_party_photo_preview_does_not_stretch_into_an_empty_second_box(self):
+        self.assertIn("flex:0 0 142px", self.public_source)
+        self.assertIn("max-height:142px", self.public_source)
+
+    def test_main_tenant_photo_matches_cnic_preview_height(self):
+        self.assertIn(
+            ".tenant-photo-slot .td-form-doc-preview {\n  width: 120px !important;\n  height: 150px !important;",
+            self.public_source,
+        )
+
+    def test_browser_back_rotation_normalizes_low_contrast_images(self):
+        project_root = Path(__file__).resolve().parent.parent
+        editor_source = (
+            project_root / "core" / "static" / "js" / "tms-image-editor.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("const histogram = new Array(256).fill(0);", editor_source)
+        self.assertIn("const cutoff = width * height * .01;", editor_source)
 
     def test_quick_registration_shell_names_are_replaceable_by_ocr(self):
         self.assertIn("TMS_CNIC_REPLACE_SHELL_NAMES", self.public_source)

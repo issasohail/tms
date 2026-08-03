@@ -10,6 +10,11 @@ from core.utils.identity import validate_cnic
 from tenants.services.cnic_ocr import portrait_content_file_from_cnic_front
 
 PERSON_FIELDS = ("first_name", "last_name", "phone", "date_of_birth", "address")
+OCR_PERSON_FIELDS = (
+    "gender", "country", "nationality", "cnic_issue_date", "cnic_expiry_date",
+    "temporary_address", "permanent_address",
+    "temporary_address_urdu", "permanent_address_urdu",
+)
 FILE_FIELDS = ("photo", "cnic_front", "cnic_back")
 REQUIRED_PARTY_ROLES = (
     (PendingRegistrationPerson.ROLE_PROPOSER, "Proposer"),
@@ -64,6 +69,23 @@ def proposed_changes(person):
         if getattr(person, field):
             changes[field] = {"existing": bool(getattr(tenant, field)), "submitted": True}
     return changes
+
+
+def _pending_person_ocr_values(person):
+    values = (person.processing_result or {}).get("ocr_fields", {})
+    return {
+        field: str(values.get(field) or "").strip()
+        for field in OCR_PERSON_FIELDS
+        if str(values.get(field) or "").strip()
+    }
+
+
+def _coerce_person_ocr_value(field, value):
+    if field in {"cnic_issue_date", "cnic_expiry_date"}:
+        return parse_date(value or "")
+    if field == "gender":
+        return value if value in {"M", "F", "O"} else None
+    return value
 
 
 def applicant_cnic_conflict(submission):
@@ -328,14 +350,21 @@ def resolve_pending_person(person, missing_files=None):
     deferred_file_paths = {}
     person_context = f"{person.get_role_display()} ({person.first_name} {person.last_name})".strip()
     if not tenant:
+        tenant_values = {
+            "first_name": person.first_name or "Unknown",
+            "last_name": person.last_name or "Person",
+            "relation": "S/O.",
+            "cnic": person.cnic,
+            "phone": person.phone,
+            "date_of_birth": person.date_of_birth,
+            "address": person.address,
+        }
+        for field, value in _pending_person_ocr_values(person).items():
+            coerced = _coerce_person_ocr_value(field, value)
+            if coerced not in (None, ""):
+                tenant_values[field] = coerced
         tenant = Tenant(
-            first_name=person.first_name or "Unknown",
-            last_name=person.last_name or "Person",
-            relation="S/O.",
-            cnic=person.cnic,
-            phone=person.phone,
-            date_of_birth=person.date_of_birth,
-            address=person.address,
+            **tenant_values,
         )
         for field in FILE_FIELDS:
             _copy_file(
@@ -365,6 +394,12 @@ def resolve_pending_person(person, missing_files=None):
             if field in PERSON_FIELDS:
                 setattr(tenant, field, getattr(person, field))
                 update_fields.append(field)
+            elif field in OCR_PERSON_FIELDS:
+                submitted = (person.proposed_updates or {}).get(field, {}).get("submitted")
+                value = _coerce_person_ocr_value(field, submitted)
+                if value not in (None, ""):
+                    setattr(tenant, field, value)
+                    update_fields.append(field)
             elif field in FILE_FIELDS and _copy_file(
                 person,
                 tenant,

@@ -55,6 +55,11 @@ urlpatterns = [
         name="temporary_registration_upload_preview",
     ),
     path(
+        "registration/<str:token>/draft-uploads/",
+        views.temporary_registration_upload_list,
+        name="temporary_registration_upload_list",
+    ),
+    path(
         "registration/<str:token>/",
         views.tenant_public_registration_update,
         name="tenant_public_registration",

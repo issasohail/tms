@@ -1621,6 +1621,13 @@
             <div class="lf-card-head lf-card-dark">
               <i class="ti ti-packages"></i>
               <span class="lf-card-title">Inventory</span>
+              {% if form.instance.pk %}
+              <div class="d-flex flex-wrap gap-1 ms-auto">
+                <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#editAddLeaseInventoryModal"><i class="ti ti-plus"></i> Add Item</button>
+                <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editImportLeaseInventoryModal"><i class="ti ti-download"></i> Import Unit Inventory</button>
+                <a class="btn btn-outline-light btn-sm" href="{% url 'leases:inventory_manage' 'lease' form.instance.pk %}"><i class="ti ti-settings"></i> Manage</a>
+              </div>
+              {% endif %}
             </div>
             <div class="lf-fg lf-fg-3" style="padding:8px 12px;">
               <div class="lf-f">
@@ -1665,6 +1672,25 @@
                 <i class="ti ti-device-floppy"></i> Save
               </button>
             </div>
+            {% if form.instance.pk %}
+            <div class="table-responsive border-top">
+              <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light"><tr><th class="text-center" style="width:55px;">S.No.</th><th>Full Lease Inventory</th><th class="text-center" style="width:90px;">Quantity</th><th>Condition</th><th style="width:90px;">Source</th><th style="width:170px;">Actions</th></tr></thead>
+                <tbody>
+                  {% for row in lease_effective_inventory %}
+                  <tr data-inventory-row>
+                    <td class="text-center">{{ forloop.counter }}</td>
+                    <td class="fw-semibold"><span class="inventory-display">{{ row.item.name }}</span><input form="edit-inventory-row-{{ row.item.pk }}" class="form-control form-control-sm inventory-editor d-none" name="item_name" value="{{ row.item.name }}" maxlength="100" required title="Changing the item name updates it everywhere."></td>
+                    <td class="text-center"><span class="inventory-display">{{ row.quantity }}</span><input form="edit-inventory-row-{{ row.item.pk }}" class="form-control form-control-sm inventory-editor d-none" type="number" min="0" name="quantity" value="{{ row.quantity }}" required></td>
+                    <td><span class="inventory-display">{{ row.condition|default:"—" }}</span><input form="edit-inventory-row-{{ row.item.pk }}" class="form-control form-control-sm inventory-editor d-none" name="condition" value="{{ row.condition }}" maxlength="120"></td>
+                    <td><span class="badge bg-light text-dark border">{{ row.source }}</span></td>
+                    <td class="text-nowrap"><button type="button" class="btn btn-sm btn-outline-primary inventory-edit inventory-display">Edit</button> <button form="edit-inventory-row-{{ row.item.pk }}" name="action" value="save" class="btn btn-sm btn-primary inventory-editor d-none">Save</button> <button type="button" class="btn btn-sm btn-secondary inventory-cancel inventory-editor d-none">Cancel</button> <button form="edit-inventory-row-{{ row.item.pk }}" name="action" value="delete" class="btn btn-sm btn-outline-danger inventory-display" onclick="return confirm('Remove {{ row.item.name|escapejs }} from this lease?')">Delete</button></td>
+                  </tr>
+                  {% empty %}<tr><td colspan="6" class="text-muted text-center py-3">No inventory configured.</td></tr>{% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% endif %}
           </div>
         </div>{# /pane-inventory #}
 
@@ -1674,6 +1700,46 @@
         <input type="hidden" name="update_existing" id="update_existing_field" value="0">
 
       </form>
+
+      {% if form.instance.pk %}
+      {% for row in lease_effective_inventory %}
+      <form id="edit-inventory-row-{{ row.item.pk }}" method="post" action="{% url 'leases:inventory_manage' 'lease' form.instance.pk %}" class="d-none">
+        {% csrf_token %}<input type="hidden" name="item_id" value="{{ row.item.pk }}"><input type="hidden" name="is_included" value="1"><input type="hidden" name="return_to_edit" value="1">
+      </form>
+      {% endfor %}
+
+      <div class="modal fade" id="editAddLeaseInventoryModal" tabindex="-1" aria-labelledby="editAddLeaseInventoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+          <form method="post" action="{% url 'leases:inventory_manage' 'lease' form.instance.pk %}">
+            {% csrf_token %}<input type="hidden" name="action" value="add_lease_item"><input type="hidden" name="return_to_edit" value="1">
+            <div class="modal-header py-2"><h5 class="modal-title" id="editAddLeaseInventoryModalLabel">Add Lease Inventory Item</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
+              <div class="alert alert-warning py-2 small">Save any other lease changes before adding an inventory item.</div>
+              <div class="mb-2"><label class="form-label small fw-semibold">Select existing item</label><select class="form-select form-select-sm" name="item_id"><option value="">Select existing item (optional)</option>{% for item in lease_inventory_available_items %}<option value="{{ item.pk }}">{{ item.name }}</option>{% endfor %}</select></div>
+              <div class="mb-2"><label class="form-label small fw-semibold">Or enter a new item name</label><input class="form-control form-control-sm" name="new_item_name" maxlength="100" placeholder="For example: Refrigerator"></div>
+              <div class="row g-2"><div class="col-4"><label class="form-label small fw-semibold">Quantity</label><input class="form-control form-control-sm" type="number" min="0" name="quantity" value="1" required></div><div class="col-8"><label class="form-label small fw-semibold">Condition</label><input class="form-control form-control-sm" name="condition" maxlength="120" value="Working order"></div></div>
+              <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="is_included" id="editAddLeaseInventoryIncluded" checked><label class="form-check-label small" for="editAddLeaseInventoryIncluded">Include in lease inventory and agreement clause</label></div>
+              <div class="form-text">The item will also be saved in this unit's default inventory.</div>
+            </div>
+            <div class="modal-footer py-2"><a class="btn btn-sm btn-outline-secondary me-auto" href="{% url 'leases:global_inventory_manage' %}">Item Type Settings</a><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-sm btn-success">Add Item</button></div>
+          </form>
+        </div></div>
+      </div>
+
+      <div class="modal fade" id="editImportLeaseInventoryModal" tabindex="-1" aria-labelledby="editImportLeaseInventoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+          <form method="post" action="{% url 'leases:inventory_manage' 'lease' form.instance.pk %}">
+            {% csrf_token %}<input type="hidden" name="return_to_edit" value="1">
+            <div class="modal-header py-2"><div><h5 class="modal-title" id="editImportLeaseInventoryModalLabel">Import Unit Inventory</h5><div class="small text-muted">{{ form.instance.unit }}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body p-0">
+              <div class="alert alert-warning rounded-0 border-start-0 border-end-0 py-2 mb-0 small">Save other lease changes first. <strong>Add missing only</strong> preserves existing inventory; <strong>Replace</strong> refreshes it from the unit.</div>
+              <div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr><th>Item</th><th class="text-center">Quantity</th><th>Condition</th><th>Default source</th></tr></thead><tbody>{% for row in unit_inventory_defaults %}<tr><td class="fw-semibold">{{ row.item.name }}</td><td class="text-center">{{ row.quantity }}</td><td>{{ row.condition|default:"—" }}</td><td><span class="badge bg-light text-dark border">{{ row.source }}</span></td></tr>{% empty %}<tr><td colspan="4" class="text-muted text-center py-3">No unit inventory defaults are configured.</td></tr>{% endfor %}</tbody></table></div>
+            </div>
+            <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" name="action" value="import_missing" class="btn btn-sm btn-primary" {% if not unit_inventory_defaults %}disabled{% endif %}>Add Missing Only</button><button type="submit" name="action" value="import_replace" class="btn btn-sm btn-danger" {% if not unit_inventory_defaults %}disabled{% endif %} onclick="return confirm('Replace this lease inventory with all current unit defaults? Lease-specific inventory values will be removed.')">Replace with Unit Defaults</button></div>
+          </form>
+        </div></div>
+      </div>
+      {% endif %}
     </div>{# /lf-content #}
 
     {# Bottom nav (mobile only) #}
@@ -1692,6 +1758,28 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  ['editAddLeaseInventoryModal', 'editImportLeaseInventoryModal'].forEach(function (id) {
+    var modal = document.getElementById(id);
+    if (modal && modal.parentElement !== document.body) document.body.appendChild(modal);
+  });
+  document.addEventListener('click', function (event) {
+    var editButton = event.target.closest('.inventory-edit');
+    var cancelButton = event.target.closest('.inventory-cancel');
+    var row = event.target.closest('[data-inventory-row]');
+    if (!row || (!editButton && !cancelButton)) return;
+    if (cancelButton) {
+      row.querySelectorAll('.inventory-editor.form-control').forEach(function (input) {
+        input.value = input.defaultValue;
+      });
+    }
+    row.querySelectorAll('.inventory-display').forEach(function (element) {
+      element.classList.toggle('d-none', Boolean(editButton));
+    });
+    row.querySelectorAll('.inventory-editor').forEach(function (element) {
+      element.classList.toggle('d-none', !editButton);
+    });
+    if (editButton) row.querySelector('.inventory-editor.form-control')?.focus();
+  });
   document.querySelectorAll('.lf-doc-upload-input[data-preview-target]').forEach(function(input) {
     input.addEventListener('change', function() {
       const file = input.files && input.files[0];
@@ -1781,6 +1869,10 @@ document.addEventListener('DOMContentLoaded', function () {
       switchPane(this.dataset.lfTab);
     });
   });
+  const initialPane = window.location.hash.replace(/^#/, '');
+  if (initialPane && document.getElementById(initialPane)?.classList.contains('lf-pane')) {
+    switchPane(initialPane);
+  }
 
   /* money */
   document.getElementById('lease-form')?.addEventListener('submit', function(){

@@ -3542,6 +3542,9 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             ),
         )
         if lease_instance and lease_instance.pk:
+            from leases.models_parking_inventory import InventoryItemDefinition
+            from leases.services.inventory_parking import effective_inventory
+
             sec_totals = security_deposit_totals(lease_instance)
             active_history = lease_instance.renewals.order_by(
                 "-renewal_number", "-id"
@@ -3554,6 +3557,23 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                     "security_refunded": sec_totals["refunded"],
                     "security_damages": sec_totals["damages"],
                     "security_currently_held": sec_totals["currently_held"],
+                    "lease_effective_inventory": [
+                        row
+                        for row in effective_inventory(lease=lease_instance)
+                        if row["is_included"]
+                    ],
+                    "lease_inventory_available_items": (
+                        InventoryItemDefinition.objects.filter(is_active=True)
+                        .exclude(
+                            pk__in=lease_instance.inventory_items.filter(
+                                is_included=True
+                            ).values_list("item_id", flat=True)
+                        )
+                        .order_by("sort_order", "name")
+                    ),
+                    "unit_inventory_defaults": effective_inventory(
+                        unit=lease_instance.unit
+                    ),
                 }
             )
         return ctx
@@ -4290,9 +4310,24 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             effective_parking_policy,
             policy_value,
         )
+        from leases.models_parking_inventory import InventoryItemDefinition
 
         parking_policy = effective_parking_policy(lease=self.object)
-        ctx["effective_inventory"] = effective_inventory(lease=self.object)
+        ctx["effective_inventory"] = [
+            row
+            for row in effective_inventory(lease=self.object)
+            if row["is_included"]
+        ]
+        ctx["lease_inventory_available_items"] = (
+            InventoryItemDefinition.objects.filter(is_active=True)
+            .exclude(
+                pk__in=self.object.inventory_items.filter(
+                    is_included=True
+                ).values_list("item_id", flat=True)
+            )
+            .order_by("sort_order", "name")
+        )
+        ctx["unit_inventory_defaults"] = effective_inventory(unit=self.object.unit)
         ctx["parking_enabled"] = bool(policy_value(parking_policy, "enabled"))
         ctx["parking_monthly_rate"] = policy_value(parking_policy, "monthly_rate")
         ctx["parking_penalty"] = policy_value(

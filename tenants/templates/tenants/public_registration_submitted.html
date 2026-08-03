@@ -83,7 +83,9 @@
 document.addEventListener("DOMContentLoaded", function () {
   {% if not duplicate_submission %}
   try {
-    window.sessionStorage.removeItem("tmsTenantRegistrationDraft:" + window.location.pathname);
+    const registrationDraftKey = "tmsTenantRegistrationDraft:" + window.location.pathname;
+    window.sessionStorage.removeItem(registrationDraftKey);
+    window.sessionStorage.removeItem(registrationDraftKey + ":uploads");
   } catch (error) {
     // The submission is already committed; unavailable browser storage needs no action.
   }

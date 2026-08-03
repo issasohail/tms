@@ -1160,6 +1160,29 @@ class SecureRegistrationDraftUploadTests(TestCase):
         wrong_link_url = payload["preview_url"].replace(self.token, self.other_token)
         self.assertEqual(self.client.get(wrong_link_url).status_code, 404)
 
+    def test_draft_upload_list_recovers_latest_documents_for_refresh(self):
+        from django.urls import reverse
+
+        first = self.upload("family-0-cnic_front").json()
+        latest = self.upload("family-0-cnic_front").json()
+        back = self.upload("family-0-cnic_back").json()
+        response = self.client.get(
+            reverse("tenants:temporary_registration_upload_list", args=[self.token]),
+            {"draft": str(self.draft_id)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        uploads = response.json()["uploads"]
+        self.assertEqual(uploads["family-0-cnic_front"]["id"], latest["upload_id"])
+        self.assertNotEqual(uploads["family-0-cnic_front"]["id"], first["upload_id"])
+        self.assertEqual(uploads["family-0-cnic_back"]["id"], back["upload_id"])
+
+        wrong_draft = self.client.get(
+            reverse("tenants:temporary_registration_upload_list", args=[self.token]),
+            {"draft": str(__import__("uuid").uuid4())},
+        )
+        self.assertEqual(wrong_draft.json()["uploads"], {})
+
     def test_invalid_and_expired_registration_links_are_rejected(self):
         from unittest.mock import patch
 
@@ -1311,6 +1334,7 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
         super().setUpClass()
         templates = Path(__file__).resolve().parent / "templates" / "tenants"
         cls.form_source = (templates / "public_registration_form.html").read_text(encoding="utf-8")
+        cls.internal_form_source = (templates / "tenant_form.html").read_text(encoding="utf-8")
         cls.success_source = (templates / "public_registration_submitted.html").read_text(encoding="utf-8")
 
     def test_submit_saves_but_does_not_clear_browser_draft(self):
@@ -1320,7 +1344,41 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
 
     def test_only_genuine_confirmation_page_clears_draft(self):
         self.assertIn("{% if not duplicate_submission %}", self.success_source)
-        self.assertIn('sessionStorage.removeItem("tmsTenantRegistrationDraft:"', self.success_source)
+        self.assertIn("sessionStorage.removeItem(registrationDraftKey)", self.success_source)
+        self.assertIn('sessionStorage.removeItem(registrationDraftKey + ":uploads")', self.success_source)
+
+    def test_document_references_use_a_separate_lightweight_browser_record(self):
+        self.assertIn('registrationDraftUploadsKey = registrationDraftKey + ":uploads"', self.form_source)
+        self.assertIn("readRegistrationDraftUploads()", self.form_source)
+        self.assertIn(
+            "window.sessionStorage.setItem(registrationDraftUploadsKey, JSON.stringify(currentUploads))",
+            self.form_source,
+        )
+
+    def test_preview_configuration_exists_before_draft_restore_and_errors_do_not_erase_ids(self):
+        config_position = self.form_source.index("window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE")
+        restore_position = self.form_source.index("restoreRegistrationDraft();")
+        self.assertLess(config_position, restore_position)
+        preview_function = self.form_source.split("function showTemporaryPreview", 1)[1].split(
+            "function restoreTemporaryUploadPreviews", 1
+        )[0]
+        self.assertNotIn("delete input.dataset.temporaryUploadId", preview_function)
+        self.assertIn("recoverTemporaryUploadsFromServer", self.form_source)
+
+    def test_authorized_internal_create_allows_manual_identity_entry(self):
+        self.assertIn(
+            "{% if form.instance.pk or perms.tenants.add_tenant %}false{% else %}true{% endif %}",
+            self.internal_form_source,
+        )
+
+    def test_public_validation_labels_family_and_agreement_party_fields(self):
+        self.assertIn('return "Family Member #" + (Number(familyMatch[1]) + 1)', self.form_source)
+        for label in ("Proposer", "Seconder", "Witness 1", "Witness 2"):
+            self.assertIn('"' + label + '"', self.form_source)
+        required_loop = self.form_source.split("function validateRegistrationForSubmit", 1)[1].split(
+            "Array.from(registrationForm?.elements || []).forEach", 2
+        )[1]
+        self.assertNotIn("field.disabled", required_loop)
 
 
 class CNICSideVerificationTests(SimpleTestCase):

@@ -115,14 +115,14 @@
   padding:9px 16px; font-size:13px; font-weight:700; color:#374151;
 }
 
-/* 6-col grid */
+/* 5-col grid */
 .ld-ov-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
 @media (min-width:640px)  { .ld-ov-grid { grid-template-columns: repeat(3,1fr); } }
-@media (min-width:900px)  { .ld-ov-grid { grid-template-columns: repeat(6,1fr); } }
+@media (min-width:900px)  { .ld-ov-grid { grid-template-columns: repeat(5,1fr); } }
 
 .ld-ov-col {
   padding: 14px 14px 14px 16px;
@@ -943,16 +943,6 @@
         </div>
       </div>
 
-      <!-- COL 6: Inventory & Condition -->
-      <div class="ld-ov-col ld-mobile-two-col">
-        <div class="ld-ov-head">Inventory &amp; Condition</div>
-        <div class="ld-f"><div class="ld-f-label">Ceiling Fans / Exhaust</div><div class="ld-f-value">{{ lease.inventory_ceiling_fans|default:"&mdash;" }} / {{ lease.inventory_exhaust_fans|default:"&mdash;" }}</div></div>
-        <div class="ld-f"><div class="ld-f-label">Ceiling Lights</div><div class="ld-f-value">{{ lease.inventory_ceiling_lights|default:"&mdash;" }}</div></div>
-        <div class="ld-f"><div class="ld-f-label">Stove / Wardrobes</div><div class="ld-f-value">{{ lease.inventory_stove|default:"&mdash;" }} / {{ lease.inventory_wardrobes|default:"&mdash;" }}</div></div>
-        <div class="ld-f"><div class="ld-f-label">Keys</div><div class="ld-f-value">{{ lease.inventory_keys|default:"&mdash;" }}</div></div>
-        <div class="ld-f"><div class="ld-f-label">Paint Condition</div><div class="ld-f-value">{{ lease.paint_condition|default:"&mdash;" }}</div></div>
-      </div>
-
     </div><!-- /ld-ov-grid -->
   </div><!-- /ld-overview-card -->
 
@@ -1712,8 +1702,35 @@
 <div class="row g-3 mb-3">
   <div class="col-lg-7">
     <div class="card h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center"><strong>Lease Inventory</strong><a href="{% url 'leases:inventory_manage' 'lease' lease.pk %}" class="btn btn-sm btn-outline-primary">Manage</a></div>
-      <div class="card-body py-2">{% for item in effective_inventory %}<span class="badge bg-light text-dark border me-1 mb-1">{{ item.item.name }}: {{ item.quantity }}</span>{% empty %}<span class="text-muted">No inventory configured.</span>{% endfor %}</div>
+      <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <strong>Lease Inventory</strong>
+        <div class="d-flex flex-wrap gap-1 no-print">
+          <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addLeaseInventoryModal"><i class="fas fa-plus"></i> Add Item</button>
+          <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#importLeaseInventoryModal"><i class="fas fa-download"></i> Import Unit Inventory</button>
+          <a href="{% url 'leases:inventory_manage' 'lease' lease.pk %}" class="btn btn-sm btn-outline-primary">Manage</a>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th class="text-center" style="width:55px">S.No.</th><th>Item</th><th class="text-center" style="width:90px">Quantity</th><th>Condition</th><th style="width:90px">Source</th><th class="no-print" style="width:170px">Actions</th></tr></thead>
+            <tbody>
+              {% for item in effective_inventory %}
+              <tr data-inventory-row>
+                <td class="text-center">{{ forloop.counter }}</td>
+                <td class="fw-semibold"><span class="inventory-display">{{ item.item.name }}</span><input form="detail-inventory-row-{{ item.item.pk }}" class="form-control form-control-sm inventory-editor d-none" name="item_name" value="{{ item.item.name }}" maxlength="100" required title="Changing the item name updates it everywhere."></td>
+                <td class="text-center"><span class="inventory-display">{{ item.quantity }}</span><input form="detail-inventory-row-{{ item.item.pk }}" class="form-control form-control-sm inventory-editor d-none" type="number" min="0" name="quantity" value="{{ item.quantity }}" required></td>
+                <td><span class="inventory-display">{{ item.condition|default:"—" }}</span><input form="detail-inventory-row-{{ item.item.pk }}" class="form-control form-control-sm inventory-editor d-none" name="condition" value="{{ item.condition }}" maxlength="120"></td>
+                <td><span class="badge bg-light text-dark border">{{ item.source }}</span></td>
+                <td class="no-print text-nowrap"><button type="button" class="btn btn-sm btn-outline-primary inventory-edit inventory-display">Edit</button> <button form="detail-inventory-row-{{ item.item.pk }}" name="action" value="save" class="btn btn-sm btn-primary inventory-editor d-none">Save</button> <button type="button" class="btn btn-sm btn-secondary inventory-cancel inventory-editor d-none">Cancel</button> <button form="detail-inventory-row-{{ item.item.pk }}" name="action" value="delete" class="btn btn-sm btn-outline-danger inventory-display" onclick="return confirm('Remove {{ item.item.name|escapejs }} from this lease?')">Delete</button></td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="6" class="text-muted text-center py-3">No inventory configured.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
   <div class="col-lg-5">
@@ -1723,6 +1740,105 @@
     </div>
   </div>
 </div>
+
+{% for item in effective_inventory %}
+<form id="detail-inventory-row-{{ item.item.pk }}" method="post" action="{% url 'leases:inventory_manage' 'lease' lease.pk %}" class="d-none">
+  {% csrf_token %}<input type="hidden" name="item_id" value="{{ item.item.pk }}"><input type="hidden" name="is_included" value="1"><input type="hidden" name="return_to_detail" value="1">
+</form>
+{% endfor %}
+
+<div class="modal fade" id="addLeaseInventoryModal" tabindex="-1" aria-labelledby="addLeaseInventoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{% url 'leases:inventory_manage' 'lease' lease.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_lease_item">
+        <input type="hidden" name="return_to_detail" value="1">
+        <div class="modal-header py-2">
+          <h5 class="modal-title" id="addLeaseInventoryModalLabel">Add Lease Inventory Item</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Select existing item</label>
+            <select class="form-select form-select-sm" name="item_id">
+              <option value="">Select existing item (optional)</option>
+              {% for item in lease_inventory_available_items %}<option value="{{ item.pk }}">{{ item.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="mb-2"><label class="form-label small fw-semibold">Or enter a new item name</label><input class="form-control form-control-sm" name="new_item_name" maxlength="100" placeholder="For example: Refrigerator"></div>
+          <div class="row g-2">
+            <div class="col-4"><label class="form-label small fw-semibold">Quantity</label><input class="form-control form-control-sm" type="number" min="0" name="quantity" value="1" required></div>
+            <div class="col-8"><label class="form-label small fw-semibold">Condition</label><input class="form-control form-control-sm" name="condition" maxlength="120" value="Working order"></div>
+          </div>
+          <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="is_included" id="addLeaseInventoryIncluded" checked><label class="form-check-label small" for="addLeaseInventoryIncluded">Include in lease inventory and agreement clause</label></div>
+          <div class="form-text">The item will also be saved in this unit's default inventory.</div>
+        </div>
+        <div class="modal-footer py-2">
+          <a class="btn btn-sm btn-outline-secondary me-auto" href="{% url 'leases:global_inventory_manage' %}">Add New Item Type</a>
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-success">Add Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="importLeaseInventoryModal" tabindex="-1" aria-labelledby="importLeaseInventoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" action="{% url 'leases:inventory_manage' 'lease' lease.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="return_to_detail" value="1">
+        <div class="modal-header py-2">
+          <div><h5 class="modal-title" id="importLeaseInventoryModalLabel">Import Unit Inventory</h5><div class="small text-muted">{{ lease.unit }}</div></div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="alert alert-info rounded-0 border-start-0 border-end-0 py-2 mb-0 small"><strong>Add missing only</strong> preserves all current lease values. <strong>Replace</strong> refreshes the entire lease inventory from the unit defaults.</div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+              <thead class="table-light"><tr><th>Item</th><th class="text-center">Quantity</th><th>Condition</th><th>Default source</th></tr></thead>
+              <tbody>{% for row in unit_inventory_defaults %}<tr><td class="fw-semibold">{{ row.item.name }}</td><td class="text-center">{{ row.quantity }}</td><td>{{ row.condition|default:"—" }}</td><td><span class="badge bg-light text-dark border">{{ row.source }}</span></td></tr>{% empty %}<tr><td colspan="4" class="text-muted text-center py-3">No unit inventory defaults are configured.</td></tr>{% endfor %}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" name="action" value="import_missing" class="btn btn-sm btn-primary" {% if not unit_inventory_defaults %}disabled{% endif %}>Add Missing Only</button>
+          <button type="submit" name="action" value="import_replace" class="btn btn-sm btn-danger" {% if not unit_inventory_defaults %}disabled{% endif %} onclick="return confirm('Replace this lease inventory with all current unit defaults? Lease-specific inventory values will be removed.')">Replace with Unit Defaults</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  ['addLeaseInventoryModal', 'importLeaseInventoryModal'].forEach(function (id) {
+    var modal = document.getElementById(id);
+    if (modal && modal.parentElement !== document.body) document.body.appendChild(modal);
+  });
+  document.addEventListener('click', function (event) {
+    var editButton = event.target.closest('.inventory-edit');
+    var cancelButton = event.target.closest('.inventory-cancel');
+    var row = event.target.closest('[data-inventory-row]');
+    if (!row || (!editButton && !cancelButton)) return;
+    if (cancelButton) {
+      row.querySelectorAll('.inventory-editor.form-control').forEach(function (input) {
+        input.value = input.defaultValue;
+      });
+    }
+    row.querySelectorAll('.inventory-display').forEach(function (element) {
+      element.classList.toggle('d-none', Boolean(editButton));
+    });
+    row.querySelectorAll('.inventory-editor').forEach(function (element) {
+      element.classList.toggle('d-none', !editButton);
+    });
+    if (editButton) row.querySelector('.inventory-editor.form-control')?.focus();
+  });
+});
+</script>
 
 {% if lease.status == "active" %}
 <style>

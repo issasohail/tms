@@ -40,7 +40,7 @@ def _login_url(request):
         return build_public_path_url(
             f"/tms{settings.LOGIN_URL}?next=/tms/"
         )
-    login_path = f"{settings.LOGIN_URL}?next=/"
+    login_path = f"{settings.LOGIN_URL}?next=/dashboard/"
     return request.build_absolute_uri(login_path)
 
 

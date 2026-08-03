@@ -94,7 +94,7 @@ class MarketingRouteTests(TestCase):
         self.assertTemplateUsed(response, "marketing/index.html")
         self.assertContains(
             response,
-            "http://192.168.100.28:8001/accounts/login/?next=/",
+            "http://192.168.100.28:8001/accounts/login/?next=/dashboard/",
         )
         self.assertContains(
             response,

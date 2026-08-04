@@ -555,7 +555,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
         )
         self.assertEqual(listed_total, result["gross_balance"])
 
-    def test_unpaid_status_invoices_are_reviewed_even_when_payments_cover_the_balance(self):
+    def test_fully_covered_stale_status_invoices_are_not_reviewed(self):
         lease = self.make_lease()
         prior_date = self.month_first - timedelta(days=2)
         draft_invoice = Invoice.objects.create(
@@ -600,12 +600,24 @@ class EndLeaseRefundAndReviewTests(TestCase):
             keys_returned=True,
         )
 
-        self.assertIn(draft_invoice, result["review_invoices"])
-        self.assertIn(overdue_invoice, result["review_invoices"])
+        self.assertNotIn(draft_invoice, result["review_invoices"])
+        self.assertNotIn(overdue_invoice, result["review_invoices"])
         self.assertEqual(result["gross_balance"], ZERO)
         self.assertEqual(result["amount_payable"], ZERO)
 
-    def test_zero_prior_balance_still_lists_unpaid_status_prior_rows(self):
+        from django.apps import apps
+        from importlib import import_module
+
+        migration = import_module(
+            "invoices.migrations.0022_reconcile_fully_paid_invoice_statuses"
+        )
+        migration.reconcile_fully_paid_invoice_statuses(apps, None)
+        draft_invoice.refresh_from_db()
+        overdue_invoice.refresh_from_db()
+        self.assertEqual(draft_invoice.status, "paid")
+        self.assertEqual(overdue_invoice.status, "paid")
+
+    def test_zero_prior_balance_hides_fully_covered_prior_rows(self):
         lease = self.make_lease()
         prior_date = self.month_first - timedelta(days=1)
         prior_invoice = Invoice.objects.create(
@@ -636,8 +648,30 @@ class EndLeaseRefundAndReviewTests(TestCase):
             for invoice in result["review_invoices"]
             if invoice.issue_date < result["billing_month_start"]
         ]
-        self.assertEqual(prior_review_rows, [prior_invoice])
+        self.assertEqual(prior_review_rows, [])
         self.assertEqual(result["gross_balance"], Decimal("750.00"))
+
+    def test_cancelled_future_invoice_is_not_in_settlement_review(self):
+        lease = self.make_lease()
+        future_date = self.today + timedelta(days=1)
+        cancelled_invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=future_date,
+            due_date=future_date,
+            amount=Decimal("2500.00"),
+            status="cancelled",
+            description="Previously cancelled future charge",
+        )
+
+        result = build_end_lease_preview(
+            lease,
+            end_date=self.today,
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        self.assertNotIn(cancelled_invoice, result["review_invoices"])
+        self.assertNotIn(cancelled_invoice, result["future_invoices"])
 
     def test_paid_prior_rows_do_not_change_review_financials_or_confirmation(self):
         lease = self.make_lease(security_deposit=Decimal("5000.00"))
@@ -681,7 +715,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
             keys_returned=True,
         )
 
-        self.assertIn(prior_invoice, preview["review_invoices"])
+        self.assertNotIn(prior_invoice, preview["review_invoices"])
         self.assertIn(future_invoice, preview["review_invoices"])
         self.assertIn(preview["final_period_invoice"], preview["review_invoices"])
         self.assertIn(preview["invoice"], preview["review_invoices"])

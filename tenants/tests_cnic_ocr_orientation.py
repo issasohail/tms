@@ -378,6 +378,14 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
         self.assertIn("const histogram = new Array(256).fill(0);", editor_source)
         self.assertIn("const cutoff = width * height * .01;", editor_source)
 
+    def test_browser_rotation_checks_both_phone_directions_and_cnic_layouts(self):
+        self.assertIn("? [270, 90] : [0, 180]", self.image_editor_source)
+        self.assertIn("function frontLayoutScore(canvas)", self.image_editor_source)
+        self.assertIn("const smartCard =", self.image_editor_source)
+        self.assertIn("const olderCard =", self.image_editor_source)
+        self.assertIn("function backLayoutScore(canvas)", self.image_editor_source)
+        self.assertIn("tms-image-editor.js' %}?v=20260804-2", self.identity_source)
+
     def test_quick_registration_shell_names_are_replaceable_by_ocr(self):
         self.assertIn("TMS_CNIC_REPLACE_SHELL_NAMES", self.public_source)
         self.assertIn("isReplaceableShellName", self.identity_source)

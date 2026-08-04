@@ -266,29 +266,103 @@
     return pixels ? portraitPixels / pixels : 0;
   }
 
+  function regionPortraitDetailScore(canvas, box) {
+    const left = Math.max(0, Math.floor(canvas.width * box[0]));
+    const top = Math.max(0, Math.floor(canvas.height * box[1]));
+    const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(canvas.width * (box[2] - box[0]))));
+    const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(canvas.height * (box[3] - box[1]))));
+    const data = canvas.getContext("2d", {willReadFrequently: true}).getImageData(left, top, width, height).data;
+    let total = 0;
+    let totalSquared = 0;
+    let dark = 0;
+    let pixels = 0;
+    for (let index = 0; index < data.length; index += 16) {
+      const value = (data[index] * 3 + data[index + 1] * 6 + data[index + 2]) / 10;
+      total += value;
+      totalSquared += value * value;
+      if (value < 105) dark += 1;
+      pixels += 1;
+    }
+    if (!pixels) return 0;
+    const mean = total / pixels;
+    const variance = Math.max(0, totalSquared / pixels - mean * mean);
+    return dark / pixels + Math.max(0, Math.sqrt(variance) / 255 - .08) * .45;
+  }
+
+  function regionGoldChipScore(canvas, box) {
+    const left = Math.max(0, Math.floor(canvas.width * box[0]));
+    const top = Math.max(0, Math.floor(canvas.height * box[1]));
+    const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(canvas.width * (box[2] - box[0]))));
+    const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(canvas.height * (box[3] - box[1]))));
+    const data = canvas.getContext("2d", {willReadFrequently: true}).getImageData(left, top, width, height).data;
+    let gold = 0;
+    let pixels = 0;
+    for (let index = 0; index < data.length; index += 16) {
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      if (
+        red > 60 && red > green * 1.08 && green > blue * 1.05 &&
+        Math.max(red, green, blue) - Math.min(red, green, blue) > 20
+      ) gold += 1;
+      pixels += 1;
+    }
+    return pixels ? gold / pixels : 0;
+  }
+
+  function frontLayoutScore(canvas) {
+    const leftPortraitBox = [.02, .12, .34, .84];
+    const rightPortraitBox = [.66, .12, .99, .84];
+    const leftDetail = regionPortraitDetailScore(canvas, leftPortraitBox);
+    const rightDetail = regionPortraitDetailScore(canvas, rightPortraitBox);
+    const leftColor = regionPortraitColorScore(canvas, leftPortraitBox);
+    const rightColor = regionPortraitColorScore(canvas, rightPortraitBox);
+    const leftChip = regionGoldChipScore(canvas, [.06, .28, .30, .67]);
+    const rightChip = regionGoldChipScore(canvas, [.70, .33, .94, .72]);
+
+    // Smart CNIC: gold chip on the left and portrait on the right.
+    const smartCard = leftChip * 1.6 + rightDetail * .45 + rightColor * .15 - rightChip;
+    // Older CNIC: portrait on the left and no gold chip on the right.
+    const olderCard = leftDetail + leftColor * .15 - rightChip * 1.2;
+    return Math.max(smartCard, olderCard);
+  }
+
+  function backLayoutScore(canvas) {
+    const expected = regionTransitionScore(canvas, [.64, .02, .98, .54]);
+    const inverted = regionTransitionScore(canvas, [.02, .46, .36, .98]);
+    return expected - inverted * .85;
+  }
+
+  async function detectedFace(canvas) {
+    if (typeof window.FaceDetector !== "function") return false;
+    try {
+      const faces = await new window.FaceDetector({fastMode: true, maxDetectedFaces: 1}).detect(canvas);
+      return Boolean(faces.length);
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function initialIdentityRotation(image, input) {
     const side = identitySide(input);
     if (!side) return 0;
-    let rotation = image.naturalHeight > image.naturalWidth ? 270 : 0;
-    const preview = orientedPreviewCanvas(image, rotation);
-    if (side === "back") {
-      const expected = regionTransitionScore(preview, [.64, .02, .98, .54]);
-      const inverted = regionTransitionScore(preview, [.02, .46, .36, .98]);
-      if (inverted >= .025 && inverted > expected * 1.18) {
-        rotation = (rotation + 180) % 360;
+    const candidates = image.naturalHeight > image.naturalWidth ? [270, 90] : [0, 180];
+    const previews = candidates.map(function (rotation) {
+      return {rotation, canvas: orientedPreviewCanvas(image, rotation)};
+    });
+
+    if (side === "front") {
+      const faceMatches = [];
+      for (const candidate of previews) {
+        if (await detectedFace(candidate.canvas)) faceMatches.push(candidate);
       }
-    } else if (side === "front" && typeof window.FaceDetector === "function") {
-      try {
-        const faces = await new window.FaceDetector({fastMode: true, maxDetectedFaces: 1}).detect(preview);
-        const face = faces[0]?.boundingBox;
-        if (face && face.x + face.width / 2 < preview.width / 2) {
-          rotation = (rotation + 180) % 360;
-        }
-      } catch (_) {
-        // Keep aspect-based orientation when browser face detection is unavailable.
-      }
+      if (faceMatches.length === 1) return faceMatches[0].rotation;
     }
-    return rotation;
+
+    const score = side === "back" ? backLayoutScore : frontLayoutScore;
+    return previews.reduce(function (best, candidate) {
+      return score(candidate.canvas) > score(best.canvas) ? candidate : best;
+    }).rotation;
   }
 
   function loadImage(file) {

@@ -3180,22 +3180,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document
     .querySelectorAll('.invoice-list-dense table.table')
     .forEach(t => t.classList.add('table-compact'));
-
-  const billingMenuButton = document.getElementById('invoiceMonthlyBillingMenu');
-  const billingMonthInput = document.getElementById('invoice-monthly-billing-month');
-  const billingDropdown = billingMenuButton?.closest('.dropdown');
-
-  billingDropdown?.addEventListener('shown.bs.dropdown', () => {
-    if (!billingMonthInput) return;
-    billingMonthInput.focus({ preventScroll: true });
-    if (typeof billingMonthInput.showPicker === 'function') {
-      try {
-        billingMonthInput.showPicker();
-      } catch (_) {
-        // The focused month box remains ready if the browser blocks showPicker().
-      }
-    }
-  });
 });
 </script>
 

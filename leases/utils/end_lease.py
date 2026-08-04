@@ -69,6 +69,7 @@ def _month_invoice(lease, end_date: date):
             issue_date__year=end_date.year,
             issue_date__month=end_date.month,
         )
+        .exclude(status="cancelled")
         .exclude(description__startswith="Move-out settlement charges - lease ended")
         .order_by("issue_date", "id")
         .first()
@@ -411,6 +412,29 @@ def _lease_balance(lease, *, exclude_invoice_ids=None) -> Decimal:
     return money(invoiced - paid)
 
 
+def _fully_covered_invoice_ids(lease) -> set[int]:
+    """Apply lease-level payments FIFO and return invoices covered in full."""
+    available = ZERO
+    for payment in lease.payments.select_related("detail").all():
+        detail = getattr(payment, "detail", None)
+        available += money(detail.lease_amount if detail else payment.amount)
+
+    covered = set()
+    for invoice in (
+        Invoice.objects.filter(lease=lease)
+        .exclude(status="cancelled")
+        .order_by("issue_date", "id")
+    ):
+        amount = money(invoice.amount)
+        if amount <= ZERO:
+            continue
+        if available < amount:
+            break
+        available = money(available - amount)
+        covered.add(invoice.pk)
+    return covered
+
+
 def build_end_lease_preview(
     lease,
     *,
@@ -435,6 +459,7 @@ def build_end_lease_preview(
 
     future_invoices = list(
         Invoice.objects.filter(lease=lease, issue_date__gt=end_date)
+        .exclude(status="cancelled")
         .exclude(description__startswith="Move-out settlement charges - lease ended")
         .order_by("issue_date", "id")
     )
@@ -574,9 +599,11 @@ def build_end_lease_preview(
         lease=lease,
         issue_date__lt=billing_month_start,
     ).exclude(status="cancelled")
+    fully_covered_invoice_ids = _fully_covered_invoice_ids(lease)
     outstanding_prior_invoices = list(
         prior_invoices
         .exclude(status__in=["paid", "cancelled"])
+        .exclude(pk__in=fully_covered_invoice_ids)
         .exclude(description__startswith="Move-out settlement charges - lease ended")
         .order_by("issue_date", "id")
     )

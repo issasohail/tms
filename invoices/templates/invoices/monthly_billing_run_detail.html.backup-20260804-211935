@@ -329,31 +329,6 @@
 
 <script>
   (function () {
-    function preserveAppPrefix(rawUrl) {
-      if (!rawUrl || !window.location.pathname.startsWith('/tms/')) {
-        return rawUrl;
-      }
-
-      const url = new URL(rawUrl, window.location.origin);
-      if (
-        url.origin === window.location.origin &&
-        url.pathname !== '/tms' &&
-        !url.pathname.startsWith('/tms/')
-      ) {
-        url.pathname = '/tms' + (url.pathname.startsWith('/') ? url.pathname : '/' + url.pathname);
-      }
-      return url.toString();
-    }
-
-    async function parseJsonResponse(response, fallbackMessage) {
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error(fallbackMessage || 'Server returned HTML instead of JSON.');
-      }
-      const payload = await response.json();
-      return { ok: response.ok, payload };
-    }
-
     const buttons = document.querySelectorAll('#kpiFilters .mbill-stat');
     function getRows() { return document.querySelectorAll('.billing-row'); }
     const endedRecentlySection = document.getElementById('endedRecentlySection');
@@ -439,7 +414,7 @@
         const data = new FormData(form);
         data.set('action', button.value);
 
-        fetch(preserveAppPrefix(form.getAttribute('action')), {
+        fetch(form.getAttribute('action'), {
           method: 'POST',
           body: data,
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -530,13 +505,13 @@
           button.dataset.originalText = button.innerText;
           button.innerText = 'Saving...';
         }
-        fetch(preserveAppPrefix(form.getAttribute('action')), {
+        fetch(form.getAttribute('action'), {
           method: 'POST',
           body: data,
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
           credentials: 'same-origin'
         })
-          .then((response) => parseJsonResponse(response, 'Water update returned HTML instead of JSON.'))
+          .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
           .then(({ ok, payload }) => {
             if (!ok || !payload.ok) throw new Error(payload.error || 'Water update failed.');
             const cell = form.closest('.water-cell');
@@ -572,7 +547,7 @@
             const invoiceCell = form.closest('.billing-row')?.querySelector('.invoice-cell');
             if (invoiceCell && payload.invoice_id && payload.invoice_number) {
               invoiceCell.innerHTML = `
-                <a href="${preserveAppPrefix(payload.invoice_url)}">${payload.invoice_number}</a>
+                <a href="${payload.invoice_url}">${payload.invoice_number}</a>
               `;
             }
           })
@@ -624,7 +599,7 @@
       modal.show();
       document.getElementById('progressReloadBtn').onclick = function () { window.location.reload(); };
 
-      const statusUrl = preserveAppPrefix(jobStatusUrlTemplate.replace('/0/', '/' + jobId + '/'));
+      const statusUrl = jobStatusUrlTemplate.replace('/0/', '/' + jobId + '/');
       const timer = window.setInterval(function () {
         fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
           .then((response) => response.json())
@@ -692,12 +667,12 @@ let billingActionRunning = false;
         const form = button.closest('form');
         const data = new FormData(form);
         data.set('action', button.value);
-        fetch(preserveAppPrefix(form.dataset.enqueueUrl), {
+        fetch(form.dataset.enqueueUrl, {
           method: 'POST',
           body: data,
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
-          .then((response) => parseJsonResponse(response, 'Billing job request returned HTML instead of JSON.'))
+          .then((response) => response.json().then((payload) => ({ ok: response.ok, payload: payload })))
           .then(({ ok, payload }) => {
             if (!ok || !payload.ok) {
               alert(payload.error || 'Could not queue billing job.');
@@ -725,7 +700,7 @@ let billingActionRunning = false;
         rowsEl.innerHTML = '';
         summaryEl.textContent = 'Loading preview...';
         modal.show();
-        fetch(preserveAppPrefix(dryBtn.dataset.url), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        fetch(dryBtn.dataset.url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
           .then((response) => response.json())
           .then((data) => {
             summaryEl.textContent = `${data.active_leases || 0} active leases · ${data.would_send || 0} would send · ${data.missing_recurring || 0} missing recurring · ${data.manual_electric || 0} manual electric · ${data.water_missing || 0} water missing`;

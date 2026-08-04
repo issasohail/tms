@@ -237,3 +237,102 @@ class HistoricalMeterOccupancyTests(TestCase):
 
         with self.assertRaises(ValidationError):
             second_occupancy.full_clean()
+
+
+class MeterEditInstallationSyncTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="meter-move-admin",
+            password="test-pass",
+            email="meter-move@example.com",
+        )
+        self.client.force_login(self.user)
+        self.property = Property.objects.create(
+            property_name="Meter Move Property",
+            owner_name="Owner",
+            owner_cnic="1234512345672",
+            type="apartment",
+            property_type="apartment",
+            total_units=2,
+        )
+        self.old_unit = Unit.objects.create(
+            property=self.property,
+            unit_number="Old Unit",
+        )
+        self.new_unit = Unit.objects.create(
+            property=self.property,
+            unit_number="New Unit",
+        )
+        old_tenant = Tenant.objects.create(
+            first_name="Old",
+            last_name="Tenant",
+            cnic="1234512345672",
+        )
+        new_tenant = Tenant.objects.create(
+            first_name="New",
+            last_name="Tenant",
+            cnic="1234512345673",
+        )
+        self.old_lease = Lease.objects.create(
+            tenant=old_tenant,
+            unit=self.old_unit,
+            start_date=date(2025, 1, 1),
+            end_date=date(2027, 12, 31),
+            monthly_rent=Decimal("25000.00"),
+        )
+        self.new_lease = Lease.objects.create(
+            tenant=new_tenant,
+            unit=self.new_unit,
+            start_date=date(2025, 1, 1),
+            end_date=date(2027, 12, 31),
+            monthly_rent=Decimal("25000.00"),
+        )
+        self.meter = Meter.objects.create(
+            meter_number="MOVE-METER-1",
+            unit=self.old_unit,
+        )
+        self.old_installation = MeterInstallation.objects.create(
+            meter=self.meter,
+            unit=self.old_unit,
+            lease=self.old_lease,
+            start_date=date(2025, 1, 1),
+            start_reading=Decimal("100.000"),
+        )
+        MeterReading.objects.create(
+            meter=self.meter,
+            total_energy=Decimal("150.000"),
+        )
+
+    def test_editing_meter_unit_closes_old_installation_and_opens_new_one(self):
+        response = self.client.post(
+            reverse("smart_meter:meter_edit", args=[self.meter.pk]),
+            {
+                "unit": self.new_unit.pk,
+                "meter_number": self.meter.meter_number,
+                "name": "",
+                "meter_type": Meter.METER_TYPE_ELECTRIC,
+                "billing_mode": "postpaid",
+                "meter_role": Meter.METER_ROLE_BILLING,
+                "power_status": "on",
+                "unit_rate": "50.00",
+                "service_charges": "250.00",
+                "min_balance_alert": "100.00",
+                "min_balance_cutoff": "0.00",
+                "is_active": "on",
+                "installed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "notes": "Moved for test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.old_installation.refresh_from_db()
+        self.assertFalse(self.old_installation.is_active)
+        self.assertIsNotNone(self.old_installation.end_date)
+        new_installation = MeterInstallation.objects.get(
+            meter=self.meter,
+            is_active=True,
+            end_date__isnull=True,
+        )
+        self.assertEqual(new_installation.unit, self.new_unit)
+        self.assertEqual(new_installation.lease, self.new_lease)
+        self.assertEqual(new_installation.start_reading, Decimal("150.000"))

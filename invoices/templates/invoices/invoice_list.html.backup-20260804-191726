@@ -3429,22 +3429,6 @@ document.addEventListener('DOMContentLoaded', () => {
   normalizeMobileAmounts();
   window.addEventListener('resize', normalizeMobileAmounts);
 
-  const preserveAppPrefix = rawUrl => {
-    if (!rawUrl || !window.location.pathname.startsWith('/tms/')) {
-      return rawUrl;
-    }
-
-    const url = new URL(rawUrl, window.location.origin);
-    if (
-      url.origin === window.location.origin &&
-      url.pathname !== '/tms' &&
-      !url.pathname.startsWith('/tms/')
-    ) {
-      url.pathname = '/tms' + (url.pathname.startsWith('/') ? url.pathname : '/' + url.pathname);
-    }
-    return url.toString();
-  };
-
   document.querySelectorAll('.js-invoice-billing-action-form').forEach(form => {
     form.addEventListener('submit', event => {
       event.preventDefault();
@@ -3478,7 +3462,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.style.width = width + '%';
       }, 1000);
 
-      fetch(preserveAppPrefix(form.getAttribute('action')), {
+      fetch(form.getAttribute('action'), {
         method: 'POST',
         body: formData,
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -3502,7 +3486,7 @@ document.addEventListener('DOMContentLoaded', () => {
           bar.style.width = '100%';
           message.textContent = payload.message || 'Done. Opening billing run...';
           window.clearInterval(timer);
-          window.location.href = preserveAppPrefix(payload.redirect_url);
+          window.location.href = payload.redirect_url;
         })
         .catch(error => {
           window.clearInterval(timer);

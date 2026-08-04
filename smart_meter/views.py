@@ -947,6 +947,7 @@ def add_meter(request):
     return render(request, "smart_meter/meter_form.html", {"form": form})
 
 
+@transaction.atomic
 def meter_edit(request, pk):
     meter = get_object_or_404(Meter, pk=pk)
     old_unit = meter.unit
@@ -975,20 +976,85 @@ def meter_edit(request, pk):
                 unit_changed = True
             if unit_changed:
                 from smart_meter.models import MeterAssignmentHistory
+                effective_date = timezone.localdate()
+                active_installation = (
+                    MeterInstallation.objects
+                    .select_for_update()
+                    .filter(meter=meter, is_active=True, end_date__isnull=True)
+                    .first()
+                )
+                if active_installation:
+                    effective_date = max(effective_date, active_installation.start_date)
+
+                latest_reading = (
+                    MeterReading.objects
+                    .filter(meter=meter, ts__date__lte=effective_date)
+                    .order_by("-ts", "-id")
+                    .first()
+                )
+                transfer_reading = (
+                    latest_reading.total_energy
+                    if latest_reading and latest_reading.total_energy is not None
+                    else Decimal("0")
+                )
+                assignment_note = (
+                    (request.POST.get("notes", "") or "").strip()
+                    or "Meter reassigned through meter edit."
+                )
+
+                if active_installation:
+                    active_installation.close(
+                        end_date=effective_date,
+                        end_reading=transfer_reading,
+                        notes=assignment_note,
+                    )
+
+                new_lease = None
+                if meter.unit_id:
+                    new_lease = (
+                        Lease.objects
+                        .filter(
+                            unit_id=meter.unit_id,
+                            status="active",
+                            start_date__lte=effective_date,
+                            end_date__gte=effective_date,
+                        )
+                        .order_by("-start_date", "-id")
+                        .first()
+                        or Lease.objects.filter(unit_id=meter.unit_id, status="active")
+                        .order_by("-start_date", "-id")
+                        .first()
+                    )
+                    MeterInstallation.objects.create(
+                        meter=meter,
+                        unit=meter.unit,
+                        lease=new_lease,
+                        start_date=effective_date,
+                        start_reading=transfer_reading,
+                        installed_by=(
+                            request.user if request.user.is_authenticated else None
+                        ),
+                        reason="Meter reassigned through meter edit",
+                        notes=assignment_note,
+                    )
+
                 MeterAssignmentHistory.objects.create(
                     meter=meter,
                     unit=meter.unit,
-                    lease=meter.current_lease,
+                    lease=new_lease,
                     old_meter=meter,
                     new_meter=meter,
                     old_unit=old_unit,
                     new_unit=meter.unit,
                     old_lease=old_lease,
-                    new_lease=meter.current_lease,
+                    new_lease=new_lease,
                     changed_by=request.user if request.user.is_authenticated else None,
-                    notes=request.POST.get("notes", ""),
+                    notes=assignment_note,
                 )
-                messages.success(request, "Meter assignment updated and history recorded.")
+                messages.success(
+                    request,
+                    "Meter assignment and installation history updated.",
+                )
             return redirect('smart_meter:meter_detail', pk=meter.pk)
     else:
         form = MeterForm(instance=meter)

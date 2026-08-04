@@ -255,7 +255,7 @@ class EndLeasePostingTests(TestCase):
         self.assertEqual(electric_items.get().amount, Decimal("4654.00"))
         self.assertEqual(result["invoice"].amount, Decimal("4654.00"))
 
-    def test_posts_proration_applies_security_and_leaves_pending_refund(self):
+    def test_posts_proration_applies_security_and_transfers_refund_to_ledger(self):
         today = date.today()
         month_first = today.replace(day=1)
         days_in_month = monthrange(today.year, today.month)[1]
@@ -354,19 +354,24 @@ class EndLeasePostingTests(TestCase):
         self.assertEqual(result["gross_balance"], expected_gross)
         self.assertEqual(result["amount_payable"], ZERO)
         self.assertEqual(result["refund_due"], Decimal("100000.00") - expected_gross)
-        self.assertTrue(
-            SecurityDepositTransaction.objects.filter(
-                lease=lease, type="REFUND", refund_status="PENDING"
-            ).exists()
+        transfer = SecurityDepositTransaction.objects.get(
+            lease=lease,
+            type="REFUND",
+            refund_status="PAID",
+            deduction_reason="Transferred to lease ledger for tenant refund",
         )
-        self.assertEqual(
-            security_deposit_totals(lease)["currently_held"], result["refund_due"]
-        )
+        self.assertEqual(transfer.amount, ZERO)
+        self.assertEqual(transfer.deduction_amount, result["refund_due"])
+        self.assertEqual(transfer.payment.detail.lease_amount, result["refund_due"])
+        self.assertEqual(security_deposit_totals(lease)["currently_held"], ZERO)
         self.assertEqual(
             LeaseUnitOccupancy.objects.get(lease=lease).move_out_date,
             today,
         )
-        self.assertEqual(lease.financial_summary["balance"], ZERO)
+        self.assertEqual(
+            Lease.objects.get(pk=lease.pk).financial_summary["balance"],
+            -result["refund_due"],
+        )
 
         rollback = rollback_end_lease(
             lease,
@@ -426,7 +431,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
             status="active",
         )
 
-    def test_combines_security_refund_and_lease_credit_in_one_pending_refund(self):
+    def test_transfers_security_to_ledger_with_existing_lease_credit(self):
         lease = self.make_lease(security_deposit=Decimal("5000.00"))
         SecurityDepositTransaction.objects.create(
             lease=lease,
@@ -456,22 +461,51 @@ class EndLeaseRefundAndReviewTests(TestCase):
         self.assertEqual(result["security_refund"], Decimal("5000.00"))
         self.assertEqual(result["lease_credit"], Decimal("2000.00"))
         self.assertEqual(result["refund_due"], Decimal("7000.00"))
-        refunds = SecurityDepositTransaction.objects.filter(
+        transfers = SecurityDepositTransaction.objects.filter(
             lease=lease,
             type="REFUND",
-            refund_status="PENDING",
+            refund_status="PAID",
+            deduction_reason="Transferred to lease ledger for tenant refund",
         )
-        self.assertEqual(refunds.count(), 1)
-        self.assertEqual(refunds.get().amount, result["refund_due"])
+        self.assertEqual(transfers.count(), 1)
+        transfer = transfers.get()
+        self.assertEqual(transfer.amount, ZERO)
+        self.assertEqual(transfer.deduction_amount, result["security_refund"])
+        self.assertEqual(transfer.payment.detail.lease_amount, result["security_refund"])
+        self.assertEqual(security_deposit_totals(lease)["currently_held"], ZERO)
+        self.assertEqual(
+            Lease.objects.get(pk=lease.pk).financial_summary["balance"],
+            -result["refund_due"],
+        )
+        Invoice.objects.create(
+            lease=lease,
+            issue_date=self.today + timedelta(days=1),
+            due_date=self.today + timedelta(days=1),
+            amount=Decimal("900.00"),
+            status="cancelled",
+            description="Cancelled future charge retained for audit",
+        )
 
         ledger = self.client.get(
-            reverse("leases:lease_security_list", args=[lease.pk])
+            reverse("leases:lease_ledger_by_pk", args=[lease.pk])
         )
         expected_query = (
-            f"lease={lease.pk}&amp;payment_type=REFUND&amp;amount=7000.00"
-            "&amp;security_amount=7000.00&amp;security_type=REFUND"
+            f"lease={lease.pk}&amp;payment_type=LEASE_REFUND&amp;amount=7000.00"
         )
         self.assertContains(ledger, expected_query)
+        payment_form = self.client.get(
+            reverse("payments:payment_create"),
+            {
+                "lease": lease.pk,
+                "payment_type": "LEASE_REFUND",
+                "amount": "7000.00",
+            },
+        )
+        self.assertEqual(str(payment_form.context["form"]["amount"].value()), "-7000.00")
+        detail_form = payment_form.context["payment_detail_form"]
+        self.assertEqual(detail_form["payment_type"].value(), "LEASE_REFUND")
+        self.assertEqual(str(detail_form["lease_amount"].value()), "-7000.00")
+        self.assertEqual(str(detail_form["security_amount"].value()), "0.00")
 
         refund_payment = Payment.objects.create(
             lease=lease,
@@ -481,10 +515,9 @@ class EndLeaseRefundAndReviewTests(TestCase):
         )
         rebuild_payment_detail(
             payment=refund_payment,
-            lease_amount=ZERO,
-            security_amount=Decimal("7000.00"),
-            security_type="REFUND",
-            reason="Test combined refund payout",
+            lease_amount=Decimal("-7000.00"),
+            security_amount=ZERO,
+            reason="Test ledger credit refund payout",
         )
         self.assertEqual(
             SecurityDepositTransaction.objects.filter(
@@ -492,11 +525,9 @@ class EndLeaseRefundAndReviewTests(TestCase):
             ).count(),
             1,
         )
-        paid_refund = SecurityDepositTransaction.objects.get(
-            lease=lease, type="REFUND"
+        self.assertEqual(
+            Lease.objects.get(pk=lease.pk).financial_summary["balance"], ZERO
         )
-        self.assertEqual(paid_refund.refund_status, "PAID")
-        self.assertEqual(paid_refund.payment_id, refund_payment.pk)
 
     def test_prior_outstanding_invoice_is_in_settlement_review(self):
         lease = self.make_lease()
@@ -524,7 +555,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
         )
         self.assertEqual(listed_total, result["gross_balance"])
 
-    def test_stale_draft_and_overdue_invoices_covered_by_lease_payments_are_not_reviewed(self):
+    def test_unpaid_status_invoices_are_reviewed_even_when_payments_cover_the_balance(self):
         lease = self.make_lease()
         prior_date = self.month_first - timedelta(days=2)
         draft_invoice = Invoice.objects.create(
@@ -569,15 +600,15 @@ class EndLeaseRefundAndReviewTests(TestCase):
             keys_returned=True,
         )
 
-        self.assertNotIn(draft_invoice, result["review_invoices"])
-        self.assertNotIn(overdue_invoice, result["review_invoices"])
+        self.assertIn(draft_invoice, result["review_invoices"])
+        self.assertIn(overdue_invoice, result["review_invoices"])
         self.assertEqual(result["gross_balance"], ZERO)
         self.assertEqual(result["amount_payable"], ZERO)
 
-    def test_zero_prior_balance_has_no_prior_outstanding_rows_despite_current_charge(self):
+    def test_zero_prior_balance_still_lists_unpaid_status_prior_rows(self):
         lease = self.make_lease()
         prior_date = self.month_first - timedelta(days=1)
-        Invoice.objects.create(
+        prior_invoice = Invoice.objects.create(
             lease=lease,
             issue_date=prior_date,
             due_date=prior_date,
@@ -605,7 +636,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
             for invoice in result["review_invoices"]
             if invoice.issue_date < result["billing_month_start"]
         ]
-        self.assertEqual(prior_review_rows, [])
+        self.assertEqual(prior_review_rows, [prior_invoice])
         self.assertEqual(result["gross_balance"], Decimal("750.00"))
 
     def test_paid_prior_rows_do_not_change_review_financials_or_confirmation(self):
@@ -650,7 +681,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
             keys_returned=True,
         )
 
-        self.assertNotIn(prior_invoice, preview["review_invoices"])
+        self.assertIn(prior_invoice, preview["review_invoices"])
         self.assertIn(future_invoice, preview["review_invoices"])
         self.assertIn(preview["final_period_invoice"], preview["review_invoices"])
         self.assertIn(preview["invoice"], preview["review_invoices"])
@@ -681,7 +712,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
         self.assertEqual(result["security_applied"], Decimal("1200.00"))
         self.assertEqual(result["security_refund"], Decimal("3800.00"))
         self.assertEqual(result["amount_payable"], ZERO)
-        self.assertEqual(result["final_balance"], ZERO)
+        self.assertEqual(result["final_balance"], Decimal("-3800.00"))
 
 
 class SecurityRefundLinkTests(TestCase):
@@ -787,4 +818,39 @@ class SecurityRefundLinkTests(TestCase):
         )
         self.assertEqual(
             security_deposit_totals(self.lease)["currently_held"], ZERO
+        )
+
+    def test_ended_lease_can_transfer_legacy_pending_refund_to_ledger(self):
+        self.lease.status = "ended"
+        self.lease.end_date = date.today()
+        self.lease.save(update_fields=["status", "end_date"])
+        pending = SecurityDepositTransaction.objects.create(
+            lease=self.lease,
+            type="REFUND",
+            amount=Decimal("15300.00"),
+            refund_status="PENDING",
+            notes="Pending tenant refund; awaiting tenant account details.",
+        )
+
+        response = self.client.post(
+            reverse("leases:lease_transfer_pending_security", args=[self.lease.pk])
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("leases:lease_ledger_by_pk", args=[self.lease.pk]),
+        )
+        pending.refresh_from_db()
+        self.assertEqual(pending.refund_status, "CANCELLED")
+        transfer = SecurityDepositTransaction.objects.get(
+            lease=self.lease,
+            refund_status="PAID",
+            deduction_reason="Transferred to lease ledger for tenant refund",
+        )
+        self.assertEqual(transfer.deduction_amount, Decimal("15300.00"))
+        self.assertEqual(transfer.payment.detail.lease_amount, Decimal("15300.00"))
+        self.assertEqual(security_deposit_totals(self.lease)["currently_held"], ZERO)
+        self.assertEqual(
+            Lease.objects.get(pk=self.lease.pk).financial_summary["balance"],
+            Decimal("-15300.00"),
         )

@@ -384,6 +384,11 @@ urlpatterns = [
     path("ledger/", LeaseLedgerView.as_view(), name="lease_ledger"),
     # Ledger for a specific lease (pk)
     path("<int:pk>/ledger/", LeaseLedgerView.as_view(), name="lease_ledger_by_pk"),
+    path(
+        "<int:pk>/ledger/transfer-pending-security/",
+        views.lease_transfer_pending_security_action,
+        name="lease_transfer_pending_security",
+    ),
     # PDF/Excel/Email routes that REQUIRE a lease id
     path("<int:lease_id>/ledger/pdf/", lease_ledger_pdf, name="lease_ledger_pdf"),
     path(

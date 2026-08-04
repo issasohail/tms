@@ -574,18 +574,12 @@ def build_end_lease_preview(
         lease=lease,
         issue_date__lt=billing_month_start,
     ).exclude(status="cancelled")
-    prior_invoiced = prior_invoices.aggregate(total=Sum("amount"))["total"] or ZERO
-    lease_paid = ZERO
-    for payment in lease.payments.select_related("detail").all():
-        detail = getattr(payment, "detail", None)
-        lease_paid += detail.lease_amount if detail else payment.amount
-    prior_balance = money(prior_invoiced - lease_paid)
     outstanding_prior_invoices = list(
         prior_invoices
         .exclude(status__in=["paid", "cancelled"])
         .exclude(description__startswith="Move-out settlement charges - lease ended")
         .order_by("issue_date", "id")
-    ) if prior_balance > ZERO else []
+    )
     review_invoices = list(future_invoices) + outstanding_prior_invoices
     if occupied_days < days_in_month and all(
         row.pk != final_period_invoice.pk for row in review_invoices
@@ -687,6 +681,91 @@ def _upsert_item_exact(invoice, *, category_name, description, amount, existing=
     return item
 
 
+def _create_security_ledger_transfer(lease, *, amount, transfer_date, user=None, notes=""):
+    amount = money(amount)
+    transfer_note = (
+        f"Unused security transferred to the lease ledger as tenant credit on "
+        f"{transfer_date:%Y-%m-%d}. Refund the remaining ledger credit through the "
+        "Payment form."
+    )
+    if notes:
+        transfer_note += f" {notes.strip()}"
+    transfer_payment = Payment.objects.create(
+        lease=lease,
+        payment_date=transfer_date,
+        amount=amount,
+        description="Security deposit transferred to lease ledger",
+        notes=transfer_note,
+    )
+    rebuild_payment_detail(
+        payment=transfer_payment,
+        lease_amount=amount,
+        security_amount=ZERO,
+        user=user,
+        reason="Transferred by End Lease workflow",
+    )
+    movement = SecurityDepositTransaction.objects.create(
+        lease=lease,
+        date=transfer_date,
+        type="REFUND",
+        amount=ZERO,
+        deduction_amount=amount,
+        deduction_reason="Transferred to lease ledger for tenant refund",
+        refund_status="PAID",
+        payment=transfer_payment,
+        notes=transfer_note,
+    )
+    return transfer_payment, movement
+
+
+@transaction.atomic
+def transfer_pending_security_to_lease_ledger(lease, *, user=None) -> dict:
+    """Convert a legacy pending security refund into an auditable lease credit."""
+    lease = lease.__class__.objects.select_for_update().get(pk=lease.pk)
+    if lease.status != "ended":
+        raise ValidationError("Pending security can only be transferred after the lease has ended.")
+
+    pending_rows = list(
+        lease.security_transactions.select_for_update().filter(
+            type="REFUND",
+            refund_status__in=["PENDING", "APPROVED"],
+            payment__isnull=True,
+        )
+    )
+    pending_total = money(sum((row.amount or ZERO for row in pending_rows), ZERO))
+    held = money(security_deposit_totals(lease)["currently_held"])
+    transfer_amount = min(pending_total, held)
+    if transfer_amount <= ZERO:
+        raise ValidationError("There is no pending held security to transfer.")
+
+    payment, movement = _create_security_ledger_transfer(
+        lease,
+        amount=transfer_amount,
+        transfer_date=lease.end_date or date.today(),
+        user=user,
+        notes="Converted from the legacy pending-refund workflow.",
+    )
+    for pending in pending_rows:
+        pending.refund_status = "CANCELLED"
+        pending.notes = "\n".join(
+            filter(
+                None,
+                [
+                    pending.notes,
+                    f"Replaced by lease-ledger transfer Payment #{payment.pk}.",
+                ],
+            )
+        )
+        pending.save(update_fields=["refund_status", "notes"])
+
+    return {
+        "lease": lease,
+        "amount": transfer_amount,
+        "payment": payment,
+        "movement": movement,
+    }
+
+
 @transaction.atomic
 def end_lease(lease, *, user=None, notes="", **preview_kwargs) -> dict:
     lease = lease.__class__.objects.select_for_update().get(pk=lease.pk)
@@ -776,20 +855,15 @@ def end_lease(lease, *, user=None, notes="", **preview_kwargs) -> dict:
             notes=note_text,
         )
 
-    if preview["security_refund"] > ZERO or preview["lease_credit"] > ZERO:
-        SecurityDepositTransaction.objects.create(
-            lease=lease,
-            date=end_date,
-            type="REFUND",
-            amount=preview["refund_due"],
-            refund_status="PENDING",
+    if preview["security_refund"] > ZERO:
+        _create_security_ledger_transfer(
+            lease,
+            amount=preview["security_refund"],
+            transfer_date=end_date,
+            user=user,
             notes=(
-                "Pending tenant refund (security + lease credit); "
-                "awaiting tenant account details."
-            ),
-            refund_notes=(
-                f"Includes security refund of Rs. {preview['security_refund']:,.2f} and "
-                f"lease credit of Rs. {preview['lease_credit']:,.2f}. {notes.strip()}"
+                f"Existing lease credit before transfer: Rs. "
+                f"{preview['lease_credit']:,.2f}. {notes.strip()}"
             ).strip(),
         )
 
@@ -855,6 +929,7 @@ def rollback_end_lease(lease, *, restored_end_date: date, user=None, notes="") -
     for movement in security_rows:
         is_workflow_row = (
             "final lease settlement" in (movement.notes or "").lower()
+            or "unused security transferred to the lease ledger" in (movement.notes or "").lower()
             or "pending security refund" in (movement.notes or "").lower()
             or "pending tenant refund" in (movement.notes or "").lower()
             or "applied to final lease balance" in (movement.deduction_reason or "").lower()

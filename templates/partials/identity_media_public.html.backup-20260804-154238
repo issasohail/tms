@@ -125,18 +125,16 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
     });
   }
   function installPreviews(root){(root||document).querySelectorAll('input[type="file"][accept*="image"],input[type="file"][name*="photo"],input[type="file"][name*="cnic_"]').forEach(previewInput)}
-  function installOcr(root){if(!window.TMS_PUBLIC_CNIC_OCR_URL)return;(root||document).querySelectorAll('input[type="file"]').forEach(front=>{if(!String(front.name||'').endsWith('cnic_front')||front.dataset.tmsOcr==='1')return;const context=contextFor(front),back=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_back')}"]`);if(!back)return;front.dataset.tmsOcr='1';const storedUrl=context.isMain?window.TMS_STORED_CNIC_OCR_URL:'',manualMain=context.isMain&&!shouldLockMain();const status=ensureStatus(context,back);if(!unlockRestoredIdentity(front,back,status)){status.textContent=storedUrl?'Click Read CNIC Details to read the saved CNIC images.':(manualMain?'CNIC images are optional. Upload the front to start OCR, or enter the details manually.':(context.isMain?'Please upload the CNIC front first.':'Please upload the CNIC/B-Form front first.'));lock(context,true)}let seq=0,timer=null,start=0,activePhase='',frontToken='',frontKey='',frontReadPromise=null,backKey='',backReadPromise=null;
+  function installOcr(root){if(!window.TMS_PUBLIC_CNIC_OCR_URL)return;(root||document).querySelectorAll('input[type="file"]').forEach(front=>{if(!String(front.name||'').endsWith('cnic_front')||front.dataset.tmsOcr==='1')return;const context=contextFor(front),back=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_back')}"]`);if(!back)return;front.dataset.tmsOcr='1';const storedUrl=context.isMain?window.TMS_STORED_CNIC_OCR_URL:'',manualMain=context.isMain&&!shouldLockMain();const status=ensureStatus(context,back);if(!unlockRestoredIdentity(front,back,status)){status.textContent=storedUrl?'Click Read CNIC Details to read the saved CNIC images.':(manualMain?'CNIC images are optional. Upload both sides to use OCR, or enter the details manually.':(context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.'));lock(context,true)}let seq=0,timer=null,start=0;
       function stopTimer(){if(timer)clearInterval(timer);timer=null}
-      function fileKey(file){return file?`${file.name}:${file.size}:${file.lastModified}`:''}
-      async function run(phase='combined'){const frontFile=front.files?.[0],backFile=back.files?.[0],useStored=Boolean(phase==='combined'&&storedUrl&&!frontFile&&!backFile);if(phase==='front'&&!frontFile)return false;if(phase==='back'&&(!backFile||!frontToken))return false;if(phase==='combined'&&(!frontFile||!backFile)&&!useStored){lock(context,true);status.className='tms-identity-status is-error';status.textContent=manualMain?'Upload both CNIC sides to use OCR, or continue entering the details manually.':(context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.');return false}const request=++seq;activePhase=phase;start=Date.now();stopTimer();status.className='tms-identity-status is-reading';const tick=()=>{const sec=Math.max(0,Math.floor((Date.now()-start)/1000)),label=phase==='front'?'CNIC front':(phase==='back'?'CNIC back and addresses':'CNIC scan');status.innerHTML='<span class="spinner-border" aria-hidden="true"></span>Reading '+label+' — '+sec+' second'+(sec===1?'':'s')};tick();timer=setInterval(tick,1000);setSubmitPending(context.form,true);const body=new FormData(),token=csrfToken(context.form);if(!useStored){if(phase==='front')body.append('cnic_front',frontFile);else if(phase==='back'){body.append('cnic_back',backFile);body.append('front_token',frontToken)}else{body.append('cnic_front',frontFile);body.append('cnic_back',backFile)}if(phase!=='combined')body.append('ocr_phase',phase)}body.append('csrfmiddlewaretoken',token);
+      async function run(){const frontFile=front.files?.[0],backFile=back.files?.[0],useStored=Boolean(storedUrl&&!frontFile&&!backFile);if((!frontFile||!backFile)&&!useStored){lock(context,true);status.className='tms-identity-status is-error';status.textContent=manualMain?'Upload both CNIC sides to use OCR, or continue entering the details manually.':(context.isMain?'Please upload CNIC front and back first.':'Please upload CNIC/B-Form front and back first.');return}const request=++seq;start=Date.now();status.className='tms-identity-status is-reading';const tick=()=>{const sec=Math.max(0,Math.floor((Date.now()-start)/1000));status.innerHTML='<span class="spinner-border" aria-hidden="true"></span>Please wait while your CNIC scan is being read to fetch data — '+sec+' second'+(sec===1?'':'s')};tick();timer=setInterval(tick,1000);setSubmitPending(context.form,true);const body=new FormData(),token=csrfToken(context.form);if(!useStored){body.append('cnic_front',frontFile);body.append('cnic_back',backFile)}body.append('csrfmiddlewaretoken',token);
         try {
           const r=await enqueueOcr(()=>fetchOcr(useStored?storedUrl:window.TMS_PUBLIC_CNIC_OCR_URL,{method:'POST',headers:{'X-CSRFToken':token,'X-Requested-With':'XMLHttpRequest'},body}));
           const text=await r.text();
           let p;
           try{p=JSON.parse(text)}catch(_){throw new Error(`CNIC OCR returned an unexpected response (HTTP ${r.status}).`)}
-          if(request!==seq)return false;
-          if(phase==='front'){if(fileKey(front.files?.[0])!==frontKey)return false;frontToken=p.front_token||''}
-          const sidesMoved=Boolean(phase==='combined'&&p.sides_were_swapped&&!useStored&&swapCnicSideInputs(front,back));
+          if(request!==seq)return;
+          const sidesMoved=Boolean(p.sides_were_swapped&&!useStored&&swapCnicSideInputs(front,back));
           if(!r.ok||!p.ok)throw new Error(p.message||`CNIC OCR failed (HTTP ${r.status}).`);
           let written=0,retained=0,loadedExisting=0,hiddenSaved=0;
           const isReplaceableShellName=(suggestion,current)=>{
@@ -194,16 +192,9 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
               if(extractedPhoto){assignFiles(photoInput,[extractedPhoto]);photoInput.dataset.tmsImageEditorApplying='1';photoInput.dispatchEvent(new Event('change',{bubbles:true}));delete photoInput.dataset.tmsImageEditorApplying}
             }
           }
+          lock(context,false);
           const c=cnicField(context);
           if(c){c.readOnly=true;c.classList.add('tms-cnic-readonly')}
-          if(phase==='front'){
-            lock(context,true);
-            status.className='tms-identity-status is-success';
-            status.textContent=back.files?.length?'CNIC front read successfully. Verifying the back now…':'CNIC front read successfully. Upload the back to verify the number and read the addresses.';
-            status.title=(p.warnings||[]).join(' ');
-            return true;
-          }
-          lock(context,false);
           status.className='tms-identity-status is-success';
           if(p.existing_tenant?.matched){
             status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. An existing tenant record was found and ${loadedExisting} saved visible field(s) were loaded. ${written} visible OCR field(s) were accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}. This submission will reuse the existing record after staff approval.`;
@@ -211,26 +202,19 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
             status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. ${written} visible field(s) accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}${retained?`; ${retained} current value(s) kept`:''}. Please complete the remaining information.`;
           }
           status.title=(p.warnings||[]).join(' ');
-          return true;
         }catch(e){
-          if(request!==seq)return false;
-          if(phase==='front')frontToken='';
+          if(request!==seq)return;
           const allowManualEntry=window.TMS_CNIC_ALLOW_MANUAL_ENTRY===true;
           lock(context,!allowManualEntry);
           if(allowManualEntry){const c=cnicField(context);if(c){c.disabled=false;c.readOnly=false;c.classList.remove('tms-cnic-readonly')}}
           status.className='tms-identity-status is-error';
-          status.textContent=(e.message||'CNIC could not be read.')+(allowManualEntry?' You can enter or correct the details manually.':' Please verify the selected image and upload a clearer copy.');
-          return false;
+          status.textContent=(e.message||'CNIC could not be read.')+(allowManualEntry?' You can enter or correct the details manually.':' Please verify both images and upload clearer copies.');
         }finally{
-          if(request===seq){stopTimer();activePhase=''}
+          if(request===seq)stopTimer();
           setSubmitPending(context.form,false);
         }}
-      async function readFront(){const key=fileKey(front.files?.[0]);if(!key)return false;if(frontToken&&frontKey===key)return true;if(frontReadPromise&&frontKey===key)return frontReadPromise;frontKey=key;frontToken='';const promise=run('front');frontReadPromise=promise;try{return await promise}finally{if(frontReadPromise===promise)frontReadPromise=null}}
-      async function readBack(){const key=fileKey(back.files?.[0]);if(!key||!frontToken)return false;if(backReadPromise&&backKey===key)return backReadPromise;backKey=key;const promise=run('back');backReadPromise=promise;try{return await promise}finally{if(backReadPromise===promise)backReadPromise=null}}
-      async function runAll(){const useStored=Boolean(storedUrl&&!front.files?.length&&!back.files?.length);if(useStored)return run('combined');if(!front.files?.length){lock(context,true);status.className='tms-identity-status is-error';status.textContent='Please upload the CNIC front first.';return false}const frontOk=await readFront();if(!frontOk||!back.files?.length)return frontOk;return readBack()}
-      ocrRunners.set(context.container,runAll); ocrRunners.set(context.form,runAll);
-      function clearPortrait(){const hidden=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_portrait_data')}"]`);if(hidden)hidden.value='';const preview=context.container.querySelector('[data-tms-cnic-portrait-preview]');if(preview?.closest('.preview-row')){preview.removeAttribute('src');preview.style.display='none';delete preview.dataset.tmsCnicPortraitPreview}else preview?.remove()}
-      function changed(event){if(event?.target?.dataset?.tmsOcrSideSwap==='1'){delete event.target.dataset.tmsOcrSideSwap;return}if(event.target===front){seq++;stopTimer();activePhase='';frontToken='';frontKey='';frontReadPromise=null;backKey='';backReadPromise=null;clearPortrait()}else{if(activePhase==='back'||activePhase==='combined'){seq++;stopTimer();activePhase=''}backKey='';backReadPromise=null}runAll()}front.addEventListener('change',changed);back.addEventListener('change',changed)
+      ocrRunners.set(context.container,run); ocrRunners.set(context.form,run);
+      function changed(event){if(event?.target?.dataset?.tmsOcrSideSwap==='1'){delete event.target.dataset.tmsOcrSideSwap;return}const hidden=context.form.querySelector(`[name="${CSS.escape(context.prefix+'cnic_portrait_data')}"]`);if(hidden)hidden.value='';const preview=context.container.querySelector('[data-tms-cnic-portrait-preview]');if(preview?.closest('.preview-row')){preview.removeAttribute('src');preview.style.display='none';delete preview.dataset.tmsCnicPortraitPreview}else preview?.remove();seq++;stopTimer();run()}front.addEventListener('change',changed);back.addEventListener('change',changed)
     })}
   function imageItem(target){const image=target.closest?.('img');if(!image||image.closest('#tmsPublicImageViewer'))return null;const link=image.closest('a'),url=link?.href||image.currentSrc||image.src||'';return /\/media\/|^blob:|^data:image\//i.test(url)?{url,image}:null}
   function openViewer(item){const caption=item.image.alt||'Image Preview';main.src=item.url;main.alt=caption;title.textContent=caption;save.href=item.url;viewer.hidden=false;document.body.style.overflow='hidden'}function closeViewer(){viewer.hidden=true;main.src='';document.body.style.overflow=''}

@@ -182,6 +182,7 @@ from .utils.end_lease import (
     build_end_lease_preview,
     end_lease,
     rollback_end_lease,
+    transfer_pending_security_to_lease_ledger,
     staff_message as end_lease_staff_message,
     tenant_message as end_lease_tenant_message,
 )
@@ -420,6 +421,8 @@ def public_lease_ledger(request, token):
     zero = Decimal("0.00")
     transactions = []
     for invoice in lease.invoices_qs:
+        if invoice.status == "cancelled":
+            continue
         amount = invoice.amount or zero
         transactions.append(
             {
@@ -4342,6 +4345,27 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
 
 @login_required
 @require_POST
+def lease_transfer_pending_security_action(request, pk):
+    lease = get_object_or_404(Lease, pk=pk)
+    try:
+        result = transfer_pending_security_to_lease_ledger(
+            lease,
+            user=request.user,
+        )
+    except ValidationError as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        messages.error(request, error)
+    else:
+        messages.success(
+            request,
+            f"Rs. {result['amount']:,.2f} transferred from pending security "
+            "to the lease ledger. Use Refund Ledger Credit to pay the tenant.",
+        )
+    return redirect("leases:lease_ledger_by_pk", pk=lease.pk)
+
+
+@login_required
+@require_POST
 def lease_end_action(request, pk):
     lease = get_object_or_404(
         Lease.objects.select_related("tenant", "unit", "unit__property"),
@@ -5088,6 +5112,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
             "required": ZERO,
             "paid_in": ZERO,
             "refunded": ZERO,
+            "pending_refund": ZERO,
             "damages": ZERO,
             "balance_to_collect": ZERO,
             "currently_held": ZERO,
@@ -5110,6 +5135,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "security_required": sec_totals["required"],
                     "security_paid_in": sec_totals["paid_in"],
                     "security_refunded": sec_totals["refunded"],
+                    "security_pending_refund": sec_totals["pending_refund"],
                     "security_damages": sec_totals["damages"],
                     "security_balance_to_collect": sec_totals["balance_to_collect"],
                     "security_currently_held": sec_totals["currently_held"],
@@ -5138,7 +5164,14 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
             if tx.type == "PAYMENT":
                 dep_balance += amt
                 signed_amt = amt
-            elif tx.type in ("REFUND", "DAMAGE"):
+            elif tx.type == "REFUND":
+                deduction = tx.deduction_amount or ZERO
+                signed_amt = -(amt + deduction)
+                if tx.refund_status == "PAID":
+                    dep_balance += signed_amt
+                elif tx.refund_status == "CANCELLED":
+                    signed_amt = ZERO
+            elif tx.type == "DAMAGE":
                 dep_balance -= amt
                 signed_amt = -amt
             else:  # e.g. REQUIRED / ADJUSTMENT if you use those
@@ -5148,7 +5181,11 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 {
                     "obj": tx,
                     "date": tx.date,
-                    "type": tx.get_type_display(),
+                    "type": (
+                        f"{tx.get_type_display()} ({tx.get_refund_status_display()})"
+                        if tx.type == "REFUND" and tx.refund_status != "PAID"
+                        else tx.get_type_display()
+                    ),
                     "description": tx.notes or "",
                     "amount": signed_amt,
                     "balance": dep_balance,
@@ -5160,6 +5197,8 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
         balance = ZERO
 
         for invoice in lease.invoices.all():
+            if invoice.status == "cancelled":
+                continue
             amt = invoice.amount or ZERO
             balance -= amt
             transactions.append(
@@ -5250,6 +5289,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 "security_required": sec_totals["required"],
                 "security_paid_in": sec_totals["paid_in"],
                 "security_refunded": sec_totals["refunded"],
+                "security_pending_refund": sec_totals["pending_refund"],
                 "security_damages": sec_totals["damages"],
                 "security_balance_to_collect": sec_totals["balance_to_collect"],
                 "security_currently_held": sec_totals["currently_held"],
@@ -5287,7 +5327,10 @@ def _security_ledger_rows_for_lease(lease):
             balance += amount
         elif tx.type == "REFUND":
             signed_amount = -(amount + deduction)
-            balance -= amount + deduction
+            if tx.refund_status == "PAID":
+                balance += signed_amount
+            elif tx.refund_status == "CANCELLED":
+                signed_amount = zero
         elif tx.type == "DAMAGE":
             signed_amount = -amount
             balance -= amount
@@ -5300,7 +5343,11 @@ def _security_ledger_rows_for_lease(lease):
         rows.append(
             {
                 "date": tx.date,
-                "type": tx.get_type_display(),
+                "type": (
+                    f"{tx.get_type_display()} ({tx.get_refund_status_display()})"
+                    if tx.type == "REFUND" and tx.refund_status != "PAID"
+                    else tx.get_type_display()
+                ),
                 "description": tx.notes or tx.refund_notes or "",
                 "amount": signed_amount,
                 "balance": balance,
@@ -5349,6 +5396,8 @@ def lease_ledger_pdf(request, lease_id):
 
         # Process invoices
         for invoice in lease.invoices_qs:
+            if invoice.status == "cancelled":
+                continue
             amount = invoice.amount or Decimal("0.00")
             balance -= amount
             public_token = make_public_invoice_token(invoice.pk)

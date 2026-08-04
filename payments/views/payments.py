@@ -492,7 +492,11 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             try:
                 requested_amount = Decimal(raw_amount).quantize(Decimal("0.01"))
                 payment_type = (self.request.GET.get("payment_type") or "LEASE").upper()
-                initial["amount"] = -abs(requested_amount) if payment_type == "REFUND" else requested_amount
+                initial["amount"] = (
+                    -abs(requested_amount)
+                    if payment_type in {"REFUND", "LEASE_REFUND"}
+                    else requested_amount
+                )
             except Exception:
                 pass
         return initial
@@ -663,6 +667,10 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             lease_amount = "0.00"
             security_amount = str(-requested_amount)
             security_type = "REFUND"
+        elif payment_type == "LEASE_REFUND":
+            lease_amount = str(-requested_amount)
+            security_amount = "0.00"
+            security_type = "PAYMENT"
         elif payment_type == "SECURITY" and requested_amount:
             security_amount = str(requested_amount)
         elif not self.request.GET.get("lease_amount") and not self.request.GET.get("security_amount"):

@@ -366,11 +366,32 @@ document.querySelectorAll(".js-long-operation").forEach(function (form) {
       timer.textContent = hours + ":" + minutes + ":" + seconds;
     };
     updateTimer();
-    window.setInterval(updateTimer, 1000);
+    const timerInterval = window.setInterval(updateTimer, 1000);
     window.requestAnimationFrame(function () {
       window.setTimeout(function () {
-        if (window.self !== window.top) form.target = "_top";
-        HTMLFormElement.prototype.submit.call(form);
+        if (window.self === window.top) {
+          HTMLFormElement.prototype.submit.call(form);
+          return;
+        }
+
+        const submitUrl = form.getAttribute("action") || window.location.href;
+        const submitMethod = form.getAttribute("method") || "POST";
+        fetch(submitUrl, {
+          method: submitMethod,
+          body: new FormData(form),
+          credentials: "same-origin",
+          redirect: "follow"
+        })
+          .then(function (response) {
+            window.clearInterval(timerInterval);
+            window.top.location.assign(response.url || submitUrl);
+          })
+          .catch(function () {
+            window.clearInterval(timerInterval);
+            title.textContent = label + " connection interrupted";
+            message.textContent = "The server response could not be received. Check the backup list before trying this operation again.";
+            logoutWarning.classList.add("d-none");
+          });
       }, 50);
     });
   });

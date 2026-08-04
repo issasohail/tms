@@ -82,6 +82,12 @@
         <i class="fas fa-undo"></i> Refund Security
       </a>
       {% endif %}
+      {% if lease.status == "ended" and current_balance > 0 %}
+      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=LEASE_REFUND&amp;amount={{ current_balance }}"
+         class="btn btn-warning btn-slim">
+        <i class="fas fa-money-bill-wave"></i> Refund Ledger Credit
+      </a>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -206,10 +212,23 @@
     <div class="d-flex justify-content-between align-items-center mb-1">
       <h5 class="section-title mb-0">Security Deposit Ledger</h5>
       <div class="d-flex gap-1">
+        {% if lease.status == "ended" and security_pending_refund > 0 and security_currently_held > 0 %}
+        <form method="post" action="{% url 'leases:lease_transfer_pending_security' lease.id %}" class="d-inline"
+              onsubmit="return confirm('Transfer the pending held security into the lease ledger as tenant credit?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary btn-slim">Transfer Pending to Ledger</button>
+        </form>
+        {% endif %}
         {% if security_currently_held > 0 %}
         <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_currently_held }}&amp;security_amount={{ security_currently_held }}&amp;security_type=REFUND"
            class="btn btn-danger btn-slim">
           Security Refund
+        </a>
+        {% endif %}
+        {% if lease.status == "ended" and current_balance > 0 %}
+        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=LEASE_REFUND&amp;amount={{ current_balance }}"
+           class="btn btn-warning btn-slim">
+          Refund Ledger Credit
         </a>
         {% endif %}
         <a href="{% url 'leases:lease_security_add' lease.id %}" class="btn btn-secondary btn-slim">

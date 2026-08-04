@@ -331,15 +331,9 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
 
     def test_superseded_ocr_request_always_releases_pending_count(self):
         self.assertIn(
-            "if(request===seq){stopTimer();activePhase=''}\n          setSubmitPending(context.form,false);",
+            "if(request===seq)stopTimer();\n          setSubmitPending(context.form,false);",
             self.identity_source,
         )
-
-    def test_front_and_back_are_read_as_separate_ocr_phases(self):
-        self.assertIn("body.append('ocr_phase',phase)", self.identity_source)
-        self.assertIn("body.append('front_token',frontToken)", self.identity_source)
-        self.assertIn("async function readFront()", self.identity_source)
-        self.assertIn("async function readBack()", self.identity_source)
 
     def test_multiple_ocr_jobs_restore_the_original_submit_button_state(self):
         self.assertIn("if(on&&!('ocrDisabled' in b.dataset))", self.identity_source)

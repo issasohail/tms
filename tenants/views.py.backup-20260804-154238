@@ -1,6 +1,5 @@
 # tenants/views.py
 import csv
-import hashlib
 import json
 import logging
 import re
@@ -111,8 +110,6 @@ from .tables import (
 
 TENANT_REGISTRATION_MAX_AGE = 60 * 60 * 24 * 7
 TENANT_REGISTRATION_SALT = "tenants.registration-link"
-CNIC_STAGED_TOKEN_MAX_AGE = 60 * 60
-CNIC_STAGED_TOKEN_SALT = "tenants.cnic-staged-front"
 
 
 def tenant_registration_token(tenant):
@@ -336,87 +333,12 @@ def _cnic_identity_ocr_response(request, *, can_overwrite=False):
             status=403,
         )
 
-    phase = (request.POST.get("ocr_phase") or "").strip().lower()
-    if phase == "front":
-        from tenants.services.cnic_ocr import extract_cnic_front_identity
-        from whatsapp.services.ai_config import get_whatsapp_ai_config
-
-        result = extract_cnic_front_identity(
-            request.FILES.get("cnic_front"),
-            get_whatsapp_ai_config().model,
-        )
-        payload, status = _cnic_identity_result_payload(
-            result, can_overwrite=can_overwrite, include_existing=False
-        )
-        if payload.get("ok"):
-            cnic_value = next(
-                (
-                    item["value"]
-                    for item in payload["fields"]
-                    if item["name"] == "cnic"
-                ),
-                "",
-            )
-            payload.update(
-                phase="front",
-                cnic_verified=False,
-                front_token=signing.dumps(
-                    {
-                        "cnic": cnic_value,
-                        "scope": _cnic_staged_scope(request),
-                    },
-                    salt=CNIC_STAGED_TOKEN_SALT,
-                    compress=True,
-                ),
-            )
-    elif phase == "back":
-        try:
-            token_data = signing.loads(
-                request.POST.get("front_token") or "",
-                salt=CNIC_STAGED_TOKEN_SALT,
-                max_age=CNIC_STAGED_TOKEN_MAX_AGE,
-            )
-        except SignatureExpired:
-            return JsonResponse(
-                {"ok": False, "message": "The front reading expired. Read the CNIC front again."},
-                status=410,
-            )
-        except BadSignature:
-            return JsonResponse(
-                {"ok": False, "message": "The front reading is invalid. Read the CNIC front again."},
-                status=400,
-            )
-        if token_data.get("scope") != _cnic_staged_scope(request):
-            return JsonResponse(
-                {"ok": False, "message": "The front reading belongs to a different registration. Read it again."},
-                status=400,
-            )
-        from tenants.services.cnic_ocr import extract_cnic_back_identity
-        from whatsapp.services.ai_config import get_whatsapp_ai_config
-
-        result = extract_cnic_back_identity(
-            request.FILES.get("cnic_back"),
-            token_data.get("cnic"),
-            get_whatsapp_ai_config().model,
-        )
-        payload, status = _cnic_identity_result_payload(
-            result, can_overwrite=can_overwrite
-        )
-        if payload.get("ok"):
-            payload["phase"] = "back"
-    else:
-        payload, status = _cnic_identity_payload(
-            request.FILES.get("cnic_front"),
-            request.FILES.get("cnic_back"),
-            can_overwrite=can_overwrite,
-        )
+    payload, status = _cnic_identity_payload(
+        request.FILES.get("cnic_front"),
+        request.FILES.get("cnic_back"),
+        can_overwrite=can_overwrite,
+    )
     return JsonResponse(payload, status=status)
-
-
-def _cnic_staged_scope(request):
-    user_id = request.user.pk if request.user.is_authenticated else "public"
-    value = f"{request.path}|{user_id}"
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
@@ -428,12 +350,6 @@ def _cnic_identity_payload(front_file, back_file, *, can_overwrite=False):
         back_file,
         get_whatsapp_ai_config().model,
     )
-    return _cnic_identity_result_payload(result, can_overwrite=can_overwrite)
-
-
-def _cnic_identity_result_payload(
-    result, *, can_overwrite=False, include_existing=True
-):
     if not result.get("fields"):
         status = 503 if result.get("engine") == "unavailable" else 422
         return (
@@ -481,11 +397,7 @@ def _cnic_identity_result_payload(
         {
             "ok": True,
             "fields": fields,
-            "existing_tenant": (
-                _existing_tenant_ocr_payload(cnic_value)
-                if include_existing
-                else None
-            ),
+            "existing_tenant": _existing_tenant_ocr_payload(cnic_value),
             "confidence": result.get("confidence", 0),
             "warnings": result.get("warnings", []),
             "can_overwrite": can_overwrite,
@@ -516,14 +428,12 @@ def public_cnic_identity_ocr(request, token):
     client_ip = request.META.get("REMOTE_ADDR", "unknown")
     rate_key = f"tenant-cnic-ocr:{registration_tenant.pk}:{client_ip}"
     request_count = int(cache.get(rate_key, 0) or 0)
-    phase = (request.POST.get("ocr_phase") or "").strip().lower()
-    request_units = 1 if phase in {"front", "back"} else 2
-    if request_count + request_units > 24:
+    if request_count >= 12:
         return JsonResponse(
             {"ok": False, "message": "OCR limit reached. Try again later or contact management for assistance."},
             status=429,
         )
-    cache.set(rate_key, request_count + request_units, 60 * 60)
+    cache.set(rate_key, request_count + 1, 60 * 60)
     return _cnic_identity_ocr_response(request, can_overwrite=False)
 
 

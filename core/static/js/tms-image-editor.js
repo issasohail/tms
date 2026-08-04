@@ -312,7 +312,10 @@
     const padding = 54;
     const maxWidth = canvas.width - padding * 2;
     const maxHeight = canvas.height - padding * 2;
-    const ratioValue = state.ratio === "free" ? maxWidth / maxHeight : Number(state.ratio);
+    const sideways = state.rotation % 180 !== 0;
+    const sourceWidth = sideways ? state.image.naturalHeight : state.image.naturalWidth;
+    const sourceHeight = sideways ? state.image.naturalWidth : state.image.naturalHeight;
+    const ratioValue = state.ratio === "free" ? sourceWidth / sourceHeight : Number(state.ratio);
     let width = maxWidth;
     let height = width / ratioValue;
     if (height > maxHeight) {

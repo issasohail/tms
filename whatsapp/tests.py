@@ -3350,6 +3350,25 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn(older_phone, phones)
         self.assertIn(self.phone, phones)
 
+    def test_selected_conversation_context_includes_matching_phone_and_active_lease(self):
+        from whatsapp.views import _selected_conversation_context
+
+        context = _selected_conversation_context("+92-300-111-2233")
+
+        self.assertEqual(context["tenant_id"], self.tenant.pk)
+        self.assertEqual(context["tenant_phone"], self.phone)
+        self.assertEqual(
+            context["active_leases"],
+            [
+                {
+                    "id": self.lease.pk,
+                    "property_name": self.property.property_name,
+                    "unit_number": self.unit.unit_number,
+                    "end_date": self.lease.end_date,
+                }
+            ],
+        )
+
     def test_duplicate_webhook_message_is_ignored(self):
         payload = {"entry": [{"id": "entry", "changes": [{"field": "messages", "value": {"messages": [{
             "from": self.phone, "id": "wamid.duplicate", "type": "text", "text": {"body": "hello"}

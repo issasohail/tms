@@ -657,6 +657,9 @@ def webhook_log_list(request):
     if not selected_phone and conversation_summary:
         selected_phone = conversation_summary[0]["phone_number"]
     conversation_messages = _conversation_messages(selected_phone) if selected_phone else []
+    selected_conversation = (
+        _selected_conversation_context(selected_phone) if selected_phone else {}
+    )
 
     return render(
         request,
@@ -669,6 +672,7 @@ def webhook_log_list(request):
             "conversation_summary": conversation_summary,
             "conversation_messages": conversation_messages,
             "selected_phone": selected_phone,
+            "selected_conversation": selected_conversation,
         },
     )
 
@@ -798,6 +802,39 @@ def _conversation_context_for_phone(phone_number, latest_log=None):
         "tenant_id": getattr(tenant, "pk", None),
         "property_unit": property_unit,
         "lease_id": getattr(lease, "pk", None),
+    }
+
+
+def _selected_conversation_context(phone_number):
+    context = _conversation_context_for_phone(phone_number)
+    active_leases = list(find_active_leases_for_phone(phone_number))
+    tenant = active_leases[0].tenant if active_leases else None
+
+    if not tenant and context["tenant_id"]:
+        tenant = Tenant.objects.filter(pk=context["tenant_id"]).first()
+
+    selected_digits = WhatsAppService.normalize_phone_number(phone_number)
+    tenant_phone = getattr(tenant, "phone", "") or ""
+    tenant_digits = WhatsAppService.normalize_phone_number(tenant_phone)
+    phone_matches_tenant = bool(
+        selected_digits
+        and tenant_digits
+        and selected_digits[-10:] == tenant_digits[-10:]
+    )
+
+    return {
+        "tenant_id": getattr(tenant, "pk", None),
+        "tenant_name": tenant.get_full_name() if tenant else context["tenant_name"],
+        "tenant_phone": tenant_phone if phone_matches_tenant else "",
+        "active_leases": [
+            {
+                "id": lease.pk,
+                "property_name": lease.unit.property.property_name,
+                "unit_number": lease.unit.unit_number,
+                "end_date": lease.end_date,
+            }
+            for lease in active_leases
+        ],
     }
 
 

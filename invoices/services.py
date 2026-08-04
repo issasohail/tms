@@ -1865,6 +1865,10 @@ def run_monthly_billing_full(run, *, created_by=None, progress_callback=None):
     generate_monthly_billing_invoices(run, progress_callback=progress_callback)
     generate_monthly_billing_electric(run, progress_callback=progress_callback)
     prepare_monthly_billing_ready(run, progress_callback=progress_callback)
+    generate_monthly_billing_pdfs(run, progress_callback=progress_callback)
+    send_monthly_billing_ready(
+        run, created_by=created_by, progress_callback=progress_callback
+    )
     _run_log(run, "run billing completed")
     return run
 

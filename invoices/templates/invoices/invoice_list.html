@@ -30,8 +30,9 @@
             <button type="submit" name="action" value="preflight" class="btn btn-outline-primary btn-sm" title="Run monthly billing preflight">
               <i class="fas fa-search"></i><span class="btn-label"> Preflight</span>
             </button>
-            <button type="submit" name="action" value="generate" class="btn btn-outline-success btn-sm" title="Generate monthly billing run">
-              <i class="fas fa-cogs"></i><span class="btn-label"> Generate</span>
+            <button type="submit" name="action" value="generate" class="btn btn-outline-success btn-sm" title="Generate monthly billing and send ready invoices through WhatsApp"
+                    onclick="return confirm('Generate monthly billing and send all Ready to Send invoices through WhatsApp?');">
+              <i class="fas fa-cogs"></i><span class="btn-label"> Generate &amp; Send</span>
             </button>
             <button type="submit" name="action" value="send_ready" class="btn btn-outline-success btn-sm" title="Generate PDFs and send ready invoices"
                     onclick="return confirm('Send all Ready to Send invoices for the selected month through WhatsApp?');">
@@ -2755,7 +2756,8 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
   // Same phone cleanup used in your detail page
   function invoiceListCsrfToken() {
     const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[2]) : '';
+    if (m) return decodeURIComponent(m[2]);
+    return document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
   }
 
   function invoiceWhatsAppApiUrl(objectId) {
@@ -3082,7 +3084,10 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
     }
   }
 
-  async function sendSelectedInvoices() {
+  async function sendSelectedInvoices(event) {
+    event?.preventDefault();
+    const sendButton = document.getElementById('send-selected-invoices');
+    if (!sendButton || sendButton.dataset.sending === '1') return;
     const rows = window.invoiceBulkSelection || [];
     const selected = Array.from(document.querySelectorAll('.invoice-bulk-select:checked'))
       .map(input => rows[parseInt(input.dataset.index, 10)])
@@ -3091,21 +3096,53 @@ document.getElementById('id_show_inactive')?.addEventListener('change', () => {
       alert('Please select at least one invoice.');
       return;
     }
+    const originalButtonHtml = sendButton.innerHTML;
+    const controls = document.querySelectorAll(
+      '#invoiceBulkSelectionModal input, #invoiceBulkSelectionModal select, #invoiceBulkSelectionModal button'
+    );
+    sendButton.dataset.sending = '1';
+    controls.forEach(control => { control.disabled = true; });
     let sent = 0;
     let failed = 0;
-    for (const row of selected) {
+    const failures = [];
+    for (let index = 0; index < selected.length; index += 1) {
+      const row = selected[index];
+      sendButton.innerHTML = `<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Sending ${index + 1} / ${selected.length}`;
       try {
         await postInvoiceWhatsAppApi(row.id);
         sent += 1;
       } catch (error) {
         failed += 1;
+        failures.push(`${row.invoiceNumber} - ${row.tenant}: ${error.message}`);
         console.error('Invoice WhatsApp send failed', row, error);
       }
     }
+    controls.forEach(control => { control.disabled = false; });
+    sendButton.dataset.sending = '0';
+    sendButton.innerHTML = originalButtonHtml;
     showInvoiceToast(`Bulk invoice send complete. Sent: ${sent}. Failed: ${failed}.`, failed ? 'warning' : 'success');
+    if (failed) {
+      showInvoiceWhatsAppApiMessage(
+        'WhatsApp Bulk Send Results',
+        `Sent: ${sent}\nFailed: ${failed}\n\n${failures.join('\n\n')}`
+      );
+    } else if (window.bootstrap && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('invoiceBulkSelectionModal')).hide();
+    }
   }
 
-  document.getElementById('invoice-bulk-whatsapp')?.addEventListener('click', openInvoiceBulkModal);
+  function bindInvoiceBulkButton() {
+    const button = document.getElementById('invoice-bulk-whatsapp');
+    if (!button || button.dataset.bulkBound === '1') return;
+    button.addEventListener('click', openInvoiceBulkModal);
+    button.dataset.bulkBound = '1';
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindInvoiceBulkButton);
+  } else {
+    bindInvoiceBulkButton();
+  }
 </script>
 
 <div class="modal fade" id="invoiceBulkSelectionModal" tabindex="-1" aria-labelledby="invoiceBulkSelectionModalLabel" aria-hidden="true">

@@ -3,6 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from django.test import TestCase
+from unittest.mock import call, patch
 
 from invoices.models import Invoice, InvoiceItem, ItemCategory, RecurringCharge
 from invoices.services import (
@@ -11,6 +12,7 @@ from invoices.services import (
     generate_monthly_billing_electric,
     invoice_due_date_from_lease,
     previous_month_start,
+    run_monthly_billing_full,
     run_monthly_billing_preflight,
 )
 from leases.models import Lease
@@ -208,3 +210,32 @@ class MonthlyBillingRegressionTests(TestCase):
 
         mocked_upsert.assert_called()
         self.assertEqual(mocked_upsert.call_args.kwargs["posting_month"], date(2026, 7, 1))
+
+    def test_full_monthly_billing_generates_pdfs_and_sends_ready_invoices(self):
+        run = SimpleNamespace(billing_month=date(2026, 8, 1))
+        created_by = SimpleNamespace(is_authenticated=True)
+
+        with patch("invoices.services._run_log") as mocked_log, \
+             patch("invoices.services.run_monthly_billing_preflight") as mocked_preflight, \
+             patch("invoices.services.generate_monthly_billing_invoices") as mocked_invoices, \
+             patch("invoices.services.generate_monthly_billing_electric") as mocked_electric, \
+             patch("invoices.services.prepare_monthly_billing_ready") as mocked_ready, \
+             patch("invoices.services.generate_monthly_billing_pdfs") as mocked_pdfs, \
+             patch("invoices.services.send_monthly_billing_ready") as mocked_send:
+            result = run_monthly_billing_full(run, created_by=created_by)
+
+        self.assertIs(result, run)
+        mocked_preflight.assert_called_once_with(
+            run.billing_month, created_by=created_by, progress_callback=None
+        )
+        mocked_invoices.assert_called_once_with(run, progress_callback=None)
+        mocked_electric.assert_called_once_with(run, progress_callback=None)
+        mocked_ready.assert_called_once_with(run, progress_callback=None)
+        mocked_pdfs.assert_called_once_with(run, progress_callback=None)
+        mocked_send.assert_called_once_with(
+            run, created_by=created_by, progress_callback=None
+        )
+        self.assertEqual(
+            mocked_log.call_args_list,
+            [call(run, "run billing started"), call(run, "run billing completed")],
+        )

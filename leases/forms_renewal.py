@@ -153,8 +153,10 @@ class LeaseHistoryEditForm(forms.ModelForm):
             "internet_charges",
             "agreement_charges",
             "security_deposit",
+            "rent_increase_percent",
             "witness1_tenant",
             "witness2_tenant",
+            "terms",
             "notes",
         ]
         widgets = {
@@ -170,8 +172,10 @@ class LeaseHistoryEditForm(forms.ModelForm):
             "internet_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "agreement_charges": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "security_deposit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+            "rent_increase_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
             "witness1_tenant": forms.Select(attrs={"class": "form-select form-select-sm select2 witness-select"}),
             "witness2_tenant": forms.Select(attrs={"class": "form-select form-select-sm select2 witness-select"}),
+            "terms": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 5}),
             "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 3}),
         }
 

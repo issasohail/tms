@@ -885,6 +885,14 @@
       {% if form.instance.pk %}
       <div class="lf-nav-section">
         <div class="lf-nav-grp-label">Actions</div>
+        {% if active_history %}
+        <a href="{% url 'leases:lease_history_edit' form.instance.pk active_history.pk %}" class="lf-nav-item">
+          <i class="ti ti-edit"></i>Edit Current Terms
+        </a>
+        {% endif %}
+        <button type="submit" form="lease-form" name="save" value="1" class="lf-nav-item bg-transparent border-0 w-100 text-start">
+          <i class="ti ti-device-floppy"></i>Save Other Changes
+        </button>
         <a href="{% url 'leases:lease_renew' form.instance.pk %}" class="lf-nav-item">
           <i class="ti ti-refresh"></i>Renew Lease
         </a>
@@ -1011,7 +1019,12 @@
                 <div class="lf-card-head lf-card-dark">
                   <i class="ti ti-calendar"></i>
                   <span class="lf-card-title">Period &amp; Charges</span>
-                  <label class="d-flex align-items-center gap-1 ms-auto mb-0 small fw-semibold" for="{{ form.lease_months.id_for_label }}">
+                  {% if form.instance.pk and active_history %}
+                  <a class="btn btn-primary btn-sm ms-auto text-nowrap" href="{% url 'leases:lease_history_edit' form.instance.pk active_history.pk %}">
+                    <i class="ti ti-edit"></i> Edit Charges &amp; Deposit
+                  </a>
+                  {% endif %}
+                  <label class="d-flex align-items-center gap-1{% if not active_history %} ms-auto{% endif %} mb-0 small fw-semibold" for="{{ form.lease_months.id_for_label }}">
                     <span>Agreement Term</span>
                     {{ form.lease_months|add_class:"form-control form-control-sm text-center"|attr:"style:width:64px" }}
                     <span>Month</span>
@@ -1549,6 +1562,11 @@
             <div class="lf-card-head lf-card-dark">
               <i class="ti ti-cash"></i>
               <span class="lf-card-title">Financial &amp; Security Information</span>
+              {% if form.instance.pk and active_history %}
+              <a class="btn btn-primary btn-sm ms-auto text-nowrap" href="{% url 'leases:lease_history_edit' form.instance.pk active_history.pk %}">
+                <i class="ti ti-edit"></i> Edit Required Deposit
+              </a>
+              {% endif %}
             </div>
             <div class="lf-fg lf-fg-3" style="padding:8px 12px;">
               <div class="lf-f">

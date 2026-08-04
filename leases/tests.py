@@ -739,6 +739,17 @@ class ActiveAgreementAndMoveInBillingTests(TestCase):
         self.assertFalse(self.lease.bill_water_charges)
         self.assertFalse(self.lease.bill_recurring_charges)
 
+    def test_current_history_editor_exposes_all_master_agreement_fields(self):
+        from leases.forms_renewal import LeaseHistoryEditForm
+        from leases.services.lease_history import ensure_original_history
+
+        history = ensure_original_history(self.lease)
+        form = LeaseHistoryEditForm(instance=history)
+
+        self.assertIn("security_deposit", form.fields)
+        self.assertIn("rent_increase_percent", form.fields)
+        self.assertIn("terms", form.fields)
+
     def test_agreement_fee_is_created_once(self):
         from invoices.models import InvoiceItem
         from leases.utils.billing import ensure_agreement_fee_invoice

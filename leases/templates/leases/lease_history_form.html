@@ -422,7 +422,7 @@
 
         <div class="lhf-grid">
           {% for field in form %}
-            <div class="lhf-field{% if field.name == 'notes' %} lhf-field-wide{% endif %}{% if field.name == 'witness1_tenant' or field.name == 'witness2_tenant' %} lhf-witness-field{% endif %}" data-field="{{ field.name }}">
+            <div class="lhf-field{% if field.name == 'terms' or field.name == 'notes' %} lhf-field-wide{% endif %}{% if field.name == 'witness1_tenant' or field.name == 'witness2_tenant' %} lhf-witness-field{% endif %}" data-field="{{ field.name }}">
               <label class="form-label" for="{{ field.id_for_label }}">
                 {% if field.name == 'society_maintenance' %}<span class="lhf-desktop-label">Society Maintenance</span><span class="lhf-mobile-label">Society Maint.</span>{% else %}{{ field.label }}{% endif %}
               </label>

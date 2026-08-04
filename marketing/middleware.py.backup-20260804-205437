@@ -30,12 +30,6 @@ TMS_LEGACY_UI_PREFIXES = (
     "/utilities",
 )
 
-PUBLIC_APPLICATION_PREFIXES = (
-    "/api",
-    "/public/files",
-    "/public/lease-files",
-)
-
 
 def _matches_prefix(path, prefix):
     return path == prefix or path.startswith(f"{prefix}/")
@@ -107,14 +101,7 @@ class MarketingHostMiddleware:
                 location,
                 preserve_request=request.method not in {"GET", "HEAD"},
             )
-        is_public_application_path = (
-            normalized_path == "/whatsapp/webhook"
-            or any(
-                _matches_prefix(normalized_path, prefix)
-                for prefix in PUBLIC_APPLICATION_PREFIXES
-            )
-        )
-        if host == public_host and not is_tms_path and not is_public_application_path:
+        if host == public_host and not is_tms_path:
             request.urlconf = "tms.marketing_urls"
 
         return self.get_response(request)

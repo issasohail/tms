@@ -129,66 +129,6 @@ class MarketingRouteTests(TestCase):
             "https://kirayas.com/tms/accounts/signup/",
         )
 
-    def test_legacy_invoice_path_redirects_under_tms_prefix(self):
-        response = self.client.get("/invoices/", {"status": "draft"})
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            response["Location"],
-            "https://kirayas.com/tms/invoices/?status=draft",
-        )
-
-    def test_nested_legacy_invoice_path_redirects_under_tms_prefix(self):
-        response = self.client.get("/invoices/monthly-billing/12/")
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            response["Location"],
-            "https://kirayas.com/tms/invoices/monthly-billing/12/",
-        )
-
-    def test_authenticated_tms_sections_redirect_under_tms_prefix(self):
-        paths = (
-            "/properties/",
-            "/payments/",
-            "/tenants/",
-            "/leases/",
-            "/expenses/",
-            "/utilities/",
-            "/smart-meter/live/custom/",
-            "/reports/reports/",
-            "/maintenance/",
-            "/handyman/",
-            "/settings/",
-            "/pending-approvals/",
-            "/suggestions/",
-            "/notifications/",
-            "/whatsapp/simulator/",
-        )
-        for path in paths:
-            with self.subTest(path=path):
-                response = self.client.get(path)
-                self.assertEqual(response.status_code, 302)
-                self.assertEqual(
-                    response["Location"],
-                    f"https://kirayas.com/tms{path}",
-                )
-
-    def test_special_tms_paths_redirect_to_their_legacy_targets(self):
-        cases = {
-            "/dashboard/": "https://kirayas.com/tms/",
-            "/login/": "https://kirayas.com/tms/accounts/login/",
-            "/logout/": "https://kirayas.com/tms/accounts/logout/",
-        }
-        for path, expected in cases.items():
-            with self.subTest(path=path):
-                response = self.client.get(path)
-                self.assertEqual(response.status_code, 302)
-                self.assertEqual(response["Location"], expected)
-
-    def test_public_whatsapp_page_is_not_redirected_to_tms(self):
-        response = self.client.get("/whatsapp/")
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response["Location"].startswith("https://wa.me/"))
-
     def test_www_redirect_is_permanent_and_preserves_path_and_query(self):
         response = Client(HTTP_HOST="www.kirayas.com").get(
             "/pricing/", {"source": "website"}

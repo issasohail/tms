@@ -137,8 +137,16 @@
                   {% if review.person %}
                     <div><strong>{{ review.person.first_name|default:"—" }} {{ review.person.last_name|default:"" }}</strong></div>
                     <div class="small">CNIC: {{ review.person.cnic|format_cnic|default:"—" }}</div>
-                    <div class="small">Phone: {% include "tenants/_whatsapp_phone_link.html" with phone=review.person.phone label=review.person.phone name=review.person.first_name only %}</div>
-                    <div class="small">Address: {{ review.person.address|default:"—" }}</div>
+                    <div class="person-photo-row my-2">
+                      {% if review.person.photo %}<a href="{{ review.person.photo.url }}" target="_blank" rel="noopener"><img src="{{ review.person.photo.url }}" class="person-photo" alt="{{ review.label }} photo" title="{{ review.label }} photo"></a>{% endif %}
+                      {% if review.person.cnic_front %}<a href="{{ review.person.cnic_front.url }}" target="_blank" rel="noopener"><img src="{{ review.person.cnic_front.url }}" class="person-document" alt="{{ review.label }} CNIC front" title="{{ review.label }} CNIC front"></a>{% endif %}
+                      {% if review.person.cnic_back %}<a href="{{ review.person.cnic_back.url }}" target="_blank" rel="noopener"><img src="{{ review.person.cnic_back.url }}" class="person-document" alt="{{ review.label }} CNIC back" title="{{ review.label }} CNIC back"></a>{% endif %}
+                    </div>
+                    <div class="person-field-grid">
+                      {% for detail in review.person.review_fields %}
+                        <div class="person-field-item"><span>{{ detail.label }}</span><strong>{{ detail.value }}</strong></div>
+                      {% empty %}<div class="small text-muted">No additional fields submitted.</div>{% endfor %}
+                    </div>
                     {% if review.person.matched_tenant %}<div class="small mt-1"><span class="badge bg-info text-dark">Matches Tenant #{{ review.person.matched_tenant_id }}</span></div>{% endif %}
                   {% else %}
                     <div class="small text-danger">No {{ review.label|lower }} was submitted.</div>
@@ -177,6 +185,11 @@
                         {% if person.photo %}<a href="{{ person.photo.url }}" target="_blank" rel="noopener"><img src="{{ person.photo.url }}" class="person-photo" alt="Submitted photo" title="Submitted photo"></a>{% endif %}
                         {% if person.cnic_front %}<a href="{{ person.cnic_front.url }}" target="_blank" rel="noopener"><img src="{{ person.cnic_front.url }}" class="person-document" alt="Submitted CNIC front" title="Submitted CNIC front"></a>{% endif %}
                         {% if person.cnic_back %}<a href="{{ person.cnic_back.url }}" target="_blank" rel="noopener"><img src="{{ person.cnic_back.url }}" class="person-document" alt="Submitted CNIC back" title="Submitted CNIC back"></a>{% endif %}
+                      </div>
+                      <div class="person-field-grid mt-2">
+                        {% for detail in person.review_fields %}
+                          <div class="person-field-item"><span>{{ detail.label }}</span><strong>{{ detail.value }}</strong></div>
+                        {% empty %}<div class="small text-muted">No additional fields submitted.</div>{% endfor %}
                       </div>
                     </td>
                     <td>
@@ -447,6 +460,10 @@
   .registration-review-page .person-photo-row { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
   .registration-review-page .person-photo { width: 58px; height: 58px; object-fit: cover; border: 1px solid #d0d5dd; border-radius: 6px; }
   .registration-review-page .person-document { width: 78px; height: 58px; object-fit: contain; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; }
+  .registration-review-page .person-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.28rem .55rem; }
+  .registration-review-page .person-field-item { min-width:0; padding:.28rem .38rem; border:1px solid #e2e8f0; border-radius:.35rem; background:#f8fafc; overflow-wrap:anywhere; }
+  .registration-review-page .person-field-item span { display:block; color:#64748b; font-size:.62rem; font-weight:700; text-transform:uppercase; }
+  .registration-review-page .person-field-item strong { display:block; color:#172033; font-size:.72rem; font-weight:700; }
   .registration-review-page .change-line { margin-bottom: .2rem; white-space: normal; }
   .registration-review-page .registration-doc-strip { display:flex; gap:.6rem; align-items:stretch; }
   .registration-review-page .registration-doc-item { position:relative; width:132px; }
@@ -471,6 +488,7 @@
     .registration-review-page .ld-review-table td,
     .registration-review-page .ld-review-table th { display:block; width:100%; }
     .registration-review-page .ld-review-table tr { border:1px solid #d0d5dd; margin:.5rem; width:calc(100% - 1rem); border-radius:.4rem; overflow:hidden; }
+    .registration-review-page .person-field-grid { grid-template-columns:1fr; }
   }
 </style>
 {% endblock %}

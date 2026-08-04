@@ -125,6 +125,15 @@
     .registration-validation-link { border:0; padding:0; color:#991b1b; background:transparent; font:inherit; text-align:left; text-decoration:underline; cursor:pointer; }
     .registration-field-invalid { border-color:#dc2626 !important; box-shadow:0 0 0 .13rem rgba(220,38,38,.14) !important; }
     .registration-client-error { margin-top:.22rem; color:#b91c1c; font-size:.68rem; font-weight:800; line-height:1.25; }
+    .registration-submitting-modal[hidden] { display:none !important; }
+    .registration-submitting-modal { position:fixed; inset:0; z-index:35000; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgba(15,23,42,.78); }
+    .registration-submitting-panel { width:min(430px,100%); padding:1.35rem; border-radius:.85rem; background:#fff; text-align:center; box-shadow:0 24px 70px rgba(0,0,0,.35); }
+    .registration-submitting-spinner { width:2.4rem; height:2.4rem; margin:0 auto .8rem; border:.28rem solid #dbeafe; border-top-color:#198754; border-radius:50%; animation:registration-submit-spin .8s linear infinite; }
+    .registration-submitting-title { font-size:1.05rem; font-weight:900; color:#172033; }
+    .registration-submitting-name { margin-top:.3rem; font-weight:800; color:#198754; overflow-wrap:anywhere; }
+    .registration-submitting-time { margin-top:.65rem; font:800 1.25rem/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; color:#334155; }
+    .registration-submitting-note { margin-top:.6rem; font-size:.76rem; color:#64748b; }
+    @keyframes registration-submit-spin { to { transform:rotate(360deg); } }
     .td-layout-top {
       display: grid;
       grid-template-columns: minmax(430px, 42%) minmax(0, 58%);
@@ -1464,7 +1473,7 @@
               {% if tenant.photo %}<img src="{{ tenant.photo.url }}" class="public-file-preview" alt="Photo">{% else %}<i class="fas fa-user fa-2x placeholder-icon"></i>{% endif %}
               {{ form.photo }}
             </label>
-            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload"></i> Upload</label>
+            <label class="td-form-upload-btn" for="{{ form.photo.id_for_label }}"><i class="fas fa-upload"></i> Upload Photo</label>
           </div>
         </div>
         <div class="td-form-cell px-3 pb-3">{{ form.cnic.label_tag }}{{ form.cnic }}<div class="td-form-errors">{{ form.cnic.errors }}</div></div>
@@ -1819,6 +1828,16 @@
   </form>
 </div>
 
+<div class="registration-submitting-modal" id="registrationSubmittingModal" role="dialog" aria-modal="true" aria-labelledby="registrationSubmittingTitle" hidden>
+  <div class="registration-submitting-panel">
+    <div class="registration-submitting-spinner" aria-hidden="true"></div>
+    <div class="registration-submitting-title" id="registrationSubmittingTitle">Submitting tenant registration</div>
+    <div class="registration-submitting-name" id="registrationSubmittingName"></div>
+    <div class="registration-submitting-time" id="registrationSubmittingTime" aria-live="polite">00:00</div>
+    <div class="registration-submitting-note">Please keep this page open. You will be taken to the submitted page when saving is complete.</div>
+  </div>
+</div>
+
 <template id="familyMemberTemplate">
   <div class="family-member-card">
     <div class="family-card-header">
@@ -2000,6 +2019,26 @@ window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenan
 
   const registrationValidationSummary = document.getElementById("registrationValidationSummary");
   const registrationValidationList = document.getElementById("registrationValidationList");
+  const registrationSubmittingModal = document.getElementById("registrationSubmittingModal");
+  const registrationSubmittingName = document.getElementById("registrationSubmittingName");
+  const registrationSubmittingTime = document.getElementById("registrationSubmittingTime");
+  let registrationSubmittingTimer = null;
+
+  function showRegistrationSubmittingModal() {
+    if (!registrationSubmittingModal) return;
+    const firstName = String(registrationField("first_name")?.value || "").trim();
+    const lastName = String(registrationField("last_name")?.value || "").trim();
+    registrationSubmittingName.textContent = (firstName + " " + lastName).trim() || "Tenant registration";
+    const startedAt = Date.now();
+    const updateTimer = function () {
+      const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      registrationSubmittingTime.textContent = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+    };
+    updateTimer();
+    registrationSubmittingModal.hidden = false;
+    document.body.style.overflow = "hidden";
+    registrationSubmittingTimer = window.setInterval(updateTimer, 1000);
+  }
 
   function registrationSectionLabel(field) {
     const name = String(field?.name || "");
@@ -2359,7 +2398,9 @@ window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenan
     const submittedValues = readSubmittedFormData();
     const hasSubmittedValues = Object.keys(submittedValues).length > 0;
     const draft = readRegistrationDraft();
-    const values = hasSubmittedValues ? submittedValues : (draft.values || {});
+    const values = hasSubmittedValues
+      ? Object.assign({}, draft.values || {}, submittedValues)
+      : (draft.values || {});
     const familyCount = hasSubmittedValues
       ? dynamicRowCount(values, "family")
       : Number(draft.familyCount || dynamicRowCount(values, "family"));
@@ -2439,6 +2480,7 @@ window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenan
     registrationTemporaryUploadsInput.value = JSON.stringify(
       Object.fromEntries(Object.entries(temporaryUploads).map(function (entry) { return [entry[0], entry[1].id]; }))
     );
+    registrationForm.dispatchEvent(new CustomEvent("tms:temporary-uploads-restored", {bubbles:true}));
   }
 
   async function recoverTemporaryUploadsFromServer() {
@@ -2525,6 +2567,7 @@ window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenan
         return;
       }
       registrationSubmitting = true;
+      showRegistrationSubmittingModal();
       document.querySelectorAll('#tenantRegistrationForm button[type="submit"], #tenantRegistrationForm input[type="submit"], [form="tenantRegistrationForm"][type="submit"]').forEach(function (button) {
         button.disabled = true;
         button.setAttribute("aria-disabled", "true");

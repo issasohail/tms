@@ -1336,6 +1336,10 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
         cls.form_source = (templates / "public_registration_form.html").read_text(encoding="utf-8")
         cls.internal_form_source = (templates / "tenant_form.html").read_text(encoding="utf-8")
         cls.success_source = (templates / "public_registration_submitted.html").read_text(encoding="utf-8")
+        cls.review_source = (templates / "registration_submission_detail.html").read_text(encoding="utf-8")
+        cls.identity_media_source = (
+            Path(__file__).resolve().parents[1] / "templates" / "partials" / "identity_media_public.html"
+        ).read_text(encoding="utf-8")
 
     def test_submit_saves_but_does_not_clear_browser_draft(self):
         submit_section = self.form_source.split('registrationForm.addEventListener("submit"', 1)[1]
@@ -1379,6 +1383,49 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
             "Array.from(registrationForm?.elements || []).forEach", 2
         )[1]
         self.assertNotIn("field.disabled", required_loop)
+
+    def test_invalid_post_merges_with_draft_and_restored_documents_unlock_identity(self):
+        self.assertIn(
+            "Object.assign({}, draft.values || {}, submittedValues)",
+            self.form_source,
+        )
+        self.assertIn('new CustomEvent("tms:temporary-uploads-restored"', self.form_source)
+        self.assertIn("hasRestoredCnicPair", self.identity_media_source)
+        self.assertIn("unlockRestoredIdentity", self.identity_media_source)
+        self.assertIn("runWithRestoredFiles", self.identity_media_source)
+
+    def test_ocr_photo_editor_submit_progress_and_related_person_review_are_present(self):
+        self.assertIn("portraitDataFile", self.identity_media_source)
+        self.assertIn("installPhotoChooser", self.identity_media_source)
+        self.assertIn('id="registrationSubmittingModal"', self.form_source)
+        self.assertIn("showRegistrationSubmittingModal();", self.form_source)
+        self.assertIn('id="registrationSubmittingTime"', self.form_source)
+        self.assertIn("review.person.cnic_front.url", self.review_source)
+        self.assertIn("review.person.cnic_back.url", self.review_source)
+        self.assertIn("review.person.review_fields", self.review_source)
+        self.assertIn("person.review_fields", self.review_source)
+
+    def test_pending_person_review_fields_include_lease_relationship_and_extra_values(self):
+        from datetime import date
+        from types import SimpleNamespace
+
+        from tenants.views import _pending_person_review_fields
+
+        person = SimpleNamespace(
+            relationship_type_id=7,
+            relationship="",
+            father_husband_name="Parent Name",
+            date_of_birth=date(2001, 2, 3),
+            phone="03001234567",
+            address="Current address",
+            processing_result={"ocr_fields": {"nationality": "Pakistani", "occupation": "Engineer"}},
+        )
+        fields = _pending_person_review_fields(person, {7: "Brother"})
+        field_map = {item["label"]: item["value"] for item in fields}
+        self.assertEqual(field_map["Relationship for lease"], "Brother")
+        self.assertEqual(field_map["Date of birth"], "2001-02-03")
+        self.assertEqual(field_map["Nationality"], "Pakistani")
+        self.assertEqual(field_map["Occupation"], "Engineer")
 
 
 class CNICSideVerificationTests(SimpleTestCase):

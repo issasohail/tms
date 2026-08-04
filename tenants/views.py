@@ -814,7 +814,47 @@ _PERSON_OCR_POST_FIELDS = (
     "permanent_address",
     "temporary_address_urdu",
     "permanent_address_urdu",
+    "occupation",
+    "email",
+    "notes",
 )
+
+_PERSON_REVIEW_FIELD_LABELS = {
+    "gender": "Gender",
+    "country": "Country",
+    "nationality": "Nationality",
+    "cnic_issue_date": "CNIC issue date",
+    "cnic_expiry_date": "CNIC expiry date",
+    "temporary_address": "Temporary address",
+    "permanent_address": "Permanent address",
+    "temporary_address_urdu": "Temporary address (Urdu)",
+    "permanent_address_urdu": "Permanent address (Urdu)",
+    "occupation": "Occupation",
+    "email": "Email",
+    "notes": "Notes",
+}
+
+
+def _pending_person_review_fields(person, relationship_labels):
+    relationship = relationship_labels.get(person.relationship_type_id) or person.relationship
+    values = [
+        ("Father / husband", person.father_husband_name),
+        ("Date of birth", person.date_of_birth),
+        ("Phone", person.phone),
+        ("Relationship for lease", relationship),
+        ("Address", person.address),
+    ]
+    additional = (person.processing_result or {}).get("ocr_fields", {})
+    values.extend(
+        (_PERSON_REVIEW_FIELD_LABELS.get(field_name, field_name.replace("_", " ").title()), value)
+        for field_name, value in additional.items()
+        if str(value or "").strip()
+    )
+    return [
+        {"label": label, "value": value.isoformat() if hasattr(value, "isoformat") else value}
+        for label, value in values
+        if str(value or "").strip()
+    ]
 
 
 def _person_ocr_fields_from_post(post, base):
@@ -1652,6 +1692,13 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         pending_people = list(
             self.object.pending_people.select_related("matched_tenant", "processed_tenant")
         )
+        relationship_labels = dict(
+            LeaseRelationshipType.objects.filter(
+                pk__in={person.relationship_type_id for person in pending_people if person.relationship_type_id}
+            ).values_list("pk", "name")
+        )
+        for person in pending_people:
+            person.review_fields = _pending_person_review_fields(person, relationship_labels)
         from tenants.services.registration_workflow import (
             applicant_cnic_conflict,
             registration_required_party_reviews,
@@ -1659,6 +1706,10 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         context["required_party_reviews"] = registration_required_party_reviews(
             self.object
         )
+        pending_people_by_pk = {person.pk: person for person in pending_people}
+        for review in context["required_party_reviews"]:
+            if review.get("person") and review["person"].pk in pending_people_by_pk:
+                review["person"] = pending_people_by_pk[review["person"].pk]
         context["required_parties_complete"] = all(
             review["is_complete"] for review in context["required_party_reviews"]
         )

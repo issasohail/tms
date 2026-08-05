@@ -3369,6 +3369,59 @@ class WhatsAppControlledAssistantTests(TestCase):
             ],
         )
 
+    def test_conversation_filters_search_messages_tenant_and_location(self):
+        from whatsapp.views import _conversation_summary, _filter_conversation_summary
+
+        self.message.payload = {
+            "type": "text",
+            "text": {"body": "The kitchen tap is leaking badly"},
+        }
+        self.message.save(update_fields=["payload", "updated_at"])
+        summary = _conversation_summary()
+
+        message_result = _filter_conversation_summary(
+            summary, search_query="kitchen tap"
+        )
+        tenant_result = _filter_conversation_summary(
+            summary, tenant_id=self.tenant.pk
+        )
+        property_result = _filter_conversation_summary(
+            summary, location=f"property:{self.property.pk}"
+        )
+        unit_result = _filter_conversation_summary(
+            summary, location=f"unit:{self.unit.pk}"
+        )
+
+        for result in [message_result, tenant_result, property_result, unit_result]:
+            self.assertEqual([row["phone_number"] for row in result], [self.phone])
+
+    def test_whatsapp_filter_options_use_short_property_names_and_tenant_name_only(self):
+        self.staff1.is_superuser = True
+        self.staff1.save(update_fields=["is_superuser"])
+        self.client.force_login(self.staff1)
+        response = self.client.get(reverse("whatsapp:webhook_log_list"))
+
+        property_option = next(
+            option
+            for option in response.context["property_filter_options"]
+            if option["value"] == f"property:{self.property.pk}"
+        )
+        unit_option = next(
+            option
+            for option in response.context["unit_filter_options"]
+            if option["value"] == f"unit:{self.unit.pk}"
+        )
+        tenant_select = re.search(
+            r'id="whatsappTenantFilter".*?</select>',
+            response.content.decode(),
+            flags=re.DOTALL,
+        ).group(0)
+
+        self.assertEqual(property_option["label"], "All Test Res")
+        self.assertEqual(unit_option["label"], "Test Res / A-04")
+        self.assertIn(f">{self.tenant.get_full_name()}</option>", tenant_select)
+        self.assertNotIn(self.tenant.phone, tenant_select)
+
     def test_duplicate_webhook_message_is_ignored(self):
         payload = {"entry": [{"id": "entry", "changes": [{"field": "messages", "value": {"messages": [{
             "from": self.phone, "id": "wamid.duplicate", "type": "text", "text": {"body": "hello"}

@@ -7,6 +7,10 @@
   .whatsapp-log-page { max-width:1600px; margin:0 auto; }
   .whatsapp-conversation-table th,
   .whatsapp-conversation-table td { white-space:nowrap; }
+  .whatsapp-conversation-table {
+    table-layout:fixed;
+    width:100%;
+  }
   .whatsapp-tenant-link,
   .whatsapp-lease-link {
     display:inline-block;
@@ -23,6 +27,19 @@
     top:0;
     z-index:2;
   }
+  .whatsapp-last-message {
+    display:-webkit-box;
+    overflow:hidden;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    text-overflow:ellipsis;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    line-clamp:2;
+    line-height:1.25;
+    max-height:2.5em;
+  }
+  .whatsapp-filter-bar .select2-container { width:100% !important; }
   .whatsapp-selected-context {
     font-size:.78rem;
     font-weight:400;
@@ -66,9 +83,51 @@
         <strong>Conversations</strong>
         <span class="badge bg-secondary">{{ conversation_summary|length }}</span>
       </div>
+      <form method="get" id="whatsappConversationFilters" class="whatsapp-filter-bar border-bottom p-2">
+        {% if selected_phone %}<input type="hidden" name="phone" value="{{ selected_phone }}">{% endif %}
+        <div class="row g-2">
+          <div class="col-12 col-md-4">
+            <label class="visually-hidden" for="whatsappTenantFilter">Tenant</label>
+            <select class="form-select form-select-sm" id="whatsappTenantFilter" name="tenant" data-placeholder="All Tenants">
+              <option value="">All Tenants</option>
+              {% for tenant in tenant_filter_options %}
+                <option value="{{ tenant.id }}" {% if selected_tenant_id == tenant.id %}selected{% endif %}>{{ tenant.get_full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="visually-hidden" for="whatsappConversationSearch">Search conversations</label>
+            <input type="search" class="form-control form-control-sm" id="whatsappConversationSearch" name="q" value="{{ search_query }}" placeholder="Search messages, phone, name..." autocomplete="off">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="visually-hidden" for="whatsappLocationFilter">Property or unit</label>
+            <select class="form-select form-select-sm" id="whatsappLocationFilter" name="location" data-placeholder="All Properties / Units">
+              <option value="">All Properties / Units</option>
+              <optgroup label="Properties">
+                {% for property in property_filter_options %}
+                  <option value="{{ property.value }}" {% if selected_location == property.value %}selected{% endif %}>{{ property.label }}</option>
+                {% endfor %}
+              </optgroup>
+              <optgroup label="Units">
+                {% for unit in unit_filter_options %}
+                  <option value="{{ unit.value }}" {% if selected_location == unit.value %}selected{% endif %}>{{ unit.label }}</option>
+                {% endfor %}
+              </optgroup>
+            </select>
+          </div>
+        </div>
+      </form>
       <div class="card-body p-0 whatsapp-pane-scroll">
         <div class="table-responsive h-100">
           <table class="table table-sm table-hover align-middle mb-0 whatsapp-conversation-table">
+            <colgroup>
+              <col style="width:5%">
+              <col style="width:20%">
+              <col style="width:20%">
+              <col style="width:20%">
+              <col style="width:25%">
+              <col style="width:10%">
+            </colgroup>
             <thead class="table-light">
               <tr>
                 <th>SN</th>
@@ -87,7 +146,7 @@
                     {% with wa_number=item.phone_number|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
                       <a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.phone_number|format_phone:GLOBAL_SETTINGS.country_code }}</a>
                     {% endwith %}
-                    <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1" href="?phone={{ item.phone_number }}" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
+                    <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1" href="?phone={{ item.phone_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_tenant_id %}&tenant={{ selected_tenant_id }}{% endif %}{% if selected_location %}&location={{ selected_location|urlencode }}{% endif %}" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
                   </td>
                   <td>
                     {% if item.tenant_id %}
@@ -104,7 +163,7 @@
                     {% endif %}
                   </td>
                   <td>
-                    <div class="text-truncate" style="max-width: 220px;">{{ item.last_message|default:"-" }}</div>
+                    <div class="whatsapp-last-message" title="{{ item.last_message|default:'-' }}">{{ item.last_message|default:"-" }}</div>
                     <div class="text-muted small">{{ item.last_at|date:"Y-m-d H:i:s" }}</div>
                   </td>
                   <td>
@@ -353,6 +412,61 @@ document.addEventListener('DOMContentLoaded', function () {
   const conversationPane = document.querySelector('.whatsapp-right-scroll');
   if (conversationPane) {
     conversationPane.scrollTop = conversationPane.scrollHeight;
+  }
+
+  const form = document.getElementById('whatsappConversationFilters');
+  const search = document.getElementById('whatsappConversationSearch');
+  const tenant = document.getElementById('whatsappTenantFilter');
+  const location = document.getElementById('whatsappLocationFilter');
+  let searchTimer = null;
+  let filtersSubmitting = false;
+
+  function submitFilters() {
+    if (!form || filtersSubmitting) return;
+    filtersSubmitting = true;
+    HTMLFormElement.prototype.submit.call(form);
+  }
+
+  if (search) {
+    search.addEventListener('input', function () {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(submitFilters, 450);
+    });
+    search.addEventListener('search', submitFilters);
+  }
+
+  if (window.jQuery && jQuery.fn && jQuery.fn.select2) {
+    [tenant, location].forEach(function (element) {
+      if (!element) return;
+      const $element = jQuery(element);
+      $element.select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        placeholder: element.dataset.placeholder,
+        allowClear: true,
+        minimumResultsForSearch: 0,
+        closeOnSelect: true
+      });
+      $element.on(
+        'select2:select.whatsappFilters select2:clear.whatsappFilters',
+        submitFilters
+      );
+      jQuery(document).on('focus', '#' + element.id + ' + .select2 .select2-selection', function () {
+        $element.select2('open');
+      });
+    });
+    jQuery(document).on('select2:open.whatsappFilters', function () {
+      window.setTimeout(function () {
+        const input = document.querySelector('.select2-container--open .select2-search__field');
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }, 0);
+    });
+  } else {
+    tenant?.addEventListener('change', submitFilters);
+    location?.addEventListener('change', submitFilters);
   }
 });
 

@@ -28,7 +28,7 @@ from invoices.models import Invoice
 from leases.models import Lease
 from maintenance.models import MaintenanceRequest
 from payments.models import Payment
-from properties.models import Property
+from properties.models import Property, Unit
 from tenants.models import Tenant
 from handyman.models import HandymanProfile
 
@@ -636,6 +636,12 @@ def webhook_log_list(request):
         return redirect(f"{request.path}?phone={phone_number}")
 
     selected_phone = (request.GET.get("phone") or "").strip()
+    search_query = (request.GET.get("q") or "").strip()
+    selected_location = (request.GET.get("location") or "").strip()
+    try:
+        selected_tenant_id = int(request.GET.get("tenant") or 0) or None
+    except (TypeError, ValueError):
+        selected_tenant_id = None
     logs = WhatsAppWebhookLog.objects.order_by("-created_at")
     paginator = Paginator(logs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
@@ -654,12 +660,35 @@ def webhook_log_list(request):
         selected_headers = json.dumps(selected_log.headers, indent=2, ensure_ascii=False)
 
     conversation_summary = _conversation_summary()
+    conversation_summary = _filter_conversation_summary(
+        conversation_summary,
+        search_query=search_query,
+        tenant_id=selected_tenant_id,
+        location=selected_location,
+    )
     if not selected_phone and conversation_summary:
         selected_phone = conversation_summary[0]["phone_number"]
     conversation_messages = _conversation_messages(selected_phone) if selected_phone else []
     selected_conversation = (
         _selected_conversation_context(selected_phone) if selected_phone else {}
     )
+
+    property_filter_options = [
+        {
+            "value": f"property:{property.pk}",
+            "label": f"All {(property.property_name or '')[:8]}",
+        }
+        for property in Property.objects.order_by("property_name", "id")
+    ]
+    unit_filter_options = [
+        {
+            "value": f"unit:{unit.pk}",
+            "label": f"{(unit.property.property_name or '')[:8]} / {unit.unit_number}",
+        }
+        for unit in Unit.objects.select_related("property").order_by(
+            "property__property_name", "unit_number", "id"
+        )
+    ]
 
     return render(
         request,
@@ -673,6 +702,14 @@ def webhook_log_list(request):
             "conversation_messages": conversation_messages,
             "selected_phone": selected_phone,
             "selected_conversation": selected_conversation,
+            "search_query": search_query,
+            "selected_tenant_id": selected_tenant_id,
+            "selected_location": selected_location,
+            "tenant_filter_options": Tenant.objects.order_by(
+                "first_name", "last_name", "id"
+            ),
+            "property_filter_options": property_filter_options,
+            "unit_filter_options": unit_filter_options,
         },
     )
 
@@ -703,6 +740,8 @@ def _conversation_summary():
                 "tenant_name": context["tenant_name"],
                 "tenant_id": context["tenant_id"],
                 "property_unit": context["property_unit"],
+                "property_id": context["property_id"],
+                "unit_id": context["unit_id"],
                 "lease_id": context["lease_id"],
                 "last_direction": log.direction,
                 "last_status": log.status,
@@ -801,8 +840,85 @@ def _conversation_context_for_phone(phone_number, latest_log=None):
         "tenant_name": tenant_name,
         "tenant_id": getattr(tenant, "pk", None),
         "property_unit": property_unit,
+        "property_id": getattr(selected_property, "pk", None),
+        "unit_id": getattr(selected_unit, "pk", None),
         "lease_id": getattr(lease, "pk", None),
     }
+
+
+def _filter_conversation_summary(
+    summary, *, search_query="", tenant_id=None, location=""
+):
+    filtered = list(summary)
+
+    if tenant_id:
+        filtered = [row for row in filtered if row["tenant_id"] == tenant_id]
+
+    if location.startswith("property:"):
+        try:
+            property_id = int(location.split(":", 1)[1])
+        except (TypeError, ValueError):
+            property_id = None
+        if property_id:
+            filtered = [row for row in filtered if row["property_id"] == property_id]
+    elif location.startswith("unit:"):
+        try:
+            unit_id = int(location.split(":", 1)[1])
+        except (TypeError, ValueError):
+            unit_id = None
+        if unit_id:
+            filtered = [row for row in filtered if row["unit_id"] == unit_id]
+
+    query = (search_query or "").strip().casefold()
+    if not query:
+        return filtered
+
+    query_digits = "".join(character for character in query if character.isdigit())
+    message_phone_matches = set()
+    for log in WhatsAppMessageLog.objects.exclude(phone_number="").iterator():
+        payload_text = json.dumps(log.payload or {}, ensure_ascii=False, default=str)
+        message_blob = " ".join(
+            [
+                log.phone_number or "",
+                _message_text(log),
+                log.error_text or "",
+                log.template_name or "",
+                log.status or "",
+                log.message_type or "",
+                payload_text,
+            ]
+        ).casefold()
+        phone_digits = "".join(
+            character for character in (log.phone_number or "") if character.isdigit()
+        )
+        if query in message_blob or (
+            query_digits and query_digits in phone_digits
+        ):
+            message_phone_matches.add(log.phone_number)
+
+    result = []
+    for row in filtered:
+        row_blob = " ".join(
+            [
+                row["phone_number"] or "",
+                row["tenant_name"] or "",
+                row["property_unit"] or "",
+                row["last_message"] or "",
+                row["last_status"] or "",
+            ]
+        ).casefold()
+        row_phone_digits = "".join(
+            character
+            for character in (row["phone_number"] or "")
+            if character.isdigit()
+        )
+        if (
+            query in row_blob
+            or row["phone_number"] in message_phone_matches
+            or (query_digits and query_digits in row_phone_digits)
+        ):
+            result.append(row)
+    return result
 
 
 def _selected_conversation_context(phone_number):

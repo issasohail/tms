@@ -199,7 +199,10 @@ class LeaseInventorySynchronizationTests(TestCase):
             self.lease.inventory_items.values_list("item__code", "quantity")
         )
 
-        self.assertEqual(updated, 6)
+        # Lease creation now preserves explicitly-set inventory quantities
+        # (see ensure_lease_inventory_snapshot), so this call has nothing
+        # left to reconcile.
+        self.assertEqual(updated, 0)
         self.assertEqual(
             quantities,
             {
@@ -477,7 +480,7 @@ class LeaseHistoryWitnessSelectTests(TestCase):
         self.assertEqual(ordered_names, ["Alexanderthegreat Witness", "Zulu Witness"])
         self.assertTrue(label.startswith("Alexanderthegreat Wi - "))
         self.assertIn("42101-1111111-1", label)
-        self.assertIn("0-300-111-1111", label)
+        self.assertIn("+92-300-111-1111", label)
 
 
 class PublicPoliceVerificationVehicleTests(TestCase):
@@ -576,6 +579,7 @@ class LeaseBillingChangeRegressionTests(TestCase):
             end_date=date.today() + timedelta(days=355),
             monthly_rent=10000,
             society_maintenance=1000,
+            agreement_charges=0,
         )
 
     def test_end_date_only_is_not_a_billing_change_or_backfill(self):

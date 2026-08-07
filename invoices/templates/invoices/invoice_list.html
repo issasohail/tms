@@ -3502,8 +3502,36 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', event => {
       event.preventDefault();
 
+      // Hard guard against double-click / duplicate submit firing this
+      // handler twice for the same in-flight request.
+      if (form.dataset.submitting === '1') {
+        return;
+      }
+      form.dataset.submitting = '1';
+
+      const formButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
       const clickedButton = event.submitter;
       const actionLabel = clickedButton ? clickedButton.textContent.trim() : 'Billing';
+      const originalLabels = new Map();
+      formButtons.forEach(btn => {
+        originalLabels.set(btn, btn.innerHTML);
+        btn.disabled = true;
+      });
+      if (clickedButton) {
+        clickedButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="btn-label"> Generating billing...</span>';
+      }
+
+      const restoreButtons = () => {
+        form.dataset.submitting = '';
+        formButtons.forEach(btn => {
+          btn.disabled = false;
+          const original = originalLabels.get(btn);
+          if (original !== undefined) {
+            btn.innerHTML = original;
+          }
+        });
+      };
+
       const formData = new FormData(form);
 
       if (clickedButton && clickedButton.name) {
@@ -3555,6 +3583,7 @@ document.addEventListener('DOMContentLoaded', () => {
           bar.style.width = '100%';
           message.textContent = payload.message || 'Done. Opening billing run...';
           window.clearInterval(timer);
+          // Navigating away, so no need to restore the buttons.
           window.location.href = preserveAppPrefix(payload.redirect_url);
         })
         .catch(error => {
@@ -3562,6 +3591,7 @@ document.addEventListener('DOMContentLoaded', () => {
           bar.classList.remove('progress-bar-animated');
           bar.classList.add('bg-danger');
           message.textContent = error.message || 'Billing action failed.';
+          restoreButtons();
         });
     });
   });  

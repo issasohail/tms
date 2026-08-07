@@ -55,6 +55,7 @@ from django.http import (
     JsonResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from core.utils.embed import embed_redirect
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -2806,7 +2807,7 @@ def lease_vehicle_type_settings(request):
                 vehicle_type.code = slugify(vehicle_type.name)
             vehicle_type.save()
             messages.success(request, "Lease vehicle type added.")
-            return redirect("leases:lease_vehicle_type_settings")
+            return embed_redirect(request, "leases:lease_vehicle_type_settings")
     else:
         form = LeaseVehicleTypeForm()
 
@@ -2826,7 +2827,7 @@ def lease_vehicle_type_edit(request, pk):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Lease vehicle type updated.")
-        return redirect("leases:lease_vehicle_type_settings")
+        return embed_redirect(request, "leases:lease_vehicle_type_settings")
     return render(
         request,
         "leases/settings/lease_vehicle_type_form.html",
@@ -2842,7 +2843,7 @@ def lease_vehicle_type_toggle(request, pk):
     vehicle_type.save(update_fields=["is_active"])
     state = "activated" if vehicle_type.is_active else "deactivated"
     messages.success(request, f"{vehicle_type.name} {state}.")
-    return redirect("leases:lease_vehicle_type_settings")
+    return embed_redirect(request, "leases:lease_vehicle_type_settings")
 
 
 @login_required
@@ -2857,11 +2858,11 @@ def lease_vehicle_type_delete(request, pk):
             request,
             "This vehicle type is already used. Deactivate it instead of deleting.",
         )
-        return redirect("leases:lease_vehicle_type_settings")
+        return embed_redirect(request, "leases:lease_vehicle_type_settings")
     name = vehicle_type.name
     vehicle_type.delete()
     messages.success(request, f"{name} deleted.")
-    return redirect("leases:lease_vehicle_type_settings")
+    return embed_redirect(request, "leases:lease_vehicle_type_settings")
 
 
 def _redirect_after_vehicle_submission_action(submission):
@@ -6998,7 +6999,7 @@ def default_clause_create(request):
         form = DefaultClauseForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect("leases:default_clause_list")
+            return embed_redirect(request, "leases:default_clause_list")
     else:
         form = DefaultClauseForm()
 
@@ -7022,7 +7023,7 @@ def default_clause_edit(request, pk):
         form = DefaultClauseForm(request.POST, instance=clause)
         if form.is_valid():
             form.save()
-            return redirect("leases:default_clause_list")
+            return embed_redirect(request, "leases:default_clause_list")
     else:
         form = DefaultClauseForm(instance=clause)
 
@@ -7062,7 +7063,7 @@ def agreement_placeholder_create(request):
         if form.is_valid():
             form.save()
             messages.success(request, "Placeholder added.")
-            return redirect("leases:agreement_placeholder_list")
+            return embed_redirect(request, "leases:agreement_placeholder_list")
     else:
         form = AgreementPlaceholderForm()
 
@@ -7085,7 +7086,7 @@ def agreement_placeholder_edit(request, pk):
         if form.is_valid():
             form.save()
             messages.success(request, "Placeholder updated.")
-            return redirect("leases:agreement_placeholder_list")
+            return embed_redirect(request, "leases:agreement_placeholder_list")
     else:
         form = AgreementPlaceholderForm(instance=placeholder)
 
@@ -7883,7 +7884,7 @@ def agreement_signature_template_settings(request):
         if form.is_valid():
             form.save()
             messages.success(request, "Agreement signature-page settings updated.")
-            return redirect("leases:agreement_signature_template_settings")
+            return embed_redirect(request, "leases:agreement_signature_template_settings")
     else:
         form = AgreementSignatureTemplateForm(instance=template)
     return render(

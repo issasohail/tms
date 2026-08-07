@@ -12,6 +12,7 @@ from django.http import FileResponse, Http404, HttpResponseForbidden, JsonRespon
 from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
 from django.shortcuts import get_object_or_404, redirect, render
+from core.utils.embed import embed_redirect
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
@@ -1774,7 +1775,7 @@ def pending_approval_approve(request, kind, pk):
     ajax_response = _pending_ajax_response(request, "Pending item approved.")
     if ajax_response:
         return ajax_response
-    return redirect("core:pending_approvals")
+    return embed_redirect(request, "core:pending_approvals")
 
 
 @login_required
@@ -1838,7 +1839,7 @@ def pending_approval_reject(request, kind, pk):
     ajax_response = _pending_ajax_response(request, "Pending item rejected.")
     if ajax_response:
         return ajax_response
-    return redirect("core:pending_approvals")
+    return embed_redirect(request, "core:pending_approvals")
 
 
 def _annotate_dashboard_lease_financials(queryset):
@@ -2819,7 +2820,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                 if form.is_valid():
                     save_backup_settings(form.cleaned_data)
                     messages.success(request, "Backup settings saved.")
-                    return redirect("core:backup_center")
+                    return embed_redirect(request, "core:backup_center")
                 return render(request, self.template_name, self._context(settings_form=form))
 
             if action == "upload_backup":
@@ -2835,13 +2836,14 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                         request,
                         f"{backup_type.title()} backup detected and uploaded: {uploaded.name}",
                     )
-                    return redirect(
+                    return embed_redirect(
+                        request,
                         f"{reverse('core:backup_center')}?"
                         f"selected_backup={quote(uploaded.name, safe='')}#restore-backup"
                     )
                 else:
                     messages.error(request, "Upload failed. Choose a valid backup file.")
-                return redirect("core:backup_center")
+                return embed_redirect(request, "core:backup_center")
 
             if action == "backup_db":
                 created = create_db_backup(config)
@@ -2940,7 +2942,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
         except Exception as exc:
             messages.error(request, f"Backup action failed: {exc}")
 
-        return redirect("core:backup_center")
+        return embed_redirect(request, "core:backup_center")
 
 
 from django.http import FileResponse
@@ -3011,7 +3013,7 @@ def suggestion_create(request):
                 files=request.FILES.getlist("photos"),
             )
             messages.success(request, "Suggestion saved.")
-            return redirect("core:suggestion_detail", pk=ticket.id)
+            return embed_redirect(request, "core:suggestion_detail", pk=ticket.id)
     else:
         form = SuggestionTicketForm()
     return render(request, "core/suggestion_form.html", {"form": form})
@@ -3031,7 +3033,7 @@ def suggestion_detail(request, pk):
             if message or selected_status:
                 add_reply(ticket.id, message, request.user, status=selected_status)
                 messages.success(request, "Reply saved.")
-                return redirect("core:suggestion_detail", pk=ticket.id)
+                return embed_redirect(request, "core:suggestion_detail", pk=ticket.id)
             messages.error(request, "Reply or status change is required.")
     else:
         form = SuggestionReplyForm()

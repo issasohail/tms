@@ -50,7 +50,7 @@ class MonthlyBillingRegressionTests(TestCase):
             water_charges=Decimal("0.00"),
             status="active",
         )
-        self.category = ItemCategory.objects.create(name="Rent")
+        self.category, _ = ItemCategory.objects.get_or_create(name="Rent")
 
     def test_previous_month_start_handles_year_boundary(self):
         self.assertEqual(previous_month_start(date(2026, 7, 1)), date(2026, 6, 1))
@@ -239,3 +239,174 @@ class MonthlyBillingRegressionTests(TestCase):
             mocked_log.call_args_list,
             [call(run, "run billing started"), call(run, "run billing completed")],
         )
+
+
+class MonthlyBillingWhatsAppIdempotencyTests(TestCase):
+    """Phase 1: one billing event sends only one WhatsApp message per invoice."""
+
+    def setUp(self):
+        from invoices.models import MonthlyBillingRun, MonthlyBillingRunItem
+
+        self.tenant = Tenant.objects.create(
+            first_name="Test",
+            last_name="Tenant",
+            cnic="12345-1234567-9",
+            phone="03001112222",
+        )
+        self.property = Property.objects.create(
+            property_name="Test Plaza",
+            owner_name="Owner",
+            owner_cnic="12345-1234567-8",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=self.property, unit_number="U-1")
+        self.lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=10000,
+        )
+        self.invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 7, 1),
+            due_date=date(2026, 7, 5),
+        )
+        self.run = MonthlyBillingRun.objects.create(billing_month=date(2026, 7, 1))
+        self.item = MonthlyBillingRunItem.objects.create(
+            billing_run=self.run,
+            lease=self.lease,
+            tenant=self.tenant,
+            property=self.property,
+            unit=self.unit,
+            invoice=self.invoice,
+            status=MonthlyBillingRunItem.STATUS_READY,
+        )
+
+    def _mock_service(self, mocked_service_cls, ok=True):
+        mocked_service = mocked_service_cls.return_value
+        mocked_service.send_invoice.return_value = {"ok": ok, "log_id": 999}
+        return mocked_service
+
+    def test_one_invoice_sends_one_whatsapp_message(self):
+        from invoices.services import send_monthly_billing_ready
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService") as mocked_cls, \
+             patch("invoices.services._monthly_invoice_pdf_bytes", return_value=b"%PDF-1.4"):
+            self._mock_service(mocked_cls)
+            send_monthly_billing_ready(self.run)
+            self.assertEqual(mocked_cls.return_value.send_invoice.call_count, 1)
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, "sent")
+
+    def test_multiple_invoices_send_one_message_each(self):
+        from invoices.models import MonthlyBillingRunItem
+
+        tenant2 = Tenant.objects.create(
+            first_name="Second",
+            last_name="Tenant",
+            cnic="12345-1234567-7",
+            phone="03003334444",
+        )
+        unit2 = Unit.objects.create(property=self.property, unit_number="U-2")
+        lease2 = Lease.objects.create(
+            tenant=tenant2,
+            unit=unit2,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=12000,
+        )
+        invoice2 = Invoice.objects.create(
+            lease=lease2, issue_date=date(2026, 7, 1), due_date=date(2026, 7, 5)
+        )
+        MonthlyBillingRunItem.objects.create(
+            billing_run=self.run,
+            lease=lease2,
+            tenant=tenant2,
+            property=self.property,
+            unit=unit2,
+            invoice=invoice2,
+            status=MonthlyBillingRunItem.STATUS_READY,
+        )
+
+        from invoices.services import send_monthly_billing_ready
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService") as mocked_cls, \
+             patch("invoices.services._monthly_invoice_pdf_bytes", return_value=b"%PDF-1.4"):
+            self._mock_service(mocked_cls)
+            send_monthly_billing_ready(self.run)
+            self.assertEqual(mocked_cls.return_value.send_invoice.call_count, 2)
+
+    def test_duplicate_call_does_not_send_twice(self):
+        """Simulates a duplicate POST / double-click triggering the same send twice."""
+        from invoices.services import send_monthly_billing_ready
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService") as mocked_cls, \
+             patch("invoices.services._monthly_invoice_pdf_bytes", return_value=b"%PDF-1.4"):
+            self._mock_service(mocked_cls)
+            send_monthly_billing_ready(self.run)
+            send_monthly_billing_ready(self.run)
+            self.assertEqual(mocked_cls.return_value.send_invoice.call_count, 1)
+
+    def test_meta_status_update_does_not_trigger_new_send(self):
+        """A delivery-status webhook updating WhatsAppMessageLog.status must never
+        cause a subsequent billing run to re-send."""
+        from whatsapp.models import WhatsAppMessageLog
+        from invoices.services import send_monthly_billing_ready
+
+        log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_OUTBOUND,
+            invoice=self.invoice,
+            phone_number=self.tenant.phone,
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_PDF,
+            status=WhatsAppMessageLog.STATUS_SENT,
+        )
+        # Simulate a webhook moving it through delivered -> read.
+        log.status = WhatsAppMessageLog.STATUS_DELIVERED
+        log.save()
+        log.status = WhatsAppMessageLog.STATUS_READ
+        log.save()
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService") as mocked_cls, \
+             patch("invoices.services._monthly_invoice_pdf_bytes", return_value=b"%PDF-1.4"):
+            self._mock_service(mocked_cls)
+            send_monthly_billing_ready(self.run)
+            mocked_cls.return_value.send_invoice.assert_not_called()
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, "sent")
+
+    def test_failed_pre_acceptance_send_can_retry(self):
+        from invoices.services import send_monthly_billing_ready
+        from invoices.models import MonthlyBillingRunItem
+
+        self.item.status = MonthlyBillingRunItem.STATUS_FAILED
+        self.item.save()
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService") as mocked_cls, \
+             patch("invoices.services._monthly_invoice_pdf_bytes", return_value=b"%PDF-1.4"):
+            self._mock_service(mocked_cls)
+            send_monthly_billing_ready(self.run, retry_failed=True)
+            self.assertEqual(mocked_cls.return_value.send_invoice.call_count, 1)
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, "sent")
+
+    def test_manual_resend_still_works(self):
+        from invoices.services import send_monthly_billing_item
+        from invoices.models import MonthlyBillingRunItem
+
+        self.item.status = MonthlyBillingRunItem.STATUS_FAILED
+        self.item.save()
+
+        with patch("whatsapp.services.whatsapp.WhatsAppService") as mocked_cls, \
+             patch("invoices.services._monthly_invoice_pdf_bytes", return_value=b"%PDF-1.4"):
+            self._mock_service(mocked_cls)
+            send_monthly_billing_item(self.item)
+            self.assertEqual(mocked_cls.return_value.send_invoice.call_count, 1)
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, "sent")

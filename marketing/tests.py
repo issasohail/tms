@@ -111,7 +111,9 @@ class MarketingRouteTests(TestCase):
     def test_existing_tms_routes_still_resolve(self):
         self.assertEqual(resolve("/login/").url_name, "login")
         self.assertEqual(resolve("/tms/accounts/signup/").url_name, "signup")
-        self.assertEqual(self.client.get("/login/").status_code, 404)
+        response = self.client.get("/login/")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].endswith("/tms/accounts/login/"))
 
     def test_tms_path_uses_application_routes_on_public_host(self):
         response = self.client.get("/tms/")

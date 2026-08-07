@@ -3460,3 +3460,81 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(response.status_code, 200)
         denied = self.client.post(reverse("whatsapp:webhook"), data=body, content_type="application/json")
         self.assertEqual(denied.status_code, 403)
+
+
+class SettingsEmbeddedLayoutTests(TestCase):
+    """Phase 2: settings-tool pages must not render base.html's navbar when
+    embedded, and must preserve ?embed=1 across their own redirects."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.staff = User.objects.create_user(
+            username="staff_embed", password="pass1234", is_staff=True, is_superuser=True
+        )
+        self.client.force_login(self.staff)
+
+    def test_full_page_mode_renders_navbar(self):
+        response = self.client.get(reverse("whatsapp:webhook_log_list"))
+        self.assertContains(response, 'class="tms-nav')
+
+    def test_embedded_mode_does_not_render_navbar(self):
+        response = self.client.get(reverse("whatsapp:webhook_log_list") + "?embed=1")
+        self.assertNotContains(response, 'class="tms-nav')
+
+    def test_send_reply_from_embedded_iframe_stays_embedded(self):
+        """Reproduces the reported bug: sending a WhatsApp reply from within
+        the Settings > WhatsApp Logs iframe must redirect back into embedded
+        mode, not to a full page (which renders its own navbar nested
+        inside the outer Settings page's navbar)."""
+        with patch(
+            "whatsapp.services.whatsapp.WhatsAppService.send_text",
+            return_value={"ok": True},
+        ):
+            response = self.client.post(
+                reverse("whatsapp:webhook_log_list") + "?embed=1",
+                {"phone_number": "03001234567", "message_text": "hello"},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("embed=1", response["Location"])
+
+    def test_send_reply_validation_error_stays_embedded(self):
+        response = self.client.post(
+            reverse("whatsapp:webhook_log_list") + "?embed=1",
+            {"phone_number": "", "message_text": ""},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("embed=1", response["Location"])
+
+    def test_non_embedded_reply_redirect_has_no_embed_flag(self):
+        with patch(
+            "whatsapp.services.whatsapp.WhatsAppService.send_text",
+            return_value={"ok": True},
+        ):
+            response = self.client.post(
+                reverse("whatsapp:webhook_log_list"),
+                {"phone_number": "03001234567", "message_text": "hello"},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("embed=1", response["Location"])
+
+    def test_utility_template_edit_redirect_preserves_embed(self):
+        from whatsapp.models import WhatsAppUtilityTemplate
+
+        template, _ = WhatsAppUtilityTemplate.objects.get_or_create(
+            key="invoice_notice", defaults={"template_name": "invoice_notice", "language_code": "en"}
+        )
+        response = self.client.post(
+            reverse("whatsapp:utility_template_edit", args=[template.pk]) + "?embed=1",
+            {
+                "template_name": "invoice_notice",
+                "language_code": "en",
+                "body_text": "",
+                "body_variables": "[]",
+                "button_label": "",
+                "button_parameter_source": "",
+                "is_active": "on",
+                "notes": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("embed=1", response["Location"])

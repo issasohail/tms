@@ -1704,6 +1704,7 @@ def send_monthly_billing_ready(
     run, *, created_by=None, retry_failed=False, dry_run=False, progress_callback=None
 ):
     from whatsapp.services.whatsapp import WhatsAppService
+    from whatsapp.models import WhatsAppMessageLog
 
     queryset = (
         run.items.select_related("invoice", "lease", "lease__tenant")
@@ -1727,10 +1728,70 @@ def send_monthly_billing_ready(
     item_list = list(queryset.select_related("tenant", "property", "unit"))
     for index, item in enumerate(item_list, start=1):
         _progress(progress_callback, item, index, len(item_list), "Sending WhatsApp")
-        if item.status == MonthlyBillingRunItem.STATUS_SENT and not retry_failed:
-            continue
+
+        idempotency_key = (
+            f"invoice:{item.invoice_id}:billing_run:{run.pk}:"
+            f"recipient:{getattr(getattr(item.lease, 'tenant', None), 'phone', '') }:"
+            f"template:monthly_invoice"
+        )
+
+        # Durable idempotency: lock the run-item row so a concurrent request
+        # (double-click, or a second trigger racing this one) blocks here
+        # until this transaction commits, then re-reads a fresh status
+        # instead of acting on a stale in-memory value.
+        with transaction.atomic():
+            locked_item = MonthlyBillingRunItem.objects.select_for_update().get(
+                pk=item.pk
+            )
+            if locked_item.status == MonthlyBillingRunItem.STATUS_SENT and not retry_failed:
+                logger.info(
+                    "Billing WhatsApp skip: already sent | key=%s reason=item_status_sent",
+                    idempotency_key,
+                )
+                continue
+
+            # Second, durable safety net independent of item.status: check
+            # the actual WhatsApp message log for this invoice. Covers any
+            # code path that might reset item.status without a matching
+            # message log check (manual resend, retries, admin edits).
+            existing_log = (
+                WhatsAppMessageLog.objects.filter(
+                    invoice_id=item.invoice_id,
+                    direction=WhatsAppMessageLog.DIRECTION_OUTBOUND,
+                )
+                .exclude(status=WhatsAppMessageLog.STATUS_FAILED)
+                .order_by("-created_at")
+                .first()
+            )
+            if existing_log and not retry_failed:
+                logger.info(
+                    "Billing WhatsApp skip: existing message log | key=%s "
+                    "log_id=%s log_status=%s reason=already_pending_or_sent",
+                    idempotency_key,
+                    existing_log.pk,
+                    existing_log.status,
+                )
+                if locked_item.status != MonthlyBillingRunItem.STATUS_SENT:
+                    locked_item.status = MonthlyBillingRunItem.STATUS_SENT
+                    locked_item.whatsapp_status = "sent"
+                    locked_item.whatsapp_message_id = str(existing_log.pk)
+                    locked_item.sent_at = locked_item.sent_at or timezone.now()
+                    locked_item.save()
+                continue
+
+            # Claim this item before calling out to Meta, so a second
+            # concurrent caller that reaches this point after we release
+            # the lock sees SENT/QUEUED rather than READY.
+            locked_item.status = MonthlyBillingRunItem.STATUS_SENT
+            locked_item.whatsapp_status = "queued"
+            locked_item.save(update_fields=["status", "whatsapp_status", "updated_at"])
+
         phone = getattr(getattr(item.lease, "tenant", None), "phone", "")
         if not phone:
+            logger.info(
+                "Billing WhatsApp skip: no phone | key=%s reason=phone_missing",
+                idempotency_key,
+            )
             _set_pending(
                 item, MonthlyBillingRunItem.ISSUE_PHONE_MISSING, "Tenant phone missing."
             )
@@ -1738,6 +1799,10 @@ def send_monthly_billing_ready(
         try:
             pdf_bytes = _monthly_invoice_pdf_bytes(item)
             if not pdf_bytes:
+                logger.info(
+                    "Billing WhatsApp skip: PDF failed | key=%s reason=pdf_failed",
+                    idempotency_key,
+                )
                 _set_pending(
                     item,
                     MonthlyBillingRunItem.ISSUE_PDF_FAILED,
@@ -1761,6 +1826,15 @@ def send_monthly_billing_ready(
                 item.sent_at = timezone.now()
                 item.error_text = ""
                 item.save()
+                logger.info(
+                    "Billing WhatsApp sent | key=%s invoice_id=%s tenant_id=%s "
+                    "phone=%s meta_message_id=%s",
+                    idempotency_key,
+                    item.invoice_id,
+                    getattr(getattr(item.lease, "tenant", None), "pk", None),
+                    phone,
+                    log_id,
+                )
                 _item_log(item, "WhatsApp sent")
             else:
                 item.status = MonthlyBillingRunItem.STATUS_FAILED
@@ -1768,6 +1842,11 @@ def send_monthly_billing_ready(
                 item.issue_code = MonthlyBillingRunItem.ISSUE_WHATSAPP_FAILED
                 item.issue_message = "WhatsApp send failed."
                 item.save()
+                logger.info(
+                    "Billing WhatsApp failed | key=%s error=%s",
+                    idempotency_key,
+                    item.error_text,
+                )
                 _item_log(item, "WhatsApp failed")
         except Exception as exc:
             item.status = MonthlyBillingRunItem.STATUS_FAILED
@@ -1775,6 +1854,11 @@ def send_monthly_billing_ready(
             item.issue_message = "WhatsApp send failed."
             item.error_text = str(exc)
             item.save()
+            logger.info(
+                "Billing WhatsApp failed | key=%s error=%s",
+                idempotency_key,
+                exc,
+            )
             _item_log(item, "WhatsApp failed")
     _refresh_run_counts(run)
     _run_log(run, "WhatsApp sending completed")

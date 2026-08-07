@@ -76,6 +76,7 @@ EXEMPT_URL_NAMES = {
     "public_cnic_identity_ocr",
     "temporary_registration_upload",
     "temporary_registration_upload_preview",
+    "temporary_registration_upload_list",
     "public_lease_family_add",
     "public_lease_family_cnic_check",
     "public_police_verification",

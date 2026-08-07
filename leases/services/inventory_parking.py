@@ -232,7 +232,13 @@ def sync_lease_field_from_inventory_item(lease, item, quantity):
 
 def ensure_lease_inventory_snapshot(lease):
     if not lease.inventory_items.exists():
-        copy_inventory_defaults(lease)
+        # Preserve any inventory counts explicitly set on the lease itself
+        # (e.g. entered on the lease-create form) before falling back to
+        # unit/global defaults for anything the lease didn't specify.
+        # overwrite=False so this fallback never clobbers rows just written
+        # from the lease's own fields.
+        sync_lease_inventory_from_fields(lease)
+        copy_inventory_defaults(lease, overwrite=False)
 
 
 def inventory_list_html(lease):

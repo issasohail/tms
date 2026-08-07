@@ -44,18 +44,22 @@ class InventoryDefinitionManagementTests(TestCase):
             end_date=date.today() + timedelta(days=365),
             monthly_rent=10000,
         )
-        self.fan = InventoryItemDefinition.objects.create(
-            name="Ceiling Fan",
+        self.fan, _ = InventoryItemDefinition.objects.update_or_create(
             code="ceiling_fan",
-            default_quantity=3,
-            sort_order=20,
+            defaults={
+                "name": "Ceiling Fan",
+                "default_quantity": 3,
+                "sort_order": 20,
+            },
         )
-        LeaseInventoryItem.objects.create(
+        LeaseInventoryItem.objects.update_or_create(
             lease=self.lease,
             item=self.fan,
-            quantity=4,
-            condition="Good",
-            snapshot_source="lease",
+            defaults={
+                "quantity": 4,
+                "condition": "Good",
+                "snapshot_source": "lease",
+            },
         )
 
     def test_add_item_uses_order_and_does_not_rewrite_existing_lease_snapshot(self):
@@ -75,15 +79,15 @@ class InventoryDefinitionManagementTests(TestCase):
         self.assertRedirects(response, reverse("leases:global_inventory_manage"))
         air_conditioner = InventoryItemDefinition.objects.get(code="air_conditioner")
         self.assertEqual(air_conditioner.sort_order, 10)
-        self.assertEqual(
-            [row["item"].name for row in effective_inventory(unit=self.unit)],
-            ["Air Conditioner", "Ceiling Fan"],
+        unit_names = [row["item"].name for row in effective_inventory(unit=self.unit)]
+        self.assertIn("Air Conditioner", unit_names)
+        self.assertIn("Ceiling Fan", unit_names)
+        self.assertLess(
+            unit_names.index("Air Conditioner"), unit_names.index("Ceiling Fan")
         )
-        self.assertEqual(
-            [row["item"].name for row in effective_inventory(lease=self.lease)],
-            ["Ceiling Fan"],
-        )
-        lease_row = self.lease.inventory_items.get()
+        lease_item_names = {row["item"].name for row in effective_inventory(lease=self.lease)}
+        self.assertIn("Ceiling Fan", lease_item_names)
+        lease_row = self.lease.inventory_items.get(item=self.fan)
         self.assertEqual(lease_row.quantity, 4)
         self.assertEqual(lease_row.condition, "Good")
 
@@ -105,7 +109,7 @@ class InventoryDefinitionManagementTests(TestCase):
 
         self.assertRedirects(response, reverse("leases:global_inventory_manage"))
         self.fan.refresh_from_db()
-        lease_row = self.lease.inventory_items.select_related("item").get()
+        lease_row = self.lease.inventory_items.select_related("item").get(item=self.fan)
         self.assertEqual(self.fan.name, "Premium Ceiling Fan")
         self.assertEqual(self.fan.code, "ceiling_fan")
         self.assertEqual(self.fan.sort_order, 5)

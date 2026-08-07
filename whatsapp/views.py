@@ -19,6 +19,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.db import transaction
 from django.db.models import Max, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
+from core.utils.embed import embed_redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -577,7 +578,9 @@ def replay_ai_message(request, message_log_id):
 
     process_inbound_whatsapp_message(message_log)
     messages.success(request, "WhatsApp AI replay completed.")
-    return redirect(f"{reverse('whatsapp:webhook_log_list')}?phone={message_log.phone_number}")
+    return embed_redirect(
+        request, f"{reverse('whatsapp:webhook_log_list')}?phone={message_log.phone_number}"
+    )
 
 
 @login_required
@@ -603,7 +606,7 @@ def utility_template_edit(request, pk):
         if form.is_valid():
             form.save()
             messages.success(request, "WhatsApp Utility template settings updated.")
-            return redirect("whatsapp:utility_template_list")
+            return embed_redirect(request, "whatsapp:utility_template_list")
     else:
         form = WhatsAppUtilityTemplateForm(instance=template)
 
@@ -626,14 +629,14 @@ def webhook_log_list(request):
         message_text = (request.POST.get("message_text") or "").strip()
         if not phone_number or not message_text:
             messages.error(request, "Phone number and message are required.")
-            return redirect("whatsapp:webhook_log_list")
+            return embed_redirect(request, "whatsapp:webhook_log_list")
 
         result = WhatsAppService(created_by=request.user).send_text(phone_number, message_text)
         if result.get("ok"):
             messages.success(request, "WhatsApp message sent.")
         else:
             messages.error(request, result.get("error") or "WhatsApp message failed.")
-        return redirect(f"{request.path}?phone={phone_number}")
+        return embed_redirect(request, f"{request.path}?phone={phone_number}")
 
     selected_phone = (request.GET.get("phone") or "").strip()
     search_query = (request.GET.get("q") or "").strip()

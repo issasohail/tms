@@ -299,7 +299,7 @@ class EndLeasePostingTests(TestCase):
         )
         InvoiceItem.objects.create(
             invoice=invoice,
-            category=ItemCategory.objects.create(name="Rent"),
+            category=ItemCategory.objects.get_or_create(name="Rent")[0],
             description=f"Rent {month_first:%b %Y}",
             amount=Decimal(days_in_month * 1000),
         )

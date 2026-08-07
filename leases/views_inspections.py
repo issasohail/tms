@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from core.utils.embed import embed_redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -135,7 +136,7 @@ def inspection_settings_create(request, kind):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, f"{config['title']} saved.")
-        return redirect("leases:inspection_settings", kind=kind)
+        return embed_redirect(request, "leases:inspection_settings", kind=kind)
     return render(
         request,
         "leases/inspection_settings_form.html",
@@ -152,7 +153,7 @@ def inspection_settings_edit(request, kind, pk):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, f"{config['title']} updated.")
-        return redirect("leases:inspection_settings", kind=kind)
+        return embed_redirect(request, "leases:inspection_settings", kind=kind)
     return render(
         request,
         "leases/inspection_settings_form.html",

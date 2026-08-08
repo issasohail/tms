@@ -1,12 +1,9 @@
-from django.test import TestCase
-
 # Create your tests here.
-
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from django.test import RequestFactory, SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.utils import timezone
 
 from leases.services.lease_expiry import (
@@ -20,8 +17,9 @@ class CsrfFailurePageTests(SimpleTestCase):
         self.factory = RequestFactory()
 
     def csrf_response(self, url_name):
-        from tenants.csrf import csrf_failure
         from unittest.mock import patch
+
+        from tenants.csrf import csrf_failure
 
         request = self.factory.post("/expired-form/")
         request.resolver_match = SimpleNamespace(url_name=url_name)
@@ -99,7 +97,7 @@ class TenantListExpiryMarkupTests(SimpleTestCase):
             'End: <span class="{% if lease.expiry_countdown_label %}'
         )
         desktop_countdown = self.template_source.index(
-            'lease-expiry-countdown lease-expiry-countdown-desktop', desktop_end
+            "lease-expiry-countdown lease-expiry-countdown-desktop", desktop_end
         )
         desktop_block_end = self.template_source.index("</div>", desktop_countdown)
         self.assertLess(desktop_end, desktop_countdown)
@@ -108,9 +106,11 @@ class TenantListExpiryMarkupTests(SimpleTestCase):
     def test_mobile_countdown_is_between_start_and_end(self):
         mobile_start = self.template_source.index('class="tcv2-date-start"')
         mobile_countdown = self.template_source.index(
-            'lease-expiry-countdown lease-expiry-countdown-mobile', mobile_start
+            "lease-expiry-countdown lease-expiry-countdown-mobile", mobile_start
         )
-        mobile_end = self.template_source.index('class="tcv2-date-end"', mobile_countdown)
+        mobile_end = self.template_source.index(
+            'class="tcv2-date-end"', mobile_countdown
+        )
         self.assertLess(mobile_start, mobile_countdown)
         self.assertLess(mobile_countdown, mobile_end)
 
@@ -124,15 +124,22 @@ class TenantListExpiryMarkupTests(SimpleTestCase):
         ]
         self.assertIn("animation:none !important", reduced_motion_block)
 
+
 class PendingRegistrationWorkflowTests(SimpleTestCase):
     def test_cnic_normalization_ignores_all_non_digits(self):
         from tenants.models import normalize_cnic
+
         self.assertEqual(normalize_cnic("61101-1234567-1"), "6110112345671")
         self.assertEqual(normalize_cnic("61101 1234567 1"), "6110112345671")
 
     def test_role_history_url_exists_in_urlconf(self):
         from django.urls import reverse
-        self.assertTrue(reverse("tenants:tenant_role_history", args=[25]).endswith("/tenants/25/role-history/"))
+
+        self.assertTrue(
+            reverse("tenants:tenant_role_history", args=[25]).endswith(
+                "/tenants/25/role-history/"
+            )
+        )
 
 
 class RegistrationOnboardingTests(TestCase):
@@ -212,10 +219,13 @@ class RegistrationOnboardingTests(TestCase):
             property_type="house",
             total_units=1,
         )
-        return prop, Unit.objects.create(property=prop, unit_number=f"R-{suffix or '1'}")
+        return prop, Unit.objects.create(
+            property=prop, unit_number=f"R-{suffix or '1'}"
+        )
 
     def test_required_party_phones_are_validated_before_any_submission_write(self):
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import tenant_registration_token
 
@@ -224,14 +234,20 @@ class RegistrationOnboardingTests(TestCase):
             data = self.public_post_data()
             data.pop(missing)
             response = self.client.post(
-                reverse("tenants:tenant_public_registration", args=[tenant_registration_token(shell)]),
+                reverse(
+                    "tenants:tenant_public_registration",
+                    args=[tenant_registration_token(shell)],
+                ),
                 data,
             )
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(TenantRegistrationSubmission.objects.filter(tenant=shell).count(), 0)
+            self.assertEqual(
+                TenantRegistrationSubmission.objects.filter(tenant=shell).count(), 0
+            )
 
     def test_public_registration_rejects_tenant_and_family_as_required_parties(self):
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import tenant_registration_token
 
@@ -259,9 +275,7 @@ class RegistrationOnboardingTests(TestCase):
             "Proposer and seconder cannot be the tenant or a family member",
         )
         self.assertEqual(
-            TenantRegistrationSubmission.objects.filter(
-                tenant=tenant_shell
-            ).count(),
+            TenantRegistrationSubmission.objects.filter(tenant=tenant_shell).count(),
             0,
         )
 
@@ -289,9 +303,7 @@ class RegistrationOnboardingTests(TestCase):
             "Proposer cannot be a family member. Enter an unrelated third party.",
         )
         self.assertEqual(
-            TenantRegistrationSubmission.objects.filter(
-                tenant=family_shell
-            ).count(),
+            TenantRegistrationSubmission.objects.filter(tenant=family_shell).count(),
             0,
         )
 
@@ -309,6 +321,7 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_invalid_public_registration_exposes_dynamic_values_for_restoration(self):
         from django.urls import reverse
+
         from tenants.views import tenant_registration_token
 
         shell = self.make_shell()
@@ -345,6 +358,7 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_public_registration_uses_one_responsive_draft_recovery_handler(self):
         from django.urls import reverse
+
         from tenants.views import tenant_registration_token
 
         shell = self.make_shell()
@@ -367,17 +381,15 @@ class RegistrationOnboardingTests(TestCase):
 
         from django.urls import reverse
         from PIL import Image
+
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import tenant_registration_token
 
         image_buffer = BytesIO()
-        Image.new("RGB", (180, 240), "white").save(
-            image_buffer, format="JPEG"
-        )
-        portrait_data = (
-            "data:image/jpeg;base64,"
-            + base64.b64encode(image_buffer.getvalue()).decode("ascii")
-        )
+        Image.new("RGB", (180, 240), "white").save(image_buffer, format="JPEG")
+        portrait_data = "data:image/jpeg;base64," + base64.b64encode(
+            image_buffer.getvalue()
+        ).decode("ascii")
         shell = self.make_shell()
         response = self.client.post(
             reverse(
@@ -403,6 +415,7 @@ class RegistrationOnboardingTests(TestCase):
     def test_unpermitted_edit_returns_403(self):
         from django.contrib.auth import get_user_model
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
 
         submission = TenantRegistrationSubmission.objects.create(
@@ -419,32 +432,49 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_editing_person_cnic_refreshes_match_and_proposed_updates(self):
         from django.urls import reverse
-        from tenants.models import PendingRegistrationPerson, Tenant, TenantRegistrationSubmission
+
+        from tenants.models import (
+            PendingRegistrationPerson,
+            Tenant,
+            TenantRegistrationSubmission,
+        )
 
         target = Tenant.objects.create(
-            first_name="Existing", last_name="Match", phone="03009999999", cnic="6110112345671"
+            first_name="Existing",
+            last_name="Match",
+            phone="03009999999",
+            cnic="6110112345671",
         )
         submission = TenantRegistrationSubmission.objects.create(
             tenant=self.make_shell(), submitted_data=self.public_post_data()
         )
         PendingRegistrationPerson.objects.create(
-            submission=submission, role=PendingRegistrationPerson.ROLE_PROPOSER,
-            first_name="Proposer", phone="03001111111",
+            submission=submission,
+            role=PendingRegistrationPerson.ROLE_PROPOSER,
+            first_name="Proposer",
+            phone="03001111111",
         )
         PendingRegistrationPerson.objects.create(
-            submission=submission, role=PendingRegistrationPerson.ROLE_SECONDER,
-            first_name="Seconder", phone="03002222222",
+            submission=submission,
+            role=PendingRegistrationPerson.ROLE_SECONDER,
+            first_name="Seconder",
+            phone="03002222222",
         )
         witness = PendingRegistrationPerson.objects.create(
-            submission=submission, role=PendingRegistrationPerson.ROLE_WITNESS_1,
-            first_name="Different", phone="03008888888", cnic="4220112345671",
+            submission=submission,
+            role=PendingRegistrationPerson.ROLE_WITNESS_1,
+            first_name="Different",
+            phone="03008888888",
+            cnic="4220112345671",
             proposed_updates={"stale": {"existing": "x", "submitted": "y"}},
         )
-        data = self.public_post_data(**{
-            "witness1-first_name": "Different",
-            "witness1-cnic": target.cnic,
-            "witness1-phone": "03008888888",
-        })
+        data = self.public_post_data(
+            **{
+                "witness1-first_name": "Different",
+                "witness1-cnic": target.cnic,
+                "witness1-phone": "03008888888",
+            }
+        )
         self.client.force_login(self.user)
         response = self.client.post(
             reverse("tenants:registration_submission_edit", args=[submission.pk]), data
@@ -457,8 +487,16 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_edit_submission_can_add_family_relationship_and_vehicle(self):
         from django.urls import reverse
-        from leases.models import LeaseRelationshipType, LeaseVehicleType, PendingLeaseVehicleSubmission
-        from tenants.models import PendingRegistrationPerson, TenantRegistrationSubmission
+
+        from leases.models import (
+            LeaseRelationshipType,
+            LeaseVehicleType,
+            PendingLeaseVehicleSubmission,
+        )
+        from tenants.models import (
+            PendingRegistrationPerson,
+            TenantRegistrationSubmission,
+        )
 
         submission = TenantRegistrationSubmission.objects.create(
             tenant=self.make_shell(),
@@ -466,17 +504,19 @@ class RegistrationOnboardingTests(TestCase):
         )
         self.make_required_parties(submission)
         vehicle_type = LeaseVehicleType.objects.create(name="Car", code="edit-car")
-        data = self.public_post_data(**{
-            "number_of_family_member": "1",
-            "new-family-0-first_name": "Family",
-            "new-family-0-last_name": "Member",
-            "new-family-0-phone": "03003333333",
-            "new-family-0-relationship_type": "__new__",
-            "new-family-0-relationship_new": "Cousin",
-            "new-vehicle-0-vehicle_type": str(vehicle_type.pk),
-            "new-vehicle-0-registration_number": "ABC-123",
-            "new-vehicle-0-make": "Honda",
-        })
+        data = self.public_post_data(
+            **{
+                "number_of_family_member": "1",
+                "new-family-0-first_name": "Family",
+                "new-family-0-last_name": "Member",
+                "new-family-0-phone": "03003333333",
+                "new-family-0-relationship_type": "__new__",
+                "new-family-0-relationship_new": "Cousin",
+                "new-vehicle-0-vehicle_type": str(vehicle_type.pk),
+                "new-vehicle-0-registration_number": "ABC-123",
+                "new-vehicle-0-make": "Honda",
+            }
+        )
 
         self.client.force_login(self.user)
         response = self.client.post(
@@ -484,7 +524,9 @@ class RegistrationOnboardingTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        family = submission.pending_people.get(role=PendingRegistrationPerson.ROLE_FAMILY)
+        family = submission.pending_people.get(
+            role=PendingRegistrationPerson.ROLE_FAMILY
+        )
         relationship = LeaseRelationshipType.objects.get(name="Cousin")
         self.assertEqual(family.relationship_type_id, relationship.pk)
         self.assertEqual(family.relationship, relationship.code)
@@ -496,8 +538,12 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_edit_submission_shows_existing_family_and_vehicle_values(self):
         from django.urls import reverse
+
         from leases.models import LeaseVehicleType, PendingLeaseVehicleSubmission
-        from tenants.models import PendingRegistrationPerson, TenantRegistrationSubmission
+        from tenants.models import (
+            PendingRegistrationPerson,
+            TenantRegistrationSubmission,
+        )
 
         submission = TenantRegistrationSubmission.objects.create(
             tenant=self.make_shell(), submitted_data=self.public_post_data()
@@ -528,18 +574,24 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_shell_cnic_collision_requires_and_performs_explicit_merge(self):
         from django.urls import reverse
+
         from tenants.models import Tenant, TenantRegistrationSubmission
         from tenants.views import _registration_submission_comparison
 
         real = Tenant.objects.create(
-            first_name="Real", last_name="Tenant", phone="03007777777", cnic="3520212345671"
+            first_name="Real",
+            last_name="Tenant",
+            phone="03007777777",
+            cnic="3520212345671",
         )
         shell = self.make_shell()
         submission = TenantRegistrationSubmission.objects.create(
             tenant=shell,
             submitted_data={
-                "first_name": "Real", "last_name": "Tenant",
-                "phone": "03006666666", "cnic": real.cnic,
+                "first_name": "Real",
+                "last_name": "Tenant",
+                "phone": "03006666666",
+                "cnic": real.cnic,
             },
         )
         self.make_required_parties(submission)
@@ -584,10 +636,14 @@ class RegistrationOnboardingTests(TestCase):
             fetch_redirect_response=False,
         )
         from leases.models import Lease
-        self.assertEqual(Lease.objects.filter(registration_submission=submission).count(), 1)
+
+        self.assertEqual(
+            Lease.objects.filter(registration_submission=submission).count(), 1
+        )
 
     def test_tenant_only_approval_processes_required_people_without_lease(self):
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import _registration_submission_comparison
 
@@ -706,8 +762,11 @@ class RegistrationOnboardingTests(TestCase):
             reviews[seconder.role]["missing"],
         )
 
-    def test_existing_tenant_update_assigns_family_to_current_lease_without_duplicates(self):
+    def test_existing_tenant_update_assigns_family_to_current_lease_without_duplicates(
+        self,
+    ):
         from django.urls import reverse
+
         from leases.models import Lease, LeaseFamilyMember
         from tenants.models import (
             PendingRegistrationPerson,
@@ -788,6 +847,7 @@ class RegistrationOnboardingTests(TestCase):
     def test_approval_keeps_missing_photo_path_and_shows_warning(self):
         from django.contrib.messages import get_messages
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import _registration_submission_comparison
 
@@ -819,7 +879,9 @@ class RegistrationOnboardingTests(TestCase):
         submission.tenant.refresh_from_db()
         self.assertEqual(submission.status, submission.STATUS_APPROVED)
         self.assertEqual(submission.tenant.photo.name, missing_path)
-        response_messages = [str(message) for message in get_messages(response.wsgi_request)]
+        response_messages = [
+            str(message) for message in get_messages(response.wsgi_request)
+        ]
         self.assertTrue(
             any(
                 "Photo file is missing" in message and missing_path in message
@@ -830,7 +892,11 @@ class RegistrationOnboardingTests(TestCase):
     def test_approval_keeps_missing_registration_person_photo_path(self):
         from django.contrib.messages import get_messages
         from django.urls import reverse
-        from tenants.models import PendingRegistrationPerson, TenantRegistrationSubmission
+
+        from tenants.models import (
+            PendingRegistrationPerson,
+            TenantRegistrationSubmission,
+        )
         from tenants.views import _registration_submission_comparison
 
         missing_path = (
@@ -868,7 +934,9 @@ class RegistrationOnboardingTests(TestCase):
         proposer.processed_tenant.refresh_from_db()
         self.assertEqual(submission.status, submission.STATUS_APPROVED)
         self.assertEqual(proposer.processed_tenant.photo.name, missing_path)
-        response_messages = [str(message) for message in get_messages(response.wsgi_request)]
+        response_messages = [
+            str(message) for message in get_messages(response.wsgi_request)
+        ]
         self.assertTrue(
             any(
                 "Proposer" in message
@@ -880,6 +948,7 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_active_unit_lease_opens_date_correction_modal_and_allows_retry(self):
         from django.urls import reverse
+
         from leases.models import Lease
         from tenants.models import Tenant, TenantRegistrationSubmission
 
@@ -911,12 +980,20 @@ class RegistrationOnboardingTests(TestCase):
             status="active",
         )
         url = reverse("tenants:registration_submission_review", args=[submission.pk])
-        detail_url = reverse("tenants:registration_submission_detail", args=[submission.pk])
+        detail_url = reverse(
+            "tenants:registration_submission_detail", args=[submission.pk]
+        )
+        from tenants.views import _registration_submission_comparison
+
         data = {
             "action": "approve_registration",
             "property": prop.pk,
             "unit": unit.pk,
         }
+
+        for row in _registration_submission_comparison(submission):
+            if row["changed"]:
+                data[f"decision_{row['field']}"] = "accept_submitted"
 
         self.client.force_login(self.user)
         blocked = self.client.post(url, data, follow=True)
@@ -929,13 +1006,17 @@ class RegistrationOnboardingTests(TestCase):
         self.assertContains(blocked, f"active Lease #{active_lease.pk}")
         self.assertContains(blocked, suggested_start.isoformat())
         self.assertContains(blocked, f'value="{prop.pk}" selected')
-        self.assertContains(blocked, f'value="{unit.pk}" data-property="{prop.pk}" selected')
+        self.assertContains(
+            blocked, f'value="{unit.pk}" data-property="{prop.pk}" selected'
+        )
 
         data["lease_start_date"] = suggested_start.isoformat()
         retried = self.client.post(url, data)
 
         submission.refresh_from_db()
+
         self.assertIsNotNone(submission.created_lease_id)
+
         self.assertEqual(submission.created_lease.start_date, suggested_start)
         self.assertEqual(submission.created_lease.status, "active")
         self.assertRedirects(
@@ -946,37 +1027,70 @@ class RegistrationOnboardingTests(TestCase):
 
     def test_attach_workflow_links_each_role_family_vehicle_once(self):
         from leases.models import (
-            Lease, LeaseFamilyMember, LeaseVehicle, LeaseVehicleType,
+            Lease,
+            LeaseFamilyMember,
+            LeaseVehicle,
+            LeaseVehicleType,
             PendingLeaseVehicleSubmission,
         )
         from properties.models import Property, Unit
-        from tenants.models import PendingRegistrationPerson, Tenant, TenantRegistrationSubmission
+        from tenants.models import (
+            PendingRegistrationPerson,
+            Tenant,
+            TenantRegistrationSubmission,
+        )
         from tenants.services.registration_workflow import attach_registration_to_lease
 
-        primary = Tenant.objects.create(first_name="Primary", last_name="Tenant", phone="03000000001", cnic="1111111111111")
-        submission = TenantRegistrationSubmission.objects.create(tenant=primary, submitted_data={})
+        primary = Tenant.objects.create(
+            first_name="Primary",
+            last_name="Tenant",
+            phone="03000000001",
+            cnic="1111111111111",
+        )
+        submission = TenantRegistrationSubmission.objects.create(
+            tenant=primary, submitted_data={}
+        )
         roles = {}
-        for index, role in enumerate((
-            PendingRegistrationPerson.ROLE_PROPOSER,
-            PendingRegistrationPerson.ROLE_SECONDER,
-            PendingRegistrationPerson.ROLE_WITNESS_1,
-            PendingRegistrationPerson.ROLE_WITNESS_2,
-            PendingRegistrationPerson.ROLE_FAMILY,
-        ), start=2):
-            tenant = Tenant.objects.create(first_name=role, last_name="Person", phone=f"0300000000{index}", cnic=str(index) * 13)
+        for index, role in enumerate(
+            (
+                PendingRegistrationPerson.ROLE_PROPOSER,
+                PendingRegistrationPerson.ROLE_SECONDER,
+                PendingRegistrationPerson.ROLE_WITNESS_1,
+                PendingRegistrationPerson.ROLE_WITNESS_2,
+                PendingRegistrationPerson.ROLE_FAMILY,
+            ),
+            start=2,
+        ):
+            tenant = Tenant.objects.create(
+                first_name=role,
+                last_name="Person",
+                phone=f"0300000000{index}",
+                cnic=str(index) * 13,
+            )
             roles[role] = tenant
             PendingRegistrationPerson.objects.create(
-                submission=submission, role=role, first_name=tenant.first_name,
-                phone=tenant.phone, cnic=tenant.cnic, matched_tenant=tenant,
+                submission=submission,
+                role=role,
+                first_name=tenant.first_name,
+                phone=tenant.phone,
+                cnic=tenant.cnic,
+                matched_tenant=tenant,
             )
         prop = Property.objects.create(
-            property_name="Test Property", owner_name="Owner", owner_cnic="3333333333333",
-            type="house", property_type="house", total_units=1,
+            property_name="Test Property",
+            owner_name="Owner",
+            owner_cnic="3333333333333",
+            type="house",
+            property_type="house",
+            total_units=1,
         )
         unit = Unit.objects.create(property=prop, unit_number="1")
         lease = Lease.objects.create(
-            tenant=primary, unit=unit, start_date=timezone.localdate(),
-            end_date=timezone.localdate() + timedelta(days=330), monthly_rent=25000,
+            tenant=primary,
+            unit=unit,
+            start_date=timezone.localdate(),
+            end_date=timezone.localdate() + timedelta(days=330),
+            monthly_rent=25000,
         )
         active_history = lease.renewals.create(
             renewal_number=1,
@@ -999,16 +1113,18 @@ class RegistrationOnboardingTests(TestCase):
             code="registration-test-car", defaults={"name": "Registration Test Car"}
         )
         pending_vehicle = PendingLeaseVehicleSubmission.objects.create(
-            pending_tenant_submission=submission, tenant=primary,
-            vehicle_type=vehicle_type, registration_number="ABC-123",
+            pending_tenant_submission=submission,
+            tenant=primary,
+            vehicle_type=vehicle_type,
+            registration_number="ABC-123",
         )
         missing_vehicle_path = "leases/vehicles/pending/photos/missing-abc-123.jpg"
-        missing_book_path = "leases/vehicles/pending/registration_book/missing-abc-123.jpg"
+        missing_book_path = (
+            "leases/vehicles/pending/registration_book/missing-abc-123.jpg"
+        )
         pending_vehicle.vehicle_photo.name = missing_vehicle_path
         pending_vehicle.registration_book_photo.name = missing_book_path
-        pending_vehicle.save(
-            update_fields=["vehicle_photo", "registration_book_photo"]
-        )
+        pending_vehicle.save(update_fields=["vehicle_photo", "registration_book_photo"])
         missing_files = []
         attach_registration_to_lease(
             submission, lease, self.user, missing_files=missing_files
@@ -1017,8 +1133,12 @@ class RegistrationOnboardingTests(TestCase):
         lease.refresh_from_db()
         self.assertEqual(lease.proposer, roles[PendingRegistrationPerson.ROLE_PROPOSER])
         self.assertEqual(lease.seconder, roles[PendingRegistrationPerson.ROLE_SECONDER])
-        self.assertEqual(lease.witness1_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_1])
-        self.assertEqual(lease.witness2_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_2])
+        self.assertEqual(
+            lease.witness1_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_1]
+        )
+        self.assertEqual(
+            lease.witness2_tenant, roles[PendingRegistrationPerson.ROLE_WITNESS_2]
+        )
         active_history.refresh_from_db()
         self.assertEqual(
             active_history.witness1_tenant,
@@ -1033,9 +1153,14 @@ class RegistrationOnboardingTests(TestCase):
         vehicle = LeaseVehicle.objects.get(lease=lease)
         self.assertEqual(vehicle.vehicle_photo.name, missing_vehicle_path)
         self.assertEqual(vehicle.registration_book_photo.name, missing_book_path)
-        self.assertTrue(any("Vehicle Photo file is missing" in item for item in missing_files))
         self.assertTrue(
-            any("Registration Book Photo file is missing" in item for item in missing_files)
+            any("Vehicle Photo file is missing" in item for item in missing_files)
+        )
+        self.assertTrue(
+            any(
+                "Registration Book Photo file is missing" in item
+                for item in missing_files
+            )
         )
         submission.created_lease = lease
         submission.status = submission.STATUS_APPROVED
@@ -1094,7 +1219,9 @@ class SecureRegistrationDraftUploadTests(TestCase):
         self.other_token = tenant_registration_token(self.other_tenant)
         self.draft_id = uuid.uuid4()
 
-    def image_upload(self, name="document.jpg", *, content_type="image/jpeg", size=(320, 220)):
+    def image_upload(
+        self, name="document.jpg", *, content_type="image/jpeg", size=(320, 220)
+    ):
         from io import BytesIO
 
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1153,12 +1280,19 @@ class SecureRegistrationDraftUploadTests(TestCase):
         preview = self.client.get(payload["preview_url"])
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview["Cache-Control"], "private, no-store, max-age=0")
-        preview.close()
 
-        wrong_draft_url = payload["preview_url"].split("?", 1)[0] + f"?draft={uuid.uuid4()}"
+        # Do not close the streaming FileResponse before the remaining database-backed
+        # requests in this TestCase. Closing it emits request_finished and can mark
+        # MySQL's outer TestCase transaction for rollback.
+        wrong_draft_url = (
+            payload["preview_url"].split("?", 1)[0] + f"?draft={uuid.uuid4()}"
+        )
         self.assertEqual(self.client.get(wrong_draft_url).status_code, 404)
+
         wrong_link_url = payload["preview_url"].replace(self.token, self.other_token)
         self.assertEqual(self.client.get(wrong_link_url).status_code, 404)
+
+        preview.close()
 
     def test_draft_upload_list_recovers_latest_documents_for_refresh(self):
         from django.urls import reverse
@@ -1193,7 +1327,11 @@ class SecureRegistrationDraftUploadTests(TestCase):
         self.assertEqual(
             self.client.post(
                 invalid,
-                {"draft_id": self.draft_id, "field_name": "photo", "file": self.image_upload()},
+                {
+                    "draft_id": self.draft_id,
+                    "field_name": "photo",
+                    "file": self.image_upload(),
+                },
             ).status_code,
             404,
         )
@@ -1207,6 +1345,7 @@ class SecureRegistrationDraftUploadTests(TestCase):
         import json
 
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
 
         upload_id = self.upload().json()["upload_id"]
@@ -1219,7 +1358,11 @@ class SecureRegistrationDraftUploadTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "missing, expired, or unauthorized")
-        self.assertFalse(TenantRegistrationSubmission.objects.filter(tenant=self.other_tenant).exists())
+        self.assertFalse(
+            TenantRegistrationSubmission.objects.filter(
+                tenant=self.other_tenant
+            ).exists()
+        )
 
     def test_invalid_extension_content_type_content_and_size_are_rejected(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1228,11 +1371,15 @@ class SecureRegistrationDraftUploadTests(TestCase):
         self.assertEqual(invalid_extension.status_code, 400)
 
         invalid_content = self.upload(
-            upload=SimpleUploadedFile("document.jpg", b"not-an-image", content_type="image/jpeg")
+            upload=SimpleUploadedFile(
+                "document.jpg", b"not-an-image", content_type="image/jpeg"
+            )
         )
         self.assertEqual(invalid_content.status_code, 400)
 
-        wrong_claim = self.upload(upload=self.image_upload("document.jpg", content_type="image/png"))
+        wrong_claim = self.upload(
+            upload=self.image_upload("document.jpg", content_type="image/png")
+        )
         self.assertEqual(wrong_claim.status_code, 400)
 
         oversized = self.upload(
@@ -1260,6 +1407,7 @@ class SecureRegistrationDraftUploadTests(TestCase):
         import json
 
         from django.urls import reverse
+
         from tenants.models import TemporaryRegistrationUpload
 
         upload_id = self.upload().json()["upload_id"]
@@ -1272,13 +1420,19 @@ class SecureRegistrationDraftUploadTests(TestCase):
             ),
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(TemporaryRegistrationUpload.objects.filter(public_id=upload_id).exists())
+        self.assertTrue(
+            TemporaryRegistrationUpload.objects.filter(public_id=upload_id).exists()
+        )
 
     def test_successful_submission_attaches_and_removes_temporary_document(self):
         import json
 
         from django.urls import reverse
-        from tenants.models import TemporaryRegistrationUpload, TenantRegistrationSubmission
+
+        from tenants.models import (
+            TemporaryRegistrationUpload,
+            TenantRegistrationSubmission,
+        )
 
         upload_id = self.upload().json()["upload_id"]
         with self.captureOnCommitCallbacks(execute=True):
@@ -1292,11 +1446,15 @@ class SecureRegistrationDraftUploadTests(TestCase):
         self.assertEqual(response.status_code, 200)
         submission = TenantRegistrationSubmission.objects.get(tenant=self.tenant)
         self.assertTrue(submission.photo.name)
-        self.assertFalse(TemporaryRegistrationUpload.objects.filter(public_id=upload_id).exists())
+        self.assertFalse(
+            TemporaryRegistrationUpload.objects.filter(public_id=upload_id).exists()
+        )
 
     def test_cleanup_removes_only_expired_files(self):
         from tenants.models import TemporaryRegistrationUpload
-        from tenants.services.registration_drafts import cleanup_expired_temporary_uploads
+        from tenants.services.registration_drafts import (
+            cleanup_expired_temporary_uploads,
+        )
 
         expired_id = self.upload("photo").json()["upload_id"]
         active_id = self.upload("cnic_front").json()["upload_id"]
@@ -1304,28 +1462,41 @@ class SecureRegistrationDraftUploadTests(TestCase):
             expires_at=timezone.now() - timedelta(seconds=1)
         )
         self.assertEqual(cleanup_expired_temporary_uploads(), 1)
-        self.assertFalse(TemporaryRegistrationUpload.objects.filter(public_id=expired_id).exists())
-        self.assertTrue(TemporaryRegistrationUpload.objects.filter(public_id=active_id).exists())
+        self.assertFalse(
+            TemporaryRegistrationUpload.objects.filter(public_id=expired_id).exists()
+        )
+        self.assertTrue(
+            TemporaryRegistrationUpload.objects.filter(public_id=active_id).exists()
+        )
 
     def test_csrf_is_enforced_for_upload_and_final_submission(self):
         from django.test import Client
         from django.urls import reverse
+
         from tenants.models import TenantRegistrationSubmission
 
         csrf_client = Client(enforce_csrf_checks=True)
         upload_response = csrf_client.post(
             self.upload_url(),
-            {"draft_id": self.draft_id, "field_name": "photo", "file": self.image_upload()},
+            {
+                "draft_id": self.draft_id,
+                "field_name": "photo",
+                "file": self.image_upload(),
+            },
         )
         self.assertEqual(upload_response.status_code, 403)
-        self.assertContains(upload_response, "Registration was not submitted", status_code=403)
+        self.assertContains(
+            upload_response, "Registration was not submitted", status_code=403
+        )
 
         final_response = csrf_client.post(
             reverse("tenants:tenant_public_registration", args=[self.token]),
             self.final_data(),
         )
         self.assertEqual(final_response.status_code, 403)
-        self.assertFalse(TenantRegistrationSubmission.objects.filter(tenant=self.tenant).exists())
+        self.assertFalse(
+            TenantRegistrationSubmission.objects.filter(tenant=self.tenant).exists()
+        )
 
 
 class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
@@ -1333,39 +1504,64 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
     def setUpClass(cls):
         super().setUpClass()
         templates = Path(__file__).resolve().parent / "templates" / "tenants"
-        cls.form_source = (templates / "public_registration_form.html").read_text(encoding="utf-8")
-        cls.internal_form_source = (templates / "tenant_form.html").read_text(encoding="utf-8")
-        cls.success_source = (templates / "public_registration_submitted.html").read_text(encoding="utf-8")
-        cls.review_source = (templates / "registration_submission_detail.html").read_text(encoding="utf-8")
+        cls.form_source = (templates / "public_registration_form.html").read_text(
+            encoding="utf-8"
+        )
+        cls.internal_form_source = (templates / "tenant_form.html").read_text(
+            encoding="utf-8"
+        )
+        cls.success_source = (
+            templates / "public_registration_submitted.html"
+        ).read_text(encoding="utf-8")
+        cls.review_source = (
+            templates / "registration_submission_detail.html"
+        ).read_text(encoding="utf-8")
         cls.identity_media_source = (
-            Path(__file__).resolve().parents[1] / "templates" / "partials" / "identity_media_public.html"
+            Path(__file__).resolve().parents[1]
+            / "templates"
+            / "partials"
+            / "identity_media_public.html"
         ).read_text(encoding="utf-8")
 
     def test_submit_saves_but_does_not_clear_browser_draft(self):
-        submit_section = self.form_source.split('registrationForm.addEventListener("submit"', 1)[1]
+        submit_section = self.form_source.split(
+            'registrationForm.addEventListener("submit"', 1
+        )[1]
         self.assertIn("saveRegistrationDraft();", submit_section)
         self.assertNotIn("removeItem(registrationDraftKey)", self.form_source)
 
     def test_only_genuine_confirmation_page_clears_draft(self):
         self.assertIn("{% if not duplicate_submission %}", self.success_source)
-        self.assertIn("sessionStorage.removeItem(registrationDraftKey)", self.success_source)
-        self.assertIn('sessionStorage.removeItem(registrationDraftKey + ":uploads")', self.success_source)
+        self.assertIn(
+            "sessionStorage.removeItem(registrationDraftKey)", self.success_source
+        )
+        self.assertIn(
+            'sessionStorage.removeItem(registrationDraftKey + ":uploads")',
+            self.success_source,
+        )
 
     def test_document_references_use_a_separate_lightweight_browser_record(self):
-        self.assertIn('registrationDraftUploadsKey = registrationDraftKey + ":uploads"', self.form_source)
+        self.assertIn(
+            'registrationDraftUploadsKey = registrationDraftKey + ":uploads"',
+            self.form_source,
+        )
         self.assertIn("readRegistrationDraftUploads()", self.form_source)
         self.assertIn(
             "window.sessionStorage.setItem(registrationDraftUploadsKey, JSON.stringify(currentUploads))",
             self.form_source,
         )
 
-    def test_preview_configuration_exists_before_draft_restore_and_errors_do_not_erase_ids(self):
-        config_position = self.form_source.index("window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE")
+    def test_preview_configuration_exists_before_draft_restore_and_errors_do_not_erase_ids(
+        self,
+    ):
+        config_position = self.form_source.index(
+            "window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE"
+        )
         restore_position = self.form_source.index("restoreRegistrationDraft();")
         self.assertLess(config_position, restore_position)
-        preview_function = self.form_source.split("function showTemporaryPreview", 1)[1].split(
-            "function restoreTemporaryUploadPreviews", 1
-        )[0]
+        preview_function = self.form_source.split("function showTemporaryPreview", 1)[
+            1
+        ].split("function restoreTemporaryUploadPreviews", 1)[0]
         self.assertNotIn("delete input.dataset.temporaryUploadId", preview_function)
         self.assertIn("recoverTemporaryUploadsFromServer", self.form_source)
 
@@ -1376,25 +1572,33 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
         )
 
     def test_public_validation_labels_family_and_agreement_party_fields(self):
-        self.assertIn('return "Family Member #" + (Number(familyMatch[1]) + 1)', self.form_source)
+        self.assertIn(
+            'return "Family Member #" + (Number(familyMatch[1]) + 1)', self.form_source
+        )
         for label in ("Proposer", "Seconder", "Witness 1", "Witness 2"):
             self.assertIn('"' + label + '"', self.form_source)
-        required_loop = self.form_source.split("function validateRegistrationForSubmit", 1)[1].split(
-            "Array.from(registrationForm?.elements || []).forEach", 2
-        )[1]
+        required_loop = self.form_source.split(
+            "function validateRegistrationForSubmit", 1
+        )[1].split("Array.from(registrationForm?.elements || []).forEach", 2)[1]
         self.assertNotIn("field.disabled", required_loop)
 
-    def test_invalid_post_merges_with_draft_and_restored_documents_unlock_identity(self):
+    def test_invalid_post_merges_with_draft_and_restored_documents_unlock_identity(
+        self,
+    ):
         self.assertIn(
             "Object.assign({}, draft.values || {}, submittedValues)",
             self.form_source,
         )
-        self.assertIn('new CustomEvent("tms:temporary-uploads-restored"', self.form_source)
+        self.assertIn(
+            'new CustomEvent("tms:temporary-uploads-restored"', self.form_source
+        )
         self.assertIn("hasRestoredCnicPair", self.identity_media_source)
         self.assertIn("unlockRestoredIdentity", self.identity_media_source)
         self.assertIn("runWithRestoredFiles", self.identity_media_source)
 
-    def test_ocr_photo_editor_submit_progress_and_related_person_review_are_present(self):
+    def test_ocr_photo_editor_submit_progress_and_related_person_review_are_present(
+        self,
+    ):
         self.assertIn("portraitDataFile", self.identity_media_source)
         self.assertIn("installPhotoChooser", self.identity_media_source)
         self.assertIn('id="registrationSubmittingModal"', self.form_source)
@@ -1405,7 +1609,9 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
         self.assertIn("review.person.review_fields", self.review_source)
         self.assertIn("person.review_fields", self.review_source)
 
-    def test_pending_person_review_fields_include_lease_relationship_and_extra_values(self):
+    def test_pending_person_review_fields_include_lease_relationship_and_extra_values(
+        self,
+    ):
         from datetime import date
         from types import SimpleNamespace
 
@@ -1418,7 +1624,9 @@ class RegistrationDraftBrowserLifecycleTests(SimpleTestCase):
             date_of_birth=date(2001, 2, 3),
             phone="03001234567",
             address="Current address",
-            processing_result={"ocr_fields": {"nationality": "Pakistani", "occupation": "Engineer"}},
+            processing_result={
+                "ocr_fields": {"nationality": "Pakistani", "occupation": "Engineer"}
+            },
         )
         fields = _pending_person_review_fields(person, {7: "Brother"})
         field_map = {item["label"]: item["value"] for item in fields}
@@ -1436,6 +1644,7 @@ class CNICSideVerificationTests(SimpleTestCase):
 
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.test import override_settings
+
         from tenants.services.cnic_ocr import extract_cnic_identity
 
         result = {
@@ -1467,16 +1676,18 @@ class CNICSideVerificationTests(SimpleTestCase):
         )
         front = SimpleUploadedFile("front.jpg", b"front", content_type="image/jpeg")
         back = SimpleUploadedFile("back.jpg", b"back", content_type="image/jpeg")
-        with override_settings(OPENAI_API_KEY="test"), patch(
-            "tenants.services.cnic_ocr._openai_client", return_value=client
-        ), patch(
-            "tenants.services.cnic_ocr._normalized_image_data",
-            return_value=("aW1hZ2U=", "image/jpeg"),
-        ), patch(
-            "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
-        ), patch(
-            "tenants.services.cnic_ocr.Image.open"
-        ) as image_open:
+        with (
+            override_settings(OPENAI_API_KEY="test"),
+            patch("tenants.services.cnic_ocr._openai_client", return_value=client),
+            patch(
+                "tenants.services.cnic_ocr._normalized_image_data",
+                return_value=("aW1hZ2U=", "image/jpeg"),
+            ),
+            patch(
+                "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
+            ),
+            patch("tenants.services.cnic_ocr.Image.open") as image_open,
+        ):
             image_open.return_value.__enter__.return_value.width = 1300
             image_open.return_value.__enter__.return_value.height = 800
             return extract_cnic_identity(front, back, "test-model")
@@ -1538,34 +1749,40 @@ class CNICStagedOCRServiceTests(SimpleTestCase):
         from unittest.mock import MagicMock, patch
 
         from django.test import override_settings
+
         from tenants.services.cnic_ocr import extract_cnic_front_identity
 
         client = MagicMock()
         client.responses.create.return_value = SimpleNamespace(
-            output_text=json.dumps({
-                "document_side": "front",
-                "name": "Front Person",
-                "father_name": "Parent Name",
-                "gender": "M",
-                "country_of_stay": "Pakistan",
-                "front_identity_number": "42101-1234567-1",
-                "date_of_birth": "1990-01-01",
-                "date_of_issue": "2020-01-01",
-                "date_of_expiry": "2030-01-01",
-                "portrait_bbox": None,
-                "portrait_side": "right",
-                "confidence": 0.96,
-                "warnings": [],
-            }),
+            output_text=json.dumps(
+                {
+                    "document_side": "front",
+                    "name": "Front Person",
+                    "father_name": "Parent Name",
+                    "gender": "M",
+                    "country_of_stay": "Pakistan",
+                    "front_identity_number": "42101-1234567-1",
+                    "date_of_birth": "1990-01-01",
+                    "date_of_issue": "2020-01-01",
+                    "date_of_expiry": "2030-01-01",
+                    "portrait_bbox": None,
+                    "portrait_side": "right",
+                    "confidence": 0.96,
+                    "warnings": [],
+                }
+            ),
             usage=None,
         )
-        with override_settings(OPENAI_API_KEY="test"), patch(
-            "tenants.services.cnic_ocr._prepare_staged_cnic_image",
-            return_value=(b"front", "aW1hZ2U=", "image/jpeg", (1200, 750, 1000)),
-        ), patch(
-            "tenants.services.cnic_ocr._openai_client", return_value=client
-        ), patch(
-            "tenants.services.cnic_ocr._portrait_data_uri", return_value="portrait"
+        with (
+            override_settings(OPENAI_API_KEY="test"),
+            patch(
+                "tenants.services.cnic_ocr._prepare_staged_cnic_image",
+                return_value=(b"front", "aW1hZ2U=", "image/jpeg", (1200, 750, 1000)),
+            ),
+            patch("tenants.services.cnic_ocr._openai_client", return_value=client),
+            patch(
+                "tenants.services.cnic_ocr._portrait_data_uri", return_value="portrait"
+            ),
         ):
             result = extract_cnic_front_identity(object(), "test-model")
 
@@ -1582,31 +1799,37 @@ class CNICStagedOCRServiceTests(SimpleTestCase):
         from unittest.mock import MagicMock, patch
 
         from django.test import override_settings
+
         from tenants.services.cnic_ocr import extract_cnic_back_identity
 
         client = MagicMock()
         client.responses.create.return_value = SimpleNamespace(
-            output_text=json.dumps({
-                "document_side": "back",
-                "back_identity_number": "42101-9999999-1",
-                "temporary_address_urdu": None,
-                "permanent_address_urdu": None,
-                "temporary_address_english": None,
-                "permanent_address_english": None,
-                "temporary_address_confidence": 0,
-                "permanent_address_confidence": 0,
-                "confidence": 0.90,
-                "warnings": [],
-            }),
+            output_text=json.dumps(
+                {
+                    "document_side": "back",
+                    "back_identity_number": "42101-9999999-1",
+                    "temporary_address_urdu": None,
+                    "permanent_address_urdu": None,
+                    "temporary_address_english": None,
+                    "permanent_address_english": None,
+                    "temporary_address_confidence": 0,
+                    "permanent_address_confidence": 0,
+                    "confidence": 0.90,
+                    "warnings": [],
+                }
+            ),
             usage=None,
         )
-        with override_settings(OPENAI_API_KEY="test"), patch(
-            "tenants.services.cnic_ocr._prepare_staged_cnic_image",
-            return_value=(b"back", "aW1hZ2U=", "image/jpeg", (1200, 750, 1000)),
-        ), patch(
-            "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
-        ), patch(
-            "tenants.services.cnic_ocr._openai_client", return_value=client
+        with (
+            override_settings(OPENAI_API_KEY="test"),
+            patch(
+                "tenants.services.cnic_ocr._prepare_staged_cnic_image",
+                return_value=(b"back", "aW1hZ2U=", "image/jpeg", (1200, 750, 1000)),
+            ),
+            patch(
+                "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
+            ),
+            patch("tenants.services.cnic_ocr._openai_client", return_value=client),
         ):
             result = extract_cnic_back_identity(
                 object(), "42101-1234567-1", "test-model"
@@ -1621,31 +1844,37 @@ class CNICStagedOCRServiceTests(SimpleTestCase):
         from unittest.mock import MagicMock, patch
 
         from django.test import override_settings
+
         from tenants.services.cnic_ocr import extract_cnic_back_identity
 
         client = MagicMock()
         client.responses.create.return_value = SimpleNamespace(
-            output_text=json.dumps({
-                "document_side": "back",
-                "back_identity_number": "42101-1234567-1",
-                "temporary_address_urdu": "موجودہ پتہ",
-                "permanent_address_urdu": "مستقل پتہ",
-                "temporary_address_english": "Current address",
-                "permanent_address_english": "Permanent address",
-                "temporary_address_confidence": 0.92,
-                "permanent_address_confidence": 0.91,
-                "confidence": 0.94,
-                "warnings": [],
-            }),
+            output_text=json.dumps(
+                {
+                    "document_side": "back",
+                    "back_identity_number": "42101-1234567-1",
+                    "temporary_address_urdu": "موجودہ پتہ",
+                    "permanent_address_urdu": "مستقل پتہ",
+                    "temporary_address_english": "Current address",
+                    "permanent_address_english": "Permanent address",
+                    "temporary_address_confidence": 0.92,
+                    "permanent_address_confidence": 0.91,
+                    "confidence": 0.94,
+                    "warnings": [],
+                }
+            ),
             usage=None,
         )
-        with override_settings(OPENAI_API_KEY="test"), patch(
-            "tenants.services.cnic_ocr._prepare_staged_cnic_image",
-            return_value=(b"back", "aW1hZ2U=", "image/jpeg", (1200, 750, 1000)),
-        ), patch(
-            "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
-        ), patch(
-            "tenants.services.cnic_ocr._openai_client", return_value=client
+        with (
+            override_settings(OPENAI_API_KEY="test"),
+            patch(
+                "tenants.services.cnic_ocr._prepare_staged_cnic_image",
+                return_value=(b"back", "aW1hZ2U=", "image/jpeg", (1200, 750, 1000)),
+            ),
+            patch(
+                "tenants.services.cnic_ocr._enhanced_back_image_data", return_value=None
+            ),
+            patch("tenants.services.cnic_ocr._openai_client", return_value=client),
         ):
             result = extract_cnic_back_identity(
                 object(), "42101-1234567-1", "test-model"
@@ -1790,11 +2019,14 @@ class CNICIdentityOCRViewTests(TestCase):
         )
         self.assertEqual(invalid_response.status_code, 400)
 
-    def test_signed_public_registration_ocr_fills_blanks_without_overwrite_permission(self):
+    def test_signed_public_registration_ocr_fills_blanks_without_overwrite_permission(
+        self,
+    ):
         from unittest.mock import patch
 
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.urls import reverse
+
         from tenants.models import Tenant
         from tenants.views import tenant_registration_token
 
@@ -1840,15 +2072,15 @@ class CNICIdentityOCRViewTests(TestCase):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.urls import reverse
         from PIL import Image
+
         from tenants.models import Tenant
 
         image_buffer = BytesIO()
         Image.new("RGB", (180, 110), "white").save(image_buffer, format="JPEG")
         image_bytes = image_buffer.getvalue()
-        portrait_data_uri = (
-            "data:image/jpeg;base64,"
-            + base64.b64encode(image_bytes).decode("ascii")
-        )
+        portrait_data_uri = "data:image/jpeg;base64," + base64.b64encode(
+            image_bytes
+        ).decode("ascii")
         tenant = Tenant.objects.create(
             first_name="Current",
             last_name="Name",

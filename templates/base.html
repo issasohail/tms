@@ -463,13 +463,12 @@
 
   {% block extra_css %}{% endblock %}
 </head>
-<body class="tms-responsive-shell env-{{ APP_ENVIRONMENT|default:'production'|lower }}{% if embedded_in_settings %} tms-embedded-page{% endif %}">
+<body class="tms-responsive-shell env-{{ APP_ENVIRONMENT|default:'production'|lower }}{% if tms_embedded %} tms-embedded-page{% endif %}">
 
   <!-- ============================================================
        NAVBAR — partials/navbar.html owns all nav content
-       Suppressed entirely when embedded inside a Settings-tool iframe.
        ============================================================ -->
-  {% if not embedded_in_settings %}
+  {% if not tms_embedded %}
     {% include 'partials/navbar.html' %}
   {% endif %}
 
@@ -489,15 +488,15 @@
        MAIN CONTENT
        ============================================================ -->
   <main class="tms-main">
-    <div class="{% block main_container_class %}container{% endblock %} {% if embedded_in_settings %}my-0{% else %}mt-3 mb-4{% endif %}">
+    <div class="{% block main_container_class %}container{% endblock %} {% if tms_embedded %}my-0{% else %}mt-3 mb-4{% endif %}">
       {% block content %}{% endblock %}
     </div>
   </main>
 
   <!-- ============================================================
-       FOOTER — suppressed entirely when embedded inside a Settings-tool iframe.
+       FOOTER
        ============================================================ -->
-  {% if not embedded_in_settings %}
+  {% if not tms_embedded %}
     <footer class="tms-footer no-print">
       <div class="container text-center">
         <p>Tenant Management System &copy; {% now "Y" %}</p>
@@ -1037,74 +1036,6 @@
       if (m) e.detail.headers['X-CSRFToken'] = m[2];
     });
   </script>
-
-  {% if embedded_in_settings %}
-  <!-- ============================================================
-       EMBEDDED SETTINGS MODE: keep embed=1 on all internal navigation
-       ============================================================
-       Any page rendered inside a Settings-tool iframe (?embed=1) must
-       stay embedded across its own links, GET forms, and POST forms,
-       or the iframe reloads as a full page (own navbar/footer) nested
-       inside the outer Settings page's navbar. Rather than requiring
-       every current and future settings-tool view/template to manually
-       remember this, it's handled once, generically, here. -->
-  <script>
-    (function () {
-      function isSameOriginInternalLink(a) {
-        if (!a || !a.href) return false;
-        if (a.target && a.target !== '' && a.target !== '_self') return false;
-        if (a.hasAttribute('download')) return false;
-        let url;
-        try {
-          url = new URL(a.href, window.location.href);
-        } catch (e) {
-          return false;
-        }
-        if (url.origin !== window.location.origin) return false;
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-        return true;
-      }
-
-      document.addEventListener('click', function (e) {
-        const a = e.target.closest('a[href]');
-        if (!a || !isSameOriginInternalLink(a)) return;
-        const url = new URL(a.href, window.location.href);
-        if (url.searchParams.get('embed') === '1') return;
-        url.searchParams.set('embed', '1');
-        a.href = url.pathname + url.search + url.hash;
-      }, true);
-
-      document.addEventListener('submit', function (e) {
-        const form = e.target;
-        if (!(form instanceof HTMLFormElement)) return;
-        if (form.target && form.target !== '' && form.target !== '_self') return;
-        const method = (form.getAttribute('method') || 'get').toLowerCase();
-        if (method === 'get') {
-          if (!form.querySelector('input[name="embed"]')) {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'embed';
-            input.value = '1';
-            form.appendChild(input);
-          }
-        } else {
-          const action = form.getAttribute('action') || window.location.pathname;
-          let url;
-          try {
-            url = new URL(action, window.location.href);
-          } catch (err) {
-            return;
-          }
-          if (url.origin !== window.location.origin) return;
-          if (url.searchParams.get('embed') !== '1') {
-            url.searchParams.set('embed', '1');
-            form.setAttribute('action', url.pathname + url.search);
-          }
-        }
-      }, true);
-    })();
-  </script>
-  {% endif %}
 
 </body>
 </html>

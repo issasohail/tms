@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 import base64
 import hashlib
@@ -3538,3 +3538,289 @@ class SettingsEmbeddedLayoutTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn("embed=1", response["Location"])
+
+
+class PaymentClaimTests(TestCase):
+    """Phase 3: WhatsApp payment-claim reply handling."""
+
+    def setUp(self):
+        self.phone = "+923001234567"
+        self.property = Property.objects.create(
+            property_name="Test Plaza", owner_name="Owner", owner_cnic="12345-1234567-8",
+            type="residential", property_type="apartment", total_units=2,
+        )
+        self.unit = Unit.objects.create(property=self.property, unit_number="U-1")
+
+    def _inbound(self, text, wa_id="wamid.claim"):
+        return WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND, phone_number=self.phone,
+            wa_message_id=wa_id, message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED, payload={"type": "text", "text": {"body": text}},
+        )
+
+    def test_active_tenant_payment_claim_returns_balance_and_latest_payment(self):
+        tenant = Tenant.objects.create(first_name="Amina", last_name="Raza", cnic="61101-1111111-1", phone=self.phone)
+        lease = Lease.objects.create(
+            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335), monthly_rent=15000, status="active",
+        )
+        from core.models import PaymentMethod
+        method, _ = PaymentMethod.objects.get_or_create(code="bank_transfer", defaults={"name": "Bank Transfer"})
+        Payment.objects.create(lease=lease, amount=15000, payment_date=date.today() - timedelta(days=2), payment_method=method)
+
+        conversation = WhatsAppConversation.objects.create(phone_number=self.phone, tenant=tenant, selected_lease=lease)
+        message = self._inbound("I already paid")
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+
+        self.assertEqual(intent, "payment_claim")
+        self.assertIn("Amina", response)
+        self.assertIn("receipt", response.lower())
+        self.assertIn("landlord", response.lower())
+        conversation.refresh_from_db()
+        self.assertEqual(conversation.pending_state, "tenant_waiting_payment_receipt")
+
+    def test_ended_lease_tenant_payment_claim_is_recognized(self):
+        """This is the core Phase 3 bug: a tenant whose only lease has ended
+        was previously indistinguishable from a stranger and got no
+        recognition at all."""
+        tenant = Tenant.objects.create(first_name="Bilal", last_name="Sheikh", cnic="61101-2222222-2", phone=self.phone)
+        Lease.objects.create(
+            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=400),
+            end_date=date.today() - timedelta(days=30), monthly_rent=12000, status="ended",
+        )
+        conversation = WhatsAppConversation.objects.create(phone_number=self.phone)
+        message = self._inbound("Already paid")
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+
+        self.assertEqual(intent, "payment_claim")
+        self.assertIn("Bilal", response)
+        self.assertNotIn("guest", intent)
+
+    def test_no_recent_payment_response_branch(self):
+        tenant = Tenant.objects.create(first_name="Chaudhry", last_name="Amir", cnic="61101-3333333-3", phone=self.phone)
+        lease = Lease.objects.create(
+            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335), monthly_rent=10000, status="active",
+        )
+        conversation = WhatsAppConversation.objects.create(phone_number=self.phone, tenant=tenant, selected_lease=lease)
+        message = self._inbound("payment done")
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+
+        self.assertEqual(intent, "payment_claim")
+        self.assertIn("have not yet found", response.lower())
+
+    def test_unmatched_phone_gets_generic_receipt_request(self):
+        conversation = WhatsAppConversation.objects.create(phone_number=self.phone)
+        message = self._inbound("I sent the money")
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+
+        self.assertEqual(intent, "payment_claim")
+        self.assertIn("property, unit, or invoice number", response)
+
+    def test_one_inbound_message_produces_one_reply(self):
+        tenant = Tenant.objects.create(first_name="Dawood", last_name="Iqbal", cnic="61101-4444444-4", phone=self.phone)
+        lease = Lease.objects.create(
+            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335), monthly_rent=10000, status="active",
+        )
+        conversation = WhatsAppConversation.objects.create(phone_number=self.phone, tenant=tenant, selected_lease=lease)
+        message = self._inbound("bill paid")
+
+        result = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+
+        self.assertEqual(len(result), 3)
+        self.assertIsInstance(result[0], str)
+
+    def test_does_not_hijack_message_with_other_pending_state_in_progress(self):
+        tenant = Tenant.objects.create(first_name="Erum", last_name="Wali", cnic="61101-5555555-5", phone=self.phone)
+        lease = Lease.objects.create(
+            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335), monthly_rent=10000, status="active",
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.phone, tenant=tenant, selected_lease=lease, pending_state="suggestion_capture",
+        )
+        message = self._inbound("already paid for the suggestion program")
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+
+        self.assertNotEqual(intent, "payment_claim")
+
+
+class ChatExportTests(TestCase):
+    def setUp(self):
+        self.property = Property.objects.create(
+            property_name="Export Plaza", owner_name="Owner", owner_cnic="12345-1234567-9",
+            type="residential", property_type="apartment", total_units=2,
+        )
+        self.unit = Unit.objects.create(property=self.property, unit_number="E-1")
+        self.tenant = Tenant.objects.create(
+            first_name="Zara", last_name="Malik", cnic="61101-9999999-9", phone="03009998888",
+        )
+        self.lease = Lease.objects.create(
+            tenant=self.tenant, unit=self.unit, start_date=date.today(),
+            end_date=date.today() + timedelta(days=300), monthly_rent=20000, status="active",
+        )
+        WhatsAppConversation.objects.create(
+            phone_number="03009998888", tenant=self.tenant, selected_lease=self.lease, selected_mode="tenant",
+        )
+        self.msg_in = WhatsAppMessageLog.objects.create(
+            direction="inbound", phone_number="03009998888", tenant=self.tenant, lease=self.lease,
+            wa_message_id="wamid.export.in", message_type="text", status="received",
+            payload={"type": "text", "text": {"body": "What is my balance?"}},
+        )
+        from whatsapp.models import WhatsAppAIInteractionLog
+        WhatsAppAIInteractionLog.objects.create(
+            message_log=self.msg_in, phone_number="03009998888", intent="balance", provider="openai",
+            model="gpt-4o-mini", confidence=95, ai_prompt="system prompt api_key=sk-shouldnotleak123456",
+            ai_response="Your balance is Rs 5000", prompt_tokens=100, completion_tokens=20,
+        )
+        self.msg_out = WhatsAppMessageLog.objects.create(
+            direction="outbound", phone_number="03009998888", tenant=self.tenant, lease=self.lease,
+            wa_message_id="wamid.export.out", message_type="text", status="sent",
+            payload={"type": "text", "text": {"body": "Your outstanding balance is Rs. 5,000.00."}},
+        )
+        # A second, unrelated conversation to check isolation / all-chats aggregation.
+        self.other_tenant = Tenant.objects.create(
+            first_name="Omar", last_name="Sheikh", cnic="61101-8888888-8", phone="03007776666",
+        )
+        WhatsAppMessageLog.objects.create(
+            direction="inbound", phone_number="03007776666", tenant=self.other_tenant,
+            wa_message_id="wamid.other.in", message_type="text", status="received",
+            payload={"type": "text", "text": {"body": "Hello"}},
+        )
+        from whatsapp.models import WhatsAppWebhookLog
+        WhatsAppWebhookLog.objects.create(payload={"raw": "meta webhook status event"})
+
+        User = get_user_model()
+        self.staff = User.objects.create_user(
+            username="export_staff", password="pass1234", is_staff=True, is_superuser=True,
+        )
+
+    def test_unauthenticated_user_cannot_export(self):
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_unauthorized_user_cannot_export(self):
+        User = get_user_model()
+        User.objects.create_user(username="nobody", password="pass1234", is_staff=False, email="nobody@example.com")
+        self.client.login(username="nobody", password="pass1234")
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_authorized_user_can_export_selected_conversation(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        self.assertEqual(response.status_code, 200)
+
+    def test_content_type_is_json(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        self.assertEqual(response["Content-Type"], "application/json")
+
+    def test_content_disposition_has_attachment_filename(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".json", response["Content-Disposition"])
+
+    def test_inbound_and_outbound_messages_included(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        data = json.loads(response.content)
+        directions = [m["direction"] for m in data["messages"]]
+        self.assertIn("inbound", directions)
+        self.assertIn("outbound", directions)
+        texts = [m["message"] for m in data["messages"]]
+        self.assertIn("What is my balance?", texts)
+        self.assertIn("Your outstanding balance is Rs. 5,000.00.", texts)
+
+    def test_messages_ordered_chronologically(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        data = json.loads(response.content)
+        timestamps = [m["timestamp"] for m in data["messages"]]
+        self.assertEqual(timestamps, sorted(timestamps))
+
+    def test_ai_interaction_included_with_tokens_and_response(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        data = json.loads(response.content)
+        inbound = next(m for m in data["messages"] if m["direction"] == "inbound")
+        self.assertEqual(len(inbound["ai_interactions"]), 1)
+        ai = inbound["ai_interactions"][0]
+        self.assertEqual(ai["intent"], "balance")
+        self.assertEqual(ai["prompt_tokens"], 100)
+        self.assertEqual(ai["completion_tokens"], 20)
+        self.assertEqual(ai["response"], "Your balance is Rs 5000")
+
+    def test_secrets_recursively_redacted(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        self.assertNotIn("sk-shouldnotleak123456", response.content.decode())
+        self.assertIn("[REDACTED]", response.content.decode())
+
+    def test_masked_export_masks_phone_and_cnic(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=masked")
+        data = json.loads(response.content)
+        self.assertNotEqual(data["conversation"]["phone_number"], "03009998888")
+
+    def test_full_data_preserves_ordinary_fields(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        data = json.loads(response.content)
+        self.assertEqual(data["conversation"]["phone_number"], "03009998888")
+        self.assertEqual(data["conversation"]["tenant"]["name"], self.tenant.get_full_name())
+        self.assertEqual(data["conversation"]["lease"]["property"], "Export Plaza")
+        self.assertEqual(data["conversation"]["lease"]["unit"], "E-1")
+
+    def test_single_conversation_does_not_leak_other_phone(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        self.assertNotIn("Hello", response.content.decode())
+        self.assertNotIn("03007776666", response.content.decode())
+
+    def test_export_all_includes_multiple_conversations(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_all_chats") + "?privacy=full")
+        data = json.loads(response.content)
+        self.assertGreaterEqual(data["export"]["conversation_count"], 2)
+        phones = [c["conversation"]["phone_number"] for c in data["conversations"]]
+        self.assertTrue(any("3009998888" in p for p in phones))
+        self.assertTrue(any("3007776666" in p for p in phones))
+
+    def test_raw_webhook_logs_not_included(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_all_chats") + "?privacy=full")
+        self.assertNotIn("meta webhook status event", response.content.decode())
+
+    def test_no_media_binary_or_base64_exported(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        content = response.content.decode()
+        # A crude but effective check: no long base64-looking blob present.
+        self.assertNotRegex(content, r"[A-Za-z0-9+/]{200,}={0,2}")
+
+    def test_media_metadata_included_when_present(self):
+        from whatsapp.models import PendingWhatsAppMedia
+        media_msg = WhatsAppMessageLog.objects.create(
+            direction="inbound", phone_number="03009998888", tenant=self.tenant,
+            wa_message_id="wamid.export.media", message_type="image", status="received",
+            payload={"type": "image"},
+        )
+        PendingWhatsAppMedia.objects.create(
+            original_whatsapp_message=media_msg, media_type="image", purpose="payment",
+            original_filename="receipt.jpg", whatsapp_media_id="media123", status="pending",
+        )
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        data = json.loads(response.content)
+        media_row = next(m for m in data["messages"] if m["wa_message_id"] == "wamid.export.media")
+        self.assertIsNotNone(media_row["media"])
+        self.assertEqual(media_row["media"]["purpose"], "payment")
+        self.assertEqual(media_row["media"]["filename"], "receipt.jpg")

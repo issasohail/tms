@@ -38,6 +38,7 @@ from whatsapp.models import (
     WhatsAppExternalLinkToken,
     WhatsAppAIInteractionLog,
     WhatsAppConversation,
+    WhatsAppStaffActionLog,
 )
 from whatsapp.services.ai_config import get_whatsapp_ai_config
 from whatsapp.services.ai.orchestrator import WhatsAppAIOrchestrator
@@ -51,6 +52,13 @@ from whatsapp.services.handover.workflow import (
     handle_staff_handover_message,
 )
 from whatsapp.services.maintenance_ai import create_pending_maintenance, detect_maintenance_issue
+from whatsapp.services.payment_claim import (
+    build_payment_claim_reply,
+    is_awaiting_payment_receipt_active,
+    is_payment_claim,
+    resolve_tenant_and_last_lease,
+    set_awaiting_payment_receipt,
+)
 from whatsapp.services.media_processor import create_pending_media, run_payment_ocr
 from whatsapp.services.estamp_processor import (
     inspect_estamp_pdf,
@@ -343,6 +351,11 @@ class WhatsAppAIAssistant:
             if handyman_media_response:
                 return handyman_media_response
             return self._handle_media_message(message_log, conversation, text, message_type, identity)
+
+        if not conversation.pending_state and is_payment_claim(text):
+            payment_claim_response = self._handle_payment_claim(message_log, conversation, text)
+            if payment_claim_response:
+                return payment_claim_response
 
         state_response = self._consume_global_pending_state(message_log, conversation, text, identity)
         if state_response:
@@ -668,7 +681,7 @@ class WhatsAppAIAssistant:
         )
 
     def _handle_media_message(self, message_log, conversation, text, message_type, identity):
-        expects_payment_receipt = conversation.pending_state == "tenant_waiting_payment_receipt"
+        expects_payment_receipt = is_awaiting_payment_receipt_active(conversation)
         if self._should_start_staff_estamp(
             message_log, conversation, message_type, identity
         ):
@@ -1834,6 +1847,23 @@ class WhatsAppAIAssistant:
         if lease and lease.status == "active" and lease.start_date <= today <= lease.end_date:
             return lease
         return None
+
+    def _handle_payment_claim(self, message_log, conversation, text):
+        tenant, lease, lease_status = resolve_tenant_and_last_lease(message_log.phone_number)
+        reply = build_payment_claim_reply(tenant, lease)
+        if tenant:
+            set_awaiting_payment_receipt(conversation, tenant, lease)
+        WhatsAppStaffActionLog.objects.create(
+            staff_user=None,
+            phone_number=message_log.phone_number,
+            action="payment_claim_received",
+            status=WhatsAppStaffActionLog.ACTION_STATUS_ALLOWED,
+            property=getattr(getattr(lease, "unit", None), "property", None),
+            tenant=tenant,
+            lease=lease,
+            details={"lease_status": lease_status, "message_text": safe_summary(text, 300)},
+        )
+        return reply, "payment_claim", {"tenant": tenant, "lease": lease, "lease_status": lease_status}
 
     def _handle_guest_message(self, message_log, conversation, text):
         intent = detect_intent(text)

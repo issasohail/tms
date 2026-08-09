@@ -23,7 +23,7 @@ from core.utils.embed import embed_redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods, require_POST, require_GET
 
 from invoices.models import Invoice
 from leases.models import Lease
@@ -715,6 +715,46 @@ def webhook_log_list(request):
             "unit_filter_options": unit_filter_options,
         },
     )
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
+@require_GET
+def export_chat(request):
+    from .services.chat_export import build_single_chat_export, sanitize_export_data
+
+    phone_number = (request.GET.get("phone") or "").strip()
+    if not phone_number:
+        return JsonResponse({"ok": False, "error": "phone is required"}, status=400)
+
+    mask = request.GET.get("privacy", "masked") != "full"
+    data = sanitize_export_data(build_single_chat_export(phone_number), mask=mask)
+
+    filename = f"whatsapp-chat-{phone_number}-{timezone.now():%Y-%m-%d}.json"
+    response = HttpResponse(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        content_type="application/json",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+@user_passes_test(_can_view_whatsapp_logs)
+@require_GET
+def export_all_chats(request):
+    from .services.chat_export import build_all_chat_export, sanitize_export_data
+
+    mask = request.GET.get("privacy", "masked") != "full"
+    data = sanitize_export_data(build_all_chat_export(), mask=mask)
+
+    filename = f"whatsapp-all-chats-{timezone.now():%Y-%m-%d}.json"
+    response = HttpResponse(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        content_type="application/json",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def _conversation_summary():

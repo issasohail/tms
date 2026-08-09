@@ -217,6 +217,22 @@
           {% if selected_phone %}
             <span class="badge bg-secondary">{{ conversation_messages|length }} entries</span>
           {% endif %}
+          <select id="whatsappExportPrivacy" class="form-select form-select-sm w-auto" title="Privacy">
+            <option value="masked" selected>Masked</option>
+            <option value="full">Full Data</option>
+          </select>
+          {% if selected_phone %}
+            <a href="{% url 'whatsapp:export_chat' %}?phone={{ selected_phone|urlencode }}&privacy=masked"
+               id="whatsappExportChatLink"
+               class="btn btn-sm btn-outline-primary" title="Export this conversation as JSON">
+              <i class="fas fa-download"></i> Export This Chat
+            </a>
+          {% endif %}
+          <a href="{% url 'whatsapp:export_all_chats' %}?privacy=masked"
+             id="whatsappExportAllLink"
+             class="btn btn-sm btn-outline-secondary" title="Export all conversations as JSON">
+            <i class="fas fa-download"></i> Export All Chats
+          </a>
         </div>
       </div>
       <div class="card-body whatsapp-pane-scroll whatsapp-right-scroll">
@@ -474,6 +490,17 @@ document.getElementById('showMessageIds')?.addEventListener('change', function (
   document.querySelectorAll('.whatsapp-message-id').forEach(function (item) {
     item.classList.toggle('d-none', !this.checked);
   }, this);
+});
+
+document.getElementById('whatsappExportPrivacy')?.addEventListener('change', function () {
+  const privacy = this.value;
+  ['whatsappExportChatLink', 'whatsappExportAllLink'].forEach(function (id) {
+    const link = document.getElementById(id);
+    if (!link) return;
+    const url = new URL(link.href, window.location.href);
+    url.searchParams.set('privacy', privacy);
+    link.href = url.pathname + url.search;
+  });
 });
 </script>
 </div>

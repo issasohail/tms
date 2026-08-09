@@ -1037,5 +1037,76 @@
     });
   </script>
 
+  {% if tms_embedded %}
+  <!-- ============================================================
+       EMBEDDED SETTINGS MODE: keep embed=1 on all internal navigation
+       ============================================================
+       Any page rendered inside a Settings-tool iframe (?embed=1) must
+       stay embedded across its own links, GET forms, and POST forms,
+       or the iframe reloads as a full page (own navbar/footer) nested
+       inside the outer Settings page's navbar. Rather than requiring
+       every current and future settings-tool view/template to manually
+       remember this, it's handled once, generically, here. This is a
+       client-side complement to core.utils.embed.embed_redirect(),
+       which handles a view's own POST-then-redirect flow server-side;
+       this script covers plain link clicks and form submissions. -->
+  <script>
+    (function () {
+      function isSameOriginInternalLink(a) {
+        if (!a || !a.href) return false;
+        if (a.target && a.target !== '' && a.target !== '_self') return false;
+        if (a.hasAttribute('download')) return false;
+        let url;
+        try {
+          url = new URL(a.href, window.location.href);
+        } catch (e) {
+          return false;
+        }
+        if (url.origin !== window.location.origin) return false;
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+        return true;
+      }
+
+      document.addEventListener('click', function (e) {
+        const a = e.target.closest('a[href]');
+        if (!a || !isSameOriginInternalLink(a)) return;
+        const url = new URL(a.href, window.location.href);
+        if (url.searchParams.get('embed') === '1') return;
+        url.searchParams.set('embed', '1');
+        a.href = url.pathname + url.search + url.hash;
+      }, true);
+
+      document.addEventListener('submit', function (e) {
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        if (form.target && form.target !== '' && form.target !== '_self') return;
+        const method = (form.getAttribute('method') || 'get').toLowerCase();
+        if (method === 'get') {
+          if (!form.querySelector('input[name="embed"]')) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'embed';
+            input.value = '1';
+            form.appendChild(input);
+          }
+        } else {
+          const action = form.getAttribute('action') || window.location.pathname;
+          let url;
+          try {
+            url = new URL(action, window.location.href);
+          } catch (err) {
+            return;
+          }
+          if (url.origin !== window.location.origin) return;
+          if (url.searchParams.get('embed') !== '1') {
+            url.searchParams.set('embed', '1');
+            form.setAttribute('action', url.pathname + url.search);
+          }
+        }
+      }, true);
+    })();
+  </script>
+  {% endif %}
+
 </body>
 </html>

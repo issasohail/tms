@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -479,3 +479,211 @@ class InvoiceLifecycleAndAccountingStatusTests(TestCase):
         )
         self.assertEqual(first.payment_status, "paid")
         self.assertEqual(second.payment_status, "overpaid")
+
+    def test_user_without_lifecycle_permission_cannot_change_status(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import InvoiceStatusHistory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+        )
+        ordinary_user = get_user_model().objects.create_user(
+            username="invoice-status-ordinary",
+            email="ordinary@example.com",
+            password="test",
+        )
+        self.client.force_login(ordinary_user)
+
+        response = self.client.post(
+            reverse("invoices:invoice_lifecycle_status", args=[invoice.pk]),
+            {"lifecycle_status": "disputed", "reason": "Should not be allowed."},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.lifecycle_status, "issued")
+        self.assertFalse(InvoiceStatusHistory.objects.filter(invoice=invoice).exists())
+
+    def test_paid_is_not_a_valid_lifecycle_status(self):
+        from django.urls import reverse
+        from invoices.models import InvoiceStatusHistory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+        )
+
+        response = self.client.post(
+            reverse("invoices:invoice_lifecycle_status", args=[invoice.pk]),
+            {"lifecycle_status": "paid", "reason": "Attempt to forge payment state."},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.lifecycle_status, "issued")
+        self.assertFalse(InvoiceStatusHistory.objects.filter(invoice=invoice).exists())
+
+    def test_reason_is_required_for_cancelled_status(self):
+        from django.urls import reverse
+        from invoices.models import InvoiceStatusHistory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+        )
+
+        response = self.client.post(
+            reverse("invoices:invoice_lifecycle_status", args=[invoice.pk]),
+            {"lifecycle_status": "cancelled", "reason": ""},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.lifecycle_status, "issued")
+        self.assertFalse(InvoiceStatusHistory.objects.filter(invoice=invoice).exists())
+
+    def test_cancelled_lifecycle_is_audited_without_mutating_legacy_status(self):
+        from django.urls import reverse
+        from invoices.models import InvoiceStatusHistory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+        )
+
+        response = self.client.post(
+            reverse("invoices:invoice_lifecycle_status", args=[invoice.pk]),
+            {"lifecycle_status": "cancelled", "reason": "Duplicate invoice."},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.lifecycle_status, "cancelled")
+        self.assertEqual(invoice.lifecycle_status_reason, "Duplicate invoice.")
+        self.assertEqual(invoice.status, "sent")
+        history = InvoiceStatusHistory.objects.get(invoice=invoice)
+        self.assertEqual(history.previous_status, "issued")
+        self.assertEqual(history.new_status, "cancelled")
+        self.assertEqual(history.reason, "Duplicate invoice.")
+
+    def test_same_lifecycle_status_and_reason_does_not_duplicate_history(self):
+        from django.urls import reverse
+        from invoices.models import InvoiceStatusHistory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+        )
+        url = reverse("invoices:invoice_lifecycle_status", args=[invoice.pk])
+        payload = {"lifecycle_status": "disputed", "reason": "Tenant queried invoice."}
+
+        self.client.post(url, payload)
+        self.client.post(url, payload)
+
+        self.assertEqual(
+            InvoiceStatusHistory.objects.filter(invoice=invoice).count(),
+            1,
+        )
+
+    def test_invoice_list_filters_by_lifecycle_status(self):
+        from django.test import RequestFactory
+        from invoices.views import InvoiceListView
+
+        disputed = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+            lifecycle_status="disputed",
+        )
+        issued = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 2),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+            lifecycle_status="issued",
+        )
+
+        view = InvoiceListView()
+        view.request = RequestFactory().get("/", {"status": "disputed"})
+        ids = set(view.get_queryset().values_list("id", flat=True))
+
+        self.assertIn(disputed.pk, ids)
+        self.assertNotIn(issued.pk, ids)
+
+    def test_invoice_list_paid_filter_uses_accounting_status_not_lifecycle(self):
+        from django.test import RequestFactory
+        from invoices.views import InvoiceListView
+
+        paid = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="paid",
+            lifecycle_status="issued",
+        )
+        unpaid = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 2),
+            due_date=date(2026, 8, 31),
+            amount=Decimal("1000.00"),
+            status="sent",
+            lifecycle_status="issued",
+        )
+
+        view = InvoiceListView()
+        view.request = RequestFactory().get("/", {"status": "paid"})
+        ids = set(view.get_queryset().values_list("id", flat=True))
+
+        self.assertIn(paid.pk, ids)
+        self.assertNotIn(unpaid.pk, ids)
+
+    def test_invoice_list_overdue_filter_includes_past_due_non_cancelled_invoice(self):
+        from django.test import RequestFactory
+        from django.utils import timezone
+        from invoices.views import InvoiceListView
+
+        today = timezone.localdate()
+        overdue = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=today - timedelta(days=5),
+            due_date=today - timedelta(days=1),
+            amount=Decimal("1000.00"),
+            status="sent",
+            lifecycle_status="issued",
+        )
+        not_overdue = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=today,
+            due_date=today + timedelta(days=1),
+            amount=Decimal("1000.00"),
+            status="sent",
+            lifecycle_status="issued",
+        )
+
+        view = InvoiceListView()
+        view.request = RequestFactory().get("/", {"status": "overdue"})
+        ids = set(view.get_queryset().values_list("id", flat=True))
+
+        self.assertIn(overdue.pk, ids)
+        self.assertNotIn(not_overdue.pk, ids)

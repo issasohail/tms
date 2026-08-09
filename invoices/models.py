@@ -26,6 +26,14 @@ class Invoice(models.Model):
         ('overdue', 'Overdue'),
         ('cancelled', 'Cancelled'),
     )
+    LIFECYCLE_STATUS_CHOICES = (
+        ('draft', 'Draft'),
+        ('issued', 'Issued'),
+        ('disputed', 'Disputed'),
+        ('cancelled', 'Cancelled'),
+        ('void', 'Void'),
+        ('written_off', 'Written Off'),
+    )
 
     # Replace direct import with string reference: 'leases.Lease'
     lease = models.ForeignKey(
@@ -40,6 +48,15 @@ class Invoice(models.Model):
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], blank=True, null=True, default=Decimal('0.00'))
     status = models.CharField(
         max_length=20, choices=INVOICE_STATUS, default='sent', blank=True)
+    lifecycle_status = models.CharField(
+        max_length=20, choices=LIFECYCLE_STATUS_CHOICES, default='issued', db_index=True
+    )
+    lifecycle_status_reason = models.CharField(max_length=255, blank=True, default='')
+    lifecycle_status_updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='invoice_lifecycle_updates',
+    )
+    lifecycle_status_updated_at = models.DateTimeField(null=True, blank=True)
     description = models.TextField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -47,6 +64,13 @@ class Invoice(models.Model):
 
     class Meta:
         ordering = ['-issue_date']
+        permissions = [
+            ('change_invoice_lifecycle_status', 'Can change invoice lifecycle status'),
+            ('cancel_invoice', 'Can cancel invoice'),
+            ('void_invoice', 'Can void invoice'),
+            ('write_off_invoice', 'Can write off invoice'),
+            ('view_invoice_status_history', 'Can view invoice status history'),
+        ]
 
     def __str__(self):
         return f"Invoice #{self.invoice_number} - {self.lease.id}"
@@ -59,6 +83,95 @@ class Invoice(models.Model):
     def total(self):
         # fix bug: an InvoiceItem doesn't have .items
         return self.amount
+
+    def accounting_allocation(self):
+        """Return (allocated, outstanding, payment_status) using the project's
+        existing oldest-invoice-first lease payment convention.
+
+        PaymentDetail.lease_amount is used when a split payment exists; otherwise
+        the full Payment.amount applies to the lease. This mirrors migration 0022.
+        """
+        cached = getattr(self, '_accounting_allocation_cache', None)
+        if cached is not None:
+            return cached
+
+        from django.db.models import Case, DecimalField, F, Sum, When
+        from django.db.models.functions import Coalesce
+        from payments.models import Payment
+
+        zero = Decimal('0.00')
+        money_field = DecimalField(max_digits=12, decimal_places=2)
+        available = (
+            Payment.objects.filter(lease_id=self.lease_id)
+            .aggregate(
+                total=Coalesce(
+                    Sum(
+                        Case(
+                            When(detail__isnull=False, then=F('detail__lease_amount')),
+                            default=F('amount'),
+                            output_field=money_field,
+                        )
+                    ),
+                    zero,
+                    output_field=money_field,
+                )
+            )['total']
+            or zero
+        )
+        eligible = Invoice.objects.filter(lease_id=self.lease_id).exclude(
+            lifecycle_status__in=('cancelled', 'void')
+        ).exclude(status='cancelled').order_by('issue_date', 'id')
+
+        allocated = zero
+        remaining_after = zero
+        eligible_rows = list(eligible.only('id', 'amount', 'due_date'))
+        self_is_last_eligible = bool(eligible_rows and eligible_rows[-1].pk == self.pk)
+        for invoice in eligible_rows:
+            amount = invoice.amount or zero
+            current = min(max(available, zero), amount)
+            available -= current
+            if invoice.pk == self.pk:
+                allocated = current
+                remaining_after = available
+                break
+
+        amount = self.amount or zero
+        outstanding = max(amount - allocated, zero)
+        if amount <= zero or allocated >= amount:
+            payment_status = (
+                'overpaid' if self_is_last_eligible and remaining_after > zero else 'paid'
+            )
+        elif allocated > zero:
+            payment_status = 'partially_paid'
+        elif self.due_date and self.due_date < timezone.localdate():
+            payment_status = 'overdue'
+        else:
+            payment_status = 'unpaid'
+        result = (allocated, outstanding, payment_status)
+        self._accounting_allocation_cache = result
+        return result
+
+    @property
+    def amount_paid(self):
+        return self.accounting_allocation()[0]
+
+    @property
+    def outstanding_balance(self):
+        return self.accounting_allocation()[1]
+
+    @property
+    def payment_status(self):
+        return self.accounting_allocation()[2]
+
+    @property
+    def payment_status_display(self):
+        return {
+            'unpaid': 'Unpaid',
+            'partially_paid': 'Partially Paid',
+            'paid': 'Paid',
+            'overpaid': 'Overpaid',
+            'overdue': 'Overdue',
+        }.get(self.payment_status, smart_title(self.payment_status))
 
     def _generate_invoice_number(self):
         # Example for Sept 2, 2025 → 202509245-001  (245th day of 2025)
@@ -91,6 +204,25 @@ class Invoice(models.Model):
                     raise
             # final attempt
         return super().save(*args, **kwargs)
+
+
+class InvoiceStatusHistory(models.Model):
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='status_history')
+    previous_status = models.CharField(max_length=20, blank=True, default='')
+    new_status = models.CharField(max_length=20)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='invoice_status_history_changes',
+    )
+    reason = models.CharField(max_length=255, blank=True, default='')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+
+    def __str__(self):
+        return f"Invoice {self.invoice_id}: {self.previous_status} -> {self.new_status}"
 
 
 class InvoiceItem(models.Model):
@@ -245,6 +377,7 @@ class SecurityDepositTransaction(models.Model):
         ("PENDING", "Pending"),
         ("APPROVED", "Approved"),
         ("PAID", "Paid"),
+        ("TRANSFERRED", "Transferred to Ledger"),
         ("CANCELLED", "Cancelled"),
     ]
 
@@ -301,6 +434,51 @@ class SecurityDepositTransaction(models.Model):
 
     def __str__(self):
         return f"{self.lease_id} {self.type} {self.amount} on {self.date}"
+
+
+class SecurityDepositLedgerTransfer(models.Model):
+    lease = models.ForeignKey(
+        'leases.Lease', on_delete=models.PROTECT, related_name='security_ledger_transfers'
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    transaction_date = models.DateField(default=timezone.localdate)
+    reason = models.CharField(max_length=255)
+    reference = models.CharField(max_length=80, unique=True)
+    ledger_credit_payment = models.OneToOneField(
+        'payments.Payment', on_delete=models.PROTECT, related_name='security_ledger_transfer_credit'
+    )
+    security_movement = models.OneToOneField(
+        SecurityDepositTransaction, on_delete=models.PROTECT, related_name='ledger_transfer_event'
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='security_ledger_transfers_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='security_ledger_transfers_reversed',
+    )
+    reversal_reason = models.CharField(max_length=255, blank=True, default='')
+    reversal_payment = models.OneToOneField(
+        'payments.Payment', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='security_ledger_transfer_reversal',
+    )
+
+    class Meta:
+        ordering = ('-transaction_date', '-id')
+        permissions = [
+            ('transfer_security_deposit_to_ledger', 'Can transfer refundable security deposit to ledger'),
+            ('reverse_security_deposit_ledger_transfer', 'Can reverse security deposit ledger transfer'),
+        ]
+
+    @property
+    def is_reversed(self):
+        return self.reversed_at is not None
+
+    def __str__(self):
+        return f"{self.reference}: {self.amount}"
 
 
 class MonthlyBillingRun(models.Model):

@@ -1096,6 +1096,13 @@
       height: 128px;
       margin-top:0;
     }
+    .family-doc-preview-slot[data-family-preview-for="cnic_front"] .tms-selected-preview img,
+    .family-doc-preview-slot[data-family-preview-for="cnic_back"] .tms-selected-preview img {
+      width:100%; height:100%; object-fit:contain !important; background:#fff;
+    }
+    .family-doc-preview-slot[data-family-preview-for="photo"] .tms-selected-preview img {
+      width:100%; height:100%; object-fit:cover !important;
+    }
     .family-read-cnic-btn {
       width:100%;
       min-height:31px;
@@ -1984,7 +1991,8 @@ window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenan
         if (!preview) {
           preview = document.createElement("img");
           preview.className = "public-file-preview";
-          preview.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+          const previewFit = /cnic_(front|back)/.test(input.name || input.dataset.field || "") ? "contain" : "cover";
+          preview.style.cssText = "width:100%;height:100%;object-fit:" + previewFit + ";position:absolute;inset:0;background:#fff;";
           if (placeholder) placeholder.replaceWith(preview);
           else container.insertBefore(preview, container.firstChild);
         }
@@ -2444,7 +2452,8 @@ window.TMS_CNIC_REPLACE_SHELL_NAMES = {% if tenant.first_name == "New" and tenan
       const mainContainer = input.closest(".image-upload-container");
       if (mainContainer) {
         image.className = "public-file-preview";
-        image.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+        const previewFit = /cnic_(front|back)/.test(input.name || input.dataset.field || "") ? "contain" : "cover";
+        image.style.cssText = "width:100%;height:100%;object-fit:" + previewFit + ";position:absolute;inset:0;background:#fff;";
         mainContainer.querySelector(".placeholder-icon")?.remove();
         const current = mainContainer.querySelector("img.public-file-preview");
         if (current) current.replaceWith(image);

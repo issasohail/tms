@@ -161,6 +161,14 @@
                     {% else %}
                       {{ item.property_unit|default:"-" }}
                     {% endif %}
+                    {% if item.lease_status == "active" %}
+                      <span class="badge bg-success ms-1">Active Lease</span>
+                    {% elif item.lease_status == "ended" %}
+                      <span class="badge bg-danger ms-1">Lease Ended</span>
+                      {% if item.lease_end_date %}<span class="text-muted small d-block">Ended: {{ item.lease_end_date|date:"M d, Y" }}</span>{% endif %}
+                    {% elif item.tenant_id %}
+                      <span class="badge bg-secondary ms-1">No Lease Record</span>
+                    {% endif %}
                   </td>
                   <td>
                     <div class="whatsapp-last-message" title="{{ item.last_message|default:'-' }}">{{ item.last_message|default:"-" }}</div>
@@ -192,7 +200,7 @@
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
           <strong>Conversation{% if selected_phone %}: {% with wa_number=selected_phone|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}<a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ selected_phone|format_phone:GLOBAL_SETTINGS.country_code }}</a>{% endwith %}{% endif %}</strong>
-          {% if selected_conversation.tenant_phone or selected_conversation.active_leases %}
+          {% if selected_conversation.tenant_id or selected_conversation.active_leases %}
             <div class="whatsapp-selected-context mt-1">
               {% if selected_conversation.tenant_phone %}
                 <span class="me-2">
@@ -205,6 +213,14 @@
                 <a class="badge bg-success text-decoration-none me-1" href="{% url 'leases:lease_detail' lease.id %}" title="Open active lease">
                   Active lease: {{ lease.property_name }} / {{ lease.unit_number }} · Ends {{ lease.end_date|date:"M d, Y" }}
                 </a>
+              {% empty %}
+                {% if selected_conversation.lease_status == "ended" and selected_conversation.lease_id %}
+                  <a class="badge bg-danger text-decoration-none me-1" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="Open latest ended lease">
+                    Lease Ended: {{ selected_conversation.property_unit }}{% if selected_conversation.lease_end_date %} · Ended {{ selected_conversation.lease_end_date|date:"M d, Y" }}{% endif %}
+                  </a>
+                {% elif selected_conversation.tenant_id %}
+                  <span class="badge bg-secondary me-1">No Lease Record</span>
+                {% endif %}
               {% endfor %}
             </div>
           {% endif %}

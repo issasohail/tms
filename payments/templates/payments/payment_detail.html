@@ -17,17 +17,22 @@
                 </button>
             <a href="{% url 'payments:payment_create' %}" class="btn btn-success btn-add-payment" title="Add Payment">
                 <i class="fas fa-money-bill-wave me-1"></i> <span class="btn-label">Add Payment</span>
-            </a>   
+            </a>
         </div>
         <div class="btn-group">
             <!-- Management Buttons -->
+            {% if can_view_ledger %}
+            <a href="{{ ledger_url }}" class="btn btn-warning btn-sm me-1" title="Open this payment in the tenant ledger">
+                <i class="fas fa-book me-1"></i> <span class="btn-label">Ledger</span>
+            </a>
+            {% endif %}
             <a href="{% url 'payments:payment_update' payment.pk %}" class="btn btn-primary btn-sm me-1" title="Edit">
                 <i class="fas fa-edit me-1"></i> <span class="btn-label">Edit</span>
             </a>
             <a href="{% url 'payments:payment_delete' payment.pk %}" class="btn btn-danger btn-sm me-1" title="Delete">
                 <i class="fas fa-trash-alt me-1"></i> <span class="btn-label">Delete</span>
             </a>
-            
+
             <!-- Communication Buttons -->
             <button onclick="window.print()" class="btn btn-primary btn-sm me-1" title="Print">
                 <i class="fas fa-print me-1"></i> <span class="btn-label">Print</span>
@@ -41,7 +46,7 @@
             <a href="{% url 'payments:payment_pdf' payment.pk %}" class="btn btn-primary me-1" title="Download (PDF)">
                 <i class="fas fa-file-pdf me-1"></i> <span class="btn-label">Download (PDF)</span>
             </a>
-           
+
             <button onclick="sendSMS()" class="btn btn-warning btn-sm me-1" title="SMS">
                 <i class="fas fa-sms me-1"></i> <span class="btn-label">SMS</span>
             </button>
@@ -50,7 +55,7 @@
             </button>
             {% include "whatsapp/_dropdown.html" with phone=payment_detail.payment.lease.tenant.phone object_type="payment" object_id=payment_detail.payment.pk %}
 
-            
+
         </div>
     </div>
 </div>
@@ -64,7 +69,7 @@
             {% for source in whatsapp_sources %}
                 {% if source.screenshot %}
                 <a href="{{ source.screenshot.url }}" target="_blank" rel="noopener" class="text-decoration-none">
-                    <img src="{{ source.screenshot.url }}" alt="Payment receipt proof" style="width:96px;height:96px;object-fit:cover;border:1px solid #d8dee6;border-radius:.35rem;">
+                    <img src="{{ source.screenshot.url }}" alt="Payment receipt proof" style="width:96px;height:96px;max-width:100%;object-fit:contain;background:#fff;border:1px solid #d8dee6;border-radius:.35rem;">
                     <span class="d-block small mt-1">Receipt #{{ source.pk }}</span>
                 </a>
                 {% endif %}
@@ -87,7 +92,7 @@
                                 {% if payment_detail.lease_amount < 0 %}LEASE REFUND RECEIPT{% elif payment_detail.security_type == "REFUND" %}SECURITY REFUND RECEIPT{% else %}PAYMENT RECEIPT{% endif %}
                             </h4>
                             <p class="mb-0 text-muted small">#{{ payment_detail.payment.reference_number|default:"-" }}</p>
-                         
+
                         </div>
                         <div class="text-end">
                             <p class="mb-1 fs-5"><strong>Date:</strong> {{ payment_detail.payment.payment_date|date:"M d, Y" }}</p>
@@ -162,20 +167,20 @@
                         </table>
                     </div>
 
-                    
+
 
                     <!-- Totals -->
                     <div class="border-top pt-2 mb-2">
                         <div class="row">
                             <div class="col-6 text-end">
                                 <p class="mb-1"><strong>{% if payment_detail.lease_amount < 0 or payment_detail.security_type == "REFUND" %}Amount Refunded:{% else %}Amount Paid:{% endif %}</strong></p>
-                                
+
                             </div>
                             <div class="col-6 text-end">
                                 <p class="mb-1 fw-bold {% if payment_detail.lease_amount < 0 or payment_detail.security_type == "REFUND" %}text-danger{% endif %}">
                                     {% if payment_detail.security_type == "REFUND" %}-{% endif %}{{ payment_detail.payment.amount|money:2 }}
                                 </p>
-                                
+
                             </div>
                         </div>
                     </div>
@@ -605,7 +610,7 @@ body.exporting-receipt-jpg .printable-content .card {
 
 
 
-    
+
 
     // --- Download PDF ---
     window.downloadPDF = function() {

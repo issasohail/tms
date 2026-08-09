@@ -509,6 +509,7 @@ def security_deposit_totals(lease):
             "refunded": ZERO,
             "pending_refund": ZERO,
             "refund_deductions": ZERO,
+            "transferred_to_ledger": ZERO,
             "damages": ZERO,
             "adjust": ZERO,
             "balance_to_collect": ZERO,
@@ -526,6 +527,11 @@ def security_deposit_totals(lease):
         paid_refunds.aggregate(total=Sum("deduction_amount"))["total"]
         or ZERO
     )
+    transferred_to_ledger = (
+        qs.filter(type="REFUND", refund_status="TRANSFERRED")
+        .aggregate(total=Sum("deduction_amount"))["total"]
+        or ZERO
+    )
     pending_refund = (
         qs.filter(type="REFUND", refund_status__in=["PENDING", "APPROVED"])
         .aggregate(total=Sum("amount"))["total"]
@@ -535,7 +541,9 @@ def security_deposit_totals(lease):
     adjust = qs.filter(type="ADJUST").aggregate(total=Sum("amount"))["total"] or ZERO
 
     balance_to_collect = max(required - paid_in, ZERO)
-    currently_held = max(paid_in - refunded - refund_deductions - damages, ZERO)
+    currently_held = max(
+        paid_in - refunded - refund_deductions - damages - transferred_to_ledger, ZERO
+    )
 
     return {
         "required": required,
@@ -543,6 +551,7 @@ def security_deposit_totals(lease):
         "refunded": refunded,
         "pending_refund": pending_refund,
         "refund_deductions": refund_deductions,
+        "transferred_to_ledger": transferred_to_ledger,
         "damages": damages,
         "adjust": adjust,
         "balance_to_collect": balance_to_collect,

@@ -42,7 +42,7 @@
       </div>
 
       <div class="card">
-        <div class="card-header py-2"><strong>Files</strong></div>
+        <div class="card-header py-2 d-flex justify-content-between"><strong>Files</strong><span class="badge bg-secondary">{{ request_obj.media.all|length }} attachment{{ request_obj.media.all|length|pluralize }}</span></div>
         <div class="card-body">
           {% if request_obj.media.all %}
             <div class="row g-2">
@@ -55,10 +55,19 @@
                       </div>
                       {% if media.is_image %}
                         <a href="{{ media.file.url }}" target="_blank">
-                          <img src="{{ media.file.url }}" alt="" class="img-fluid rounded border">
+                          <img src="{{ media.file.url }}" alt="" class="img-fluid rounded border" style="width:100%;height:auto;object-fit:contain;">
                         </a>
+                      {% elif media.is_video %}
+                        <video controls preload="metadata" class="w-100 rounded border" style="max-height:360px;background:#000;">
+                          <source src="{{ media.file.url }}"{% if media.source_media_type and '/' in media.source_media_type %} type="{{ media.source_media_type }}"{% endif %}>
+                          Your browser cannot play this video. Use View File below.
+                        </video>
+                        <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mt-2">View File</a>
                       {% else %}
-                        <a href="{{ media.file.url }}" target="_blank" class="btn btn-outline-secondary btn-sm">View File</a>
+                        <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">View File</a>
+                      {% endif %}
+                      {% if media.source_message_timestamp %}
+                        <div class="small text-muted mt-1">Source: {{ media.source_message_timestamp|date:"M d, Y H:i" }}{% if media.source_provider_media_id %} · WhatsApp media {{ media.source_provider_media_id|truncatechars:20 }}{% endif %}</div>
                       {% endif %}
                       {% if media.description %}
                         <div class="small mt-2">{{ media.description }}</div>

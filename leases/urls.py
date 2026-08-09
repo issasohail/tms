@@ -385,6 +385,16 @@ urlpatterns = [
     # Ledger for a specific lease (pk)
     path("<int:pk>/ledger/", LeaseLedgerView.as_view(), name="lease_ledger_by_pk"),
     path(
+        "<int:pk>/ledger/transfer-security/",
+        views.lease_transfer_full_security_action,
+        name="lease_transfer_full_security",
+    ),
+    path(
+        "<int:pk>/ledger/security-transfer/<int:transfer_id>/reverse/",
+        views.lease_reverse_security_transfer_action,
+        name="lease_reverse_security_transfer",
+    ),
+    path(
         "<int:pk>/ledger/transfer-pending-security/",
         views.lease_transfer_pending_security_action,
         name="lease_transfer_pending_security",

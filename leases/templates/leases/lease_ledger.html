@@ -42,7 +42,7 @@
         <div class="d-flex align-items-center gap-2">
           <label for="id_lease" class="form-label mb-0">Lease</label>
           <div class="form-check form-check-inline mt-1">
-            <input class="form-check-input" type="checkbox" id="show_inactive" name="show_inactive" 
+            <input class="form-check-input" type="checkbox" id="show_inactive" name="show_inactive"
             {% if show_inactive %} checked {% endif %}>
             <label class="form-check-label" for="show_inactive">Show inactive</label>
           </div>
@@ -199,6 +199,9 @@
       <div class="deposit-summary-item">
         <span>Refunded</span><strong>{{ security_refunded|intcomma }}</strong>
       </div>
+      <div class="deposit-summary-item">
+        <span>Transferred to Ledger</span><strong>{{ security_transferred_to_ledger|intcomma }}</strong>
+      </div>
       <div class="deposit-summary-item table-warning">
         <span>Balance to Collect</span><strong>{{ security_balance_to_collect|intcomma }}</strong>
       </div>
@@ -212,11 +215,13 @@
     <div class="d-flex justify-content-between align-items-center mb-1">
       <h5 class="section-title mb-0">Security Deposit Ledger</h5>
       <div class="d-flex gap-1">
-        {% if lease.status == "ended" and security_pending_refund > 0 and security_currently_held > 0 %}
-        <form method="post" action="{% url 'leases:lease_transfer_pending_security' lease.id %}" class="d-inline"
-              onsubmit="return confirm('Transfer the pending held security into the lease ledger as tenant credit?');">
+        {% if lease.status == "ended" and security_currently_held > 0 and perms.invoices.transfer_security_deposit_to_ledger %}
+        <form method="post" action="{% url 'leases:lease_transfer_full_security' lease.id %}" class="d-flex gap-1 align-items-center flex-wrap"
+              onsubmit="return confirm('Transfer the full refundable security balance into the tenant ledger as an internal credit? This does NOT record a cash/bank refund.');">
           {% csrf_token %}
-          <button type="submit" class="btn btn-primary btn-slim">Transfer Pending to Ledger</button>
+          <input type="date" name="transaction_date" class="form-control form-control-sm" value="{% now 'Y-m-d' %}" required style="width:140px" title="Transaction date">
+          <input type="text" name="reason" class="form-control form-control-sm" maxlength="255" required placeholder="Transfer reason" style="width:180px">
+          <button type="submit" class="btn btn-primary btn-slim">Transfer Full Security Deposit to Ledger</button>
         </form>
         {% endif %}
         {% if security_currently_held > 0 %}
@@ -293,7 +298,37 @@
     {% else %}
     <p class="text-muted mb-0">No security deposit transactions yet.</p>
     {% endif %}
+  {% if security_ledger_transfers %}
+  <div class="deposit-ledger-panel mt-2">
+    <h5 class="section-title mb-2">Security Deposit Ledger Transfers</h5>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Date</th><th>Reference</th><th>Amount</th><th>Reason</th><th>Status</th><th class="no-print">Action</th></tr></thead>
+        <tbody>
+        {% for transfer in security_ledger_transfers %}
+          <tr>
+            <td>{{ transfer.transaction_date|date:"M d, Y" }}</td>
+            <td>{{ transfer.reference }}</td>
+            <td>Rs. {{ transfer.amount|intcomma }}</td>
+            <td>{{ transfer.reason }}</td>
+            <td>{% if transfer.is_reversed %}<span class="badge bg-secondary">Reversed</span>{% else %}<span class="badge bg-primary">Transferred</span>{% endif %}</td>
+            <td class="no-print">
+              {% if not transfer.is_reversed and perms.invoices.reverse_security_deposit_ledger_transfer %}
+              <form method="post" action="{% url 'leases:lease_reverse_security_transfer' lease.id transfer.id %}" class="d-flex gap-1" onsubmit="return confirm('Reverse this security deposit ledger transfer?');">
+                {% csrf_token %}
+                <input type="text" name="reason" maxlength="255" required class="form-control form-control-sm" placeholder="Reversal reason">
+                <button type="submit" class="btn btn-outline-danger btn-slim">Reverse</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+{% endif %}
+</div>
 </div>
 {% endif %}
 
@@ -337,7 +372,7 @@
           </thead>
           <tbody>
             {% for t in transactions %}
-            <tr>
+            <tr{% if t.is_focused %} id="focused-payment-row" class="table-warning focused-payment-row"{% endif %}>
               <td>{{ forloop.counter }}</td>
               <td>{{ t.date|date:"M d, Y" }}</td>
               <td>{{ t.type }}</td>
@@ -378,7 +413,7 @@
               </thead>
               <tbody>
                 {% for t in tx_col1 %}
-                <tr>
+                <tr{% if t.is_focused %} id="focused-payment-row" class="table-warning focused-payment-row"{% endif %}>
                   <td>{{ forloop.counter }}</td>
                   <td>{{ t.date|date:"M d, Y" }}</td>
                   <td>{{ t.type }}</td>
@@ -416,7 +451,7 @@
               </thead>
               <tbody>
                 {% for t in tx_col2 %}
-                <tr>
+                <tr{% if t.is_focused %} id="focused-payment-row" class="table-warning focused-payment-row"{% endif %}>
                   <td>{{ forloop.counter|add:"20" }}</td>
                   <td>{{ t.date|date:"M d, Y" }}</td>
                   <td>{{ t.type }}</td>

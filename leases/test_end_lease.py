@@ -357,7 +357,7 @@ class EndLeasePostingTests(TestCase):
         transfer = SecurityDepositTransaction.objects.get(
             lease=lease,
             type="REFUND",
-            refund_status="PAID",
+            refund_status="TRANSFERRED",
             deduction_reason="Transferred to lease ledger for tenant refund",
         )
         self.assertEqual(transfer.amount, ZERO)
@@ -464,7 +464,7 @@ class EndLeaseRefundAndReviewTests(TestCase):
         transfers = SecurityDepositTransaction.objects.filter(
             lease=lease,
             type="REFUND",
-            refund_status="PAID",
+            refund_status="TRANSFERRED",
             deduction_reason="Transferred to lease ledger for tenant refund",
         )
         self.assertEqual(transfers.count(), 1)
@@ -854,6 +854,40 @@ class SecurityRefundLinkTests(TestCase):
             security_deposit_totals(self.lease)["currently_held"], ZERO
         )
 
+    def test_full_security_transfer_is_internal_idempotent_and_reversible(self):
+        from invoices.models import SecurityDepositLedgerTransfer
+
+        self.lease.status = "ended"
+        self.lease.end_date = date.today()
+        self.lease.save(update_fields=["status", "end_date"])
+        response = self.client.post(
+            reverse("leases:lease_transfer_full_security", args=[self.lease.pk]),
+            {"transaction_date": date.today().isoformat(), "reason": "Move-out refundable balance"},
+        )
+        self.assertRedirects(response, reverse("leases:lease_ledger_by_pk", args=[self.lease.pk]))
+        transfer = SecurityDepositLedgerTransfer.objects.get(lease=self.lease)
+        self.assertEqual(transfer.amount, Decimal("15300.00"))
+        self.assertIsNone(transfer.ledger_credit_payment.payment_method)
+        self.assertEqual(transfer.ledger_credit_payment.detail.lease_amount, Decimal("15300.00"))
+        self.assertEqual(transfer.security_movement.refund_status, "TRANSFERRED")
+        self.assertEqual(security_deposit_totals(self.lease)["currently_held"], ZERO)
+
+        duplicate = self.client.post(
+            reverse("leases:lease_transfer_full_security", args=[self.lease.pk]),
+            {"transaction_date": date.today().isoformat(), "reason": "Duplicate click"},
+        )
+        self.assertEqual(SecurityDepositLedgerTransfer.objects.filter(lease=self.lease).count(), 1)
+        self.assertEqual(duplicate.status_code, 302)
+
+        reverse_response = self.client.post(
+            reverse("leases:lease_reverse_security_transfer", args=[self.lease.pk, transfer.pk]),
+            {"reason": "Settlement reopened"},
+        )
+        self.assertEqual(reverse_response.status_code, 302)
+        transfer.refresh_from_db()
+        self.assertIsNotNone(transfer.reversed_at)
+        self.assertEqual(transfer.reversal_payment.detail.lease_amount, Decimal("-15300.00"))
+
     def test_ended_lease_can_transfer_legacy_pending_refund_to_ledger(self):
         self.lease.status = "ended"
         self.lease.end_date = date.today()
@@ -878,7 +912,7 @@ class SecurityRefundLinkTests(TestCase):
         self.assertEqual(pending.refund_status, "CANCELLED")
         transfer = SecurityDepositTransaction.objects.get(
             lease=self.lease,
-            refund_status="PAID",
+            refund_status="TRANSFERRED",
             deduction_reason="Transferred to lease ledger for tenant refund",
         )
         self.assertEqual(transfer.deduction_amount, Decimal("15300.00"))

@@ -1,4 +1,5 @@
 # core/views.py
+import hashlib
 import json
 import logging
 import uuid
@@ -1389,7 +1390,7 @@ def _approve_pending_maintenance(pending, user, handyman=None):
         raise ValueError("This maintenance submission has already been reviewed.")
     if not pending.unit_id:
         raise ValueError("Maintenance needs a unit before approval.")
-    pending_media = list(pending.media.all())
+    pending_media = list(pending.media.select_related("original_whatsapp_message").order_by("created_at", "pk"))
     for media in pending_media:
         if media.processing:
             raise ValueError(
@@ -1422,11 +1423,34 @@ def _approve_pending_maintenance(pending, user, handyman=None):
         priority="urgent" if pending.urgency in {"urgent", "emergency"} else "normal",
         created_by=user,
     )
-    for media in pending_media:
+    seen_media_keys = set()
+    for media_order, media in enumerate(pending_media, start=1):
+        provider_key = (media.whatsapp_media_id or "").strip()
+        if provider_key and ("provider", provider_key) in seen_media_keys:
+            media.status = PendingWhatsAppMedia.STATUS_APPROVED
+            media.approved_by = user
+            media.approved_at = timezone.now()
+            media.ai_notes = "\n".join(filter(None, [media.ai_notes, "Duplicate provider media ID skipped during maintenance approval."]))
+            media.save(update_fields=["status", "approved_by", "approved_at", "ai_notes", "updated_at"])
+            continue
+        try:
+            source_file_size = media.file.size
+        except (FileNotFoundError, OSError, ValueError):
+            source_file_size = None
         try:
             with media.file.storage.open(media.file.name, "rb") as source_file:
+                source_bytes = source_file.read()
+                source_checksum = hashlib.sha256(source_bytes).hexdigest()
+                checksum_key = ("checksum", source_checksum)
+                if not provider_key and checksum_key in seen_media_keys:
+                    media.status = PendingWhatsAppMedia.STATUS_APPROVED
+                    media.approved_by = user
+                    media.approved_at = timezone.now()
+                    media.ai_notes = "\n".join(filter(None, [media.ai_notes, "Duplicate media checksum skipped during maintenance approval."]))
+                    media.save(update_fields=["status", "approved_by", "approved_at", "ai_notes", "updated_at"])
+                    continue
                 content = ContentFile(
-                    source_file.read(),
+                    source_bytes,
                     name=media.original_filename or media.file.name,
                 )
         except (FileNotFoundError, OSError) as exc:
@@ -1434,12 +1458,27 @@ def _approve_pending_maintenance(pending, user, handyman=None):
                 f'Maintenance media "{media.original_filename or media.file.name}" '
                 "is missing from storage. Restore or re-upload it before approval."
             ) from exc
+        seen_media_keys.add(("provider", provider_key) if provider_key else ("checksum", source_checksum))
         MaintenanceRequestMedia.objects.create(
             request=ticket,
             file=content,
             description=media.ai_notes[:255],
             uploaded_by=user,
             original_filename=media.original_filename,
+            source_pending_media_id=media.pk,
+            source_provider_media_id=media.whatsapp_media_id or "",
+            source_whatsapp_message_id=(
+                media.original_whatsapp_message.wa_message_id
+                if media.original_whatsapp_message_id else ""
+            ),
+            source_message_timestamp=(
+                media.original_whatsapp_message.created_at
+                if media.original_whatsapp_message_id else media.created_at
+            ),
+            source_media_type=media.media_type or "",
+            source_file_size=source_file_size,
+            source_checksum=source_checksum,
+            source_order=media_order,
         )
         media.status = PendingWhatsAppMedia.STATUS_APPROVED
         media.approved_by = user
@@ -1767,6 +1806,11 @@ def pending_approval_approve(request, kind, pk):
         else:
             raise Http404("Unknown pending approval type.")
     except ValueError as exc:
+        if kind == "maintenance" and hasattr(item, "ai_notes"):
+            item.ai_notes = "\n".join(
+                part for part in (item.ai_notes.strip(), f"Approval requires attention: {exc}") if part
+            )
+            item.save(update_fields=["ai_notes", "updated_at"])
         ajax_response = _pending_ajax_response(request, str(exc), status=400)
         if ajax_response:
             return ajax_response

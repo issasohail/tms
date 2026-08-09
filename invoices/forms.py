@@ -48,6 +48,12 @@ class InvoiceForm(forms.ModelForm):
         model = Invoice
         # include your other fields too:
         fields = "__all__"
+        exclude = [
+            "lifecycle_status",
+            "lifecycle_status_reason",
+            "lifecycle_status_updated_by",
+            "lifecycle_status_updated_at",
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

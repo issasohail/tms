@@ -50,6 +50,7 @@ urlpatterns = [
 
     # Detail/Update/Delete
     path('<int:pk>/', InvoiceDetailView.as_view(), name='invoice_detail'),
+    path('<int:pk>/lifecycle-status/', views.update_invoice_lifecycle_status, name='invoice_lifecycle_status'),
     path('public/<path:token>/', views.public_invoice_detail, name='public_invoice_detail'),
     path('<int:pk>/update/', InvoiceUpdateView.as_view(), name='invoice_update'),
     path('<int:pk>/delete/', InvoiceDeleteView.as_view(), name='invoice_delete'),
@@ -171,7 +172,7 @@ urlpatterns = [
     #    views.invoice_whatsapp_message, name="invoice_whatsapp_message"),
     path("api/invoice/<int:pk>/whatsapp/",
          views.api_invoice_whatsapp, name="api_invoice_whatsapp"),
-     
+
      path("api/security/<int:pk>/whatsapp/", views.api_security_receipt_whatsapp, name="api_security_receipt_whatsapp"),
 
 ]

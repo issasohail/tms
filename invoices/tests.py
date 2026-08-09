@@ -410,3 +410,72 @@ class MonthlyBillingWhatsAppIdempotencyTests(TestCase):
 
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, "sent")
+
+
+class InvoiceLifecycleAndAccountingStatusTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        tenant = Tenant.objects.create(
+            first_name="Status", last_name="Tenant", cnic="35202-1234567-1", phone="03001234567"
+        )
+        prop = Property.objects.create(
+            property_name="Status Property", owner_name="Owner", owner_cnic="35202-7654321-1",
+            type="Residential", property_type="apartment", total_units=1,
+        )
+        unit = Unit.objects.create(property=prop, unit_number="S-01")
+        self.lease = Lease.objects.create(
+            tenant=tenant, unit=unit, start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("10000.00"), status="active",
+        )
+        self.user = get_user_model().objects.create_superuser(
+            username="invoice-status-admin", email="status@example.com", password="test"
+        )
+        self.client.force_login(self.user)
+
+    def test_lifecycle_change_is_audited_without_forging_payment_status(self):
+        from django.urls import reverse
+        from invoices.models import InvoiceStatusHistory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease, issue_date=date(2026, 7, 1), due_date=date(2026, 7, 5),
+            amount=Decimal("10000.00"), status="unpaid",
+        )
+        response = self.client.post(
+            reverse("invoices:invoice_lifecycle_status", args=[invoice.pk]),
+            {"lifecycle_status": "disputed", "reason": "Tenant queried the billed amount."},
+            REMOTE_ADDR="127.0.0.1",
+        )
+        self.assertEqual(response.status_code, 302)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.lifecycle_status, "disputed")
+        self.assertEqual(invoice.status, "unpaid")
+        self.assertEqual(invoice.payment_status, "overdue")
+        history = InvoiceStatusHistory.objects.get(invoice=invoice)
+        self.assertEqual(history.previous_status, "issued")
+        self.assertEqual(history.new_status, "disputed")
+        self.assertEqual(history.ip_address, "127.0.0.1")
+
+    def test_only_last_invoice_can_be_overpaid(self):
+        from payments.models import Payment
+        from payments.services.payment_detail import rebuild_payment_detail
+
+        first = Invoice.objects.create(
+            lease=self.lease, issue_date=date(2026, 7, 1), due_date=date(2026, 7, 5),
+            amount=Decimal("1000.00"), status="sent",
+        )
+        second = Invoice.objects.create(
+            lease=self.lease, issue_date=date(2026, 8, 1), due_date=date(2026, 8, 5),
+            amount=Decimal("1000.00"), status="sent",
+        )
+        payment = Payment.objects.create(
+            lease=self.lease, payment_date=date(2026, 8, 2), amount=Decimal("2500.00")
+        )
+        rebuild_payment_detail(
+            payment=payment, lease_amount=Decimal("2500.00"), security_amount=Decimal("0.00"),
+            reason="Invoice accounting status test",
+        )
+        self.assertEqual(first.payment_status, "paid")
+        self.assertEqual(second.payment_status, "overpaid")

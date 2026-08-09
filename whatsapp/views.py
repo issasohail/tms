@@ -42,7 +42,7 @@ from .models import (
     WhatsAppUtilityTemplate,
     WhatsAppWebhookLog,
 )
-from .services.tenant_context import find_active_leases_for_phone
+from .services.tenant_context import find_active_leases_for_phone, resolve_tenant_and_last_lease
 from .services.whatsapp import WhatsAppService, is_whatsapp_session_open
 
 logger = logging.getLogger(__name__)
@@ -527,12 +527,13 @@ def _touch_inbound_conversation(phone_number, message, received_at):
         return None
     conversation, created = WhatsAppConversation.objects.get_or_create(phone_number=phone_number)
     if created:
-        lease = find_active_leases_for_phone(phone_number).first()
-        if lease:
-            conversation.tenant = lease.tenant
-            conversation.selected_lease = lease
-            conversation.selected_property = getattr(lease.unit, "property", None)
-            conversation.selected_unit = lease.unit
+        resolution = resolve_tenant_and_last_lease(phone_number)
+        if resolution.tenant:
+            conversation.tenant = resolution.tenant
+        if resolution.lease:
+            conversation.selected_lease = resolution.lease
+            conversation.selected_property = getattr(resolution.lease.unit, "property", None)
+            conversation.selected_unit = resolution.lease.unit
     conversation.last_message_at = received_at
     conversation.last_inbound_message_at = received_at
     conversation.last_inbound_message_id = message.get("id", "")
@@ -762,20 +763,31 @@ def _conversation_summary():
     seen = set()
     latest_message_ids = (
         WhatsAppMessageLog.objects.exclude(phone_number="")
+        .exclude(direction=WhatsAppMessageLog.DIRECTION_STATUS)
         .values("phone_number")
         .annotate(latest_id=Max("id"))
         .values("latest_id")
     )
-    logs = (
+    logs = list(
         WhatsAppMessageLog.objects.filter(pk__in=Subquery(latest_message_ids))
         .select_related("tenant", "lease__tenant", "lease__unit__property")
         .order_by("-created_at")
     )
+    phones = [log.phone_number for log in logs if log.phone_number]
+    conversations = {
+        item.phone_number: item
+        for item in WhatsAppConversation.objects.filter(phone_number__in=phones).select_related(
+            "tenant", "selected_lease__tenant", "selected_lease__unit__property",
+            "selected_property", "selected_unit",
+        )
+    }
     for index, log in enumerate(logs, start=1):
         if log.phone_number in seen:
             continue
         seen.add(log.phone_number)
-        context = _conversation_context_for_phone(log.phone_number, log)
+        context = _conversation_context_for_phone(
+            log.phone_number, log, conversation=conversations.get(log.phone_number)
+        )
         summary.append(
             {
                 "sn": len(summary) + 1,
@@ -786,11 +798,13 @@ def _conversation_summary():
                 "property_id": context["property_id"],
                 "unit_id": context["unit_id"],
                 "lease_id": context["lease_id"],
+                "lease_status": context["lease_status"],
+                "lease_end_date": context["lease_end_date"],
                 "last_direction": log.direction,
                 "last_status": log.status,
                 "last_message": _message_text(log),
                 "last_at": log.created_at,
-                "needs_reply": _conversation_needs_reply(log.phone_number),
+                "needs_reply": log.direction == WhatsAppMessageLog.DIRECTION_INBOUND,
             }
         )
     return summary
@@ -844,8 +858,9 @@ def _conversation_needs_reply(phone_number):
     return bool(latest and latest.direction == WhatsAppMessageLog.DIRECTION_INBOUND)
 
 
-def _conversation_context_for_phone(phone_number, latest_log=None):
-    conversation = (
+def _conversation_context_for_phone(phone_number, latest_log=None, conversation=None):
+    if conversation is None:
+        conversation = (
         WhatsAppConversation.objects.select_related(
             "tenant",
             "selected_lease__tenant",
@@ -855,7 +870,7 @@ def _conversation_context_for_phone(phone_number, latest_log=None):
         )
         .filter(phone_number=phone_number)
         .first()
-    )
+        )
     lease = getattr(conversation, "selected_lease", None) if conversation else None
     tenant = getattr(conversation, "tenant", None) if conversation else None
     selected_property = getattr(conversation, "selected_property", None) if conversation else None
@@ -865,12 +880,32 @@ def _conversation_context_for_phone(phone_number, latest_log=None):
         lease = getattr(latest_log, "lease", None)
     if not tenant and latest_log:
         tenant = getattr(latest_log, "tenant", None)
-    if not lease:
-        lease = find_active_leases_for_phone(phone_number).first()
+    resolution = None
+    if not tenant or not lease:
+        resolution = resolve_tenant_and_last_lease(phone_number)
+        if not tenant:
+            tenant = resolution.tenant
+        if not lease:
+            lease = resolution.lease
     if lease:
         tenant = tenant or lease.tenant
         selected_property = getattr(lease.unit, "property", None)
         selected_unit = lease.unit
+
+    lease_status = ""
+    lease_end_date = None
+    if lease:
+        if resolution and resolution.lease and resolution.lease.pk == lease.pk:
+            lease_status = resolution.lease_status
+            lease_end_date = resolution.lease_end_date
+        else:
+            today = timezone.localdate()
+            lease_status = (
+                "active"
+                if lease.status == "active" and lease.start_date <= today <= lease.end_date
+                else "ended"
+            )
+            lease_end_date = lease.end_date
 
     tenant_name = tenant.get_full_name() if tenant else ""
     property_unit = ""
@@ -886,6 +921,8 @@ def _conversation_context_for_phone(phone_number, latest_log=None):
         "property_id": getattr(selected_property, "pk", None),
         "unit_id": getattr(selected_unit, "pk", None),
         "lease_id": getattr(lease, "pk", None),
+        "lease_status": lease_status,
+        "lease_end_date": lease_end_date,
     }
 
 
@@ -967,7 +1004,8 @@ def _filter_conversation_summary(
 def _selected_conversation_context(phone_number):
     context = _conversation_context_for_phone(phone_number)
     active_leases = list(find_active_leases_for_phone(phone_number))
-    tenant = active_leases[0].tenant if active_leases else None
+    resolution = resolve_tenant_and_last_lease(phone_number)
+    tenant = resolution.tenant
 
     if not tenant and context["tenant_id"]:
         tenant = Tenant.objects.filter(pk=context["tenant_id"]).first()
@@ -985,6 +1023,10 @@ def _selected_conversation_context(phone_number):
         "tenant_id": getattr(tenant, "pk", None),
         "tenant_name": tenant.get_full_name() if tenant else context["tenant_name"],
         "tenant_phone": tenant_phone if phone_matches_tenant else "",
+        "lease_status": context.get("lease_status", ""),
+        "lease_id": context.get("lease_id"),
+        "property_unit": context.get("property_unit", ""),
+        "lease_end_date": context.get("lease_end_date"),
         "active_leases": [
             {
                 "id": lease.pk,

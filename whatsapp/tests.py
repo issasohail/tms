@@ -72,6 +72,7 @@ from whatsapp.services.handover.workflow import handle_active_tenant_message, ha
 from whatsapp.services.identity.mode_resolver import infer_mode
 from whatsapp.services.identity.sender_resolver import resolve_sender
 from whatsapp.services.role_mode import resolve_mode, staff_menu_text
+from whatsapp.services.tenant_context import resolve_tenant_and_last_lease
 from whatsapp.views import _log_webhook_payload
 
 
@@ -175,7 +176,7 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.user = get_user_model().objects.create_user("media-approver", password="test")
         self.user.user_permissions.add(
             *Permission.objects.filter(
-                codename__in=["change_globalsettings", "view_globalsettings"]
+                codename__in=["change_globalsettings", "view_globalsettings", "view_maintenancerequest"]
             )
         )
         self.client.force_login(self.user)
@@ -450,6 +451,69 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertFalse(video.processing)
         self.assertTrue(video.file.storage.exists(video.file.name))
         self.assertIn("Downloaded WhatsApp media size", video.ai_notes)
+
+    def test_multiple_pending_videos_are_all_preserved_and_rendered(self):
+        media_rows = []
+        for index in range(3):
+            media_rows.append(
+                PendingWhatsAppMedia.objects.create(
+                    phone=self.tenant.phone,
+                    file=ContentFile(b"video-bytes-" + str(index).encode(), name=f"clip-{index}.mp4"),
+                    original_filename=f"clip-{index}.mp4",
+                    media_type="video/mp4",
+                    whatsapp_media_id=f"provider-video-{index}",
+                    purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+                    tenant=self.tenant, lease=self.lease, property=self.property, unit=self.unit,
+                )
+            )
+        pending = PendingWhatsAppMaintenance.objects.create(
+            phone=self.tenant.phone, tenant=self.tenant, lease=self.lease,
+            property=self.property, unit=self.unit, issue_type="Other",
+            description="Three maintenance videos.",
+        )
+        pending.media.add(*media_rows)
+
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest", HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        pending.refresh_from_db()
+        final_media = list(pending.created_request.media.order_by("source_order", "id"))
+        self.assertEqual(len(final_media), 3)
+        self.assertEqual([m.source_order for m in final_media], [1, 2, 3])
+        self.assertEqual([m.source_provider_media_id for m in final_media], [
+            "provider-video-0", "provider-video-1", "provider-video-2"
+        ])
+        detail = self.client.get(reverse("maintenance:request_detail", args=[pending.created_request_id]))
+        self.assertContains(detail, "<video", count=3)
+        self.assertContains(detail, "3 attachments")
+
+    def test_duplicate_provider_media_id_is_not_copied_twice(self):
+        first = self._pending(
+            filename="same-name.mp4", file=ContentFile(b"video-one", name="same-name.mp4"),
+            media_type="video/mp4", purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+            whatsapp_media_id="same-provider-id",
+        )
+        second = self._pending(
+            filename="same-name-duplicate.mp4", file=ContentFile(b"video-two", name="same-name-duplicate.mp4"),
+            media_type="video/mp4", purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+            whatsapp_media_id="same-provider-id",
+        )
+        pending = PendingWhatsAppMaintenance.objects.create(
+            phone=self.tenant.phone, tenant=self.tenant, lease=self.lease,
+            property=self.property, unit=self.unit, issue_type="Other", description="Duplicate provider media.",
+        )
+        pending.media.add(first, second)
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest", HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        pending.refresh_from_db()
+        self.assertEqual(pending.created_request.media.count(), 1)
+        second.refresh_from_db()
+        self.assertIn("Duplicate provider media ID skipped", second.ai_notes)
 
     def test_approved_maintenance_media_is_renamed_and_keeps_original_name(self):
         media = self._pending(
@@ -3538,6 +3602,78 @@ class SettingsEmbeddedLayoutTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn("embed=1", response["Location"])
+
+
+class TenantLatestLeaseResolutionTests(TestCase):
+    def setUp(self):
+        self.property = Property.objects.create(
+            property_name="Context Property", owner_name="Owner", owner_cnic="37405-5656565-6",
+            type="Residential", property_type="apartment", total_units=3,
+        )
+        self.unit1 = Unit.objects.create(property=self.property, unit_number="C-1")
+        self.unit2 = Unit.objects.create(property=self.property, unit_number="C-2")
+        self.phone = "03001234567"
+
+    def _tenant(self, **kwargs):
+        defaults = dict(
+            first_name="Latest", last_name="Tenant", cnic="61101-1212121-1", phone=self.phone,
+        )
+        defaults.update(kwargs)
+        return Tenant.objects.create(**defaults)
+
+    def test_active_lease_is_preferred(self):
+        tenant = self._tenant()
+        Lease.objects.create(
+            tenant=tenant, unit=self.unit1, start_date=date.today() - timedelta(days=400),
+            end_date=date.today() - timedelta(days=30), monthly_rent=10000, status="ended",
+        )
+        active = Lease.objects.create(
+            tenant=tenant, unit=self.unit2, start_date=date.today() - timedelta(days=10),
+            end_date=date.today() + timedelta(days=300), monthly_rent=12000, status="active",
+        )
+        resolution = resolve_tenant_and_last_lease("+92-300-1234567")
+        self.assertEqual(resolution.tenant, tenant)
+        self.assertEqual(resolution.lease, active)
+        self.assertEqual(resolution.lease_status, "active")
+
+    def test_latest_ended_lease_is_returned(self):
+        tenant = self._tenant()
+        older = Lease.objects.create(
+            tenant=tenant, unit=self.unit1, start_date=date.today() - timedelta(days=700),
+            end_date=date.today() - timedelta(days=400), monthly_rent=9000, status="ended",
+        )
+        latest = Lease.objects.create(
+            tenant=tenant, unit=self.unit2, start_date=date.today() - timedelta(days=300),
+            end_date=date.today() - timedelta(days=20), monthly_rent=11000, status="terminated",
+        )
+        resolution = resolve_tenant_and_last_lease(self.phone)
+        self.assertNotEqual(resolution.lease, older)
+        self.assertEqual(resolution.lease, latest)
+        self.assertEqual(resolution.lease_status, "ended")
+
+    def test_pending_draft_is_not_used_as_latest_real_tenancy(self):
+        tenant = self._tenant()
+        ended = Lease.objects.create(
+            tenant=tenant, unit=self.unit1, start_date=date.today() - timedelta(days=200),
+            end_date=date.today() - timedelta(days=5), monthly_rent=10000, status="ended",
+        )
+        Lease.objects.create(
+            tenant=tenant, unit=self.unit2, start_date=date.today() + timedelta(days=10),
+            end_date=date.today() + timedelta(days=300), monthly_rent=12000, status="pending_approval",
+        )
+        resolution = resolve_tenant_and_last_lease(self.phone)
+        self.assertEqual(resolution.lease, ended)
+
+    def test_tenant_without_lease_still_resolves(self):
+        tenant = self._tenant()
+        resolution = resolve_tenant_and_last_lease(self.phone)
+        self.assertEqual(resolution.tenant, tenant)
+        self.assertIsNone(resolution.lease)
+        self.assertEqual(resolution.lease_status, "")
+
+    def test_phone_format_variants_match_same_tenant(self):
+        tenant = self._tenant(phone="+923001234567")
+        self.assertEqual(resolve_tenant_and_last_lease("0300-1234567").tenant, tenant)
 
 
 class PaymentClaimTests(TestCase):

@@ -199,10 +199,9 @@ class LeaseInventorySynchronizationTests(TestCase):
             self.lease.inventory_items.values_list("item__code", "quantity")
         )
 
-        # Lease creation now preserves explicitly-set inventory quantities
-        # (see ensure_lease_inventory_snapshot), so this call has nothing
-        # left to reconcile.
-        self.assertEqual(updated, 0)
+        # This test creates the inventory definitions after the Lease, so the
+        # first explicit sync is expected to reconcile all six legacy fields.
+        self.assertEqual(updated, 6)
         self.assertEqual(
             quantities,
             {

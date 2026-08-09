@@ -129,6 +129,45 @@
       </div>
     </div>
 
+    <div class="border rounded p-2 mb-3 small invoice-status-panel">
+      <div class="row g-2 align-items-start">
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Lifecycle</span><strong>{{ invoice.get_lifecycle_status_display }}</strong></div>
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Payment</span><strong>{{ invoice_payment_status_display }}</strong></div>
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Invoice Total</span><strong>{{ invoice.amount|money:2 }}</strong></div>
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Paid Amount</span><strong>{{ invoice_amount_paid|money:2 }}</strong></div>
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Outstanding</span><strong>{{ invoice_outstanding|money:2 }}</strong></div>
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Last Status Update</span><strong>{{ invoice.lifecycle_status_updated_at|date:"M d, Y H:i"|default:"—" }}</strong></div>
+      </div>
+      {% if invoice.lifecycle_status_reason %}<div class="mt-2"><span class="text-muted">Reason:</span> {{ invoice.lifecycle_status_reason }}</div>{% endif %}
+      {% if perms.invoices.change_invoice_lifecycle_status %}
+      <form method="post" action="{% url 'invoices:invoice_lifecycle_status' invoice.pk %}" class="row g-2 mt-1 align-items-end no-print">
+        {% csrf_token %}
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Lifecycle status</label>
+          <select name="lifecycle_status" class="form-select form-select-sm" required>
+            {% for value, label in invoice.LIFECYCLE_STATUS_CHOICES %}
+              <option value="{{ value }}" {% if invoice.lifecycle_status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1">Reason / notes</label>
+          <input type="text" name="reason" maxlength="255" class="form-control form-control-sm" value="{{ invoice.lifecycle_status_reason }}">
+        </div>
+        <div class="col-12 col-md-3"><button type="submit" class="btn btn-sm btn-outline-primary">Update Status</button></div>
+      </form>
+      {% endif %}
+      {% if invoice_status_history %}
+      <details class="mt-2 no-print">
+        <summary>Status history</summary>
+        <div class="table-responsive mt-2"><table class="table table-sm mb-0">
+          <thead><tr><th>When</th><th>From</th><th>To</th><th>User</th><th>Reason</th></tr></thead>
+          <tbody>{% for row in invoice_status_history %}<tr><td>{{ row.created_at|date:"M d, Y H:i" }}</td><td>{{ row.previous_status|default:"—"|title }}</td><td>{{ row.new_status|title }}</td><td>{{ row.changed_by|default:"System" }}</td><td>{{ row.reason|default:"—" }}</td></tr>{% endfor %}</tbody>
+        </table></div>
+      </details>
+      {% endif %}
+    </div>
+
     {# Items table #}
     <div class="table-responsive">
       <table class="table table-sm invoice-items-table" id="itemsTable">

@@ -234,6 +234,14 @@ class MaintenanceRequestMedia(models.Model):
     uploaded_at = models.DateTimeField(default=timezone.now)
     is_active = models.BooleanField(default=True)
     original_filename = models.CharField(max_length=255, blank=True)
+    source_pending_media_id = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
+    source_provider_media_id = models.CharField(max_length=160, blank=True, db_index=True)
+    source_whatsapp_message_id = models.CharField(max_length=255, blank=True)
+    source_message_timestamp = models.DateTimeField(null=True, blank=True)
+    source_media_type = models.CharField(max_length=80, blank=True)
+    source_file_size = models.PositiveBigIntegerField(null=True, blank=True)
+    source_checksum = models.CharField(max_length=64, blank=True, db_index=True)
+    source_order = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["-uploaded_at", "-id"]

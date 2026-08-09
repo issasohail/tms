@@ -192,19 +192,25 @@ class InvoiceTable(ExportableTable):
         return format_money(balance, _settings_obj())
 
     def render_status(self, record, value):
-        label = record.get_status_display() if hasattr(record, "get_status_display") else (value or "")
-        status_key = (value or "").lower()
-        badge_class = "secondary"
-        if status_key in {"paid", "complete", "completed"}:
-            badge_class = "success"
-        elif status_key in {"partial", "partially_paid"}:
-            badge_class = "warning text-dark"
-        elif status_key in {"overdue", "due", "unpaid", "pending"}:
-            badge_class = "danger"
+        lifecycle = getattr(record, "lifecycle_status", "issued") or "issued"
+        lifecycle_label = record.get_lifecycle_status_display() if hasattr(record, "get_lifecycle_status_display") else lifecycle
+        payment_status = getattr(record, "dashboard_payment_status", None) or record.payment_status
+        payment_label = {
+            "paid": "Paid", "partially_paid": "Partially Paid", "unpaid": "Unpaid",
+            "overdue": "Overdue", "overpaid": "Overpaid",
+        }.get(payment_status, payment_status.replace("_", " ").title())
+        lifecycle_class = {
+            "issued": "primary", "draft": "secondary", "disputed": "warning text-dark",
+            "cancelled": "danger", "void": "dark", "written_off": "secondary",
+        }.get(lifecycle, "secondary")
+        payment_class = {
+            "paid": "success", "overpaid": "info text-dark", "partially_paid": "warning text-dark",
+            "overdue": "danger", "unpaid": "danger",
+        }.get(payment_status, "secondary")
         return format_html(
+            '<span class="badge bg-{} invoice-status-badge me-1">{}</span>'
             '<span class="badge bg-{} invoice-status-badge">{}</span>',
-            badge_class,
-            label or "-",
+            lifecycle_class, lifecycle_label, payment_class, payment_label,
         )
 
     def render_actions(self, record):

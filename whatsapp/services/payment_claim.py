@@ -18,12 +18,8 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from leases.models import Lease
 from payments.models import Payment
-from tenants.models import Tenant
-from whatsapp.services.identity.phone_normalizer import normalize_phone_number, phone_matches, searchable_suffix
-from whatsapp.services.identity.sender_resolver import TENANT_IDENTITY_PHONE_FIELDS
-from whatsapp.services.tenant_context import build_lease_context
+from whatsapp.services.tenant_context import build_lease_context, resolve_tenant_and_last_lease
 
 
 AWAITING_PAYMENT_RECEIPT_STATE = "tenant_waiting_payment_receipt"
@@ -69,59 +65,6 @@ def is_payment_claim(text):
         return True
     lowered = value.lower()
     return any(pattern.search(lowered) for pattern in _COMPILED_PATTERNS)
-
-
-def resolve_tenant_and_last_lease(phone_number):
-    """Find a tenant by phone number regardless of lease status, and their
-    most relevant lease (active first, else the most recent ended/inactive
-    one).
-
-    Returns (tenant, lease, lease_status) where lease_status is one of
-    "active", "ended", or "" (tenant matched but has no lease at all).
-    If no tenant matches at all, returns (None, None, "").
-
-    Deliberately separate from whatsapp.services.identity.sender_resolver's
-    tenant_matches / eligible_tenant_ids filtering: that resolver decides
-    who gets interactive "tenant mode" menu access (active lease only, by
-    design) and must not be loosened here. This function only answers "who
-    is this person and what was their last tenancy," for payment-claim and
-    display purposes.
-    """
-    normalized = normalize_phone_number(phone_number)
-    suffix = searchable_suffix(normalized)
-    if not suffix:
-        return None, None, ""
-
-    from django.db.models import Q
-    query = Q()
-    for field_name in TENANT_IDENTITY_PHONE_FIELDS:
-        query |= Q(**{f"{field_name}__icontains": suffix})
-    candidates = Tenant.objects.filter(query, is_active=True).order_by("id")
-    tenants = [
-        item for item in candidates
-        if any(phone_matches(normalized, getattr(item, field_name, "")) for field_name in TENANT_IDENTITY_PHONE_FIELDS)
-    ]
-    if not tenants:
-        return None, None, ""
-    # Multiple tenant records sharing one phone number: pick deterministically
-    # by most recently updated, matching the ordering already used elsewhere
-    # (role_mode._find_tenant) for the same ambiguous-phone situation.
-    tenant = sorted(tenants, key=lambda t: (t.updated_at, t.pk), reverse=True)[0] if hasattr(tenants[0], "updated_at") else tenants[0]
-
-    today = timezone.localdate()
-    tenant_leases = Lease.objects.filter(
-        Q(tenant=tenant) | Q(family_members__family_member=tenant) | Q(legacy_family_members__tenant=tenant)
-    ).select_related("tenant", "unit__property").distinct()
-
-    active = tenant_leases.filter(status="active", start_date__lte=today, end_date__gte=today).order_by("-end_date").first()
-    if active:
-        return tenant, active, "active"
-
-    ended = tenant_leases.order_by("-end_date", "-start_date", "-updated_at", "-id").first()
-    if ended:
-        return tenant, ended, "ended"
-
-    return tenant, None, ""
 
 
 def build_payment_claim_reply(tenant, lease):

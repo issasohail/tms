@@ -89,6 +89,7 @@ from invoices.models import (
     InvoiceItem,
     ItemCategory,
     RecurringCharge,
+    SecurityDepositLedgerTransfer,
     SecurityDepositTransaction,
 )
 from invoices.public_links import make_public_invoice_token
@@ -183,7 +184,9 @@ from .utils.end_lease import (
     build_end_lease_preview,
     end_lease,
     rollback_end_lease,
+    reverse_security_ledger_transfer,
     transfer_pending_security_to_lease_ledger,
+    transfer_refundable_security_to_lease_ledger,
     staff_message as end_lease_staff_message,
     tenant_message as end_lease_tenant_message,
 )
@@ -3561,6 +3564,8 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                     "security_refunded": sec_totals["refunded"],
                     "security_damages": sec_totals["damages"],
                     "security_currently_held": sec_totals["currently_held"],
+                    "security_transferred_to_ledger": sec_totals.get("transferred_to_ledger", ZERO),
+                    "security_ledger_transfers": [],
                     "lease_effective_inventory": [
                         row
                         for row in effective_inventory(lease=lease_instance)
@@ -4342,6 +4347,55 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         ).filter(is_active=True)
 
         return ctx
+
+
+@login_required
+@require_POST
+def lease_transfer_full_security_action(request, pk):
+    if not (request.user.is_superuser or request.user.has_perm("invoices.transfer_security_deposit_to_ledger")):
+        return HttpResponse("Permission denied", status=403)
+    lease = get_object_or_404(Lease, pk=pk)
+    raw_date = (request.POST.get("transaction_date") or "").strip()
+    try:
+        transaction_date = datetime.strptime(raw_date, "%Y-%m-%d").date() if raw_date else timezone.localdate()
+    except ValueError:
+        messages.error(request, "Enter a valid transaction date.")
+        return redirect("leases:lease_ledger_by_pk", pk=lease.pk)
+    reason = (request.POST.get("reason") or "").strip()
+    try:
+        result = transfer_refundable_security_to_lease_ledger(
+            lease, user=request.user, transaction_date=transaction_date, reason=reason
+        )
+    except ValidationError as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        messages.error(request, error)
+    else:
+        messages.success(
+            request,
+            f"Rs. {result['amount']:,.2f} transferred to the tenant ledger as an internal credit. "
+            "No cash/bank refund was recorded.",
+        )
+    return redirect("leases:lease_ledger_by_pk", pk=lease.pk)
+
+
+@login_required
+@require_POST
+def lease_reverse_security_transfer_action(request, pk, transfer_id):
+    if not (request.user.is_superuser or request.user.has_perm("invoices.reverse_security_deposit_ledger_transfer")):
+        return HttpResponse("Permission denied", status=403)
+    transfer = get_object_or_404(SecurityDepositLedgerTransfer, pk=transfer_id, lease_id=pk)
+    try:
+        result = reverse_security_ledger_transfer(
+            transfer, user=request.user, reason=(request.POST.get("reason") or "").strip()
+        )
+    except ValidationError as exc:
+        error = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        messages.error(request, error)
+    else:
+        messages.success(
+            request, f"Security ledger transfer {result['transfer'].reference} reversed."
+        )
+    return redirect("leases:lease_ledger_by_pk", pk=pk)
 
 
 @login_required
@@ -5168,7 +5222,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
             elif tx.type == "REFUND":
                 deduction = tx.deduction_amount or ZERO
                 signed_amt = -(amt + deduction)
-                if tx.refund_status == "PAID":
+                if tx.refund_status in {"PAID", "TRANSFERRED"}:
                     dep_balance += signed_amt
                 elif tx.refund_status == "CANCELLED":
                     signed_amt = ZERO
@@ -5233,6 +5287,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "date": payment.payment_date,
                     "type": "Payment",
                     "description": payment.reference_number or f"Payment #{payment.id}",
+                    "payment_id": payment.id,
                     "amount": amt,
                     "balance": balance,
                     "url": reverse("payments:payment_detail", args=[payment.id]),
@@ -5256,8 +5311,34 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 {"key": "balance", "label": "Balance"},
             ]
 
+        # ---------- Optional payment focus from payment-detail deep link ----------
+        focus_payment_id = self.request.GET.get("payment_id") or ""
+        focused_index = None
+        if focus_payment_id:
+            if not (self.request.user.is_superuser or self.request.user.has_perm("leases.view_lease")):
+                raise PermissionDenied("You do not have permission to open a payment-focused ledger view.")
+            try:
+                focus_payment_id_int = int(focus_payment_id)
+            except (TypeError, ValueError):
+                raise Http404("Invalid payment reference.")
+            if not Payment.objects.filter(pk=focus_payment_id_int, lease=lease).exists():
+                raise Http404("Payment does not belong to this lease.")
+            for index, row in enumerate(transactions):
+                if row.get("payment_id") == focus_payment_id_int:
+                    row["is_focused"] = True
+                    focused_index = index
+                    break
+            if focused_index is None:
+                raise Http404("Payment is not present in this lease ledger.")
+
         # ---------- Pagination + 2-column split ----------
-        page = int(self.request.GET.get("page", 1))
+        if focused_index is not None:
+            page = (focused_index // 40) + 1
+        else:
+            try:
+                page = int(self.request.GET.get("page", 1))
+            except (TypeError, ValueError):
+                page = 1
         PAGE_SIZE = 40
         total_count = len(transactions)
         total_pages = max(1, ceil(total_count / PAGE_SIZE))
@@ -5294,6 +5375,12 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 "security_damages": sec_totals["damages"],
                 "security_balance_to_collect": sec_totals["balance_to_collect"],
                 "security_currently_held": sec_totals["currently_held"],
+                "security_transferred_to_ledger": sec_totals.get("transferred_to_ledger", ZERO),
+                "security_ledger_transfers": list(
+                    lease.security_ledger_transfers.select_related(
+                        "created_by", "reversed_by", "ledger_credit_payment", "reversal_payment"
+                    ).all()
+                ),
                 "intcomma": intcomma,
                 "generated_on": datetime.now(),
                 "property_only": False,
@@ -5305,6 +5392,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 "total_pages": total_pages,
                 "has_prev": page > 1,
                 "has_next": page < total_pages,
+                "focus_payment_id": focus_payment_id,
             }
         )
         return ctx
@@ -5328,7 +5416,7 @@ def _security_ledger_rows_for_lease(lease):
             balance += amount
         elif tx.type == "REFUND":
             signed_amount = -(amount + deduction)
-            if tx.refund_status == "PAID":
+            if tx.refund_status in {"PAID", "TRANSFERRED"}:
                 balance += signed_amount
             elif tx.refund_status == "CANCELLED":
                 signed_amount = zero
@@ -5928,17 +6016,17 @@ def generate_lease_agreement(request, lease_id):
     <body>
         <h1 style="text-align: center;">RENT AGREEMENT</h1>
         <p style="text-align: center;">This RENT AGREEMENT is made at Islamabad on this {timezone.now().strftime("%d-%m-%Y")}</p>
-        
+
         <div>
             <p><strong>BETWEEN</strong></p>
             <p>{resolve_placeholders(lease, "[OWNER_NAME]")} holding CNIC NO. {resolve_placeholders(lease, "[OWNER_CNIC]")}</p>
             <p>{resolve_placeholders(lease, "[OWNER_ADDRESS]")} (Hereinafter called "Owner")</p>
-            
+
             <p><strong>AND</strong></p>
             <p>{resolve_placeholders(lease, "[TENANT_NAME]")} holding CNIC NO. {resolve_placeholders(lease, "[TENANT_CNIC]")}</p>
             <p>{resolve_placeholders(lease, "[TENANT_ADDRESS]")} (Hereinafter called "Tenant")</p>
         </div>
-        
+
         <div>
             {"".join(f'<p class="clause">{resolve_placeholders(lease, clause.template_text)}</p>' for clause in _lease_clauses_for_agreement(lease))}
         </div>

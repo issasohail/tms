@@ -11,11 +11,11 @@ from django.conf import settings
 from django.apps import apps  # (ensure this import exists at the top)
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import signing
 from django.core.cache import cache
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import EmailMessage
 from django.core.validators import validate_email
 from django.db import transaction
@@ -26,6 +26,7 @@ from django.db.models import (
     F,
     Prefetch,
     ProtectedError,
+    Q,
     Sum,
     Value,
     When,
@@ -72,6 +73,7 @@ from .forms import InvoiceForm, InvoiceItemForm
 from .models import (
     Invoice,  # and InvoiceItem if separate  # adjust if Category is elsewhere
     InvoiceItem,
+    InvoiceStatusHistory,
     ItemCategory,
     RecurringCharge,  # IMPORTANT: we need the model here
     SecurityDepositTransaction,
@@ -175,6 +177,8 @@ class InvoiceListView(SingleTableView):
                 "due_date",
                 "amount",
                 "status",
+                "lifecycle_status",
+                "lifecycle_status_reason",
                 "description",
                 "lease__id",
                 "lease__tenant_id",
@@ -200,6 +204,7 @@ class InvoiceListView(SingleTableView):
         start = r.GET.get("start_date")
         end = r.GET.get("end_date")
         period = r.GET.get("period")
+        status_filter = (r.GET.get("status") or "").strip()
 
         if period and not (start or end):
             s, e = self._period_to_dates(period)
@@ -220,6 +225,19 @@ class InvoiceListView(SingleTableView):
             qs = qs.filter(issue_date__gte=start)
         if end:
             qs = qs.filter(issue_date__lte=end)
+        lifecycle_values = {choice[0] for choice in Invoice.LIFECYCLE_STATUS_CHOICES}
+        if status_filter in lifecycle_values:
+            qs = qs.filter(lifecycle_status=status_filter)
+        elif status_filter == "paid":
+            qs = qs.filter(status="paid")
+        elif status_filter == "partially_paid":
+            qs = qs.filter(status="partially_paid")
+        elif status_filter == "overdue":
+            qs = qs.filter(Q(status="overdue") | (~Q(status__in=["paid", "cancelled"]) & Q(due_date__lt=timezone.localdate())))
+        elif status_filter == "unpaid":
+            qs = qs.exclude(status__in=["paid", "partially_paid", "cancelled", "overdue"]).filter(due_date__gte=timezone.localdate())
+        elif status_filter == "overpaid":
+            qs = qs.filter(status="overpaid")
 
         return qs  # don't force order here; table default covers first load
 
@@ -294,7 +312,50 @@ class InvoiceListView(SingleTableView):
             )
             security_totals[lease_id][row["type"]] = row["total"] or Decimal("0.00")
 
+        allocation_by_invoice = {}
+        invoice_rows = (
+            Invoice.objects.filter(lease_id__in=lease_ids)
+            .exclude(lifecycle_status__in=["cancelled", "void"])
+            .exclude(status="cancelled")
+            .order_by("lease_id", "issue_date", "id")
+            .values("id", "lease_id", "amount", "due_date")
+        )
+        available_by_lease = dict(payment_totals)
+        today = timezone.localdate()
+        last_invoice_id_by_lease = {}
+        rows_buffer = list(invoice_rows)
+        for row in rows_buffer:
+            last_invoice_id_by_lease[row["lease_id"]] = row["id"]
+        for row in rows_buffer:
+            lease_id = row["lease_id"]
+            amount = row["amount"] or Decimal("0.00")
+            available = available_by_lease.get(lease_id, Decimal("0.00"))
+            allocated = min(max(available, Decimal("0.00")), amount)
+            available -= allocated
+            available_by_lease[lease_id] = available
+            outstanding = max(amount - allocated, Decimal("0.00"))
+            if amount <= 0 or allocated >= amount:
+                payment_status = (
+                    "overpaid"
+                    if row["id"] == last_invoice_id_by_lease.get(lease_id) and available > 0
+                    else "paid"
+                )
+            elif allocated > 0:
+                payment_status = "partially_paid"
+            elif row["due_date"] and row["due_date"] < today:
+                payment_status = "overdue"
+            else:
+                payment_status = "unpaid"
+            allocation_by_invoice[row["id"]] = (allocated, outstanding, payment_status)
+
         for record in records:
+            allocation = allocation_by_invoice.get(
+                record.pk, (Decimal("0.00"), record.amount or Decimal("0.00"), "unpaid")
+            )
+            record._accounting_allocation_cache = allocation
+            record.dashboard_amount_paid = allocation[0]
+            record.dashboard_invoice_outstanding = allocation[1]
+            record.dashboard_payment_status = allocation[2]
             balance = invoice_totals.get(
                 record.lease_id, Decimal("0.00")
             ) - payment_totals.get(record.lease_id, Decimal("0.00"))
@@ -433,6 +494,19 @@ class InvoiceListView(SingleTableView):
                 }
             )
         ctx["units_by_property_json"] = json.dumps(by_prop)
+        ctx["invoice_status_filter_options"] = [
+            ("draft", "Draft"),
+            ("issued", "Issued"),
+            ("unpaid", "Unpaid"),
+            ("partially_paid", "Partially Paid"),
+            ("paid", "Paid"),
+            ("overpaid", "Overpaid"),
+            ("overdue", "Overdue"),
+            ("disputed", "Disputed"),
+            ("cancelled", "Cancelled"),
+            ("void", "Void"),
+            ("written_off", "Written Off"),
+        ]
         return ctx
 
 
@@ -671,6 +745,15 @@ class InvoiceDetailView(DetailView):
         ctx["lease_balance"] = (
             inv.lease.get_balance if inv.lease_id else Decimal("0.00")
         )
+        amount_paid, invoice_outstanding, payment_status = inv.accounting_allocation()
+        ctx["invoice_amount_paid"] = amount_paid
+        ctx["invoice_outstanding"] = invoice_outstanding
+        ctx["invoice_payment_status"] = payment_status
+        ctx["invoice_payment_status_display"] = inv.payment_status_display
+        if self.request.user.has_perm("invoices.view_invoice_status_history") or self.request.user.is_superuser:
+            ctx["invoice_status_history"] = inv.status_history.select_related("changed_by").all()
+        else:
+            ctx["invoice_status_history"] = []
 
         # 🔹 NEW: security deposit totals for this invoice's lease
         lease = getattr(inv, "lease", None)
@@ -721,6 +804,57 @@ class InvoiceDetailView(DetailView):
             )
 
         return ctx
+
+
+@login_required
+@require_POST
+def update_invoice_lifecycle_status(request, pk):
+    if not request.user.has_perm("invoices.change_invoice_lifecycle_status") and not request.user.is_superuser:
+        raise PermissionDenied
+
+    invoice = get_object_or_404(Invoice, pk=pk)
+    new_status = (request.POST.get("lifecycle_status") or "").strip()
+    valid_statuses = {choice[0] for choice in Invoice.LIFECYCLE_STATUS_CHOICES}
+    if new_status not in valid_statuses:
+        messages.error(request, "Invalid invoice lifecycle status.")
+        return redirect("invoices:invoice_detail", pk=invoice.pk)
+
+    permission_by_status = {
+        "cancelled": "invoices.cancel_invoice",
+        "void": "invoices.void_invoice",
+        "written_off": "invoices.write_off_invoice",
+    }
+    required_permission = permission_by_status.get(new_status)
+    if required_permission and not (request.user.has_perm(required_permission) or request.user.is_superuser):
+        raise PermissionDenied
+
+    reason = (request.POST.get("reason") or "").strip()
+    if new_status in {"cancelled", "void", "disputed", "written_off"} and not reason:
+        messages.error(request, "A reason is required for this status change.")
+        return redirect("invoices:invoice_detail", pk=invoice.pk)
+
+    previous = invoice.lifecycle_status
+    if previous == new_status and invoice.lifecycle_status_reason == reason:
+        messages.info(request, "Invoice lifecycle status is already set to that value.")
+        return redirect("invoices:invoice_detail", pk=invoice.pk)
+
+    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",", 1)[0].strip()
+    ip_address = forwarded or request.META.get("REMOTE_ADDR") or None
+    with transaction.atomic():
+        invoice.lifecycle_status = new_status
+        invoice.lifecycle_status_reason = reason
+        invoice.lifecycle_status_updated_by = request.user
+        invoice.lifecycle_status_updated_at = timezone.now()
+        invoice.save(update_fields=[
+            "lifecycle_status", "lifecycle_status_reason",
+            "lifecycle_status_updated_by", "lifecycle_status_updated_at", "updated_at",
+        ])
+        InvoiceStatusHistory.objects.create(
+            invoice=invoice, previous_status=previous, new_status=new_status,
+            changed_by=request.user, reason=reason, ip_address=ip_address,
+        )
+    messages.success(request, "Invoice lifecycle status updated.")
+    return redirect("invoices:invoice_detail", pk=invoice.pk)
 
 
 def public_invoice_detail(request, token):

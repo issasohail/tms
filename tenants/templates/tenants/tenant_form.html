@@ -515,7 +515,8 @@
         if (!preview) {
           preview = document.createElement('img');
           preview.className = 'public-file-preview';
-          preview.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0;';
+          const previewFit = /cnic_(front|back)/.test(input.name || input.dataset.field || '') ? 'contain' : 'cover';
+          preview.style.cssText = 'width:100%;height:100%;object-fit:' + previewFit + ';position:absolute;inset:0;background:#fff;';
           if (placeholder) placeholder.replaceWith(preview);
           else container.insertBefore(preview, container.firstChild);
         }

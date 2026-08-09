@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from leases.models import Lease
 from payments.models import Payment
+from tenants.models import Tenant
 from whatsapp.services.whatsapp import WhatsAppService
 
 
@@ -18,6 +19,30 @@ TENANT_PHONE_FIELDS = (
     "reference_phone_2",
     "emergency_contact_phone",
 )
+
+
+@dataclass
+class TenantLeaseResolution:
+    tenant: Tenant | None
+    lease: Lease | None
+    lease_status: str = ""
+
+    @property
+    def lease_end_date(self):
+        if not self.lease:
+            return None
+        move_out_dates = [
+            item.move_out_date
+            for item in self.lease.unit_occupancies.all()
+            if item.move_out_date is not None
+        ]
+        return max(move_out_dates) if move_out_dates else self.lease.end_date
+
+    def __iter__(self):
+        # Backward-compatible tuple unpacking for Phase 3 callers.
+        yield self.tenant
+        yield self.lease
+        yield self.lease_status
 
 
 @dataclass
@@ -79,6 +104,75 @@ def find_active_leases_for_phone(phone_number):
             lease_ids.add(lease.pk)
 
     return active_leases().filter(id__in=lease_ids).order_by("unit__property__property_name", "unit__unit_number")
+
+
+def resolve_tenant_and_last_lease(phone_number):
+    """Resolve tenant identity independently from active-lease eligibility.
+
+    Active tenancy is preferred. If none exists, return the most recent real
+    tenancy (including an expired active row), excluding pending/rejected
+    drafts. Duplicate phone matches are resolved deterministically by the most
+    recently updated tenant record.
+    """
+    normalized = normalize_phone(phone_number)
+    digits = _digits(normalized)
+    if not digits:
+        return TenantLeaseResolution(None, None, "")
+
+    suffix = digits[-10:]
+    direct_phone_fields = ("phone", "phone2", "phone3")
+    query = Q()
+    for field in direct_phone_fields:
+        query |= Q(**{f"{field}__icontains": suffix})
+
+    candidates = list(Tenant.objects.filter(query, is_active=True).order_by("-updated_at", "-id"))
+    tenant = next(
+        (
+            item
+            for item in candidates
+            if any(_phone_matches(digits, getattr(item, field, "")) for field in direct_phone_fields)
+        ),
+        None,
+    )
+    if tenant is None:
+        return TenantLeaseResolution(None, None, "")
+
+    today = timezone.localdate()
+    leases = (
+        Lease.objects.filter(
+            Q(tenant=tenant)
+            | Q(family_members__family_member=tenant)
+            | Q(legacy_family_members__tenant=tenant)
+        )
+        .exclude(status__in=("pending_approval", "rejected"))
+        .select_related("tenant", "unit", "unit__property")
+        .prefetch_related("unit_occupancies")
+        .distinct()
+    )
+
+    active = (
+        leases.filter(status="active", start_date__lte=today, end_date__gte=today)
+        .order_by("-end_date", "-start_date", "-updated_at", "-id")
+        .first()
+    )
+    if active:
+        return TenantLeaseResolution(tenant, active, "active")
+
+    historical = list(leases)
+    if not historical:
+        return TenantLeaseResolution(tenant, None, "")
+
+    def historical_key(lease):
+        move_out_dates = [
+            item.move_out_date
+            for item in lease.unit_occupancies.all()
+            if item.move_out_date is not None
+        ]
+        actual_end = max(move_out_dates) if move_out_dates else lease.end_date
+        return (actual_end, lease.start_date, lease.updated_at, lease.pk)
+
+    latest = max(historical, key=historical_key)
+    return TenantLeaseResolution(tenant, latest, "ended")
 
 
 def build_lease_context(lease):

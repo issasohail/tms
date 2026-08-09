@@ -7,7 +7,7 @@ from django.db import transaction
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.generic import DeleteView, DetailView
 
@@ -72,6 +72,15 @@ class PaymentDetailView(LoginRequiredMixin, DetailView):
         ctx["payment_detail"] = payment_detail
         ctx["lease"] = lease
         ctx["GLOBAL_SETTINGS"] = GlobalSettings.objects.first()
+        can_view_ledger = bool(
+            lease
+            and (self.request.user.is_superuser or self.request.user.has_perm("leases.view_lease"))
+        )
+        ctx["can_view_ledger"] = can_view_ledger
+        ctx["ledger_url"] = (
+            f"{reverse('leases:lease_ledger_by_pk', args=[lease.pk])}?payment_id={payment.pk}"
+            if can_view_ledger else ""
+        )
 
         if lease:
             ctx["sec_totals"] = security_deposit_totals(lease)

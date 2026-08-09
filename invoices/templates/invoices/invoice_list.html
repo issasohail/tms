@@ -6,6 +6,7 @@
 {% block title %}Invoices{% endblock %}
 
 {% block content %}
+<div class="invoice-list-page-shell">
 <div class="d-flex justify-content-between align-items-center mb-3 page-header invoice-page-compact">
   <h2 class="h4 mb-0">Invoices</h2>
 
@@ -147,6 +148,13 @@
       {% endfor %}
     </select>
 
+    <select name="status" id="id_status" class="form-select form-select-sm" title="Invoice Status">
+      <option value="">Status</option>
+      {% for value, label in invoice_status_filter_options %}
+        <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
     <button class="btn btn-secondary btn-sm action-btn" type="submit" title="Apply">
       <i class="fas fa-filter"></i><span class="btn-text ms-1">Apply</span>
     </button>
@@ -175,6 +183,7 @@
     <i class="bi bi-search"></i> Preview Delete (Selected)
   </button>
 </form>
+</div>
 {% endblock %}
 
 
@@ -184,6 +193,26 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
+/* Phase 6: widen only the invoice list on desktop, without changing global containers. */
+@media (min-width: 992px) {
+  .invoice-list-page-shell {
+    width: min(calc(100% + 100px), calc(100vw - 24px));
+    margin-left: 50%;
+    transform: translateX(-50%);
+  }
+  .invoice-list-dense table.table th.col-propunit,
+  .invoice-list-dense table.table td.col-propunit {
+    width: 16rem !important;
+    min-width: 16rem;
+  }
+  .invoice-list-dense table.table th.col-issue,
+  .invoice-list-dense table.table td.col-issue {
+    width: 9.5rem !important;
+    min-width: 9.5rem;
+    white-space: nowrap;
+  }
+}
+
 /* ---------- Top actions ---------- */
 .page-actions { display: inline-flex; gap: .5rem; flex-wrap: wrap; }
 .btn-xs { padding: .3rem .045rem; font-size: .8rem; line-height: 1.0; }
@@ -191,7 +220,7 @@
 .actions-wrap .btn .btn-text,
     .actions-wrap .btn .btn-label { display: none !important; }
 
-    
+
 .table.table-compact { font-size: .68rem; }
   .table.table-compact > :not(caption) > * > * { padding: .25rem .5rem; line-height: 1.1; }
   .table.table-compact .btn.btn-sm { padding: 2px 6px; line-height: 1.1; }
@@ -243,7 +272,7 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
   /* Hide page H2 to save space (you asked this earlier) */
   .page-header .h4 { display: none; }
 
-  
+
 
   /* ===== TOP ACTIONS: 2 rows × 3 items (with horizontal scroll if >6 items) ===== */
 .top-actions {
@@ -341,7 +370,7 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
   }
   /* Property ~40% narrower inside its slot (same as earlier) */
   .filters-grid .property-item { display: flex; }
-  
+
     /* Property narrower but still one slot */
   .filters-grid .property-item { display: flex; min-width: 0; }
 
@@ -424,7 +453,7 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
     font-size: .45rem;
     padding: .25rem .4rem;
   }
-  
+
   /* Smaller font for the table only (doesn’t affect navbar or filters) */
   .table-responsive .table { font-size: .70rem !important; }
 
@@ -893,10 +922,10 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
     /* 🔧 KNOBS — adjust these to fit your layout */
     --lg-sn-w:       3.5rem;   /* Serial # */
     --lg-invno-w:    6.5rem;   /* Invoice # */
-    --lg-propunit-w: 14rem;    /* Property–Unit */
+    --lg-propunit-w: 16rem;    /* Property–Unit */
     --lg-tenant-w:   12rem;    /* Tenant */
     --lg-desc-ch:    26ch;     /* Description visible chars (1 line + ellipsis) */
-    --lg-issue-w:    8.5rem;   /* Issue date */
+    --lg-issue-w:    9.5rem;   /* Issue date */
     --lg-due-w:      8.5rem;   /* Due date */
     --lg-amount-w:   11rem;    /* Amount — increase if you still see wrapping */
     --lg-actions-w:  7rem;     /* Actions */
@@ -951,9 +980,9 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
    ========================================================= */
 @media (max-width: 576px) {
   :root{
-   
-   
-  
+
+
+
     --icon-size:    14px;    /* icon glyph size */
     --icon-pad:     2px;     /* tap padding */
     --icon-gap:     4px;     /* gap between icons */
@@ -1033,7 +1062,7 @@ table.table th:nth-child(9), table.table td:nth-child(9) { width: 7rem; }       
   .actions-grid .icon-btn{
     padding: var(--icon-pad) !important;
   th.col-actions, td.col-actions { width: var(--w-col-actions) !important; }
-  }    
+  }
 }
 @media (max-width: 576px) {
   .invoice-page-compact {
@@ -3594,7 +3623,7 @@ document.addEventListener('DOMContentLoaded', () => {
           restoreButtons();
         });
     });
-  });  
+  });
 });
 </script>
 
@@ -3705,7 +3734,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     #invoice-filter-form .filters-grid {
       display: grid !important;
-      grid-template-columns: 7rem 8rem 8rem minmax(7.5rem, .85fr) minmax(8.5rem, .95fr) minmax(12rem, 1.25fr) 5.25rem 5.25rem 6.4rem !important;
+      grid-template-columns: 7rem 8rem 8rem minmax(7.5rem, .85fr) minmax(8.5rem, .95fr) minmax(12rem, 1.25fr) minmax(8rem, .9fr) 5.25rem 5.25rem 6.4rem !important;
       gap: .45rem !important;
       align-items: center;
     }

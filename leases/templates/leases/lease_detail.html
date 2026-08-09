@@ -27,8 +27,9 @@
 }
 .ld-doc-tile a { display:block; text-decoration:none; }
 .ld-doc-img {
-  width:100%; height:64px; object-fit:cover; border-radius:4px; background:#fff;
+  width:100%; height:64px; object-fit:contain; border-radius:4px; background:#fff;
 }
+.ld-doc-img--photo { object-fit:cover; }
 .ld-doc-label {
   display:block; margin-top:4px; font-size:10px; font-weight:700; color:#1d4ed8;
   text-transform:uppercase; letter-spacing:.3px;
@@ -632,7 +633,7 @@
       <div class="ld-doc-tile">
         {% if lease.tenant.photo %}
           <a href="{{ lease.tenant.photo.url }}" target="_blank">
-            <img src="{{ lease.tenant.photo.url }}" alt="Tenant Photo" class="ld-doc-img">
+            <img src="{{ lease.tenant.photo.url }}" alt="Tenant Photo" class="ld-doc-img ld-doc-img--photo">
             <span class="ld-doc-label">Photo</span>
           </a>
         {% else %}

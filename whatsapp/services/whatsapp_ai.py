@@ -189,6 +189,26 @@ class WhatsAppAIAssistant:
                     tenant=metadata.get("tenant"),
                     lease=metadata.get("lease"),
                 )
+            invoice_jpg = metadata.get("invoice_jpg")
+            if invoice_jpg:
+                try:
+                    from whatsapp.views import _invoice_jpg_attachment
+
+                    image_bytes, filename = _invoice_jpg_attachment(invoice_jpg)
+                    self.service.send_image_bytes(
+                        message_log.phone_number,
+                        image_bytes,
+                        filename=filename,
+                        caption=f"Invoice {invoice_jpg.invoice_number}",
+                        tenant=metadata.get("tenant"),
+                        lease=metadata.get("lease"),
+                        invoice=invoice_jpg,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Could not send invoice JPG for invoice %s",
+                        getattr(invoice_jpg, "pk", None),
+                    )
         except Exception as exc:
             logger.exception("WhatsApp AI assistant failed for message %s", message_log.pk)
             error_text = str(exc)
@@ -338,6 +358,26 @@ class WhatsAppAIAssistant:
             reply = handle_active_tenant_message(message_log, conversation, text, media=media, service=self.service)
             if reply:
                 return reply, "handover_tenant_update", {"tenant": identity.tenant, "lease": conversation.selected_lease}
+
+        if message_type == "unsupported":
+            if conversation.pending_state == "staff_waiting_upload":
+                # Meta may emit an unsupported item between album/media webhooks.
+                # Keep the active Property / Unit / Lease upload batch open so
+                # every following photo remains in one approval group until DONE.
+                return "", "staff_upload_unsupported_ignored", {"staff_user": identity.staff_user}
+
+            pending_maintenance_id = conversation.context.get("pending_maintenance_id")
+            if conversation.pending_state in {"tenant_maintenance_details", "pending_maintenance"} or pending_maintenance_id:
+                # Album sends can contain a non-media/unsupported webhook between
+                # otherwise valid images/videos. Do not let that event clear or
+                # re-route an in-progress maintenance request. The durable
+                # pending_maintenance_id is honored even if the visible state is stale;
+                # the next attachment restores pending_maintenance automatically.
+                return "", "maintenance_unsupported_ignored", {
+                    "tenant": identity.tenant,
+                    "lease": conversation.selected_lease,
+                    "pending_maintenance_id": pending_maintenance_id,
+                }
 
         if message_type in {"image", "document", "video", "audio"} and identity.has_staff:
             staff_media_reply = handle_staff_handover_media(
@@ -555,6 +595,7 @@ class WhatsAppAIAssistant:
             return lease, "lease_lookup", {}
 
         if lowered in {
+            "13",
             "upload photo",
             "upload photos",
             "upload unit photo",
@@ -567,6 +608,15 @@ class WhatsAppAIAssistant:
                 "unit_photo_upload_link",
                 {"lease": lease, "tenant": lease.tenant},
             )
+
+        if lowered in {"11", "request last invoice", "request latest invoice"}:
+            invoice = self._latest_invoice_for_lease(lease)
+            metadata = {"lease": lease, "tenant": lease.tenant}
+            if invoice:
+                metadata["invoice_jpg"] = invoice
+            return self._latest_invoice_reply(lease), "latest_invoice", metadata
+        if lowered in {"12", "view ledger"}:
+            return self._ledger_link_reply(lease), "ledger", {"lease": lease, "tenant": lease.tenant}
 
         orchestration = self.orchestrator.handle(text, identity, conversation, message_log, lease=lease)
         if orchestration.handled:
@@ -4628,7 +4678,11 @@ class WhatsAppAIAssistant:
         if lowered in {"5", "latest invoice", "last invoice", "request last invoice", "request latest invoice"}:
             conversation.pending_state = ""
             conversation.save(update_fields=["pending_state", "updated_at"])
-            return self._latest_invoice_reply(lease), "latest_invoice", {"lease": lease, "tenant": lease.tenant}
+            invoice = self._latest_invoice_for_lease(lease)
+            metadata = {"lease": lease, "tenant": lease.tenant}
+            if invoice:
+                metadata["invoice_jpg"] = invoice
+            return self._latest_invoice_reply(lease), "latest_invoice", metadata
 
         return (
             "Please reply with a number from the Invoice / Payment menu.\n\n"
@@ -4695,7 +4749,11 @@ class WhatsAppAIAssistant:
 
     def _handle_tenant_data_intent(self, message_log, conversation, intent, text, lease):
         if intent == "latest_invoice":
-            return self._latest_invoice_reply(lease), "latest_invoice", {"lease": lease, "tenant": lease.tenant}
+            invoice = self._latest_invoice_for_lease(lease)
+            metadata = {"lease": lease, "tenant": lease.tenant}
+            if invoice:
+                metadata["invoice_jpg"] = invoice
+            return self._latest_invoice_reply(lease), "latest_invoice", metadata
         if intent == "payment_receipt":
             return self._latest_payment_receipt_reply(lease), "payment_receipt", {"lease": lease, "tenant": lease.tenant}
         if intent == "lease_documents":
@@ -4740,13 +4798,16 @@ class WhatsAppAIAssistant:
             )
         return "\n".join(lines)
 
-    def _latest_invoice_reply(self, lease):
-        invoice = (
+    def _latest_invoice_for_lease(self, lease):
+        return (
             Invoice.objects.filter(lease=lease)
             .exclude(status="cancelled")
             .order_by("-issue_date", "-id")
             .first()
         )
+
+    def _latest_invoice_reply(self, lease):
+        invoice = self._latest_invoice_for_lease(lease)
         if not invoice:
             return "No invoice is recorded for your active lease yet."
         token = make_public_invoice_token(invoice.pk)
@@ -5012,8 +5073,17 @@ class WhatsAppAIAssistant:
                 f"Deposit: Rs. {ctx.lease.security_deposit or Decimal('0.00')}\n"
                 f"Lease Dates: {ctx.lease.start_date} to {ctx.lease.end_date}"
             )
+        if ctx.balance > 0:
+            return (
+                f"Your outstanding balance for {ctx.property.property_name} - Unit {ctx.unit.unit_number} is Rs. {ctx.balance}."
+            )
+        if ctx.balance < 0:
+            return (
+                f"Your account for {ctx.property.property_name} - Unit {ctx.unit.unit_number} has a credit of Rs. {abs(ctx.balance)}. "
+                "There is no outstanding amount due."
+            )
         return (
-            f"Your outstanding balance for {ctx.property.property_name} - Unit {ctx.unit.unit_number} is Rs. {ctx.balance}."
+            f"Your account for {ctx.property.property_name} - Unit {ctx.unit.unit_number} is fully paid. Outstanding balance: Rs. 0.00."
         )
 
     def _openai_text_intent(self, text):

@@ -439,6 +439,19 @@
     </div>
   </div>
 </div>
+<div class="modal fade" id="whatsappExportProgressModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+        <h5 class="mb-2" id="whatsappExportProgressTitle">Exporting chats</h5>
+        <div class="text-muted" id="whatsappExportProgressMessage">Preparing the JSON export. Please wait...</div>
+        <div class="mt-2 fw-semibold"><span id="whatsappExportElapsed">0</span> seconds</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const conversationPane = document.querySelector('.whatsapp-right-scroll');
@@ -518,6 +531,76 @@ document.getElementById('whatsappExportPrivacy')?.addEventListener('change', fun
     link.href = url.pathname + url.search;
   });
 });
+
+(function setupWhatsAppExportProgress() {
+  const modalElement = document.getElementById('whatsappExportProgressModal');
+  if (!modalElement || !window.bootstrap) return;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+  const title = document.getElementById('whatsappExportProgressTitle');
+  const message = document.getElementById('whatsappExportProgressMessage');
+  const elapsed = document.getElementById('whatsappExportElapsed');
+  let timer = null;
+
+  function filenameFromResponse(response, fallback) {
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : fallback;
+  }
+
+  async function exportChats(link, label) {
+    if (timer) window.clearInterval(timer);
+    let seconds = 0;
+    title.textContent = label;
+    message.textContent = 'Preparing the JSON export. Please wait...';
+    elapsed.textContent = '0';
+    modal.show();
+    timer = window.setInterval(function () {
+      seconds += 1;
+      elapsed.textContent = String(seconds);
+    }, 1000);
+
+    try {
+      const response = await fetch(link.href, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+      });
+      if (!response.ok) throw new Error('Export failed with status ' + response.status);
+      const blob = await response.blob();
+      const filename = filenameFromResponse(response, 'whatsapp-export.json');
+      const objectUrl = URL.createObjectURL(blob);
+      const download = document.createElement('a');
+      download.href = objectUrl;
+      download.download = filename;
+      document.body.appendChild(download);
+      download.click();
+      download.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1000);
+      title.textContent = 'Export complete';
+      message.textContent = 'Your download has started.';
+      window.setTimeout(function () { modal.hide(); }, 700);
+    } catch (error) {
+      console.error(error);
+      title.textContent = 'Export failed';
+      message.textContent = 'The export could not be completed. Please try again.';
+      window.setTimeout(function () { modal.hide(); }, 1800);
+    } finally {
+      if (timer) window.clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  const thisChat = document.getElementById('whatsappExportChatLink');
+  const allChats = document.getElementById('whatsappExportAllLink');
+  thisChat?.addEventListener('click', function (event) {
+    event.preventDefault();
+    exportChats(thisChat, 'Exporting this chat');
+  });
+  allChats?.addEventListener('click', function (event) {
+    event.preventDefault();
+    exportChats(allChats, 'Exporting all chats');
+  });
+})();
 </script>
 </div>
 {% endblock %}

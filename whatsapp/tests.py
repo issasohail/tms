@@ -2744,6 +2744,84 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertNotIn("pending_maintenance_id", self.conversation.context)
         self.assertEqual(self.conversation.pending_state, "tenant_upload_type")
 
+    def test_unsupported_album_event_does_not_break_open_maintenance_batch(self):
+        pending = PendingWhatsAppMaintenance.objects.create(
+            conversation=self.conversation,
+            original_whatsapp_message=self.message,
+            phone=self.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Plumbing",
+            urgency="normal",
+            description="Pipe leak",
+        )
+        self.conversation.pending_state = "pending_maintenance"
+        self.conversation.context["pending_maintenance_id"] = pending.pk
+        self.conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        unsupported_log = WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=self.phone,
+            wa_message_id="wamid.maintenance.album.unsupported",
+            message_type="unsupported",
+            status="received",
+            payload={"type": "unsupported"},
+        )
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            unsupported_log, self.conversation
+        )
+
+        self.conversation.refresh_from_db()
+        self.assertEqual(response, "")
+        self.assertEqual(intent, "maintenance_unsupported_ignored")
+        self.assertEqual(metadata["pending_maintenance_id"], pending.pk)
+        self.assertEqual(self.conversation.pending_state, "pending_maintenance")
+        self.assertEqual(self.conversation.context["pending_maintenance_id"], pending.pk)
+
+    def test_unsupported_album_event_does_not_break_staff_lease_photo_batch(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        batch_key = uuid.uuid4()
+        staff_conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            pending_state="staff_waiting_upload",
+            context={
+                "staff_upload_kind": PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+                "staff_upload_batch_key": str(batch_key),
+                "staff_upload_lease_id": self.lease.pk,
+                "staff_upload_property_id": self.property.pk,
+                "staff_upload_unit_id": self.unit.pk,
+                "staff_upload_target_label": "Test Residency / A-04",
+            },
+        )
+        unsupported_log = WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.lease.album.unsupported",
+            message_type="unsupported",
+            status="received",
+            payload={"type": "unsupported"},
+        )
+
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            unsupported_log, staff_conversation
+        )
+
+        staff_conversation.refresh_from_db()
+        self.assertEqual(response, "")
+        self.assertEqual(intent, "staff_upload_unsupported_ignored")
+        self.assertEqual(metadata["staff_user"], self.staff1)
+        self.assertEqual(staff_conversation.pending_state, "staff_waiting_upload")
+        self.assertEqual(staff_conversation.context["staff_upload_batch_key"], str(batch_key))
+        self.assertEqual(
+            staff_conversation.context["staff_upload_kind"],
+            PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+        )
+
     def test_done_closes_open_maintenance_batch(self):
         pending = PendingWhatsAppMaintenance.objects.create(
             conversation=self.conversation,

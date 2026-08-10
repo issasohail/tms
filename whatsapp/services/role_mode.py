@@ -203,10 +203,10 @@ def tenant_menu_text():
         "7. Vacant units\n"
         "8. Tenant registration\n"
         "9. Contact office\n"
-        "10. Suggestion / advice\n\n"
-        "Request Last Invoice\n"
-        "View Ledger\n\n"
-        "Upload Unit Photos\n\n"
+        "10. Suggestion / advice\n"
+        "11. Request Last Invoice\n"
+        "12. View Ledger\n"
+        "13. Upload Unit Photos\n\n"
         "Reply with a number or type your request."
     )
 

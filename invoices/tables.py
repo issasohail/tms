@@ -208,8 +208,12 @@ class InvoiceTable(ExportableTable):
             "overdue": "danger", "unpaid": "danger",
         }.get(payment_status, "secondary")
         return format_html(
-            '<span class="badge bg-{} invoice-status-badge me-1">{}</span>'
-            '<span class="badge bg-{} invoice-status-badge">{}</span>',
+            '<span class="invoice-status-stack" title="Payment status updates automatically from payments and due date. Lifecycle status can be changed manually from invoice detail.">'
+            '<span class="invoice-status-kicker">Invoice</span>'
+            '<span class="badge bg-{} invoice-status-badge invoice-status-lifecycle">{}</span>'
+            '<span class="invoice-status-kicker">Payment</span>'
+            '<span class="badge bg-{} invoice-status-badge invoice-status-payment">{}</span>'
+            '</span>',
             lifecycle_class, lifecycle_label, payment_class, payment_label,
         )
 

@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth import logout
 from django.contrib import messages
 from django.core.files.base import ContentFile
+from django.core.exceptions import PermissionDenied
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
 from django.urls import reverse, reverse_lazy
@@ -190,11 +191,13 @@ def _pending_item_urls(kind, item):
             "detail": reverse("tenants:registration_submission_detail", args=[item.pk]),
             "approve": "",
             "reject": "",
+            "delete": reverse("core:pending_approval_delete", args=[kind, item.pk]),
         }
     urls = {
         "detail": reverse("core:pending_approval_detail", args=[kind, item.pk]),
         "approve": reverse("core:pending_approval_approve", args=[kind, item.pk]),
         "reject": reverse("core:pending_approval_reject", args=[kind, item.pk]),
+        "delete": reverse("core:pending_approval_delete", args=[kind, item.pk]),
     }
     if kind == "family":
         urls.update({
@@ -423,6 +426,15 @@ def _send_handyman_maintenance_media(request, service, phone_number, ticket):
     return sent_count, failed_count
 
 
+def _can_delete_pending_approval(user, item):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    opts = item._meta
+    return user.has_perm(f"{opts.app_label}.delete_{opts.model_name}")
+
+
 @login_required
 def pending_approvals(request):
     from handyman.models import HandymanProfile
@@ -630,6 +642,7 @@ def pending_approvals(request):
                     if section["kind"] == "media"
                     else []
                 ),
+                "can_delete": _can_delete_pending_approval(request.user, item),
             }
             for item in section["items"]
         ]
@@ -716,6 +729,56 @@ def _pending_item_for_kind(kind, pk):
             pk=pk,
         )
     raise Http404("Unknown pending approval type.")
+
+
+@login_required
+@require_POST
+def pending_approval_delete(request, kind, pk):
+    """Delete an unreviewed approval item when the user has its Django delete permission."""
+    from tenants.models import TenantRegistrationSubmission
+    from whatsapp.models import PendingWhatsAppMedia
+
+    if kind == "registration":
+        item = get_object_or_404(TenantRegistrationSubmission, pk=pk)
+    else:
+        item = _pending_item_for_kind(kind, pk)
+
+    if not _can_delete_pending_approval(request.user, item):
+        raise PermissionDenied
+
+    pending_statuses = {"pending", "pending_approval", "confirmed"}
+    if getattr(item, "status", "") not in pending_statuses:
+        messages.error(request, "Only pending approval items can be deleted.")
+        response = _pending_ajax_response(
+            request,
+            "Only pending approval items can be deleted.",
+            redirect_url=reverse("core:pending_approvals"),
+            status=409,
+        )
+        return response or redirect("core:pending_approvals")
+
+    deleted_count = 1
+    with transaction.atomic():
+        if kind == "media" and getattr(item, "batch_key", None):
+            batch = PendingWhatsAppMedia.objects.filter(
+                batch_key=item.batch_key,
+                status=PendingWhatsAppMedia.STATUS_PENDING,
+            )
+            deleted_count = batch.count()
+            batch.delete()
+        else:
+            item.delete()
+
+    message = (
+        f"Pending approval deleted ({deleted_count} linked files)."
+        if deleted_count > 1
+        else "Pending approval deleted."
+    )
+    messages.success(request, message)
+    response = _pending_ajax_response(
+        request, message, redirect_url=reverse("core:pending_approvals")
+    )
+    return response or redirect("core:pending_approvals")
 
 
 @login_required

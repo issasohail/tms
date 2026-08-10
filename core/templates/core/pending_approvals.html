@@ -407,6 +407,12 @@
                           <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
                         </form>
                       {% endif %}
+                      {% if row.can_delete and item.status == "pending" or row.can_delete and item.status == "pending_approval" or row.can_delete and item.status == "confirmed" %}
+                        <form method="post" action="{{ row.urls.delete }}" class="d-inline pending-approval-action" data-action="delete" data-confirm-delete="1">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-danger" title="Permanently delete this pending approval" aria-label="Delete pending approval"><i class="fas fa-trash"></i></button>
+                        </form>
+                      {% endif %}
                       </div>
                     </td>
                   </tr>
@@ -517,6 +523,10 @@
   document.addEventListener("submit", async function (event) {
     const form = event.target.closest("form.pending-approval-action");
     if (!form) return;
+    if (form.dataset.confirmDelete === "1" && !window.confirm("Delete this pending approval permanently? This cannot be undone.")) {
+      event.preventDefault();
+      return;
+    }
     event.preventDefault();
 
     const submitter = event.submitter;

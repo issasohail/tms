@@ -15,6 +15,7 @@ from django_tables2.columns import DateColumn
 
 from core.currency import format_money
 from core.models import GlobalSettings
+from core.utils.identity import whatsapp_phone_digits
 from properties.tables import ExportableTable
 from utils.pdf_export import handle_export
 
@@ -422,10 +423,32 @@ class LeaseTable(ExportableTable):
         return value.strftime("%Y-%m-%d") if value else ""
 
     def render_property(self, value, record):
+        prop = record.unit.property
         full = value or ""
         short = (full[:8] + "…") if len(full) > 8 else full
-        url = reverse("properties:property_detail", args=[record.unit.property.pk])
-        return mark_safe(f'<a href="{url}" title="{escape(full)}">{escape(short)}</a>')
+        url = reverse("properties:property_detail", args=[prop.pk])
+        owner_name = (getattr(prop, "owner_name", "") or "").strip()
+        owner_phone = getattr(prop, "owner_phone", "") or ""
+        owner_html = ""
+        if owner_name:
+            owner_url = f"{url}#owner-information"
+            wa_digits = whatsapp_phone_digits(
+                owner_phone,
+                getattr(self.global_settings, "country_code", "") or "",
+            )
+            wa_html = (
+                f'<a class="ll-owner-wa" href="https://wa.me/{escape(wa_digits)}" '
+                f'target="_blank" rel="noopener" title="WhatsApp owner"><i class="fab fa-whatsapp"></i></a>'
+                if wa_digits else ""
+            )
+            owner_html = (
+                f'<span class="ll-owner-info">Owner: '
+                f'<a class="ll-owner-link" href="{escape(owner_url)}" title="Open owner details">{escape(owner_name)}</a>'
+                f'{wa_html}</span>'
+            )
+        return mark_safe(
+            f'<span class="ll-property-name"><a href="{url}" title="{escape(full)}">{escape(short)}</a></span>{owner_html}'
+        )
 
     def render_tenant(self, record, value):
         t = record.tenant

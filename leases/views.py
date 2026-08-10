@@ -1064,6 +1064,8 @@ class LeaseListView(SingleTableView):
                 "unit__unit_number",
                 "unit__property__id",
                 "unit__property__property_name",
+                "unit__property__owner_name",
+                "unit__property__owner_phone",
             )
         )
 

@@ -60,6 +60,120 @@
     .whatsapp-pane-card > .card-header { flex:0 0 auto; }
     .whatsapp-pane-card > .whatsapp-pane-scroll { flex:1 1 auto; }
   }
+
+  /* Phone/tablet: use conversation cards instead of squeezing six table columns. */
+  @media (max-width: 767.98px) {
+    .whatsapp-log-page { width:100%; max-width:none; padding:0 .12rem; }
+    .whatsapp-log-page > .d-flex:first-of-type { margin-bottom:.32rem !important; }
+    .whatsapp-log-page h3 { font-size:.98rem; }
+    .whatsapp-log-page .text-muted.small { font-size:.64rem; }
+    .whatsapp-log-page > .d-flex:first-of-type > .d-flex {
+      width:100%;
+      display:flex;
+      flex-wrap:wrap;
+      gap:.28rem !important;
+    }
+    .whatsapp-log-page > .d-flex:first-of-type > .d-flex .btn {
+      flex:0 1 auto;
+      min-height:30px;
+      padding:.2rem .36rem;
+      font-size:.62rem;
+      line-height:1.05;
+      border-radius:.38rem;
+    }
+    .whatsapp-conversation-grid { --bs-gutter-x:.34rem; --bs-gutter-y:.34rem; }
+    .whatsapp-filter-bar { padding:.34rem !important; }
+    .whatsapp-filter-bar .row { --bs-gutter-x:.25rem; --bs-gutter-y:.25rem; }
+    .whatsapp-filter-bar .form-control-sm,
+    .whatsapp-filter-bar .form-select-sm,
+    .whatsapp-filter-bar .select2-selection--single { min-height:28px; font-size:.67rem; }
+    .whatsapp-pane-card > .card-header { padding:.34rem !important; }
+    .whatsapp-pane-card > .card-header > .d-flex,
+    .whatsapp-pane-card > .card-header .d-flex.align-items-center {
+      width:100%;
+      gap:.28rem !important;
+    }
+    .whatsapp-pane-card > .card-header .btn,
+    .whatsapp-pane-card > .card-header .form-select,
+    .whatsapp-pane-card > .card-header .badge,
+    .whatsapp-pane-card > .card-header .form-check-label {
+      font-size:.62rem;
+    }
+    .whatsapp-pane-card > .card-header .btn {
+      min-height:29px;
+      padding:.2rem .34rem;
+      line-height:1.05;
+      border-radius:.36rem;
+    }
+    .whatsapp-pane-card > .card-header .form-select {
+      max-width:80px;
+      min-height:29px;
+      padding-top:.14rem;
+      padding-bottom:.14rem;
+    }
+    .whatsapp-pane-card > .card-header .form-check {
+      min-height:29px;
+      display:flex;
+      align-items:center;
+      padding-left:1.1rem;
+    }
+
+    .whatsapp-conversation-table,
+    .whatsapp-conversation-table tbody { display:block; width:100%; }
+    .whatsapp-conversation-table colgroup,
+    .whatsapp-conversation-table thead { display:none; }
+    .whatsapp-conversation-table tbody tr {
+      display:grid;
+      grid-template-columns:34px minmax(0, 1fr) auto;
+      gap:.14rem .3rem;
+      margin:.28rem;
+      padding:.34rem;
+      border:1px solid var(--bs-border-color);
+      border-radius:.46rem;
+      background:var(--bs-body-bg);
+      box-shadow:0 1px 2px rgba(0,0,0,.04);
+    }
+    .whatsapp-conversation-table tbody tr.table-primary { border-color:#86b7fe; background:#eef5ff; }
+    .whatsapp-conversation-table tbody td {
+      display:block; width:auto !important; min-width:0; padding:0 !important;
+      border:0 !important; white-space:normal; font-size:.67rem;
+    }
+    .whatsapp-conversation-table tbody td::before {
+      content:attr(data-label); display:block; color:#6c757d; font-size:.48rem;
+      font-weight:800; line-height:1; text-transform:uppercase; margin-bottom:.05rem;
+    }
+    .whatsapp-conversation-table td[data-label="SN"] { grid-row:1 / span 3; grid-column:1; align-self:start; text-align:center; font-weight:800; }
+    .whatsapp-conversation-table td[data-label="Phone"] { grid-column:2; grid-row:1; }
+    .whatsapp-conversation-table td[data-label="Status"] { grid-column:3; grid-row:1; text-align:right; }
+    .whatsapp-conversation-table td[data-label="Tenant"] { grid-column:2 / 4; grid-row:2; }
+    .whatsapp-conversation-table td[data-label="Property / Unit"] {
+      grid-column:2 / 4;
+      grid-row:3;
+      margin-top:-.04rem;
+    }
+    .whatsapp-conversation-table td[data-label="Last Message"] {
+      grid-column:1 / 4;
+      grid-row:4;
+      margin-top:.08rem;
+      padding-top:.2rem !important;
+      border-top:1px solid var(--bs-border-color-subtle, #e9ecef) !important;
+    }
+    .whatsapp-conversation-table td[data-label="Phone"] .btn,
+    .whatsapp-conversation-table td[data-label="Status"] .badge,
+    .whatsapp-conversation-table td[data-label="Property / Unit"] .badge {
+      font-size:.58rem;
+    }
+    .whatsapp-conversation-table td[data-label="Phone"] .btn {
+      padding:.05rem .2rem;
+      line-height:1.02;
+    }
+    .whatsapp-tenant-link, .whatsapp-lease-link { max-width:100%; }
+    .whatsapp-last-message { -webkit-line-clamp:2; line-clamp:2; }
+    .whatsapp-lease-state { display:inline-block; width:auto; max-width:100%; margin:.08rem 0 0 !important; }
+    .whatsapp-right-scroll { padding:.36rem !important; }
+    #conversationThread { padding:.34rem !important; }
+    #conversationThread .d-inline-block { max-width:94% !important; font-size:.69rem; }
+  }
 </style>
 <div class="whatsapp-log-page">
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
@@ -141,40 +255,40 @@
             <tbody>
               {% for item in conversation_summary %}
                 <tr class="{% if selected_phone == item.phone_number %}table-primary{% endif %}">
-                  <td>{{ item.sn }}</td>
-                  <td class="text-nowrap">
+                  <td data-label="SN">{{ item.sn }}</td>
+                  <td class="text-nowrap" data-label="Phone">
                     {% with wa_number=item.phone_number|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
                       <a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.phone_number|format_phone:GLOBAL_SETTINGS.country_code }}</a>
                     {% endwith %}
                     <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1" href="?phone={{ item.phone_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_tenant_id %}&tenant={{ selected_tenant_id }}{% endif %}{% if selected_location %}&location={{ selected_location|urlencode }}{% endif %}" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
                   </td>
-                  <td>
+                  <td data-label="Tenant">
                     {% if item.tenant_id %}
                       <a class="whatsapp-tenant-link" href="{% url 'tenants:tenant_detail' item.tenant_id %}" title="{{ item.tenant_name }}">{{ item.tenant_name|truncatechars:20 }}</a>
                     {% else %}
                       -
                     {% endif %}
                   </td>
-                  <td>
+                  <td data-label="Property / Unit">
                     {% if item.lease_id %}
                       <a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' item.lease_id %}" title="{{ item.property_unit }}">{{ item.property_unit }}</a>
                     {% else %}
                       {{ item.property_unit|default:"-" }}
                     {% endif %}
                     {% if item.lease_status == "active" %}
-                      <span class="badge bg-success ms-1">Active Lease</span>
+                      <span class="badge bg-success whatsapp-lease-state">Active Lease</span>
                     {% elif item.lease_status == "ended" %}
-                      <span class="badge bg-danger ms-1">Lease Ended</span>
+                      <span class="badge bg-danger whatsapp-lease-state">Lease Ended</span>
                       {% if item.lease_end_date %}<span class="text-muted small d-block">Ended: {{ item.lease_end_date|date:"M d, Y" }}</span>{% endif %}
                     {% elif item.tenant_id %}
-                      <span class="badge bg-secondary ms-1">No Lease Record</span>
+                      <span class="badge bg-secondary whatsapp-lease-state">No Lease Record</span>
                     {% endif %}
                   </td>
-                  <td>
+                  <td data-label="Last Message">
                     <div class="whatsapp-last-message" title="{{ item.last_message|default:'-' }}">{{ item.last_message|default:"-" }}</div>
                     <div class="text-muted small">{{ item.last_at|date:"Y-m-d H:i:s" }}</div>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span class="badge {% if item.last_status == 'failed' %}bg-danger{% elif item.last_status == 'read' or item.last_status == 'delivered' or item.last_status == 'sent' %}bg-success{% else %}bg-secondary{% endif %}">
                       {{ item.last_status }}
                     </span>

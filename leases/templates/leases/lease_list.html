@@ -125,6 +125,11 @@
         <input type="checkbox" name="bill_water_charges" id="id_bill_water_charges" {% if bill_water_charges_filter %}checked{% endif %}>
         <span>Bill Water</span>
       </label>
+
+      <label class="ll-check ll-filter-owner" title="Show or hide property owner names in the lease list">
+        <input type="checkbox" id="show-owner-name" checked>
+        <span>Owner</span>
+      </label>
     </div>
 
     {% if request.GET %}
@@ -488,6 +493,11 @@
 .ll-table-wrap .col-id { width: var(--col-id); text-align: center; }
 .ll-table-wrap .col-tenant { width: var(--col-tenant); }
 .ll-table-wrap .col-property { width: var(--col-prop); }
+.ll-owner-info { display:block; margin-top:2px; color:#667085; font-size:.62rem; font-weight:700; line-height:1.1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ll-owner-link { color:#475467 !important; font-weight:800 !important; text-decoration:none !important; }
+.ll-owner-link:hover { color:#06f !important; text-decoration:underline !important; }
+.ll-owner-wa { display:inline-flex; align-items:center; justify-content:center; margin-left:4px; color:#16a34a !important; text-decoration:none !important; }
+.ll-page.owner-hidden .ll-owner-info { display:none !important; }
 .ll-table-wrap .col-unit { width: var(--col-unit); }
 .ll-table-wrap .col-family { width: var(--col-family); text-align: center; }
 .ll-table-wrap .col-police { width: var(--col-police); text-align: center; }
@@ -919,7 +929,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .ll-card-status {
+  .ll-card-owner { display:block; margin-top:3px; color:#667085; font-size:.58rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ll-card-owner a { font-size:inherit; }
+.ll-page.owner-hidden .ll-card-owner { display:none !important; }
+.ll-card-status {
     border: 1px solid #7dd3a8;
     border-radius: 999px;
     padding: 2px 6px;
@@ -1459,6 +1472,21 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
+  (function ownerVisibilityToggle() {
+    const page = document.querySelector('.ll-page');
+    const toggle = document.getElementById('show-owner-name');
+    if (!page || !toggle) return;
+    const key = 'tms:lease-list:show-owner';
+    const stored = localStorage.getItem(key);
+    toggle.checked = stored !== '0';
+    const apply = () => page.classList.toggle('owner-hidden', !toggle.checked);
+    apply();
+    toggle.addEventListener('change', () => {
+      localStorage.setItem(key, toggle.checked ? '1' : '0');
+      apply();
+    });
+  })();
+
   (function buildLeaseCards() {
     const grid = document.getElementById('leaseCardGrid');
     const rows = document.querySelectorAll('.ll-table-wrap tbody tr');
@@ -1488,7 +1516,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const tenantName = tenantCell?.querySelector('[title]')?.getAttribute('title') || text(row, '.col-tenant') || 'Tenant';
       const tenantHref = tenantCell?.querySelector('a')?.href || '#';
       const unit = text(row, '.col-unit');
-      const property = text(row, '.col-property');
+      const property = text(row, '.ll-property-name') || text(row, '.col-property');
+      const ownerInfo = row.querySelector('.ll-owner-info');
       const status = text(row, '.col-status') || '-';
       const statusEnded = /ended|terminated|inactive/i.test(status);
       const monthly = text(row, '.col-monthly') || '-';
@@ -1505,6 +1534,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="ll-card-title">
             <a class="ll-card-tenant" href="${tenantHref}" title="${tenantName.replace(/"/g, '&quot;')}">${tenantName}</a>
             <span class="ll-card-unit">${property ? property + ' · ' : ''}${unit}</span>
+            ${ownerInfo ? `<span class="ll-card-owner">${ownerInfo.innerHTML}</span>` : ''}
           </div>
           <span class="ll-card-status${statusEnded ? ' is-ended' : ''}">${status}</span>
         </div>

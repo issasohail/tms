@@ -29,6 +29,7 @@ urlpatterns = [
     path("pending-approvals/family/<int:pk>/file/<str:field_name>/", views.pending_family_file, name="pending_family_file"),
     path("pending-approvals/<str:kind>/<int:pk>/approve/", views.pending_approval_approve, name="pending_approval_approve"),
     path("pending-approvals/<str:kind>/<int:pk>/reject/", views.pending_approval_reject, name="pending_approval_reject"),
+    path("pending-approvals/<str:kind>/<int:pk>/delete/", views.pending_approval_delete, name="pending_approval_delete"),
     path("settings/backup-restore/", BackupCenterView.as_view(), name="backup_center"),
     path("settings/backup-restore/download/<path:backup_id>/", BackupDownloadView.as_view(), name="backup_download"),
     path("settings/backup-restore/delete/<path:backup_id>/", BackupDeleteView.as_view(), name="backup_delete"),

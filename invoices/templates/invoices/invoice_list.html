@@ -3715,6 +3715,31 @@ document.addEventListener('DOMContentLoaded', () => {
     font-size: .68rem;
     font-weight: 600;
   }
+  .invoice-status-stack {
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
+    align-items:center;
+    gap:.18rem .28rem;
+    min-width:0;
+    text-align:left;
+  }
+  .invoice-status-kicker {
+    color:#667085;
+    font-size:.52rem;
+    font-weight:800;
+    line-height:1;
+    text-transform:uppercase;
+  }
+  .invoice-status-stack .invoice-status-badge {
+    display:block;
+    width:100%;
+    margin:0 !important;
+    border-radius:999px;
+    text-align:center;
+    padding:.22rem .38rem;
+  }
+  .invoice-status-lifecycle { opacity:.86; }
+  .invoice-status-payment { box-shadow:0 1px 2px rgba(0,0,0,.10); }
 
   @media (min-width: 992px) {
     .invoice-page-compact.page-header {

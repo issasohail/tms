@@ -990,6 +990,21 @@
       font-size: .85rem !important;
     }
   }
+
+
+  /* Lease-list visual language: typography, table weight, borders and hover. */
+  .payment-list-container { --pl-border:#d0d5dd; --pl-text:#101828; --pl-muted:#667085; --pl-blue:#06f; color:var(--pl-text); }
+  .payment-page-compact h2 { font-size:1.28rem !important; font-weight:800; line-height:1.1; color:var(--pl-text); }
+  .payment-list-dense table.table { border:1px solid var(--pl-border); border-radius:8px; overflow:hidden; color:var(--pl-text); }
+  .payment-list-dense table.table thead th { background:#f8fafc !important; color:#475467 !important; font-weight:800 !important; text-transform:none; letter-spacing:.01em; border-bottom:1px solid var(--pl-border); }
+  .payment-list-dense table.table tbody td { color:var(--pl-text); font-weight:600; border-top:1px solid #eaecf0; }
+  .payment-list-dense table.table tbody tr:nth-child(even) td { background:#fbfcfe; }
+  .payment-list-dense table.table tbody tr:hover td { background:#f2f6ff; }
+  .payment-list-dense td.col-tenant a { color:var(--pl-text) !important; font-weight:800 !important; text-decoration:none !important; }
+  .payment-list-dense td.col-tenant a:hover { color:var(--pl-blue) !important; text-decoration:underline !important; }
+  .payment-list-dense td.col-property a { color:var(--pl-blue); font-weight:800; text-decoration:underline; text-underline-offset:2px; }
+  .payment-page-compact .btn { font-weight:700; border-radius:6px; }
+
 </style>
 {% endblock %}
 

@@ -105,18 +105,24 @@ def resolve_sender(phone_number, conversation=None, log_ambiguity=True):
         .distinct()
         .order_by("unit__property__property_name", "unit__unit_number", "id")
     )
-    eligible_tenant_ids = set()
+    tenant_lease_ids = {}
     for tenant in tenants:
-        if any(
-            lease.tenant_id == tenant.pk
+        accessible_lease_ids = {
+            lease.pk
+            for lease in active_leases
+            if lease.tenant_id == tenant.pk
             or any(member.family_member_id == tenant.pk for member in lease.family_members.all())
             or any(member.tenant_id == tenant.pk for member in lease.legacy_family_members.all())
-            for lease in active_leases
-        ):
-            eligible_tenant_ids.add(tenant.pk)
+        }
+        if accessible_lease_ids:
+            tenant_lease_ids[tenant.pk] = accessible_lease_ids
+
     # A reused phone number on an old tenant record must not create a phantom
-    # account choice. Only accounts that can actually enter Tenant Mode appear.
-    tenants = [tenant for tenant in tenants if tenant.pk in eligible_tenant_ids]
+    # account choice. Multiple Tenant rows that all grant access to the exact
+    # same active lease(s) are one WhatsApp account choice, not repeated copies
+    # of the same property/unit. Genuinely different lease sets remain separate.
+    tenants = [tenant for tenant in tenants if tenant.pk in tenant_lease_ids]
+    tenants = _collapse_duplicate_tenant_access(tenants, tenant_lease_ids, active_leases)
     permissions = {
         user.pk: list(
             WhatsAppStaffPropertyAccess.objects.filter(staff_user=user, is_active=True)
@@ -162,6 +168,25 @@ def resolve_sender(phone_number, conversation=None, log_ambiguity=True):
         )
     return context
 
+
+
+def _collapse_duplicate_tenant_access(tenants, tenant_lease_ids, active_leases):
+    """Collapse identities that expose exactly the same active lease set."""
+    grouped = {}
+    for tenant in tenants:
+        signature = tuple(sorted(tenant_lease_ids.get(tenant.pk, set())))
+        grouped.setdefault(signature, []).append(tenant)
+
+    lease_tenant_ids = {lease.pk: lease.tenant_id for lease in active_leases}
+    collapsed = []
+    for signature, group in grouped.items():
+        primary_ids = {lease_tenant_ids.get(lease_id) for lease_id in signature}
+        representative = next(
+            (tenant for tenant in group if tenant.pk in primary_ids),
+            None,
+        )
+        collapsed.append(representative or group[0])
+    return collapsed
 
 def _matching_tenants(normalized, suffix):
     if not suffix:

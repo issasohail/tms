@@ -38,7 +38,7 @@ from whatsapp.services.whatsapp_ai import (
 )
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
-from leases.models import Lease
+from leases.models import Lease, LeaseFamilyMember
 from invoices.models import Invoice
 from payments.models import Payment, PaymentDetail
 from leases.models_lease_photos import LeaseMedia
@@ -1189,6 +1189,63 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertTrue(sender.has_active_tenant)
         self.assertFalse(sender.has_staff)
         self.assertEqual(sender.active_leases, [self.lease])
+
+    def test_duplicate_tenant_rows_for_same_active_lease_do_not_repeat_account_choice(self):
+        family = Tenant.objects.create(
+            first_name="Family", last_name="Member", phone=self.phone, cnic="37405-4444444-4"
+        )
+        LeaseFamilyMember.objects.create(
+            lease=self.lease,
+            primary_tenant=self.tenant,
+            family_member=family,
+            relationship="other",
+        )
+
+        sender = resolve_sender(self.phone)
+
+        self.assertEqual(sender.tenant_matches, [self.tenant])
+        self.assertFalse(sender.ambiguous)
+        self.assertTrue(sender.has_active_tenant)
+        self.assertEqual(sender.active_leases, [self.lease])
+
+    def test_invoice_detail_and_issue_phrases_return_useful_invoice_response(self):
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=timezone.localdate(),
+            due_date=timezone.localdate() + timedelta(days=5),
+            amount=Decimal("39390.00"),
+            status="sent",
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+
+        detail_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.invoice.detail",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "Please give invoice detail"}},
+        )
+        detail_response, detail_intent, _ = assistant._handle(detail_log, self.conversation)
+
+        self.assertEqual(detail_intent, "latest_invoice")
+        self.assertIn(invoice.invoice_number, detail_response)
+        self.assertIn("39390.00", detail_response)
+
+        issue_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.invoice.issue",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "View invoice have issue"}},
+        )
+        issue_response, issue_intent, _ = assistant._handle(issue_log, self.conversation)
+
+        self.assertEqual(issue_intent, "invoice_issue")
+        self.assertIn(invoice.invoice_number, issue_response)
+        self.assertIn("tell me what looks wrong", issue_response.lower())
+        self.assertIn("I have paid", issue_response)
 
     def test_tenant_unit_photo_command_returns_fixed_no_login_link(self):
         from properties.public_upload_links import read_unit_photo_upload_token
@@ -3536,6 +3593,22 @@ class WhatsAppControlledAssistantTests(TestCase):
 
         for result in [message_result, tenant_result, property_result, unit_result]:
             self.assertEqual([row["phone_number"] for row in result], [self.phone])
+
+    def test_conversation_search_tolerates_list_valued_legacy_message_body(self):
+        from whatsapp.views import _conversation_summary, _filter_conversation_summary
+
+        self.message.payload = {
+            "type": "text",
+            "text": {"body": ["Zaheer", "invoice issue"]},
+        }
+        self.message.save(update_fields=["payload", "updated_at"])
+
+        result = _filter_conversation_summary(
+            _conversation_summary(), search_query="zaheer"
+        )
+
+        self.assertEqual([row["phone_number"] for row in result], [self.phone])
+        self.assertIsInstance(result[0]["last_message"], str)
 
     def test_whatsapp_filter_options_use_short_property_names_and_tenant_name_only(self):
         self.staff1.is_superuser = True

@@ -618,6 +618,19 @@ class WhatsAppAIAssistant:
         if lowered in {"12", "view ledger"}:
             return self._ledger_link_reply(lease), "ledger", {"lease": lease, "tenant": lease.tenant}
 
+        if _looks_like_invoice_issue(text):
+            return (
+                self._invoice_issue_reply(lease),
+                "invoice_issue",
+                {"lease": lease, "tenant": lease.tenant},
+            )
+        if _looks_like_invoice_detail(text):
+            invoice = self._latest_invoice_for_lease(lease)
+            metadata = {"lease": lease, "tenant": lease.tenant}
+            if invoice:
+                metadata["invoice_jpg"] = invoice
+            return self._latest_invoice_reply(lease), "latest_invoice", metadata
+
         orchestration = self.orchestrator.handle(text, identity, conversation, message_log, lease=lease)
         if orchestration.handled:
             orchestration.metadata.update({"tenant": lease.tenant, "lease": lease})
@@ -4821,6 +4834,26 @@ class WhatsAppAIAssistant:
             f"Link:\n{link}"
         )
 
+    def _invoice_issue_reply(self, lease):
+        invoice = self._latest_invoice_for_lease(lease)
+        if not invoice:
+            return (
+                "I can help with the invoice issue, but no invoice is recorded for your "
+                "active lease yet. Please tell me what you expected or contact the office."
+            )
+        token = make_public_invoice_token(invoice.pk)
+        link = build_public_url("invoices:public_invoice_detail", args=[token])
+        return (
+            "I can help with the invoice issue. Here is your latest invoice:\n\n"
+            f"Invoice: {invoice.invoice_number}\n"
+            f"Amount: Rs. {invoice.amount or Decimal('0.00')}\n"
+            f"Due Date: {invoice.due_date or '-'}\n"
+            f"Status: {invoice.get_status_display()}\n\n"
+            f"View invoice: {link}\n\n"
+            "Please tell me what looks wrong (amount, charge, due date, or another item), "
+            "or send a screenshot. If you already paid, reply 'I have paid' and I will "
+            "check the latest posted payment and current balance and ask for your receipt."
+        )
     def _latest_payment_receipt_reply(self, lease):
         from payments.models import Payment
 
@@ -5217,6 +5250,30 @@ def _looks_like_inspection_request(text):
     return "sheet" in lowered and any(word in lowered for word in ("property", "unit", "lease", "flat", "room"))
 
 
+def _looks_like_invoice_issue(text):
+    lowered = (text or "").strip().lower()
+    if "invoice" not in lowered and "bill" not in lowered:
+        return False
+    return any(
+        word in lowered
+        for word in ("issue", "problem", "wrong", "incorrect", "error", "dispute", "question")
+    )
+
+
+def _looks_like_invoice_detail(text):
+    lowered = (text or "").strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "invoice detail",
+            "invoice details",
+            "view invoice",
+            "show invoice",
+            "my invoice",
+            "invoice information",
+        )
+    )
+
 def _looks_like_latest_invoice(text):
     lowered = (text or "").strip().lower()
     return any(
@@ -5500,22 +5557,39 @@ def _staff_search_menu_text():
     )
 
 
+def _payload_value_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list, tuple)):
+        try:
+            return json.dumps(value, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
 def _payload_text(payload):
     text_payload = payload.get("text") or {}
     if isinstance(text_payload, dict) and text_payload.get("body"):
-        return text_payload.get("body")
+        return _payload_value_text(text_payload.get("body"))
     if payload.get("type") == "button":
-        return (payload.get("button") or {}).get("text", "")
+        button = payload.get("button") or {}
+        button_text = _payload_value_text(button.get("text", ""))
+        button_payload = _payload_value_text(button.get("payload", ""))
+        if button_payload and button_text.strip().casefold() in {"", "quick reply", "button"}:
+            return button_payload
+        return button_text or button_payload
     if payload.get("type") == "interactive":
         interactive = payload.get("interactive") or {}
         reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
-        return reply.get("title") or reply.get("id") or ""
+        return _payload_value_text(reply.get("title") or reply.get("id") or "")
     for media_type in ("image", "document", "video"):
         media = payload.get(media_type) or {}
         if media.get("caption"):
-            return media.get("caption")
+            return _payload_value_text(media.get("caption"))
     return ""
-
 
 def _looks_like_yes(text):
     return (text or "").strip().lower() in {"yes", "y", "confirm", "confirmed", "ok"}

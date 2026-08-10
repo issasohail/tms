@@ -958,13 +958,14 @@ def _filter_conversation_summary(
     for log in WhatsAppMessageLog.objects.exclude(phone_number="").iterator():
         payload_text = json.dumps(log.payload or {}, ensure_ascii=False, default=str)
         message_blob = " ".join(
-            [
-                log.phone_number or "",
+            _searchable_text(value)
+            for value in [
+                log.phone_number,
                 _message_text(log),
-                log.error_text or "",
-                log.template_name or "",
-                log.status or "",
-                log.message_type or "",
+                log.error_text,
+                log.template_name,
+                log.status,
+                log.message_type,
                 payload_text,
             ]
         ).casefold()
@@ -979,12 +980,13 @@ def _filter_conversation_summary(
     result = []
     for row in filtered:
         row_blob = " ".join(
-            [
-                row["phone_number"] or "",
-                row["tenant_name"] or "",
-                row["property_unit"] or "",
-                row["last_message"] or "",
-                row["last_status"] or "",
+            _searchable_text(value)
+            for value in [
+                row.get("phone_number"),
+                row.get("tenant_name"),
+                row.get("property_unit"),
+                row.get("last_message"),
+                row.get("last_status"),
             ]
         ).casefold()
         row_phone_digits = "".join(
@@ -1078,6 +1080,24 @@ def _media_preview(media):
     }
 
 
+def _searchable_text(value):
+    """Return a stable string for log/search rendering.
+
+    Meta payload fields are normally strings, but malformed/legacy webhook rows
+    can contain lists or dictionaries. One historical payload must never crash
+    the entire conversation search page.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list, tuple, set)):
+        try:
+            return json.dumps(value, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
 def _message_text(log):
     payload = log.payload or {}
     if log.direction == WhatsAppMessageLog.DIRECTION_STATUS:
@@ -1085,21 +1105,26 @@ def _message_text(log):
 
     text_payload = payload.get("text") or {}
     if isinstance(text_payload, dict) and text_payload.get("body"):
-        return text_payload.get("body")
+        return _searchable_text(text_payload.get("body"))
 
     if payload.get("type") == "button":
-        return (payload.get("button") or {}).get("text", "")
+        button = payload.get("button") or {}
+        button_text = _searchable_text(button.get("text", ""))
+        button_payload = _searchable_text(button.get("payload", ""))
+        if button_payload and button_text.strip().casefold() in {"", "quick reply", "button"}:
+            return button_payload
+        return button_text or button_payload
     if payload.get("type") == "interactive":
         interactive = payload.get("interactive") or {}
         reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
-        return reply.get("title") or reply.get("id") or "Interactive reply"
+        return _searchable_text(reply.get("title") or reply.get("id") or "Interactive reply")
     if payload.get("type") == "image":
-        return (payload.get("image") or {}).get("caption") or "Image message"
+        return _searchable_text((payload.get("image") or {}).get("caption") or "Image message")
     if payload.get("type") == "document":
         document = payload.get("document") or {}
-        return document.get("caption") or document.get("filename") or "Document message"
+        return _searchable_text(document.get("caption") or document.get("filename") or "Document message")
     if payload.get("type"):
-        return f"{payload.get('type').title()} message"
+        return f"{_searchable_text(payload.get('type')).title()} message"
     return ""
 
 

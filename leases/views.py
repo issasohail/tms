@@ -1302,6 +1302,8 @@ class LeaseListView(SingleTableView):
             return None
         self.object_list = self.get_queryset()
         table = self.get_table()
+
+
         export_name = "leases_list"
         return handle_export(request, table, export_name)
 

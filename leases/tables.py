@@ -45,18 +45,19 @@ class LeaseTable(ExportableTable):
         "orientation": "landscape",
         "column_widths": {
             "sn": 28,
-            "tenant": 120,
-            "unit": 65,
+            "tenant": 85,
+            "unit": 75,
+            "owner": 70,
             "family_members": 38,
             "bill_water_charges": 36,
             "vehicle_info": 42,
             "monthly_payments": 60,
             "due_date": 32,
             "status": 38,
-            "start_date": 50,
-            "end_date": 50,
+            "start_date": 60,
+            "end_date": 60,
             "balance": 60,
-            "security_due": 65,
+            "security_due": 45,
         },
     }
 
@@ -94,6 +95,16 @@ class LeaseTable(ExportableTable):
         attrs={
             "td": {"class": "col-unit"},
             "th": {"class": "col-unit"},
+        },
+    )
+
+    owner = tables.Column(
+        accessor="unit.property.owner_name",
+        verbose_name="Owner",
+        orderable=False,
+        attrs={
+            "td": {"class": "col-owner"},
+            "th": {"class": "col-owner"},
         },
     )
 
@@ -487,6 +498,30 @@ class LeaseTable(ExportableTable):
             f'{owner_html}'
         )
 
+    def value_unit(self, value, record):
+        """Export Unit as plain unit text only; owner has its own export column."""
+        return str(value or "")
+
+    def render_owner(self, value, record):
+        return (value or "").strip()
+
+    def value_owner(self, value, record):
+        return (value or "").strip()
+
+    def value_security_due(self, value, record):
+        """Export security balance as plain text, never rendered HTML."""
+        return format_money(value, self.global_settings, decimals=0)
+
+    def value_tenant(self, value, record):
+        """Use full tenant names in spreadsheet/text exports."""
+        tenant = getattr(record, "tenant", None)
+        full = tenant.get_full_name().strip() if tenant else ""
+        request = getattr(self, "request", None)
+        export_format = request.GET.get("_export") if request else ""
+        if export_format in {"xlsx", "csv"}:
+            return full
+        return (full[:15] + "...") if len(full) > 15 else full
+
     def render_tenant(self, record, value):
         t = record.tenant
         full = f"{t.first_name} {t.last_name}".strip() if t else ""
@@ -592,6 +627,7 @@ class LeaseTable(ExportableTable):
             "id",
             "tenant",
             "unit",
+            "owner",
             "family_members",
             "police_verification",
             "bill_water_charges",

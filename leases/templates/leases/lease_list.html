@@ -493,6 +493,7 @@
 .ll-table-wrap .col-id { width: var(--col-id); text-align: center; }
 .ll-table-wrap .col-tenant { width: var(--col-tenant); }
 .ll-table-wrap .col-property { width: var(--col-prop); }
+.ll-table-wrap .col-owner { display: none !important; }
 .ll-owner-info { display:block; margin-top:2px; color:#667085; font-size:.62rem; font-weight:700; line-height:1.1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ll-owner-link { color:#475467 !important; font-weight:800 !important; text-decoration:none !important; }
 .ll-owner-link:hover { color:#06f !important; text-decoration:underline !important; }
@@ -1515,7 +1516,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const tenantCell = row.querySelector('.col-tenant');
       const tenantName = tenantCell?.querySelector('[title]')?.getAttribute('title') || text(row, '.col-tenant') || 'Tenant';
       const tenantHref = tenantCell?.querySelector('a')?.href || '#';
-      const unit = text(row, '.col-unit');
+      const unitLink = row.querySelector('.col-unit > a');
+      const unit = unitLink ? unitLink.textContent.replace(/\s+/g, ' ').trim() : text(row, '.col-unit');
       const property = text(row, '.ll-property-name') || text(row, '.col-property');
       const ownerInfo = row.querySelector('.ll-owner-info');
       const status = text(row, '.col-status') || '-';

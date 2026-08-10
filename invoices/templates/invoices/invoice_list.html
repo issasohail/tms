@@ -3700,7 +3700,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   .invoice-list-dense table.table th.col-status,
   .invoice-list-dense table.table td.col-status {
-    width: 6rem;
+    width: 6.8rem;
     text-align: center;
     white-space: nowrap;
   }
@@ -3712,33 +3712,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   .invoice-status-badge {
-    font-size: .68rem;
-    font-weight: 600;
-  }
-  .invoice-status-stack {
-    display:grid;
-    grid-template-columns:auto minmax(0, 1fr);
+    display:flex;
     align-items:center;
-    gap:.18rem .28rem;
-    min-width:0;
-    text-align:left;
-  }
-  .invoice-status-kicker {
-    color:#667085;
-    font-size:.52rem;
-    font-weight:800;
-    line-height:1;
-    text-transform:uppercase;
-  }
-  .invoice-status-stack .invoice-status-badge {
-    display:block;
+    justify-content:center;
+    gap:.22rem;
+    font-size:.66rem;
+    font-weight:600;
+    line-height:1.1;
+    padding:.24rem .38rem;
+    border-radius:999px;
     width:100%;
     margin:0 !important;
-    border-radius:999px;
-    text-align:center;
-    padding:.22rem .38rem;
+    white-space:nowrap;
   }
-  .invoice-status-lifecycle { opacity:.86; }
+  .invoice-status-badge i { font-size:.62rem; margin-right:0 !important; }
+  .invoice-status-stack {
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    justify-content:center;
+    gap:.22rem;
+    min-width:0;
+    text-align:center;
+  }
+  .invoice-status-lifecycle { opacity:.9; }
   .invoice-status-payment { box-shadow:0 1px 2px rgba(0,0,0,.10); }
 
   @media (min-width: 992px) {
@@ -3848,7 +3845,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     .invoice-list-dense table.table .col-status {
       display: table-cell !important;
-      width: 4.8rem !important;
+      width: 5.4rem !important;
     }
 
     .invoice-list-dense table.table td.actions-cell {
@@ -4027,9 +4024,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     .invoice-list-dense table.table .col-status {
-      width: 4rem !important;
-      max-width: 4rem !important;
-      text-align: right !important;
+      width: 4.4rem !important;
+      max-width: 4.4rem !important;
+      text-align: center !important;
     }
 
     .invoice-list-dense table.table td.actions-cell,
@@ -4040,11 +4037,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     .invoice-status-badge {
-      font-size: .52rem;
-      padding: .16rem .22rem;
-      max-width: 100%;
-      white-space: normal;
+      font-size:.5rem;
+      padding:.14rem .18rem;
+      max-width:100%;
+      white-space:nowrap;
+      gap:.12rem;
     }
+    .invoice-status-badge i { font-size:.48rem; }
+    .invoice-status-stack { gap:.14rem; }
 
     .invoice-list-dense td.actions-cell .actions-wrap,
     .invoice-list-dense td.actions-cell .invoice-actions {

@@ -209,10 +209,8 @@ class InvoiceTable(ExportableTable):
         }.get(payment_status, "secondary")
         return format_html(
             '<span class="invoice-status-stack" title="Payment status updates automatically from payments and due date. Lifecycle status can be changed manually from invoice detail.">'
-            '<span class="invoice-status-kicker">Invoice</span>'
-            '<span class="badge bg-{} invoice-status-badge invoice-status-lifecycle">{}</span>'
-            '<span class="invoice-status-kicker">Payment</span>'
-            '<span class="badge bg-{} invoice-status-badge invoice-status-payment">{}</span>'
+            '<span class="badge bg-{} invoice-status-badge invoice-status-lifecycle"><i class="fas fa-file-invoice me-1"></i>{}</span>'
+            '<span class="badge bg-{} invoice-status-badge invoice-status-payment"><i class="fas fa-wallet me-1"></i>{}</span>'
             '</span>',
             lifecycle_class, lifecycle_label, payment_class, payment_label,
         )

@@ -1,0 +1,606 @@
+diff --git a/core/templates/core/settings.html b/core/templates/core/settings.html
+index f61cd8e..1aab791 100644
+--- a/core/templates/core/settings.html
++++ b/core/templates/core/settings.html
+@@ -764,39 +764,43 @@
+   background: #f1f5f9;
+   box-shadow: inset 0 0 0 1px rgba(13, 110, 253, .22);
+ }
+-@media (max-width: 420px) {
+-  .settings-page h3 { font-size: 1.2rem; }
+-  .settings-page h4 { font-size: 1rem; }
+-  .settings-backup-link { width: 100%; }
+-  .settings-page .card-body { padding: .75rem; }
+-  .settings-card-tab-grid { gap: .45rem; }
++@media (max-width: 575.98px) {
++  .settings-page h3 { font-size:1.12rem; }
++  .settings-page h4 { font-size:.96rem; }
++  .settings-backup-link { width:100%; }
++  .settings-page .card-body { padding:.7rem; }
++  .settings-card-tab-grid {
++    display:grid;
++    grid-template-columns:repeat(3,minmax(0,1fr));
++    gap:.35rem;
++  }
+   .settings-tab-card {
+-    flex: 0 1 calc(25% - .45rem);
+-    min-height: 3rem;
+-    padding: .4rem .35rem;
+-    font-size: .68rem;
+-    gap: .28rem;
++    min-height:2.5rem;
++    padding:.34rem .28rem;
++    font-size:.62rem;
++    gap:.22rem;
++    border-radius:.4rem;
++    box-shadow:0 .1rem .22rem rgba(15,23,42,.06);
++    justify-content:flex-start;
+   }
+   .settings-tab-icon {
+-    width: 1.35rem;
+-    height: 1.35rem;
+-    flex-basis: 1.35rem;
+-  }
+-  .settings-method-table { font-size: .78rem; min-width: 560px; }
+-  .settings-page .btn-sm { font-size: .75rem; padding: .32rem .45rem; }
+-  .settings-savebar {
+-    position: static;
+-  }
+-  .settings-savebar .card-body {
+-    align-items: stretch !important;
+-    flex-direction: column;
+-  }
+-  .settings-savebar .btn {
+-    flex: 1 1 auto;
+-  }
+-  .settings-tool-stack {
+-    gap: .75rem;
++    width:1.15rem;
++    height:1.15rem;
++    flex:0 0 1.15rem;
++    border-radius:.32rem;
++    font-size:.7rem;
+   }
++  .settings-method-table { font-size:.78rem; min-width:560px; }
++  .settings-page .btn-sm { font-size:.72rem; padding:.28rem .38rem; }
++  .settings-savebar { position:static; }
++  .settings-savebar .card-body { align-items:stretch !important; flex-direction:column; }
++  .settings-savebar .btn { flex:1 1 auto; }
++  .settings-tool-stack { gap:.65rem; }
++}
++@media (max-width:380px) {
++  .settings-card-tab-grid { gap:.3rem; }
++  .settings-tab-card { min-height:2.35rem; padding:.3rem .24rem; font-size:.59rem; gap:.18rem; }
++  .settings-tab-icon { width:1.05rem; height:1.05rem; flex-basis:1.05rem; font-size:.64rem; }
+ }
+ @media (max-width: 360px) {
+   .settings-page { font-size: .78rem; }
+diff --git a/invoices/tables.py b/invoices/tables.py
+index 5a1dafc..f55b099 100644
+--- a/invoices/tables.py
++++ b/invoices/tables.py
+@@ -1,17 +1,17 @@
+ # invoices/tables.py
+ from django.utils.html import format_html
+ from django.urls import reverse
+-from django.template.loader import render_to_string
+-from django.core.cache import cache
+-import django_tables2 as tables
++from django.template.loader import render_to_string
++from django.core.cache import cache
++import django_tables2 as tables
+ from django_tables2.columns import DateColumn, Column
+ from .models import Invoice
+ from properties.tables import ExportableTable
+ from utils.pdf_export import handle_export
+ from django.utils.html import format_html
+-from django.utils.safestring import mark_safe
+-from core.currency import format_money
+-from core.models import GlobalSettings
++from django.utils.safestring import mark_safe
++from core.currency import format_money
++from core.models import GlobalSettings
+ 
+ 
+ # invoices/tables.py
+@@ -20,18 +20,18 @@ from django.utils.safestring import mark_safe
+ import django_tables2 as tables
+ from django_tables2.columns import DateColumn, Column
+ from .models import Invoice
+-from properties.tables import ExportableTable
+-
+-
+-def _settings_obj():
+-    settings_obj = cache.get("core.global_settings")
+-    if settings_obj is None:
+-        settings_obj = GlobalSettings.get_solo()
+-        cache.set("core.global_settings", settings_obj, 60)
+-    return settings_obj
+-
+-
+-class InvoiceTable(ExportableTable):
++from properties.tables import ExportableTable
++
++
++def _settings_obj():
++    settings_obj = cache.get("core.global_settings")
++    if settings_obj is None:
++        settings_obj = GlobalSettings.get_solo()
++        cache.set("core.global_settings", settings_obj, 60)
++    return settings_obj
++
++
++class InvoiceTable(ExportableTable):
+ 
+     sn = tables.Column(
+         verbose_name='S.N #',
+@@ -85,33 +85,33 @@ class InvoiceTable(ExportableTable):
+     due_date = DateColumn(format="M d,Y", verbose_name="Due Date",
+                           attrs={"th": {"class": "col-due"}, "td": {"class": "col-due"}},)
+ 
+-    total_amount = Column(
+-        accessor="amount", verbose_name="Amount", orderable=True,
+-        attrs={"th": {"class": "col-amount text-end"},
+-               "td": {"class": "col-amount text-end"}},
+-    )
+-
+-    lease_balance = Column(
+-        empty_values=(),
+-        verbose_name="Lease Balance",
+-        orderable=False,
+-        attrs={
+-            "th": {"class": "col-balance text-end"},
+-            "td": {"class": "col-balance text-end"},
+-        },
+-    )
+-
+-    status = Column(
+-        accessor="status",
+-        verbose_name="Status",
+-        orderable=True,
+-        attrs={"th": {"class": "col-status"}, "td": {"class": "col-status"}},
+-    )
+-
+-    actions = tables.TemplateColumn(
+-        template_name='components/action_buttons.html',
+-        verbose_name='Actions',
+-        orderable=False,
++    total_amount = Column(
++        accessor="amount", verbose_name="Amount", orderable=True,
++        attrs={"th": {"class": "col-amount text-end"},
++               "td": {"class": "col-amount text-end"}},
++    )
++
++    lease_balance = Column(
++        empty_values=(),
++        verbose_name="Lease Balance",
++        orderable=False,
++        attrs={
++            "th": {"class": "col-balance text-end"},
++            "td": {"class": "col-balance text-end"},
++        },
++    )
++
++    status = Column(
++        accessor="status",
++        verbose_name="Status",
++        orderable=True,
++        attrs={"th": {"class": "col-status"}, "td": {"class": "col-status"}},
++    )
++
++    actions = tables.TemplateColumn(
++        template_name='components/action_buttons.html',
++        verbose_name='Actions',
++        orderable=False,
+ 
+         attrs={"td": {"class": "text-nowrap actions-cell"}}
+     )
+@@ -124,28 +124,28 @@ class InvoiceTable(ExportableTable):
+             "property_unit",
+             "tenant",
+             "description",
+-            "issue_date",
+-            "due_date",
+-            "total_amount",
+-            "lease_balance",
+-            "status",
+-            "actions",
+-        )
++            "issue_date",
++            "due_date",
++            "total_amount",
++            "lease_balance",
++            "status",
++            "actions",
++        )
+         sequence = fields
+         # default only (don’t force on every click)
+         order_by = ("-issue_date", "property_unit")
+ 
+     # ---------- renderers ----------
+-    def __init__(self, *args, **kwargs):
+-        super().__init__(*args, **kwargs)
+-        self.row_counter = 0
+-
+-    def render_sn(self):
+-        """Auto-incrementing serial number across paginated pages."""
+-        self.row_counter += 1
+-        page = getattr(self, "page", None)
+-        offset = page.start_index() - 1 if page is not None else 0
+-        return offset + self.row_counter
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.row_counter = 0
++
++    def render_sn(self):
++        """Auto-incrementing serial number across paginated pages."""
++        self.row_counter += 1
++        page = getattr(self, "page", None)
++        offset = page.start_index() - 1 if page is not None else 0
++        return offset + self.row_counter
+ 
+     def render_tenant(self, record, value):
+         first = (value or "").strip()
+@@ -177,45 +177,43 @@ class InvoiceTable(ExportableTable):
+         show = (text[:30] + "…") if len(text) > 30 else text
+         return mark_safe(f'<span class="d-inline-block text-truncate" style="max-width:30ch" title="{text}">{show}</span>')
+ 
+-    def render_total_amount(self, value):
+-        return format_money(value, _settings_obj())
+-
+-    def render_lease_balance(self, record):
+-        balance = getattr(record, "dashboard_lease_balance", None)
+-        if balance is None:
+-            try:
+-                balance = record.lease.get_balance()
+-            except Exception:
+-                balance = None
+-        if balance is None:
+-            return "-"
+-        return format_money(balance, _settings_obj())
+-
+-    def render_status(self, record, value):
+-        lifecycle = getattr(record, "lifecycle_status", "issued") or "issued"
+-        lifecycle_label = record.get_lifecycle_status_display() if hasattr(record, "get_lifecycle_status_display") else lifecycle
+-        payment_status = getattr(record, "dashboard_payment_status", None) or record.payment_status
+-        payment_label = {
+-            "paid": "Paid", "partially_paid": "Partially Paid", "unpaid": "Unpaid",
+-            "overdue": "Overdue", "overpaid": "Overpaid",
+-        }.get(payment_status, payment_status.replace("_", " ").title())
+-        lifecycle_class = {
+-            "issued": "primary", "draft": "secondary", "disputed": "warning text-dark",
+-            "cancelled": "danger", "void": "dark", "written_off": "secondary",
+-        }.get(lifecycle, "secondary")
+-        payment_class = {
+-            "paid": "success", "overpaid": "info text-dark", "partially_paid": "warning text-dark",
+-            "overdue": "danger", "unpaid": "danger",
+-        }.get(payment_status, "secondary")
++    def render_total_amount(self, value):
++        return format_money(value, _settings_obj())
++
++    def render_lease_balance(self, record):
++        balance = getattr(record, "dashboard_lease_balance", None)
++        if balance is None:
++            try:
++                balance = record.lease.get_balance()
++            except Exception:
++                balance = None
++        if balance is None:
++            return "-"
++        return format_money(balance, _settings_obj())
++
++    def render_status(self, record, value):
++        lifecycle = getattr(record, "lifecycle_status", "issued") or "issued"
++        lifecycle_label = record.get_lifecycle_status_display() if hasattr(record, "get_lifecycle_status_display") else lifecycle
++        payment_status = getattr(record, "dashboard_payment_status", None) or record.payment_status
++        payment_label = {
++            "paid": "Paid", "partially_paid": "Partially Paid", "unpaid": "Unpaid",
++            "overdue": "Overdue", "overpaid": "Overpaid",
++        }.get(payment_status, payment_status.replace("_", " ").title())
++        lifecycle_class = {
++            "issued": "primary", "draft": "secondary", "disputed": "warning text-dark",
++            "cancelled": "danger", "void": "dark", "written_off": "secondary",
++        }.get(lifecycle, "secondary")
++        payment_class = {
++            "paid": "success", "overpaid": "info text-dark", "partially_paid": "warning text-dark",
++            "overdue": "danger", "unpaid": "danger",
++        }.get(payment_status, "secondary")
+         return format_html(
+             '<span class="invoice-status-stack" title="Payment status updates automatically from payments and due date. Lifecycle status can be changed manually from invoice detail.">'
+-            '<span class="invoice-status-kicker">Invoice</span>'
+-            '<span class="badge bg-{} invoice-status-badge invoice-status-lifecycle">{}</span>'
+-            '<span class="invoice-status-kicker">Payment</span>'
+-            '<span class="badge bg-{} invoice-status-badge invoice-status-payment">{}</span>'
++            '<span class="badge bg-{} invoice-status-badge invoice-status-lifecycle"><i class="fas fa-file-invoice me-1"></i>{}</span>'
++            '<span class="badge bg-{} invoice-status-badge invoice-status-payment"><i class="fas fa-wallet me-1"></i>{}</span>'
+             '</span>',
+             lifecycle_class, lifecycle_label, payment_class, payment_label,
+-        )
++        )
+ 
+     def render_actions(self, record):
+         return render_to_string('components/action_buttons.html', {
+diff --git a/invoices/templates/invoices/invoice_list.html b/invoices/templates/invoices/invoice_list.html
+index f95ae1d..30c4eb6 100644
+--- a/invoices/templates/invoices/invoice_list.html
++++ b/invoices/templates/invoices/invoice_list.html
+@@ -3700,7 +3700,7 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+   .invoice-list-dense table.table th.col-status,
+   .invoice-list-dense table.table td.col-status {
+-    width: 6rem;
++    width: 6.8rem;
+     text-align: center;
+     white-space: nowrap;
+   }
+@@ -3712,33 +3712,30 @@ document.addEventListener('DOMContentLoaded', () => {
+   }
+ 
+   .invoice-status-badge {
+-    font-size: .68rem;
+-    font-weight: 600;
+-  }
+-  .invoice-status-stack {
+-    display:grid;
+-    grid-template-columns:auto minmax(0, 1fr);
+-    align-items:center;
+-    gap:.18rem .28rem;
+-    min-width:0;
+-    text-align:left;
+-  }
+-  .invoice-status-kicker {
+-    color:#667085;
+-    font-size:.52rem;
+-    font-weight:800;
+-    line-height:1;
+-    text-transform:uppercase;
+-  }
+-  .invoice-status-stack .invoice-status-badge {
+-    display:block;
+-    width:100%;
+-    margin:0 !important;
+-    border-radius:999px;
+-    text-align:center;
+-    padding:.22rem .38rem;
+-  }
+-  .invoice-status-lifecycle { opacity:.86; }
++    display:flex;
++    align-items:center;
++    justify-content:center;
++    gap:.22rem;
++    font-size:.66rem;
++    font-weight:600;
++    line-height:1.1;
++    padding:.24rem .38rem;
++    border-radius:999px;
++    width:100%;
++    margin:0 !important;
++    white-space:nowrap;
++  }
++  .invoice-status-badge i { font-size:.62rem; margin-right:0 !important; }
++  .invoice-status-stack {
++    display:flex;
++    flex-direction:column;
++    align-items:stretch;
++    justify-content:center;
++    gap:.22rem;
++    min-width:0;
++    text-align:center;
++  }
++  .invoice-status-lifecycle { opacity:.9; }
+   .invoice-status-payment { box-shadow:0 1px 2px rgba(0,0,0,.10); }
+ 
+   @media (min-width: 992px) {
+@@ -3848,7 +3845,7 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+     .invoice-list-dense table.table .col-status {
+       display: table-cell !important;
+-      width: 4.8rem !important;
++      width: 5.4rem !important;
+     }
+ 
+     .invoice-list-dense table.table td.actions-cell {
+@@ -4027,9 +4024,9 @@ document.addEventListener('DOMContentLoaded', () => {
+     }
+ 
+     .invoice-list-dense table.table .col-status {
+-      width: 4rem !important;
+-      max-width: 4rem !important;
+-      text-align: right !important;
++      width: 4.4rem !important;
++      max-width: 4.4rem !important;
++      text-align: center !important;
+     }
+ 
+     .invoice-list-dense table.table td.actions-cell,
+@@ -4040,11 +4037,14 @@ document.addEventListener('DOMContentLoaded', () => {
+     }
+ 
+     .invoice-status-badge {
+-      font-size: .52rem;
+-      padding: .16rem .22rem;
+-      max-width: 100%;
+-      white-space: normal;
++      font-size:.5rem;
++      padding:.14rem .18rem;
++      max-width:100%;
++      white-space:nowrap;
++      gap:.12rem;
+     }
++    .invoice-status-badge i { font-size:.48rem; }
++    .invoice-status-stack { gap:.14rem; }
+ 
+     .invoice-list-dense td.actions-cell .actions-wrap,
+     .invoice-list-dense td.actions-cell .invoice-actions {
+diff --git a/whatsapp/templates/whatsapp/webhook_log_list.html b/whatsapp/templates/whatsapp/webhook_log_list.html
+index f9132dc..5a2323c 100644
+--- a/whatsapp/templates/whatsapp/webhook_log_list.html
++++ b/whatsapp/templates/whatsapp/webhook_log_list.html
+@@ -45,6 +45,39 @@
+     font-weight:400;
+     line-height:1.45;
+   }
++  .whatsapp-conversation-table td[data-label="Tenant"],
++  .whatsapp-conversation-table td[data-label="Property / Unit"] {
++    white-space:normal;
++    vertical-align:top;
++  }
++  .whatsapp-lease-state {
++    display:inline-flex;
++    align-items:center;
++    gap:.22rem;
++    margin-top:.22rem;
++    font-size:.66rem;
++    line-height:1.05;
++    padding:.22rem .42rem;
++  }
++  .whatsapp-lease-meta {
++    display:block;
++    margin-top:.16rem;
++    font-size:.7rem;
++    line-height:1.2;
++  }
++  .whatsapp-selected-context .whatsapp-context-row {
++    display:block;
++    margin-bottom:.18rem;
++  }
++  .whatsapp-selected-context .whatsapp-context-row:last-child { margin-bottom:0; }
++  .whatsapp-selected-context .whatsapp-context-badge {
++    display:inline-flex;
++    align-items:center;
++    max-width:100%;
++    white-space:normal;
++    line-height:1.15;
++    padding:.28rem .5rem;
++  }
+   @media (min-width:1200px) {
+     .whatsapp-conversation-grid {
+       height:calc(100vh - 190px);
+@@ -160,16 +193,24 @@
+     }
+     .whatsapp-conversation-table td[data-label="Phone"] .btn,
+     .whatsapp-conversation-table td[data-label="Status"] .badge,
++    .whatsapp-conversation-table td[data-label="Tenant"] .badge,
+     .whatsapp-conversation-table td[data-label="Property / Unit"] .badge {
+       font-size:.58rem;
+     }
+     .whatsapp-conversation-table td[data-label="Phone"] .btn {
+-      padding:.05rem .2rem;
++      padding:.04rem .18rem;
+       line-height:1.02;
+     }
+     .whatsapp-tenant-link, .whatsapp-lease-link { max-width:100%; }
+     .whatsapp-last-message { -webkit-line-clamp:2; line-clamp:2; }
+-    .whatsapp-lease-state { display:inline-block; width:auto; max-width:100%; margin:.08rem 0 0 !important; }
++    .whatsapp-lease-state { margin:.08rem 0 0 !important; }
++    .whatsapp-lease-meta { font-size:.62rem; }
++    .whatsapp-selected-context { font-size:.67rem; line-height:1.28; }
++    .whatsapp-selected-context .whatsapp-context-badge {
++      margin-top:.14rem;
++      font-size:.58rem;
++      padding:.2rem .34rem;
++    }
+     .whatsapp-right-scroll { padding:.36rem !important; }
+     #conversationThread { padding:.34rem !important; }
+     #conversationThread .d-inline-block { max-width:94% !important; font-size:.69rem; }
+@@ -260,7 +301,7 @@
+                     {% with wa_number=item.phone_number|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
+                       <a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.phone_number|format_phone:GLOBAL_SETTINGS.country_code }}</a>
+                     {% endwith %}
+-                    <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1" href="?phone={{ item.phone_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_tenant_id %}&tenant={{ selected_tenant_id }}{% endif %}{% if selected_location %}&location={{ selected_location|urlencode }}{% endif %}" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
++                    <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1 js-open-conversation-link" href="?phone={{ item.phone_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_tenant_id %}&tenant={{ selected_tenant_id }}{% endif %}{% if selected_location %}&location={{ selected_location|urlencode }}{% endif %}#conversation-panel" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
+                   </td>
+                   <td data-label="Tenant">
+                     {% if item.tenant_id %}
+@@ -268,22 +309,22 @@
+                     {% else %}
+                       -
+                     {% endif %}
+-                  </td>
+-                  <td data-label="Property / Unit">
+-                    {% if item.lease_id %}
+-                      <a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' item.lease_id %}" title="{{ item.property_unit }}">{{ item.property_unit }}</a>
+-                    {% else %}
+-                      {{ item.property_unit|default:"-" }}
+-                    {% endif %}
+                     {% if item.lease_status == "active" %}
+                       <span class="badge bg-success whatsapp-lease-state">Active Lease</span>
+                     {% elif item.lease_status == "ended" %}
+                       <span class="badge bg-danger whatsapp-lease-state">Lease Ended</span>
+-                      {% if item.lease_end_date %}<span class="text-muted small d-block">Ended: {{ item.lease_end_date|date:"M d, Y" }}</span>{% endif %}
++                      {% if item.lease_end_date %}<span class="text-muted whatsapp-lease-meta">Ended: {{ item.lease_end_date|date:"M d, Y" }}</span>{% endif %}
+                     {% elif item.tenant_id %}
+                       <span class="badge bg-secondary whatsapp-lease-state">No Lease Record</span>
+                     {% endif %}
+                   </td>
++                  <td data-label="Property / Unit">
++                    {% if item.lease_id %}
++                      <a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' item.lease_id %}" title="{{ item.property_unit }}">{{ item.property_unit }}</a>
++                    {% else %}
++                      {{ item.property_unit|default:"-" }}
++                    {% endif %}
++                  </td>
+                   <td data-label="Last Message">
+                     <div class="whatsapp-last-message" title="{{ item.last_message|default:'-' }}">{{ item.last_message|default:"-" }}</div>
+                     <div class="text-muted small">{{ item.last_at|date:"Y-m-d H:i:s" }}</div>
+@@ -309,7 +350,7 @@
+     </div>
+   </div>
+ 
+-  <div class="col-12 col-xl-6">
++  <div class="col-12 col-xl-6" id="conversation-panel">
+     <div class="card shadow-sm whatsapp-pane-card">
+       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+         <div>
+@@ -317,23 +358,23 @@
+           {% if selected_conversation.tenant_id or selected_conversation.active_leases %}
+             <div class="whatsapp-selected-context mt-1">
+               {% if selected_conversation.tenant_phone %}
+-                <span class="me-2">
+-                  Tenant:
+-                  {% if selected_conversation.tenant_id %}<a href="{% url 'tenants:tenant_detail' selected_conversation.tenant_id %}">{{ selected_conversation.tenant_name }}</a> · {% endif %}
+-                  {{ selected_conversation.tenant_phone|format_phone:GLOBAL_SETTINGS.country_code }}
+-                </span>
++                <div class="whatsapp-context-row">
++                  <span>Tenant: {% if selected_conversation.tenant_id %}<a href="{% url 'tenants:tenant_detail' selected_conversation.tenant_id %}">{{ selected_conversation.tenant_name }}</a> · {% endif %}{{ selected_conversation.tenant_phone|format_phone:GLOBAL_SETTINGS.country_code }}</span>
++                </div>
+               {% endif %}
+               {% for lease in selected_conversation.active_leases %}
+-                <a class="badge bg-success text-decoration-none me-1" href="{% url 'leases:lease_detail' lease.id %}" title="Open active lease">
+-                  Active lease: {{ lease.property_name }} / {{ lease.unit_number }} · Ends {{ lease.end_date|date:"M d, Y" }}
+-                </a>
++                <div class="whatsapp-context-row">
++                  <div><a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' lease.id %}" title="{{ lease.property_name }} / {{ lease.unit_number }}">{{ lease.property_name }} / {{ lease.unit_number }}</a></div>
++                  <a class="badge bg-success text-decoration-none whatsapp-context-badge" href="{% url 'leases:lease_detail' lease.id %}" title="Open active lease">Active Lease · Ends {{ lease.end_date|date:"M d, Y" }}</a>
++                </div>
+               {% empty %}
+                 {% if selected_conversation.lease_status == "ended" and selected_conversation.lease_id %}
+-                  <a class="badge bg-danger text-decoration-none me-1" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="Open latest ended lease">
+-                    Lease Ended: {{ selected_conversation.property_unit }}{% if selected_conversation.lease_end_date %} · Ended {{ selected_conversation.lease_end_date|date:"M d, Y" }}{% endif %}
+-                  </a>
++                  <div class="whatsapp-context-row">
++                    <div><a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="{{ selected_conversation.property_unit }}">{{ selected_conversation.property_unit }}</a></div>
++                    <a class="badge bg-danger text-decoration-none whatsapp-context-badge" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="Open latest ended lease">Lease Ended{% if selected_conversation.lease_end_date %} · Ended {{ selected_conversation.lease_end_date|date:"M d, Y" }}{% endif %}</a>
++                  </div>
+                 {% elif selected_conversation.tenant_id %}
+-                  <span class="badge bg-secondary me-1">No Lease Record</span>
++                  <div class="whatsapp-context-row"><span class="badge bg-secondary whatsapp-context-badge">No Lease Record</span></div>
+                 {% endif %}
+               {% endfor %}
+             </div>
+@@ -573,6 +614,15 @@ document.addEventListener('DOMContentLoaded', function () {
+     conversationPane.scrollTop = conversationPane.scrollHeight;
+   }
+ 
++  const selectedPhone = {{ selected_phone|yesno:'true,false' }};
++  const conversationPanel = document.getElementById('conversation-panel');
++  const shouldJumpToConversation = window.location.hash === '#conversation-panel';
++  if (conversationPanel && (shouldJumpToConversation || (selectedPhone && window.matchMedia('(max-width: 767.98px)').matches))) {
++    window.setTimeout(function () {
++      conversationPanel.scrollIntoView({behavior:'smooth', block:'start'});
++    }, 120);
++  }
++
+   const form = document.getElementById('whatsappConversationFilters');
+   const search = document.getElementById('whatsappConversationSearch');
+   const tenant = document.getElementById('whatsappTenantFilter');

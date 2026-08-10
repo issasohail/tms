@@ -45,6 +45,39 @@
     font-weight:400;
     line-height:1.45;
   }
+  .whatsapp-conversation-table td[data-label="Tenant"],
+  .whatsapp-conversation-table td[data-label="Property / Unit"] {
+    white-space:normal;
+    vertical-align:top;
+  }
+  .whatsapp-lease-state {
+    display:inline-flex;
+    align-items:center;
+    gap:.22rem;
+    margin-top:.22rem;
+    font-size:.66rem;
+    line-height:1.05;
+    padding:.22rem .42rem;
+  }
+  .whatsapp-lease-meta {
+    display:block;
+    margin-top:.16rem;
+    font-size:.7rem;
+    line-height:1.2;
+  }
+  .whatsapp-selected-context .whatsapp-context-row {
+    display:block;
+    margin-bottom:.18rem;
+  }
+  .whatsapp-selected-context .whatsapp-context-row:last-child { margin-bottom:0; }
+  .whatsapp-selected-context .whatsapp-context-badge {
+    display:inline-flex;
+    align-items:center;
+    max-width:100%;
+    white-space:normal;
+    line-height:1.15;
+    padding:.28rem .5rem;
+  }
   @media (min-width:1200px) {
     .whatsapp-conversation-grid {
       height:calc(100vh - 190px);
@@ -160,16 +193,24 @@
     }
     .whatsapp-conversation-table td[data-label="Phone"] .btn,
     .whatsapp-conversation-table td[data-label="Status"] .badge,
+    .whatsapp-conversation-table td[data-label="Tenant"] .badge,
     .whatsapp-conversation-table td[data-label="Property / Unit"] .badge {
       font-size:.58rem;
     }
     .whatsapp-conversation-table td[data-label="Phone"] .btn {
-      padding:.05rem .2rem;
+      padding:.04rem .18rem;
       line-height:1.02;
     }
     .whatsapp-tenant-link, .whatsapp-lease-link { max-width:100%; }
     .whatsapp-last-message { -webkit-line-clamp:2; line-clamp:2; }
-    .whatsapp-lease-state { display:inline-block; width:auto; max-width:100%; margin:.08rem 0 0 !important; }
+    .whatsapp-lease-state { margin:.08rem 0 0 !important; }
+    .whatsapp-lease-meta { font-size:.62rem; }
+    .whatsapp-selected-context { font-size:.67rem; line-height:1.28; }
+    .whatsapp-selected-context .whatsapp-context-badge {
+      margin-top:.14rem;
+      font-size:.58rem;
+      padding:.2rem .34rem;
+    }
     .whatsapp-right-scroll { padding:.36rem !important; }
     #conversationThread { padding:.34rem !important; }
     #conversationThread .d-inline-block { max-width:94% !important; font-size:.69rem; }
@@ -260,7 +301,7 @@
                     {% with wa_number=item.phone_number|whatsapp_phone_digits:GLOBAL_SETTINGS.country_code %}
                       <a href="https://wa.me/{{ wa_number }}" target="_blank" rel="noopener" title="Send WhatsApp message">{{ item.phone_number|format_phone:GLOBAL_SETTINGS.country_code }}</a>
                     {% endwith %}
-                    <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1" href="?phone={{ item.phone_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_tenant_id %}&tenant={{ selected_tenant_id }}{% endif %}{% if selected_location %}&location={{ selected_location|urlencode }}{% endif %}" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
+                    <a class="btn btn-xs btn-outline-secondary py-0 px-1 ms-1 js-open-conversation-link" href="?phone={{ item.phone_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_tenant_id %}&tenant={{ selected_tenant_id }}{% endif %}{% if selected_location %}&location={{ selected_location|urlencode }}{% endif %}#conversation-panel" title="Open conversation log" aria-label="Open conversation log"><i class="bi bi-chat-text"></i></a>
                   </td>
                   <td data-label="Tenant">
                     {% if item.tenant_id %}
@@ -268,20 +309,20 @@
                     {% else %}
                       -
                     {% endif %}
+                    {% if item.lease_status == "active" %}
+                      <span class="badge bg-success whatsapp-lease-state">Active Lease</span>
+                    {% elif item.lease_status == "ended" %}
+                      <span class="badge bg-danger whatsapp-lease-state">Lease Ended</span>
+                      {% if item.lease_end_date %}<span class="text-muted whatsapp-lease-meta">Ended: {{ item.lease_end_date|date:"M d, Y" }}</span>{% endif %}
+                    {% elif item.tenant_id %}
+                      <span class="badge bg-secondary whatsapp-lease-state">No Lease Record</span>
+                    {% endif %}
                   </td>
                   <td data-label="Property / Unit">
                     {% if item.lease_id %}
                       <a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' item.lease_id %}" title="{{ item.property_unit }}">{{ item.property_unit }}</a>
                     {% else %}
                       {{ item.property_unit|default:"-" }}
-                    {% endif %}
-                    {% if item.lease_status == "active" %}
-                      <span class="badge bg-success whatsapp-lease-state">Active Lease</span>
-                    {% elif item.lease_status == "ended" %}
-                      <span class="badge bg-danger whatsapp-lease-state">Lease Ended</span>
-                      {% if item.lease_end_date %}<span class="text-muted small d-block">Ended: {{ item.lease_end_date|date:"M d, Y" }}</span>{% endif %}
-                    {% elif item.tenant_id %}
-                      <span class="badge bg-secondary whatsapp-lease-state">No Lease Record</span>
                     {% endif %}
                   </td>
                   <td data-label="Last Message">
@@ -309,7 +350,7 @@
     </div>
   </div>
 
-  <div class="col-12 col-xl-6">
+  <div class="col-12 col-xl-6" id="conversation-panel">
     <div class="card shadow-sm whatsapp-pane-card">
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
@@ -317,23 +358,23 @@
           {% if selected_conversation.tenant_id or selected_conversation.active_leases %}
             <div class="whatsapp-selected-context mt-1">
               {% if selected_conversation.tenant_phone %}
-                <span class="me-2">
-                  Tenant:
-                  {% if selected_conversation.tenant_id %}<a href="{% url 'tenants:tenant_detail' selected_conversation.tenant_id %}">{{ selected_conversation.tenant_name }}</a> · {% endif %}
-                  {{ selected_conversation.tenant_phone|format_phone:GLOBAL_SETTINGS.country_code }}
-                </span>
+                <div class="whatsapp-context-row">
+                  <span>Tenant: {% if selected_conversation.tenant_id %}<a href="{% url 'tenants:tenant_detail' selected_conversation.tenant_id %}">{{ selected_conversation.tenant_name }}</a> · {% endif %}{{ selected_conversation.tenant_phone|format_phone:GLOBAL_SETTINGS.country_code }}</span>
+                </div>
               {% endif %}
               {% for lease in selected_conversation.active_leases %}
-                <a class="badge bg-success text-decoration-none me-1" href="{% url 'leases:lease_detail' lease.id %}" title="Open active lease">
-                  Active lease: {{ lease.property_name }} / {{ lease.unit_number }} · Ends {{ lease.end_date|date:"M d, Y" }}
-                </a>
+                <div class="whatsapp-context-row">
+                  <div><a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' lease.id %}" title="{{ lease.property_name }} / {{ lease.unit_number }}">{{ lease.property_name }} / {{ lease.unit_number }}</a></div>
+                  <a class="badge bg-success text-decoration-none whatsapp-context-badge" href="{% url 'leases:lease_detail' lease.id %}" title="Open active lease">Active Lease · Ends {{ lease.end_date|date:"M d, Y" }}</a>
+                </div>
               {% empty %}
                 {% if selected_conversation.lease_status == "ended" and selected_conversation.lease_id %}
-                  <a class="badge bg-danger text-decoration-none me-1" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="Open latest ended lease">
-                    Lease Ended: {{ selected_conversation.property_unit }}{% if selected_conversation.lease_end_date %} · Ended {{ selected_conversation.lease_end_date|date:"M d, Y" }}{% endif %}
-                  </a>
+                  <div class="whatsapp-context-row">
+                    <div><a class="whatsapp-lease-link" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="{{ selected_conversation.property_unit }}">{{ selected_conversation.property_unit }}</a></div>
+                    <a class="badge bg-danger text-decoration-none whatsapp-context-badge" href="{% url 'leases:lease_detail' selected_conversation.lease_id %}" title="Open latest ended lease">Lease Ended{% if selected_conversation.lease_end_date %} · Ended {{ selected_conversation.lease_end_date|date:"M d, Y" }}{% endif %}</a>
+                  </div>
                 {% elif selected_conversation.tenant_id %}
-                  <span class="badge bg-secondary me-1">No Lease Record</span>
+                  <div class="whatsapp-context-row"><span class="badge bg-secondary whatsapp-context-badge">No Lease Record</span></div>
                 {% endif %}
               {% endfor %}
             </div>
@@ -571,6 +612,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const conversationPane = document.querySelector('.whatsapp-right-scroll');
   if (conversationPane) {
     conversationPane.scrollTop = conversationPane.scrollHeight;
+  }
+
+  const selectedPhone = {{ selected_phone|yesno:'true,false' }};
+  const conversationPanel = document.getElementById('conversation-panel');
+  const shouldJumpToConversation = window.location.hash === '#conversation-panel';
+  if (conversationPanel && (shouldJumpToConversation || (selectedPhone && window.matchMedia('(max-width: 767.98px)').matches))) {
+    window.setTimeout(function () {
+      conversationPanel.scrollIntoView({behavior:'smooth', block:'start'});
+    }, 120);
   }
 
   const form = document.getElementById('whatsappConversationFilters');

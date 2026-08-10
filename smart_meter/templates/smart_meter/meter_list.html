@@ -281,12 +281,13 @@
         {% for m in meters %}
         <article data-meter-row="{{ m.id }}" class="meter-mobile-card {% if m.power_status|lower == 'off' %}is-cutoff{% elif not m.is_online %}is-offline{% elif m.is_low %}is-low{% endif %}">
           <div class="meter-mobile-head">
-            <div class="d-flex align-items-center gap-2 min-w-0">
+            <div class="d-flex align-items-center gap-1 min-w-0 meter-mobile-idline">
               <input type="checkbox" class="form-check-input rowcheck mt-0 no-export" name="meters" value="{{ m.id }}" form="bulkForm" data-balance="{{ m.balance|default_if_none:0|default:0 }}" aria-label="Select meter {{ m.meter_number }}">
+              <span class="meter-mobile-seq">{% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}.{% else %}{{ forloop.counter }}.{% endif %}</span>
               <a href="{% url 'smart_meter:meter_detail' m.id %}" class="meter-mobile-number">{{ m.meter_number }}</a>
-              {% if m.is_online %}<span class="badge bg-success">Online</span>{% else %}<span class="badge bg-secondary">Offline</span>{% endif %}
+              {% if m.is_online %}<span class="badge bg-success meter-mobile-online">Online</span>{% else %}<span class="badge bg-secondary meter-mobile-online">Offline</span>{% endif %}
             </div>
-            <div class="ld-role-editor" data-role-editor>
+            <div class="ld-role-editor meter-mobile-role" data-role-editor>
               <button type="button" class="ld-role-display" data-role-display>{{ m.get_meter_role_display }}</button>
               <select class="form-select form-select-sm ld-role-select d-none" data-meter-role data-meter-id="{{ m.id }}" data-update-url="{% url 'smart_meter:meter_role_update' m.id %}" data-previous="{{ m.meter_role }}">
                 <option value="billing" {% if m.meter_role == 'billing' %}selected{% endif %}>Billing</option>
@@ -297,22 +298,24 @@
           <div class="meter-mobile-location">
             <span><i class="fas fa-building me-1"></i>{{ m.unit.property.property_name }}</span>
             <span><i class="fas fa-door-open me-1"></i>{{ m.unit.unit_number }}</span>
-            <span><i class="fas fa-user me-1"></i>{{ m.tenant_name|default:"Vacant" }}</span>
+          </div>
+          <div class="meter-mobile-tenant-reading">
+            <span class="meter-mobile-tenant" title="{{ m.tenant_name|default:'Vacant' }}"><i class="fas fa-user me-1"></i>{{ m.tenant_name|default:"Vacant" }}</span>
+            <span class="meter-mobile-reading"><span class="meter-mobile-reading-label">Last reading:</span> {% if m.last_ts %}{{ m.last_ts|date:"M d, H:i" }}{% else %}-{% endif %}</span>
           </div>
           <div class="meter-mobile-metrics">
-            <div><span>Balance</span><strong>{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</strong></div>
-            <div><span>Last reading</span><strong>{% if m.last_ts %}{{ m.last_ts|date:"M d, H:i" }}{% else %}-{% endif %}</strong></div>
             <div><span>Voltage</span><strong>{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }} V{% else %}-{% endif %}</strong></div>
             <div><span>Current</span><strong>{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }} A{% else %}-{% endif %}</strong></div>
             <div><span>Total unit</span><strong>{% if m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}</strong></div>
-            <div><span>Mode / Rate</span><strong>{{ m.get_billing_mode_display }} / {{ m.unit_rate|floatformat:2 }}</strong></div>
+            <div><span>Balance</span><strong>{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</strong></div>
           </div>
           <div class="meter-mobile-footer no-export">
-            <div class="power-control">
+            <div class="power-control meter-mobile-power">
               <span class="badge power-badge {% if m.power_status|lower == 'off' %}bg-danger{% else %}bg-success{% endif %}">{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}</span>
               <button type="button" class="btn btn-sm power-toggle {% if m.power_status|lower == 'off' %}btn-outline-success{% else %}btn-outline-danger{% endif %}" data-status="{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}" aria-label="Toggle power"><i class="fas fa-power-off"></i></button>
             </div>
-            <div class="btn-group btn-group-sm">
+            <div class="meter-mobile-mode">{{ m.get_billing_mode_display }} / {{ m.unit_rate|floatformat:2 }}</div>
+            <div class="btn-group btn-group-sm meter-mobile-actions">
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
               <a class="btn btn-outline-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings"><i class="fas fa-list"></i></a>
@@ -473,13 +476,23 @@
 .meter-mobile-card.is-low { border-left-color: var(--bs-warning); }
 .meter-mobile-card.is-cutoff { border-left-color: var(--bs-danger); }
 .meter-mobile-head, .meter-mobile-footer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.meter-mobile-idline { flex:1 1 auto; overflow:hidden; }
+.meter-mobile-seq { flex:0 0 auto; font-size:.72rem; font-weight:800; color:var(--bs-body-color); }
 .meter-mobile-number { max-width: 135px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; font-size: .86rem; text-decoration: none; }
-.meter-mobile-location { display: grid; grid-template-columns: 1.25fr .9fr 1fr; gap: .4rem; margin: .5rem 0; padding: .4rem 0; border-top: 1px solid var(--bs-border-color); border-bottom: 1px solid var(--bs-border-color); font-size: .72rem; }
+.meter-mobile-online { flex:0 0 auto; }
+.meter-mobile-role { flex:0 0 auto; }
+.meter-mobile-location { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .4rem; margin: .45rem 0 .25rem; padding: .35rem 0 0; border-top: 1px solid var(--bs-border-color); font-size: .72rem; }
 .meter-mobile-location span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.meter-mobile-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; }
-.meter-mobile-metrics span { display: block; color: var(--bs-secondary-color); font-size: .62rem; line-height: 1.1; }
-.meter-mobile-metrics strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72rem; }
-.meter-mobile-footer { margin-top: .55rem; }
+.meter-mobile-tenant-reading { display:flex; align-items:center; gap:.45rem; padding:0 0 .35rem; border-bottom:1px solid var(--bs-border-color); font-size:.7rem; min-width:0; }
+.meter-mobile-tenant { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.meter-mobile-reading { flex:0 0 auto; white-space:nowrap; font-size:.68rem; }
+.meter-mobile-reading-label { color:var(--bs-secondary-color); }
+.meter-mobile-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .25rem; margin-top:.42rem; }
+.meter-mobile-metrics span { display: block; color: var(--bs-secondary-color); font-size: .58rem; line-height: 1.1; }
+.meter-mobile-metrics strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .69rem; }
+.meter-mobile-footer { margin-top: .48rem; }
+.meter-mobile-mode { flex:1 1 auto; min-width:0; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.68rem; font-weight:650; padding:0 .2rem; }
+.meter-mobile-power, .meter-mobile-actions { flex:0 0 auto; }
 
 body.meter-exporting .no-export {
   display: none !important;
@@ -526,14 +539,21 @@ body.meter-exporting #meterListExportArea {
   .meter-mobile-top-actions { width: 100%; }
 }
 @media (max-width: 575.98px) {
-  .meter-mobile-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .meter-mobile-location { grid-template-columns: 1fr 1fr; }
-  .meter-mobile-location span:last-child { grid-column: 1 / -1; }
   .meter-chip-label { font-size: clamp(.48rem, 2.45vw, .62rem); }
   .meter-bulk-buttons .btn i { display: none; }
   .meter-bulk-options { font-size: .68rem; }
   .meter-mobile-number { max-width: 105px; font-size: .78rem; }
   .meter-mobile-card { padding: .5rem; }
+}
+@media (max-width: 359.98px) {
+  .meter-mobile-head { align-items:flex-start; }
+  .meter-mobile-idline { flex-wrap:wrap; row-gap:.2rem; }
+  .meter-mobile-role .ld-role-display { font-size:.68rem; padding:.12rem .18rem; }
+  .meter-mobile-tenant-reading { display:grid; grid-template-columns:1fr; gap:.18rem; }
+  .meter-mobile-reading { justify-self:start; }
+  .meter-mobile-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); row-gap:.3rem; }
+  .meter-mobile-footer { flex-wrap:wrap; gap:.35rem; }
+  .meter-mobile-mode { order:3; flex:1 0 100%; text-align:left; padding:0; }
 }
 
 .ld-col-role { width: 64px; }

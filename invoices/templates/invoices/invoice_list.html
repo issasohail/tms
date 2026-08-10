@@ -177,6 +177,7 @@
   {# Desktop: sticky, bold list header is enabled by the shared opt-in class. #}
   <div class="table-responsive table-mobile-sm invoice-list-dense desktop-sticky-list">
     {% render_table table 'django_tables2/bootstrap5.html'%}
+    <div class="invoice-mobile-cards d-none" aria-live="polite"></div>
   </div>
 
   <button type="submit" class="btn btn-danger mt-2">
@@ -4208,5 +4209,314 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 </style>
+
+<style>
+/* Mobile result cards only. The page header/actions/filters above remain untouched. */
+@media (max-width: 575.98px) {
+  .invoice-list-dense {
+    overflow: visible !important;
+    background: transparent;
+  }
+  .invoice-list-dense > table.table {
+    display: none !important;
+  }
+  .invoice-mobile-cards {
+    display: grid !important;
+    gap: .45rem;
+    padding: .1rem 0;
+  }
+  .invoice-mobile-card {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: .55rem;
+    background: var(--bs-body-bg, #fff);
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    padding: .52rem;
+    font-size: .7rem;
+    line-height: 1.2;
+    min-width: 0;
+  }
+  .invoice-mobile-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .45rem;
+    min-width: 0;
+  }
+  .invoice-mobile-card-id {
+    display:flex;
+    align-items:center;
+    gap:.28rem;
+    min-width:0;
+    font-weight:800;
+  }
+  .invoice-mobile-card-sn {
+    flex:0 0 auto;
+    font-size:.82rem;
+    color:var(--bs-body-color);
+  }
+  .invoice-mobile-card-serial {
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .invoice-mobile-card-amount {
+    flex:0 0 auto;
+    text-align:right;
+    font-weight:800;
+    color:var(--bs-success, #198754);
+    white-space:nowrap;
+    font-size:.76rem;
+  }
+  .invoice-mobile-card-property {
+    margin-top:.18rem;
+    font-weight:700;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .invoice-mobile-card-tenant {
+    margin-top:.08rem;
+    color:var(--bs-secondary-color, #6c757d);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .invoice-mobile-card-description {
+    margin-top:.35rem;
+    padding-top:.32rem;
+    border-top:1px solid var(--bs-border-color, #dee2e6);
+    width:100%;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+  .invoice-mobile-card-issue {
+    display:flex;
+    align-items:center;
+    gap:.35rem;
+    margin-top:.3rem;
+    min-width:0;
+  }
+  .invoice-mobile-card-date {
+    min-width:0;
+    white-space:nowrap;
+  }
+  .invoice-mobile-card-lifecycle {
+    flex:0 0 auto;
+    min-width:0;
+  }
+  .invoice-mobile-card-lifecycle .invoice-status-badge {
+    width:auto !important;
+    display:inline-flex !important;
+    padding:.14rem .3rem !important;
+    font-size:.56rem !important;
+  }
+  .invoice-mobile-card-balance {
+    margin-top:.26rem;
+    display:flex;
+    align-items:baseline;
+    gap:.25rem;
+    white-space:nowrap;
+  }
+  .invoice-mobile-card-balance strong { font-weight:800; }
+  .invoice-mobile-card-bottom {
+    margin-top:.36rem;
+    padding-top:.32rem;
+    border-top:1px solid var(--bs-border-color, #dee2e6);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.4rem;
+    min-width:0;
+  }
+  .invoice-mobile-card-payment { flex:0 0 auto; }
+  .invoice-mobile-card-payment .invoice-status-badge {
+    width:auto !important;
+    display:inline-flex !important;
+    padding:.15rem .3rem !important;
+    font-size:.56rem !important;
+  }
+  .invoice-mobile-card-actions {
+    margin-left:auto;
+    min-width:0;
+  }
+  .invoice-mobile-card-actions .actions-wrap,
+  .invoice-mobile-card-actions .invoice-actions {
+    display:flex !important;
+    flex-wrap:nowrap !important;
+    align-items:center !important;
+    justify-content:flex-end !important;
+    gap:3px !important;
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    margin:0 !important;
+  }
+  .invoice-mobile-card-actions .btn {
+    width:24px !important;
+    height:24px !important;
+    min-width:24px !important;
+    min-height:24px !important;
+    padding:0 !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+  }
+  .invoice-mobile-card-actions .btn i {
+    font-size:.62rem !important;
+    margin:0 !important;
+  }
+  .invoice-mobile-card-actions .btn-text,
+  .invoice-mobile-card-actions .btn-label { display:none !important; }
+}
+
+@media (max-width: 359.98px) {
+  .invoice-mobile-card-head { gap:.3rem; }
+  .invoice-mobile-card-bottom {
+    flex-wrap:wrap;
+    align-items:flex-start;
+  }
+  .invoice-mobile-card-actions {
+    flex:1 1 100%;
+    margin-left:0;
+  }
+  .invoice-mobile-card-actions .actions-wrap,
+  .invoice-mobile-card-actions .invoice-actions {
+    justify-content:flex-start !important;
+  }
+  .invoice-mobile-card-issue { flex-wrap:wrap; }
+}
+</style>
+
+<script>
+(function () {
+  function textOf(cell) {
+    return cell ? cell.textContent.trim().replace(/\s+/g, ' ') : '';
+  }
+
+  function cloneContent(cell) {
+    const fragment = document.createDocumentFragment();
+    if (!cell) return fragment;
+    Array.from(cell.childNodes).forEach(node => fragment.appendChild(node.cloneNode(true)));
+    return fragment;
+  }
+
+  function buildInvoiceMobileCards(scope) {
+    const root = scope || document;
+    root.querySelectorAll('.invoice-list-dense').forEach(wrapper => {
+      const table = wrapper.querySelector('table.table');
+      const cards = wrapper.querySelector('.invoice-mobile-cards');
+      if (!table || !cards) return;
+
+      cards.innerHTML = '';
+      const rows = table.querySelectorAll('tbody tr');
+      rows.forEach(row => {
+        const snCell = row.querySelector('td.col-sn') || row.cells[0];
+        const serialCell = row.querySelector('td.col-invno') || row.cells[2];
+        const propertyCell = row.querySelector('td.col-propunit') || row.cells[3];
+        const tenantCell = row.querySelector('td.tenant-cell') || row.cells[4];
+        const descCell = row.querySelector('td.col-desc') || row.cells[5];
+        const issueCell = row.querySelector('td.col-issue') || row.cells[6];
+        const amountCell = row.querySelector('td.col-amount') || row.cells[8];
+        const balanceCell = row.querySelector('td.col-balance') || row.cells[9];
+        const statusCell = row.querySelector('td.col-status') || row.cells[10];
+        const actionsCell = row.querySelector('td.actions-cell') || row.cells[11];
+
+        if (!snCell || !propertyCell) return;
+
+        const card = document.createElement('article');
+        card.className = 'invoice-mobile-card';
+
+        const head = document.createElement('div');
+        head.className = 'invoice-mobile-card-head';
+        const id = document.createElement('div');
+        id.className = 'invoice-mobile-card-id';
+        const sn = document.createElement('span');
+        sn.className = 'invoice-mobile-card-sn';
+        sn.textContent = textOf(snCell) + '.';
+        const serial = document.createElement('span');
+        serial.className = 'invoice-mobile-card-serial';
+        serial.appendChild(cloneContent(serialCell));
+        id.append(sn, serial);
+        const amount = document.createElement('div');
+        amount.className = 'invoice-mobile-card-amount';
+        amount.textContent = textOf(amountCell);
+        head.append(id, amount);
+        card.appendChild(head);
+
+        const property = document.createElement('div');
+        property.className = 'invoice-mobile-card-property';
+        property.appendChild(cloneContent(propertyCell));
+        property.querySelectorAll('.mobile-tenant').forEach(el => el.remove());
+        card.appendChild(property);
+
+        const tenant = document.createElement('div');
+        tenant.className = 'invoice-mobile-card-tenant';
+        tenant.textContent = textOf(tenantCell);
+        card.appendChild(tenant);
+
+        const description = document.createElement('div');
+        description.className = 'invoice-mobile-card-description';
+        const descClone = descCell ? descCell.cloneNode(true) : null;
+        if (descClone) {
+          descClone.querySelectorAll('.mobile-issue-date').forEach(el => el.remove());
+          description.innerHTML = descClone.innerHTML;
+        }
+        card.appendChild(description);
+
+        const issue = document.createElement('div');
+        issue.className = 'invoice-mobile-card-issue';
+        const date = document.createElement('span');
+        date.className = 'invoice-mobile-card-date';
+        date.innerHTML = '<strong>Issue:</strong> ' + textOf(issueCell);
+        const lifecycle = document.createElement('span');
+        lifecycle.className = 'invoice-mobile-card-lifecycle';
+        const lifecycleBadge = statusCell?.querySelector('.invoice-status-lifecycle') || statusCell?.querySelector('.invoice-status-badge, .badge');
+        if (lifecycleBadge) lifecycle.appendChild(lifecycleBadge.cloneNode(true));
+        issue.append(date, lifecycle);
+        card.appendChild(issue);
+
+        const balance = document.createElement('div');
+        balance.className = 'invoice-mobile-card-balance';
+        balance.innerHTML = '<span>Lease Balance:</span><strong></strong>';
+        balance.querySelector('strong').textContent = textOf(balanceCell);
+        card.appendChild(balance);
+
+        const bottom = document.createElement('div');
+        bottom.className = 'invoice-mobile-card-bottom';
+        const payment = document.createElement('div');
+        payment.className = 'invoice-mobile-card-payment';
+        const paymentBadge = statusCell?.querySelector('.invoice-status-payment') || Array.from(statusCell?.querySelectorAll('.invoice-status-badge, .badge') || []).at(-1);
+        if (paymentBadge) payment.appendChild(paymentBadge.cloneNode(true));
+        const actions = document.createElement('div');
+        actions.className = 'invoice-mobile-card-actions';
+        if (actionsCell) actions.appendChild(cloneContent(actionsCell));
+        bottom.append(payment, actions);
+        card.appendChild(bottom);
+
+        cards.appendChild(card);
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildInvoiceMobileCards(document);
+  });
+
+  const observer = new MutationObserver(function (mutations) {
+    if (!window.matchMedia('(max-width: 575.98px)').matches) return;
+    const needsBuild = mutations.some(mutation =>
+      Array.from(mutation.addedNodes).some(node =>
+        node.nodeType === 1 && (node.matches?.('.invoice-list-dense') || node.querySelector?.('.invoice-list-dense'))
+      )
+    );
+    if (needsBuild) window.setTimeout(() => buildInvoiceMobileCards(document), 0);
+  });
+  document.addEventListener('DOMContentLoaded', function () {
+    observer.observe(document.body, {childList:true, subtree:true});
+  });
+})();
+</script>
 
 {% endblock %}

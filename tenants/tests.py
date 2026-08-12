@@ -1,4 +1,5 @@
 # Create your tests here.
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -853,7 +854,7 @@ class RegistrationOnboardingTests(TestCase):
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import _registration_submission_comparison
 
-        missing_path = "tenants/registration_submissions/132/ishaq.jpg"
+        missing_path = f"missing/{uuid.uuid4().hex[:8]}.jpg"
         submission = TenantRegistrationSubmission.objects.create(
             tenant=self.make_shell(),
             submitted_data={
@@ -901,10 +902,7 @@ class RegistrationOnboardingTests(TestCase):
         )
         from tenants.views import _registration_submission_comparison
 
-        missing_path = (
-            "tenants/registration_people/10/proposer/"
-            "932f30dc984f41a5ac6e0d9520afbac5.jpeg"
-        )
+        missing_path = f"missing/{uuid.uuid4().hex[:8]}.jpg"
         submission = TenantRegistrationSubmission.objects.create(
             tenant=self.make_shell(),
             submitted_data={
@@ -1198,7 +1196,6 @@ class DateOfBirthSafetyTests(SimpleTestCase):
 
 class SecureRegistrationDraftUploadTests(TestCase):
     def setUp(self):
-        import uuid
 
         from tenants.models import Tenant
         from tenants.views import tenant_registration_token
@@ -1271,7 +1268,6 @@ class SecureRegistrationDraftUploadTests(TestCase):
         return data
 
     def test_temporary_upload_and_private_preview_require_correct_link_and_draft(self):
-        import uuid
 
         response = self.upload("family-0-cnic_front")
         self.assertEqual(response.status_code, 200)
